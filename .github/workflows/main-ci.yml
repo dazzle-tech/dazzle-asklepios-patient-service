@@ -40,7 +40,7 @@ jobs:
         run: doctl kubernetes cluster kubeconfig save --expiry-seconds 600 k8s-1-31-1-do-3-fra1-1730027205220
 
       - name: Set up kubectl
-        uses: azure/patient-kubectl@v3
+        uses: azure/setup-kubectl@v3
         with:
           version: 'latest'
 

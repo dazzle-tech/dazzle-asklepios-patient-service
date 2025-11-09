@@ -170,7 +170,7 @@ springdoc:
 info:
   display-ribbon-on-profiles: 'dev'
 
-setup:
+patient:
   clientApp:
     name: 'patientApp'
   # By default CORS is disabled. Uncomment to enable.

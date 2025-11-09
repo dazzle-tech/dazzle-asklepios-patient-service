@@ -41,7 +41,7 @@ server:
   port: 8083
   # make sure requests the proxy uri instead of the server one
   forward-headers-strategy: framework
-setup:
+patient:
   # CORS is disabled by default on microservices, as you should access them through a gateway.
   # If you want to enable it, please uncomment the configuration below.
   # cors:

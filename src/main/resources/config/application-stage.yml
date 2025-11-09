@@ -60,7 +60,7 @@ server:
     mime-types: text/html,text/xml,text/plain,text/css,application/javascript,application/json,image/svg+xml
     min-response-size: 1024
 
-setup:
+patient:
   cors:
     allowed-origins: '*'
     allowed-origin-patterns: '*'
