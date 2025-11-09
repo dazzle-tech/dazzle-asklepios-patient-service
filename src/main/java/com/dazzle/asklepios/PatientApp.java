@@ -58,7 +58,7 @@ public class PatientApp {
      * @param args the command line arguments.
      */
     public static void main(String[] args) {
-        SpringApplication app = new SpringApplication(PAtientApp.class);
+        SpringApplication app = new SpringApplication(PatientApp.class);
         Map<String, Object> defProperties = new HashMap();
         defProperties.put("spring.profiles.default", "dev");
         app.setDefaultProperties(defProperties);
