@@ -11,8 +11,8 @@ spec:
         app: asklepios-api-patient
     ports:
         - protocol: TCP
-          port: 8082
-          targetPort: 8082
+          port: 8083
+          targetPort: 8083
 ---
 # Deployment
 apiVersion: apps/v1
@@ -38,7 +38,7 @@ spec:
                       value: stage,api-docs
                   imagePullPolicy: IfNotPresent
                   ports:
-                      - containerPort: 8082
+                      - containerPort: 8083
                         name: asklepios-api
 
             imagePullSecrets:

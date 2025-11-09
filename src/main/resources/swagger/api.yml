@@ -5,9 +5,9 @@ info:
   title: 'patient'
   version: 0.0.1
 servers:
-  - url: http://localhost:8082/api
+  - url: http://localhost:8083/api
     description: Development server
-  - url: https://localhost:8082/api
+  - url: https://localhost:8083/api
     description: Development server with TLS Profile
 paths: {}
 components:

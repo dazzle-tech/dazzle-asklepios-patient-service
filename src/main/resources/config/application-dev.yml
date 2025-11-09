@@ -38,7 +38,7 @@ spring:
 
 
 server:
-  port: 8082
+  port: 8083
   # make sure requests the proxy uri instead of the server one
   forward-headers-strategy: framework
 setup:
