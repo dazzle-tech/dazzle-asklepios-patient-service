@@ -1,0 +1,79 @@
+logging:
+  level:
+    ROOT: DEBUG
+    org.hibernate.SQL: DEBUG
+    com.dazzle.asklepios: DEBUG
+    org.springframework.cache: DEBUG
+
+management:
+  zipkin: # Use the "zipkin" Maven profile to have the Spring Cloud Zipkin dependencies
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+  tracing:
+    sampling:
+      probability: 1.0 # report 100% of traces
+
+spring:
+  devtools:
+    restart:
+      enabled: true
+      additional-exclude: static/**
+    livereload:
+      enabled: false # we use Webpack dev server + BrowserSync for livereload
+  jackson:
+    serialization:
+      indent-output: true
+  datasource:
+    type: com.zaxxer.hikari.HikariDataSource
+    url: jdbc:postgresql://localhost:5432/asklepios
+    username: postgres
+    password: 147741
+    hikari:
+      poolName: Hikari
+      auto-commit: false
+  messages:
+    cache-duration: PT1S # 1 second, see the ISO 8601 standard
+  thymeleaf:
+    cache: false
+
+
+server:
+  port: 8083
+  # make sure requests the proxy uri instead of the server one
+  forward-headers-strategy: framework
+patient:
+  # CORS is disabled by default on microservices, as you should access them through a gateway.
+  # If you want to enable it, please uncomment the configuration below.
+  # cors:
+  #   allowed-origins: "http://localhost:9000,https://localhost:9000"
+  #   allowed-methods: "*"
+  #   allowed-headers: "*"
+  #   allow-credentials: true
+  #   max-age: 1800
+  security:
+    authentication:
+      jwt:
+        # This token must be encoded using Base64 and be at least 256 bits long (you can type `openssl rand -base64 64` on your command line to generate a 512 bits one)
+        base64-secret: Y2RiNDRmMGM3ODZkM2FhMTEwYWYxZGE0NjQ3ODM5YThkYWFjZWYzMzY2ZDVkMTVhNGEyNDNmZTM0MzQ5NTRhMmVlMmFkNGVlODBmYTkyZWE4ZWYyMDRhZDJiZGU4YzJhMGEyN2U5NGUzMmNmNWU4Yzk2MDVkNzhmY2M3YTgyZDM=
+        # Token is valid 24 hours
+        token-validity-in-seconds: 86400
+        token-validity-in-seconds-for-remember-me: 2592000
+  logging:
+    use-json-format: false # By default, logs are not in Json format
+    logstash: # Forward logs to logstash over a socket, used by LoggingConfiguration
+      enabled: false
+      host: localhost
+      port: 5000
+      ring-buffer-size: 512
+  attachments:
+    bucket: asklepios
+    region: sfo3
+    endpoint: https://sfo3.digitaloceanspaces.com
+    accessKeyId: DO00TRNC7U4TLLL6ZAN2
+    secretAccessKey: mNFZKBA/BPXTHVUsde8y/2MslOn7zZEiPzwfIuhLrx4
+    presignExpirySeconds: 300
+    maxBytes: 52428800
+    allowed: application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png,text/plain
+
+    springdoc:
+      pre-loading-enabled: true

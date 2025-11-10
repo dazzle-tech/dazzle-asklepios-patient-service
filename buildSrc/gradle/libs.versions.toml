@@ -1,0 +1,13 @@
+[versions]
+gatling-plugin = "3.13.3.2"
+gatling-highcharts = "3.13.3"
+
+[libraries]
+openapi-generator = { module = "org.openapitools:openapi-generator-gradle-plugin", version = "7.13.0" }
+jib-plugin = { module = "com.google.cloud.tools:jib-gradle-plugin", version = "3.4.5" }
+modernizer-plugin = { module = "com.github.andygoossens:gradle-modernizer-plugin", version = "1.11.0" }
+nohttp-plugin = { module = "io.spring.nohttp:nohttp-gradle", version = "0.0.11" }
+sonarqube-plugin = { module = "org.sonarsource.scanner.gradle:sonarqube-gradle-plugin", version = "6.1.0.5360" }
+spotless-plugin = { module = "com.diffplug.spotless:spotless-plugin-gradle", version = "7.0.3" }
+
+[plugins]
