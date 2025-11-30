@@ -28,6 +28,11 @@ spring:
     password: AVNS_Dw0mJXT6mnivz3bN70_
     hikari:
       poolName: Hikari
+      minimum-idle: 3
+      maximum-pool-size: 6
+      idle-timeout: 30000
+      max-lifetime: 600000
+      connection-timeout: 20000
       auto-commit: false
   thymeleaf:
     cache: true
