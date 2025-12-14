@@ -3,12 +3,12 @@
 apiVersion: v1
 kind: Service
 metadata:
-    name: asklepios-patient-service
+    name: asklepiosdemo-patient-service
     namespace: asklepios-sandbox
 spec:
     type: ClusterIP
     selector:
-        app: asklepios-patient
+        app: asklepiosdemo-patient
     ports:
         - protocol: TCP
           port: 8080
@@ -18,21 +18,21 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-    name: asklepios-patient
+    name: asklepiosdemo-patient
     namespace: asklepios-sandbox
 spec:
     selector:
         matchLabels:
-            app: asklepios-patient
+            app: asklepiosdemo-patient
     replicas: 1
     template:
         metadata:
             labels:
-                app: asklepios-patient
+                app: asklepiosdemo-patient
         spec:
             containers:
-                - name: asklepios-patient
-                  image: registry.digitalocean.com/asklepios/asklepios-patient:v1
+                - name: asklepiosdemo-patient
+                  image: registry.digitalocean.com/asklepios/asklepios-patient:r2
                   env:
                     - name: spring.profiles.active
                       value: stage,api-docs
