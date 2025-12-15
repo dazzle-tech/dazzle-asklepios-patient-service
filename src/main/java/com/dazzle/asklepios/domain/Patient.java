@@ -17,7 +17,7 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import java.io.Serializable;
-import java.time.LocalDate;
+import java.util.Date;
 
 @Entity
 @Table(name = "patients")
@@ -47,11 +47,12 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
     @Column(name = "last_name", nullable = false, length = 100)
     private String lastName;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "sex_at_birth", nullable = false, length = 20)
     private Gender sexAtBirth;
 
     @Column(name = "date_of_birth", nullable = false)
-    private LocalDate dateOfBirth;
+    private Date dateOfBirth;
 
     @Column(name = "patient_classes", length = 50)
     private String patientClasses;
@@ -92,6 +93,7 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
     @Column(name = "receive_email")
     private Boolean receiveEmail;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "preferred_way_of_contact", length = 50)
     private PreferredWayOfContact preferredWayOfContact;
 
@@ -152,4 +154,5 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
     @Enumerated(EnumType.STRING)
     @Column(name="security_access_level")
     private SecurityLevel securityAccessLevel;
+    
 }

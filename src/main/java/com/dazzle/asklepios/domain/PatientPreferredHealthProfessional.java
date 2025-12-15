@@ -9,17 +9,14 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-
+import jakarta.persistence.UniqueConstraint;
 import jakarta.validation.constraints.NotNull;
-
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -30,8 +27,10 @@ import java.io.Serializable;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Table(name = "address")
-public class Address extends AbstractAuditingEntity<Long> implements Serializable {
+@EqualsAndHashCode(callSuper = false)
+@Table(name = "patient_preferred_health_professional")
+
+public class PatientPreferredHealthProfessional extends AbstractAuditingEntity<Long> implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 1L;
@@ -41,29 +40,21 @@ public class Address extends AbstractAuditingEntity<Long> implements Serializabl
     private Long id;
 
     @NotNull
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(optional = false, fetch = FetchType.LAZY)
     @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
     @NotNull
-    @Column(name = "location_json", nullable = false, columnDefinition = "jsonb")
-    @JdbcTypeCode(SqlTypes.JSON)
-    private AddressLocation locationJson;
+    @Column(name = "practitioner_id", nullable = false)
+    private Long practitionerId;
 
     @NotNull
-    @Column(name = "street_name", nullable = false, length = 255)
-    private String streetName;
+    @Column(name = "facility_id", nullable = false)
+    private Long facilityId;
 
-    @Column(name = "house_apartment_number", length = 50)
-    private String houseApartmentNumber;
+    @Column(name = "network_affiliation", length = 255)
+    private String networkAffiliation;
 
-    @Column(name = "postal_zip_code", length = 20)
-    private String postalZipCode;
-
-    @Column(name = "additional_address_line", length = 255)
-    private String additionalAddressLine;
-
-    @NotNull
-    @Column(name = "is_current", nullable = false)
-    private Boolean isCurrent;
+    @Column(name = "related_with", length = 255)
+    private String relatedWith;
 }

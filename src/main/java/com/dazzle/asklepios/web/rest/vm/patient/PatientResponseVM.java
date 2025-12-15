@@ -6,7 +6,7 @@ import com.dazzle.asklepios.domain.enumeration.PreferredWayOfContact;
 import com.dazzle.asklepios.domain.enumeration.SecurityLevel;
 
 import java.io.Serializable;
-import java.time.LocalDate;
+import java.util.Date;
 
 public record PatientResponseVM(
         Long id,
@@ -17,7 +17,7 @@ public record PatientResponseVM(
         String thirdName,
         String lastName,
         Gender sexAtBirth,
-        LocalDate dateOfBirth,
+        Date dateOfBirth,
         SecurityLevel securityAccessLevel,
         String patientClasses,
         Boolean isPrivatePatient,

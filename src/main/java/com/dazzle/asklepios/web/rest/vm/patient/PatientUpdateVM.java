@@ -7,9 +7,10 @@ import com.dazzle.asklepios.domain.enumeration.SecurityLevel;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PastOrPresent;
 
 import java.io.Serializable;
-import java.time.LocalDate;
+import java.util.Date;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record PatientUpdateVM(
@@ -20,7 +21,7 @@ public record PatientUpdateVM(
         String thirdName,
         @NotEmpty String lastName,
         @NotNull Gender sexAtBirth,
-        @NotNull LocalDate dateOfBirth,
+        @NotNull @PastOrPresent Date dateOfBirth,
         SecurityLevel securityAccessLevel,
         String patientClasses,
         Boolean isPrivatePatient,
@@ -30,7 +31,7 @@ public record PatientUpdateVM(
         String thirdNameSecondaryLang,
         String lastNameSecondaryLang,
 
-        String primaryMobileNumber,
+        @NotEmpty String primaryMobileNumber,
         Boolean receiveSms,
         String secondMobileNumber,
         String homePhone,

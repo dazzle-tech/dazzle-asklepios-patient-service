@@ -8,15 +8,11 @@ import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
-
-import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
 @Transactional
@@ -34,145 +30,94 @@ public class AddressService {
 
     @Transactional(readOnly = true)
     public List<Address> findAllByPatient(Long patientId) {
-        LOG.debug("Fetching all addresses for patientId={}", patientId);
+        LOG.debug("[FIND ALL] Fetching all addresses for patientId={}", patientId);
         return addressRepository.findByPatientIdOrderByIsCurrentDescIdDesc(patientId);
     }
 
-
-
-    public Address create(Long patientId, Address incoming) {
-        LOG.info("[CREATE] Request to create Address for patientId={} payload={}", patientId, incoming);
-
-        if (incoming == null) {
-            throw new BadRequestAlertException("Address payload is required", "address", "payload.required");
-        }
+    public Address create(Long patientId, Address addressRequest) {
+        LOG.info("[CREATE] Request to create Address for patientId={}, payload={}", patientId, addressRequest);
 
         Patient patient = patientRepository.findById(patientId)
-                .orElseThrow(() -> new NotFoundAlertException("Patient not found with id " + patientId, "patient", "notfound"));
+                .orElseThrow(() -> {
+                    LOG.error("Patient not found with id={}", patientId);
+                    return new NotFoundAlertException("Patient not found", "patient", "notfound");
+                });
 
         try {
+            LOG.debug("Resetting isCurrent flag for all addresses of patientId={}", patientId);
             addressRepository.resetIsCurrentForPatient(patientId);
 
             Address entity = Address.builder()
                     .patient(patient)
-                    .country(incoming.getCountry())
-                    .stateProvince(incoming.getStateProvince())
-                    .city(incoming.getCity())
-                    .streetName(incoming.getStreetName())
-                    .houseApartmentNumber(incoming.getHouseApartmentNumber())
-                    .postalZipCode(incoming.getPostalZipCode())
-                    .additionalAddressLine(incoming.getAdditionalAddressLine())
-                    .countryId(incoming.getCountryId())
+                    .locationJson(addressRequest.getLocationJson())
+                    .streetName(addressRequest.getStreetName())
+                    .houseApartmentNumber(addressRequest.getHouseApartmentNumber())
+                    .postalZipCode(addressRequest.getPostalZipCode())
+                    .additionalAddressLine(addressRequest.getAdditionalAddressLine())
                     .isCurrent(true)
                     .build();
 
             Address saved = addressRepository.saveAndFlush(entity);
-            LOG.info("Successfully created address id={} for patientId={}", saved.getId(), patientId);
+            LOG.info("Successfully created Address id={} for patientId={}", saved.getId(), patientId);
             return saved;
 
-        } catch (DataIntegrityViolationException | JpaSystemException constraintException) {
-            handleConstraintsOnCreateOrUpdate(constraintException);
-
-            throw new BadRequestAlertException(
-                    "Database constraint violated while saving address (check required fields or unique constraints).",
-                    "address",
-                    "db.constraint"
+        } catch (Exception exception) {
+            LOG.error(
+                    "Database constraint violation while creating Address for patientId={}: {}",
+                    patientId,
+                    exception.getMessage(),
+                    exception
             );
+            throw new BadRequestAlertException("Database constraint violation", "address", "db.constraint");
         }
     }
 
-
-    public Optional<Address> update(Long id, Address incoming) {
-        LOG.info("[UPDATE] (versioning) Request to update Address id={} payload={}", id, incoming);
-
-        if (incoming == null) {
-            throw new BadRequestAlertException("Address payload is required", "address", "payload.required");
-        }
+    public Optional<Address> update(Long id, Address addressRequest) {
+        LOG.info("[UPDATE] Request to update Address id={} payload={}", id, addressRequest);
 
         Address existing = addressRepository.findById(id)
-                .orElseThrow(() -> new NotFoundAlertException("Address not found with id " + id, "address", "notfound"));
-
-        Patient patient = existing.getPatient();
-        Long patientId = (patient != null ? patient.getId() : null);
+                .orElseThrow(() -> {
+                    LOG.error("Address not found with id={}", id);
+                    return new NotFoundAlertException("Address not found", "address", "notfound");
+                });
 
         try {
-            if (patientId != null) {
-                addressRepository.resetIsCurrentForPatient(patientId);
+            existing.setLocationJson(addressRequest.getLocationJson());
+            existing.setStreetName(addressRequest.getStreetName());
+            existing.setHouseApartmentNumber(addressRequest.getHouseApartmentNumber());
+            existing.setPostalZipCode(addressRequest.getPostalZipCode());
+            existing.setAdditionalAddressLine(addressRequest.getAdditionalAddressLine());
+
+            if (addressRequest.getIsCurrent() != null) {
+                LOG.debug("Updating isCurrent flag for Address id={} to {}", id, addressRequest.getIsCurrent());
+                existing.setIsCurrent(addressRequest.getIsCurrent());
             }
 
-            existing.setIsCurrent(false);
-            addressRepository.save(existing);
+            Address saved = addressRepository.saveAndFlush(existing);
+            LOG.info("Successfully updated Address id={}", saved.getId());
 
-            Address newVersion = Address.builder()
-                    .patient(patient)
-                    .country(incoming.getCountry())
-                    .stateProvince(incoming.getStateProvince())
-                    .city(incoming.getCity())
-                    .streetName(incoming.getStreetName())
-                    .houseApartmentNumber(incoming.getHouseApartmentNumber())
-                    .postalZipCode(incoming.getPostalZipCode())
-                    .additionalAddressLine(incoming.getAdditionalAddressLine())
-                    .countryId(incoming.getCountryId())
-                    .isCurrent(true)
-                    .build();
+            return Optional.of(saved);
 
-            Address savedNew = addressRepository.saveAndFlush(newVersion);
-
-            LOG.info(
-                    "Successfully versioned address: oldId={} now is_current=false, new current address id={} for patientId={}",
-                    existing.getId(),
-                    savedNew.getId(),
-                    patientId
+        } catch (Exception exception) {
+            LOG.error(
+                    "Database constraint violation while updating Address id={}: {}",
+                    id,
+                    exception.getMessage(),
+                    exception
             );
-
-            return Optional.of(savedNew);
-
-        } catch (DataIntegrityViolationException | JpaSystemException constraintException) {
-            handleConstraintsOnCreateOrUpdate(constraintException);
-
-            throw new BadRequestAlertException(
-                    "Database constraint violated while updating address (check required fields or unique constraints).",
-                    "address",
-                    "db.constraint"
-            );
+            throw new BadRequestAlertException("Database error", "address", "db.constraint");
         }
     }
-
 
     @Transactional(readOnly = true)
     public Address findCurrentByPatient(Long patientId) {
-        LOG.debug("Fetching current address for patientId={}", patientId);
+        LOG.debug("[FIND CURRENT] Fetching current address for patientId={}", patientId);
 
         return addressRepository
                 .findFirstByPatientIdAndIsCurrentTrueOrderByIdDesc(patientId)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Current address not found for patientId " + patientId,
-                        "address",
-                        "current.notfound"
-                ));
-    }
-    private void handleConstraintsOnCreateOrUpdate(RuntimeException constraintException) {
-        Throwable root = getRootCause(constraintException);
-        String message = (root != null ? root.getMessage() : constraintException.getMessage());
-        String lower = (message != null ? message.toLowerCase() : "");
-
-        LOG.error("Database constraint violation while saving address: {}", message, constraintException);
-
-        if (lower.contains("uk_address_country_id")
-                || lower.contains("unique constraint")
-                || lower.contains("duplicate key")
-                || lower.contains("duplicate entry")) {
-            throw new BadRequestAlertException(
-                    "An address with the same countryId already exists.",
-                    "address",
-                    "unique.countryId"
-            );
-        }
-
-        throw new BadRequestAlertException(
-                "Database constraint violated while saving address (check required fields or unique constraints).",
-                "address",
-                "db.constraint"
-        );
+                .orElseThrow(() -> {
+                    LOG.error("Current address not found for patientId={}", patientId);
+                    return new NotFoundAlertException("Current address not found", "address", "notfound");
+                });
     }
 }

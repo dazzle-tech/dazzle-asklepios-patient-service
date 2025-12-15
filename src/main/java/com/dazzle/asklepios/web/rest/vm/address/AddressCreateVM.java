@@ -1,34 +1,28 @@
 package com.dazzle.asklepios.web.rest.vm.address;
 
 import com.dazzle.asklepios.domain.Address;
+import com.dazzle.asklepios.domain.AddressLocation;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.validation.constraints.NotNull;
 
 import java.io.Serializable;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record AddressCreateVM(
-        String country,
-        String stateProvince,
-        String city,
-        String streetName,
+        @NotNull AddressLocation locationJson,
+        @NotNull String streetName,
         String houseApartmentNumber,
         String postalZipCode,
-        String additionalAddressLine,
-        String countryId,
-        Boolean isCurrent // السيرفس رح يتجاهلها ويخلي الجديد دايمًا current، بس خليّناها لو احتجتها مستقبلاً
+        String additionalAddressLine
 ) implements Serializable {
 
     public static AddressCreateVM ofEntity(Address address) {
         return new AddressCreateVM(
-                address.getCountry(),
-                address.getStateProvince(),
-                address.getCity(),
+                address.getLocationJson(),
                 address.getStreetName(),
                 address.getHouseApartmentNumber(),
                 address.getPostalZipCode(),
-                address.getAdditionalAddressLine(),
-                address.getCountryId(),
-                address.getIsCurrent()
+                address.getAdditionalAddressLine()
         );
     }
 }

@@ -32,4 +32,7 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
             String lastName,
             Pageable pageable
     );
+
+    Page<Patient> findByIsUnknownTrue(Pageable pageable);
+
 }

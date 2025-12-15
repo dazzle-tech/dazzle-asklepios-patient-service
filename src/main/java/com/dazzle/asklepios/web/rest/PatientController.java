@@ -16,9 +16,15 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
-
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.List;
@@ -35,14 +41,13 @@ public class PatientController {
         this.patientService = patientService;
     }
 
-    // ================== CREATE ==================
 
     @PostMapping("/patients")
     public ResponseEntity<PatientResponseVM> createPatient(
             @Valid @RequestBody PatientCreateVM vm
     ) {
         LOG.debug("REST create Patient payload={}", vm);
-
+         System.out.println("++++++++++++++++>"+vm.dateOfBirth());
         Patient toCreate = Patient.builder()
                 .firstName(vm.firstName())
                 .secondName(vm.secondName())
@@ -98,7 +103,23 @@ public class PatientController {
                 .body(body);
     }
 
-    // ================== UPDATE ==================
+
+    @PostMapping("/patients/unknown")
+    public ResponseEntity<Patient> createUnknownPatient() {
+        LOG.debug("REST request to create unknown patient");
+
+        Patient unknownPatient = Patient.builder()
+                .isUnknown(true)
+                .build();
+
+        Patient created = patientService.create(unknownPatient);
+
+        return ResponseEntity
+                .created(URI.create("/api/patient/patients/raw/" + created.getId()))
+                .body(created);
+    }
+
+
 
     @PutMapping("/patients/{id}")
     public ResponseEntity<PatientResponseVM> updatePatient(
@@ -261,4 +282,54 @@ public class PatientController {
                 HttpStatus.OK
         );
     }
+    @GetMapping("/patients/by-document-number")
+    public ResponseEntity<List<PatientResponseVM>> getPatientsByPrimaryDocumentNumber(
+            @RequestParam("number") String numberPart,
+            @ParameterObject Pageable pageable
+    ) {
+        LOG.debug("REST search Patients by primary document number={} pageable={}", numberPart, pageable);
+
+        Page<Patient> page = patientService.findByPrimaryDocumentNumber(numberPart, pageable);
+
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                page
+        );
+
+        List<PatientResponseVM> body = page.getContent().stream()
+                .map(PatientResponseVM::ofEntity)
+                .toList();
+
+        return new ResponseEntity<>(body, headers, HttpStatus.OK);
+    }
+
+    @GetMapping("/patients/by-any-document-number")
+    public ResponseEntity<List<PatientResponseVM>> getPatientsByAnyDocumentNumber(
+            @RequestParam("number") String numberPart,
+            @ParameterObject Pageable pageable
+    ) {
+        LOG.debug("REST search Patients by ANY document number={} pageable={}", numberPart, pageable);
+
+        Page<Patient> page = patientService.findByAnyDocumentNumber(numberPart, pageable);
+
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                page
+        );
+
+        List<PatientResponseVM> body = page.getContent().stream()
+                .map(PatientResponseVM::ofEntity)
+                .toList();
+
+        return new ResponseEntity<>(body, headers, HttpStatus.OK);
+    }
+
+    @GetMapping("/patients/unknown")
+    public Page<Patient> getUnknownPatients(Pageable pageable) {
+        return patientService.findUnknownPatients(pageable);
+    }
+
+
+
+
 }
