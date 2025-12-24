@@ -1,19 +1,19 @@
-package com.dazzle.asklepios.web.rest.vm.patientAdministrativeWarnings;
+package com.dazzle.asklepios.service.dto.patientAdministrativeWarnings;
 
 import com.dazzle.asklepios.domain.PatientAdministrativeWarnings;
 import jakarta.validation.constraints.NotNull;
 
 import java.time.Instant;
 
-public record PatientAdministrativeWarningsUndoResolveVM(
+public record PatientAdministrativeWarningsUndoResolveDTO(
         @NotNull Long id,
         @NotNull Boolean resolved,
         String undoResolvedBy,
         Instant undoResolvedDate
 
 ) {
-    public static PatientAdministrativeWarningsUndoResolveVM ofEntity(PatientAdministrativeWarnings patientAdministrativeWarnings) {
-        return new PatientAdministrativeWarningsUndoResolveVM(
+    public static PatientAdministrativeWarningsUndoResolveDTO ofEntity(PatientAdministrativeWarnings patientAdministrativeWarnings) {
+        return new PatientAdministrativeWarningsUndoResolveDTO(
                 patientAdministrativeWarnings.getId(),
                 patientAdministrativeWarnings.getResolved(),
                 patientAdministrativeWarnings.getUndoResolvedBy(),

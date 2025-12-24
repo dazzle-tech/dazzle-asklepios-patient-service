@@ -2,16 +2,24 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.PatientAdministrativeWarnings;
 import com.dazzle.asklepios.service.PatientAdministrativeWarningsService;
-import com.dazzle.asklepios.web.rest.vm.patientAdministrativeWarnings.PatientAdministrativeWarningsCreateVM;
-import com.dazzle.asklepios.web.rest.vm.patientAdministrativeWarnings.PatientAdministrativeWarningsResolveVM;
+import com.dazzle.asklepios.service.dto.patientAdministrativeWarnings.PatientAdministrativeWarningsCreateDTO;
+import com.dazzle.asklepios.service.dto.patientAdministrativeWarnings.PatientAdministrativeWarningsResolveDTO;
+import com.dazzle.asklepios.service.dto.patientAdministrativeWarnings.PatientAdministrativeWarningsUndoResolveDTO;
 import com.dazzle.asklepios.web.rest.vm.patientAdministrativeWarnings.PatientAdministrativeWarningsResponseVM;
-import com.dazzle.asklepios.web.rest.vm.patientAdministrativeWarnings.PatientAdministrativeWarningsUndoResolveVM;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
 import java.util.List;
@@ -38,7 +46,7 @@ public class PatientAdministrativeWarningsController {
      */
     @PostMapping("/patient-administrative-warnings")
     public ResponseEntity<PatientAdministrativeWarningsResponseVM> create(
-            @Valid @RequestBody PatientAdministrativeWarningsCreateVM vm
+            @Valid @RequestBody PatientAdministrativeWarningsCreateDTO vm
     ) {
         LOG.debug("REST create PatientAdministrativeWarnings payload={}", vm);
         PatientAdministrativeWarnings saved = patientAdministrativeWarningsService.create(vm);
@@ -62,7 +70,7 @@ public class PatientAdministrativeWarningsController {
     @PatchMapping("/patient-administrative-warnings/{id}/resolve")
     public ResponseEntity<PatientAdministrativeWarningsResponseVM> resolve(
             @PathVariable Long id,
-            @Valid @RequestBody PatientAdministrativeWarningsResolveVM vm
+            @Valid @RequestBody PatientAdministrativeWarningsResolveDTO vm
     ) {
         LOG.debug("REST resolve PatientAdministrativeWarnings id={} payload={}", id, vm);
         if (vm.id() == null || !id.equals(vm.id())) {
@@ -85,7 +93,7 @@ public class PatientAdministrativeWarningsController {
     @PatchMapping("/patient-administrative-warnings/{id}/undo-resolve")
     public ResponseEntity<PatientAdministrativeWarningsResponseVM> undoResolve(
             @PathVariable Long id,
-            @Valid @RequestBody PatientAdministrativeWarningsUndoResolveVM vm
+            @Valid @RequestBody PatientAdministrativeWarningsUndoResolveDTO vm
     ) {
         LOG.debug("REST undoResolve PatientAdministrativeWarnings id={} payload={}", id, vm);
         if (vm.id() == null || !id.equals(vm.id())) {
@@ -119,17 +127,17 @@ public class PatientAdministrativeWarningsController {
      * If {@code q} is null/blank, returns all warnings for the patient.
      *
      * @param patientId the patient identifier.
-     * @param query         the search text to match against warningType or description.
+     * @param searchText         the search text to match against warningType or description.
      * @return {@link ResponseEntity} with status {@code 200 (OK)} and list of warnings.
      */
     @GetMapping("/patient-administrative-warnings/patient/{patientId}/search")
     public ResponseEntity<List<PatientAdministrativeWarningsResponseVM>> getByPatientIdAndQuery(
             @PathVariable Long patientId,
-            @RequestParam(name = "query", required = false) String query
+            @RequestParam(name = "searchText", required = false) String searchText
     ) {
-        LOG.debug("REST list PatientAdministrativeWarnings by patientId={} q='{}'", patientId, query);
+        LOG.debug("REST list PatientAdministrativeWarnings by patientId={} q='{}'", patientId, searchText);
         List<PatientAdministrativeWarnings> list =
-                patientAdministrativeWarningsService.getByPatientIdAndQuery(patientId, query);
+                patientAdministrativeWarningsService.searchByPatientId(patientId, searchText);
 
         List<PatientAdministrativeWarningsResponseVM> body = list.stream()
                 .map(PatientAdministrativeWarningsResponseVM::ofEntity)

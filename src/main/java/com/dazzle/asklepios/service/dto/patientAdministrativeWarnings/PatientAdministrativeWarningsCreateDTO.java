@@ -1,4 +1,4 @@
-package com.dazzle.asklepios.web.rest.vm.patientAdministrativeWarnings;
+package com.dazzle.asklepios.service.dto.patientAdministrativeWarnings;
 
 import com.dazzle.asklepios.domain.PatientAdministrativeWarnings;
 import jakarta.validation.constraints.NotBlank;
@@ -6,14 +6,14 @@ import jakarta.validation.constraints.NotNull;
 
 import java.io.Serializable;
 
-public record PatientAdministrativeWarningsCreateVM(
+public record PatientAdministrativeWarningsCreateDTO(
         @NotNull Long patientId,
         @NotBlank String warningType,
         String description
 ) implements Serializable {
 
-    public static PatientAdministrativeWarningsCreateVM ofEntity(PatientAdministrativeWarnings patientAdministrativeWarnings) {
-        return new PatientAdministrativeWarningsCreateVM(
+    public static PatientAdministrativeWarningsCreateDTO ofEntity(PatientAdministrativeWarnings patientAdministrativeWarnings) {
+        return new PatientAdministrativeWarningsCreateDTO(
                 patientAdministrativeWarnings.getPatient() != null ? patientAdministrativeWarnings.getPatient().getId() : null,
                 patientAdministrativeWarnings.getWarningType(),
                 patientAdministrativeWarnings.getDescription()
