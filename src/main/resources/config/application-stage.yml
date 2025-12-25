@@ -23,7 +23,7 @@ spring:
       enabled: false
   datasource:
     type: com.zaxxer.hikari.HikariDataSource
-    url: jdbc:postgresql://db-postgresql-nyc3-94186-do-user-10936078-0.j.db.ondigitalocean.com:25060/asklepios?sslmode=require
+    url: jdbc:postgresql://161.35.195.29:5432/asklepios
     username: asklepios
     password: AVNS_Dw0mJXT6mnivz3bN70_
     hikari:
