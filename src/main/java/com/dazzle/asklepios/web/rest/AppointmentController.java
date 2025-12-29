@@ -69,7 +69,9 @@ public class AppointmentController {
                 appointmentMap.put("noShowReasonValue", appointment.getNoShowReasonValue());
                 appointmentMap.put("noShowOtherReason", appointment.getNoShowOtherReason());
                 appointmentMap.put("isValid", appointment.getIsValid());
-                
+                appointmentMap.put("departmentKey", appointment.getDepartmentKey());
+
+
                 if (appointment.getPatientKey() != null) {
                     Map<String, Object> patient = appointmentService.getPatient(appointment.getPatientKey());
                     if (patient != null) {
@@ -172,7 +174,9 @@ public class AppointmentController {
         if (data.containsKey("resourceKey")) appointment.setResourceKey((String) data.get("resourceKey"));
         if (data.containsKey("visitTypeLkey")) appointment.setVisitTypeLkey((String) data.get("visitTypeLkey"));
         if (data.containsKey("durationLkey")) appointment.setDurationLkey((String) data.get("durationLkey"));
-        
+        if (data.containsKey("departmentKey")) appointment.setDepartmentKey((String) data.get("departmentKey"));
+
+
         if (data.containsKey("appointmentStart")) {
             Object startObj = data.get("appointmentStart");
             

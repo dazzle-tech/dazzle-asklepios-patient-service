@@ -122,5 +122,8 @@ public class Appointment implements Serializable {
 
     @Column(name = "is_valid")
     private Boolean isValid = true;
+
+    @Column(name="department_key")
+    private String departmentKey;
 }
 
