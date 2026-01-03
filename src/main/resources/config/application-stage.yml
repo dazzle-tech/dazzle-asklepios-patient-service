@@ -23,9 +23,9 @@ spring:
       enabled: false
   datasource:
     type: com.zaxxer.hikari.HikariDataSource
-    url: jdbc:postgresql://161.35.195.29:5432/asklepios
-    username: asklepios
-    password: AVNS_Dw0mJXT6mnivz3bN70_
+    url: jdbc:postgresql://161.35.195.29:5432/asklepios-demo
+    username: asklepios-demo
+    password: AVNS_EaHgYpgw9RzeKHnRRvU
     hikari:
       poolName: Hikari
       minimum-idle: 3
