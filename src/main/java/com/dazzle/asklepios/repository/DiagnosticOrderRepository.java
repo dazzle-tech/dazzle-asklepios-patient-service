@@ -5,10 +5,11 @@ import com.dazzle.asklepios.domain.DiagnosticOrder;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface DiagnosticOrderRepository extends JpaRepository<DiagnosticOrder, Long> {
+public interface DiagnosticOrderRepository extends JpaRepository<DiagnosticOrder, Long>  , JpaSpecificationExecutor<DiagnosticOrder> {
 
     Page<DiagnosticOrder> findByEncounterId(Long encounterId, Pageable pageable);
 

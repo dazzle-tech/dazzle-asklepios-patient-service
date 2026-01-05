@@ -2,6 +2,7 @@
 package com.dazzle.asklepios.web.rest.vm.diagnosticorders;
 
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
+import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 
 import java.io.Serializable;
 import java.time.Instant;
@@ -10,13 +11,13 @@ public record DiagnosticOrderTestResponseVM(
         Long id,
         Long patientId,
         Long encounterId,
-        String status,
+        DiagnosticStatus status,
         Long orderId,
         Long testId,
         Long receivedDepartmentId,
         String reason,
         String notes,
-        String processingStatus,
+        DiagnosticStatus processingStatus,
         Instant submitDate,
         Instant acceptedDate,
         Instant rejectedDate,

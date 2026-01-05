@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders;
 
+import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import jakarta.validation.constraints.NotNull;
 
 import java.io.Serializable;
@@ -9,13 +10,13 @@ public record DiagnosticOrderTestUpdateDTO(
         @NotNull Long id,
         @NotNull Long patientId,
         @NotNull Long encounterId,
-        String status,
+        DiagnosticStatus status,
         @NotNull Long orderId,
         @NotNull Long testId,
         Long receivedDepartmentId,
         String reason,
         String notes,
-        String processingStatus,
+        DiagnosticStatus processingStatus,
         Instant submitDate,
         Instant acceptedDate,
         Instant rejectedDate,

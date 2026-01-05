@@ -1,7 +1,10 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -14,7 +17,6 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.Generated;
 import org.hibernate.annotations.GenerationTime;
-
 import java.io.Serial;
 import java.io.Serializable;
 import java.time.Instant;
@@ -42,8 +44,9 @@ public class DiagnosticOrder extends AbstractAuditingEntity implements Serializa
     @Column(name = "encounter_id")
     private Long encounterId;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", columnDefinition = "text")
-    private String status;
+    private DiagnosticStatus status;
 
     // DB-generated (sequence default). Must NOT be included in INSERT.
     @Generated(GenerationTime.INSERT)
@@ -62,9 +65,11 @@ public class DiagnosticOrder extends AbstractAuditingEntity implements Serializa
     @Column(name = "is_urgent", nullable = false)
     private Boolean isUrgent = false;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "lab_status", columnDefinition = "text")
-    private String labStatus;
+    private DiagnosticStatus labStatus;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "rad_status", columnDefinition = "text")
-    private String radStatus;
+    private DiagnosticStatus radStatus;
 }

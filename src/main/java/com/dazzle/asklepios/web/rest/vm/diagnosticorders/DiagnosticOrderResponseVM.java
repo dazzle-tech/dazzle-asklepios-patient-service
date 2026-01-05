@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.web.rest.vm.diagnosticorders;
 
 import com.dazzle.asklepios.domain.DiagnosticOrder;
+import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 
 import java.io.Serializable;
 import java.time.Instant;
@@ -9,14 +10,14 @@ public record DiagnosticOrderResponseVM(
         Long id,
         Long patientId,
         Long encounterId,
-        String status,
+        DiagnosticStatus status,
         Long orderNumber,
         Boolean saveDraft,
         String submittedBy,
         Instant submittedDate,
         Boolean isUrgent,
-        String labStatus,
-        String radStatus
+        DiagnosticStatus labStatus,
+        DiagnosticStatus radStatus
 ) implements Serializable {
 
     public static DiagnosticOrderResponseVM ofEntity(DiagnosticOrder o) {
