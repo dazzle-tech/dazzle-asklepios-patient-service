@@ -2,6 +2,7 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.DiagnosticOrderService;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderUpdateDTO;
@@ -54,7 +55,14 @@ public class DiagnosticOrderController {
         this.diagnosticOrderService = diagnosticOrderService;
         this.diagnosticOrderRepository = diagnosticOrderRepository;
     }
-
+    private String currentUsername() {
+        return SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "No authenticated user",
+                        "diagnostic_orders",
+                        "unauthenticated"
+                ));
+    }
     /**
      * Create a new DiagnosticOrder.
      *
@@ -361,17 +369,14 @@ public class DiagnosticOrderController {
 
 
     @PostMapping("/diagnostic-orders/{id}/submit")
-    public ResponseEntity<DiagnosticOrderResponseVM> submit(
-            @PathVariable Long id,
-            @Valid @RequestBody DiagnosticOrderSubmitDTO dto
-    ) {
+    public ResponseEntity<DiagnosticOrderResponseVM> submit(@PathVariable Long id) {
+
         DiagnosticOrder existing = diagnosticOrderRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "DiagnosticOrder not found with id " + id,
                         "diagnostic_orders",
                         "notfound"
                 ));
-
 
         if (Boolean.FALSE.equals(existing.getSaveDraft())) {
             throw new BadRequestAlertException(
@@ -381,7 +386,11 @@ public class DiagnosticOrderController {
             );
         }
 
-        DiagnosticOrder saved = diagnosticOrderService.submit(existing, dto.submittedBy());
+        String username = currentUsername();
+
+        DiagnosticOrder saved = diagnosticOrderService.submit(existing, username);
+
         return ResponseEntity.ok(DiagnosticOrderResponseVM.ofEntity(saved));
     }
+
 }

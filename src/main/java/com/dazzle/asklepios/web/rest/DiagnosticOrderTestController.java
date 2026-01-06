@@ -1,16 +1,16 @@
 
 package com.dazzle.asklepios.web.rest;
+
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
-import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.DiagnosticOrderTestService;
 import com.dazzle.asklepios.service.DiagnosticOrderTestStatusService;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestUpdateDTO;
-import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.commands.DiagnosticOrderTestAcceptDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.commands.DiagnosticOrderTestCancelDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.commands.DiagnosticOrderTestRejectDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
@@ -62,7 +62,6 @@ public class DiagnosticOrderTestController {
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
     }
-
 
 
     private String currentUsername() {
@@ -205,14 +204,18 @@ public class DiagnosticOrderTestController {
             if (status != null) predicates.add(cb.equal(root.get("status"), status));
             if (statusIn != null && !statusIn.isEmpty()) predicates.add(root.get("status").in(statusIn));
             if (excludeStatus != null) predicates.add(cb.notEqual(root.get("status"), excludeStatus));
-            if (statusNotIn != null && !statusNotIn.isEmpty()) predicates.add(cb.not(root.get("status").in(statusNotIn)));
+            if (statusNotIn != null && !statusNotIn.isEmpty())
+                predicates.add(cb.not(root.get("status").in(statusNotIn)));
 
-            if (receivedDepartmentId != null) predicates.add(cb.equal(root.get("receivedDepartmentId"), receivedDepartmentId));
+            if (receivedDepartmentId != null)
+                predicates.add(cb.equal(root.get("receivedDepartmentId"), receivedDepartmentId));
             if (processingStatus != null) predicates.add(cb.equal(root.get("processingStatus"), processingStatus));
             if (orderType != null) predicates.add(cb.equal(root.get("orderType"), orderType));
 
-            if (acceptedBy != null && !acceptedBy.isBlank()) predicates.add(cb.equal(root.get("acceptedBy"), acceptedBy));
-            if (rejectedBy != null && !rejectedBy.isBlank()) predicates.add(cb.equal(root.get("rejectedBy"), rejectedBy));
+            if (acceptedBy != null && !acceptedBy.isBlank())
+                predicates.add(cb.equal(root.get("acceptedBy"), acceptedBy));
+            if (rejectedBy != null && !rejectedBy.isBlank())
+                predicates.add(cb.equal(root.get("rejectedBy"), rejectedBy));
 
             if (fromDepartmentId != null) predicates.add(cb.equal(root.get("fromDepartmentId"), fromDepartmentId));
             if (fromFacilityId != null) predicates.add(cb.equal(root.get("fromFacilityId"), fromFacilityId));

@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
@@ -33,11 +34,12 @@ public interface DiagnosticOrderTestRepository extends JpaRepository<DiagnosticO
             """)
     List<DiagnosticStatus> findDistinctProcessingStatuses(Long orderId, TestType type);
 
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
-        update DiagnosticOrderTest t
-           set t.status = :newStatus
-         where t.orderId = :orderId
-           and t.status <> com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus.CANCELLED
-    """)
+    update DiagnosticOrderTest t
+       set t.status = :newStatus
+     where t.orderId = :orderId
+       and t.status <> com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus.CANCELLED
+""")
     int bulkUpdateStatusForOrder(Long orderId, DiagnosticOrderTestStatus newStatus);
 }
