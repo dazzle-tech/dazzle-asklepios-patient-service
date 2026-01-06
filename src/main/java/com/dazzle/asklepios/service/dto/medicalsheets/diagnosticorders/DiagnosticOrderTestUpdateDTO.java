@@ -1,36 +1,24 @@
+// src/main/java/com/dazzle/asklepios/service/dto/medicalsheets/diagnosticorders/DiagnosticOrderTestUpdateDTO.java
 package com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders;
 
-import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import jakarta.validation.constraints.NotNull;
 
 import java.io.Serializable;
-import java.time.Instant;
 
-public record DiagnosticOrderTestUpdateDTO(
+public record
+DiagnosticOrderTestUpdateDTO(
         @NotNull Long id,
         @NotNull Long patientId,
         @NotNull Long encounterId,
-        DiagnosticStatus status,
         @NotNull Long orderId,
         @NotNull Long testId,
+
         Long receivedDepartmentId,
         String reason,
         String notes,
-        DiagnosticStatus processingStatus,
-        Instant submitDate,
-        Instant acceptedDate,
-        Instant rejectedDate,
-        Instant patientArrivedDate,
-        Instant readyDate,
-        Instant approvedDate,
-        String orderType,
-        String acceptedBy,
-        String rejectedBy,
-        String rejectedReason,
-        String patientArrivedNoteRad,
-        String cancellationReason,
+
         Long fromDepartmentId,
         Long fromFacilityId,
-        Long toFacilityId,
-        Boolean isActive
-) implements Serializable {}
+        Long toFacilityId
+
+) implements Serializable { }

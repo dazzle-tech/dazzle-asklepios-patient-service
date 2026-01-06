@@ -1,8 +1,9 @@
-// src/main/java/com/dazzle/asklepios/web/rest/vm/diagnosticorders/DiagnosticOrderTestResponseVM.java
 package com.dazzle.asklepios.web.rest.vm.diagnosticorders;
 
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
+import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.TestType;
 
 import java.io.Serializable;
 import java.time.Instant;
@@ -11,29 +12,37 @@ public record DiagnosticOrderTestResponseVM(
         Long id,
         Long patientId,
         Long encounterId,
-        DiagnosticStatus status,
+
+        DiagnosticOrderTestStatus status,      // lifecycle: NEW/SUBMITTED/CANCELLED
+        DiagnosticStatus processingStatus,     // workflow: SAMPLE_COLLECTED/ACCEPTED/...
+
         Long orderId,
         Long testId,
+        TestType orderType,
+
         Long receivedDepartmentId,
         String reason,
         String notes,
-        DiagnosticStatus processingStatus,
+
         Instant submitDate,
         Instant acceptedDate,
         Instant rejectedDate,
         Instant patientArrivedDate,
         Instant readyDate,
         Instant approvedDate,
-        String orderType,
+
         String acceptedBy,
         String rejectedBy,
         String rejectedReason,
         String patientArrivedNoteRad,
+
         String cancellationReason,
+        String cancelledBy,
+        Instant cancelledDate,
+
         Long fromDepartmentId,
         Long fromFacilityId,
-        Long toFacilityId,
-        Boolean isActive
+        Long toFacilityId
 ) implements Serializable {
 
     public static DiagnosticOrderTestResponseVM ofEntity(DiagnosticOrderTest t) {
@@ -41,29 +50,37 @@ public record DiagnosticOrderTestResponseVM(
                 t.getId(),
                 t.getPatientId(),
                 t.getEncounterId(),
+
                 t.getStatus(),
+                t.getProcessingStatus(),
+
                 t.getOrderId(),
                 t.getTestId(),
+                t.getOrderType(),
+
                 t.getReceivedDepartmentId(),
                 t.getReason(),
                 t.getNotes(),
-                t.getProcessingStatus(),
+
                 t.getSubmitDate(),
                 t.getAcceptedDate(),
                 t.getRejectedDate(),
                 t.getPatientArrivedDate(),
                 t.getReadyDate(),
                 t.getApprovedDate(),
-                t.getOrderType(),
+
                 t.getAcceptedBy(),
                 t.getRejectedBy(),
                 t.getRejectedReason(),
                 t.getPatientArrivedNoteRad(),
+
                 t.getCancellationReason(),
+                t.getCancelledBy(),
+                t.getCancelledDate(),
+
                 t.getFromDepartmentId(),
                 t.getFromFacilityId(),
-                t.getToFacilityId(),
-                t.getIsActive()
+                t.getToFacilityId()
         );
     }
 }

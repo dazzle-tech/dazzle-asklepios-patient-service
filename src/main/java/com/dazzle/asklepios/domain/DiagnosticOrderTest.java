@@ -1,21 +1,11 @@
-
+// src/main/java/com/dazzle/asklepios/domain/DiagnosticOrderTest.java
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import com.dazzle.asklepios.domain.enumeration.TestType;
+import jakarta.persistence.*;
+import lombok.*;
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -46,7 +36,7 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", columnDefinition = "text")
-    private DiagnosticStatus status;
+    private DiagnosticOrderTestStatus status; // ✅ changed
 
     @Column(name = "order_id")
     private Long orderId;
@@ -65,7 +55,7 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
 
     @Enumerated(EnumType.STRING)
     @Column(name = "processing_status", columnDefinition = "text")
-    private DiagnosticStatus processingStatus;
+    private DiagnosticStatus processingStatus; // ✅ stays
 
     @Column(name = "submit_date")
     private Instant submitDate;
@@ -85,8 +75,9 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
     @Column(name = "approved_date")
     private Instant approvedDate;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "order_type", columnDefinition = "text")
-    private String orderType;
+    private TestType orderType;
 
     @Column(name = "accepted_by", columnDefinition = "text")
     private String acceptedBy;
@@ -103,6 +94,12 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
     @Column(name = "cancellation_reason", columnDefinition = "text")
     private String cancellationReason;
 
+    @Column(name = "cancelled_by", columnDefinition = "text")
+    private String cancelledBy;
+
+    @Column(name = "cancelled_date")
+    private Instant cancelledDate;
+
     @Column(name = "from_department_id")
     private Long fromDepartmentId;
 
@@ -112,7 +109,5 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
     @Column(name = "to_facility_id")
     private Long toFacilityId;
 
-    @Column(name = "is_active", nullable = false)
-    private Boolean isActive = true;
 
 }

@@ -54,7 +54,7 @@ public class DiagnosticOrder extends AbstractAuditingEntity implements Serializa
     private Long orderNumber;
 
     @Column(name = "save_draft")
-    private Boolean saveDraft;
+    private Boolean saveDraft=true;
 
     @Column(name = "submitted_by", columnDefinition = "text")
     private String submittedBy;

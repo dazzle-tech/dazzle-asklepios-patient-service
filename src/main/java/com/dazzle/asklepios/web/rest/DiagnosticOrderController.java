@@ -5,6 +5,7 @@ import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.service.DiagnosticOrderService;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderUpdateDTO;
+import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.commands.DiagnosticOrderSubmitDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.diagnosticorders.DiagnosticOrderResponseVM;
@@ -103,9 +104,8 @@ public class DiagnosticOrderController {
                 dto.saveDraft(),
                 dto.submittedBy(),
                 dto.submittedDate(),
-                dto.isUrgent(),
-                dto.labStatus(),
-                dto.radStatus()
+                dto.isUrgent()
+
         );
 
         DiagnosticOrder updated = diagnosticOrderService.update(existing, fixed);
@@ -357,5 +357,31 @@ public class DiagnosticOrderController {
         );
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
+    }
+
+
+    @PostMapping("/diagnostic-orders/{id}/submit")
+    public ResponseEntity<DiagnosticOrderResponseVM> submit(
+            @PathVariable Long id,
+            @Valid @RequestBody DiagnosticOrderSubmitDTO dto
+    ) {
+        DiagnosticOrder existing = diagnosticOrderRepository.findById(id)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "DiagnosticOrder not found with id " + id,
+                        "diagnostic_orders",
+                        "notfound"
+                ));
+
+
+        if (Boolean.FALSE.equals(existing.getSaveDraft())) {
+            throw new BadRequestAlertException(
+                    "Order already submitted",
+                    "diagnostic_orders",
+                    "already_submitted"
+            );
+        }
+
+        DiagnosticOrder saved = diagnosticOrderService.submit(existing, dto.submittedBy());
+        return ResponseEntity.ok(DiagnosticOrderResponseVM.ofEntity(saved));
     }
 }

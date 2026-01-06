@@ -14,7 +14,5 @@ public record DiagnosticOrderUpdateDTO(
         Boolean saveDraft,
         String submittedBy,
         Instant submittedDate,
-        Boolean isUrgent,
-        DiagnosticStatus labStatus,
-        DiagnosticStatus radStatus
+        Boolean isUrgent
 ) implements Serializable {}

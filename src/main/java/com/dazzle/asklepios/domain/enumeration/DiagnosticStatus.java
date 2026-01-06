@@ -14,7 +14,10 @@ public enum DiagnosticStatus {
     COMPLETED,
     RESULT_REJECTED,
     PATIENT_ARRIVED,
-    CANCELLED
+    CANCELLED,
+    REVIEWED,
+    PARTIAL,
+    SUBMITTED
 
 
 }
