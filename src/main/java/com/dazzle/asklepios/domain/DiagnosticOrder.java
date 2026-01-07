@@ -17,6 +17,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.Generated;
 import org.hibernate.annotations.GenerationTime;
+
 import java.io.Serial;
 import java.io.Serializable;
 import java.time.Instant;
@@ -29,7 +30,7 @@ import java.time.Instant;
 @AllArgsConstructor
 @Builder
 @EqualsAndHashCode(callSuper = false)
-public class DiagnosticOrder extends AbstractAuditingEntity implements Serializable  {
+public class DiagnosticOrder extends AbstractAuditingEntity implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 1L;
