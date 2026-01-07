@@ -110,6 +110,13 @@ public class DiagnosticOrderTestController {
     @PostMapping("/diagnostic-order-tests")
     public ResponseEntity<DiagnosticOrderTestResponseVM> create(@Valid @RequestBody DiagnosticOrderTestCreateDTO dto) {
         LOG.debug("REST create DiagnosticOrderTest payload={}", dto);
+        if (diagnosticOrderTestRepository.existsByOrderIdAndTestId(dto.orderId(), dto.testId())) {
+            throw new BadRequestAlertException(
+                    "duplicate_test_in_order",
+                    "diagnostic_order_tests",
+                    "This test already exists for the same order"
+            );
+        }
 
         DiagnosticOrderTest saved = diagnosticOrderTestService.create(dto);
 
@@ -145,6 +152,13 @@ public class DiagnosticOrderTestController {
         // Guard against path/body id mismatch
         if (!id.equals(dto.id())) {
             throw new BadRequestAlertException("Path id and body id mismatch", "diagnostic_order_tests", "idmismatch");
+        }
+        if (diagnosticOrderTestRepository.existsByOrderIdAndTestId(dto.orderId(), dto.testId())) {
+            throw new BadRequestAlertException(
+                    "duplicate_test_in_order",
+                    "diagnostic_order_tests",
+                    "This test already exists for the same order"
+            );
         }
 
         DiagnosticOrderTest updated = diagnosticOrderTestService.update(existing, dto);

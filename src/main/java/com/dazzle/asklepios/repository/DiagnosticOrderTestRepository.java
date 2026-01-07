@@ -42,4 +42,8 @@ public interface DiagnosticOrderTestRepository extends JpaRepository<DiagnosticO
        and t.status <> com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus.CANCELLED
 """)
     int bulkUpdateStatusForOrder(Long orderId, DiagnosticOrderTestStatus newStatus);
+
+
+    boolean existsByOrderIdAndTestId(Long orderId, Long testId);
+
 }
