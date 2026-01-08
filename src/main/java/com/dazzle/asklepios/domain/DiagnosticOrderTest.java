@@ -44,9 +44,10 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
     @Column(name = "encounter_id")
     private Long encounterId;
 
+    // Liquibase: varchar(50)
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", columnDefinition = "text")
-    private DiagnosticOrderTestStatus status; // ✅ changed
+    @Column(name = "status", length = 50)
+    private DiagnosticOrderTestStatus status;
 
     @Column(name = "order_id")
     private Long orderId;
@@ -57,15 +58,18 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
     @Column(name = "received_department_id")
     private Long receivedDepartmentId;
 
-    @Column(name = "reason", columnDefinition = "text")
+    // Liquibase: varchar(50)
+    @Column(name = "reason", length = 50)
     private String reason;
 
+    // Liquibase: text
     @Column(name = "notes", columnDefinition = "text")
     private String notes;
 
+    // Liquibase: varchar(50)
     @Enumerated(EnumType.STRING)
-    @Column(name = "processing_status", columnDefinition = "text")
-    private DiagnosticStatus processingStatus; // ✅ stays
+    @Column(name = "processing_status", length = 50)
+    private DiagnosticStatus processingStatus;
 
     @Column(name = "submit_date")
     private Instant submitDate;
@@ -76,6 +80,9 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
     @Column(name = "rejected_date")
     private Instant rejectedDate;
 
+    @Column(name = "cancelled_date")
+    private Instant cancelledDate;
+
     @Column(name = "patient_arrived_date")
     private Instant patientArrivedDate;
 
@@ -85,30 +92,34 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
     @Column(name = "approved_date")
     private Instant approvedDate;
 
+    // Liquibase: varchar(50)
     @Enumerated(EnumType.STRING)
-    @Column(name = "order_type", columnDefinition = "text")
+    @Column(name = "order_type", length = 50)
     private TestType orderType;
 
-    @Column(name = "accepted_by", columnDefinition = "text")
+    // Liquibase: varchar(50)
+    @Column(name = "accepted_by", length = 50)
     private String acceptedBy;
 
-    @Column(name = "rejected_by", columnDefinition = "text")
+    // Liquibase: varchar(50)
+    @Column(name = "rejected_by", length = 50)
     private String rejectedBy;
 
-    @Column(name = "rejected_reason", columnDefinition = "text")
-    private String rejectedReason;
-
-    @Column(name = "patient_arrived_note_rad", columnDefinition = "text")
-    private String patientArrivedNoteRad;
-
-    @Column(name = "cancellation_reason", columnDefinition = "text")
-    private String cancellationReason;
-
-    @Column(name = "cancelled_by", columnDefinition = "text")
+    // Liquibase: varchar(50)
+    @Column(name = "cancelled_by", length = 50)
     private String cancelledBy;
 
-    @Column(name = "cancelled_date")
-    private Instant cancelledDate;
+    // Liquibase: varchar(200)
+    @Column(name = "rejected_reason", length = 200)
+    private String rejectedReason;
+
+    // Liquibase: varchar(150)
+    @Column(name = "patient_arrived_note_rad", length = 150)
+    private String patientArrivedNoteRad;
+
+    // Liquibase: varchar(250)
+    @Column(name = "cancellation_reason", length = 250)
+    private String cancellationReason;
 
     @Column(name = "from_department_id")
     private Long fromDepartmentId;
@@ -118,6 +129,4 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
 
     @Column(name = "to_facility_id")
     private Long toFacilityId;
-
-
 }
