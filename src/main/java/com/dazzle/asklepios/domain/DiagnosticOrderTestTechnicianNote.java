@@ -15,7 +15,6 @@ import lombok.Setter;
 
 import java.io.Serial;
 import java.io.Serializable;
-import java.time.Instant;
 
 @Entity
 @Table(name = "diagnostic_order_test_technician_notes")

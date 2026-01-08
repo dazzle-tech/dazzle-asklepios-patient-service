@@ -1,6 +1,9 @@
 package com.dazzle.asklepios.web.rest.vm.diagnosticorders;
+
 import com.dazzle.asklepios.domain.DiagnosticOrderTestTechnicianNote;
+
 import java.time.Instant;
+
 public record DiagnosticOrderTestTechnicianNoteResponseVM(
         Long id,
         Long orderTestId,

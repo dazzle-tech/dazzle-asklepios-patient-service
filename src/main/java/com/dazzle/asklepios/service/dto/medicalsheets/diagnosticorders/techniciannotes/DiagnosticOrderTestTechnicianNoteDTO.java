@@ -8,4 +8,5 @@ public record DiagnosticOrderTestTechnicianNoteDTO(
         @NotNull Long orderTestId,
         @NotNull Long orderId,
         @NotBlank String note
-) {}
+) {
+}
