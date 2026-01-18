@@ -8,7 +8,7 @@ import java.time.Instant;
 
 public record DiagnosticOrderResponseVM(
         Long id,
-        Long patientId,
+        String patientId,
         Long encounterId,
         DiagnosticStatus status,
         Long orderNumber,
@@ -17,13 +17,17 @@ public record DiagnosticOrderResponseVM(
         Instant submittedDate,
         Boolean isUrgent,
         DiagnosticStatus labStatus,
-        DiagnosticStatus radStatus
+        DiagnosticStatus radStatus,
+        Instant createdDate,
+        Instant lastModifiedDate,
+        String createdBy,
+        String lastModifiedBy
 ) implements Serializable {
 
     public static DiagnosticOrderResponseVM ofEntity(DiagnosticOrder o) {
         return new DiagnosticOrderResponseVM(
                 o.getId(),
-                o.getPatientId(),
+                String.valueOf(o.getPatientId()),
                 o.getEncounterId(),
                 o.getStatus(),
                 o.getOrderNumber(),
@@ -32,7 +36,11 @@ public record DiagnosticOrderResponseVM(
                 o.getSubmittedDate(),
                 o.getIsUrgent(),
                 o.getLabStatus(),
-                o.getRadStatus()
+                o.getRadStatus(),
+                o.getCreatedDate(),
+                o.getLastModifiedDate(),
+                o.getCreatedBy(),
+                o.getLastModifiedBy()
         );
     }
 }
