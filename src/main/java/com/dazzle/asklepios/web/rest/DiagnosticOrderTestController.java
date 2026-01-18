@@ -153,13 +153,20 @@ public class DiagnosticOrderTestController {
         if (!id.equals(dto.id())) {
             throw new BadRequestAlertException("Path id and body id mismatch", "diagnostic_order_tests", "idmismatch");
         }
-        if (diagnosticOrderTestRepository.existsByOrderIdAndTestId(dto.orderId(), dto.testId())) {
+        if (
+                diagnosticOrderTestRepository.existsByOrderIdAndTestIdAndIdNot(
+                        dto.orderId(),
+                        dto.testId(),
+                        id
+                )
+        ) {
             throw new BadRequestAlertException(
                     "duplicate_test_in_order",
                     "diagnostic_order_tests",
                     "This test already exists for the same order"
             );
         }
+
 
         DiagnosticOrderTest updated = diagnosticOrderTestService.update(existing, dto);
         return ResponseEntity.ok(DiagnosticOrderTestResponseVM.ofEntity(updated));

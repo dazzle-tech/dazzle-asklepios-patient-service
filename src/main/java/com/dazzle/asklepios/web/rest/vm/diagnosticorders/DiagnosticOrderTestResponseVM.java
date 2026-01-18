@@ -42,7 +42,11 @@ public record DiagnosticOrderTestResponseVM(
 
         Long fromDepartmentId,
         Long fromFacilityId,
-        Long toFacilityId
+        Long toFacilityId,
+        Instant createdDate,
+        Instant lastModifiedDate,
+        String createdBy,
+        String lastModifiedBy
 ) implements Serializable {
 
     public static DiagnosticOrderTestResponseVM ofEntity(DiagnosticOrderTest t) {
@@ -80,7 +84,11 @@ public record DiagnosticOrderTestResponseVM(
 
                 t.getFromDepartmentId(),
                 t.getFromFacilityId(),
-                t.getToFacilityId()
+                t.getToFacilityId(),
+                t.getCreatedDate(),
+                t.getLastModifiedDate(),
+                t.getCreatedBy(),
+                t.getLastModifiedBy()
         );
     }
 }
