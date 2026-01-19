@@ -121,12 +121,5 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
     @Column(name = "cancellation_reason", length = 250)
     private String cancellationReason;
 
-    @Column(name = "from_department_id")
-    private Long fromDepartmentId;
 
-    @Column(name = "from_facility_id")
-    private Long fromFacilityId;
-
-    @Column(name = "to_facility_id")
-    private Long toFacilityId;
 }

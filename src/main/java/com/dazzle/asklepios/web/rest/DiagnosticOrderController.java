@@ -126,7 +126,9 @@ public class DiagnosticOrderController {
                 dto.saveDraft(),
                 dto.submittedBy(),
                 dto.submittedDate(),
-                dto.isUrgent()
+                dto.isUrgent(),
+                dto.fromDepartmentId(),
+                dto.fromFacilityId()
 
         );
 

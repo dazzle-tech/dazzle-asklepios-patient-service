@@ -78,4 +78,10 @@ public class DiagnosticOrder extends AbstractAuditingEntity implements Serializa
     @Enumerated(EnumType.STRING)
     @Column(name = "rad_status", length = 50)
     private DiagnosticStatus radStatus;
+
+    @Column(name = "from_department_id")
+    private Long fromDepartmentId;
+
+    @Column(name = "from_facility_id")
+    private Long fromFacilityId;
 }

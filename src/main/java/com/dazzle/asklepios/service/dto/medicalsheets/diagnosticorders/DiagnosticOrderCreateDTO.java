@@ -14,5 +14,7 @@ public record DiagnosticOrderCreateDTO(
         Instant submittedDate,
         Boolean isUrgent,
         DiagnosticStatus labStatus,
-        DiagnosticStatus radStatus
+        DiagnosticStatus radStatus,
+        Long fromDepartmentId,
+        Long fromFacilityId
 ) implements Serializable {}

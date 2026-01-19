@@ -99,11 +99,6 @@ public class DiagnosticOrderTestService {
         t.setSubmitDate(dto.submitDate());
         t.setOrderType(dto.orderType());
 
-        // Source/target routing details (departments/facilities)
-        t.setFromDepartmentId(dto.fromDepartmentId());
-        t.setFromFacilityId(dto.fromFacilityId());
-        t.setToFacilityId(dto.toFacilityId());
-
         // Persist the entity
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(t);
 
@@ -139,11 +134,6 @@ public class DiagnosticOrderTestService {
         existing.setReceivedDepartmentId(dto.receivedDepartmentId());
         existing.setReason(dto.reason());
         existing.setNotes(dto.notes());
-
-        // Update routing details
-        existing.setFromDepartmentId(dto.fromDepartmentId());
-        existing.setFromFacilityId(dto.fromFacilityId());
-        existing.setToFacilityId(dto.toFacilityId());
 
         // Persist the updated entity
         return diagnosticOrderTestRepository.save(existing);

@@ -24,9 +24,5 @@ public record DiagnosticOrderTestCreateDTO(
 
         Instant submitDate,
 
-        TestType orderType,
-
-        Long fromDepartmentId,
-        Long fromFacilityId,
-        Long toFacilityId
+        TestType orderType
 ) implements Serializable { }

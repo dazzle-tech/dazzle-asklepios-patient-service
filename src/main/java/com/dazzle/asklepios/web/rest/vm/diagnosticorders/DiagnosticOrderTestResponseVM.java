@@ -39,10 +39,6 @@ public record DiagnosticOrderTestResponseVM(
         String cancellationReason,
         String cancelledBy,
         Instant cancelledDate,
-
-        Long fromDepartmentId,
-        Long fromFacilityId,
-        Long toFacilityId,
         Instant createdDate,
         Instant lastModifiedDate,
         String createdBy,
@@ -82,9 +78,6 @@ public record DiagnosticOrderTestResponseVM(
                 t.getCancelledBy(),
                 t.getCancelledDate(),
 
-                t.getFromDepartmentId(),
-                t.getFromFacilityId(),
-                t.getToFacilityId(),
                 t.getCreatedDate(),
                 t.getLastModifiedDate(),
                 t.getCreatedBy(),
