@@ -10,6 +10,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Service responsible for managing the lifecycle (status transitions) of a {@link DiagnosticOrderTest}.
@@ -212,6 +215,95 @@ public class DiagnosticOrderTestStatusService {
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
         return saved;
     }
+    /**
+     * Bulk Transition: {@code SAMPLE_COLLECTED -> ACCEPTED} for multiple tests.
+     * <p>
+     * This method applies the same acceptance workflow as {@link #accept(Long, String)} but in bulk:
+     * <ul>
+     *   <li>Loads each {@link DiagnosticOrderTest} by id.</li>
+     *   <li>Validates the workflow transition using {@link #ensureTransition(DiagnosticStatus, DiagnosticStatus)}.</li>
+     *   <li>Sets {@link DiagnosticStatus#ACCEPTED} as processingStatus.</li>
+     *   <li>Fills acceptance audit fields: acceptedBy + acceptedDate.</li>
+     *   <li>Persists each updated test.</li>
+     *   <li>Recomputes aggregated Lab/Radiology statuses once per parent order (optimized).</li>
+     * </ul>
+     *
+     * Transaction behavior:
+     * <ul>
+     *   <li>Fail-fast: if any test id is invalid or transition is not allowed, an exception is thrown and
+     *       the entire transaction is rolled back.</li>
+     * </ul>
+     *
+     * @param testIds     list of DiagnosticOrderTest ids to accept
+     * @param acceptedBy  username/userId performing the accept action
+     */
+    public void bulkAccept(List<Long> testIds, String acceptedBy) {
+        Set<Long> orderIds = new HashSet<>();
+
+        for (Long id : testIds) {
+            DiagnosticOrderTest test = getTest(id);
+
+            DiagnosticStatus from = normalize(test.getProcessingStatus());
+            ensureTransition(from, DiagnosticStatus.ACCEPTED);
+
+            test.setProcessingStatus(DiagnosticStatus.ACCEPTED);
+            test.setAcceptedBy(acceptedBy);
+            test.setAcceptedDate(Instant.now());
+
+            DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
+            orderIds.add(saved.getOrderId());
+        }
+
+        for (Long orderId : orderIds) {
+            diagnosticOrderStatusService.recomputeLabRadStatuses(orderId);
+        }
+    }
+    /**
+     * Bulk Transition: to {@link DiagnosticStatus#REJECTED} for multiple tests.
+     * <p>
+     * This method applies the same rejection workflow as {@link #reject(Long, String, String)} but in bulk:
+     * <ul>
+     *   <li>Loads each {@link DiagnosticOrderTest} by id.</li>
+     *   <li>Validates the workflow transition using {@link #ensureTransition(DiagnosticStatus, DiagnosticStatus)}.</li>
+     *   <li>Sets {@link DiagnosticStatus#REJECTED} as processingStatus.</li>
+     *   <li>Fills rejection audit fields: rejectedBy + rejectedDate + rejectedReason.</li>
+     *   <li>Persists each updated test.</li>
+     *   <li>Recomputes aggregated Lab/Radiology statuses once per parent order (optimized).</li>
+     * </ul>
+     *
+     * Transaction behavior:
+     * <ul>
+     *   <li>Fail-fast: if any test id is invalid or transition is not allowed, an exception is thrown and
+     *       the entire transaction is rolled back.</li>
+     * </ul>
+     *
+     * @param testIds         list of DiagnosticOrderTest ids to reject
+     * @param rejectedBy      username/userId performing the reject action
+     * @param rejectedReason  mandatory textual reason for rejection
+     */
+    public void bulkReject(List<Long> testIds, String rejectedBy, String rejectedReason) {
+        Set<Long> orderIds = new HashSet<>();
+
+        for (Long id : testIds) {
+            DiagnosticOrderTest test = getTest(id);
+
+            DiagnosticStatus from = normalize(test.getProcessingStatus());
+            ensureTransition(from, DiagnosticStatus.REJECTED);
+
+            test.setProcessingStatus(DiagnosticStatus.REJECTED);
+            test.setRejectedBy(rejectedBy);
+            test.setRejectedReason(rejectedReason);
+            test.setRejectedDate(Instant.now());
+
+            DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
+            orderIds.add(saved.getOrderId());
+        }
+
+        for (Long orderId : orderIds) {
+            diagnosticOrderStatusService.recomputeLabRadStatuses(orderId);
+        }
+    }
+
 
     /**
      * Loads a DiagnosticOrderTest by id or throws a {@link BadRequestAlertException} if not found.

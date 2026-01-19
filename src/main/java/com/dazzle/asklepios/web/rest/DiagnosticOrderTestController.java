@@ -8,6 +8,8 @@ import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.DiagnosticOrderTestService;
 import com.dazzle.asklepios.service.DiagnosticOrderTestStatusService;
+import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.BulkIdsDTO;
+import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.BulkRejectDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestUpdateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.commands.DiagnosticOrderTestCancelDTO;
@@ -471,5 +473,17 @@ public class DiagnosticOrderTestController {
         String username = currentUsername();
         DiagnosticOrderTest updated = diagnosticOrderTestStatusService.cancel(id, username, dto.cancellationReason());
         return ResponseEntity.ok(DiagnosticOrderTestResponseVM.ofEntity(updated));
+    }
+
+    @PostMapping("/diagnostic-order-tests/bulk-accept")
+    public ResponseEntity<Void> bulkAccept(@Valid @RequestBody BulkIdsDTO dto) {
+        diagnosticOrderTestStatusService.bulkAccept(dto.ids(), currentUsername());
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/diagnostic-order-tests/bulk-reject")
+    public ResponseEntity<Void> bulkReject(@Valid @RequestBody BulkRejectDTO dto) {
+        diagnosticOrderTestStatusService.bulkReject(dto.ids(), currentUsername(), dto.rejectedReason());
+        return ResponseEntity.ok().build();
     }
 }

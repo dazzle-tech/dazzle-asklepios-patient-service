@@ -17,7 +17,11 @@ public record DiagnosticOrderResponseVM(
         Instant submittedDate,
         Boolean isUrgent,
         DiagnosticStatus labStatus,
-        DiagnosticStatus radStatus
+        DiagnosticStatus radStatus,
+        Instant createdDate,
+        Instant lastModifiedDate,
+        String createdBy,
+        String lastModifiedBy
 ) implements Serializable {
 
     public static DiagnosticOrderResponseVM ofEntity(DiagnosticOrder o) {
@@ -32,7 +36,11 @@ public record DiagnosticOrderResponseVM(
                 o.getSubmittedDate(),
                 o.getIsUrgent(),
                 o.getLabStatus(),
-                o.getRadStatus()
+                o.getRadStatus(),
+                o.getCreatedDate(),
+                o.getLastModifiedDate(),
+                o.getCreatedBy(),
+                o.getLastModifiedBy()
         );
     }
 }
