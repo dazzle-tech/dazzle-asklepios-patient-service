@@ -1,6 +1,9 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.DiagnosticOrder;
+import com.dazzle.asklepios.domain.DiagnosticOrderTest;
+import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.DiagnosticOrderService;
@@ -10,6 +13,8 @@ import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.diagnosticorders.DiagnosticOrderResponseVM;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -296,6 +301,8 @@ public class DiagnosticOrderController {
      * or {@code 400 (Bad Request)} if the request contains conflicting filters (e.g. both {@code status} and {@code statusIn}).
      */
 
+   */
+
     @GetMapping("/diagnostic-orders")
     public ResponseEntity<List<DiagnosticOrderResponseVM>> filter(
             @RequestParam(name = "patientId", required = false) Long patientId,
@@ -314,30 +321,23 @@ public class DiagnosticOrderController {
             @RequestParam(name = "submittedDateFrom", required = false) Instant submittedDateFrom,
             @RequestParam(name = "submittedDateTo", required = false) Instant submittedDateTo,
 
+
+            @RequestParam(name = "departmentId", required = false) Long departmentId,
+
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("[DiagnosticOrder] FILTER - request received. " +
-                        "patientId={} encounterId={} status={} statusIn={} statusNotIn={} excludeStatus={} " +
-                        "saveDraft={} isUrgent={} labStatus={} radStatus={} submittedDateFrom={} submittedDateTo={} pageable={}",
-                patientId, encounterId, status, statusIn, statusNotIn, excludeStatus,
-                saveDraft, isUrgent, labStatus, radStatus, submittedDateFrom, submittedDateTo, pageable
-        );
 
-        // Guard against conflicting filters: exact 'status' vs list 'statusIn'
         if (status != null && statusIn != null && !statusIn.isEmpty()) {
-            LOG.warn("[DiagnosticOrder] FILTER - invalid request: status and statusIn were both provided. status={} statusIn={}", status, statusIn);
             throw new IllegalArgumentException("Use either status or statusIn, not both");
         }
 
-        // Build dynamic WHERE predicates based on provided optional filters
         Specification<DiagnosticOrder> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            // Scope filters
+            // Base filters
             if (patientId != null) predicates.add(cb.equal(root.get("patientId"), patientId));
             if (encounterId != null) predicates.add(cb.equal(root.get("encounterId"), encounterId));
 
-            // Status filters
             if (status != null && !status.isBlank()) predicates.add(cb.equal(root.get("status"), status));
             if (statusIn != null && !statusIn.isEmpty()) predicates.add(root.get("status").in(statusIn));
             if (excludeStatus != null && !excludeStatus.isBlank())
@@ -345,24 +345,38 @@ public class DiagnosticOrderController {
             if (statusNotIn != null && !statusNotIn.isEmpty())
                 predicates.add(cb.not(root.get("status").in(statusNotIn)));
 
-            // Additional flags
             if (saveDraft != null) predicates.add(cb.equal(root.get("saveDraft"), saveDraft));
             if (isUrgent != null) predicates.add(cb.equal(root.get("isUrgent"), isUrgent));
 
-            // Lab/Rad status filters (exact)
-            if (labStatus != null && !labStatus.isBlank()) predicates.add(cb.equal(root.get("labStatus"), labStatus));
-            if (radStatus != null && !radStatus.isBlank()) predicates.add(cb.equal(root.get("radStatus"), radStatus));
+            if (labStatus != null && !labStatus.isBlank())
+                predicates.add(cb.equal(root.get("labStatus"), labStatus));
+            if (radStatus != null && !radStatus.isBlank())
+                predicates.add(cb.equal(root.get("radStatus"), radStatus));
 
-            // Date range filters
             if (submittedDateFrom != null)
                 predicates.add(cb.greaterThanOrEqualTo(root.get("submittedDate"), submittedDateFrom));
             if (submittedDateTo != null)
                 predicates.add(cb.lessThanOrEqualTo(root.get("submittedDate"), submittedDateTo));
 
+            // ✅ Optional: only orders that have a NON-CANCELLED LAB test sent to departmentId
+            if (departmentId != null) {
+                Subquery<Long> sq = query.subquery(Long.class);
+                Root<DiagnosticOrderTest> t = sq.from(DiagnosticOrderTest.class);
+
+                sq.select(t.get("id"))
+                        .where(
+                                cb.equal(t.get("orderId"), root.get("id")),
+                                cb.equal(t.get("receivedDepartmentId"), departmentId), // عدلي الاسم إذا مختلف بالـ Entity
+                                cb.notEqual(t.get("status"), DiagnosticStatus.CANCELLED),
+                                cb.equal(t.get("orderType"), TestType.LABORATORY)
+                        );
+
+                predicates.add(cb.exists(sq));
+            }
+
             return cb.and(predicates.toArray(new Predicate[0]));
         };
 
-        LOG.debug("[DiagnosticOrder] FILTER - executing repository query...");
         Page<DiagnosticOrder> page = diagnosticOrderRepository.findAll(spec, pageable);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
@@ -373,10 +387,6 @@ public class DiagnosticOrderController {
                 .stream()
                 .map(DiagnosticOrderResponseVM::ofEntity)
                 .toList();
-
-        LOG.debug("[DiagnosticOrder] FILTER - query executed successfully. returned={} pageNumber={} pageSize={} totalElements={} totalPages={}",
-                body.size(), page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages()
-        );
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
@@ -408,3 +418,4 @@ public class DiagnosticOrderController {
     }
 
 }
+
