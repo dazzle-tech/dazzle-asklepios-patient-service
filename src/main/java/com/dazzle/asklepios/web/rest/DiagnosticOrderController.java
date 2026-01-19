@@ -301,7 +301,7 @@ public class DiagnosticOrderController {
      * or {@code 400 (Bad Request)} if the request contains conflicting filters (e.g. both {@code status} and {@code statusIn}).
      */
 
-   */
+   
 
     @GetMapping("/diagnostic-orders")
     public ResponseEntity<List<DiagnosticOrderResponseVM>> filter(
