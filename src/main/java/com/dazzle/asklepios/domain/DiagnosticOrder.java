@@ -1,3 +1,4 @@
+
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
@@ -45,8 +46,9 @@ public class DiagnosticOrder extends AbstractAuditingEntity implements Serializa
     @Column(name = "encounter_id")
     private Long encounterId;
 
+    // Liquibase: varchar(50)
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", columnDefinition = "text")
+    @Column(name = "status", length = 50)
     private DiagnosticStatus status;
 
     // DB-generated (sequence default). Must NOT be included in INSERT.
@@ -55,9 +57,10 @@ public class DiagnosticOrder extends AbstractAuditingEntity implements Serializa
     private Long orderNumber;
 
     @Column(name = "save_draft")
-    private Boolean saveDraft=true;
+    private Boolean saveDraft = true;
 
-    @Column(name = "submitted_by", columnDefinition = "text")
+    // Liquibase: varchar(50)
+    @Column(name = "submitted_by", length = 50)
     private String submittedBy;
 
     @Column(name = "submitted_date")
@@ -66,11 +69,13 @@ public class DiagnosticOrder extends AbstractAuditingEntity implements Serializa
     @Column(name = "is_urgent", nullable = false)
     private Boolean isUrgent = false;
 
+    // Liquibase: varchar(50)
     @Enumerated(EnumType.STRING)
-    @Column(name = "lab_status", columnDefinition = "text")
+    @Column(name = "lab_status", length = 50)
     private DiagnosticStatus labStatus;
 
+    // Liquibase: varchar(50)
     @Enumerated(EnumType.STRING)
-    @Column(name = "rad_status", columnDefinition = "text")
+    @Column(name = "rad_status", length = 50)
     private DiagnosticStatus radStatus;
 }
