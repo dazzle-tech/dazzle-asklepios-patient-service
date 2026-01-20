@@ -23,5 +23,5 @@ public class DiagnosticTestRadiology {
     private DiagnosticTest test;
 
     @Column(name = "category")
-    private Long category;
+    private String category;
 }
