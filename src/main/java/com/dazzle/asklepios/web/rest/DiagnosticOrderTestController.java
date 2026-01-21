@@ -167,10 +167,11 @@ public class DiagnosticOrderTestController {
             throw new BadRequestAlertException("Path id and body id mismatch", "diagnostic_order_tests", "idmismatch");
         }
         if (
-                diagnosticOrderTestRepository.existsByOrderIdAndTestIdAndIdNot(
+                diagnosticOrderTestRepository.existsByOrderIdAndTestIdAndIdNotAndStatusNot(
                         dto.orderId(),
                         dto.testId(),
                         id
+                        , DiagnosticOrderTestStatus.CANCELLED
                 )
         ) {
             throw new BadRequestAlertException(
