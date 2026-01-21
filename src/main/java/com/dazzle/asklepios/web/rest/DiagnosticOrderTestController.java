@@ -1,8 +1,8 @@
 package com.dazzle.asklepios.web.rest;
 
+import com.dazzle.asklepios.client.domain.DiagnosticTest;
 import com.dazzle.asklepios.client.domain.DiagnosticTestLaboratory;
 import com.dazzle.asklepios.client.domain.DiagnosticTestRadiology;
-import com.dazzle.asklepios.client.domain.DiagnosticTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
@@ -61,24 +61,32 @@ import java.util.List;
 @RequestMapping("/api/patient")
 public class DiagnosticOrderTestController {
 
-    /** Logger for tracing incoming REST requests. */
+    /**
+     * Logger for tracing incoming REST requests.
+     */
     private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderTestController.class);
 
-    /** Service handling create/update/delete and list operations. */
+    /**
+     * Service handling create/update/delete and list operations.
+     */
     private final DiagnosticOrderTestService diagnosticOrderTestService;
 
-    /** Service handling state transitions for processing/status actions. */
+    /**
+     * Service handling state transitions for processing/status actions.
+     */
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
 
-    /** Repository used directly for lookups and Specification-based queries. */
+    /**
+     * Repository used directly for lookups and Specification-based queries.
+     */
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
 
     /**
      * Controller constructor.
      *
-     * @param diagnosticOrderTestService business logic for CRUD
+     * @param diagnosticOrderTestService       business logic for CRUD
      * @param diagnosticOrderTestStatusService business logic for status transitions
-     * @param diagnosticOrderTestRepository persistence/retrieval access
+     * @param diagnosticOrderTestRepository    persistence/retrieval access
      */
     public DiagnosticOrderTestController(
             DiagnosticOrderTestService diagnosticOrderTestService,
@@ -114,7 +122,8 @@ public class DiagnosticOrderTestController {
     @PostMapping("/diagnostic-order-tests")
     public ResponseEntity<DiagnosticOrderTestResponseVM> create(@Valid @RequestBody DiagnosticOrderTestCreateDTO dto) {
         LOG.debug("REST create DiagnosticOrderTest payload={}", dto);
-        if (diagnosticOrderTestRepository.existsByOrderIdAndTestId(dto.orderId(), dto.testId())) {
+        if (diagnosticOrderTestRepository.existsByOrderIdAndTestIdAndStatusNot(dto.orderId(), dto.testId(), DiagnosticOrderTestStatus.CANCELLED))
+        {
             throw new BadRequestAlertException(
                     "duplicate_test_in_order",
                     "diagnostic_order_tests",
@@ -134,7 +143,7 @@ public class DiagnosticOrderTestController {
      * <p>
      * Validates that the path id matches the DTO id to avoid accidental updates.
      *
-     * @param id path variable (entity id)
+     * @param id  path variable (entity id)
      * @param dto request body payload (must include matching id)
      * @return updated entity response
      */
@@ -227,10 +236,10 @@ public class DiagnosticOrderTestController {
      *   <li>Pagination via {@link Pageable}</li>
      * </ul>
      *
-     * @param orderId parent order id
-     * @param status optional exact status filter
+     * @param orderId       parent order id
+     * @param status        optional exact status filter
      * @param excludeStatus optional list of statuses to exclude (used when status is null)
-     * @param pageable paging and sorting
+     * @param pageable      paging and sorting
      * @return paginated list of response VMs plus pagination headers
      */
     @GetMapping("/diagnostic-orders/{orderId}/tests")
@@ -267,7 +276,7 @@ public class DiagnosticOrderTestController {
      * <p>
      * Implementation uses JPA {@link Specification} for exact-match predicates (plus submitDate range).
      * Results are pageable.
-     *
+     * <p>
      * Notes/constraints:
      * <ul>
      *   <li>Cannot use both {@code status} and {@code statusIn} at the same time.</li>
@@ -371,7 +380,7 @@ public class DiagnosticOrderTestController {
             // (2) categoryId filter (ONLY from detail table based on orderType)
             // Does NOT depend on testName
             // -----------------------------
-            if (category!= null) {
+            if (category != null) {
                 if (orderType == TestType.LABORATORY) {
                     Root<DiagnosticTestLaboratory> lab = query.from(DiagnosticTestLaboratory.class);
 
@@ -406,7 +415,6 @@ public class DiagnosticOrderTestController {
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
-
 
 
     // -------------------------
@@ -484,7 +492,7 @@ public class DiagnosticOrderTestController {
      * <p>
      * Uses the currently authenticated username as the rejecter.
      *
-     * @param id test id
+     * @param id  test id
      * @param dto rejection payload (reason)
      * @return updated entity response
      */
@@ -503,7 +511,7 @@ public class DiagnosticOrderTestController {
      * <p>
      * Uses the currently authenticated username as the canceller.
      *
-     * @param id test id
+     * @param id  test id
      * @param dto cancellation payload (reason)
      * @return updated entity response
      */
