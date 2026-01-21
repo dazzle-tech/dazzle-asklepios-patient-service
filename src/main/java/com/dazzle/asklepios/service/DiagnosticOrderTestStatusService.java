@@ -340,9 +340,11 @@ public class DiagnosticOrderTestStatusService {
      */
     private void ensureTransition(DiagnosticStatus from, DiagnosticStatus to) {
 
-        // NEW -> SAMPLE_COLLECTED
+        // NEW or SAMPLE_COLLECTED -> SAMPLE_COLLECTED (idempotent)
         if (to == DiagnosticStatus.SAMPLE_COLLECTED) {
-            if (from != DiagnosticStatus.NEW) throw invalid(from, to);
+            if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.SAMPLE_COLLECTED)) {
+                throw invalid(from, to);
+            }
             return;
         }
 

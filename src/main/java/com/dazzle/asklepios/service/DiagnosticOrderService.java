@@ -77,7 +77,9 @@ public class DiagnosticOrderService {
                 saved.getSaveDraft(),
                 saved.getLabStatus(),
                 saved.getRadStatus(),
-                saved.getIsUrgent()
+                saved.getIsUrgent(),
+                saved.getFromDepartmentId(),
+                saved.getFromFacilityId()
         );
 
         return saved;
@@ -116,7 +118,9 @@ public class DiagnosticOrderService {
                 saved.getSaveDraft(),
                 saved.getSubmittedBy(),
                 saved.getSubmittedDate(),
-                saved.getIsUrgent()
+                saved.getIsUrgent(),
+                saved.getFromDepartmentId(),
+                saved.getFromFacilityId()
         );
 
         return saved;

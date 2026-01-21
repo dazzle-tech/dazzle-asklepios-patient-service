@@ -1,0 +1,14 @@
+package com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.requests;
+
+import com.dazzle.asklepios.domain.enumeration.TestType;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+public record DiagnosticTestRequestUpdateDTO(
+        @NotNull Long id,
+        @NotNull TestType type,
+        @NotBlank String name,
+        String indication,
+        Long fromDepartmentId,
+        Long fromFacilityId
+) {}
