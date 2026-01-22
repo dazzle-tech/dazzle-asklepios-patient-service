@@ -36,6 +36,8 @@ public record DiagnosticOrderTestResponseVM(
         String rejectedReason,
         String patientArrivedNoteRad,
 
+        boolean testWasSent, // NEW
+
         String cancellationReason,
         String cancelledBy,
         Instant cancelledDate,
@@ -46,6 +48,10 @@ public record DiagnosticOrderTestResponseVM(
 ) implements Serializable {
 
     public static DiagnosticOrderTestResponseVM ofEntity(DiagnosticOrderTest t) {
+        return ofEntity(t, false);
+    }
+
+    public static DiagnosticOrderTestResponseVM ofEntity(DiagnosticOrderTest t, boolean testWasSent) {
         return new DiagnosticOrderTestResponseVM(
                 t.getId(),
                 t.getPatientId(),
@@ -73,6 +79,8 @@ public record DiagnosticOrderTestResponseVM(
                 t.getRejectedBy(),
                 t.getRejectedReason(),
                 t.getPatientArrivedNoteRad(),
+
+                testWasSent,
 
                 t.getCancellationReason(),
                 t.getCancelledBy(),
