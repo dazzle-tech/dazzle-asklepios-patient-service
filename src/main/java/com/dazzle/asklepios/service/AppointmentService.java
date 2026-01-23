@@ -83,7 +83,7 @@ public class AppointmentService {
                             "key, dob," +
                             "first_name, second_name, third_name, last_name, full_name, " +
                             "document_type_lkey, document_no, phone_number, mobile_number, email" +
-                            ", gender_lkey " +
+                            ", gender_lkey, patient_mrn " +
                             "FROM public.ap_patient WHERE key = ?";
 
             List<Map<String, Object>> result = jdbcTemplate.queryForList(query, patientKey);
