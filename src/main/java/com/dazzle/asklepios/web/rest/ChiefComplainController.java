@@ -99,6 +99,7 @@ public class ChiefComplainController {
 
     @DeleteMapping("/chief-complain/{id}")
     public ResponseEntity<Void> hardDelete(@PathVariable Long id) {
+        LOG.debug("REST delete ChiefComplain Id={}", id);
         chiefComplainService.hardDelete(id);
         return ResponseEntity.noContent().build();
     }
