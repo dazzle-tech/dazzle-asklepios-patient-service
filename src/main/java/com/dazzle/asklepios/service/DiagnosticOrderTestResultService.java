@@ -1,4 +1,3 @@
-// src/main/java/com/dazzle/asklepios/service/DiagnosticOrderTestResultService.java
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
@@ -11,30 +10,57 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Service responsible for create/update/delete operations for {@link DiagnosticOrderTestResult}.
+ *
+ * <p>This service handles result data persistence and enforces basic invariants:
+ * <ul>
+ *   <li>New results are created with {@link DiagnosticStatus#RESULT_READY} as processing status.</li>
+ *   <li>Status transitions (approve/reject/review) are not handled here; use
+ *       {@link DiagnosticOrderTestResultStatusService} instead.</li>
+ * </ul>
+ * </p>
+ */
 @Service
 @Transactional
 public class DiagnosticOrderTestResultService {
 
     private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderTestResultService.class);
 
+    /** Repository for persistence operations. */
     private final DiagnosticOrderTestResultRepository repository;
-    private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
+
+    /** Service that recomputes parent test/order state from results. */
     private final DiagnosticOrderTestResultStatusService diagnosticOrderTestResultStatusService;
 
-
+    /**
+     * Constructs the service with required dependencies.
+     *
+     * @param repository repository for result persistence
+     * @param diagnosticOrderTestResultStatusService service for recompute/aggregate from results
+     */
     public DiagnosticOrderTestResultService(
             DiagnosticOrderTestResultRepository repository,
-            DiagnosticOrderTestStatusService diagnosticOrderTestStatusService, DiagnosticOrderTestResultStatusService diagnosticOrderTestResultStatusService
+            DiagnosticOrderTestResultStatusService diagnosticOrderTestResultStatusService
     ) {
         this.repository = repository;
-        this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
         this.diagnosticOrderTestResultStatusService = diagnosticOrderTestResultStatusService;
     }
 
     /**
-     * Create result:
-     * - processingStatus is controlled here (RESULT_READY).
-     * - triggers test transition to RESULT_READY via DiagnosticOrderTestStatusService.markReady(testId).
+     * Creates a new result.
+     *
+     * <p>Behavior:
+     * <ul>
+     *   <li>Builds a new {@link DiagnosticOrderTestResult} from the DTO.</li>
+     *   <li>Sets {@code processingStatus} to {@link DiagnosticStatus#RESULT_READY}.</li>
+     *   <li>Saves the result.</li>
+     *   <li>Recomputes the parent test processing status from all its results.</li>
+     * </ul>
+     * </p>
+     *
+     * @param dto create payload
+     * @return persisted result
      */
     public DiagnosticOrderTestResult create(DiagnosticOrderTestResultCreateDTO dto) {
         LOG.debug("[DiagnosticOrderTestResultService] CREATE - start. payload={}", dto);
@@ -53,8 +79,8 @@ public class DiagnosticOrderTestResultService {
 
         DiagnosticOrderTestResult saved = repository.save(r);
 
+        diagnosticOrderTestResultStatusService.recomputeTestProcessingStatusFromResults(saved.getOrderTestId());
 
-        diagnosticOrderTestResultStatusService.recomputeTestProcessingStatusFromResults(r.getOrderTestId());
         LOG.debug("[DiagnosticOrderTestResultService] CREATE - done. id={} orderTestId={} processingStatus={}",
                 saved.getId(), saved.getOrderTestId(), saved.getProcessingStatus());
 
@@ -62,8 +88,14 @@ public class DiagnosticOrderTestResultService {
     }
 
     /**
-     * Update result data only:.
-     * - does NOT allow changing processingStatus / approve / reject fields here.
+     * Updates result data fields only.
+     *
+     * <p>This method does not modify status/audit fields for approval/rejection/review.
+     * Use {@link DiagnosticOrderTestResultStatusService} for those operations.</p>
+     *
+     * @param existing current persisted entity
+     * @param dto update payload
+     * @return updated persisted entity
      */
     public DiagnosticOrderTestResult update(DiagnosticOrderTestResult existing, DiagnosticOrderTestResultUpdateDTO dto) {
         LOG.debug("[DiagnosticOrderTestResultService] UPDATE - start. id={} payload={}", existing.getId(), dto);
@@ -85,6 +117,11 @@ public class DiagnosticOrderTestResultService {
         return saved;
     }
 
+    /**
+     * Deletes a result by id.
+     *
+     * @param id result id
+     */
     public void delete(Long id) {
         LOG.debug("[DiagnosticOrderTestResultService] DELETE - start. id={}", id);
         repository.deleteById(id);

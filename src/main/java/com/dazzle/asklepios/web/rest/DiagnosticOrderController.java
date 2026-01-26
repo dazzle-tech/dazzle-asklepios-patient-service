@@ -42,16 +42,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * REST controller for managing Diagnostic Orders.
- * <p>
- * Endpoints in this controller cover:
- * - CRUD operations (create/update/get/delete)
- * - List endpoints by patient / encounter / patient+encounter (legacy-style paths)
- * - A generic filter endpoint (query-params based, optional filters, pagination)
- * <p>
- * Notes:
- * - Filtering endpoints are designed for exact matching (no contains/like search).
- * - Pagination headers are generated via PaginationUtil to match existing style.
+ * REST controller for managing {@link DiagnosticOrder} resources.
+ *
+ * <p>Endpoints in this controller cover:</p>
+ * <ul>
+ *   <li>CRUD operations (create/update/get/delete)</li>
+ *   <li>List endpoints by patient / encounter / patient+encounter (legacy-style paths)</li>
+ *   <li>A generic filter endpoint (query-params based, optional filters, pagination)</li>
+ *   <li>Submit draft orders</li>
+ * </ul>
+ *
+ * <p>Filtering endpoints are designed for exact matching (no contains/like search).
+ * Pagination headers are generated via {@link PaginationUtil}.</p>
  */
 @RestController
 @RequestMapping("/api/patient")
@@ -62,12 +64,26 @@ public class DiagnosticOrderController {
     private final DiagnosticOrderService diagnosticOrderService;
     private final DiagnosticOrderRepository diagnosticOrderRepository;
 
-    public DiagnosticOrderController(DiagnosticOrderService diagnosticOrderService,
-                                     DiagnosticOrderRepository diagnosticOrderRepository) {
+    /**
+     * Creates a new controller instance.
+     *
+     * @param diagnosticOrderService service layer for diagnostic orders
+     * @param diagnosticOrderRepository repository for diagnostic order persistence and queries
+     */
+    public DiagnosticOrderController(
+            DiagnosticOrderService diagnosticOrderService,
+            DiagnosticOrderRepository diagnosticOrderRepository
+    ) {
         this.diagnosticOrderService = diagnosticOrderService;
         this.diagnosticOrderRepository = diagnosticOrderRepository;
     }
 
+    /**
+     * Returns the current authenticated username.
+     *
+     * @return username/login of the current authenticated user
+     * @throws BadRequestAlertException if no authenticated user is available
+     */
     private String currentUsername() {
         return SecurityUtils.getCurrentUserLogin()
                 .orElseThrow(() -> new BadRequestAlertException(
@@ -78,10 +94,11 @@ public class DiagnosticOrderController {
     }
 
     /**
-     * Create a new DiagnosticOrder.
+     * Creates a new {@link DiagnosticOrder}.
      *
-     * @param dto payload for creating diagnostic order
-     * @return created entity mapped to response VM
+     * @param dto payload for creating a diagnostic order
+     * @return created entity mapped to response VM (HTTP 201)
+     * @throws BadRequestAlertException if validation fails in the service layer
      */
     @PostMapping("/diagnostic-orders")
     public ResponseEntity<DiagnosticOrderResponseVM> create(@Valid @RequestBody DiagnosticOrderCreateDTO dto) {
@@ -96,18 +113,21 @@ public class DiagnosticOrderController {
     }
 
     /**
-     * Update an existing DiagnosticOrder.
-     * <p>
-     * The URL {id} is the source of truth for the record to update.
-     * We rebuild a "fixed" DTO that includes the path id to avoid inconsistencies.
+     * Updates an existing {@link DiagnosticOrder}.
      *
-     * @param id  path id
-     * @param dto payload for update
-     * @return updated entity mapped to response VM
+     * <p>The URL {@code {id}} is the source of truth for the record to update.
+     * A new DTO instance is built using the path id to avoid inconsistencies between path and body.</p>
+     *
+     * @param id  diagnostic order id (path variable)
+     * @param dto payload for updating the order
+     * @return updated entity mapped to response VM (HTTP 200)
+     * @throws BadRequestAlertException if the order does not exist
      */
     @PutMapping("/diagnostic-orders/{id}")
-    public ResponseEntity<DiagnosticOrderResponseVM> update(@PathVariable Long id,
-                                                            @Valid @RequestBody DiagnosticOrderUpdateDTO dto) {
+    public ResponseEntity<DiagnosticOrderResponseVM> update(
+            @PathVariable Long id,
+            @Valid @RequestBody DiagnosticOrderUpdateDTO dto
+    ) {
         LOG.debug("[DiagnosticOrder] UPDATE - request received. id={} payload={}", id, dto);
 
         DiagnosticOrder existing = diagnosticOrderRepository.findById(id)
@@ -117,7 +137,6 @@ public class DiagnosticOrderController {
                         "DiagnosticOrder not found with id " + id
                 ));
 
-        // Ensure the DTO id matches the path variable id
         DiagnosticOrderUpdateDTO fixed = new DiagnosticOrderUpdateDTO(
                 id,
                 dto.patientId(),
@@ -129,7 +148,6 @@ public class DiagnosticOrderController {
                 dto.isUrgent(),
                 dto.fromDepartmentId(),
                 dto.fromFacilityId()
-
         );
 
         DiagnosticOrder updated = diagnosticOrderService.update(existing, fixed);
@@ -139,7 +157,11 @@ public class DiagnosticOrderController {
     }
 
     /**
-     * Get a DiagnosticOrder by its id.
+     * Retrieves a {@link DiagnosticOrder} by id.
+     *
+     * @param id diagnostic order id
+     * @return found entity mapped to response VM (HTTP 200)
+     * @throws BadRequestAlertException if the order does not exist
      */
     @GetMapping("/diagnostic-orders/{id}")
     public ResponseEntity<DiagnosticOrderResponseVM> getById(@PathVariable Long id) {
@@ -157,8 +179,12 @@ public class DiagnosticOrderController {
     }
 
     /**
-     * List diagnostic orders for a given patient (legacy-style endpoint).
-     * Supports pagination and optional status filter.
+     * Lists diagnostic orders for a given patient (legacy-style endpoint).
+     *
+     * @param patientId patient id
+     * @param status optional status filter (exact match)
+     * @param pageable pagination and sorting
+     * @return list of orders mapped to response VMs with pagination headers (HTTP 200)
      */
     @GetMapping("/patients/{patientId}/diagnostic-orders")
     public ResponseEntity<List<DiagnosticOrderResponseVM>> getByPatient(
@@ -187,8 +213,13 @@ public class DiagnosticOrderController {
     }
 
     /**
-     * List diagnostic orders for a given patient + encounter (legacy-style endpoint).
-     * Supports pagination and optional status filter.
+     * Lists diagnostic orders for a given patient and encounter (legacy-style endpoint).
+     *
+     * @param patientId patient id
+     * @param encounterId encounter id
+     * @param status optional status filter (exact match)
+     * @param pageable pagination and sorting
+     * @return list of orders mapped to response VMs with pagination headers (HTTP 200)
      */
     @GetMapping("/patients/{patientId}/encounters/{encounterId}/diagnostic-orders")
     public ResponseEntity<List<DiagnosticOrderResponseVM>> getByPatientAndEncounter(
@@ -200,7 +231,8 @@ public class DiagnosticOrderController {
         LOG.debug("[DiagnosticOrder] LIST_BY_PATIENT_AND_ENCOUNTER - request received. patientId={} encounterId={} status={} pageable={}",
                 patientId, encounterId, status, pageable);
 
-        Page<DiagnosticOrder> page = diagnosticOrderService.findByPatientAndEncounter(patientId, encounterId, status, pageable);
+        Page<DiagnosticOrder> page =
+                diagnosticOrderService.findByPatientAndEncounter(patientId, encounterId, status, pageable);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
@@ -218,8 +250,12 @@ public class DiagnosticOrderController {
     }
 
     /**
-     * List diagnostic orders for a given encounter (legacy-style endpoint).
-     * Supports pagination and optional status filter.
+     * Lists diagnostic orders for a given encounter (legacy-style endpoint).
+     *
+     * @param encounterId encounter id
+     * @param status optional status filter (exact match)
+     * @param pageable pagination and sorting
+     * @return list of orders mapped to response VMs with pagination headers (HTTP 200)
      */
     @GetMapping("/encounters/{encounterId}/diagnostic-orders")
     public ResponseEntity<List<DiagnosticOrderResponseVM>> getByEncounter(
@@ -248,7 +284,11 @@ public class DiagnosticOrderController {
     }
 
     /**
-     * Delete a DiagnosticOrder by id.
+     * Deletes a {@link DiagnosticOrder} by id.
+     *
+     * @param id diagnostic order id
+     * @return HTTP 204 if deleted
+     * @throws BadRequestAlertException if the order does not exist
      */
     @DeleteMapping("/diagnostic-orders/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
@@ -268,43 +308,37 @@ public class DiagnosticOrderController {
     }
 
     /**
-     * {@code GET /diagnostic-orders} : Filter diagnostic orders (exact matching, not a text search).
+     * Filters diagnostic orders (exact matching, not a text search).
      *
-     * <p>
-     * Returns a paginated list of {@link DiagnosticOrder} records using optional query parameters.
-     * All filters are applied with exact semantics ({@code =}, {@code IN}, {@code NOT IN}) and optional date ranges.
-     * </p>
+     * <p>Returns a paginated list of {@link DiagnosticOrder} records using optional query parameters.
+     * All filters are applied with exact semantics ({@code =}, {@code IN}, {@code NOT IN}) and optional date ranges.</p>
      *
-     * <p>
-     * Common UI patterns:
+     * <p>Common UI patterns:</p>
      * <ul>
      *   <li><b>Default list (exclude COMPLETED)</b>: pass {@code excludeStatus=COMPLETED}.</li>
      *   <li><b>Show cancelled</b>: pass {@code status=COMPLETED}.</li>
      *   <li><b>Multiple statuses</b>: pass {@code statusIn=NEW,SUBMITTED}.</li>
      *   <li><b>Exclude multiple statuses</b>: pass {@code statusNotIn=CANCELLED&statusNotIn=DELETED}.</li>
      * </ul>
-     * </p>
      *
-     * @param patientId         optional patient identifier to scope results to a specific patient.
-     * @param encounterId       optional encounter identifier to scope results to a specific encounter.
-     * @param status            optional exact status filter (mutually exclusive with {@code statusIn}).
-     * @param statusIn          optional list of statuses to include.
-     * @param statusNotIn       optional list of statuses to exclude.
-     * @param excludeStatus     optional single status to exclude (convenience parameter).
-     * @param saveDraft         optional filter by draft flag.
-     * @param isUrgent          optional filter by urgency flag.
-     * @param labStatus         optional exact lab status filter.
-     * @param radStatus         optional exact radiology status filter.
-     * @param submittedDateFrom optional lower bound (inclusive) for {@code submittedDate}.
-     * @param submittedDateTo   optional upper bound (inclusive) for {@code submittedDate}.
-     * @param pageable          pagination and sorting information.
+     * @param patientId optional patient identifier to scope results to a specific patient
+     * @param encounterId optional encounter identifier to scope results to a specific encounter
+     * @param status optional exact status filter (mutually exclusive with {@code statusIn})
+     * @param statusIn optional list of statuses to include
+     * @param statusNotIn optional list of statuses to exclude
+     * @param excludeStatus optional single status to exclude (convenience parameter)
+     * @param saveDraft optional filter by draft flag
+     * @param isUrgent optional filter by urgency flag
+     * @param labStatus optional exact lab status filter
+     * @param radStatus optional exact radiology status filter
+     * @param submittedDateFrom optional lower bound (inclusive) for {@code submittedDate}
+     * @param submittedDateTo optional upper bound (inclusive) for {@code submittedDate}
+     * @param departmentId optional department scope for orders having a non-cancelled lab test received by this department
+     * @param pageable pagination and sorting information
      * @return the {@link ResponseEntity} with status {@code 200 (OK)} and a list of filtered diagnostic orders in the body,
-     * along with pagination headers;
-     * or {@code 400 (Bad Request)} if the request contains conflicting filters (e.g. both {@code status} and {@code statusIn}).
+     * along with pagination headers
+     * @throws IllegalArgumentException if the request contains conflicting filters (e.g. both {@code status} and {@code statusIn})
      */
-
-   
-
     @GetMapping("/diagnostic-orders")
     public ResponseEntity<List<DiagnosticOrderResponseVM>> filter(
             @RequestParam(name = "patientId", required = false) Long patientId,
@@ -323,11 +357,12 @@ public class DiagnosticOrderController {
             @RequestParam(name = "submittedDateFrom", required = false) Instant submittedDateFrom,
             @RequestParam(name = "submittedDateTo", required = false) Instant submittedDateTo,
 
-
             @RequestParam(name = "departmentId", required = false) Long departmentId,
 
             @ParameterObject Pageable pageable
     ) {
+        LOG.debug("[DiagnosticOrder] FILTER - request received. patientId={} encounterId={} status={} statusIn={} statusNotIn={} excludeStatus={} saveDraft={} isUrgent={} labStatus={} radStatus={} submittedDateFrom={} submittedDateTo={} departmentId={} pageable={}",
+                patientId, encounterId, status, statusIn, statusNotIn, excludeStatus, saveDraft, isUrgent, labStatus, radStatus, submittedDateFrom, submittedDateTo, departmentId, pageable);
 
         if (status != null && statusIn != null && !statusIn.isEmpty()) {
             throw new IllegalArgumentException("Use either status or statusIn, not both");
@@ -360,7 +395,6 @@ public class DiagnosticOrderController {
             if (submittedDateTo != null)
                 predicates.add(cb.lessThanOrEqualTo(root.get("submittedDate"), submittedDateTo));
 
-            // ✅ Optional: only orders that have a NON-CANCELLED LAB test sent to departmentId
             if (departmentId != null) {
                 Subquery<Long> sq = query.subquery(Long.class);
                 Root<DiagnosticOrderTest> t = sq.from(DiagnosticOrderTest.class);
@@ -390,14 +424,25 @@ public class DiagnosticOrderController {
                 .map(DiagnosticOrderResponseVM::ofEntity)
                 .toList();
 
+        LOG.debug("[DiagnosticOrder] FILTER - response ready. returned={} totalElements={} totalPages={}",
+                body.size(), page.getTotalElements(), page.getTotalPages());
+
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
 
-
-
-
+    /**
+     * Submits an existing diagnostic order.
+     *
+     * <p>This endpoint converts a draft order into a submitted order. It rejects the request if the order
+     * is already submitted (i.e., {@code saveDraft} is {@code false}).</p>
+     *
+     * @param id diagnostic order id
+     * @return submitted order response
+     * @throws BadRequestAlertException if the order does not exist or is already submitted
+     */
     @PostMapping("/diagnostic-orders/{id}/submit")
     public ResponseEntity<DiagnosticOrderResponseVM> submit(@PathVariable Long id) {
+        LOG.debug("[DiagnosticOrder] SUBMIT - request received. id={}", id);
 
         DiagnosticOrder existing = diagnosticOrderRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
@@ -418,8 +463,7 @@ public class DiagnosticOrderController {
 
         DiagnosticOrder saved = diagnosticOrderService.submit(existing, username);
 
+        LOG.debug("[DiagnosticOrder] SUBMIT - submitted successfully. id={} submittedBy={}", saved.getId(), username);
         return ResponseEntity.ok(DiagnosticOrderResponseVM.ofEntity(saved));
     }
-
 }
-
