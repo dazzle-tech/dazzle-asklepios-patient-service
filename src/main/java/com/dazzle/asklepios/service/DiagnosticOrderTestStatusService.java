@@ -239,7 +239,7 @@ public class DiagnosticOrderTestStatusService {
             );
         }
 
-        test.setProcessingStatus(DiagnosticStatus.NEW);
+        test.setProcessingStatus(DiagnosticStatus.SAMPLE_COLLECTED);
         test.setAcceptedBy(null);
         test.setAcceptedDate(null);
 
@@ -358,7 +358,7 @@ public class DiagnosticOrderTestStatusService {
     private void ensureTransition(DiagnosticStatus from, DiagnosticStatus to) {
 
         if (to == DiagnosticStatus.SAMPLE_COLLECTED) {
-            if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.SAMPLE_COLLECTED)) {
+            if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.SAMPLE_COLLECTED || from ==DiagnosticStatus.ACCEPTED)) {
                 throw invalid(from, to);
             }
             return;
