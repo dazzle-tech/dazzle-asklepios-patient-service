@@ -78,29 +78,41 @@ public class AppointmentService {
         }
 
         try {
-            String query = "SELECT key, first_name, last_name, dob, full_name " +
-                    "FROM ap_patient WHERE key = ?";
+            String query =
+                    "SELECT " +
+                            "key, dob," +
+                            "first_name, second_name, third_name, last_name, full_name, " +
+                            "document_type_lkey, document_no, phone_number, mobile_number, email" +
+                            ", gender_lkey " +
+                            "FROM public.ap_patient WHERE key = ?";
+
             List<Map<String, Object>> result = jdbcTemplate.queryForList(query, patientKey);
-            if (!result.isEmpty()) {
-                Map<String, Object> patient = result.get(0);
-                
-                if (patient.get("full_name") == null || ((String) patient.get("full_name")).isEmpty()) {
-                    String firstName = (String) patient.get("first_name");
-                    String lastName = (String) patient.get("last_name");
-                    if (firstName != null || lastName != null) {
-                        String fullName = (firstName != null ? firstName : "") + " " + (lastName != null ? lastName : "");
-                        patient.put("full_name", fullName.trim());
-                    }
-                }
-                
-                return patient;
+            if (result.isEmpty()) {
+                return null;
             }
+
+            Map<String, Object> patient = result.get(0);
+
+            if (patient.get("full_name") == null || ((String) patient.get("full_name")).isEmpty()) {
+                String firstName = (String) patient.get("first_name");
+                String lastName = (String) patient.get("last_name");
+                if (firstName != null || lastName != null) {
+                    patient.put(
+                            "full_name",
+                            ((firstName != null ? firstName : "") + " " +
+                                    (lastName != null ? lastName : "")).trim()
+                    );
+                }
+            }
+
+            return patient;
+
         } catch (Exception e) {
             log.error("Failed to query patient", e);
+            return null;
         }
-
-        return null;
     }
+
 
     @Transactional
     public Appointment saveAppointment(Appointment appointment, String facilityId) {
