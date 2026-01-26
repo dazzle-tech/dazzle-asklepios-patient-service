@@ -528,15 +528,60 @@ public class DiagnosticOrderTestController {
         return ResponseEntity.ok(DiagnosticOrderTestResponseVM.ofEntity(updated));
     }
 
+    /**
+     * Bulk action: accept multiple tests.
+     * <p>
+     * Applies the same workflow as {@code /diagnostic-order-tests/{id}/accept} but for a list of ids.
+     *
+     * @param dto list of test ids to accept
+     * @return 200 OK on success
+     */
     @PostMapping("/diagnostic-order-tests/bulk-accept")
     public ResponseEntity<Void> bulkAccept(@Valid @RequestBody BulkIdsDTO dto) {
+        LOG.debug("REST bulk-accept DiagnosticOrderTest count={} ids={}", dto.ids().size(), dto.ids());
         diagnosticOrderTestStatusService.bulkAccept(dto.ids(), currentUsername());
         return ResponseEntity.ok().build();
     }
 
+    /**
+     * Bulk action: reject multiple tests.
+     * <p>
+     * Applies the same workflow as {@code /diagnostic-order-tests/{id}/reject} but for a list of ids.
+     *
+     * @param dto list of test ids + rejection reason
+     * @return 200 OK on success
+     */
     @PostMapping("/diagnostic-order-tests/bulk-reject")
     public ResponseEntity<Void> bulkReject(@Valid @RequestBody BulkRejectDTO dto) {
+        LOG.debug("REST bulk-reject DiagnosticOrderTest count={} ids={} reason={}",
+                dto.ids().size(), dto.ids(), dto.rejectedReason());
         diagnosticOrderTestStatusService.bulkReject(dto.ids(), currentUsername(), dto.rejectedReason());
         return ResponseEntity.ok().build();
     }
+
+
+    /**
+     * Action endpoint: undo accept for a test.
+     * <p>
+     * Behavior:
+     * <ul>
+     *   <li>Deletes all {@code DiagnosticOrderTestResult} records for this test.</li>
+     *   <li>Resets {@code processingStatus} back to {@link DiagnosticStatus#NEW}.</li>
+     *   <li>Clears acceptance/ready/approval/rejection audit fields on the test.</li>
+     *   <li>Recomputes parent order lab/rad aggregated statuses.</li>
+     * </ul>
+     *
+     * @param id DiagnosticOrderTest id
+     * @return updated entity response
+     */
+    @PostMapping("/diagnostic-order-tests/{id}/undo-accept")
+    public ResponseEntity<DiagnosticOrderTestResponseVM> undoAccept(@PathVariable Long id) {
+        LOG.debug("REST undo-accept DiagnosticOrderTest id={}", id);
+
+        DiagnosticOrderTest updated = diagnosticOrderTestStatusService.undoAccept(id);
+
+        return ResponseEntity.ok(DiagnosticOrderTestResponseVM.ofEntity(updated));
+    }
+
+
 }

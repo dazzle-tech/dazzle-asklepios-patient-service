@@ -22,10 +22,15 @@ public interface DiagnosticOrderTestResultRepository extends JpaRepository<Diagn
     Page<DiagnosticOrderTestResult> findByOrderTestId(Long orderTestId, Pageable pageable);
 
     Page<DiagnosticOrderTestResult> findByProfileTestId(Long profileTestId, Pageable pageable);
-
+   void  deleteAllByOrderTestId(Long orderTestId);
     boolean existsByOrderTestId(Long orderTestId);
-
-    @Query("select r.processingStatus from DiagnosticOrderTestResult r where r.orderTestId = :orderTestId")
+    @Query("""
+    select r.processingStatus
+      from DiagnosticOrderTestResult r
+     where r.orderTestId = ?1
+       and (r.processingStatus is null or r.processingStatus <> com.dazzle.asklepios.domain.enumeration.DiagnosticStatus.CANCELLED)
+""")
     List<DiagnosticStatus> findProcessingStatusesByOrderTestId(Long orderTestId);
+
 }
 

@@ -45,6 +45,7 @@ public class DiagnosticOrderTestResultStatusService {
 
         // update test status too (will recompute lab/rad)
         diagnosticOrderTestStatusService.approve(saved.getOrderTestId());
+        this.recomputeTestProcessingStatusFromResults(saved.getOrderTestId());
 
         return saved;
     }
@@ -64,7 +65,7 @@ public class DiagnosticOrderTestResultStatusService {
 
         // update test status too (will recompute lab/rad)
         diagnosticOrderTestStatusService.reject(saved.getOrderTestId(), rejectedBy, rejectedReason);
-
+        this.recomputeTestProcessingStatusFromResults(saved.getOrderTestId());
         return saved;
     }
 
@@ -82,13 +83,13 @@ public class DiagnosticOrderTestResultStatusService {
     }
 
     private void ensureTransition(DiagnosticStatus from, DiagnosticStatus to) {
-        // RESULT_READY or REVIEWED -> RESULT_APPROVED
+        // RESULT_READY -> RESULT_APPROVED
         if (to == DiagnosticStatus.RESULT_APPROVED) {
-            if (!(from == DiagnosticStatus.RESULT_READY || from == DiagnosticStatus.REVIEWED)) throw invalid(from, to);
+            if (!(from == DiagnosticStatus.RESULT_READY )) throw invalid(from, to);
             return;
         }
 
-        // allow REJECTED from NEW / RESULT_READY / REVIEWED (عدلّي حسب بزنسكم)
+        // allow REJECTED from NEW / RESULT_READY
         if (to == DiagnosticStatus.REJECTED) {
             if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.RESULT_READY || from == DiagnosticStatus.REVIEWED))
                 throw invalid(from, to);
@@ -130,6 +131,21 @@ public class DiagnosticOrderTestResultStatusService {
 
         return saved;
     }
+    public DiagnosticOrderTestResult toggleReview(Long resultId, String username) {
+        DiagnosticOrderTestResult r = getResult(resultId);
+
+        boolean reviewed = r.getReviewDate() != null;
+
+        if (!reviewed) {
+            r.setReviewBy(username);
+            r.setReviewDate(Instant.now());
+        } else {
+            r.setReviewBy(null);
+            r.setReviewDate(null);
+        }
+
+        return resultRepository.save(r);
+    }
 
     private DiagnosticStatus aggregate(List<DiagnosticStatus> statuses) {
 
@@ -141,9 +157,7 @@ public class DiagnosticOrderTestResultStatusService {
             return DiagnosticStatus.RESULT_APPROVED;
         }
 
-        if (statuses.stream().anyMatch(s -> s == DiagnosticStatus.REVIEWED)) {
-            return DiagnosticStatus.REVIEWED;
-        }
+
 
         if (statuses.stream().anyMatch(s -> s == DiagnosticStatus.RESULT_READY)) {
             return DiagnosticStatus.RESULT_READY;

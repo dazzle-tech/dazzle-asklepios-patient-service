@@ -19,13 +19,16 @@ public class DiagnosticOrderTestResultService {
 
     private final DiagnosticOrderTestResultRepository repository;
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
+    private final DiagnosticOrderTestResultStatusService diagnosticOrderTestResultStatusService;
+
 
     public DiagnosticOrderTestResultService(
             DiagnosticOrderTestResultRepository repository,
-            DiagnosticOrderTestStatusService diagnosticOrderTestStatusService
+            DiagnosticOrderTestStatusService diagnosticOrderTestStatusService, DiagnosticOrderTestResultStatusService diagnosticOrderTestResultStatusService
     ) {
         this.repository = repository;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
+        this.diagnosticOrderTestResultStatusService = diagnosticOrderTestResultStatusService;
     }
 
     /**
@@ -46,14 +49,12 @@ public class DiagnosticOrderTestResultService {
         r.setMarker(dto.marker());
         r.setNormalRangeValue(dto.normalRangeValue());
 
-        // Control status هنا
         r.setProcessingStatus(DiagnosticStatus.RESULT_READY);
 
         DiagnosticOrderTestResult saved = repository.save(r);
 
-        // Update the test status (will enforce transitions as per existing service)
-        diagnosticOrderTestStatusService.markReady(saved.getOrderTestId());
 
+        diagnosticOrderTestResultStatusService.recomputeTestProcessingStatusFromResults(r.getOrderTestId());
         LOG.debug("[DiagnosticOrderTestResultService] CREATE - done. id={} orderTestId={} processingStatus={}",
                 saved.getId(), saved.getOrderTestId(), saved.getProcessingStatus());
 

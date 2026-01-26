@@ -368,7 +368,7 @@ public class DiagnosticOrderController {
                 sq.select(t.get("id"))
                         .where(
                                 cb.equal(t.get("orderId"), root.get("id")),
-                                cb.equal(t.get("receivedDepartmentId"), departmentId), // عدلي الاسم إذا مختلف بالـ Entity
+                                cb.equal(t.get("receivedDepartmentId"), departmentId),
                                 cb.notEqual(t.get("status"), DiagnosticStatus.CANCELLED),
                                 cb.equal(t.get("orderType"), TestType.LABORATORY)
                         );

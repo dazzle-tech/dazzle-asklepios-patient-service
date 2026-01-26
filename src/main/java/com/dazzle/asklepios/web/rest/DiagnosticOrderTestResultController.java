@@ -1,15 +1,19 @@
 // src/main/java/com/dazzle/asklepios/web/rest/DiagnosticOrderTestResultController.java
 package com.dazzle.asklepios.web.rest;
 
+import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
+import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.DiagnosticOrderTestResultService;
 import com.dazzle.asklepios.service.DiagnosticOrderTestResultStatusService;
+import com.dazzle.asklepios.service.DiagnosticOrderTestStatusService;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultCreateDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultRejectDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.vm.diagnosticorders.DiagnosticOrderTestResponseVM;
 import com.dazzle.asklepios.web.rest.vm.laboratory.DiagnosticOrderTestResultResponseVM;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -37,6 +41,7 @@ public class DiagnosticOrderTestResultController {
         this.service = service;
         this.statusService = statusService;
         this.repository = repository;
+
     }
 
     private String currentUsername() {
@@ -87,6 +92,12 @@ public class DiagnosticOrderTestResultController {
         DiagnosticOrderTestResult updated = service.update(existing, fixed);
         return ResponseEntity.ok(DiagnosticOrderTestResultResponseVM.ofEntity(updated));
     }
+    @PostMapping("/diagnostic-order-tests-results/{id}/toggle-review")
+    public ResponseEntity<DiagnosticOrderTestResultResponseVM> toggleReview(@PathVariable Long id) {
+        String username = currentUsername();
+        DiagnosticOrderTestResult saved = statusService.toggleReview(id, username);
+        return ResponseEntity.ok(DiagnosticOrderTestResultResponseVM.ofEntity(saved));
+    }
 
     @PostMapping("/diagnostic-order-tests-results/{id}/approve")
     public ResponseEntity<DiagnosticOrderTestResultResponseVM> approve(@PathVariable Long id) {
@@ -104,4 +115,6 @@ public class DiagnosticOrderTestResultController {
         DiagnosticOrderTestResult saved = statusService.reject(id, username, dto.rejectedReason());
         return ResponseEntity.ok(DiagnosticOrderTestResultResponseVM.ofEntity(saved));
     }
+
+
 }

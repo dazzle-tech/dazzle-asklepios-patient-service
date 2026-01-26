@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult;
 
 
+import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import jakarta.validation.constraints.NotNull;
 
 import java.io.Serializable;
@@ -12,6 +13,6 @@ public record DiagnosticOrderTestResultCreateDTO(
         @NotNull Long profileTestId,
         BigDecimal resultValueNumber,
         String resultValueText,
-        String marker,
+        TestResultMarker marker,
         String normalRangeValue
 ) implements Serializable {}

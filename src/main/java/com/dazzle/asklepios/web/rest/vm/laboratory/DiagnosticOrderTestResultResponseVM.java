@@ -3,6 +3,7 @@ package com.dazzle.asklepios.web.rest.vm.laboratory;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
@@ -15,7 +16,7 @@ public record DiagnosticOrderTestResultResponseVM(
         Long profileTestId,
         BigDecimal resultValueNumber,
         String resultValueText,
-        String marker,
+        TestResultMarker marker,
         String approvedBy,
         Instant approvedDate,
         String rejectedBy,

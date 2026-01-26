@@ -2,6 +2,7 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -54,8 +55,9 @@ public class DiagnosticOrderTestResult extends AbstractAuditingEntity implements
     @Column(name = "result_value_text", columnDefinition = "text")
     private String resultValueText;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "marker", length = 50)
-    private String marker;
+    private TestResultMarker marker;
 
     @Column(name = "approved_by", length = 50)
     private String approvedBy;
