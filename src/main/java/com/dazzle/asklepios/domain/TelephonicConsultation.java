@@ -15,13 +15,14 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Temporal;
 import jakarta.persistence.TemporalType;
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-
 import java.io.Serializable;
+import java.time.Instant;
 import java.util.Date;
 
 @Entity
@@ -47,16 +48,16 @@ public class TelephonicConsultation extends AbstractAuditingEntity<Long> impleme
     @Column(name = "practitioner_id", nullable = false)
     private Long practitionerId;
 
-    @Temporal(TemporalType.TIMESTAMP)
     @Column(name = "date_of_call", nullable = false)
-    private Date dateOfCall;
+    private Instant dateOfCall;
 
     @Lob
+    @NotBlank
     @Column(name = "consultation_content", nullable = false)
     private String consultationContent;
 
     @Column(name = "approval_number")
-    private Integer approvalNumber;
+    private Long approvalNumber;
 
     @Lob
     @Column(name = "notes")
@@ -75,9 +76,8 @@ public class TelephonicConsultation extends AbstractAuditingEntity<Long> impleme
 
     @Temporal(TemporalType.TIMESTAMP)
     @Column(name = "cancelled_at")
-    private Date cancelledAt;
+    private Instant cancelledAt;
 
     @Column(name = "cancelled_by_id")
     private Long cancelledBy;
-
 }

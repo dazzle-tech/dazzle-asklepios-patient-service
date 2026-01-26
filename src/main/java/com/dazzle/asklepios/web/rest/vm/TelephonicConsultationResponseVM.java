@@ -3,30 +3,29 @@ package com.dazzle.asklepios.web.rest.vm;
 import com.dazzle.asklepios.domain.TelephonicConsultation;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import java.io.Serializable;
+import java.time.Instant;
 import java.util.Date;
-
 public record TelephonicConsultationResponseVM(
 
         Long id,
-
         Long patientId,
         Long encounterId,
         Long practitionerId,
 
-        Date dateOfCall,
+        Instant dateOfCall,
         String consultationContent,
 
-        Integer approvalNumber,
+        Long approvalNumber,
         String notes,
         String extraDocumentation,
 
         DiagnosticStatus status,
 
         String cancellationReason,
-        Date cancelledAt,
+        Instant cancelledAt,
         Long cancelledBy,
 
-        java.time.Instant createdDate,
+        Instant createdDate,
         String createdBy
 
 ) implements Serializable {

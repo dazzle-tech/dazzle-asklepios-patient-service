@@ -1,10 +1,10 @@
 package com.dazzle.asklepios.service.dto.telephonicconsultation;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.PastOrPresent;
 
 import java.io.Serializable;
-import java.util.Date;
+import java.time.Instant;
 
 public record TelephonicConsultationUpdateDTO(
 
@@ -15,13 +15,12 @@ public record TelephonicConsultationUpdateDTO(
         Long practitionerId,
 
         @NotNull
-        @PastOrPresent
-        Date dateOfCall,
+        Instant dateOfCall,
 
-        @NotNull
+        @NotBlank
         String consultationContent,
 
-        Integer approvalNumber,
+        Long approvalNumber,
 
         String notes,
 
@@ -29,3 +28,4 @@ public record TelephonicConsultationUpdateDTO(
 
 ) implements Serializable {
 }
+

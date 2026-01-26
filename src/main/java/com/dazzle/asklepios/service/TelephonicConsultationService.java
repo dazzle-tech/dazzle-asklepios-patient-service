@@ -13,13 +13,17 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.Date;
+
+import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
 @Transactional
@@ -41,32 +45,17 @@ public class TelephonicConsultationService {
         this.patientRepository = patientRepository;
     }
 
-
     public TelephonicConsultation create(TelephonicConsultationCreateDTO dto) {
         LOG.info("[CREATE] TelephonicConsultation payload={}", dto);
 
-        if (dto == null) {
-            throw new BadRequestAlertException(
-                    "Telephonic consultation payload is required",
-                    "telephonicConsultation",
-                    "payload.required"
-            );
-        }
-
-        if (dto.patientId() == null) {
-            throw new BadRequestAlertException(
-                    "Patient id is required",
-                    "telephonicConsultation",
-                    "patient.required"
-            );
-        }
-
         Patient patient = patientRepository.findById(dto.patientId())
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient not found with id " + dto.patientId(),
-                        "telephonicConsultation",
-                        "patient.notfound"
-                ));
+                .orElseThrow(() ->
+                        new NotFoundAlertException(
+                                "Patient not found with id " + dto.patientId(),
+                                "telephonicConsultation",
+                                "patient.notfound"
+                        )
+                );
 
         TelephonicConsultation entity = TelephonicConsultation.builder()
                 .patient(patient)
@@ -84,43 +73,27 @@ public class TelephonicConsultationService {
             TelephonicConsultation saved = repository.saveAndFlush(entity);
             entityManager.refresh(saved);
             return saved;
-
-        } catch (Exception ex) {
-            LOG.error("Failed to create telephonic consultation", ex);
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            handleConstraintsOnCreateOrUpdate(ex);
             throw new BadRequestAlertException(
-                    "Failed to create telephonic consultation",
+                    "Database constraint violated while creating telephonic consultation.",
                     "telephonicConsultation",
-                    "create.failed"
+                    "db.constraint"
             );
         }
     }
 
-
     public TelephonicConsultation update(Long id, TelephonicConsultationUpdateDTO dto) {
         LOG.info("[UPDATE] TelephonicConsultation id={} payload={}", id, dto);
 
-        if (id == null) {
-            throw new BadRequestAlertException(
-                    "Telephonic consultation id is required",
-                    "telephonicConsultation",
-                    "id.required"
-            );
-        }
-
-        if (dto == null) {
-            throw new BadRequestAlertException(
-                    "Telephonic consultation payload is required",
-                    "telephonicConsultation",
-                    "payload.required"
-            );
-        }
-
         TelephonicConsultation existing = repository.findById(id)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Telephonic consultation not found with id " + id,
-                        "telephonicConsultation",
-                        "notfound"
-                ));
+                .orElseThrow(() ->
+                        new NotFoundAlertException(
+                                "Telephonic consultation not found with id " + id,
+                                "telephonicConsultation",
+                                "notfound"
+                        )
+                );
 
         if (existing.getStatus() == DiagnosticStatus.CANCELLED) {
             throw new BadRequestAlertException(
@@ -136,56 +109,28 @@ public class TelephonicConsultationService {
         existing.setApprovalNumber(dto.approvalNumber());
         existing.setNotes(dto.notes());
         existing.setExtraDocumentation(dto.extraDocumentation());
-        existing.setLastModifiedDate(Instant.now());
+
 
         try {
             TelephonicConsultation updated = repository.saveAndFlush(existing);
             entityManager.refresh(updated);
             return updated;
-
-        } catch (Exception ex) {
-            LOG.error("Failed to update telephonic consultation id={}", id, ex);
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            handleConstraintsOnCreateOrUpdate(ex);
             throw new BadRequestAlertException(
-                    "Failed to update telephonic consultation",
+                    "Database constraint violated while updating telephonic consultation.",
                     "telephonicConsultation",
-                    "update.failed"
+                    "db.constraint"
             );
         }
     }
 
-
     @Transactional(readOnly = true)
-    public Page<TelephonicConsultation> findCancelled(Long encounterId, Pageable pageable) {
-        LOG.debug("[FIND_CANCELLED] encounterId={} pageable={}", encounterId, pageable);
-
-        if (encounterId == null) {
-            throw new BadRequestAlertException(
-                    "Encounter id is required",
-                    "telephonicConsultation",
-                    "encounter.required"
-            );
-        }
-
-        return repository.findByEncounterIdAndStatus(
-                encounterId,
-                DiagnosticStatus.CANCELLED,
-                pageable
-        );
-    }
-
-
-    @Transactional(readOnly = true)
-    public Page<TelephonicConsultation> findNotCancelled(Long encounterId, Pageable pageable) {
+    public Page<TelephonicConsultation> findNotCancelled(
+            Long encounterId,
+            Pageable pageable
+    ) {
         LOG.debug("[FIND_NOT_CANCELLED] encounterId={} pageable={}", encounterId, pageable);
-
-        if (encounterId == null) {
-            throw new BadRequestAlertException(
-                    "Encounter id is required",
-                    "telephonicConsultation",
-                    "encounter.required"
-            );
-        }
-
         return repository.findByEncounterIdAndStatusNot(
                 encounterId,
                 DiagnosticStatus.CANCELLED,
@@ -193,24 +138,195 @@ public class TelephonicConsultationService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public Page<TelephonicConsultation> findByEncounter(
+            Long encounterId,
+            Pageable pageable
+    ) {
+        LOG.debug("[FIND_BY_ENCOUNTER] encounterId={} pageable={}", encounterId, pageable);
 
-    public TelephonicConsultation cancel(Long id, String cancellationReason, Long cancelledByUserId) {
+        Page<TelephonicConsultation> page = repository.findByEncounterId(encounterId, pageable);
+
+        LOG.debug("[FIND_BY_ENCOUNTER_RESULT] encounterId={} pageNumber={} pageSize={} totalElements={} totalPages={} returned={}",
+                encounterId,
+                page.getNumber(),
+                page.getSize(),
+                page.getTotalElements(),
+                page.getTotalPages(),
+                page.getNumberOfElements()
+        );
+
+        return page;
+    }
+
+    @Transactional(readOnly = true)
+    public Page<TelephonicConsultation> findByEncounterFromDate(
+            Long encounterId,
+            Instant fromDate,
+            Pageable pageable
+    ) {
+        LOG.debug("[FIND_BY_ENCOUNTER_FROM_DATE] encounterId={} fromDate={} pageable={}",
+                encounterId, fromDate, pageable);
+
+        return repository.findByEncounterIdAndCreatedDateAfter(
+                encounterId,
+                fromDate,
+                pageable
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public Page<TelephonicConsultation> findByEncounterToDate(
+            Long encounterId,
+            Instant toDate,
+            Pageable pageable
+    ) {
+        LOG.debug("[FIND_BY_ENCOUNTER_TO_DATE] encounterId={} toDate={} pageable={}",
+                encounterId, toDate, pageable);
+
+        return repository.findByEncounterIdAndCreatedDateBefore(
+                encounterId,
+                toDate,
+                pageable
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public Page<TelephonicConsultation> findByEncounterFromDateNotCancelled(
+            Long encounterId,
+            Instant fromDate,
+            Pageable pageable
+    ) {
+        return repository.findByEncounterIdAndCreatedDateAfterAndStatusNot(
+                encounterId,
+                fromDate,
+                DiagnosticStatus.CANCELLED,
+                pageable
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public Page<TelephonicConsultation> findByEncounterToDateNotCancelled(
+            Long encounterId,
+            Instant toDate,
+            Pageable pageable
+    ) {
+        return repository.findByEncounterIdAndCreatedDateBeforeAndStatusNot(
+                encounterId,
+                toDate,
+                DiagnosticStatus.CANCELLED,
+                pageable
+        );
+    }
+
+
+    @Transactional(readOnly = true)
+    public Page<TelephonicConsultation> findByEncounterNotCancelled(
+            Long encounterId,
+            Pageable pageable
+    ) {
+        LOG.debug("[FIND_BY_ENCOUNTER_NOT_CANCELLED] encounterId={} statusNot={} pageable={}",
+                encounterId, DiagnosticStatus.CANCELLED, pageable);
+
+        Page<TelephonicConsultation> page = repository.findByEncounterIdAndStatusNot(
+                encounterId,
+                DiagnosticStatus.CANCELLED,
+                pageable
+        );
+
+        LOG.debug("[FIND_BY_ENCOUNTER_NOT_CANCELLED_RESULT] encounterId={} statusNot={} pageNumber={} pageSize={} totalElements={} totalPages={} returned={}",
+                encounterId,
+                DiagnosticStatus.CANCELLED,
+                page.getNumber(),
+                page.getSize(),
+                page.getTotalElements(),
+                page.getTotalPages(),
+                page.getNumberOfElements()
+        );
+
+        return page;
+    }
+
+    @Transactional(readOnly = true)
+    public Page<TelephonicConsultation> findByEncounterWithDateRange(
+            Long encounterId,
+            Instant fromDate,
+            Instant toDate,
+            Pageable pageable
+    ) {
+        LOG.debug("[FIND_BY_ENCOUNTER_DATE_RANGE] encounterId={} fromDate={} toDate={} pageable={}",
+                encounterId, fromDate, toDate, pageable);
+
+        Page<TelephonicConsultation> page = repository.findByEncounterIdAndCreatedDateBetween(
+                encounterId,
+                fromDate,
+                toDate,
+                pageable
+        );
+
+        LOG.debug("[FIND_BY_ENCOUNTER_DATE_RANGE_RESULT] encounterId={} fromDate={} toDate={} pageNumber={} pageSize={} totalElements={} totalPages={} returned={}",
+                encounterId,
+                fromDate,
+                toDate,
+                page.getNumber(),
+                page.getSize(),
+                page.getTotalElements(),
+                page.getTotalPages(),
+                page.getNumberOfElements()
+        );
+
+        return page;
+    }
+
+    @Transactional(readOnly = true)
+    public Page<TelephonicConsultation> findByEncounterWithDateRangeNotCancelled(
+            Long encounterId,
+            Instant fromDate,
+            Instant toDate,
+            Pageable pageable
+    ) {
+        LOG.debug("[FIND_BY_ENCOUNTER_DATE_RANGE_NOT_CANCELLED] encounterId={} fromDate={} toDate={} statusNot={} pageable={}",
+                encounterId, fromDate, toDate, DiagnosticStatus.CANCELLED, pageable);
+
+        Page<TelephonicConsultation> page = repository.findByEncounterIdAndCreatedDateBetweenAndStatusNot(
+                encounterId,
+                fromDate,
+                toDate,
+                DiagnosticStatus.CANCELLED,
+                pageable
+        );
+
+        LOG.debug("[FIND_BY_ENCOUNTER_DATE_RANGE_NOT_CANCELLED_RESULT] encounterId={} fromDate={} toDate={} statusNot={} pageNumber={} pageSize={} totalElements={} totalPages={} returned={}",
+                encounterId,
+                fromDate,
+                toDate,
+                DiagnosticStatus.CANCELLED,
+                page.getNumber(),
+                page.getSize(),
+                page.getTotalElements(),
+                page.getTotalPages(),
+                page.getNumberOfElements()
+        );
+
+        return page;
+    }
+
+
+    public TelephonicConsultation cancel(
+            Long id,
+            String cancellationReason,
+            Long cancelledByUserId
+    ) {
         LOG.info("[CANCEL] TelephonicConsultation id={} reason={}", id, cancellationReason);
 
-        if (id == null) {
-            throw new BadRequestAlertException(
-                    "Telephonic consultation id is required",
-                    "telephonicConsultation",
-                    "id.required"
-            );
-        }
-
         TelephonicConsultation existing = repository.findById(id)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Telephonic consultation not found with id " + id,
-                        "telephonicConsultation",
-                        "notfound"
-                ));
+                .orElseThrow(() ->
+                        new NotFoundAlertException(
+                                "Telephonic consultation not found with id " + id,
+                                "telephonicConsultation",
+                                "notfound"
+                        )
+                );
 
         if (existing.getStatus() == DiagnosticStatus.CANCELLED) {
             throw new BadRequestAlertException(
@@ -222,22 +338,69 @@ public class TelephonicConsultationService {
 
         existing.setStatus(DiagnosticStatus.CANCELLED);
         existing.setCancellationReason(cancellationReason);
-        existing.setCancelledAt(new Date());
+        existing.setCancelledAt(Instant.now());
         existing.setCancelledBy(cancelledByUserId);
-        existing.setLastModifiedDate(Instant.now());
+
 
         try {
             TelephonicConsultation cancelled = repository.saveAndFlush(existing);
             entityManager.refresh(cancelled);
             return cancelled;
-
-        } catch (Exception ex) {
-            LOG.error("Failed to cancel telephonic consultation id={}", id, ex);
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            handleConstraintsOnCreateOrUpdate(ex);
             throw new BadRequestAlertException(
-                    "Failed to cancel telephonic consultation",
+                    "Database constraint violated while cancelling telephonic consultation.",
                     "telephonicConsultation",
-                    "cancel.failed"
+                    "db.constraint"
             );
         }
+    }
+
+
+    private void handleConstraintsOnCreateOrUpdate(RuntimeException exception) {
+        Throwable root = getRootCause(exception);
+        String message = (root != null ? root.getMessage() : exception.getMessage());
+
+        LOG.error("DB ROOT CAUSE: {}", message, exception);
+
+        String lower = (message != null ? message.toLowerCase() : "");
+
+        if (lower.contains("patient") && lower.contains("foreign key")) {
+            throw new BadRequestAlertException(
+                    "Invalid patient reference.",
+                    "telephonicConsultation",
+                    "fk.patient"
+            );
+        }
+
+        if (lower.contains("encounter") && lower.contains("not-null")) {
+            throw new BadRequestAlertException(
+                    "Encounter id is required.",
+                    "telephonicConsultation",
+                    "encounter.required"
+            );
+        }
+
+        if (lower.contains("approval") && lower.contains("unique")) {
+            throw new BadRequestAlertException(
+                    "Approval number already exists.",
+                    "telephonicConsultation",
+                    "unique.approval_number"
+            );
+        }
+
+        if (lower.contains("date_of_call") && lower.contains("not-null")) {
+            throw new BadRequestAlertException(
+                    "Date of call is required.",
+                    "telephonicConsultation",
+                    "date.required"
+            );
+        }
+
+        throw new BadRequestAlertException(
+                "Database constraint violated while saving telephonic consultation.",
+                "telephonicConsultation",
+                "db.constraint"
+        );
     }
 }
