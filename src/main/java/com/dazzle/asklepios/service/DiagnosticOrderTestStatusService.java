@@ -385,7 +385,7 @@ public class DiagnosticOrderTestStatusService {
         }
 
         if (to == DiagnosticStatus.REJECTED) {
-            if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.SAMPLE_COLLECTED)) throw invalid(from, to);
+            if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.SAMPLE_COLLECTED || from ==DiagnosticStatus.ACCEPTED )) throw invalid(from, to);
             return;
         }
     }
