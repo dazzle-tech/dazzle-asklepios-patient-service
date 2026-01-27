@@ -1,7 +1,10 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.PainLevel;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -10,10 +13,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
-
 import java.io.Serializable;
-import java.math.BigDecimal;
-
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -26,8 +26,8 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Table(name = "vital_signs")
-public class VitalSigns extends AbstractAuditingEntity<Long> implements Serializable {
+@Table(name = "pain_assessment")
+public class PainAssessment extends AbstractAuditingEntity<Long> implements Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -42,35 +42,18 @@ public class VitalSigns extends AbstractAuditingEntity<Long> implements Serializ
     @Column(name = "encounter_id", nullable = false)
     private Long encounterId;
 
-    @Column(name = "blood_pressure_systolic")
-    private Integer bloodPressureSystolic;
+    @Column(name = "pain_degree", length = 200)
+    private String painDegree;
 
-    @Column(name = "blood_pressure_diastolic")
-    private Integer bloodPressureDiastolic;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pain_level")
+    private PainLevel painLevel;
 
-    @Column(name = "measurement_site")
-    private String measurementSite;
-
-    @Column(name = "heart_rate")
-    private Integer heartRate;
-
-    @Column(name = "temperature", precision = 5, scale = 2)
-    private BigDecimal temperature;
-
-    @Column(name = "oxygen_saturation")
-    private Integer oxygenSaturation;
-
-    @Column(name = "respiratory_rate")
-    private Integer respiratoryRate;
-
-    @Column(name = "is_triage")
-    private Boolean isTriage;
+    @Column(name = "pain_description", columnDefinition = "text")
+    private String painDescription;
 
     @NotNull
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private Boolean isActive = true;
-
-    @Column(name = "notes", columnDefinition = "text")
-    private String notes;
 }

@@ -26,10 +26,15 @@ public record VitalSignsCreateDTO(
 
         String measurementSite,
         Integer heartRate,
-        BigDecimal oxygenSaturation,
+
+        Integer oxygenSaturation,
+
         Integer respiratoryRate,
 
         Boolean isTriage,
+
+        @NotNull
+        Boolean isActive,
 
         String notes
 

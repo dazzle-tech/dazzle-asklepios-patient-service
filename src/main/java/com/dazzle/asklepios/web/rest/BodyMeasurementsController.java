@@ -1,17 +1,21 @@
 package com.dazzle.asklepios.web.rest;
 
-import com.dazzle.asklepios.domain.VitalSigns;
-import com.dazzle.asklepios.service.VitalSignsService;
-import com.dazzle.asklepios.service.dto.vitalSigns.VitalSignsCreateDTO;
-import com.dazzle.asklepios.service.dto.vitalSigns.VitalSignsUpdateDTO;
+import com.dazzle.asklepios.domain.BodyMeasurements;
+import com.dazzle.asklepios.service.BodyMeasurementsService;
+import com.dazzle.asklepios.service.dto.bodyMeasurements.BodyMeasurementsCreateDTO;
+import com.dazzle.asklepios.service.dto.bodyMeasurements.BodyMeasurementsUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
+
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,22 +27,22 @@ import org.springframework.web.bind.annotation.RequestBody;
 import java.net.URI;
 
 @RestController
-@RequestMapping("/api/patient/vital-signs")
+@RequestMapping("/api/patient/body-measurements")
 @RequiredArgsConstructor
-public class VitalSignsController {
+public class BodyMeasurementsController {
 
-    private static final Logger LOG = LoggerFactory.getLogger(VitalSignsController.class);
+    private static final Logger LOG = LoggerFactory.getLogger(BodyMeasurementsController.class);
 
-    private static final String ENTITY_NAME = "vitalSigns";
+    private static final String ENTITY_NAME = "bodyMeasurements";
 
-    private final VitalSignsService vitalSignsService;
+    private final BodyMeasurementsService bodyMeasurementsService;
 
     @PostMapping
-    public ResponseEntity<VitalSigns> create(@Valid @RequestBody VitalSignsCreateDTO dto) {
-        LOG.debug("[REST][CREATE] VitalSigns payload={}", dto);
+    public ResponseEntity<BodyMeasurements> create(@Valid @RequestBody BodyMeasurementsCreateDTO dto) {
+        LOG.debug("[REST][CREATE] BodyMeasurements payload={}", dto);
 
         if (dto == null) {
-            throw new BadRequestAlertException("VitalSigns payload is required", ENTITY_NAME, "payload.required");
+            throw new BadRequestAlertException("BodyMeasurements payload is required", ENTITY_NAME, "payload.required");
         }
         if (dto.patientId() == null) {
             throw new BadRequestAlertException("Patient id is required", ENTITY_NAME, "patient.required");
@@ -47,25 +51,25 @@ public class VitalSignsController {
             throw new BadRequestAlertException("Encounter id is required", ENTITY_NAME, "encounter.required");
         }
 
-        VitalSigns saved = vitalSignsService.create(dto);
+        BodyMeasurements saved = bodyMeasurementsService.create(dto);
 
         return ResponseEntity
-                .created(URI.create("/api/vital-signs/" + saved.getId()))
+                .created(URI.create("/api/patient/body-measurements/" + saved.getId()))
                 .body(saved);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<VitalSigns> update(
+    public ResponseEntity<BodyMeasurements> update(
             @PathVariable Long id,
-            @Valid @RequestBody VitalSignsUpdateDTO dto
+            @Valid @RequestBody BodyMeasurementsUpdateDTO dto
     ) {
-        LOG.debug("[REST][UPDATE] VitalSigns id={} payload={}", id, dto);
+        LOG.debug("[REST][UPDATE] BodyMeasurements id={} payload={}", id, dto);
 
         if (dto == null) {
-            throw new BadRequestAlertException("VitalSigns payload is required", ENTITY_NAME, "payload.required");
+            throw new BadRequestAlertException("BodyMeasurements payload is required", ENTITY_NAME, "payload.required");
         }
         if (id == null) {
-            throw new BadRequestAlertException("VitalSigns id is required", ENTITY_NAME, "id.required");
+            throw new BadRequestAlertException("BodyMeasurements id is required", ENTITY_NAME, "id.required");
         }
         if (dto.patientId() == null) {
             throw new BadRequestAlertException("Patient id is required", ENTITY_NAME, "patient.required");
@@ -74,19 +78,34 @@ public class VitalSignsController {
             throw new BadRequestAlertException("Encounter id is required", ENTITY_NAME, "encounter.required");
         }
 
-        return vitalSignsService.update(id, dto)
+        return bodyMeasurementsService.update(id, dto)
                 .map(ResponseEntity::ok)
                 .orElseThrow(() -> new NotFoundAlertException(
-                        "VitalSigns not found with id " + id,
+                        "BodyMeasurements not found with id " + id,
                         ENTITY_NAME,
                         "notfound"
                 ));
     }
 
+    @GetMapping("/latest/patient/{patientId}")
+    @Transactional(readOnly = true)
+    public ResponseEntity<BodyMeasurements> findLatestByPatientId(@PathVariable Long patientId) {
+        if (patientId == null) {
+            throw new BadRequestAlertException("Patient id is required", ENTITY_NAME, "patient.required");
+        }
+
+        return bodyMeasurementsService.findLatestByPatientId(patientId)
+                .map(ResponseEntity::ok)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "No body measurements found for patientId " + patientId,
+                        ENTITY_NAME,
+                        "notfound"
+                ));
+    }
 
     @GetMapping("/latest/encounter/{encounterId}")
     @Transactional(readOnly = true)
-    public ResponseEntity<VitalSigns> findLatestByEncounterId(@PathVariable Long encounterId) {
+    public ResponseEntity<BodyMeasurements> findLatestByEncounterId(@PathVariable Long encounterId) {
         if (encounterId == null) {
             throw new BadRequestAlertException(
                     "Encounter id is required",
@@ -95,27 +114,8 @@ public class VitalSignsController {
             );
         }
 
-        return vitalSignsService.findLatestByEncounterId(encounterId)
+        return bodyMeasurementsService.findLatestByEncounterId(encounterId)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.noContent().build());
     }
-
-    @GetMapping("/latest/triage/encounter/{encounterId}")
-    @Transactional(readOnly = true)
-    public ResponseEntity<VitalSigns> findLatestTriageByEncounter(
-            @PathVariable Long encounterId
-    ) {
-        if (encounterId == null) {
-            throw new BadRequestAlertException(
-                    "Encounter id is required",
-                    "vitalSigns",
-                    "encounter.required"
-            );
-        }
-
-        return vitalSignsService.findLatestTriageByEncounterId(encounterId)
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.noContent().build());
-    }
-
 }

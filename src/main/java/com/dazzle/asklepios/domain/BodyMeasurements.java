@@ -26,8 +26,8 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Table(name = "vital_signs")
-public class VitalSigns extends AbstractAuditingEntity<Long> implements Serializable {
+@Table(name = "body_measurements")
+public class BodyMeasurements extends AbstractAuditingEntity<Long> implements Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -42,35 +42,17 @@ public class VitalSigns extends AbstractAuditingEntity<Long> implements Serializ
     @Column(name = "encounter_id", nullable = false)
     private Long encounterId;
 
-    @Column(name = "blood_pressure_systolic")
-    private Integer bloodPressureSystolic;
+    @Column(name = "weight", precision = 6, scale = 2)
+    private BigDecimal weight;
 
-    @Column(name = "blood_pressure_diastolic")
-    private Integer bloodPressureDiastolic;
+    @Column(name = "height", precision = 6, scale = 2)
+    private BigDecimal height;
 
-    @Column(name = "measurement_site")
-    private String measurementSite;
-
-    @Column(name = "heart_rate")
-    private Integer heartRate;
-
-    @Column(name = "temperature", precision = 5, scale = 2)
-    private BigDecimal temperature;
-
-    @Column(name = "oxygen_saturation")
-    private Integer oxygenSaturation;
-
-    @Column(name = "respiratory_rate")
-    private Integer respiratoryRate;
-
-    @Column(name = "is_triage")
-    private Boolean isTriage;
+    @Column(name = "head_circumference", precision = 6, scale = 2)
+    private BigDecimal headCircumference;
 
     @NotNull
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private Boolean isActive = true;
-
-    @Column(name = "notes", columnDefinition = "text")
-    private String notes;
 }

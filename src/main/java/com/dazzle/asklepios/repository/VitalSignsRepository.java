@@ -9,10 +9,7 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface VitalSignsRepository extends JpaRepository<VitalSigns, Long> {
 
-    Optional<VitalSigns> findFirstByPatient_IdOrderByCreatedDateDesc(Long patientId);
+    Optional<VitalSigns> findFirstByEncounterIdAndIsActiveTrueOrderByCreatedDateDesc(Long encounterId);
 
-    Optional<VitalSigns> findFirstByEncounterIdOrderByCreatedDateDesc(Long encounterId);
-
-    Optional<VitalSigns> findFirstByEncounterIdAndIsTriageTrueOrderByCreatedDateDesc(Long encounterId);
-
+    Optional<VitalSigns> findFirstByEncounterIdAndIsTriageTrueAndIsActiveTrueOrderByCreatedDateDesc(Long encounterId);
 }

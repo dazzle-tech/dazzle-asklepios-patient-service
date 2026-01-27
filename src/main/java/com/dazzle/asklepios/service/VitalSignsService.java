@@ -33,13 +33,8 @@ public class VitalSignsService {
     private final VitalSignsRepository vitalSignsRepository;
     private final PatientRepository patientRepository;
 
-
     public VitalSigns create(VitalSignsCreateDTO dto) {
         LOG.info("[CREATE] VitalSigns payload={}", dto);
-
-        if (dto == null) {
-            throw new BadRequestAlertException("VitalSigns payload is required", "vitalSigns", "payload.required");
-        }
 
         Patient patient = patientRepository.findById(dto.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -60,6 +55,7 @@ public class VitalSignsService {
                 .respiratoryRate(dto.respiratoryRate())
                 .notes(dto.notes())
                 .isTriage(dto.isTriage())
+                .isActive(dto.isActive())
                 .build();
 
         try {
@@ -70,12 +66,8 @@ public class VitalSignsService {
     }
 
     public Optional<VitalSigns> update(Long id, VitalSignsUpdateDTO dto) {
-        Long targetId = id != null ? id : (dto != null ? dto.id() : null);
+        Long targetId = id != null ? id : dto.id();
         LOG.info("[UPDATE] VitalSigns id={} payload={}", targetId, dto);
-
-        if (targetId == null) {
-            throw new BadRequestAlertException("VitalSigns id is required", "vitalSigns", "id.required");
-        }
 
         return vitalSignsRepository.findById(targetId).map(entity -> {
 
@@ -88,17 +80,16 @@ public class VitalSignsService {
 
             entity.setPatient(patient);
             entity.setEncounterId(dto.encounterId());
-
             entity.setBloodPressureSystolic(dto.bloodPressureSystolic());
             entity.setBloodPressureDiastolic(dto.bloodPressureDiastolic());
             entity.setTemperature(dto.temperature());
-
             entity.setMeasurementSite(dto.measurementSite());
             entity.setHeartRate(dto.heartRate());
             entity.setOxygenSaturation(dto.oxygenSaturation());
             entity.setRespiratoryRate(dto.respiratoryRate());
             entity.setNotes(dto.notes());
             entity.setIsTriage(dto.isTriage());
+            entity.setIsActive(dto.isActive());
 
             try {
                 return vitalSignsRepository.saveAndFlush(entity);
@@ -109,15 +100,9 @@ public class VitalSignsService {
     }
 
     @Transactional(readOnly = true)
-    public Optional<VitalSigns> findLatestByPatientId(Long patientId) {
-        LOG.debug("[FIND_LATEST_BY_PATIENT] patientId={}", patientId);
-        return vitalSignsRepository.findFirstByPatient_IdOrderByCreatedDateDesc(patientId);
-    }
-
-    @Transactional(readOnly = true)
     public Optional<VitalSigns> findLatestByEncounterId(Long encounterId) {
         LOG.debug("[FIND_LATEST_BY_ENCOUNTER] encounterId={}", encounterId);
-        return vitalSignsRepository.findFirstByEncounterIdOrderByCreatedDateDesc(encounterId);
+        return vitalSignsRepository.findFirstByEncounterIdAndIsActiveTrueOrderByCreatedDateDesc(encounterId);
     }
 
     @Transactional(readOnly = true)
@@ -125,7 +110,7 @@ public class VitalSignsService {
         LOG.debug("[FIND_LATEST_TRIAGE_BY_ENCOUNTER] encounterId={}", encounterId);
 
         return vitalSignsRepository
-                .findFirstByEncounterIdAndIsTriageTrueOrderByCreatedDateDesc(encounterId);
+                .findFirstByEncounterIdAndIsTriageTrueAndIsActiveTrueOrderByCreatedDateDesc(encounterId);
     }
 
     private RuntimeException handleConstraintViolation(Exception exception) {
@@ -146,6 +131,4 @@ public class VitalSignsService {
                 "db.constraint"
         );
     }
-
-
 }

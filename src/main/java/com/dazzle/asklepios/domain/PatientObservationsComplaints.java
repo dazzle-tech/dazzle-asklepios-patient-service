@@ -12,7 +12,6 @@ import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
 
 import java.io.Serializable;
-import java.math.BigDecimal;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -26,8 +25,8 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Table(name = "vital_signs")
-public class VitalSigns extends AbstractAuditingEntity<Long> implements Serializable {
+@Table(name = "patient_observations_complaints")
+public class PatientObservationsComplaints extends AbstractAuditingEntity<Long> implements Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -42,35 +41,19 @@ public class VitalSigns extends AbstractAuditingEntity<Long> implements Serializ
     @Column(name = "encounter_id", nullable = false)
     private Long encounterId;
 
-    @Column(name = "blood_pressure_systolic")
-    private Integer bloodPressureSystolic;
+    @NotNull
+    @Column(name = "functional_status", columnDefinition = "text", nullable = false)
+    private String functionalStatus;
 
-    @Column(name = "blood_pressure_diastolic")
-    private Integer bloodPressureDiastolic;
+    @Column(name = "reason_of_visit", columnDefinition = "text")
+    private String reasonOfVisit;
 
-    @Column(name = "measurement_site")
-    private String measurementSite;
-
-    @Column(name = "heart_rate")
-    private Integer heartRate;
-
-    @Column(name = "temperature", precision = 5, scale = 2)
-    private BigDecimal temperature;
-
-    @Column(name = "oxygen_saturation")
-    private Integer oxygenSaturation;
-
-    @Column(name = "respiratory_rate")
-    private Integer respiratoryRate;
-
-    @Column(name = "is_triage")
-    private Boolean isTriage;
+    @NotNull
+    @Column(name = "cognitive_check", columnDefinition = "text", nullable = false)
+    private String cognitiveCheck;
 
     @NotNull
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private Boolean isActive = true;
-
-    @Column(name = "notes", columnDefinition = "text")
-    private String notes;
 }
