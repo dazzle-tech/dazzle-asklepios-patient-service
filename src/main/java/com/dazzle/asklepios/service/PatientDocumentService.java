@@ -39,14 +39,6 @@ public class PatientDocumentService {
     public PatientDocument create(PatientDocumentCreateDTO dto) {
         LOG.info("[CREATE] Request to create PatientDocument payload={}", dto);
 
-        if (dto == null) {
-            throw new BadRequestAlertException(
-                    "PatientDocument payload is required",
-                    "patientDocument",
-                    "payload.required"
-            );
-        }
-
         PatientDocument entity = PatientDocument.builder()
                 .patient(refPatient(dto.patientId()))
                 .countryId(dto.countryId())
@@ -71,15 +63,6 @@ public class PatientDocumentService {
 
     public Optional<PatientDocument> update(Long id, PatientDocumentUpdateDTO dto) {
         LOG.info("[UPDATE] Request to update PatientDocument id={} payload={}", id, dto);
-
-        if (dto == null) {
-            throw new BadRequestAlertException(
-                    "PatientDocument payload is required",
-                    "patientDocument",
-                    "payload.required"
-            );
-        }
-
 
         PatientDocument existing = patientDocumentRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -117,26 +100,11 @@ public class PatientDocumentService {
                 patientId,
                 pageable
         );
-
-        if (patientId == null) {
-            throw new BadRequestAlertException(
-                    "Patient id is required",
-                    "patientDocument",
-                    "patient.required"
-            );
-        }
-
         return patientDocumentRepository.findByPatientId(patientId, pageable);
     }
 
     public boolean delete(Long id) {
         LOG.info("[DELETE] Request to delete PatientDocument id={}", id);
-
-        if (id == null || !patientDocumentRepository.existsById(id)) {
-            LOG.warn("PatientDocument id={} does not exist", id);
-            return false;
-        }
-
         try {
             patientDocumentRepository.deleteById(id);
             LOG.info("Successfully deleted PatientDocument id={}", id);

@@ -43,6 +43,14 @@ public class PatientDocumentController {
     ) {
         LOG.debug("REST create PatientDocument payload={}", dto);
 
+        if (dto == null) {
+            throw new BadRequestAlertException(
+                    "PatientDocument payload is required",
+                    "patientDocument",
+                    "payload.required"
+            );
+        }
+
         if (dto.type() == DocumentType.NO_DOCUMENT) {
             throw new BadRequestAlertException(
                     "Use /documents/no-document endpoint for NO_DOCUMENT",
@@ -95,7 +103,13 @@ public class PatientDocumentController {
             @Valid @RequestBody PatientDocumentUpdateDTO dto
     ) {
         LOG.debug("REST update PatientDocument id={} payload={}", id, dto);
-
+        if (dto == null) {
+            throw new BadRequestAlertException(
+                    "PatientDocument payload is required",
+                    "patientDocument",
+                    "payload.required"
+            );
+        }
         return patientDocumentService.update(id, dto)
                 .map(PatientDocumentResponseVM::ofEntity)
                 .map(ResponseEntity::ok)
@@ -135,7 +149,13 @@ public class PatientDocumentController {
                 patientId,
                 pageable
         );
-
+        if (patientId == null) {
+            throw new BadRequestAlertException(
+                    "Patient id is required",
+                    "patientDocument",
+                    "patient.required"
+            );
+        }
         Page<PatientDocument> page =
                 patientDocumentService.getDocumentsByPatient(patientId, pageable);
 
@@ -151,7 +171,6 @@ public class PatientDocumentController {
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
-
 
     @DeleteMapping("/documents/{id}")
     public ResponseEntity<Void> deletePatientDocument(@PathVariable Long id) {
