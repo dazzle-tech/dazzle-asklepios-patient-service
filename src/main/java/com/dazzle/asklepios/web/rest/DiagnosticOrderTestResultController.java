@@ -1,12 +1,18 @@
 package com.dazzle.asklepios.web.rest;
 
+import com.dazzle.asklepios.client.SetupServiceClient;
+import com.dazzle.asklepios.client.dto.NormalRangeMatchDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
+import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.DiagnosticOrderTestResultService;
 import com.dazzle.asklepios.service.DiagnosticOrderTestResultStatusService;
+import com.dazzle.asklepios.service.NormalRangeMatcherService;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultCreateDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultRejectDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultUpdateDTO;
@@ -61,7 +67,10 @@ public class DiagnosticOrderTestResultController {
     private final DiagnosticOrderTestResultService service;
     private final DiagnosticOrderTestResultStatusService statusService;
     private final DiagnosticOrderTestResultRepository repository;
-
+    private final SetupServiceClient setupServiceClient;
+    private final NormalRangeMatcherService normalRangeMatcherService;
+    private final DiagnosticOrderRepository diagnosticOrderRepository;
+    private final PatientRepository patientRepository;
     /**
      * Creates a new controller instance.
      *
@@ -72,11 +81,15 @@ public class DiagnosticOrderTestResultController {
     public DiagnosticOrderTestResultController(
             DiagnosticOrderTestResultService service,
             DiagnosticOrderTestResultStatusService statusService,
-            DiagnosticOrderTestResultRepository repository
+            DiagnosticOrderTestResultRepository repository, SetupServiceClient setupServiceClient, NormalRangeMatcherService normalRangeMatcherService, DiagnosticOrderRepository diagnosticOrderRepository, PatientRepository patientRepository
     ) {
         this.service = service;
         this.statusService = statusService;
         this.repository = repository;
+        this.setupServiceClient = setupServiceClient;
+        this.normalRangeMatcherService = normalRangeMatcherService;
+        this.diagnosticOrderRepository = diagnosticOrderRepository;
+        this.patientRepository = patientRepository;
     }
 
     /**
@@ -261,6 +274,7 @@ public class DiagnosticOrderTestResultController {
      * @param pageable         pagination and sorting
      * @return list of results mapped to response VMs with pagination headers (HTTP 200)
      */
+
     @GetMapping("/diagnostic-order-tests-results")
     public ResponseEntity<List<DiagnosticOrderTestResultResponseVM>> filter(
             @RequestParam(name = "orderId", required = false) Long orderId,
@@ -284,11 +298,14 @@ public class DiagnosticOrderTestResultController {
             @RequestParam(name = "reviewDateFrom", required = false) Instant reviewDateFrom,
             @RequestParam(name = "reviewDateTo", required = false) Instant reviewDateTo,
 
+            // NEW: needed to compute marker correctly (until you fetch it from setup-service)
+            @RequestParam(name = "resultType", required = false, defaultValue = "NUMBER") TestResultType resultType,
+
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("[DiagnosticOrderTestResult] FILTER - request received. orderId={} orderTestId={} profileTestId={} marker={} excludeMarker={} processingStatus={} approvedBy={} rejectedBy={} reviewBy={} approvedDateFrom={} approvedDateTo={} rejectedDateFrom={} rejectedDateTo={} reviewDateFrom={} reviewDateTo={} pageable={}",
+        LOG.debug("[DiagnosticOrderTestResult] FILTER - request received. orderId={} orderTestId={} profileTestId={} marker={} excludeMarker={} processingStatus={} approvedBy={} rejectedBy={} reviewBy={} approvedDateFrom={} approvedDateTo={} rejectedDateFrom={} rejectedDateTo={} reviewDateFrom={} reviewDateTo={} resultType={} pageable={}",
                 orderId, orderTestId, profileTestId, marker, excludeMarker, processingStatus, approvedBy, rejectedBy, reviewBy,
-                approvedDateFrom, approvedDateTo, rejectedDateFrom, rejectedDateTo, reviewDateFrom, reviewDateTo, pageable);
+                approvedDateFrom, approvedDateTo, rejectedDateFrom, rejectedDateTo, reviewDateFrom, reviewDateTo, resultType, pageable);
 
         Specification<DiagnosticOrderTestResult> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -325,7 +342,31 @@ public class DiagnosticOrderTestResultController {
 
         List<DiagnosticOrderTestResultResponseVM> body = page.getContent()
                 .stream()
-                .map(DiagnosticOrderTestResultResponseVM::ofEntity)
+                .map(r -> {
+                    // 1) derive patientId from orderId
+                    Long patientId = diagnosticOrderRepository.findById(r.getOrderId())
+                            .map(o -> o.getPatientId())
+                            .orElse(null);
+
+                    // 2) compute best normal range + marker preview
+                    TestResultMarker viewMarker = r.getMarker();
+                    String viewNormalRange = r.getNormalRangeValue();
+
+                    if (patientId != null) {
+                        NormalRangeMatchDTO best = normalRangeMatcherService.findBestNormalRange(r.getProfileTestId(), patientId);
+                        viewMarker = NormalRangeMatcherService.calculateMarker(
+                                resultType,
+                                r.getResultValueNumber(),
+                                r.getResultValueText(),
+                                best
+                        );
+
+                        // optional: compute a display string (you can implement it in matcher service)
+                        viewNormalRange = buildViewNormalRange(best);
+                    }
+
+                    return DiagnosticOrderTestResultResponseVM.ofEntityWithView(r, viewMarker, viewNormalRange);
+                })
                 .toList();
 
         LOG.debug("[DiagnosticOrderTestResult] FILTER - response ready. returned={} totalElements={} totalPages={}",
@@ -333,4 +374,23 @@ public class DiagnosticOrderTestResultController {
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
+
+    // helper in controller (or move to service)
+    private String buildViewNormalRange(NormalRangeMatchDTO best) {
+        if (best == null) return null;
+
+        if (best.resultText() != null && !best.resultText().isBlank()) return best.resultText();
+        if (best.resultLov() != null && !best.resultLov().isBlank()) return best.resultLov();
+
+        Double from = best.rangeFrom();
+        Double to = best.rangeTo();
+        if (from != null && to != null) return from + " - " + to;
+        if (from != null) return ">= " + from;
+        if (to != null) return "<= " + to;
+
+        return null;
+    }
+
+
+
 }

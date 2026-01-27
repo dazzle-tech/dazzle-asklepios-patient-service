@@ -1,6 +1,5 @@
 package com.dazzle.asklepios.web.rest.vm.laboratory;
 
-import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
@@ -16,7 +15,14 @@ public record DiagnosticOrderTestResultResponseVM(
         Long profileTestId,
         BigDecimal resultValueNumber,
         String resultValueText,
+
+        // persisted fields (DB)
         TestResultMarker marker,
+
+        // view-only fields (NOT persisted)
+        TestResultMarker viewMarker,
+        String viewNormalRange,
+
         String approvedBy,
         Instant approvedDate,
         String rejectedBy,
@@ -25,7 +31,10 @@ public record DiagnosticOrderTestResultResponseVM(
         String reviewBy,
         Instant reviewDate,
         DiagnosticStatus processingStatus,
+
+        // persisted
         String normalRangeValue,
+
         Instant createdDate,
         Instant lastModifiedDate,
         String createdBy,
@@ -41,6 +50,11 @@ public record DiagnosticOrderTestResultResponseVM(
                 r.getResultValueNumber(),
                 r.getResultValueText(),
                 r.getMarker(),
+
+                // view-only defaults = persisted values
+                r.getMarker(),
+                r.getNormalRangeValue(),
+
                 r.getApprovedBy(),
                 r.getApprovedDate(),
                 r.getRejectedBy(),
@@ -56,4 +70,38 @@ public record DiagnosticOrderTestResultResponseVM(
                 r.getLastModifiedBy()
         );
     }
+
+    public static DiagnosticOrderTestResultResponseVM ofEntityWithView(
+            DiagnosticOrderTestResult r,
+            TestResultMarker viewMarker,
+            String viewNormalRange
+    ) {
+        return new DiagnosticOrderTestResultResponseVM(
+                r.getId(),
+                r.getOrderId(),
+                r.getOrderTestId(),
+                r.getProfileTestId(),
+                r.getResultValueNumber(),
+                r.getResultValueText(),
+                r.getMarker(),
+
+                viewMarker,
+                viewNormalRange,
+
+                r.getApprovedBy(),
+                r.getApprovedDate(),
+                r.getRejectedBy(),
+                r.getRejectedDate(),
+                r.getRejectedReason(),
+                r.getReviewBy(),
+                r.getReviewDate(),
+                r.getProcessingStatus(),
+                r.getNormalRangeValue(),
+                r.getCreatedDate(),
+                r.getLastModifiedDate(),
+                r.getCreatedBy(),
+                r.getLastModifiedBy()
+        );
+    }
+
 }
