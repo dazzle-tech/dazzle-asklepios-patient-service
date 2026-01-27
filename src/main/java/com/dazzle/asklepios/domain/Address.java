@@ -67,3 +67,4 @@ public class Address extends AbstractAuditingEntity<Long> implements Serializabl
     @Column(name = "is_current", nullable = false)
     private Boolean isCurrent;
 }
+

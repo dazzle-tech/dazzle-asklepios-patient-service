@@ -19,3 +19,4 @@ public interface AddressRepository extends JpaRepository<Address, Long> {
     @Query("UPDATE Address a SET a.isCurrent = false WHERE a.patient.id = :patientId")
     void resetIsCurrentForPatient(@Param("patientId") Long patientId);
 }
+
