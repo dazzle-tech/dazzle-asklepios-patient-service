@@ -51,7 +51,13 @@ public class PatientPreferredHealthProfessionalController {
             @Valid @RequestBody PatientPreferredHealthProfessionalCreateDTO dto
     ) {
         LOG.debug("REST create PatientPreferredHealthProfessional for patientId={} payload={}", patientId, dto);
-
+        if (dto == null) {
+            throw new BadRequestAlertException(
+                    "PatientPreferredHealthProfessional payload is required",
+                    "patientPreferredHealthProfessional",
+                    "payload.required"
+            );
+        }
         Patient patient = patientService.findById(patientId)
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Patient not found with id " + patientId,
@@ -73,6 +79,13 @@ public class PatientPreferredHealthProfessionalController {
             @Valid @RequestBody PatientPreferredHealthProfessionalUpdateDTO dto
     ) {
         LOG.debug("REST update PatientPreferredHealthProfessional id={} payload={}", id, dto);
+        if (dto == null) {
+            throw new BadRequestAlertException(
+                    "PatientPreferredHealthProfessional payload is required",
+                    "patientPreferredHealthProfessional",
+                    "payload.required"
+            );
+        }
 
         if (dto.id() == null || !dto.id().equals(id)) {
             throw new BadRequestAlertException(

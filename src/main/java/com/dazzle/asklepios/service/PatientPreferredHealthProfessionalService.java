@@ -40,15 +40,6 @@ public class PatientPreferredHealthProfessionalService {
 
     public PatientPreferredHealthProfessional create(Patient patient, PatientPreferredHealthProfessionalCreateDTO dto) {
         LOG.info("[CREATE] Request to create PatientPreferredHealthProfessional for patientId={} payload={}", patient.getId(), dto);
-
-        if (dto == null) {
-            throw new BadRequestAlertException(
-                    "PatientPreferredHealthProfessional payload is required",
-                    "patientPreferredHealthProfessional",
-                    "payload.required"
-            );
-        }
-
         try {
             PatientPreferredHealthProfessional entity = PatientPreferredHealthProfessional.builder()
                     .patient(patient)
@@ -73,15 +64,7 @@ public class PatientPreferredHealthProfessionalService {
 
     public PatientPreferredHealthProfessional update(PatientPreferredHealthProfessional existing, PatientPreferredHealthProfessionalUpdateDTO dto) {
         LOG.info("[UPDATE] Request to update PatientPreferredHealthProfessional id={} payload={}", existing.getId(), dto);
-
-        if (dto == null) {
-            throw new BadRequestAlertException(
-                    "PatientPreferredHealthProfessional payload is required",
-                    "patientPreferredHealthProfessional",
-                    "payload.required"
-            );
-        }
-
+        
         try {
             if (dto.practitionerId() != null) {
                 existing.setPractitionerId(dto.practitionerId());
