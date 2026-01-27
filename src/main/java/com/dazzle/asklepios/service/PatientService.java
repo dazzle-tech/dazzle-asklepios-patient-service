@@ -48,10 +48,6 @@ public class PatientService {
     public Patient create(PatientCreateDTO dto) {
         LOG.info("[CREATE] Request to create Patient payload={}", dto);
 
-        if (dto == null) {
-            throw new BadRequestAlertException("Patient payload is required", "patient", "payload.required");
-        }
-
         boolean verified = Boolean.TRUE.equals(dto.isVerified());
         boolean completed = Boolean.TRUE.equals(dto.isCompletedPatient());
 
