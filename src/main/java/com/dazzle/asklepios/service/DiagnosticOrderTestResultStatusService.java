@@ -3,6 +3,7 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -37,7 +38,7 @@ public class DiagnosticOrderTestResultStatusService {
 
     /** Service used to recompute aggregated lab/radiology statuses on the parent order. */
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
-
+  private final  NormalRangeMatcherService normalRangeMatcherService;
     /**
      * Constructs the service with required dependencies.
      *
@@ -50,12 +51,13 @@ public class DiagnosticOrderTestResultStatusService {
             DiagnosticOrderTestResultRepository resultRepository,
             DiagnosticOrderTestStatusService diagnosticOrderTestStatusService,
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
-            DiagnosticOrderStatusService diagnosticOrderStatusService
+            DiagnosticOrderStatusService diagnosticOrderStatusService, NormalRangeMatcherService normalRangeMatcherService
     ) {
         this.resultRepository = resultRepository;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
+        this.normalRangeMatcherService = normalRangeMatcherService;
     }
 
     /**
@@ -75,7 +77,7 @@ public class DiagnosticOrderTestResultStatusService {
      * @param approvedBy username approving the result
      * @return updated result
      */
-    public DiagnosticOrderTestResult approve(Long resultId, String approvedBy) {
+    public DiagnosticOrderTestResult approve(Long resultId, String approvedBy, TestResultMarker marker,String normalrange) {
         DiagnosticOrderTestResult r = getResult(resultId);
 
         DiagnosticStatus from = normalize(r.getProcessingStatus());
@@ -84,7 +86,8 @@ public class DiagnosticOrderTestResultStatusService {
         r.setProcessingStatus(DiagnosticStatus.RESULT_APPROVED);
         r.setApprovedBy(approvedBy);
         r.setApprovedDate(Instant.now());
-
+        r.setMarker(marker);
+        r.setNormalRangeValue(normalrange);
         DiagnosticOrderTestResult saved = resultRepository.save(r);
 
         diagnosticOrderTestStatusService.approve(saved.getOrderTestId());

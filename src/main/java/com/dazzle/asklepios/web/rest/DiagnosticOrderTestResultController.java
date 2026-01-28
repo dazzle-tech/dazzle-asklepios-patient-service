@@ -201,7 +201,7 @@ public class DiagnosticOrderTestResultController {
     /**
      * Approves a result.
      *
-     * <p>Rules are enforced by {@link DiagnosticOrderTestResultStatusService#approve(Long, String)}.
+     * <p>Rules are enforced by {@link DiagnosticOrderTestResultStatusService#approve(Long, String,TestResultMarker,String)}.
      * On success, it also updates the parent test status and recomputes aggregated order statuses.</p>
      *
      * @param id result id
@@ -212,7 +212,39 @@ public class DiagnosticOrderTestResultController {
         LOG.debug("[DiagnosticOrderTestResult] APPROVE - request received. id={}", id);
 
         String username = currentUsername();
-        DiagnosticOrderTestResult saved = statusService.approve(id, username);
+        DiagnosticOrderTestResult r = repository.findById(id)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_order_tests_result",
+                        "DiagnosticOrderTestResult not found with id " + id
+                ));
+
+        Long patientId = diagnosticOrderRepository.findById(r.getOrderId())
+                .map(o -> o.getPatientId())
+                .orElse(null);
+
+        TestResultMarker viewMarker = r.getMarker();
+        String viewNormalRange = r.getNormalRangeValue();
+        TestResultType resultType;
+        try {
+            resultType = setupServiceClient.getResultTypeByProfileTestIdInternal(r.getProfileTestId());
+        } catch (Exception e) {
+            throw new BadRequestAlertException("setup_service_error", "diagnostic_order_tests_result",
+                    "Failed to fetch result type for profileTestId " + r.getProfileTestId());
+        }
+        if (patientId != null) {
+            NormalRangeMatchDTO best = normalRangeMatcherService.findBestNormalRange(r.getProfileTestId(), patientId);
+            viewMarker = NormalRangeMatcherService.calculateMarker(
+                    resultType,
+                    r.getResultValueNumber(),
+                    r.getResultValueText(),
+                    best
+            );
+
+            // optional: compute a display string (you can implement it in matcher service)
+            viewNormalRange = buildViewNormalRange(best);
+        }
+        DiagnosticOrderTestResult saved = statusService.approve(id, username,viewMarker,viewNormalRange);
 
         LOG.debug("[DiagnosticOrderTestResult] APPROVE - done. id={} approvedBy={}", saved.getId(), username);
         return ResponseEntity.ok(DiagnosticOrderTestResultResponseVM.ofEntity(saved));
@@ -241,6 +273,7 @@ public class DiagnosticOrderTestResultController {
         LOG.debug("[DiagnosticOrderTestResult] REJECT - done. id={} rejectedBy={}", saved.getId(), username);
         return ResponseEntity.ok(DiagnosticOrderTestResultResponseVM.ofEntity(saved));
     }
+
 
     /**
      * Filters diagnostic order test results (exact matching).
@@ -299,7 +332,7 @@ public class DiagnosticOrderTestResultController {
             @RequestParam(name = "reviewDateTo", required = false) Instant reviewDateTo,
 
             // NEW: needed to compute marker correctly (until you fetch it from setup-service)
-            @RequestParam(name = "resultType", required = false, defaultValue = "NUMBER") TestResultType resultType,
+            @RequestParam(name = "resultType", required = false) TestResultType resultType,
 
             @ParameterObject Pageable pageable
     ) {
@@ -351,11 +384,18 @@ public class DiagnosticOrderTestResultController {
                     // 2) compute best normal range + marker preview
                     TestResultMarker viewMarker = r.getMarker();
                     String viewNormalRange = r.getNormalRangeValue();
+                    TestResultType resultTypes;
+                    try {
+                        resultTypes = setupServiceClient.getResultTypeByProfileTestIdInternal(r.getProfileTestId());
+                    } catch (Exception e) {
+                        throw new BadRequestAlertException("setup_service_error", "diagnostic_order_tests_result",
+                                "Failed to fetch result type for profileTestId " + r.getProfileTestId());
+                    }
 
                     if (patientId != null) {
                         NormalRangeMatchDTO best = normalRangeMatcherService.findBestNormalRange(r.getProfileTestId(), patientId);
                         viewMarker = NormalRangeMatcherService.calculateMarker(
-                                resultType,
+                                resultTypes,
                                 r.getResultValueNumber(),
                                 r.getResultValueText(),
                                 best

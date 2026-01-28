@@ -3,9 +3,11 @@ package com.dazzle.asklepios.client;
 
 import com.dazzle.asklepios.client.dto.NormalRangeMatchDTO;
 import com.dazzle.asklepios.config.SetupServiceFeignConfig;
+import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
@@ -18,6 +20,7 @@ public interface SetupServiceClient {
             @RequestParam("profileTestId") Long profileTestId
     );
 
-
+    @GetMapping("/api/setup/diagnostic-test-profiles/{id}/result-type")
+    TestResultType getResultTypeByProfileTestIdInternal(@PathVariable("id") Long id);
 
 }
