@@ -11,4 +11,5 @@ public interface DiagnosticOrderTestTechnicianNoteRepository
     Page<DiagnosticOrderTestTechnicianNote> findByOrderTestId(Long orderTestId, Pageable pageable);
 
     Page<DiagnosticOrderTestTechnicianNote> findByOrderId(Long orderId, Pageable pageable);
+    Boolean existsByOrderTestId(Long orderTestId);
 }

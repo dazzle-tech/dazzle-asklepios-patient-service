@@ -13,4 +13,5 @@ public interface DiagnosticOrderTestResultTechnicianNoteRepository
     List<DiagnosticOrderTestResultTechnicianNote> findByOrderTestId(Long orderTestId);
 
     List<DiagnosticOrderTestResultTechnicianNote> findByResultId(Long resultId);
+    boolean existsByResultId(Long resultId);
 }

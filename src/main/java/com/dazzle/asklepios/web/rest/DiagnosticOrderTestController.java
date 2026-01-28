@@ -8,6 +8,7 @@ import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestTechnicianNoteRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.DiagnosticOrderTestService;
 import com.dazzle.asklepios.service.DiagnosticOrderTestStatusService;
@@ -82,7 +83,7 @@ public class DiagnosticOrderTestController {
      * Repository used directly for lookups and Specification-based queries.
      */
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
-
+    private final DiagnosticOrderTestTechnicianNoteRepository diagnosticOrderTestTechnicianNoteRepository;
     /**
      * Controller constructor.
      *
@@ -93,11 +94,12 @@ public class DiagnosticOrderTestController {
     public DiagnosticOrderTestController(
             DiagnosticOrderTestService diagnosticOrderTestService,
             DiagnosticOrderTestStatusService diagnosticOrderTestStatusService,
-            DiagnosticOrderTestRepository diagnosticOrderTestRepository
+            DiagnosticOrderTestRepository diagnosticOrderTestRepository, DiagnosticOrderTestTechnicianNoteRepository diagnosticOrderTestTechnicianNoteRepository
     ) {
         this.diagnosticOrderTestService = diagnosticOrderTestService;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
+        this.diagnosticOrderTestTechnicianNoteRepository = diagnosticOrderTestTechnicianNoteRepository;
     }
 
     /**
@@ -202,7 +204,7 @@ public class DiagnosticOrderTestController {
                         "diagnostic_order_tests",
                         "DiagnosticOrderTest not found with id " + id
                 ));
-        return ResponseEntity.ok(DiagnosticOrderTestResponseVM.ofEntity(existing));
+        return ResponseEntity.ok(DiagnosticOrderTestResponseVM.ofEntityWithNote(existing,diagnosticOrderTestTechnicianNoteRepository.existsByOrderTestId(existing.getTestId())));
     }
 
     /**
@@ -413,7 +415,10 @@ public class DiagnosticOrderTestController {
 
         List<DiagnosticOrderTestResponseVM> body = page.getContent()
                 .stream()
-                .map(DiagnosticOrderTestResponseVM::ofEntity)
+                .map(t -> DiagnosticOrderTestResponseVM.ofEntityWithNote(
+                        t,
+                        diagnosticOrderTestTechnicianNoteRepository.existsByOrderTestId(t.getId())
+                ))
                 .toList();
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);

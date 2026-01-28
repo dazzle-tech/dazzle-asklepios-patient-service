@@ -23,6 +23,9 @@ public record DiagnosticOrderTestResultResponseVM(
         TestResultMarker viewMarker,
         String viewNormalRange,
 
+        // view-only: indicates if this result has any log/note entries (NOT persisted)
+        Boolean hasNote,
+
         String approvedBy,
         Instant approvedDate,
         String rejectedBy,
@@ -55,6 +58,9 @@ public record DiagnosticOrderTestResultResponseVM(
                 r.getMarker(),
                 r.getNormalRangeValue(),
 
+                // default (no extra lookup here)
+                false,
+
                 r.getApprovedBy(),
                 r.getApprovedDate(),
                 r.getRejectedBy(),
@@ -76,6 +82,15 @@ public record DiagnosticOrderTestResultResponseVM(
             TestResultMarker viewMarker,
             String viewNormalRange
     ) {
+        return ofEntityWithViewAndNote(r, viewMarker, viewNormalRange, false);
+    }
+
+    public static DiagnosticOrderTestResultResponseVM ofEntityWithViewAndNote(
+            DiagnosticOrderTestResult r,
+            TestResultMarker viewMarker,
+            String viewNormalRange,
+            boolean hasNote
+    ) {
         return new DiagnosticOrderTestResultResponseVM(
                 r.getId(),
                 r.getOrderId(),
@@ -87,6 +102,8 @@ public record DiagnosticOrderTestResultResponseVM(
 
                 viewMarker,
                 viewNormalRange,
+
+                hasNote,
 
                 r.getApprovedBy(),
                 r.getApprovedDate(),
@@ -103,5 +120,4 @@ public record DiagnosticOrderTestResultResponseVM(
                 r.getLastModifiedBy()
         );
     }
-
 }

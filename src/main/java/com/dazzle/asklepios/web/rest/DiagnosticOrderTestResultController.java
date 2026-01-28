@@ -3,12 +3,14 @@ package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.client.SetupServiceClient;
 import com.dazzle.asklepios.client.dto.NormalRangeMatchDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
+import com.dazzle.asklepios.domain.DiagnosticOrderTestResultTechnicianNote;
 import com.dazzle.asklepios.domain.LabResultLog;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestResultTechnicianNoteRepository;
 import com.dazzle.asklepios.repository.LabResultLogRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
@@ -74,6 +76,7 @@ public class DiagnosticOrderTestResultController {
     private final NormalRangeMatcherService normalRangeMatcherService;
     private final DiagnosticOrderRepository diagnosticOrderRepository;
     private final LabResultLogRepository logRepository;
+    private final DiagnosticOrderTestResultTechnicianNoteRepository diagnosticOrderTestResultTechnicianNoteRepository;
     /**
      * Creates a new controller instance.
      *
@@ -84,7 +87,7 @@ public class DiagnosticOrderTestResultController {
     public DiagnosticOrderTestResultController(
             DiagnosticOrderTestResultService service,
             DiagnosticOrderTestResultStatusService statusService,
-            DiagnosticOrderTestResultRepository repository, SetupServiceClient setupServiceClient, NormalRangeMatcherService normalRangeMatcherService, DiagnosticOrderRepository diagnosticOrderRepository,  LabResultLogRepository logRepository
+            DiagnosticOrderTestResultRepository repository, SetupServiceClient setupServiceClient, NormalRangeMatcherService normalRangeMatcherService, DiagnosticOrderRepository diagnosticOrderRepository, LabResultLogRepository logRepository, DiagnosticOrderTestResultTechnicianNoteRepository diagnosticOrderTestResultTechnicianNoteRepository
     ) {
         this.service = service;
         this.statusService = statusService;
@@ -94,6 +97,7 @@ public class DiagnosticOrderTestResultController {
         this.diagnosticOrderRepository = diagnosticOrderRepository;
         this.logRepository = logRepository;
 
+        this.diagnosticOrderTestResultTechnicianNoteRepository = diagnosticOrderTestResultTechnicianNoteRepository;
     }
 
     /**
@@ -409,7 +413,7 @@ public class DiagnosticOrderTestResultController {
                         viewNormalRange = buildViewNormalRange(best);
                     }
 
-                    return DiagnosticOrderTestResultResponseVM.ofEntityWithView(r, viewMarker, viewNormalRange);
+                    return DiagnosticOrderTestResultResponseVM.ofEntityWithViewAndNote(r, viewMarker, viewNormalRange,diagnosticOrderTestResultTechnicianNoteRepository.existsByResultId(r.getId()));
                 })
                 .toList();
 

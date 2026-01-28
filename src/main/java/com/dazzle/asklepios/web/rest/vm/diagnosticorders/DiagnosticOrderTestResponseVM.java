@@ -42,7 +42,8 @@ public record DiagnosticOrderTestResponseVM(
         Instant createdDate,
         Instant lastModifiedDate,
         String createdBy,
-        String lastModifiedBy
+        String lastModifiedBy,
+       Boolean hasNote
 ) implements Serializable {
 
     public static DiagnosticOrderTestResponseVM ofEntity(DiagnosticOrderTest t) {
@@ -81,7 +82,48 @@ public record DiagnosticOrderTestResponseVM(
                 t.getCreatedDate(),
                 t.getLastModifiedDate(),
                 t.getCreatedBy(),
-                t.getLastModifiedBy()
+                t.getLastModifiedBy(),
+                false
+        );
+    }
+    public static DiagnosticOrderTestResponseVM ofEntityWithNote(DiagnosticOrderTest t,Boolean hasNote) {
+        return new DiagnosticOrderTestResponseVM(
+                t.getId(),
+                t.getPatientId(),
+                t.getEncounterId(),
+
+                t.getStatus(),
+                t.getProcessingStatus(),
+
+                t.getOrderId(),
+                t.getTestId(),
+                t.getOrderType(),
+
+                t.getReceivedDepartmentId(),
+                t.getReason(),
+                t.getNotes(),
+
+                t.getSubmitDate(),
+                t.getAcceptedDate(),
+                t.getRejectedDate(),
+                t.getPatientArrivedDate(),
+                t.getReadyDate(),
+                t.getApprovedDate(),
+
+                t.getAcceptedBy(),
+                t.getRejectedBy(),
+                t.getRejectedReason(),
+                t.getPatientArrivedNoteRad(),
+
+                t.getCancellationReason(),
+                t.getCancelledBy(),
+                t.getCancelledDate(),
+
+                t.getCreatedDate(),
+                t.getLastModifiedDate(),
+                t.getCreatedBy(),
+                t.getLastModifiedBy(),
+                hasNote
         );
     }
 }
