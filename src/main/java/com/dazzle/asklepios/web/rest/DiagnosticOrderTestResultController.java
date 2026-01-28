@@ -3,11 +3,13 @@ package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.client.SetupServiceClient;
 import com.dazzle.asklepios.client.dto.NormalRangeMatchDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
+import com.dazzle.asklepios.domain.LabResultLog;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
+import com.dazzle.asklepios.repository.LabResultLogRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.DiagnosticOrderTestResultService;
@@ -19,6 +21,7 @@ import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.Di
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.laboratory.DiagnosticOrderTestResultResponseVM;
+import com.dazzle.asklepios.web.rest.vm.laboratory.LabResultLogResponseVM;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -70,7 +73,7 @@ public class DiagnosticOrderTestResultController {
     private final SetupServiceClient setupServiceClient;
     private final NormalRangeMatcherService normalRangeMatcherService;
     private final DiagnosticOrderRepository diagnosticOrderRepository;
-    private final PatientRepository patientRepository;
+    private final LabResultLogRepository logRepository;
     /**
      * Creates a new controller instance.
      *
@@ -81,7 +84,7 @@ public class DiagnosticOrderTestResultController {
     public DiagnosticOrderTestResultController(
             DiagnosticOrderTestResultService service,
             DiagnosticOrderTestResultStatusService statusService,
-            DiagnosticOrderTestResultRepository repository, SetupServiceClient setupServiceClient, NormalRangeMatcherService normalRangeMatcherService, DiagnosticOrderRepository diagnosticOrderRepository, PatientRepository patientRepository
+            DiagnosticOrderTestResultRepository repository, SetupServiceClient setupServiceClient, NormalRangeMatcherService normalRangeMatcherService, DiagnosticOrderRepository diagnosticOrderRepository,  LabResultLogRepository logRepository
     ) {
         this.service = service;
         this.statusService = statusService;
@@ -89,7 +92,8 @@ public class DiagnosticOrderTestResultController {
         this.setupServiceClient = setupServiceClient;
         this.normalRangeMatcherService = normalRangeMatcherService;
         this.diagnosticOrderRepository = diagnosticOrderRepository;
-        this.patientRepository = patientRepository;
+        this.logRepository = logRepository;
+
     }
 
     /**
@@ -431,6 +435,19 @@ public class DiagnosticOrderTestResultController {
         return null;
     }
 
+    @GetMapping("/lab-result-logs/by-result/{resultId}")
+    public ResponseEntity<List<LabResultLogResponseVM>> getByResultId(@PathVariable Long resultId) {
+        LOG.debug("[LabResultLog] GET_BY_RESULT_ID - request received. resultId={}", resultId);
+
+        List<LabResultLog> logs = logRepository.findAllByResultIdOrderByResultDateDesc(resultId);
+
+        List<LabResultLogResponseVM> body = logs.stream()
+                .map(LabResultLogResponseVM::ofEntity)
+                .toList();
+
+        LOG.debug("[LabResultLog] GET_BY_RESULT_ID - response ready. resultId={} returned={}", resultId, body.size());
+        return ResponseEntity.ok(body);
+    }
 
 
 }
