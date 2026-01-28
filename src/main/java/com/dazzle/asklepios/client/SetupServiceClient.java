@@ -23,4 +23,8 @@ public interface SetupServiceClient {
     @GetMapping("/api/setup/diagnostic-test-profiles/{id}/result-type")
     TestResultType getResultTypeByProfileTestIdInternal(@PathVariable("id") Long id);
 
+
+    @GetMapping("/api/setup/diagnostic-test-profiles/internal/by-test/{testId}/lab-profile-ids")
+    List<Long> getTestProfilesIdsByTestId(Long testId);
+
 }

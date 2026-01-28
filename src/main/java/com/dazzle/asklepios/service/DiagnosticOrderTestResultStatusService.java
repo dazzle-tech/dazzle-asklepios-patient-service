@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.SetupServiceClient;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
@@ -39,6 +40,7 @@ public class DiagnosticOrderTestResultStatusService {
     /** Service used to recompute aggregated lab/radiology statuses on the parent order. */
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
   private final  NormalRangeMatcherService normalRangeMatcherService;
+  private  final SetupServiceClient setupServiceClient;
     /**
      * Constructs the service with required dependencies.
      *
@@ -51,13 +53,14 @@ public class DiagnosticOrderTestResultStatusService {
             DiagnosticOrderTestResultRepository resultRepository,
             DiagnosticOrderTestStatusService diagnosticOrderTestStatusService,
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
-            DiagnosticOrderStatusService diagnosticOrderStatusService, NormalRangeMatcherService normalRangeMatcherService
+            DiagnosticOrderStatusService diagnosticOrderStatusService, NormalRangeMatcherService normalRangeMatcherService, SetupServiceClient setupServiceClient
     ) {
         this.resultRepository = resultRepository;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
         this.normalRangeMatcherService = normalRangeMatcherService;
+        this.setupServiceClient = setupServiceClient;
     }
 
     /**
@@ -183,6 +186,7 @@ public class DiagnosticOrderTestResultStatusService {
      * @throws BadRequestAlertException if the parent test does not exist
      */
     public DiagnosticOrderTest recomputeTestProcessingStatusFromResults(Long orderTestId) {
+
         DiagnosticOrderTest test = diagnosticOrderTestRepository.findById(orderTestId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
@@ -190,17 +194,42 @@ public class DiagnosticOrderTestResultStatusService {
                         "DiagnosticOrderTest not found with id " + orderTestId
                 ));
 
-        if (!resultRepository.existsByOrderTestId(orderTestId)) {
+        // profile ids (active lab profiles) from setup-service
+        List<Long> profileIds = setupServiceClient.getTestProfilesIdsByTestId(test.getTestId());
+        if (profileIds == null || profileIds.isEmpty()) {
+            // no profiles configured => keep current status (or NEW)
             return test;
         }
 
+        // profile ids that already have results (excluding CANCELLED results)
+        List<Long> filledProfileIds = resultRepository.findDistinctProfileTestIdsByOrderTestId(orderTestId);
+        if (filledProfileIds == null) filledProfileIds = List.of();
+
+        boolean hasAnyResult = !filledProfileIds.isEmpty();
+        boolean allProfilesFilled = filledProfileIds.containsAll(profileIds);
+
+        // Keep your aggregation logic for "what is the strongest status among existing results"
+        // but prevent READY/RESULT_READY unless ALL profiles have results.
         List<DiagnosticStatus> statuses = resultRepository.findProcessingStatusesByOrderTestId(orderTestId);
-        DiagnosticStatus target = aggregate(statuses);
+        DiagnosticStatus aggregated = aggregate(statuses);
+
+        DiagnosticStatus target;
+        if (!hasAnyResult) {
+            // no results at all
+            target = DiagnosticStatus.NEW; // or PENDING if you have it
+        } else if (!allProfilesFilled) {
+            // some results exist but not all profiles are filled
+            target = DiagnosticStatus.PARTIALLY; // make sure enum exists
+        } else {
+            // all profiles filled => allow aggregated status (READY / REJECTED / APPROVED ...)
+            target = aggregated;
+        }
 
         test.setProcessingStatus(target);
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
 
+        // keep order sync
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
 
         return saved;

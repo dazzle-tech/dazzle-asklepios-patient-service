@@ -34,4 +34,10 @@ public interface DiagnosticOrderTestResultRepository extends JpaRepository<Diagn
                         or r.processingStatus <> com.dazzle.asklepios.domain.enumeration.DiagnosticStatus.CANCELLED)
             """)
     List<DiagnosticStatus> findProcessingStatusesByOrderTestId(Long orderTestId);
-}
+
+    @Query("""
+    select distinct r.profileTestId
+      from DiagnosticOrderTestResult r
+     where r.orderTestId = ?1
+""")
+    List<Long> findDistinctProfileTestIdsByOrderTestId(Long orderTestId);}
