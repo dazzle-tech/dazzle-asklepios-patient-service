@@ -49,6 +49,9 @@ import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * REST controller for managing {@link DiagnosticOrderTestResult} resources.
@@ -438,7 +441,6 @@ public class DiagnosticOrderTestResultController {
 
         return null;
     }
-
     @GetMapping("/lab-result-logs/by-result/{resultId}")
     public ResponseEntity<List<LabResultLogResponseVM>> getByResultId(@PathVariable Long resultId) {
         LOG.debug("[LabResultLog] GET_BY_RESULT_ID - request received. resultId={}", resultId);
@@ -452,6 +454,43 @@ public class DiagnosticOrderTestResultController {
         LOG.debug("[LabResultLog] GET_BY_RESULT_ID - response ready. resultId={} returned={}", resultId, body.size());
         return ResponseEntity.ok(body);
     }
+    @GetMapping("/diagnostic-order-tests-results/internal/filled-profile-test-ids")
+    public ResponseEntity<List<Long>> findFilledProfileTestIds(
+            @RequestParam(name = "orderTestIds") List<Long> orderTestIds
+    ) {
+        if (orderTestIds == null || orderTestIds.isEmpty()) {
+            return ResponseEntity.ok(List.of());
+        }
 
+        List<Long> ids = orderTestIds.stream()
+                .filter(Objects::nonNull)
+                .flatMap(orderTestId -> repository
+                        .findDistinctProfileTestIdsByOrderTestId(orderTestId)
+                        .stream()
+                )
+                .distinct()
+                .toList();
+
+        return ResponseEntity.ok(ids);
+    }
+
+    @GetMapping("/diagnostic-order-tests-results/internal/filled-profile-test-ids/by-order-test")
+    public ResponseEntity<Map<Long, List<Long>>> findFilledProfileTestIdsByOrderTest(
+            @RequestParam(name = "orderTestIds") List<Long> orderTestIds
+    ) {
+        if (orderTestIds == null || orderTestIds.isEmpty()) {
+            return ResponseEntity.ok(Map.of());
+        }
+
+        Map<Long, List<Long>> map = orderTestIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toMap(
+                        id -> id,
+                        id -> repository.findDistinctProfileTestIdsByOrderTestId(id)
+                ));
+
+        return ResponseEntity.ok(map);
+    }
 
 }
