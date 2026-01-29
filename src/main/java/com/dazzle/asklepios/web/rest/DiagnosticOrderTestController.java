@@ -15,6 +15,7 @@ import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.Diagnosti
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestUpdateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.commands.DiagnosticOrderTestCancelDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.commands.DiagnosticOrderTestRejectDTO;
+import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.patientarrived.PatientArrivedUpdateRequestDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.diagnosticorders.DiagnosticOrderTestResponseVM;
@@ -32,6 +33,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -524,5 +526,13 @@ public class DiagnosticOrderTestController {
         String username = currentUsername();
         DiagnosticOrderTest updated = diagnosticOrderTestStatusService.cancel(id, username, dto.cancellationReason());
         return ResponseEntity.ok(DiagnosticOrderTestResponseVM.ofEntity(updated));
+    }
+
+    @PatchMapping("/diagnostic-order-tests/{id}/radiology/patient-arrived")
+    public ResponseEntity<DiagnosticOrderTest> patientArrived(
+            @PathVariable("id") Long id,
+            @Valid @RequestBody PatientArrivedUpdateRequestDTO dto
+    ) {
+        return ResponseEntity.ok(diagnosticOrderTestStatusService.patientArrived(id, dto));
     }
 }
