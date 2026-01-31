@@ -44,20 +44,26 @@ public class DiagnosticOrderTestResultTechnicianNoteController {
     public ResponseEntity<DiagnosticOrderTestResultTechnicianNoteResponseVM> create(
             @Valid @RequestBody DiagnosticOrderTestResultTechnicianNoteDTO dto
     ) {
-        // Validate test result exists (dto.orderTestId is being used as result id in your original code)
-        DiagnosticOrderTestResult testResult = diagnosticOrderTestResultRepository.findById(dto.orderTestId())
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
-                        "diagnostic_order_test_results",
-                        "DiagnosticOrderTestResult not found with id " + dto.orderTestId()
-                ));
 
-        // Validate order_id matches the result's order_id
-        if (testResult.getOrderId() == null || !testResult.getOrderId().equals(dto.orderId())) {
+        DiagnosticOrderTestResult testResult =
+                diagnosticOrderTestResultRepository.findById(dto.resultId())
+                        .orElseThrow(() -> new BadRequestAlertException(
+                                "notfound",
+                                "diagnostic_order_test_results",
+                                "DiagnosticOrderTestResult not found with id " + dto.resultId()
+                        ));
+        if (!testResult.getOrderTestId().equals(dto.orderTestId())) {
+            throw new BadRequestAlertException(
+                    "order_test_mismatch",
+                    "diagnostic_order_test_result_technician_notes",
+                    "orderTestId does not match the given resultId"
+            );
+        }
+        if (!testResult.getOrderId().equals(dto.orderId())) {
             throw new BadRequestAlertException(
                     "order_mismatch",
                     "diagnostic_order_test_result_technician_notes",
-                    "orderId does not match the order of the given orderTestId"
+                    "orderId does not match the given resultId"
             );
         }
 
@@ -67,6 +73,7 @@ public class DiagnosticOrderTestResultTechnicianNoteController {
                 .created(URI.create("/api/patient/diagnostic-order-test-result-notes/" + saved.getId()))
                 .body(DiagnosticOrderTestResultTechnicianNoteResponseVM.ofEntity(saved));
     }
+
 
     @GetMapping("/diagnostic-order-test-result-notes/{id}")
     public ResponseEntity<DiagnosticOrderTestResultTechnicianNoteResponseVM> getById(@PathVariable Long id) {

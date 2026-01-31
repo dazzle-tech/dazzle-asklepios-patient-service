@@ -20,9 +20,10 @@ import java.util.List;
  * <p>This service enforces allowed transitions for {@link DiagnosticStatus} (processingStatus) and updates audit fields
  * (approvedBy/date, rejectedBy/date/reason, reviewBy/date).</p>
  *
- * <p>After a successful approve/reject transition, it also updates the parent {@link DiagnosticOrderTest} using
- * {@link DiagnosticOrderTestStatusService} and keeps the parent {@code DiagnosticOrder} aggregated statuses in sync
- * (via {@link DiagnosticOrderStatusService}).</p>
+     <p>After a successful approve/reject transition, it updates the
+     {@link DiagnosticOrderTestResult} lifecycle only.
+     Parent test and order statuses are NOT affected here.</p>
+
  */
 @Service
 @Transactional
@@ -124,9 +125,9 @@ public class DiagnosticOrderTestResultStatusService {
         DiagnosticOrderTestResult r = getResult(resultId);
 
         DiagnosticStatus from = normalize(r.getProcessingStatus());
-        ensureTransition(from, DiagnosticStatus.REJECTED);
+        ensureTransition(from, DiagnosticStatus.RESULT_REJECTED);
 
-        r.setProcessingStatus(DiagnosticStatus.REJECTED);
+        r.setProcessingStatus(DiagnosticStatus.RESULT_REJECTED);
         r.setRejectedBy(rejectedBy);
         r.setRejectedReason(rejectedReason);
         r.setRejectedDate(Instant.now());
@@ -138,6 +139,7 @@ public class DiagnosticOrderTestResultStatusService {
 
         return saved;
     }
+
 
     /**
      * Toggles review state for a result.
@@ -268,13 +270,17 @@ public class DiagnosticOrderTestResultStatusService {
      * @throws BadRequestAlertException if the transition is not allowed
      */
     private void ensureTransition(DiagnosticStatus from, DiagnosticStatus to) {
+
         if (to == DiagnosticStatus.RESULT_APPROVED) {
-            if (from != DiagnosticStatus.RESULT_READY) throw invalid(from, to);
+            if (from != DiagnosticStatus.RESULT_READY)
+                throw invalid(from, to);
             return;
         }
 
-        if (to == DiagnosticStatus.REJECTED) {
-            if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.RESULT_READY || from == DiagnosticStatus.REVIEWED)) {
+        if (to == DiagnosticStatus.RESULT_REJECTED) {
+            if (!(from == DiagnosticStatus.NEW
+                    || from == DiagnosticStatus.RESULT_READY
+                   )) {
                 throw invalid(from, to);
             }
             return;
@@ -305,8 +311,8 @@ public class DiagnosticOrderTestResultStatusService {
      * @return aggregated status
      */
     private DiagnosticStatus aggregate(List<DiagnosticStatus> statuses) {
-        if (statuses.stream().anyMatch(s -> s == DiagnosticStatus.REJECTED)) {
-            return DiagnosticStatus.REJECTED;
+        if (statuses.stream().anyMatch(s -> s == DiagnosticStatus.RESULT_REJECTED)) {
+            return DiagnosticStatus.RESULT_REJECTED;
         }
 
         if (statuses.stream().allMatch(s -> s == DiagnosticStatus.RESULT_APPROVED)) {
