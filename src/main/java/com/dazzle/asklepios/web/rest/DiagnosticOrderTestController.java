@@ -15,10 +15,11 @@ import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.Diagnosti
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestUpdateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.commands.DiagnosticOrderTestCancelDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.commands.DiagnosticOrderTestRejectDTO;
-import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.patientarrived.PatientArrivedUpdateRequestDTO;
+import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.patientarrived.PatientArrivedCreateRequestDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.diagnosticorders.DiagnosticOrderTestResponseVM;
+import com.dazzle.asklepios.web.rest.vm.diagnosticorders.PatientArrivedResponseVM;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.validation.Valid;
@@ -529,10 +530,16 @@ public class DiagnosticOrderTestController {
     }
 
     @PatchMapping("/diagnostic-order-tests/{id}/radiology/patient-arrived")
-    public ResponseEntity<DiagnosticOrderTest> patientArrived(
+    public ResponseEntity<PatientArrivedResponseVM> patientArrived(
             @PathVariable("id") Long id,
-            @Valid @RequestBody PatientArrivedUpdateRequestDTO dto
+            @Valid @RequestBody PatientArrivedCreateRequestDTO dto
     ) {
         return ResponseEntity.ok(diagnosticOrderTestStatusService.patientArrived(id, dto));
     }
+
+    @GetMapping("/diagnostic-order-tests/{id}/radiology/patient-arrived")
+    public ResponseEntity<PatientArrivedResponseVM> getPatientArrived(@PathVariable("id") Long id) {
+        return ResponseEntity.ok(diagnosticOrderTestStatusService.getPatientArrived(id));
+    }
+
 }

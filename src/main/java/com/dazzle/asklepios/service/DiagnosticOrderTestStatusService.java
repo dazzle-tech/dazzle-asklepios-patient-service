@@ -5,7 +5,9 @@ import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
+import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.patientarrived.PatientArrivedCreateRequestDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.vm.diagnosticorders.PatientArrivedResponseVM;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -77,20 +79,31 @@ public class DiagnosticOrderTestStatusService {
      * @param dto    arrival payload (date and optional note)
      * @return updated and persisted entity
      */
-    public DiagnosticOrderTest patientArrived(Long testId, com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.patientarrived.PatientArrivedUpdateRequestDTO dto) {
+
+
+    public PatientArrivedResponseVM patientArrived(Long testId, PatientArrivedCreateRequestDTO dto) {
         DiagnosticOrderTest test = getTest(testId);
 
         if (test.getOrderType() != TestType.RADIOLOGY) {
             throw new BadRequestAlertException("not_radiology", "diagnostic_order_tests", "Test is not radiology");
         }
 
+        ensureTransition(test, DiagnosticStatus.PATIENT_ARRIVED);
+
         test.setPatientArrivedDate(dto.patientArrivedDate() != null ? dto.patientArrivedDate() : Instant.now());
         test.setPatientArrivedNoteRad(dto.patientArrivedNoteRad());
+        test.setProcessingStatus(DiagnosticStatus.PATIENT_ARRIVED);
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
-        return saved;
+
+        return new PatientArrivedResponseVM(
+                saved.getId(),
+                saved.getPatientArrivedDate(),
+                saved.getPatientArrivedNoteRad()
+        );
     }
+
 
     /**
      * Transition:
@@ -250,6 +263,19 @@ public class DiagnosticOrderTestStatusService {
                         "DiagnosticOrderTest not found with id " + testId
                 ));
     }
+    @Transactional(readOnly = true)
+    public PatientArrivedResponseVM getPatientArrived(Long testId) {
+        DiagnosticOrderTest test = diagnosticOrderTestRepository.findById(testId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound", "diagnostic_order_tests", "DiagnosticOrderTest not found with id " + testId
+                ));
+
+        return new PatientArrivedResponseVM(
+                test.getId(),
+                test.getPatientArrivedDate(),
+                test.getPatientArrivedNoteRad()
+        );
+    }
 
     /**
      * Normalizes null processingStatus to {@link DiagnosticStatus#NEW}.
@@ -283,9 +309,15 @@ public class DiagnosticOrderTestStatusService {
             return;
         }
 
+        if (to == DiagnosticStatus.PATIENT_ARRIVED) {
+            if (type != TestType.RADIOLOGY) throw invalid(from, to);
+            if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.PATIENT_ARRIVED)) throw invalid(from, to);
+            return;
+        }
+
         if (to == DiagnosticStatus.ACCEPTED) {
             if (type == TestType.RADIOLOGY) {
-                if (test.getPatientArrivedDate() == null) throw invalid(from, to);
+                if (from != DiagnosticStatus.PATIENT_ARRIVED) throw invalid(from, to);
                 return;
             }
             if (from != DiagnosticStatus.SAMPLE_COLLECTED) throw invalid(from, to);
@@ -309,8 +341,7 @@ public class DiagnosticOrderTestStatusService {
 
         if (to == DiagnosticStatus.REJECTED) {
             if (type == TestType.RADIOLOGY) {
-                if (test.getPatientArrivedDate() != null) throw invalid(from, to);
-                if (from != DiagnosticStatus.NEW) throw invalid(from, to);
+                if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.PATIENT_ARRIVED)) throw invalid(from, to);
                 return;
             }
             if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.SAMPLE_COLLECTED)) throw invalid(from, to);
