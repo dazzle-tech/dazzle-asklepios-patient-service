@@ -1,3 +1,4 @@
+// AddressService.java
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Address;
@@ -46,21 +47,25 @@ public class AddressService {
 
         return addressRepository
                 .findFirstByPatientIdAndIsCurrentTrueOrderByIdDesc(patientId)
-                .orElseThrow(() ->
-                        new NotFoundAlertException("Current address not found", "address", "notfound")
-                );
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Current address not found",
+                        "address",
+                        "notfound"
+                ));
     }
 
     public Address create(Long patientId, AddressCreateDTO dto) {
         LOG.info("[CREATE] Address for patientId={}, payload={}", patientId, dto);
 
         Patient patient = patientRepository.findById(patientId)
-                .orElseThrow(() ->
-                        new NotFoundAlertException("Patient not found", "patient", "notfound")
-                );
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found",
+                        "patient",
+                        "notfound"
+                ));
 
         try {
-            addressRepository.resetIsCurrentForPatient(patientId);
+            resetIsCurrentForPatient(patientId);
 
             Address entity = Address.builder()
                     .patient(patient)
@@ -87,13 +92,15 @@ public class AddressService {
         }
     }
 
-    public Optional<Address> update(AddressUpdateDTO dto) {
+    public Address update(AddressUpdateDTO dto) {
         LOG.info("[UPDATE] Address id={}, payload={}", dto.id(), dto);
 
         Address existing = addressRepository.findById(dto.id())
-                .orElseThrow(() ->
-                        new NotFoundAlertException("Address not found", "address", "notfound")
-                );
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Address not found",
+                        "address",
+                        "notfound"
+                ));
 
         try {
             existing.setLocationJson(dto.locationJson());
@@ -109,7 +116,7 @@ public class AddressService {
 
             Address saved = addressRepository.saveAndFlush(existing);
             LOG.info("Successfully updated Address id={}", saved.getId());
-            return Optional.of(saved);
+            return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException constraintException) {
             handleConstraintsOnCreateOrUpdate(constraintException);
@@ -120,6 +127,23 @@ public class AddressService {
                     "db.constraint"
             );
         }
+    }
+
+
+    private void resetIsCurrentForPatient(Long patientId) {
+        LOG.debug("[RESET CURRENT] Setting isCurrent=false for existing current addresses, patientId={}", patientId);
+
+        List<Address> currentAddresses = addressRepository.findByPatientIdAndIsCurrentTrue(patientId);
+
+        if (currentAddresses.isEmpty()) {
+            LOG.debug("[RESET CURRENT] No current addresses found to reset, patientId={}", patientId);
+            return;
+        }
+
+        currentAddresses.forEach(a -> a.setIsCurrent(false));
+        addressRepository.flush();
+
+        LOG.debug("[RESET CURRENT] Reset done. affectedCount={} patientId={}", currentAddresses.size(), patientId);
     }
 
     private void handleConstraintsOnCreateOrUpdate(RuntimeException constraintException) {
@@ -155,4 +179,3 @@ public class AddressService {
         );
     }
 }
-

@@ -37,29 +37,44 @@ public class AddressController {
             @PathVariable Long patientId,
             @Valid @RequestBody AddressCreateDTO dto
     ) {
+        LOG.debug("REST create Address for patientId={} payload={}", patientId, dto);
+
         Address created = addressService.create(patientId, dto);
 
+        LOG.debug(
+                "REST create Address success id={} patientId={} isCurrent={}",
+                created.getId(),
+                patientId,
+                created.getIsCurrent()
+        );
+
         return ResponseEntity
-                .created(URI.create("/api/patient/addresses/" + created.getId()))
+                .created(URI.create("/api/patient/addresses/patient/" + patientId))
                 .body(AddressResponseVM.ofEntity(created));
     }
+
 
     @PutMapping("/addresses/{id}")
     public ResponseEntity<AddressResponseVM> updateAddress(
             @PathVariable Long id,
             @Valid @RequestBody AddressUpdateDTO dto
     ) {
-        if (!dto.id().equals(id)) {
+        if (dto == null) {
+            throw new BadRequestAlertException("Address payload is required", "address", "payload.required");
+        }
+
+        if (dto.id() == null || !dto.id().equals(id)) {
             throw new BadRequestAlertException(
-                    "Invalid id", "address", "idinvalid"
+                    "Path id does not match payload id",
+                    "address",
+                    "id.mismatch"
             );
         }
 
-        return addressService.update(dto)
-                .map(AddressResponseVM::ofEntity)
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        Address updated = addressService.update(dto);
+        return ResponseEntity.ok(AddressResponseVM.ofEntity(updated));
     }
+
 
     @GetMapping("/addresses/patient/{patientId}")
     public ResponseEntity<List<AddressResponseVM>> getAddressesByPatient(
