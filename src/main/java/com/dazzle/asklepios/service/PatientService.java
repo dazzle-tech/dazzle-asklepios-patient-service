@@ -147,11 +147,6 @@ public class PatientService {
         }
     }
 
-    public Patient createUnknown() {
-        LOG.info("[CREATE UNKNOWN] Request to create default UNKNOWN patient");
-        return createUnknown(UnknownPatientCreateDTO.defaultUnknown());
-    }
-
     public Patient update(Long id, PatientUpdateDTO dto) {
         LOG.info("[UPDATE] Request to update Patient id={} payload={}", id, dto);
 
