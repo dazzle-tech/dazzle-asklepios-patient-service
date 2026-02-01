@@ -286,6 +286,21 @@ public class PatientService {
     }
 
     @Transactional(readOnly = true)
+    public Patient findById(Long id) {
+        LOG.debug("[FIND BY ID] Fetching Patient id={}", id);
+
+        return patientRepository.findById(id)
+                .orElseThrow(() -> {
+                    LOG.error("Patient not found with id={}", id);
+                    return new NotFoundAlertException(
+                            "Patient not found with id " + id,
+                            "patient",
+                            "notfound"
+                    );
+                });
+    }
+
+    @Transactional(readOnly = true)
     public Page<Patient> findUnknownPatients(Pageable pageable) {
         LOG.debug("[FIND UNKNOWN] Fetching unknown patients with pageable={}", pageable);
         return patientRepository.findByIsUnknownTrue(pageable);

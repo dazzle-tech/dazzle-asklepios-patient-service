@@ -8,7 +8,6 @@ import com.dazzle.asklepios.service.dto.patientPreferredHealthProfessional.Patie
 import com.dazzle.asklepios.service.dto.patientPreferredHealthProfessional.PatientPreferredHealthProfessionalUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.PatientPreferredHealthProfessionalResponseVM;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -40,17 +39,30 @@ public class PatientPreferredHealthProfessionalController {
 
     private final PatientPreferredHealthProfessionalService service;
     private final PatientService patientService;
-    public PatientPreferredHealthProfessionalController(PatientPreferredHealthProfessionalService service, PatientService patientService) {
+
+    public PatientPreferredHealthProfessionalController(
+            PatientPreferredHealthProfessionalService service,
+            PatientService patientService
+    ) {
         this.service = service;
         this.patientService = patientService;
     }
 
     @PostMapping("/preferred-health-professionals/patient/{patientId}")
-    public ResponseEntity<PatientPreferredHealthProfessionalResponseVM> createPreferred(
+    public ResponseEntity<PatientPreferredHealthProfessionalResponseVM> createPreferredHealthProfessionalForPatient(
             @PathVariable Long patientId,
             @Valid @RequestBody PatientPreferredHealthProfessionalCreateDTO dto
     ) {
         LOG.debug("REST create PatientPreferredHealthProfessional for patientId={} payload={}", patientId, dto);
+
+        if (patientId == null) {
+            throw new BadRequestAlertException(
+                    "Patient id is required",
+                    "patientPreferredHealthProfessional",
+                    "patient.required"
+            );
+        }
+
         if (dto == null) {
             throw new BadRequestAlertException(
                     "PatientPreferredHealthProfessional payload is required",
@@ -58,15 +70,13 @@ public class PatientPreferredHealthProfessionalController {
                     "payload.required"
             );
         }
-        Patient patient = patientService.findById(patientId)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient not found with id " + patientId,
-                        "patient",
-                        "notfound"
-                ));
+
+        Patient patient = patientService.findById(patientId);
 
         PatientPreferredHealthProfessional created = service.create(patient, dto);
-        PatientPreferredHealthProfessionalResponseVM body = PatientPreferredHealthProfessionalResponseVM.ofEntity(created);
+
+        PatientPreferredHealthProfessionalResponseVM body =
+                PatientPreferredHealthProfessionalResponseVM.ofEntity(created);
 
         return ResponseEntity
                 .created(URI.create("/api/patient/preferred-health-professionals/" + created.getId()))
@@ -74,11 +84,12 @@ public class PatientPreferredHealthProfessionalController {
     }
 
     @PutMapping("/preferred-health-professionals/{id}")
-    public ResponseEntity<PatientPreferredHealthProfessionalResponseVM> updatePreferred(
+    public ResponseEntity<PatientPreferredHealthProfessionalResponseVM> updatePreferredHealthProfessional(
             @PathVariable Long id,
             @Valid @RequestBody PatientPreferredHealthProfessionalUpdateDTO dto
     ) {
         LOG.debug("REST update PatientPreferredHealthProfessional id={} payload={}", id, dto);
+
         if (dto == null) {
             throw new BadRequestAlertException(
                     "PatientPreferredHealthProfessional payload is required",
@@ -89,17 +100,14 @@ public class PatientPreferredHealthProfessionalController {
 
         if (dto.id() == null || !dto.id().equals(id)) {
             throw new BadRequestAlertException(
-                    "Invalid id",
+                    "Path id does not match payload id",
                     "patientPreferredHealthProfessional",
-                    "idinvalid"
+                    "id.mismatch"
             );
         }
 
-        PatientPreferredHealthProfessional existing =
-                service.findByIdOrThrow(id);
-
-        PatientPreferredHealthProfessional updated =
-                service.update(existing, dto);
+        PatientPreferredHealthProfessional existing = service.findByIdOrThrow(id);
+        PatientPreferredHealthProfessional updated = service.update(existing, dto);
 
         PatientPreferredHealthProfessionalResponseVM body =
                 PatientPreferredHealthProfessionalResponseVM.ofEntity(updated);
@@ -107,13 +115,20 @@ public class PatientPreferredHealthProfessionalController {
         return ResponseEntity.ok(body);
     }
 
-
     @GetMapping("/preferred-health-professionals/patient/{patientId}")
-    public ResponseEntity<List<PatientPreferredHealthProfessionalResponseVM>> getPreferredByPatient(
+    public ResponseEntity<List<PatientPreferredHealthProfessionalResponseVM>> getPreferredHealthProfessionalsByPatient(
             @PathVariable Long patientId,
             @ParameterObject Pageable pageable
     ) {
         LOG.debug("REST list PatientPreferredHealthProfessional for patientId={} pageable={}", patientId, pageable);
+
+        if (patientId == null) {
+            throw new BadRequestAlertException(
+                    "Patient id is required",
+                    "patientPreferredHealthProfessional",
+                    "patient.required"
+            );
+        }
 
         Page<PatientPreferredHealthProfessional> page = service.findAllByPatient(patientId, pageable);
 
@@ -130,7 +145,7 @@ public class PatientPreferredHealthProfessionalController {
     }
 
     @DeleteMapping("/preferred-health-professionals/{id}")
-    public ResponseEntity<Void> deletePreferred(@PathVariable Long id) {
+    public ResponseEntity<Void> deletePreferredHealthProfessional(@PathVariable Long id) {
         LOG.debug("REST delete PatientPreferredHealthProfessional id={}", id);
 
         service.findByIdOrThrow(id);
@@ -138,5 +153,4 @@ public class PatientPreferredHealthProfessionalController {
 
         return ResponseEntity.noContent().build();
     }
-
 }
