@@ -59,13 +59,7 @@ public class DiagnosticOrderTestResultTechnicianNoteController {
                     "orderTestId does not match the given resultId"
             );
         }
-        if (!testResult.getOrderId().equals(dto.orderId())) {
-            throw new BadRequestAlertException(
-                    "order_mismatch",
-                    "diagnostic_order_test_result_technician_notes",
-                    "orderId does not match the given resultId"
-            );
-        }
+
 
         DiagnosticOrderTestResultTechnicianNote saved = noteService.create(dto);
 

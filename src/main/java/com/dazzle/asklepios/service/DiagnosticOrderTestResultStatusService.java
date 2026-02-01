@@ -133,8 +133,6 @@ public class DiagnosticOrderTestResultStatusService {
         r.setRejectedDate(Instant.now());
 
         DiagnosticOrderTestResult saved = resultRepository.save(r);
-
-        diagnosticOrderTestStatusService.reject(saved.getOrderTestId(), rejectedBy, rejectedReason);
         recomputeTestProcessingStatusFromResults(saved.getOrderTestId());
 
         return saved;

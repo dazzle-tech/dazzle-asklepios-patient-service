@@ -7,7 +7,6 @@ import java.time.Instant;
 public record DiagnosticOrderTestResultTechnicianNoteResponseVM(
         Long id,
         Long orderTestId,
-        Long orderId,
         String note,
         String createdBy,
         Instant createdDate
@@ -16,7 +15,6 @@ public record DiagnosticOrderTestResultTechnicianNoteResponseVM(
         return new DiagnosticOrderTestResultTechnicianNoteResponseVM(
                 e.getId(),
                 e.getOrderTestId(),
-                e.getOrderId(),
                 e.getNote(),
                 e.getCreatedBy(),
                 e.getCreatedDate()

@@ -36,8 +36,6 @@ public class DiagnosticOrderTestResultTechnicianNote  extends AbstractAuditingEn
     @Column(name = "order_test_id", nullable = false)
     private Long orderTestId;
 
-    @Column(name = "order_id", nullable = false)
-    private Long orderId;
 
     @Column(name = "result_id", nullable = false)
     private Long resultId;

@@ -6,7 +6,6 @@ import jakarta.validation.constraints.NotNull;
 
 public record DiagnosticOrderTestResultTechnicianNoteDTO(
         @NotNull Long orderTestId,
-        @NotNull Long orderId,
         @NotNull Long resultId,
         @NotBlank String note
 ) {

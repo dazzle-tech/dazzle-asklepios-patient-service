@@ -20,7 +20,6 @@ public class DiagnosticOrderTestResultTechnicianNoteService {
     public DiagnosticOrderTestResultTechnicianNote create(DiagnosticOrderTestResultTechnicianNoteDTO dto) {
         DiagnosticOrderTestResultTechnicianNote n = new DiagnosticOrderTestResultTechnicianNote();
         n.setOrderTestId(dto.orderTestId());
-        n.setOrderId(dto.orderId());
         n.setResultId(dto.resultId());
         n.setNote(dto.note());
         return noteRepository.save(n);
