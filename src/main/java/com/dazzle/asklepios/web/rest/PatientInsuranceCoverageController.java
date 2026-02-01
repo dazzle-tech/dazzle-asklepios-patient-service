@@ -6,7 +6,6 @@ import com.dazzle.asklepios.service.dto.patientInsuranceCoverage.PatientInsuranc
 import com.dazzle.asklepios.service.dto.patientInsuranceCoverage.PatientInsuranceCoverageUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.vm.insuranceCoverage.PatientInsuranceCoverageResponseVM;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,7 +15,14 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
@@ -35,22 +41,28 @@ public class PatientInsuranceCoverageController {
     }
 
     @PostMapping("/insurance-coverages")
-    public ResponseEntity<PatientInsuranceCoverageResponseVM> createCoverage(
+    public ResponseEntity<PatientInsuranceCoverage> createCoverage(
             @Valid @RequestBody PatientInsuranceCoverageCreateDTO dto
     ) {
         LOG.debug("REST create PatientInsuranceCoverage payload={}", dto);
+
         if (dto == null) {
-            throw new BadRequestAlertException("Payload is required", "patientInsuranceCoverage", "payload.required");
+            throw new BadRequestAlertException(
+                    "PatientInsuranceCoverage payload is required",
+                    "patientInsuranceCoverage",
+                    "payload.required"
+            );
         }
+
         PatientInsuranceCoverage created = coverageService.create(dto);
 
         return ResponseEntity
                 .created(URI.create("/api/patient/insurance-coverages/" + created.getId()))
-                .body(PatientInsuranceCoverageResponseVM.ofEntity(created));
+                .body(created);
     }
 
     @PutMapping("/insurance-coverages/{id}")
-    public ResponseEntity<PatientInsuranceCoverageResponseVM> updateCoverage(
+    public ResponseEntity<PatientInsuranceCoverage> updateCoverage(
             @PathVariable Long id,
             @Valid @RequestBody PatientInsuranceCoverageUpdateDTO dto
     ) {
@@ -66,49 +78,56 @@ public class PatientInsuranceCoverageController {
 
         if (dto.id() == null || !id.equals(dto.id())) {
             throw new BadRequestAlertException(
-                    "Invalid id",
+                    "Path id does not match payload id",
                     "patientInsuranceCoverage",
-                    "id.invalid"
+                    "id.mismatch"
             );
         }
 
-        PatientInsuranceCoverage existing = coverageService.findByIdOrThrow(id);
+        PatientInsuranceCoverage updated = coverageService.update(id, dto);
 
-        PatientInsuranceCoverage updated = coverageService.update(existing, dto);
-
-        return ResponseEntity.ok(PatientInsuranceCoverageResponseVM.ofEntity(updated));
+        return ResponseEntity.ok(updated);
     }
 
     @GetMapping("/insurance-coverages/insurance/{insuranceId}")
-    public ResponseEntity<List<PatientInsuranceCoverageResponseVM>> getCoveragesByInsurance(
+    public ResponseEntity<List<PatientInsuranceCoverage>> getCoveragesByInsurance(
             @PathVariable Long insuranceId,
             @ParameterObject Pageable pageable
     ) {
         LOG.debug("REST list PatientInsuranceCoverages insuranceId={} pageable={}", insuranceId, pageable);
+
         if (insuranceId == null) {
-            throw new BadRequestAlertException("Insurance id is required", "patientInsuranceCoverage", "insurance.required");
+            throw new BadRequestAlertException(
+                    "Insurance id is required",
+                    "patientInsuranceCoverage",
+                    "insurance.required"
+            );
         }
+
         Page<PatientInsuranceCoverage> page = coverageService.findAllByInsurance(insuranceId, pageable);
+
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(), page
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                page
         );
 
-        List<PatientInsuranceCoverageResponseVM> body = page.getContent()
-                .stream()
-                .map(PatientInsuranceCoverageResponseVM::ofEntity)
-                .toList();
-
-        return new ResponseEntity<>(body, headers, HttpStatus.OK);
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
     @DeleteMapping("/insurance-coverages/{id}")
     public ResponseEntity<Void> deleteCoverage(@PathVariable Long id) {
         LOG.debug("REST delete PatientInsuranceCoverage id={}", id);
 
-        boolean deleted = coverageService.delete(id);
-        if (deleted) {
-            return ResponseEntity.noContent().build();
+        if (id == null) {
+            throw new BadRequestAlertException(
+                    "InsuranceCoverage id is required",
+                    "patientInsuranceCoverage",
+                    "id.required"
+            );
         }
-        return ResponseEntity.notFound().build();
+
+        coverageService.findByIdOrThrow(id);
+        coverageService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 }

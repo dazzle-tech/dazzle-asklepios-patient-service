@@ -7,11 +7,11 @@ import com.dazzle.asklepios.service.dto.patientInsuranceCoverage.PatientInsuranc
 import com.dazzle.asklepios.service.dto.patientInsuranceCoverage.PatientInsuranceCoverageUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,14 +25,14 @@ public class PatientInsuranceCoverageService {
     private static final Logger LOG = LoggerFactory.getLogger(PatientInsuranceCoverageService.class);
 
     private final PatientInsuranceCoverageRepository coverageRepository;
-    private final EntityManager entityManager;
+    private final PatientInsuranceService patientInsuranceService;
 
     public PatientInsuranceCoverageService(
             PatientInsuranceCoverageRepository coverageRepository,
-            EntityManager entityManager
+            PatientInsuranceService patientInsuranceService
     ) {
         this.coverageRepository = coverageRepository;
-        this.entityManager = entityManager;
+        this.patientInsuranceService = patientInsuranceService;
     }
 
     public PatientInsuranceCoverage create(PatientInsuranceCoverageCreateDTO dto) {
@@ -46,15 +46,21 @@ public class PatientInsuranceCoverageService {
                 .build();
 
         try {
-            return coverageRepository.saveAndFlush(entity);
+            PatientInsuranceCoverage saved = coverageRepository.saveAndFlush(entity);
+            LOG.info("[CREATE] PatientInsuranceCoverage success id={} insuranceId={} itemType={} coverageType={}",
+                    saved.getId(), dto.insuranceId(), dto.itemType(), dto.coverageType());
+            return saved;
+
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            LOG.warn("[CREATE] PatientInsuranceCoverage failed (constraint) insuranceId={} payload={}",
+                    dto.insuranceId(), dto, ex);
             throw handleConstraintViolation(ex);
         }
     }
 
     @Transactional(readOnly = true)
     public PatientInsuranceCoverage findByIdOrThrow(Long id) {
-        LOG.debug("[FIND BY ID] Fetching PatientInsuranceCoverage id={}", id);
+        LOG.debug("[FIND_BY_ID] Fetching PatientInsuranceCoverage id={}", id);
 
         return coverageRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -64,11 +70,10 @@ public class PatientInsuranceCoverageService {
                 ));
     }
 
-    public PatientInsuranceCoverage update(
-            PatientInsuranceCoverage existing,
-            PatientInsuranceCoverageUpdateDTO dto
-    ) {
-        LOG.info("[UPDATE] PatientInsuranceCoverage id={} payload={}", existing.getId(), dto);
+    public PatientInsuranceCoverage update(Long id, PatientInsuranceCoverageUpdateDTO dto) {
+        LOG.info("[UPDATE] PatientInsuranceCoverage id={} payload={}", id, dto);
+
+        PatientInsuranceCoverage existing = findByIdOrThrow(id);
 
         existing.setInsurance(refInsurance(dto.insuranceId()));
         existing.setItemType(dto.itemType());
@@ -76,35 +81,42 @@ public class PatientInsuranceCoverageService {
         existing.setAmount(dto.amount());
 
         try {
-            return coverageRepository.saveAndFlush(existing);
+            PatientInsuranceCoverage saved = coverageRepository.saveAndFlush(existing);
+            LOG.info("[UPDATE] PatientInsuranceCoverage success id={} insuranceId={} itemType={} coverageType={}",
+                    saved.getId(), dto.insuranceId(), dto.itemType(), dto.coverageType());
+            return saved;
+
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            LOG.warn("[UPDATE] PatientInsuranceCoverage failed (constraint) id={} insuranceId={} payload={}",
+                    id, dto.insuranceId(), dto, ex);
             throw handleConstraintViolation(ex);
         }
     }
 
-
     @Transactional(readOnly = true)
-    public Page<PatientInsuranceCoverage> findAllByInsurance(Long insuranceId, org.springframework.data.domain.Pageable pageable) {
-
+    public Page<PatientInsuranceCoverage> findAllByInsurance(Long insuranceId, Pageable pageable) {
+        LOG.debug("[FIND_BY_INSURANCE] insuranceId={} pageable={}", insuranceId, pageable);
         return coverageRepository.findByInsuranceId(insuranceId, pageable);
     }
 
-    public boolean delete(Long id) {
-        if (id == null || !coverageRepository.existsById(id)) {
-            return false;
-        }
+    public void delete(Long id) {
+        LOG.info("[DELETE] PatientInsuranceCoverage id={}", id);
         coverageRepository.deleteById(id);
-        return true;
+        coverageRepository.flush();
+        LOG.info("[DELETE] PatientInsuranceCoverage success id={}", id);
     }
 
     private PatientInsurance refInsurance(Long insuranceId) {
-        return entityManager.getReference(PatientInsurance.class, insuranceId);
+        LOG.debug("[REF_INSURANCE] insuranceId={}", insuranceId);
+        return patientInsuranceService.findById(insuranceId);
     }
 
     private RuntimeException handleConstraintViolation(Exception exception) {
         Throwable root = getRootCause(exception);
         String message = root != null ? root.getMessage() : exception.getMessage();
         String lower = message != null ? message.toLowerCase() : "";
+
+        LOG.warn("[DB_CONSTRAINT] PatientInsuranceCoverage constraint violated rootMessage={}", message, exception);
 
         if (lower.contains("ux_insurance_coverage_ins_item_cov")) {
             return new BadRequestAlertException(

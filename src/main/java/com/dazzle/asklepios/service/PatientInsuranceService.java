@@ -8,7 +8,6 @@ import com.dazzle.asklepios.service.dto.patientInsurance.PatientInsuranceCreateD
 import com.dazzle.asklepios.service.dto.patientInsurance.PatientInsuranceUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -27,16 +26,17 @@ public class PatientInsuranceService {
     private static final Logger LOG = LoggerFactory.getLogger(PatientInsuranceService.class);
 
     private final PatientInsuranceRepository patientInsuranceRepository;
-    private final EntityManager entityManager;
     private final PatientInsuranceCoverageRepository patientInsuranceCoverageRepository;
+    private final PatientService patientService;
 
     public PatientInsuranceService(
             PatientInsuranceRepository patientInsuranceRepository,
-            EntityManager entityManager,
-            PatientInsuranceCoverageRepository patientInsuranceCoverageRepository) {
+            PatientInsuranceCoverageRepository patientInsuranceCoverageRepository,
+            PatientService patientService
+    ) {
         this.patientInsuranceRepository = patientInsuranceRepository;
-        this.entityManager = entityManager;
         this.patientInsuranceCoverageRepository = patientInsuranceCoverageRepository;
+        this.patientService = patientService;
     }
 
     public PatientInsurance create(PatientInsuranceCreateDTO dto) {
@@ -64,16 +64,10 @@ public class PatientInsuranceService {
             LOG.warn("[CREATE] PatientInsurance failed (constraint) patientId={} payorId={} planId={} payload={}",
                     dto.patientId(), dto.payorId(), dto.planId(), dto, ex);
             throw handleConstraintViolation(ex);
-        } catch (RuntimeException ex) {
-            LOG.error("[CREATE] PatientInsurance failed (unexpected) payload={}", dto, ex);
-            throw ex;
         }
     }
 
-    public PatientInsurance update(
-            PatientInsurance existing,
-            PatientInsuranceUpdateDTO dto
-    ) {
+    public PatientInsurance update(PatientInsurance existing, PatientInsuranceUpdateDTO dto) {
         Long existingId = existing != null ? existing.getId() : null;
         LOG.info("[UPDATE] PatientInsurance id={} payload={}", existingId, dto);
 
@@ -97,35 +91,31 @@ public class PatientInsuranceService {
             LOG.warn("[UPDATE] PatientInsurance failed (constraint) id={} patientId={} payorId={} planId={} payload={}",
                     existingId, dto.patientId(), dto.payorId(), dto.planId(), dto, ex);
             throw handleConstraintViolation(ex);
-        } catch (RuntimeException ex) {
-            LOG.error("[UPDATE] PatientInsurance failed (unexpected) id={} payload={}", existingId, dto, ex);
-            throw ex;
         }
-    }
-
-    @Transactional(readOnly = true)
-    public Page<PatientInsurance> findAll(Pageable pageable) {
-        LOG.debug("[FIND_ALL] PatientInsurance pageable={}", pageable);
-        Page<PatientInsurance> page = patientInsuranceRepository.findAll(pageable);
-        LOG.debug("[FIND_ALL] PatientInsurance result totalElements={} totalPages={} pageNumber={} pageSize={}",
-                page.getTotalElements(), page.getTotalPages(), page.getNumber(), page.getSize());
-        return page;
     }
 
     @Transactional(readOnly = true)
     public Page<PatientInsurance> getInsurancesByPatient(Long patientId, Pageable pageable) {
         LOG.debug("[FIND_BY_PATIENT] PatientInsurance patientId={} pageable={}", patientId, pageable);
-
-        Page<PatientInsurance> page = patientInsuranceRepository.findByPatientId(patientId, pageable);
-        LOG.debug("[FIND_BY_PATIENT] PatientInsurance result patientId={} totalElements={} totalPages={} pageNumber={} pageSize={}",
-                patientId, page.getTotalElements(), page.getTotalPages(), page.getNumber(), page.getSize());
-        return page;
+        return patientInsuranceRepository.findByPatientId(patientId, pageable);
     }
 
     @Transactional(readOnly = true)
     public long countCoverages(Long insuranceId) {
         LOG.debug("[COUNT] insuranceId={} → counting coverages", insuranceId);
         return patientInsuranceCoverageRepository.countByInsuranceId(insuranceId);
+    }
+
+    @Transactional(readOnly = true)
+    public PatientInsurance findById(Long id) {
+        LOG.debug("[FIND_BY_ID] PatientInsurance id={}", id);
+
+        return patientInsuranceRepository.findById(id)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "PatientInsurance not found with id " + id,
+                        "patientInsurance",
+                        "notfound"
+                ));
     }
 
     public boolean delete(Long id, boolean deleteCoverages) {
@@ -155,8 +145,8 @@ public class PatientInsuranceService {
             patientInsuranceRepository.deleteById(id);
             patientInsuranceRepository.flush();
             LOG.info("[DELETE] PatientInsurance success id={}", id);
-
             return true;
+
         } catch (DataIntegrityViolationException ex) {
             LOG.error("[DELETE] PatientInsurance failed (FK) id={}", id, ex);
             throw new BadRequestAlertException(
@@ -168,8 +158,8 @@ public class PatientInsuranceService {
     }
 
     private Patient refPatient(Long patientId) {
-        LOG.debug("[REF_PATIENT] patientId={}", patientId);
-        return entityManager.getReference(Patient.class, patientId);
+        LOG.debug("[REF_PATIENT] Resolving patient via PatientService patientId={}", patientId);
+        return patientService.findById(patientId);
     }
 
     private RuntimeException handleConstraintViolation(Exception exception) {
@@ -180,7 +170,6 @@ public class PatientInsuranceService {
         LOG.warn("[DB_CONSTRAINT] PatientInsurance constraint violated rootMessage={}", message, exception);
 
         if (messageLower.contains("ux_patient_insurance_one_primary_per_patient")) {
-            LOG.warn("[DB_CONSTRAINT] PatientInsurance one primary per patient violated");
             return new BadRequestAlertException(
                     "This patient already has a primary insurance.",
                     "patientInsurance",
@@ -189,7 +178,6 @@ public class PatientInsuranceService {
         }
 
         if (messageLower.contains("ux_patient_insurance_patient_payor")) {
-            LOG.warn("[DB_CONSTRAINT] PatientInsurance duplicate patient/payor violated");
             return new BadRequestAlertException(
                     "This patient already has an insurance for the selected payor.",
                     "patientInsurance",
@@ -197,36 +185,10 @@ public class PatientInsuranceService {
             );
         }
 
-        LOG.warn("[DB_CONSTRAINT] PatientInsurance unknown constraint violated");
         return new BadRequestAlertException(
                 "Database constraint violated while saving patient insurance.",
                 "patientInsurance",
                 "db.constraint"
         );
-    }
-
-    @Transactional(readOnly = true)
-    public PatientInsurance findById(Long id) {
-        LOG.debug("[FIND_BY_ID] PatientInsurance id={}", id);
-
-        PatientInsurance entity = patientInsuranceRepository.findById(id)
-                .orElseThrow(() -> {
-                    LOG.warn("[FIND_BY_ID] PatientInsurance not found id={}", id);
-                    return new NotFoundAlertException(
-                            "PatientInsurance not found with id " + id,
-                            "patientInsurance",
-                            "notfound"
-                    );
-                });
-
-        LOG.debug("[FIND_BY_ID] PatientInsurance found id={} patientId={} payorId={} planId={} isPrimary={}",
-                entity.getId(),
-                entity.getPatient() != null ? entity.getPatient().getId() : null,
-                entity.getPayorId(),
-                entity.getPlanId(),
-                entity.getIsPrimary()
-        );
-
-        return entity;
     }
 }
