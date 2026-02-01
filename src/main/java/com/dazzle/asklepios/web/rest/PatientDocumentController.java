@@ -8,7 +8,6 @@ import com.dazzle.asklepios.service.dto.patientDocuments.PatientDocumentUpdateDT
 import com.dazzle.asklepios.service.dto.patientDocuments.PatientNoDocumentCreateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.vm.patientDocument.PatientDocumentResponseVM;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +20,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+
 
 import java.net.URI;
 import java.util.List;
@@ -38,7 +38,7 @@ public class PatientDocumentController {
     }
 
     @PostMapping("/documents")
-    public ResponseEntity<PatientDocumentResponseVM> createPatientDocument(
+    public ResponseEntity<PatientDocument> createPatientDocument(
             @Valid @RequestBody PatientDocumentCreateDTO dto
     ) {
         LOG.debug("REST create PatientDocument payload={}", dto);
@@ -63,15 +63,22 @@ public class PatientDocumentController {
 
         return ResponseEntity
                 .created(URI.create("/api/patient/documents/" + created.getId()))
-                .body(PatientDocumentResponseVM.ofEntity(created));
+                .body(created);
     }
 
-
     @PostMapping("/documents/no-document")
-    public ResponseEntity<PatientDocumentResponseVM> createNoDocument(
+    public ResponseEntity<PatientDocument> createNoDocument(
             @Valid @RequestBody PatientNoDocumentCreateDTO dto
     ) {
         LOG.debug("REST create Patient NO_DOCUMENT payload={}", dto);
+
+        if (dto == null) {
+            throw new BadRequestAlertException(
+                    "PatientDocument payload is required",
+                    "patientDocument",
+                    "payload.required"
+            );
+        }
 
         if (dto.type() != DocumentType.NO_DOCUMENT) {
             throw new BadRequestAlertException(
@@ -81,28 +88,21 @@ public class PatientDocumentController {
             );
         }
 
-        PatientDocument created = patientDocumentService.create(
-                new PatientDocumentCreateDTO(
-                        dto.patientId(),
-                        null,
-                        DocumentType.NO_DOCUMENT,
-                        null,
-                        dto.isPrimary()
-                )
-        );
+        PatientDocument created = patientDocumentService.createNoDocument(dto);
 
         return ResponseEntity
                 .created(URI.create("/api/patient/documents/" + created.getId()))
-                .body(PatientDocumentResponseVM.ofEntity(created));
+                .body(created);
     }
 
 
     @PutMapping("/documents/{id}")
-    public ResponseEntity<PatientDocumentResponseVM> updatePatientDocument(
+    public ResponseEntity<PatientDocument> updatePatientDocument(
             @PathVariable Long id,
             @Valid @RequestBody PatientDocumentUpdateDTO dto
     ) {
         LOG.debug("REST update PatientDocument id={} payload={}", id, dto);
+
         if (dto == null) {
             throw new BadRequestAlertException(
                     "PatientDocument payload is required",
@@ -110,45 +110,18 @@ public class PatientDocumentController {
                     "payload.required"
             );
         }
-        return patientDocumentService.update(id, dto)
-                .map(PatientDocumentResponseVM::ofEntity)
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+
+        PatientDocument updated = patientDocumentService.update(id, dto);
+        return ResponseEntity.ok(updated);
     }
-
-
-    @GetMapping("/documents")
-    public ResponseEntity<List<PatientDocumentResponseVM>> getAllPatientDocuments(
-            @ParameterObject Pageable pageable
-    ) {
-        LOG.debug("REST list PatientDocuments pageable={}", pageable);
-
-        Page<PatientDocument> page = patientDocumentService.findAll(pageable);
-
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(),
-                page
-        );
-
-        List<PatientDocumentResponseVM> body = page.getContent()
-                .stream()
-                .map(PatientDocumentResponseVM::ofEntity)
-                .toList();
-
-        return new ResponseEntity<>(body, headers, HttpStatus.OK);
-    }
-
 
     @GetMapping("/documents/patient/{patientId}")
-    public ResponseEntity<List<PatientDocumentResponseVM>> getDocumentsByPatient(
+    public ResponseEntity<List<PatientDocument>> getDocumentsByPatient(
             @PathVariable Long patientId,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug(
-                "REST list PatientDocuments by patientId={} pageable={}",
-                patientId,
-                pageable
-        );
+        LOG.debug("REST list PatientDocuments by patientId={} pageable={}", patientId, pageable);
+
         if (patientId == null) {
             throw new BadRequestAlertException(
                     "Patient id is required",
@@ -156,6 +129,7 @@ public class PatientDocumentController {
                     "patient.required"
             );
         }
+
         Page<PatientDocument> page =
                 patientDocumentService.getDocumentsByPatient(patientId, pageable);
 
@@ -164,12 +138,7 @@ public class PatientDocumentController {
                 page
         );
 
-        List<PatientDocumentResponseVM> body = page.getContent()
-                .stream()
-                .map(PatientDocumentResponseVM::ofEntity)
-                .toList();
-
-        return new ResponseEntity<>(body, headers, HttpStatus.OK);
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
     @DeleteMapping("/documents/{id}")

@@ -16,6 +16,7 @@ public record PatientNoDocumentCreateDTO(
         @NotNull
         DocumentType type,
 
+        @NotNull
         Boolean isPrimary
 
 ) implements Serializable {

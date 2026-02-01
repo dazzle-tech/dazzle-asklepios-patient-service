@@ -25,6 +25,7 @@ public record PatientDocumentUpdateDTO(
         @NotNull
         String number,
 
+        @NotNull
         Boolean isPrimary
 
 ) implements Serializable {

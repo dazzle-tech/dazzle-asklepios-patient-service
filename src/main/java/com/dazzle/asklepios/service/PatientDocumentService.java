@@ -1,9 +1,11 @@
 package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
+import com.dazzle.asklepios.domain.enumeration.DocumentType;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.service.dto.patientDocuments.PatientDocumentCreateDTO;
 import com.dazzle.asklepios.service.dto.patientDocuments.PatientDocumentUpdateDTO;
+import com.dazzle.asklepios.service.dto.patientDocuments.PatientNoDocumentCreateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.EntityManager;
@@ -61,7 +63,32 @@ public class PatientDocumentService {
         }
     }
 
-    public Optional<PatientDocument> update(Long id, PatientDocumentUpdateDTO dto) {
+    public PatientDocument createNoDocument(PatientNoDocumentCreateDTO dto) {
+        LOG.info("[CREATE NO_DOCUMENT] Request payload={}", dto);
+
+        PatientDocument entity = PatientDocument.builder()
+                .patient(refPatient(dto.patientId()))
+                .countryId(null)
+                .type(DocumentType.NO_DOCUMENT)
+                .number(null)
+                .isPrimary(Boolean.TRUE.equals(dto.isPrimary()))
+                .build();
+
+        try {
+            PatientDocument saved = patientDocumentRepository.saveAndFlush(entity);
+            LOG.info(
+                    "Successfully created NO_DOCUMENT PatientDocument id={} for patientId={}",
+                    saved.getId(),
+                    dto.patientId()
+            );
+            return saved;
+
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            throw handleConstraintViolation(ex);
+        }
+    }
+
+    public PatientDocument update(Long id, PatientDocumentUpdateDTO dto) {
         LOG.info("[UPDATE] Request to update PatientDocument id={} payload={}", id, dto);
 
         PatientDocument existing = patientDocumentRepository.findById(id)
@@ -80,18 +107,13 @@ public class PatientDocumentService {
         try {
             PatientDocument updated = patientDocumentRepository.saveAndFlush(existing);
             LOG.info("Successfully updated PatientDocument id={}", updated.getId());
-            return Optional.of(updated);
+            return updated;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
         }
     }
 
-    @Transactional(readOnly = true)
-    public Page<PatientDocument> findAll(Pageable pageable) {
-        LOG.debug("[FIND ALL] Fetching all PatientDocuments pageable={}", pageable);
-        return patientDocumentRepository.findAll(pageable);
-    }
 
     @Transactional(readOnly = true)
     public Page<PatientDocument> getDocumentsByPatient(Long patientId, Pageable pageable) {

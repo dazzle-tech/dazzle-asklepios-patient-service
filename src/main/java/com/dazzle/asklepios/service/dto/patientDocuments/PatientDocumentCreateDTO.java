@@ -23,6 +23,7 @@ public record PatientDocumentCreateDTO(
         @NotEmpty
         String number,
 
+        @NotNull
         Boolean isPrimary
 
 ) implements Serializable {
