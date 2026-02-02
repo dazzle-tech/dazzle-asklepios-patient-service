@@ -1,0 +1,76 @@
+package com.dazzle.asklepios.repository;
+
+import com.dazzle.asklepios.domain.Consultation;
+import com.dazzle.asklepios.domain.enumeration.ConsultationStatus;
+import com.dazzle.asklepios.domain.enumeration.DestinationType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.time.Instant;
+import java.util.List;
+
+@Repository
+public interface ConsultationRepository
+        extends JpaRepository<Consultation, Long> {
+
+    Page<Consultation> findByEncounterId(
+            Long encounterId,
+            Pageable pageable
+    );
+
+    Page<Consultation> findByEncounterIdAndStatusNot(
+            Long encounterId,
+            ConsultationStatus status,
+            Pageable pageable
+    );
+
+    Page<Consultation> findByEncounterIdAndCreatedDateBetween(
+            Long encounterId,
+            Instant from,
+            Instant to,
+            Pageable pageable
+    );
+
+    Page<Consultation> findByEncounterIdAndCreatedDateBetweenAndStatusNot(
+            Long encounterId,
+            Instant from,
+            Instant to,
+            ConsultationStatus status,
+            Pageable pageable
+    );
+
+    Page<Consultation> findByEncounterIdAndCreatedDateAfter(
+            Long encounterId,
+            Instant fromDate,
+            Pageable pageable
+    );
+
+    Page<Consultation> findByEncounterIdAndCreatedDateBefore(
+            Long encounterId,
+            Instant toDate,
+            Pageable pageable
+    );
+
+    Page<Consultation> findByEncounterIdAndCreatedDateAfterAndStatusNot(
+            Long encounterId,
+            Instant fromDate,
+            ConsultationStatus status,
+            Pageable pageable
+    );
+
+    Page<Consultation> findByEncounterIdAndCreatedDateBeforeAndStatusNot(
+            Long encounterId,
+            Instant toDate,
+            ConsultationStatus status,
+            Pageable pageable
+    );
+
+
+    List<Consultation> findByEncounterIdAndDestinationType(
+            Long encounterId,
+            DestinationType destinationType
+    );
+
+}
