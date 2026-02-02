@@ -1,4 +1,4 @@
-package com.dazzle.asklepios.client.domain;
+package com.dazzle.asklepios.domain.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

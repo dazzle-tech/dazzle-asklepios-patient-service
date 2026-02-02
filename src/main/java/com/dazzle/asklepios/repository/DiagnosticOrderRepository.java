@@ -1,4 +1,3 @@
-// src/main/java/com/dazzle/asklepios/repository/DiagnosticOrderRepository.java
 package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.DiagnosticOrder;

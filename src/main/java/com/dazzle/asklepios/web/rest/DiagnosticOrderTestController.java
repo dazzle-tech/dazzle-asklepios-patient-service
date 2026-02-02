@@ -1,8 +1,8 @@
 package com.dazzle.asklepios.web.rest;
 
-import com.dazzle.asklepios.client.domain.DiagnosticTest;
-import com.dazzle.asklepios.client.domain.DiagnosticTestLaboratory;
-import com.dazzle.asklepios.client.domain.DiagnosticTestRadiology;
+import com.dazzle.asklepios.domain.domain.DiagnosticTest;
+import com.dazzle.asklepios.domain.domain.DiagnosticTestLaboratory;
+import com.dazzle.asklepios.domain.domain.DiagnosticTestRadiology;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;

@@ -374,13 +374,10 @@ public class DiagnosticOrderTestStatusService {
             return;
         }
 
-        if (to == DiagnosticStatus.REVIEWED) {
-            if (from != DiagnosticStatus.RESULT_READY) throw invalid(from, to);
-            return;
-        }
+
 
         if (to == DiagnosticStatus.RESULT_APPROVED) {
-            if (!(from == DiagnosticStatus.RESULT_READY || from == DiagnosticStatus.REVIEWED)) throw invalid(from, to);
+            if (!(from == DiagnosticStatus.RESULT_READY || from == DiagnosticStatus.PARTIALLY)) throw invalid(from, to);
             return;
         }
 

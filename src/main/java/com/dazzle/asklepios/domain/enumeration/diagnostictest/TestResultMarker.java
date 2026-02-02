@@ -7,6 +7,7 @@ public enum TestResultMarker {
     ABNORMAL_MARKER,
     CRITICAL_UPPER,
     CRITICAL_LOWER,
-    NORMAL_MARKER
+    NORMAL_MARKER,
+    UNKNOWN
 
 }
