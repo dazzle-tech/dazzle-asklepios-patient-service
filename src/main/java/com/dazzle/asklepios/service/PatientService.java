@@ -2,11 +2,13 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
+
 import com.dazzle.asklepios.domain.enumeration.SecurityLevel;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -18,7 +20,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
+
 import java.util.Optional;
+
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -38,6 +42,7 @@ public class PatientService {
         this.patientRepository = patientRepository;
         this.patientDocumentRepository = patientDocumentRepository;
     }
+
 
     public String generateNextMrn() {
         LOG.debug("Generating next MRN");
@@ -143,6 +148,7 @@ public class PatientService {
         }
     }
 
+
     public Optional<Patient> update(Long id, Patient patientRequest) {
         LOG.info("[UPDATE] Request to update Patient id={} payload={}", id, patientRequest);
 
@@ -150,6 +156,7 @@ public class PatientService {
             LOG.warn("Update Patient called with null payload for id={}", id);
             throw new BadRequestAlertException("Patient payload is required", "patient", "payload.required");
         }
+
 
         Patient existing = patientRepository.findById(id)
                 .orElseThrow(() -> {
@@ -230,6 +237,7 @@ public class PatientService {
     }
 
     @Transactional(readOnly = true)
+
     public Page<Patient> findAll(Pageable pageable) {
         LOG.debug("[FIND ALL] Fetching all patients with pageable={}", pageable);
         return patientRepository.findAll(pageable);
@@ -250,12 +258,14 @@ public class PatientService {
     @Transactional(readOnly = true)
     public Page<Patient> findByPrimaryPhone(String primaryPhone, Pageable pageable) {
         LOG.debug("[FIND BY PHONE] Searching patients by primaryPhone='{}' with pageable={}", primaryPhone, pageable);
+
         return patientRepository.findByPrimaryMobileNumberContaining(primaryPhone, pageable);
     }
 
     @Transactional(readOnly = true)
     public Page<Patient> findByDateOfBirth(LocalDate dateOfBirth, Pageable pageable) {
         LOG.debug("[FIND BY DOB] Searching patients by dateOfBirth={} with pageable={}", dateOfBirth, pageable);
+
         return patientRepository.findByDateOfBirth(dateOfBirth, pageable);
     }
 
@@ -339,3 +349,4 @@ public class PatientService {
         );
     }
 }
+

@@ -2,10 +2,12 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.service.PatientService;
+
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.vm.patient.PatientCreateVM;
 import com.dazzle.asklepios.web.rest.vm.patient.PatientResponseVM;
 import com.dazzle.asklepios.web.rest.vm.patient.PatientUpdateVM;
+
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.List;
@@ -328,8 +331,4 @@ public class PatientController {
     public Page<Patient> getUnknownPatients(Pageable pageable) {
         return patientService.findUnknownPatients(pageable);
     }
-
-
-
-
 }

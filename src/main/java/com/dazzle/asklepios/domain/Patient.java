@@ -3,19 +3,20 @@ package com.dazzle.asklepios.domain;
 import com.dazzle.asklepios.domain.enumeration.Gender;
 import com.dazzle.asklepios.domain.enumeration.PreferredWayOfContact;
 import com.dazzle.asklepios.domain.enumeration.SecurityLevel;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.Table;
-import jakarta.persistence.Id;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
-import jakarta.persistence.Column;
-import lombok.Getter;
-import lombok.Setter;
-import lombok.NoArgsConstructor;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
 import java.io.Serializable;
 import java.util.Date;
 
@@ -32,10 +33,12 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+
     @Column(name = "mrn", nullable = false, length = 50)
     private String mrn;
 
     @Column(name = "first_name", nullable = false, length = 100)
+
     private String firstName;
 
     @Column(name = "second_name", length = 100)
@@ -43,6 +46,7 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
 
     @Column(name = "third_name", length = 100)
     private String thirdName;
+
 
     @Column(name = "last_name", nullable = false, length = 100)
     private String lastName;
@@ -154,5 +158,5 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
     @Enumerated(EnumType.STRING)
     @Column(name="security_access_level")
     private SecurityLevel securityAccessLevel;
-    
+
 }
