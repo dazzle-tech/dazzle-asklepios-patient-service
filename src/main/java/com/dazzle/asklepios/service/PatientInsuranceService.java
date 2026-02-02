@@ -67,9 +67,18 @@ public class PatientInsuranceService {
         }
     }
 
-    public PatientInsurance update(PatientInsurance existing, PatientInsuranceUpdateDTO dto) {
-        Long existingId = existing != null ? existing.getId() : null;
-        LOG.info("[UPDATE] PatientInsurance id={} payload={}", existingId, dto);
+// ===================== PatientInsuranceService =====================
+
+    @Transactional
+    public PatientInsurance update(Long id, PatientInsuranceUpdateDTO dto) {
+        LOG.info("[UPDATE] Request to update PatientInsurance id={} payload={}", id, dto);
+
+        PatientInsurance existing = patientInsuranceRepository.findById(id)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "PatientInsurance not found with id " + id,
+                        "patientInsurance",
+                        "notfound"
+                ));
 
         existing.setPatient(refPatient(dto.patientId()));
         existing.setPayorId(dto.payorId());
@@ -87,9 +96,10 @@ public class PatientInsuranceService {
             LOG.info("[UPDATE] PatientInsurance success id={} patientId={} payorId={} planId={} isPrimary={}",
                     saved.getId(), dto.patientId(), dto.payorId(), dto.planId(), Boolean.TRUE.equals(dto.isPrimary()));
             return saved;
+
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             LOG.warn("[UPDATE] PatientInsurance failed (constraint) id={} patientId={} payorId={} planId={} payload={}",
-                    existingId, dto.patientId(), dto.payorId(), dto.planId(), dto, ex);
+                    id, dto.patientId(), dto.payorId(), dto.planId(), dto, ex);
             throw handleConstraintViolation(ex);
         }
     }

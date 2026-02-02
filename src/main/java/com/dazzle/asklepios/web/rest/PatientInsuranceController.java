@@ -78,7 +78,7 @@ public class PatientInsuranceController {
             );
         }
 
-        if (dto.id() == null || !id.equals(dto.id())) {
+        if (dto.id() == null || !dto.id().equals(id)) {
             throw new BadRequestAlertException(
                     "Path id does not match payload id",
                     "patientInsurance",
@@ -86,13 +86,11 @@ public class PatientInsuranceController {
             );
         }
 
-        PatientInsurance existing = patientInsuranceService.findById(id);
-        PatientInsurance updated = patientInsuranceService.update(existing, dto);
+        PatientInsurance updated = patientInsuranceService.update(id, dto);
 
         return ResponseEntity.ok(updated);
     }
-
-
+    
     @GetMapping("/insurances/patient/{patientId}")
     public ResponseEntity<List<PatientInsurance>> getInsurancesByPatient(
             @PathVariable Long patientId,
