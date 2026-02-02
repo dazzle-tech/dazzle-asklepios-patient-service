@@ -9,4 +9,7 @@ import java.util.Optional;
 @Repository
 public interface ChiefComplainRepository extends JpaRepository<ChiefComplain, Long> {
         Optional<ChiefComplain> findTopByEncounterIdOrderByCreatedDateDesc(Long encounterId);
+        Optional<ChiefComplain> findTopByEncounterIdAndIsTriageTrueOrderByCreatedDateDesc(Long encounterId);
+        Optional<ChiefComplain> findTopByEncounterIdAndIsTriageOrderByCreatedDateDesc(Long encounterId,boolean isTriage);
+
 }

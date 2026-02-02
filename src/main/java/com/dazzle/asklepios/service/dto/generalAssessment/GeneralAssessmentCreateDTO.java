@@ -22,7 +22,7 @@ public record GeneralAssessmentCreateDTO(
         Boolean signsOfDepression,
         Boolean signsOfSuicidalIdeation,
         Boolean signsOfSubstanceUse,
-        Boolean isTriage
+        @NotNull Boolean isTriage
 ) implements Serializable {
 
     public static GeneralAssessmentCreateDTO ofEntity(GeneralAssessment entity) {

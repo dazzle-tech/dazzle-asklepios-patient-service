@@ -5,6 +5,7 @@ import com.dazzle.asklepios.repository.ChiefComplainRepository;
 import com.dazzle.asklepios.service.ChiefComplainService;
 import com.dazzle.asklepios.service.dto.chiefComplain.ChiefComplainCreateDTO;
 import com.dazzle.asklepios.service.dto.chiefComplain.ChiefComplainUpdateDTO;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,7 +50,7 @@ public class ChiefComplainController {
     public ResponseEntity<ChiefComplain> create(@Valid @RequestBody ChiefComplainCreateDTO dto) {
         LOG.debug("REST create ChiefComplain payload={}", dto);
 
-        Optional<ChiefComplain> existing = chiefComplainRepository.findTopByEncounterIdOrderByCreatedDateDesc(dto.encounterId());
+        Optional<ChiefComplain> existing = chiefComplainRepository.findTopByEncounterIdAndIsTriageOrderByCreatedDateDesc(dto.encounterId(), dto.isTriage());
 
         if (existing.isPresent()) {
             ChiefComplain current = existing.get();
@@ -64,7 +65,8 @@ public class ChiefComplainController {
                     dto.severity(),
                     dto.onsetDateTime(),
                     dto.caseUnderstanding(),
-                    dto.patientCondition()
+                    dto.patientCondition(),
+                    dto.isTriage()
             );
 
             ChiefComplain updated = chiefComplainService.update(updateDTO);
@@ -84,7 +86,9 @@ public class ChiefComplainController {
     public ResponseEntity<ChiefComplain> update(@PathVariable Long id, @Valid @RequestBody ChiefComplainUpdateDTO dto) {
         LOG.debug("REST update ChiefComplain id={} payload={}", id, dto);
         if (dto.id() == null || !id.equals(dto.id())) {
-            return ResponseEntity.badRequest().build();
+            throw new BadRequestAlertException(
+                    "Invalid id", ENTITY_NAME, "idinvalid"
+            );
         }
         ChiefComplain updated = chiefComplainService.update(dto);
         return ResponseEntity.ok(updated);
@@ -95,6 +99,15 @@ public class ChiefComplainController {
         LOG.debug("REST get latest ChiefComplain by encounterId={}", encounterId);
         ChiefComplain latest = chiefComplainService.getOneByEncounterId(encounterId);
         return ResponseEntity.ok(latest);
+    }
+
+    /**
+     * {@code GET /chief-complain/encounter/{encounterId}/latest-triage} : Get latest triage chiefComplain for encounter.
+     */
+    @GetMapping("/chief-complain/encounter/{encounterId}/latest-triage")
+    public ResponseEntity<ChiefComplain> getLatestTriageByEncounter(@PathVariable Long encounterId) {
+        LOG.debug("REST get latest triage ChiefComplain by encounterId={}", encounterId);
+        return ResponseEntity.ok(chiefComplainService.getLatestTriageByEncounterId(encounterId));
     }
 
     @DeleteMapping("/chief-complain/{id}")

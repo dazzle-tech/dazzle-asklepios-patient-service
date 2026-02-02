@@ -22,6 +22,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.io.Serializable;
+import java.time.Instant;
 
 @Entity
 @Table(name = "emergency_triage")
@@ -109,4 +110,7 @@ public class EmergencyTriage extends AbstractAuditingEntity<Long> implements Ser
     @Column(name = "destination", length = 50)
     @Enumerated(EnumType.STRING)
     private TriageDestination destination;
+
+    @Column(name = "completed_date")
+    private Instant completedDate ;
 }

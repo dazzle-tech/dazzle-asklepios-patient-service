@@ -20,7 +20,8 @@ public record ChiefComplainUpdateDTO(
         @NotEmpty String severity,
         @NotNull Instant onsetDateTime,
         @NotEmpty String caseUnderstanding,
-        PatientCondition patientCondition
+        PatientCondition patientCondition,
+        @NotNull Boolean isTriage
 ) implements Serializable {
 
     public static ChiefComplainUpdateDTO ofEntity(ChiefComplain entity) {
@@ -34,7 +35,8 @@ public record ChiefComplainUpdateDTO(
                 entity.getSeverity(),
                 entity.getOnsetDateTime(),
                 entity.getCaseUnderstanding(),
-                entity.getPatientCondition()
+                entity.getPatientCondition(),
+                entity.getIsTriage()
         );
     }
 }

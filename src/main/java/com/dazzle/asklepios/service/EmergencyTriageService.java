@@ -18,6 +18,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+
 @Service
 @Transactional
 public class EmergencyTriageService {
@@ -118,14 +120,14 @@ public class EmergencyTriageService {
     }
 
     /**
-     * Section update: destination only
+     * Section update: destination only and set completed date
      */
     public EmergencyTriage updateDestination(EmergencyTriageDestinationUpdateDTO dto) {
         LOG.debug("updateDestination EmergencyTriage payload={}", dto);
         EmergencyTriage entity = getRequired(dto.id());
 
         if (dto.destination() != null) entity.setDestination(dto.destination());
-
+        entity.setCompletedDate(Instant.now());
         EmergencyTriage saved = emergencyTriageRepository.save(entity);
         LOG.debug("updateDestination: saved id={}", saved.getId());
         return saved;

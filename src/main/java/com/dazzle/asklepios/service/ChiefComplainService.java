@@ -52,37 +52,23 @@ public class ChiefComplainService {
     public ChiefComplain getOneByEncounterId(Long encounterId) {
         LOG.debug("get latest chief complain by encounterId={}", encounterId);
 
-        return chiefComplainRepository
-                .findTopByEncounterIdOrderByCreatedDateDesc(encounterId)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "ChiefComplain not found for encounter: " + encounterId,
-                        ENTITY_NAME,
-                        "notfound"
-                ));
+        return chiefComplainRepository.findTopByEncounterIdOrderByCreatedDateDesc(encounterId).orElseThrow(() -> new NotFoundAlertException("ChiefComplain not found for encounter: " + encounterId, ENTITY_NAME, "notfound"));
+    }
+
+    @Transactional(readOnly = true)
+    public ChiefComplain getLatestTriageByEncounterId(Long encounterId) {
+        LOG.debug("get latest triage ChiefComplain by encounterId={}", encounterId);
+        return chiefComplainRepository.findTopByEncounterIdAndIsTriageTrueOrderByCreatedDateDesc(encounterId).orElseThrow(() -> new NotFoundAlertException("Triage ChiefComplain not found for encounter: " + encounterId, ENTITY_NAME, "notfound"));
     }
 
     private ChiefComplain getRequired(Long id) {
-        return chiefComplainRepository
-                .findById(id)
-                .orElseThrow(() -> new NotFoundAlertException("ChiefComplain not found: " + id, ENTITY_NAME, "notfound"));
+        return chiefComplainRepository.findById(id).orElseThrow(() -> new NotFoundAlertException("ChiefComplain not found: " + id, ENTITY_NAME, "notfound"));
     }
 
     private ChiefComplain toEntityForCreate(ChiefComplainCreateDTO dto) {
         Patient patient = getPatient(dto.patientId());
 
-        return ChiefComplain.builder()
-                .patient(patient)
-                .encounterId(dto.encounterId())
-                .chiefComplaint(dto.chiefComplaint())
-                .provocation(dto.provocation())
-                .palliation(dto.palliation())
-                .quality(dto.quality())
-                .region(dto.region())
-                .severity(dto.severity())
-                .onsetDateTime(dto.onsetDateTime())
-                .caseUnderstanding(dto.caseUnderstanding())
-                .patientCondition(dto.patientCondition())
-                .build();
+        return ChiefComplain.builder().patient(patient).encounterId(dto.encounterId()).chiefComplaint(dto.chiefComplaint()).provocation(dto.provocation()).palliation(dto.palliation()).quality(dto.quality()).region(dto.region()).severity(dto.severity()).onsetDateTime(dto.onsetDateTime()).caseUnderstanding(dto.caseUnderstanding()).patientCondition(dto.patientCondition()).isTriage(dto.isTriage()).build();
     }
 
     private void applyUpdate(ChiefComplain entity, ChiefComplainUpdateDTO dto) {
@@ -95,11 +81,10 @@ public class ChiefComplainService {
         if (dto.onsetDateTime() != null) entity.setOnsetDateTime(dto.onsetDateTime());
         if (dto.caseUnderstanding() != null) entity.setCaseUnderstanding(dto.caseUnderstanding());
         if (dto.patientCondition() != null) entity.setPatientCondition(dto.patientCondition());
+        if (dto.isTriage() != null) entity.setIsTriage(dto.isTriage());
     }
 
     private Patient getPatient(Long id) {
-        return patientRepository
-                .findById(id)
-                .orElseThrow(() -> new NotFoundAlertException("Patient not found: " + id, "Patient", "notfound"));
+        return patientRepository.findById(id).orElseThrow(() -> new NotFoundAlertException("Patient not found: " + id, "Patient", "notfound"));
     }
 }

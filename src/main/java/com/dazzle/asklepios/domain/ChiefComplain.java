@@ -67,4 +67,7 @@ public class ChiefComplain extends AbstractAuditingEntity<Long> implements Seria
     @Column(name = "patient_condition", length = 50)
     @Enumerated(EnumType.STRING)
     private PatientCondition patientCondition;
+
+    @Column(name = "is_triage", nullable = false)
+    private Boolean isTriage = false;
 }

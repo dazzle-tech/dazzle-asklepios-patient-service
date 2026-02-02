@@ -71,6 +71,7 @@ public class GeneralAssessment extends AbstractAuditingEntity<Long> implements S
 
     @Column(name = "signs_of_substance_use", nullable = false)
     private Boolean signsOfSubstanceUse = false;
+
     @Column(name = "is_triage", nullable = false)
     private Boolean isTriage = false;
 }

@@ -21,7 +21,7 @@ public record GeneralAssessmentUpdateDTO(
         Boolean signsOfDepression,
         Boolean signsOfSuicidalIdeation,
         Boolean signsOfSubstanceUse,
-        Boolean isTriage
+        @NotNull Boolean isTriage
 ) implements Serializable {
 
     public static GeneralAssessmentUpdateDTO ofEntity(GeneralAssessment entity) {

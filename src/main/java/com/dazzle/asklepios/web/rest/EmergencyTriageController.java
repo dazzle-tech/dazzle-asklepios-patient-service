@@ -6,6 +6,7 @@ import com.dazzle.asklepios.service.dto.emergencyTriage.EmergencyTriageCreateDTO
 import com.dazzle.asklepios.service.dto.emergencyTriage.EmergencyTriageDestinationUpdateDTO;
 import com.dazzle.asklepios.service.dto.emergencyTriage.EmergencyTriageLevelAssessmentUpdateDTO;
 import com.dazzle.asklepios.service.dto.emergencyTriage.EmergencyTriageUpdateDTO;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class EmergencyTriageController {
 
     private static final Logger LOG = LoggerFactory.getLogger(EmergencyTriageController.class);
+    private static final String ENTITY_NAME = "EmergencyTriage";
 
     private final EmergencyTriageService emergencyTriageService;
 
@@ -59,7 +61,9 @@ public class EmergencyTriageController {
     public ResponseEntity<EmergencyTriage> updateEyeAssessment(@PathVariable Long id, @Valid @RequestBody EmergencyTriageUpdateDTO dto) {
         LOG.debug("REST update eye assessment EmergencyTriage id={} payload={}", id, dto);
         if (dto.id() == null || !id.equals(dto.id())) {
-            return ResponseEntity.badRequest().build();
+            throw new BadRequestAlertException(
+                    "Invalid id", ENTITY_NAME, "idinvalid"
+            );
         }
         return ResponseEntity.ok(emergencyTriageService.updateEyeAssessment(dto));
     }
@@ -71,7 +75,9 @@ public class EmergencyTriageController {
     public ResponseEntity<EmergencyTriage> updateLevelAssessment(@PathVariable Long id, @Valid @RequestBody EmergencyTriageLevelAssessmentUpdateDTO dto) {
         LOG.debug("REST update level assessment EmergencyTriage id={} payload={}", id, dto);
         if (dto.id() == null || !id.equals(dto.id())) {
-            return ResponseEntity.badRequest().build();
+            throw new BadRequestAlertException(
+                    "Invalid id", ENTITY_NAME, "idinvalid"
+            );
         }
         return ResponseEntity.ok(emergencyTriageService.updateLevelAssessment(dto));
     }
@@ -83,7 +89,9 @@ public class EmergencyTriageController {
     public ResponseEntity<EmergencyTriage> updateDestination(@PathVariable Long id, @Valid @RequestBody EmergencyTriageDestinationUpdateDTO dto) {
         LOG.debug("REST update destination EmergencyTriage id={} payload={}", id, dto);
         if (dto.id() == null || !id.equals(dto.id())) {
-            return ResponseEntity.badRequest().build();
+            throw new BadRequestAlertException(
+                    "Invalid id", ENTITY_NAME, "idinvalid"
+            );
         }
         return ResponseEntity.ok(emergencyTriageService.updateDestination(dto));
     }

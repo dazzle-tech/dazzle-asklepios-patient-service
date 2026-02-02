@@ -4,11 +4,19 @@ import com.dazzle.asklepios.domain.GeneralAssessment;
 import com.dazzle.asklepios.service.GeneralAssessmentService;
 import com.dazzle.asklepios.service.dto.generalAssessment.GeneralAssessmentCreateDTO;
 import com.dazzle.asklepios.service.dto.generalAssessment.GeneralAssessmentUpdateDTO;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
 
@@ -17,6 +25,7 @@ import java.net.URI;
 public class GeneralAssessmentController {
 
     private static final Logger LOG = LoggerFactory.getLogger(GeneralAssessmentController.class);
+    private static final String ENTITY_NAME = "GeneralAssessment";
 
     private final GeneralAssessmentService generalAssessmentService;
 
@@ -43,7 +52,9 @@ public class GeneralAssessmentController {
     public ResponseEntity<GeneralAssessment> update(@PathVariable Long id, @Valid @RequestBody GeneralAssessmentUpdateDTO dto) {
         LOG.debug("REST update GeneralAssessment id={} payload={}", id, dto);
         if (dto.id() == null || !id.equals(dto.id())) {
-            return ResponseEntity.badRequest().build();
+            throw new BadRequestAlertException(
+                    "Invalid id", ENTITY_NAME, "idinvalid"
+            );
         }
         GeneralAssessment updated = generalAssessmentService.update(dto);
         return ResponseEntity.ok(updated);
