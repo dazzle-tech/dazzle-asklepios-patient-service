@@ -109,7 +109,7 @@ public class PatientAllergiesService {
             throw new BadRequestAlertException(
                     "sourceMustBeNull",
                     "patientAllergies",
-                    "source of Information must be null when by Patient is true"
+                    "source of Information must be null"
             );
         }
         if (!vm.byPatient() && vm.sourceOfInformation() == null) {
@@ -117,7 +117,7 @@ public class PatientAllergiesService {
             throw new BadRequestAlertException(
                     "sourceRequired",
                     "patientAllergies",
-                    "source of Information is required when by Patient is false"
+                    "source of Information is required"
             );
         }
         PatientAllergies entity = PatientAllergies.builder()
@@ -336,7 +336,7 @@ public class PatientAllergiesService {
             throw new BadRequestAlertException(
                     "sourceMustBeNull",
                     "patientAllergies",
-                    "source of Information must be null when by Patient is true"
+                    "source of Information must be null"
             );
         }
         if (!dto.byPatient() && dto.sourceOfInformation() == null) {
@@ -344,7 +344,7 @@ public class PatientAllergiesService {
             throw new BadRequestAlertException(
                     "sourceRequired",
                     "patientAllergies",
-                    "source of Information is required when by Patient is false"
+                    "source of Information is required"
             );
         }
         PatientAllergies entity = patientAllergiesRepository.findById(dto.id())
@@ -432,7 +432,7 @@ public class PatientAllergiesService {
             return new BadRequestAlertException(
                     "unique.allergen",
                     "patient_allergies",
-                    "You can`t add the same allergen for the same patient"
+                    "This allergy already exist"
             );
         }
 
