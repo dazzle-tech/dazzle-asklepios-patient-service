@@ -1,10 +1,11 @@
 package com.dazzle.asklepios.web.rest;
-
 import com.dazzle.asklepios.domain.Address;
 import com.dazzle.asklepios.service.AddressService;
-import com.dazzle.asklepios.web.rest.vm.address.AddressCreateVM;
-import com.dazzle.asklepios.web.rest.vm.address.AddressResponseVM;
-import com.dazzle.asklepios.web.rest.vm.address.AddressUpdateVM;
+
+import com.dazzle.asklepios.service.dto.patientAddress.AddressCreateDTO;
+import com.dazzle.asklepios.service.dto.patientAddress.AddressUpdateDTO;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.vm.AddressResponseVM;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,60 +25,54 @@ import java.util.List;
 public class AddressController {
 
     private static final Logger LOG = LoggerFactory.getLogger(AddressController.class);
+
     private final AddressService addressService;
 
     public AddressController(AddressService addressService) {
         this.addressService = addressService;
     }
 
-
     @PostMapping("/addresses/patient/{patientId}")
     public ResponseEntity<AddressResponseVM> createAddress(
             @PathVariable Long patientId,
-            @Valid @RequestBody AddressCreateVM vm
+            @Valid @RequestBody AddressCreateDTO dto
     ) {
+        LOG.debug("REST create Address for patientId={} payload={}", patientId, dto);
 
-        Address toCreate = Address.builder()
-                .locationJson(vm.locationJson())
-                .streetName(vm.streetName())
-                .houseApartmentNumber(vm.houseApartmentNumber())
-                .postalZipCode(vm.postalZipCode())
-                .additionalAddressLine(vm.additionalAddressLine())
-                .isCurrent(true)
-                .build();
+        Address created = addressService.create(patientId, dto);
 
-        Address created = addressService.create(patientId, toCreate);
+        LOG.debug(
+                "REST create Address success id={} patientId={} isCurrent={}",
+                created.getId(),
+                patientId,
+                created.getIsCurrent()
+        );
 
         return ResponseEntity
-                .created(URI.create("/api/patient/addresses/" + created.getId()))
+                .created(URI.create("/api/patient/addresses/patient/" + patientId))
                 .body(AddressResponseVM.ofEntity(created));
     }
+
 
     @PutMapping("/addresses/{id}")
     public ResponseEntity<AddressResponseVM> updateAddress(
             @PathVariable Long id,
-            @Valid @RequestBody AddressUpdateVM vm
+            @Valid @RequestBody AddressUpdateDTO dto
     ) {
+        if (dto == null) {
+            throw new BadRequestAlertException("Address payload is required", "address", "payload.required");
+        }
 
-        if (!vm.id().equals(id)) {
-            throw new com.dazzle.asklepios.web.rest.errors.BadRequestAlertException(
-                    "Invalid id", "address", "idinvalid"
+        if (dto.id() == null || !dto.id().equals(id)) {
+            throw new BadRequestAlertException(
+                    "Path id does not match payload id",
+                    "address",
+                    "id.mismatch"
             );
         }
 
-        Address patch = new Address();
-        patch.setId(vm.id());
-        patch.setLocationJson(vm.locationJson());
-        patch.setStreetName(vm.streetName());
-        patch.setHouseApartmentNumber(vm.houseApartmentNumber());
-        patch.setPostalZipCode(vm.postalZipCode());
-        patch.setAdditionalAddressLine(vm.additionalAddressLine());
-        patch.setIsCurrent(vm.isCurrent());
-
-        return addressService.update(id, patch)
-                .map(AddressResponseVM::ofEntity)
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        Address updated = addressService.update(dto);
+        return ResponseEntity.ok(AddressResponseVM.ofEntity(updated));
     }
 
 
@@ -86,13 +81,18 @@ public class AddressController {
             @PathVariable Long patientId
     ) {
         List<Address> list = addressService.findAllByPatient(patientId);
-        List<AddressResponseVM> body = list.stream().map(AddressResponseVM::ofEntity).toList();
+
+        List<AddressResponseVM> body = list.stream()
+                .map(AddressResponseVM::ofEntity)
+                .toList();
+
         return ResponseEntity.ok(body);
     }
 
-
     @GetMapping("/addresses/patient/{patientId}/current")
-    public ResponseEntity<AddressResponseVM> getCurrentAddress(@PathVariable Long patientId) {
+    public ResponseEntity<AddressResponseVM> getCurrentAddress(
+            @PathVariable Long patientId
+    ) {
         Address current = addressService.findCurrentByPatient(patientId);
         return ResponseEntity.ok(AddressResponseVM.ofEntity(current));
     }

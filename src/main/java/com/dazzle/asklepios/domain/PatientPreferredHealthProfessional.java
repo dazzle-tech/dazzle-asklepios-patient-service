@@ -9,8 +9,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
+
 import jakarta.validation.constraints.NotNull;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
@@ -20,7 +21,6 @@ import lombok.Setter;
 
 import java.io.Serial;
 import java.io.Serializable;
-
 @Entity
 @Getter
 @Setter
@@ -29,7 +29,6 @@ import java.io.Serializable;
 @Builder
 @EqualsAndHashCode(callSuper = false)
 @Table(name = "patient_preferred_health_professional")
-
 public class PatientPreferredHealthProfessional extends AbstractAuditingEntity<Long> implements Serializable {
 
     @Serial
@@ -47,10 +46,6 @@ public class PatientPreferredHealthProfessional extends AbstractAuditingEntity<L
     @NotNull
     @Column(name = "practitioner_id", nullable = false)
     private Long practitionerId;
-
-    @NotNull
-    @Column(name = "facility_id", nullable = false)
-    private Long facilityId;
 
     @Column(name = "network_affiliation", length = 255)
     private String networkAffiliation;

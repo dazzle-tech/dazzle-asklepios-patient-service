@@ -1,26 +1,23 @@
 package com.dazzle.asklepios.domain;
 
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
 public class AddressLocation {
 
-    private SimpleCountry country;
-    private SimpleDistrict district;
-    private SimpleCommunity community;
-    private SimpleArea area;
+    private Country country;
+    private District district;
+    private Community community;
+    private Area area;
 
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    @Builder
-    public static class SimpleCountry {
+    public static class Country {
         private Long id;
         private String name;
         private String code;
@@ -29,8 +26,7 @@ public class AddressLocation {
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    @Builder
-    public static class SimpleDistrict {
+    public static class District {
         private Long id;
         private String name;
         private String code;
@@ -39,8 +35,7 @@ public class AddressLocation {
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    @Builder
-    public static class SimpleCommunity {
+    public static class Community {
         private Long id;
         private String name;
     }
@@ -48,10 +43,8 @@ public class AddressLocation {
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    @Builder
-    public static class SimpleArea {
+    public static class Area {
         private Long id;
         private String name;
     }
 }
-

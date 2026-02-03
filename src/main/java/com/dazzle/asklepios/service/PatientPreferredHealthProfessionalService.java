@@ -3,12 +3,14 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientPreferredHealthProfessional;
 import com.dazzle.asklepios.repository.PatientPreferredHealthProfessionalRepository;
-import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.service.dto.patientPreferredHealthProfessional.PatientPreferredHealthProfessionalCreateDTO;
+import com.dazzle.asklepios.service.dto.patientPreferredHealthProfessional.PatientPreferredHealthProfessionalUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
@@ -24,14 +26,10 @@ public class PatientPreferredHealthProfessionalService {
     private static final Logger LOG = LoggerFactory.getLogger(PatientPreferredHealthProfessionalService.class);
 
     private final PatientPreferredHealthProfessionalRepository preferredRepository;
-    private final PatientRepository patientRepository;
 
     public PatientPreferredHealthProfessionalService(
-            PatientPreferredHealthProfessionalRepository preferredRepository,
-            PatientRepository patientRepository
-    ) {
+            PatientPreferredHealthProfessionalRepository preferredRepository) {
         this.preferredRepository = preferredRepository;
-        this.patientRepository = patientRepository;
     }
 
     @Transactional(readOnly = true)
@@ -40,43 +38,22 @@ public class PatientPreferredHealthProfessionalService {
         return preferredRepository.findByPatient_Id(patientId, pageable);
     }
 
-    public PatientPreferredHealthProfessional create(Long patientId, PatientPreferredHealthProfessional preferredRequest) {
-        LOG.info("[CREATE] Request to create PatientPreferredHealthProfessional for patientId={} payload={}", patientId, preferredRequest);
-
-        if (preferredRequest == null) {
-            throw new BadRequestAlertException(
-                    "PatientPreferredHealthProfessional payload is required",
-                    "patientPreferredHealthProfessional",
-                    "payload.required"
-            );
-        }
-
-        Patient patient = patientRepository.findById(patientId)
-                .orElseThrow(() -> {
-                    LOG.error("Patient not found with id={}", patientId);
-                    return new NotFoundAlertException(
-                            "Patient not found with id " + patientId,
-                            "patient",
-                            "notfound"
-                    );
-                });
-
+    public PatientPreferredHealthProfessional create(Patient patient, PatientPreferredHealthProfessionalCreateDTO dto) {
+        LOG.info("[CREATE] Request to create PatientPreferredHealthProfessional for patientId={} payload={}", patient.getId(), dto);
         try {
             PatientPreferredHealthProfessional entity = PatientPreferredHealthProfessional.builder()
                     .patient(patient)
-                    .practitionerId(preferredRequest.getPractitionerId())
-                    .facilityId(preferredRequest.getFacilityId())
-                    .networkAffiliation(preferredRequest.getNetworkAffiliation())
-                    .relatedWith(preferredRequest.getRelatedWith())
+                    .practitionerId(dto.practitionerId())
+                    .networkAffiliation(dto.networkAffiliation())
+                    .relatedWith(dto.relatedWith())
                     .build();
 
             PatientPreferredHealthProfessional saved = preferredRepository.saveAndFlush(entity);
-            LOG.info("Successfully created PatientPreferredHealthProfessional id={} for patientId={}", saved.getId(), patientId);
+            LOG.info("Successfully created PatientPreferredHealthProfessional id={} for patientId={}", saved.getId(), patient.getId());
             return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException exception) {
             handleConstraintsOnCreateOrUpdate(exception);
-
             throw new BadRequestAlertException(
                     "Database constraint violated while saving PatientPreferredHealthProfessional.",
                     "patientPreferredHealthProfessional",
@@ -85,41 +62,22 @@ public class PatientPreferredHealthProfessionalService {
         }
     }
 
-    public PatientPreferredHealthProfessional update(Long id, PatientPreferredHealthProfessional preferredRequest) {
-        LOG.info("[UPDATE] Request to update PatientPreferredHealthProfessional id={} payload={}", id, preferredRequest);
-
-        if (preferredRequest == null) {
-            throw new BadRequestAlertException(
-                    "PatientPreferredHealthProfessional payload is required",
-                    "patientPreferredHealthProfessional",
-                    "payload.required"
-            );
-        }
-
-        PatientPreferredHealthProfessional existing = preferredRepository.findById(id)
-                .orElseThrow(() -> {
-                    LOG.error("PatientPreferredHealthProfessional not found with id={}", id);
-                    return new NotFoundAlertException(
-                            "PatientPreferredHealthProfessional not found with id " + id,
-                            "patientPreferredHealthProfessional",
-                            "notfound"
-                    );
-                });
+    public PatientPreferredHealthProfessional update(PatientPreferredHealthProfessional existing, PatientPreferredHealthProfessionalUpdateDTO dto) {
+        LOG.info("[UPDATE] Request to update PatientPreferredHealthProfessional id={} payload={}", existing.getId(), dto);
 
         try {
-            existing.setPractitionerId(preferredRequest.getPractitionerId());
-            existing.setFacilityId(preferredRequest.getFacilityId());
-            existing.setNetworkAffiliation(preferredRequest.getNetworkAffiliation());
-            existing.setRelatedWith(preferredRequest.getRelatedWith());
+            if (dto.practitionerId() != null) {
+                existing.setPractitionerId(dto.practitionerId());
+            }
+            existing.setNetworkAffiliation(dto.networkAffiliation());
+            existing.setRelatedWith(dto.relatedWith());
 
             PatientPreferredHealthProfessional saved = preferredRepository.saveAndFlush(existing);
             LOG.info("Successfully updated PatientPreferredHealthProfessional id={}", saved.getId());
-
             return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException exception) {
             handleConstraintsOnCreateOrUpdate(exception);
-
             throw new BadRequestAlertException(
                     "Database constraint violated while updating PatientPreferredHealthProfessional.",
                     "patientPreferredHealthProfessional",
@@ -127,24 +85,39 @@ public class PatientPreferredHealthProfessionalService {
             );
         }
     }
+    @Transactional(readOnly = true)
+    public PatientPreferredHealthProfessional findByIdOrThrow(Long id) {
+        LOG.debug("[FIND BY ID] Fetching PatientPreferredHealthProfessional id={}", id);
 
-    @Transactional
-    public void hardDelete(Long id) {
-        LOG.debug("[DELETE] Request to hard delete PatientPreferredHealthProfessional id={}", id);
-
-        PatientPreferredHealthProfessional target = preferredRepository.findById(id)
+        return preferredRepository.findById(id)
                 .orElseThrow(() -> {
-                    LOG.error("Mapping not found for id={}", id);
-                    return new BadRequestAlertException(
-                            "Mapping not found",
+                    LOG.warn("[FIND BY ID] PatientPreferredHealthProfessional not found id={}", id);
+                    return new NotFoundAlertException(
+                            "PatientPreferredHealthProfessional not found with id " + id,
                             "patientPreferredHealthProfessional",
                             "notfound"
                     );
                 });
-
-        preferredRepository.delete(target);
-        LOG.info("Successfully hard deleted PatientPreferredHealthProfessional id={}", id);
     }
+
+
+    @Transactional
+    public void hardDelete(Long id) {
+        LOG.debug("[DELETE] Hard delete PatientPreferredHealthProfessional id={}", id);
+
+        try {
+            preferredRepository.deleteById(id);
+            LOG.info("Successfully hard deleted PatientPreferredHealthProfessional id={}", id);
+
+        } catch (EmptyResultDataAccessException ex) {
+            throw new BadRequestAlertException(
+                    "Mapping not found",
+                    "patientPreferredHealthProfessional",
+                    "notfound"
+            );
+        }
+    }
+
 
     private void handleConstraintsOnCreateOrUpdate(RuntimeException exception) {
         Throwable root = getRootCause(exception);
@@ -153,15 +126,15 @@ public class PatientPreferredHealthProfessionalService {
 
         LOG.error("Database constraint violation while saving PatientPreferredHealthProfessional: {}", message, exception);
 
-        if (lower.contains("uk_pphp_patient_practitioner_facility")
+        if (lower.contains("uk_pphp_patient_practitioner")
                 || lower.contains("unique constraint")
                 || lower.contains("duplicate key")
                 || lower.contains("duplicate entry")) {
 
             throw new BadRequestAlertException(
-                    "This patient already has a preferred health professional with the same practitioner and facility.",
+                    "This patient already has a preferred health professional with the same practitioner.",
                     "patientPreferredHealthProfessional",
-                    "unique.patient_practitioner_facility"
+                    "unique.patient_practitioner"
             );
         }
 
