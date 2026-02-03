@@ -301,7 +301,7 @@ public class DiagnosticOrderTestResultController {
      * </ul>
      * </p>
      *
-     * @param orderId          optional diagnostic order id
+     * @param orderIds          optional diagnostic order id
      * @param orderTestId      optional diagnostic order test id
      * @param profileTestId    optional profile test id
      * @param markerIn         optional list of markers to include (IN filter).
@@ -325,7 +325,7 @@ public class DiagnosticOrderTestResultController {
      */
     @GetMapping("/diagnostic-order-tests-results")
     public ResponseEntity<List<DiagnosticOrderTestResultResponseVM>> filter(
-            @RequestParam(name = "orderId", required = false) Long orderId,
+            @RequestParam(name = "orderIds", required = false) List<Long> orderIds,
             @RequestParam(name = "orderTestId", required = false) Long orderTestId,
             @RequestParam(name = "profileTestId", required = false) Long profileTestId,
             @RequestParam(name = "markerIn", required = false) List<TestResultMarker> markerIn,
@@ -345,22 +345,26 @@ public class DiagnosticOrderTestResultController {
             @RequestParam(name = "reviewDateFrom", required = false) Instant reviewDateFrom,
             @RequestParam(name = "reviewDateTo", required = false) Instant reviewDateTo,
 
-            // NEW: needed to compute marker correctly (until you fetch it from setup-service)
             @RequestParam(name = "resultType", required = false) TestResultType resultType,
 
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("[DiagnosticOrderTestResult] FILTER - request received. orderId={} orderTestId={} profileTestId={}  markerIn={} excludeMarker={} processingStatus={} reviewed={} approvedBy={} rejectedBy={} reviewBy={} approvedDateFrom={} approvedDateTo={} rejectedDateFrom={} rejectedDateTo={} reviewDateFrom={} reviewDateTo={} resultType={} pageable={}",
-                orderId, orderTestId, profileTestId,  markerIn, excludeMarker, processingStatus, reviewed, approvedBy, rejectedBy, reviewBy,
+        LOG.debug("[DiagnosticOrderTestResult] FILTER - request received. orderIds={} orderTestId={} profileTestId={} markerIn={} excludeMarker={} processingStatus={} reviewed={} approvedBy={} rejectedBy={} reviewBy={} approvedDateFrom={} approvedDateTo={} rejectedDateFrom={} rejectedDateTo={} reviewDateFrom={} reviewDateTo={} resultType={} pageable={}",
+                orderIds, orderTestId, profileTestId, markerIn, excludeMarker, processingStatus, reviewed, approvedBy, rejectedBy, reviewBy,
                 approvedDateFrom, approvedDateTo, rejectedDateFrom, rejectedDateTo, reviewDateFrom, reviewDateTo, resultType, pageable);
 
         Specification<DiagnosticOrderTestResult> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            if (orderId != null) predicates.add(cb.equal(root.get("orderId"), orderId));
+            if (orderIds != null && !orderIds.isEmpty()) {
+                predicates.add(root.get("orderId").in(orderIds));
+            }
             if (orderTestId != null) predicates.add(cb.equal(root.get("orderTestId"), orderTestId));
             if (profileTestId != null) predicates.add(cb.equal(root.get("profileTestId"), profileTestId));
 
+            if (markerIn != null && !markerIn.isEmpty()) {
+                predicates.add(root.get("marker").in(markerIn));
+            }
 
             if (excludeMarker != null) predicates.add(cb.notEqual(root.get("marker"), excludeMarker));
             if (processingStatus != null) predicates.add(cb.equal(root.get("processingStatus"), processingStatus));
@@ -379,11 +383,7 @@ public class DiagnosticOrderTestResultController {
             if (reviewDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("reviewDate"), reviewDateTo));
 
             if (reviewed != null) {
-                if (reviewed) {
-                    predicates.add(cb.isNotNull(root.get("reviewDate")));
-                } else {
-                    predicates.add(cb.isNull(root.get("reviewDate")));
-                }
+                predicates.add(reviewed ? cb.isNotNull(root.get("reviewDate")) : cb.isNull(root.get("reviewDate")));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));
@@ -398,12 +398,10 @@ public class DiagnosticOrderTestResultController {
         List<DiagnosticOrderTestResultResponseVM> body = page.getContent()
                 .stream()
                 .map(r -> {
-                    // 1) derive patientId from orderId
                     Long patientId = diagnosticOrderRepository.findById(r.getOrderId())
                             .map(o -> o.getPatientId())
                             .orElse(null);
 
-                    // 2) compute best normal range + marker preview
                     TestResultMarker viewMarker = r.getMarker();
                     String viewNormalRange = r.getNormalRangeValue();
                     TestResultType resultTypes;
@@ -440,6 +438,7 @@ public class DiagnosticOrderTestResultController {
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
+
     // helper in controller (or move to service)
     private String buildViewNormalRange(NormalRangeMatchDTO best) {
         if (best == null) return null;

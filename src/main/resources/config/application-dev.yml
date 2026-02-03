@@ -26,9 +26,9 @@ spring:
       indent-output: true
   datasource:
     type: com.zaxxer.hikari.HikariDataSource
-    url: jdbc:postgresql://localhost:5432/asklepios
+    url: jdbc:postgresql://localhost:5433/ask
     username: postgres
-    password: 147741
+    password: qse123H
     hikari:
       poolName: Hikari
       auto-commit: false
