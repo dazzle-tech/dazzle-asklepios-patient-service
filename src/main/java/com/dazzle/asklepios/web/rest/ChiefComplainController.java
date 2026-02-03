@@ -23,7 +23,7 @@ import java.net.URI;
 import java.util.Optional;
 
 @RestController
-@RequestMapping("/api/patient/")
+@RequestMapping("/api/patient")
 public class ChiefComplainController {
 
     private static final Logger LOG = LoggerFactory.getLogger(ChiefComplainController.class);
