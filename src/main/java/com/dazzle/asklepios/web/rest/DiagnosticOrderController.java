@@ -2,6 +2,7 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
+import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
@@ -303,7 +304,7 @@ public class DiagnosticOrderController {
      * or {@code 400 (Bad Request)} if the request contains conflicting filters (e.g. both {@code status} and {@code statusIn}).
      */
 
-   
+
 
     @GetMapping("/diagnostic-orders")
     public ResponseEntity<List<DiagnosticOrderResponseVM>> filter(
@@ -323,8 +324,8 @@ public class DiagnosticOrderController {
             @RequestParam(name = "submittedDateFrom", required = false) Instant submittedDateFrom,
             @RequestParam(name = "submittedDateTo", required = false) Instant submittedDateTo,
 
-
             @RequestParam(name = "departmentId", required = false) Long departmentId,
+            @RequestParam(name = "testType", required = false) TestType testType,
 
             @ParameterObject Pageable pageable
     ) {
@@ -336,7 +337,6 @@ public class DiagnosticOrderController {
         Specification<DiagnosticOrder> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            // Base filters
             if (patientId != null) predicates.add(cb.equal(root.get("patientId"), patientId));
             if (encounterId != null) predicates.add(cb.equal(root.get("encounterId"), encounterId));
 
@@ -360,19 +360,20 @@ public class DiagnosticOrderController {
             if (submittedDateTo != null)
                 predicates.add(cb.lessThanOrEqualTo(root.get("submittedDate"), submittedDateTo));
 
-            // ✅ Optional: only orders that have a NON-CANCELLED LAB test sent to departmentId
             if (departmentId != null) {
                 Subquery<Long> sq = query.subquery(Long.class);
                 Root<DiagnosticOrderTest> t = sq.from(DiagnosticOrderTest.class);
 
-                sq.select(t.get("id"))
-                        .where(
-                                cb.equal(t.get("orderId"), root.get("id")),
-                                cb.equal(t.get("receivedDepartmentId"), departmentId), // عدلي الاسم إذا مختلف بالـ Entity
-                                cb.notEqual(t.get("status"), DiagnosticStatus.CANCELLED),
-                                cb.equal(t.get("orderType"), TestType.LABORATORY)
-                        );
+                List<Predicate> sub = new ArrayList<>();
+                sub.add(cb.equal(t.get("orderId"), root.get("id")));
+                sub.add(cb.equal(t.get("receivedDepartmentId"), departmentId));
+                sub.add(cb.notEqual(t.get("status"), DiagnosticOrderTestStatus.CANCELLED));
 
+                if (testType != null) {
+                    sub.add(cb.equal(t.get("orderType"), testType));
+                }
+
+                sq.select(t.get("id")).where(sub.toArray(new Predicate[0]));
                 predicates.add(cb.exists(sq));
             }
 
