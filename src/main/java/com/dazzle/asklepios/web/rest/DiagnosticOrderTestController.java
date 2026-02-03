@@ -317,6 +317,9 @@ public class DiagnosticOrderTestController {
             @RequestParam(name = "submitDateFrom", required = false) Instant submitDateFrom,
             @RequestParam(name = "submitDateTo", required = false) Instant submitDateTo,
 
+            @RequestParam(name = "createdDateFrom", required = false) Instant createdDateFrom,
+            @RequestParam(name = "createdDateTo", required = false) Instant createdDateTo,
+
             @ParameterObject Pageable pageable
     ) {
         if (status != null && statusIn != null && !statusIn.isEmpty()) {
@@ -366,6 +369,16 @@ public class DiagnosticOrderTestController {
             // Submit date range
             if (submitDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("submitDate"), submitDateFrom));
             if (submitDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("submitDate"), submitDateTo));
+            // Created date range (TEST DATE)
+            if (createdDateFrom != null)
+                predicates.add(cb.greaterThanOrEqualTo(
+                        root.get("createdDate"), createdDateFrom
+                ));
+
+            if (createdDateTo != null)
+                predicates.add(cb.lessThanOrEqualTo(
+                        root.get("createdDate"), createdDateTo
+                ));
 
             // -----------------------------
             // (1) testName filter (ONLY from diagnostic_test)

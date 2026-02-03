@@ -328,7 +328,7 @@ public class DiagnosticOrderTestResultController {
             @RequestParam(name = "marker", required = false) TestResultMarker marker,
             @RequestParam(name = "excludeMarker", required = false) TestResultMarker excludeMarker,
             @RequestParam(name = "processingStatus", required = false) DiagnosticStatus processingStatus,
-
+            @RequestParam(name = "reviewed", required = false) Boolean reviewed,
             @RequestParam(name = "approvedBy", required = false) String approvedBy,
             @RequestParam(name = "rejectedBy", required = false) String rejectedBy,
             @RequestParam(name = "reviewBy", required = false) String reviewBy,
@@ -374,6 +374,13 @@ public class DiagnosticOrderTestResultController {
 
             if (reviewDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("reviewDate"), reviewDateFrom));
             if (reviewDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("reviewDate"), reviewDateTo));
+            if (reviewed != null) {
+                if (reviewed) {
+                    predicates.add(cb.isNotNull(root.get("reviewDate")));
+                } else {
+                    predicates.add(cb.isNull(root.get("reviewDate")));
+                }
+            }
 
             return cb.and(predicates.toArray(new Predicate[0]));
         };
