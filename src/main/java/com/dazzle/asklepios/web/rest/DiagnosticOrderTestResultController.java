@@ -294,7 +294,8 @@ public class DiagnosticOrderTestResultController {
      *
      * <p>Notes:
      * <ul>
-     *   <li>{@code marker} matches exactly.</li>
+     *   <li>{@code marker} matches exactly (if provided).</li>
+     *   <li>{@code markerIn} matches any of the provided markers (ignored if {@code marker} is provided).</li>
      *   <li>{@code excludeMarker} excludes a specific marker.</li>
      *   <li>Dates are inclusive bounds.</li>
      * </ul>
@@ -303,9 +304,12 @@ public class DiagnosticOrderTestResultController {
      * @param orderId          optional diagnostic order id
      * @param orderTestId      optional diagnostic order test id
      * @param profileTestId    optional profile test id
-     * @param marker           optional result marker (exact match)
+     * @param markerIn         optional list of markers to include (IN filter).
+     *                         Example (abnormal-only): UPPER_LIMIT, LOWER_LIMIT, ABNORMAL_MARKER, CRITICAL_UPPER, CRITICAL_LOWER
+     *                         (i.e., all except NORMAL_MARKER and UNKNOWN).
      * @param excludeMarker    optional marker to exclude
      * @param processingStatus optional processing status (exact match)
+     * @param reviewed         optional: if true returns only reviewed (reviewDate not null), if false returns only not reviewed (reviewDate null)
      * @param approvedBy       optional approvedBy (exact match)
      * @param rejectedBy       optional rejectedBy (exact match)
      * @param reviewBy         optional reviewBy (exact match)
@@ -315,17 +319,16 @@ public class DiagnosticOrderTestResultController {
      * @param rejectedDateTo   optional upper bound (inclusive) for rejectedDate
      * @param reviewDateFrom   optional lower bound (inclusive) for reviewDate
      * @param reviewDateTo     optional upper bound (inclusive) for reviewDate
+     * @param resultType       optional result type (currently used to compute marker correctly until fetched from setup-service)
      * @param pageable         pagination and sorting
      * @return list of results mapped to response VMs with pagination headers (HTTP 200)
      */
-
     @GetMapping("/diagnostic-order-tests-results")
     public ResponseEntity<List<DiagnosticOrderTestResultResponseVM>> filter(
             @RequestParam(name = "orderId", required = false) Long orderId,
             @RequestParam(name = "orderTestId", required = false) Long orderTestId,
             @RequestParam(name = "profileTestId", required = false) Long profileTestId,
-
-            @RequestParam(name = "marker", required = false) TestResultMarker marker,
+            @RequestParam(name = "markerIn", required = false) List<TestResultMarker> markerIn,
             @RequestParam(name = "excludeMarker", required = false) TestResultMarker excludeMarker,
             @RequestParam(name = "processingStatus", required = false) DiagnosticStatus processingStatus,
             @RequestParam(name = "reviewed", required = false) Boolean reviewed,
@@ -347,8 +350,8 @@ public class DiagnosticOrderTestResultController {
 
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("[DiagnosticOrderTestResult] FILTER - request received. orderId={} orderTestId={} profileTestId={} marker={} excludeMarker={} processingStatus={} approvedBy={} rejectedBy={} reviewBy={} approvedDateFrom={} approvedDateTo={} rejectedDateFrom={} rejectedDateTo={} reviewDateFrom={} reviewDateTo={} resultType={} pageable={}",
-                orderId, orderTestId, profileTestId, marker, excludeMarker, processingStatus, approvedBy, rejectedBy, reviewBy,
+        LOG.debug("[DiagnosticOrderTestResult] FILTER - request received. orderId={} orderTestId={} profileTestId={}  markerIn={} excludeMarker={} processingStatus={} reviewed={} approvedBy={} rejectedBy={} reviewBy={} approvedDateFrom={} approvedDateTo={} rejectedDateFrom={} rejectedDateTo={} reviewDateFrom={} reviewDateTo={} resultType={} pageable={}",
+                orderId, orderTestId, profileTestId,  markerIn, excludeMarker, processingStatus, reviewed, approvedBy, rejectedBy, reviewBy,
                 approvedDateFrom, approvedDateTo, rejectedDateFrom, rejectedDateTo, reviewDateFrom, reviewDateTo, resultType, pageable);
 
         Specification<DiagnosticOrderTestResult> spec = (root, query, cb) -> {
@@ -358,7 +361,7 @@ public class DiagnosticOrderTestResultController {
             if (orderTestId != null) predicates.add(cb.equal(root.get("orderTestId"), orderTestId));
             if (profileTestId != null) predicates.add(cb.equal(root.get("profileTestId"), profileTestId));
 
-            if (marker != null) predicates.add(cb.equal(root.get("marker"), marker));
+
             if (excludeMarker != null) predicates.add(cb.notEqual(root.get("marker"), excludeMarker));
             if (processingStatus != null) predicates.add(cb.equal(root.get("processingStatus"), processingStatus));
 
@@ -374,6 +377,7 @@ public class DiagnosticOrderTestResultController {
 
             if (reviewDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("reviewDate"), reviewDateFrom));
             if (reviewDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("reviewDate"), reviewDateTo));
+
             if (reviewed != null) {
                 if (reviewed) {
                     predicates.add(cb.isNotNull(root.get("reviewDate")));
@@ -406,8 +410,11 @@ public class DiagnosticOrderTestResultController {
                     try {
                         resultTypes = setupServiceClient.getResultTypeByProfileTestIdInternal(r.getProfileTestId());
                     } catch (Exception e) {
-                        throw new BadRequestAlertException("setup_service_error", "diagnostic_order_tests_result",
-                                "Failed to fetch result type for profileTestId " + r.getProfileTestId());
+                        throw new BadRequestAlertException(
+                                "setup_service_error",
+                                "diagnostic_order_tests_result",
+                                "Failed to fetch result type for profileTestId " + r.getProfileTestId()
+                        );
                     }
 
                     if (patientId != null) {
@@ -418,12 +425,13 @@ public class DiagnosticOrderTestResultController {
                                 r.getResultValueText(),
                                 best
                         );
-
-                        // optional: compute a display string (you can implement it in matcher service)
                         viewNormalRange = buildViewNormalRange(best);
                     }
 
-                    return DiagnosticOrderTestResultResponseVM.ofEntityWithViewAndNote(r, viewMarker, viewNormalRange,diagnosticOrderTestResultTechnicianNoteRepository.existsByResultId(r.getId()));
+                    return DiagnosticOrderTestResultResponseVM.ofEntityWithViewAndNote(
+                            r, viewMarker, viewNormalRange,
+                            diagnosticOrderTestResultTechnicianNoteRepository.existsByResultId(r.getId())
+                    );
                 })
                 .toList();
 
@@ -432,7 +440,6 @@ public class DiagnosticOrderTestResultController {
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
-
     // helper in controller (or move to service)
     private String buildViewNormalRange(NormalRangeMatchDTO best) {
         if (best == null) return null;
