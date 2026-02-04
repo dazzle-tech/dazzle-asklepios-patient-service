@@ -9,6 +9,7 @@ import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.service.DiagnosticOrderTestReportService;
 import com.dazzle.asklepios.service.DiagnosticOrderTestStatusService;
+import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportApproveDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportCreateDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportRejectDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportReviewDTO;
@@ -344,7 +345,20 @@ public class DiagnosticOrderTestReportController {
 
         return ResponseEntity.ok(vm);
     }
+    /**
+     * Approves radiology report.
+     * Effects:
+     * - DiagnosticOrderTestReport.processingStatus -> RESULT_APPROVED
+     * - fills approvedBy/approvedDate
+     * - DiagnosticOrderTest.processingStatus -> RESULT_APPROVED (via DiagnosticOrderTestStatusService inside service)
+     */
+    @PostMapping("/radiology/reports/{reportId}/approve")
+    public ResponseEntity<DiagnosticOrderTestReportResponseVM> approve(@PathVariable Long reportId) {
+        LOG.debug("REST approve report reportId={}", reportId);
 
+        DiagnosticOrderTestReport updated = reportService.approve(reportId);
+        return ResponseEntity.ok(DiagnosticOrderTestReportResponseVM.ofEntity(updated));
+    }
     private DiagnosticOrderTest requireRadiologyTest(Long testId) {
         return testRepository.findById(testId)
                 .filter(t -> t.getOrderType() == TestType.RADIOLOGY)

@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.RadiologyImageStatus;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportApproveDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportCreateDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportRejectDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportReviewDTO;
@@ -39,15 +40,31 @@ public class DiagnosticOrderTestReportService {
 
     private final DiagnosticOrderTestReportRepository reportRepository;
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
-
+    private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
     public DiagnosticOrderTestReportService(
             DiagnosticOrderTestReportRepository reportRepository,
-            DiagnosticOrderStatusService diagnosticOrderStatusService
-    ) {
+            DiagnosticOrderStatusService diagnosticOrderStatusService, DiagnosticOrderTestStatusService diagnosticOrderTestStatusService
+
+
+            ) {
         this.reportRepository = reportRepository;
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
+        this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
     }
-
+    /**
+     * Returns the current authenticated username (login).
+     *
+     * @return username of the authenticated user
+     * @throws BadRequestAlertException if no user is authenticated
+     */
+    private String currentUsername() {
+        return SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "unauthenticated",
+                        "diagnostic_order_tests",
+                        "No authenticated user"
+                ));
+    }
     /**
      * Loads a report by orderTestId (DiagnosticOrderTest id).
      *
@@ -149,7 +166,7 @@ public class DiagnosticOrderTestReportService {
                         "Report not found for orderTestId " + dto.orderTestId()
                 ));
 
-        String user = SecurityUtils.getCurrentUserLogin().orElse("system");
+        String user = currentUsername();
 
         report.setRejectedBy(user);
         report.setRejectedReason(dto.rejectedReason());
@@ -177,7 +194,7 @@ public class DiagnosticOrderTestReportService {
                         "Report not found for orderTestId " + dto.orderTestId()
                 ));
 
-        String user = SecurityUtils.getCurrentUserLogin().orElse("system");
+        String user =currentUsername();
 
         report.setReviewBy(user);
         report.setReviewDate(Instant.now());
@@ -237,6 +254,33 @@ public class DiagnosticOrderTestReportService {
      */
     public RadiologyImageStatusResponseVM finishImage(Long testId) {
         return setImageStatusByReport(testId, RadiologyImageStatus.FINISHED);
+    }
+
+    public DiagnosticOrderTestReport approve(Long reportId) {
+        LOG.debug("Service approve reportId={}", reportId);
+
+        DiagnosticOrderTestReport report = reportRepository.findById(reportId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_order_tests_report",
+                        "Report not found with id " + reportId
+                ));
+
+        Long orderTestId = report.getOrderTestId();
+
+        String user = currentUsername();
+        Instant now = Instant.now();
+
+        report.setApprovedBy(user);
+        report.setApprovedDate(now);
+        report.setProcessingStatus(DiagnosticStatus.RESULT_APPROVED);
+
+        DiagnosticOrderTestReport saved = reportRepository.save(report);
+
+        // اعتمد الـ test بناءً على orderTestId المأخوذ من التقرير
+        diagnosticOrderTestStatusService.approve(orderTestId);
+
+        return saved;
     }
 
     private RadiologyImageStatusResponseVM setImageStatusByReport(Long testId, RadiologyImageStatus to) {
