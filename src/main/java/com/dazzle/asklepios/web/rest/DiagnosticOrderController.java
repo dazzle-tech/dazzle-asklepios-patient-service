@@ -123,7 +123,6 @@ public class DiagnosticOrderController {
                 id,
                 dto.patientId(),
                 dto.encounterId(),
-                dto.status(),
                 dto.saveDraft(),
                 dto.submittedBy(),
                 dto.submittedDate(),

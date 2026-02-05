@@ -10,7 +10,6 @@ public record DiagnosticOrderUpdateDTO(
         @NotNull Long id,
         @NotNull Long patientId,
         @NotNull Long encounterId,
-        DiagnosticStatus status,
         Boolean saveDraft,
         String submittedBy,
         Instant submittedDate,
