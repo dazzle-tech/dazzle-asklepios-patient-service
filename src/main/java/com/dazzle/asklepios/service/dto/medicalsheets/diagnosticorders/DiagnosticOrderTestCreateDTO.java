@@ -9,8 +9,6 @@ import java.io.Serializable;
 import java.time.Instant;
 
 public record DiagnosticOrderTestCreateDTO(
-        @NotNull Long patientId,
-        @NotNull Long encounterId,
 
         @NotNull Long orderId,
         @NotNull Long testId,

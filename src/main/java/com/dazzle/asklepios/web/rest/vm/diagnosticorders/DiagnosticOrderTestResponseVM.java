@@ -10,8 +10,6 @@ import java.time.Instant;
 
 public record DiagnosticOrderTestResponseVM(
         Long id,
-        Long patientId,
-        Long encounterId,
 
         DiagnosticOrderTestStatus status,      // lifecycle: NEW/SUBMITTED/CANCELLED
         DiagnosticStatus processingStatus,     // workflow: SAMPLE_COLLECTED/ACCEPTED/...
@@ -48,8 +46,6 @@ public record DiagnosticOrderTestResponseVM(
     public static DiagnosticOrderTestResponseVM ofEntity(DiagnosticOrderTest t) {
         return new DiagnosticOrderTestResponseVM(
                 t.getId(),
-                t.getPatientId(),
-                t.getEncounterId(),
 
                 t.getStatus(),
                 t.getProcessingStatus(),

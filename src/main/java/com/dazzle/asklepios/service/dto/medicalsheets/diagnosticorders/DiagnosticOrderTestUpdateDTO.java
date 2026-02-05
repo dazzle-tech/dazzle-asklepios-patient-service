@@ -8,8 +8,6 @@ import java.io.Serializable;
 public record
 DiagnosticOrderTestUpdateDTO(
         @NotNull Long id,
-        @NotNull Long patientId,
-        @NotNull Long encounterId,
         @NotNull Long orderId,
         @NotNull Long testId,
 
