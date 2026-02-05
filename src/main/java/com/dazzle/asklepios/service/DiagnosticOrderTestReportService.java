@@ -277,7 +277,7 @@ public class DiagnosticOrderTestReportService {
 
         DiagnosticOrderTestReport saved = reportRepository.save(report);
 
-        // اعتمد الـ test بناءً على orderTestId المأخوذ من التقرير
+
         diagnosticOrderTestStatusService.approve(orderTestId);
 
         return saved;
