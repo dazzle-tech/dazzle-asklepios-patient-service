@@ -248,12 +248,20 @@ public class DiagnosticOrderTestReportController {
 
         DiagnosticOrderTestReport updated = reportService.update(reportId, dto);
 
-        if (dto.report() != null && !dto.report().isBlank()) {
-            DiagnosticOrderTest test = requireRadiologyTest(updated.getOrderTestId());
-            if (test.getProcessingStatus() != DiagnosticStatus.ACCEPTED && test.getProcessingStatus() != DiagnosticStatus.RESULT_READY) {
-                throw new BadRequestAlertException("invalid_state", "diagnostic_order_tests", "Test must be ACCEPTED to mark RESULT_READY");
+
+        if (dto.report() != null) {
+            if (updated.getImageStatus() != RadiologyImageStatus.FINISHED) {
+                throw new BadRequestAlertException(
+                        "invalid_state",
+                        "diagnostic_order_tests_report",
+                        "Cannot write report before image  is FINISHED"
+                );
             }
-            diagnosticOrderTestStatusService.markReady(updated.getOrderTestId());
+
+
+            if (!dto.report().isBlank()) {
+                diagnosticOrderTestStatusService.markReady(updated.getOrderTestId());
+            }
         }
 
         return ResponseEntity.ok(DiagnosticOrderTestReportResponseVM.ofEntity(updated));
