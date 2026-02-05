@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.web.rest;
 
+import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
@@ -89,7 +90,6 @@ public class DiagnosticOrderTestReportController {
             @RequestParam(name = "orderTestId", required = false) Long orderTestId,
 
             @RequestParam(name = "severity", required = false) String severity,
-            @RequestParam(name = "hasReport", required = false) Boolean hasReport,
 
             @RequestParam(name = "approvedBy", required = false) String approvedBy,
             @RequestParam(name = "rejectedBy", required = false) String rejectedBy,
@@ -114,7 +114,7 @@ public class DiagnosticOrderTestReportController {
             @RequestParam(name = "createdDateTo", required = false) Instant createdDateTo,
             @RequestParam(name = "lastModifiedDateFrom", required = false) Instant lastModifiedDateFrom,
             @RequestParam(name = "lastModifiedDateTo", required = false) Instant lastModifiedDateTo,
-
+            @RequestParam(name = "fromDepartment", required = false) String fromDepartment,
             @ParameterObject Pageable pageable
     ) {
         LOG.debug("REST filter DiagnosticOrderTestReport orderId={} orderTestId={}", orderId, orderTestId);
@@ -135,14 +135,6 @@ public class DiagnosticOrderTestReportController {
 
             if (severity != null && !severity.isBlank()) {
                 predicates.add(cb.equal(root.get("severity"), severity));
-            }
-
-            if (hasReport != null) {
-                if (hasReport) {
-                    predicates.add(cb.isNotNull(root.get("report")));
-                } else {
-                    predicates.add(cb.isNull(root.get("report")));
-                }
             }
 
             if (approvedBy != null && !approvedBy.isBlank()) predicates.add(cb.equal(root.get("approvedBy"), approvedBy));
@@ -173,6 +165,18 @@ public class DiagnosticOrderTestReportController {
 
             if (lastModifiedDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("lastModifiedDate"), lastModifiedDateFrom));
             if (lastModifiedDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("lastModifiedDate"), lastModifiedDateTo));
+            if (fromDepartment != null && !fromDepartment.isBlank()) {
+                var sub = query.subquery(Long.class);
+                var t = sub.from(DiagnosticOrder.class);
+
+                sub.select(t.get("id"))
+                        .where(
+                                cb.equal(t.get("id"), root.get("orderId")),
+                                cb.equal(t.get("fromDepartment"), fromDepartment)
+                        );
+
+                predicates.add(cb.exists(sub));
+            }
 
             return cb.and(predicates.toArray(new Predicate[0]));
         };
