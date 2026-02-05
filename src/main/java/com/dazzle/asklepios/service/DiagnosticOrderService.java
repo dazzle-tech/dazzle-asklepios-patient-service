@@ -61,7 +61,8 @@ public class DiagnosticOrderService {
         order.setStatus(status);
         order.setLabStatus(labStatus);
         order.setRadStatus(radStatus);
-
+        order.setFromDepartmentId(dto.fromDepartmentId());
+        order.setFromFacilityId(dto.fromFacilityId());
 
         order.setSaveDraft(true);
         order.setSubmittedBy(dto.submittedBy());
@@ -99,9 +100,9 @@ public class DiagnosticOrderService {
 
         existing.setPatientId(dto.patientId());
         existing.setEncounterId(dto.encounterId());
-        existing.setStatus(dto.status());
-
-        existing.setSaveDraft(dto.saveDraft());
+        if (dto.saveDraft() != null) {
+            existing.setSaveDraft(dto.saveDraft());
+        }
         existing.setSubmittedBy(dto.submittedBy());
         existing.setSubmittedDate(dto.submittedDate());
 
