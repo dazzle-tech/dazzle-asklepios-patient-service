@@ -38,13 +38,6 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "patient_id")
-    private Long patientId;
-
-    @Column(name = "encounter_id")
-    private Long encounterId;
-
-    // Liquibase: varchar(50)
     @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 50)
     private DiagnosticOrderTestStatus status;

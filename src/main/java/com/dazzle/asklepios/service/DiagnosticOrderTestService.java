@@ -77,8 +77,6 @@ public class DiagnosticOrderTestService {
 
         // Build a new entity instance from DTO fields
         DiagnosticOrderTest t = new DiagnosticOrderTest();
-        t.setPatientId(dto.patientId());
-        t.setEncounterId(dto.encounterId());
         t.setOrderId(dto.orderId());
         t.setTestId(dto.testId());
 
@@ -124,9 +122,6 @@ public class DiagnosticOrderTestService {
     public DiagnosticOrderTest update(DiagnosticOrderTest existing, DiagnosticOrderTestUpdateDTO dto) {
         LOG.debug("Request to update DiagnosticOrderTest id={} payload={}", existing.getId(), dto);
 
-        // Update core references
-        existing.setPatientId(dto.patientId());
-        existing.setEncounterId(dto.encounterId());
         existing.setOrderId(dto.orderId());
         existing.setTestId(dto.testId());
 
