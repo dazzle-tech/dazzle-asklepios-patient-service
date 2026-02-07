@@ -3,6 +3,7 @@ package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
+import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.RadiologyImageStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
@@ -114,10 +115,17 @@ public class DiagnosticOrderTestReportController {
             @RequestParam(name = "createdDateTo", required = false) Instant createdDateTo,
             @RequestParam(name = "lastModifiedDateFrom", required = false) Instant lastModifiedDateFrom,
             @RequestParam(name = "lastModifiedDateTo", required = false) Instant lastModifiedDateTo,
+
             @RequestParam(name = "fromDepartment", required = false) String fromDepartment,
+            @RequestParam(name = "patientName", required = false) String patientName,
+            @RequestParam(name = "mrn", required = false) String mrn,
+
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST filter DiagnosticOrderTestReport orderId={} orderTestId={}", orderId, orderTestId);
+        LOG.debug(
+                "REST filter reports orderId={} orderTestId={} fromDepartment={} patientName={} mrn={}",
+                orderId, orderTestId, fromDepartment, patientName, mrn
+        );
 
         if (processingStatus != null && processingStatusIn != null && !processingStatusIn.isEmpty()) {
             throw new IllegalArgumentException("Use either processingStatus or processingStatusIn, not both");
@@ -129,6 +137,9 @@ public class DiagnosticOrderTestReportController {
         Specification<DiagnosticOrderTestReport> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
+        /* =======================
+           Report-level filters
+           ======================= */
             if (id != null) predicates.add(cb.equal(root.get("id"), id));
             if (orderId != null) predicates.add(cb.equal(root.get("orderId"), orderId));
             if (orderTestId != null) predicates.add(cb.equal(root.get("orderTestId"), orderTestId));
@@ -151,30 +162,69 @@ public class DiagnosticOrderTestReportController {
             if (reviewDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("reviewDate"), reviewDateTo));
 
             if (processingStatus != null) predicates.add(cb.equal(root.get("processingStatus"), processingStatus));
-            if (processingStatusIn != null && !processingStatusIn.isEmpty()) predicates.add(root.get("processingStatus").in(processingStatusIn));
+            if (processingStatusIn != null && !processingStatusIn.isEmpty())
+                predicates.add(root.get("processingStatus").in(processingStatusIn));
             if (processingStatusNotIn != null && !processingStatusNotIn.isEmpty())
                 predicates.add(cb.not(root.get("processingStatus").in(processingStatusNotIn)));
 
             if (imageStatus != null) predicates.add(cb.equal(root.get("imageStatus"), imageStatus));
-            if (imageStatusIn != null && !imageStatusIn.isEmpty()) predicates.add(root.get("imageStatus").in(imageStatusIn));
+            if (imageStatusIn != null && !imageStatusIn.isEmpty())
+                predicates.add(root.get("imageStatus").in(imageStatusIn));
             if (imageStatusNotIn != null && !imageStatusNotIn.isEmpty())
                 predicates.add(cb.not(root.get("imageStatus").in(imageStatusNotIn)));
 
             if (createdDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("createdDate"), createdDateFrom));
             if (createdDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("createdDate"), createdDateTo));
 
-            if (lastModifiedDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("lastModifiedDate"), lastModifiedDateFrom));
-            if (lastModifiedDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("lastModifiedDate"), lastModifiedDateTo));
-            if (fromDepartment != null && !fromDepartment.isBlank()) {
+            if (lastModifiedDateFrom != null)
+                predicates.add(cb.greaterThanOrEqualTo(root.get("lastModifiedDate"), lastModifiedDateFrom));
+            if (lastModifiedDateTo != null)
+                predicates.add(cb.lessThanOrEqualTo(root.get("lastModifiedDate"), lastModifiedDateTo));
+
+        /* =======================
+           Order + Patient filters
+           ======================= */
+            boolean needOrderPatientSubquery =
+                    (fromDepartment != null && !fromDepartment.isBlank()) ||
+                            (patientName != null && !patientName.isBlank()) ||
+                            (mrn != null && !mrn.isBlank());
+
+            if (needOrderPatientSubquery) {
                 var sub = query.subquery(Long.class);
-                var t = sub.from(DiagnosticOrder.class);
+                var order = sub.from(DiagnosticOrder.class);
+                var patient = sub.from(Patient.class);
 
-                sub.select(t.get("id"))
-                        .where(
-                                cb.equal(t.get("id"), root.get("orderId")),
-                                cb.equal(t.get("fromDepartment"), fromDepartment)
-                        );
+                List<Predicate> subPreds = new ArrayList<>();
 
+                // report -> order
+                subPreds.add(cb.equal(order.get("id"), root.get("orderId")));
+
+                // order -> patient
+                subPreds.add(cb.equal(patient.get("id"), order.get("patientId")));
+
+                if (fromDepartment != null && !fromDepartment.isBlank()) {
+                    subPreds.add(cb.equal(order.get("fromDepartment"), fromDepartment));
+                }
+
+                if (mrn != null && !mrn.isBlank()) {
+                    subPreds.add(cb.like(
+                            cb.lower(patient.get("medicalRecordNumber")),
+                            "%" + mrn.trim().toLowerCase() + "%"
+                    ));
+
+                }
+
+                if (patientName != null && !patientName.isBlank()) {
+                    String like = "%" + patientName.trim().toLowerCase() + "%";
+                    subPreds.add(cb.or(
+                            cb.like(cb.lower(patient.get("firstName")), like),
+                            cb.like(cb.lower(patient.get("secondName")), like),
+                            cb.like(cb.lower(patient.get("thirdName")), like),
+                            cb.like(cb.lower(patient.get("lastName")), like)
+                    ));
+                }
+
+                sub.select(order.get("id")).where(subPreds.toArray(new Predicate[0]));
                 predicates.add(cb.exists(sub));
             }
 
@@ -194,6 +244,7 @@ public class DiagnosticOrderTestReportController {
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
+
 
     @GetMapping("/radiology/reports/by-test/{orderTestId}")
     public ResponseEntity<DiagnosticOrderTestReportResponseVM> getByOrderTestId(@PathVariable Long orderTestId) {
@@ -248,12 +299,16 @@ public class DiagnosticOrderTestReportController {
 
         DiagnosticOrderTestReport updated = reportService.update(reportId, dto);
 
-        if (dto.report() != null && !dto.report().isBlank()) {
-            DiagnosticOrderTest test = requireRadiologyTest(updated.getOrderTestId());
-            if (test.getProcessingStatus() != DiagnosticStatus.ACCEPTED && test.getProcessingStatus() != DiagnosticStatus.RESULT_READY) {
-                throw new BadRequestAlertException("invalid_state", "diagnostic_order_tests", "Test must be ACCEPTED to mark RESULT_READY");
+
+        if (dto.report() != null) {
+            if (updated.getImageStatus() != RadiologyImageStatus.FINISHED) {
+                throw new BadRequestAlertException(
+                        "invalid_state",
+                        "diagnostic_order_tests_report",
+                        "Cannot write report before image  is FINISHED"
+                );
             }
-            diagnosticOrderTestStatusService.markReady(updated.getOrderTestId());
+            
         }
 
         return ResponseEntity.ok(DiagnosticOrderTestReportResponseVM.ofEntity(updated));
