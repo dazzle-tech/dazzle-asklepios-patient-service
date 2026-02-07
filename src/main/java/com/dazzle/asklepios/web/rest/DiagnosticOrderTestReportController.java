@@ -7,31 +7,39 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.RadiologyImageStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestReportImageStatusLogRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.service.DiagnosticOrderTestReportService;
 import com.dazzle.asklepios.service.DiagnosticOrderTestStatusService;
-import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportApproveDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportCreateDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportRejectDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportReviewDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportUpdateDTO;
-import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportImageStatusLogResponseVM;
 import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportResponseVM;
 import com.dazzle.asklepios.web.rest.vm.radiology.RadiologyImageStatusResponseVM;
-import org.springdoc.core.annotations.ParameterObject;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
@@ -60,17 +68,19 @@ public class DiagnosticOrderTestReportController {
     private final DiagnosticOrderTestRepository testRepository;
     private final DiagnosticOrderTestReportRepository reportRepository;
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
+    private final DiagnosticOrderTestReportImageStatusLogRepository logRepository;
 
     public DiagnosticOrderTestReportController(
             DiagnosticOrderTestReportService reportService,
             DiagnosticOrderTestRepository testRepository,
             DiagnosticOrderTestReportRepository reportRepository,
-            DiagnosticOrderTestStatusService diagnosticOrderTestStatusService
+            DiagnosticOrderTestStatusService diagnosticOrderTestStatusService, DiagnosticOrderTestReportImageStatusLogRepository logRepository
     ) {
         this.reportService = reportService;
         this.testRepository = testRepository;
         this.reportRepository = reportRepository;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
+        this.logRepository = logRepository;
     }
 
     // داخل DiagnosticOrderTestReportController
@@ -148,14 +158,18 @@ public class DiagnosticOrderTestReportController {
                 predicates.add(cb.equal(root.get("severity"), severity));
             }
 
-            if (approvedBy != null && !approvedBy.isBlank()) predicates.add(cb.equal(root.get("approvedBy"), approvedBy));
-            if (rejectedBy != null && !rejectedBy.isBlank()) predicates.add(cb.equal(root.get("rejectedBy"), rejectedBy));
+            if (approvedBy != null && !approvedBy.isBlank())
+                predicates.add(cb.equal(root.get("approvedBy"), approvedBy));
+            if (rejectedBy != null && !rejectedBy.isBlank())
+                predicates.add(cb.equal(root.get("rejectedBy"), rejectedBy));
             if (reviewBy != null && !reviewBy.isBlank()) predicates.add(cb.equal(root.get("reviewBy"), reviewBy));
 
-            if (approvedDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("approvedDate"), approvedDateFrom));
+            if (approvedDateFrom != null)
+                predicates.add(cb.greaterThanOrEqualTo(root.get("approvedDate"), approvedDateFrom));
             if (approvedDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("approvedDate"), approvedDateTo));
 
-            if (rejectedDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("rejectedDate"), rejectedDateFrom));
+            if (rejectedDateFrom != null)
+                predicates.add(cb.greaterThanOrEqualTo(root.get("rejectedDate"), rejectedDateFrom));
             if (rejectedDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("rejectedDate"), rejectedDateTo));
 
             if (reviewDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("reviewDate"), reviewDateFrom));
@@ -173,7 +187,8 @@ public class DiagnosticOrderTestReportController {
             if (imageStatusNotIn != null && !imageStatusNotIn.isEmpty())
                 predicates.add(cb.not(root.get("imageStatus").in(imageStatusNotIn)));
 
-            if (createdDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("createdDate"), createdDateFrom));
+            if (createdDateFrom != null)
+                predicates.add(cb.greaterThanOrEqualTo(root.get("createdDate"), createdDateFrom));
             if (createdDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("createdDate"), createdDateTo));
 
             if (lastModifiedDateFrom != null)
@@ -404,6 +419,7 @@ public class DiagnosticOrderTestReportController {
 
         return ResponseEntity.ok(vm);
     }
+
     /**
      * Approves radiology report.
      * Effects:
@@ -418,6 +434,7 @@ public class DiagnosticOrderTestReportController {
         DiagnosticOrderTestReport updated = reportService.approve(reportId);
         return ResponseEntity.ok(DiagnosticOrderTestReportResponseVM.ofEntity(updated));
     }
+
     private DiagnosticOrderTest requireRadiologyTest(Long testId) {
         return testRepository.findById(testId)
                 .filter(t -> t.getOrderType() == TestType.RADIOLOGY)
@@ -426,5 +443,28 @@ public class DiagnosticOrderTestReportController {
                         "diagnostic_order_tests",
                         "Radiology DiagnosticOrderTest not found with id " + testId
                 ));
+    }
+
+
+    /**
+     * GET /{reportId}/image-status-log : Get image status log rows for a report.
+     *
+     * @param reportId report id
+     * @return list of log rows (empty if none)
+     */
+    @GetMapping("/radiology/reports/{reportId}/image-status-log")
+    public ResponseEntity<List<DiagnosticOrderTestReportImageStatusLogResponseVM>> getByReportId(
+            @PathVariable Long reportId
+    ) {
+        LOG.debug("REST get image status log by reportId={}", reportId);
+
+        List<DiagnosticOrderTestReportImageStatusLogResponseVM> body = logRepository
+                .findByReportIdOrderByStatusDateDesc(reportId)
+                .stream()
+                .map(DiagnosticOrderTestReportImageStatusLogResponseVM::ofEntity)
+                .toList();
+
+        LOG.info("REST image status log rows={} for reportId={}", body.size(), reportId);
+        return ResponseEntity.ok(body);
     }
 }
