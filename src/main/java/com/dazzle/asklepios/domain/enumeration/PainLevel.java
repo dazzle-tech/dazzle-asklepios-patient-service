@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.domain.enumeration;
 
 public enum PainLevel {
+    LEVEL_0,
     LEVEL_1,
     LEVEL_2,
     LEVEL_3,
