@@ -83,7 +83,6 @@ public class DiagnosticOrderTestReportController {
         this.logRepository = logRepository;
     }
 
-    // داخل DiagnosticOrderTestReportController
 
     /**
      * Filters radiology reports using only fields from diagnostic_order_tests_report.
@@ -445,6 +444,20 @@ public class DiagnosticOrderTestReportController {
                 ));
     }
 
+    @PostMapping("/radiology/reports/{reportId}/second-approve")
+    public ResponseEntity<DiagnosticOrderTestReportResponseVM> secondApprove(@PathVariable Long reportId) {
+        LOG.debug("REST second approve report reportId={}", reportId);
+
+        DiagnosticOrderTestReport report = reportRepository.findById(reportId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_order_tests_report",
+                        "Report not found with id " + reportId
+                ));
+
+        DiagnosticOrderTestReport updated = reportService.secondApprove(report);
+        return ResponseEntity.ok(DiagnosticOrderTestReportResponseVM.ofEntity(updated));
+    }
 
     /**
      * GET /{reportId}/image-status-log : Get image status log rows for a report.

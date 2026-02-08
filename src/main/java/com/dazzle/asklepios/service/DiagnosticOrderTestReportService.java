@@ -312,6 +312,47 @@ public class DiagnosticOrderTestReportService {
                 saved.getLastModifiedDate()
         );
     }
+    public DiagnosticOrderTestReport secondApprove(DiagnosticOrderTestReport report) {
+        LOG.debug("Service second approve reportId={}", report.getId());
+
+        if (report.getApprovedBy() == null || report.getApprovedDate() == null) {
+            throw new BadRequestAlertException(
+                    "first_approve_required",
+                    "diagnostic_order_tests_report",
+                    "First approve is required before second approve"
+            );
+        }
+
+        if (report.getSecondApprovedBy() != null || report.getSecondApprovedDate() != null) {
+            throw new BadRequestAlertException(
+                    "already_second_approved",
+                    "diagnostic_order_tests_report",
+                    "Report already second approved"
+            );
+        }
+
+        String currentUser = currentUsername();
+
+        
+        if (currentUser.equals(report.getApprovedBy())) {
+            throw new BadRequestAlertException(
+                    "same_user_not_allowed",
+                    "diagnostic_order_tests_report",
+                    "Second approve must be performed by a different user"
+            );
+        }
+
+        Instant now = Instant.now();
+
+        report.setSecondApprovedBy(currentUser);
+        report.setSecondApprovedDate(now);
+
+        DiagnosticOrderTestReport saved = reportRepository.save(report);
+        diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
+
+        return saved;
+    }
+
 
     /**
      * Validates allowed radiology image workflow transitions.
