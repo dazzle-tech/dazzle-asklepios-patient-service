@@ -64,18 +64,8 @@ public class ConsultationController {
             );
         }
 
-        DestinationType destinationType;
-        try {
-            destinationType = DestinationType.valueOf(dto.destinationType().trim().toUpperCase());
-            LOG.debug("REST create Consultation - Parsed destinationType={}", destinationType);
-        } catch (Exception ex) {
-            LOG.error("REST create Consultation - Invalid destinationType={}", dto.destinationType(), ex);
-            throw new BadRequestAlertException(
-                    "Invalid destinationType",
-                    "consultation",
-                    "destinationType.invalid"
-            );
-        }
+        DestinationType destinationType = dto.destinationType();
+
 
         if (destinationType == DestinationType.DEPARTMENT) {
             if (dto.toDepartmentId() == null) {
@@ -138,18 +128,7 @@ public class ConsultationController {
             );
         }
 
-        DestinationType destinationType;
-        try {
-            destinationType = DestinationType.valueOf(dto.destinationType().trim().toUpperCase());
-            LOG.debug("REST update Consultation - Parsed destinationType={}", destinationType);
-        } catch (Exception ex) {
-            LOG.error("REST update Consultation - Invalid destinationType={}", dto.destinationType(), ex);
-            throw new BadRequestAlertException(
-                    "Invalid destinationType",
-                    "consultation",
-                    "destinationType.invalid"
-            );
-        }
+        DestinationType destinationType = dto.destinationType();
 
         if (destinationType == DestinationType.DEPARTMENT) {
             if (dto.toDepartmentId() == null) {

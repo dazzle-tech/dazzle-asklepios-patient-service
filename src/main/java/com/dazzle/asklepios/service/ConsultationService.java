@@ -67,7 +67,7 @@ public class ConsultationService {
                 .fromDepartmentId(dto.fromDepartmentId())
                 .toDepartmentId(dto.toDepartmentId())
                 .consultationType(dto.consultationType())
-                .destinationType(DestinationType.valueOf(dto.destinationType()))
+                .destinationType(dto.destinationType())
                 .consultantSpeciality(dto.consultantSpeciality())
                 .practitionerId(dto.practitionerId())
                 .consultationMethod(dto.consultationMethod())
@@ -113,9 +113,10 @@ public class ConsultationService {
 
         existing.setDestinationType(
                 dto.destinationType() != null
-                        ? DestinationType.valueOf(dto.destinationType())
+                        ? dto.destinationType()
                         : existing.getDestinationType()
         );
+
 
         existing.setToFacilityId(dto.toFacilityId());
         existing.setToDepartmentId(dto.toDepartmentId());

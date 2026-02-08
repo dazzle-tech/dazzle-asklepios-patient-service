@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.service.dto.consultation;
 
+import com.dazzle.asklepios.domain.enumeration.ConsultationStatus;
+import com.dazzle.asklepios.domain.enumeration.DestinationType;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -34,8 +36,8 @@ public record ConsultationCreateDTO(
 
         Long practitionerId,
 
-        @NotBlank
-        String destinationType,
+        @NotNull
+        DestinationType destinationType,
 
         @NotBlank
         String consultationMethod,
@@ -51,7 +53,8 @@ public record ConsultationCreateDTO(
         Long approvalNumber,
 
         @NotNull
-        String status,
+        ConsultationStatus status,
+
         Instant responseDate,
         Long responseBy,
         String responseText,
