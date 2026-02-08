@@ -73,7 +73,6 @@ public class DiagnosticOrderTestReportController {
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
     }
 
-    // داخل DiagnosticOrderTestReportController
 
     /**
      * Filters radiology reports using only fields from diagnostic_order_tests_report.
@@ -427,4 +426,20 @@ public class DiagnosticOrderTestReportController {
                         "Radiology DiagnosticOrderTest not found with id " + testId
                 ));
     }
+
+    @PostMapping("/radiology/reports/{reportId}/second-approve")
+    public ResponseEntity<DiagnosticOrderTestReportResponseVM> secondApprove(@PathVariable Long reportId) {
+        LOG.debug("REST second approve report reportId={}", reportId);
+
+        DiagnosticOrderTestReport report = reportRepository.findById(reportId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_order_tests_report",
+                        "Report not found with id " + reportId
+                ));
+
+        DiagnosticOrderTestReport updated = reportService.secondApprove(report);
+        return ResponseEntity.ok(DiagnosticOrderTestReportResponseVM.ofEntity(updated));
+    }
+
 }
