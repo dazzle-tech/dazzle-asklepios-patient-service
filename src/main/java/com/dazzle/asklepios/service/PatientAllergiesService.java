@@ -6,19 +6,21 @@ import com.dazzle.asklepios.domain.enumeration.AllergenTypes;
 import com.dazzle.asklepios.domain.enumeration.PatientAllergyStatus;
 import com.dazzle.asklepios.repository.PatientAllergiesActiveIngredientsRepository;
 import com.dazzle.asklepios.repository.PatientAllergiesRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.PatientAllergiesCreateDTO;
 import com.dazzle.asklepios.service.dto.PatientAllergiesUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.PatientAllergies.PatientAllergiesResponseVM;
-import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -28,7 +30,6 @@ import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 
 @Service
-@Slf4j
 @Transactional
 public class PatientAllergiesService {
 
@@ -41,20 +42,20 @@ public class PatientAllergiesService {
         this.patientAllergiesActiveIngredientRepository = patientAllergiesActiveIngredientRepository;
     }
 
-    public PatientAllergies create(PatientAllergiesCreateDTO vm) {
-        LOG.debug("Request to create Patient Allergies : {}", vm);
-        if (vm.allergenType() == AllergenTypes.MEDICATION) {
-            LOG.debug("The allergen type is medication : {}", vm);
-            if (vm.medicationClassId() == null) {
-                LOG.debug("The medication class id is null : {}", vm);
+    public PatientAllergies create(PatientAllergiesCreateDTO patientAllergyCreateDto) {
+        LOG.debug("Request to create Patient Allergies : {}", patientAllergyCreateDto);
+        if (patientAllergyCreateDto.allergenType() == AllergenTypes.MEDICATION) {
+            LOG.debug("The allergen type is medication : {}", patientAllergyCreateDto);
+            if (patientAllergyCreateDto.medicationClassId() == null) {
+                LOG.debug("The medication class id is null : {}", patientAllergyCreateDto);
                 throw new BadRequestAlertException(
                         "medicationClassIdRequired",
                         "patientAllergies",
                         "Medication Class ID is required for MEDICATION type"
                 );
             }
-            if (vm.allergenId() != null) {
-                LOG.debug("The allergen id is not null : {}", vm);
+            if (patientAllergyCreateDto.allergenId() != null) {
+                LOG.debug("The allergen id is not null : {}", patientAllergyCreateDto);
                 throw new BadRequestAlertException(
                         "allergenMustBeNull",
                         "patientAllergies",
@@ -62,24 +63,24 @@ public class PatientAllergiesService {
                 );
             }
         } else {
-            if (vm.allergenId() == null) {
-                LOG.debug("The allergen id is null : {}", vm);
+            if (patientAllergyCreateDto.allergenId() == null) {
+                LOG.debug("The allergen id is null : {}", patientAllergyCreateDto);
                 throw new BadRequestAlertException(
                         "allergenRequired",
                         "patientAllergies",
                         "Allergen ID is required for non-MEDICATION types"
                 );
             }
-            if (vm.medicationClassId() != null) {
-                LOG.debug("The medication class id is not null : {}", vm);
+            if (patientAllergyCreateDto.medicationClassId() != null) {
+                LOG.debug("The medication class id is not null : {}", patientAllergyCreateDto);
                 throw new BadRequestAlertException(
                         "medicationClassMustBeNull",
                         "patientAllergies",
                         "Medication Class must be null for non-MEDICATION types"
                 );
             }
-            if (vm.activeIngredients() != null && !vm.activeIngredients().isEmpty()) {
-                LOG.debug("The active ingredients list is not empty : {}", vm);
+            if (patientAllergyCreateDto.activeIngredients() != null && !patientAllergyCreateDto.activeIngredients().isEmpty()) {
+                LOG.debug("The active ingredients list is not empty : {}", patientAllergyCreateDto);
                 throw new BadRequestAlertException(
                         "activeIngredientsMustBeEmpty",
                         "patientAllergies",
@@ -87,8 +88,8 @@ public class PatientAllergiesService {
                 );
             }
         }
-        if (vm.onsetDateUndefined() && vm.onsetDate() != null) {
-            LOG.debug("The onset date is not null : {}", vm);
+        if (patientAllergyCreateDto.onsetDateUndefined() && patientAllergyCreateDto.onsetDate() != null) {
+            LOG.debug("The onset date is not null : {}", patientAllergyCreateDto);
             throw new BadRequestAlertException(
                     "onsetDateMustBeNull",
                     "patientAllergies",
@@ -96,24 +97,24 @@ public class PatientAllergiesService {
             );
         }
 
-        if (!vm.onsetDateUndefined() && vm.onsetDate() == null) {
-            LOG.debug("The onset date is null : {}", vm);
+        if (!patientAllergyCreateDto.onsetDateUndefined() && patientAllergyCreateDto.onsetDate() == null) {
+            LOG.debug("The onset date is null : {}", patientAllergyCreateDto);
             throw new BadRequestAlertException(
                     "onsetDateRequired",
                     "patientAllergies",
                     "Onset Date is required when onset Date undefined is false"
             );
         }
-        if (vm.byPatient() && vm.sourceOfInformation() != null) {
-            LOG.debug("The source of information is not null : {}", vm);
+        if (patientAllergyCreateDto.byPatient() && patientAllergyCreateDto.sourceOfInformation() != null) {
+            LOG.debug("The source of information is not null : {}", patientAllergyCreateDto);
             throw new BadRequestAlertException(
                     "sourceMustBeNull",
                     "patientAllergies",
                     "source of Information must be null"
             );
         }
-        if (!vm.byPatient() && vm.sourceOfInformation() == null) {
-            LOG.debug("The source of information is null : {}", vm);
+        if (!patientAllergyCreateDto.byPatient() && patientAllergyCreateDto.sourceOfInformation() == null) {
+            LOG.debug("The source of information is null : {}", patientAllergyCreateDto);
             throw new BadRequestAlertException(
                     "sourceRequired",
                     "patientAllergies",
@@ -121,38 +122,33 @@ public class PatientAllergiesService {
             );
         }
         PatientAllergies entity = PatientAllergies.builder()
-                .patientId(vm.patientId())
-                .encounterId(vm.encounterId())
-                .allergenType(vm.allergenType())
-                .allergenId(vm.allergenId())
-                .severity(vm.severity())
-                .medicationClassId(vm.medicationClassId())
-                .criticality(vm.criticality())
-                .certainty(vm.certainty())
-                .treatmentStrategy(vm.treatmentStrategy())
-                .onset(vm.onset())
-                .onsetDateUndefined(vm.onsetDateUndefined())
-                .onsetDate(vm.onsetDate())
-                .typeOfPropensity(vm.typeOfPropensity())
-                .byPatient(vm.byPatient())
-                .sourceOfInformation(vm.sourceOfInformation())
-                .note(vm.note())
-                .allergicReactions(vm.allergicReactions())
-                .status(vm.status())
-                .resolvedBy(vm.resolvedBy())
-                .resolvedDate(vm.resolvedDate())
-                .cancelledBy(vm.cancelledBy())
-                .cancelledDate(vm.cancelledDate())
-                .cancellationReason(vm.cancellationReason())
+                .patientId(patientAllergyCreateDto.patientId())
+                .encounterId(patientAllergyCreateDto.encounterId())
+                .allergenType(patientAllergyCreateDto.allergenType())
+                .allergenId(patientAllergyCreateDto.allergenId())
+                .severity(patientAllergyCreateDto.severity())
+                .medicationClassId(patientAllergyCreateDto.medicationClassId())
+                .criticality(patientAllergyCreateDto.criticality())
+                .certainty(patientAllergyCreateDto.certainty())
+                .treatmentStrategy(patientAllergyCreateDto.treatmentStrategy())
+                .onset(patientAllergyCreateDto.onset())
+                .onsetDateUndefined(patientAllergyCreateDto.onsetDateUndefined())
+                .onsetDate(patientAllergyCreateDto.onsetDate())
+                .typeOfPropensity(patientAllergyCreateDto.typeOfPropensity())
+                .byPatient(patientAllergyCreateDto.byPatient())
+                .sourceOfInformation(patientAllergyCreateDto.sourceOfInformation())
+                .note(patientAllergyCreateDto.note())
+                .allergicReactions(patientAllergyCreateDto.allergicReactions())
+                .status(patientAllergyCreateDto.status())
                 .build();
 
         try {
             PatientAllergies saved = patientAllergiesRepository.save(entity);
-            if (vm.allergenType() == AllergenTypes.MEDICATION &&
-                    vm.activeIngredients() != null &&
-                    !vm.activeIngredients().isEmpty()) {
+            if (patientAllergyCreateDto.allergenType() == AllergenTypes.MEDICATION &&
+                    patientAllergyCreateDto.activeIngredients() != null &&
+                    !patientAllergyCreateDto.activeIngredients().isEmpty()) {
                 LOG.debug("Save active ingredients");
-                for (Long activeIngredient : vm.activeIngredients()) {
+                for (Long activeIngredient : patientAllergyCreateDto.activeIngredients()) {
                     PatientAllergiesActiveIngredient ai = new PatientAllergiesActiveIngredient();
                     ai.setPatientAllergy(saved);
                     ai.setActiveIngredientId(activeIngredient);
@@ -197,8 +193,22 @@ public class PatientAllergiesService {
 
 
     @Transactional
-    public PatientAllergiesResponseVM cancel(Long id, String cancelledBy, String reason) {
+    public PatientAllergiesResponseVM cancel(Long id, String reason) {
         LOG.debug("Request to cancel PatientAllergy: {}", id);
+
+//        if (reason == null || reason.isBlank() || reason.isEmpty() || reason.equalsIgnoreCase("null")) {
+//            LOG.debug("The cancellation reason is empty: {}", reason);
+//            throw new BadRequestAlertException(
+//                    "reasonRequired",
+//                    "patientAllergies",
+//                    "Cancellation Reason is required"
+//            );
+//        }
+
+        String login = SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated."));
+
+
 
         PatientAllergies entity = patientAllergiesRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
@@ -208,7 +218,7 @@ public class PatientAllergiesService {
                 ));
 
         entity.setStatus(PatientAllergyStatus.CANCELLED);
-        entity.setCancelledBy(cancelledBy);
+        entity.setCancelledBy(login);
         entity.setCancelledDate(Instant.now());
         entity.setCancellationReason(reason);
 
@@ -219,7 +229,7 @@ public class PatientAllergiesService {
     }
 
     @Transactional
-    public PatientAllergiesResponseVM resolve(Long id, String resolvedBy) {
+    public PatientAllergiesResponseVM resolve(Long id) {
         LOG.debug("Request to resolve PatientAllergy : {}", id);
 
         PatientAllergies entity = patientAllergiesRepository.findById(id)
@@ -229,8 +239,11 @@ public class PatientAllergiesService {
                         "PatientAllergies not found"
                 ));
 
+        String login = SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated."));
+
         entity.setStatus(PatientAllergyStatus.RESOLVED);
-        entity.setResolvedBy(resolvedBy);
+        entity.setResolvedBy(login);
         entity.setResolvedDate(Instant.now());
 
         return PatientAllergiesResponseVM.ofEntity(

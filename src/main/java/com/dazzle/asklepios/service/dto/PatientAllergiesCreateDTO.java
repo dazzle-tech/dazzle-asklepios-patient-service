@@ -29,10 +29,5 @@ public record PatientAllergiesCreateDTO(
         String note,
         String allergicReactions,
         @NotNull PatientAllergyStatus status,
-        @NotNull String resolvedBy,
-        Instant resolvedDate,
-        @NotNull String cancelledBy,
-        Instant cancelledDate,
-        String cancellationReason,
         List<Long> activeIngredients
 ) implements Serializable {}

@@ -6,8 +6,11 @@ import com.dazzle.asklepios.service.PatientAllergiesService;
 import com.dazzle.asklepios.service.dto.PatientAllergiesCreateDTO;
 import com.dazzle.asklepios.service.dto.PatientAllergiesUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.PatientAllergies.PatientAllergiesResponseVM;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
@@ -30,7 +33,7 @@ import java.net.URI;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/patient/patient-allergies")
+@RequestMapping("/api/patient")
 public class PatientAllergiesController {
 
     private static final Logger LOG = LoggerFactory.getLogger(PatientAllergiesController.class);
@@ -46,11 +49,11 @@ public class PatientAllergiesController {
     /**
      * {@code POST /patient-allergies} : Create a new PatientAllergies.
      */
-    @PostMapping
-    public ResponseEntity<PatientAllergiesResponseVM> create(@Valid @RequestBody PatientAllergiesCreateDTO vm) {
-        LOG.debug("REST create PatientAllergies payload={}", vm);
+    @PostMapping("/patient-allergies")
+    public ResponseEntity<PatientAllergiesResponseVM> create(@Valid @RequestBody PatientAllergiesCreateDTO patientAllergyCreateDto) {
+        LOG.debug("REST create Patient Allergy payload={}", patientAllergyCreateDto);
 
-        PatientAllergies created = patientAllergiesService.create(vm);
+        PatientAllergies created = patientAllergiesService.create(patientAllergyCreateDto);
 
         PatientAllergiesResponseVM body =
                 PatientAllergiesResponseVM.ofEntity(
@@ -58,15 +61,15 @@ public class PatientAllergiesController {
                         patientAllergiesActiveIngredientRepository
                 );
 
-        LOG.debug("REST create PatientAllergies response={}", body);
+        LOG.debug("REST create Patient Allergy response={}", body);
 
         return ResponseEntity
-                .created(URI.create("/api/patient-allergies/" + created.getId()))
+                .created(URI.create("/api/patient/patient-allergies/" + created.getId()))
                 .body(body);
     }
 
 
-    @GetMapping("/by-patient/{patientId}")
+    @GetMapping("/patient-allergies/by-patient/{patientId}")
     public ResponseEntity<List<PatientAllergiesResponseVM>> getAllAllergiesByPatient(
             @PathVariable Long patientId,
             @RequestParam(name = "showCancelled", defaultValue = "false") boolean showCancelled,
@@ -81,30 +84,28 @@ public class PatientAllergiesController {
     }
 
 
-    @PutMapping("/{id}/cancel")
+    @PutMapping("/patient-allergies/{id}/cancel")
     public ResponseEntity<PatientAllergiesResponseVM> cancel(
             @PathVariable Long id,
-            @RequestParam String cancelledBy,
-            @RequestParam(required = false) String reason
+            @RequestParam @NotBlank @NotEmpty @Valid String reason
     ) {
-        LOG.debug("REST cancel PatientAllergies : {}", id);
+        LOG.debug("REST cancel Patient Allergy : {}", id);
         return ResponseEntity.ok(
-                patientAllergiesService.cancel(id, cancelledBy, reason)
+                patientAllergiesService.cancel(id, reason)
         );
     }
 
-    @PutMapping("/{id}/resolve")
+    @PutMapping("/patient-allergies/{id}/resolve")
     public ResponseEntity<PatientAllergiesResponseVM> resolve(
-            @PathVariable Long id,
-            @RequestParam String resolvedBy
+            @PathVariable Long id
     ) {
         LOG.debug("REST resolve PatientAllergies : {}", id);
         return ResponseEntity.ok(
-                patientAllergiesService.resolve(id, resolvedBy)
+                patientAllergiesService.resolve(id)
         );
     }
 
-    @PutMapping("/{id}/undo-resolve")
+    @PutMapping("/patient-allergies/{id}/undo-resolve")
     public ResponseEntity<PatientAllergiesResponseVM> undoResolve(
             @PathVariable Long id
     ) {
@@ -115,14 +116,14 @@ public class PatientAllergiesController {
     }
 
 
-    @PutMapping("/{id}")
+    @PutMapping("/patient-allergies/{id}")
     public ResponseEntity<PatientAllergiesResponseVM> update(
             @PathVariable Long id,
-            @Valid @RequestBody PatientAllergiesUpdateDTO dto) {
+            @Valid @RequestBody PatientAllergiesUpdateDTO patientAllergyUpdateDto) {
 
-        LOG.debug("REST update PatientAllergies id={} payload={}", id, dto);
+        LOG.debug("REST update Patient Allergy id={} payload={}", id, patientAllergyUpdateDto);
 
-            PatientAllergies updated = patientAllergiesService.update(dto);
+            PatientAllergies updated = patientAllergiesService.update(patientAllergyUpdateDto);
 
             PatientAllergiesResponseVM body =
                     PatientAllergiesResponseVM.ofEntity(
