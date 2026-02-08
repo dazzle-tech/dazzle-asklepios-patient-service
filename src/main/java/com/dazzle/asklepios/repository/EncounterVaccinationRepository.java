@@ -13,10 +13,6 @@ import java.util.List;
 public interface EncounterVaccinationRepository
         extends JpaRepository<EncounterVaccination, Long> {
 
-    /* =========================
-       Basic finders
-       ========================= */
-
     Page<EncounterVaccination> findByPatient_Id(
             Long patientId,
             Pageable pageable
@@ -27,9 +23,6 @@ public interface EncounterVaccinationRepository
             Pageable pageable
     );
 
-    /* =========================
-       Excluding status
-       ========================= */
 
     Page<EncounterVaccination> findByPatient_IdAndStatusNot(
             Long patientId,
@@ -43,9 +36,6 @@ public interface EncounterVaccinationRepository
             Pageable pageable
     );
 
-    /* =========================
-       Patient + Vaccine
-       ========================= */
 
     Page<EncounterVaccination> findByPatient_IdAndVaccineId(
             Long patientId,
@@ -59,11 +49,7 @@ public interface EncounterVaccinationRepository
             EncounterVaccinationStatus status,
             Pageable pageable
     );
-
-    /* =========================
-       Projections
-       ========================= */
-
+    
     List<EncounterVaccinationProjections.VaccineIdView> findDistinctByPatient_Id(
             Long patientId
     );
