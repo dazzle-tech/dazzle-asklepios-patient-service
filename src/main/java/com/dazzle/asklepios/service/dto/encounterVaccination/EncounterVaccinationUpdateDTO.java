@@ -36,18 +36,10 @@ public record EncounterVaccinationUpdateDTO(
         @NotNull
         EncounterVaccinationStatus status,
 
-        String cancellationReason,
-
-        Instant cancelledAt,
-        Long cancelledById,
-
         String administeredLocation,
         String administrationReactions,
         String externalFacilityName,
-        String notes,
-
-        Instant reviewedAt,
-        Long reviewedById
+        String notes
 
 ) implements Serializable {
 }

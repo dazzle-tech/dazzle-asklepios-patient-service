@@ -35,16 +35,11 @@ public record EncounterVaccinationCreateDTO(
 
         String cancellationReason,
 
-        Instant cancelledAt,
-        Long cancelledById,
-
         String administeredLocation,
         String administrationReactions,
         String externalFacilityName,
-        String notes,
+        String notes
 
-        Instant reviewedAt,
-        Long reviewedById
 
 ) implements Serializable {
 }

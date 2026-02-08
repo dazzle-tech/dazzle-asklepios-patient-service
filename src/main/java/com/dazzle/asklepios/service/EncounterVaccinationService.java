@@ -61,14 +61,10 @@ public class EncounterVaccinationService {
                 .dateAdministered(dto.dateAdministered())
                 .status(dto.status())
                 .cancellationReason(dto.cancellationReason())
-                .cancelledAt(dto.cancelledAt())
-                .cancelledById(dto.cancelledById())
                 .administeredLocation(dto.administeredLocation())
                 .administrationReactions(dto.administrationReactions())
                 .externalFacilityName(dto.externalFacilityName())
                 .notes(dto.notes())
-                .reviewedAt(dto.reviewedAt())
-                .reviewedById(dto.reviewedById())
                 .build();
 
         try {
@@ -112,18 +108,11 @@ public class EncounterVaccinationService {
                     entity.setVaccineLotNumber(dto.vaccineLotNumber());
                     entity.setDateAdministered(dto.dateAdministered());
                     entity.setStatus(dto.status());
-                    entity.setCancellationReason(dto.cancellationReason());
-
-                    entity.setCancelledAt(dto.cancelledAt());
-                    entity.setCancelledById(dto.cancelledById());
-
                     entity.setAdministeredLocation(dto.administeredLocation());
                     entity.setAdministrationReactions(dto.administrationReactions());
                     entity.setExternalFacilityName(dto.externalFacilityName());
                     entity.setNotes(dto.notes());
 
-                    entity.setReviewedAt(dto.reviewedAt());
-                    entity.setReviewedById(dto.reviewedById());
 
                     try {
                         EncounterVaccination saved =
