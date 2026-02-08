@@ -10,15 +10,20 @@ public record ConsultationUpdateDTO(
         @NotNull
         Long id,
 
+        @NotBlank
         String destinationType,
+        @NotNull
         Long toFacilityId,
         Long toDepartmentId,
 
         String consultantSpeciality,
         Long practitionerId,
 
+        @NotBlank
         String consultationMethod,
+        @NotBlank
         String consultationType,
+        @NotNull
         String consultationLevel,
 
         @NotBlank

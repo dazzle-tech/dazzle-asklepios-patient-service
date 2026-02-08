@@ -12,7 +12,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotBlank;
@@ -86,24 +85,21 @@ public class Consultation extends AbstractAuditingEntity<Long> implements Serial
     @Column(name = "consultation_level", nullable = false, length = 30)
     private ConsultationLevel consultationLevel;
 
-    @Lob
     @NotBlank
     @Column(name = "consultation_content", nullable = false)
     private String consultationContent;
 
-    @Lob
     @Column(name = "notes")
     private String notes;
 
-    @Lob
     @Column(name = "extra_document")
     private String extraDocument;
 
     @Column(name = "approval_number")
     private Long approvalNumber;
 
-
     @Enumerated(EnumType.STRING)
+    @NotNull
     @Column(name = "status", nullable = false, length = 30)
     private ConsultationStatus status;
 
@@ -113,7 +109,6 @@ public class Consultation extends AbstractAuditingEntity<Long> implements Serial
     @Column(name = "response_by")
     private Long responseBy;
 
-    @Lob
     @Column(name = "response_text")
     private String responseText;
 

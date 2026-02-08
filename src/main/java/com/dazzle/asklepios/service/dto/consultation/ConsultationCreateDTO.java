@@ -50,6 +50,7 @@ public record ConsultationCreateDTO(
         String extraDocument,
         Long approvalNumber,
 
+        @NotNull
         String status,
         Instant responseDate,
         Long responseBy,

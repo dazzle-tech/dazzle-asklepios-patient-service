@@ -11,8 +11,6 @@ import com.dazzle.asklepios.service.dto.consultation.ConsultationCreateDTO;
 import com.dazzle.asklepios.service.dto.consultation.ConsultationUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -35,17 +33,15 @@ public class ConsultationService {
     private static final Logger LOG =
             LoggerFactory.getLogger(ConsultationService.class);
 
-    private final ConsultationRepository repository;
+    private final ConsultationRepository consultationRepository;
     private final PatientRepository patientRepository;
 
-    @PersistenceContext
-    private EntityManager entityManager;
 
     public ConsultationService(
-            ConsultationRepository repository,
+            ConsultationRepository consultationRepository,
             PatientRepository patientRepository
     ) {
-        this.repository = repository;
+        this.consultationRepository = consultationRepository;
         this.patientRepository = patientRepository;
     }
 
@@ -71,13 +67,11 @@ public class ConsultationService {
                 .fromDepartmentId(dto.fromDepartmentId())
                 .toDepartmentId(dto.toDepartmentId())
                 .consultationType(dto.consultationType())
-                .destinationType(
-                        DestinationType.valueOf(dto.destinationType().trim().toUpperCase())
-                )
+                .destinationType(DestinationType.valueOf(dto.destinationType()))
                 .consultantSpeciality(dto.consultantSpeciality())
                 .practitionerId(dto.practitionerId())
                 .consultationMethod(dto.consultationMethod())
-                .consultationLevel(parseConsultationLevel(dto.consultationLevel()))
+                .consultationLevel(ConsultationLevel.valueOf(dto.consultationLevel()))
                 .consultationContent(dto.consultationContent())
                 .notes(dto.notes())
                 .extraDocument(dto.extraDocument())
@@ -88,7 +82,7 @@ public class ConsultationService {
         LOG.debug("[CREATE] Consultation entity built with destinationType={}", entity.getDestinationType());
 
         try {
-            Consultation saved = repository.saveAndFlush(entity);
+            Consultation saved = consultationRepository.saveAndFlush(entity);
             LOG.info("[CREATE] Consultation successfully created with id={}", saved.getId());
             return saved;
 
@@ -106,7 +100,7 @@ public class ConsultationService {
     public Consultation update(Long id, ConsultationUpdateDTO dto) {
         LOG.info("[UPDATE] Consultation id={} payload={}", id, dto);
 
-        Consultation existing = repository.findById(id)
+        Consultation existing = consultationRepository.findById(id)
                 .orElseThrow(() ->
                         new NotFoundAlertException(
                                 "Consultation not found with id " + id,
@@ -146,7 +140,7 @@ public class ConsultationService {
         LOG.debug("[UPDATE] Consultation fields updated, saving changes");
 
         try {
-            Consultation updated = repository.saveAndFlush(existing);
+            Consultation updated = consultationRepository.saveAndFlush(existing);
             LOG.info("[UPDATE] Consultation successfully updated with id={}", updated.getId());
             return updated;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -166,7 +160,7 @@ public class ConsultationService {
             Pageable pageable
     ) {
         LOG.debug("[FIND_NOT_CANCELLED] encounterId={} pageable={}", encounterId, pageable);
-        Page<Consultation> result = repository.findByEncounterIdAndStatusNot(
+        Page<Consultation> result = consultationRepository.findByEncounterIdAndStatusNot(
                 encounterId,
                 ConsultationStatus.CANCELLED,
                 pageable
@@ -181,7 +175,7 @@ public class ConsultationService {
             Pageable pageable
     ) {
         LOG.debug("[FIND_BY_ENCOUNTER] encounterId={} pageable={}", encounterId, pageable);
-        Page<Consultation> result = repository.findByEncounterId(encounterId, pageable);
+        Page<Consultation> result = consultationRepository.findByEncounterId(encounterId, pageable);
         LOG.debug("[FIND_BY_ENCOUNTER] Found {} consultations", result.getTotalElements());
         return result;
     }
@@ -193,7 +187,7 @@ public class ConsultationService {
     ) {
         LOG.info("[CANCEL] Consultation id={} reason={} cancelledBy={}", id, cancelReason, cancelledBy);
 
-        Consultation existing = repository.findById(id)
+        Consultation existing = consultationRepository.findById(id)
                 .orElseThrow(() ->
                         new NotFoundAlertException(
                                 "Consultation not found with id " + id,
@@ -210,7 +204,7 @@ public class ConsultationService {
         existing.setCancelledBy(cancelledBy);
 
         try {
-            Consultation cancelled = repository.saveAndFlush(existing);
+            Consultation cancelled = consultationRepository.saveAndFlush(existing);
             LOG.info("[CANCEL] Consultation successfully cancelled with id={}", cancelled.getId());
             return cancelled;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -224,71 +218,6 @@ public class ConsultationService {
         }
     }
 
-    @Transactional(readOnly = true)
-    public Page<Consultation> findByEncounterFromDate(
-            Long encounterId,
-            Instant fromDate,
-            Pageable pageable
-    ) {
-        LOG.debug("[FIND_FROM_DATE] encounterId={} fromDate={} pageable={}", encounterId, fromDate, pageable);
-        Page<Consultation> result = repository.findByEncounterIdAndCreatedDateAfter(
-                encounterId,
-                fromDate,
-                pageable
-        );
-        LOG.debug("[FIND_FROM_DATE] Found {} consultations", result.getTotalElements());
-        return result;
-    }
-
-    @Transactional(readOnly = true)
-    public Page<Consultation> findByEncounterToDate(
-            Long encounterId,
-            Instant toDate,
-            Pageable pageable
-    ) {
-        LOG.debug("[FIND_TO_DATE] encounterId={} toDate={} pageable={}", encounterId, toDate, pageable);
-        Page<Consultation> result = repository.findByEncounterIdAndCreatedDateBefore(
-                encounterId,
-                toDate,
-                pageable
-        );
-        LOG.debug("[FIND_TO_DATE] Found {} consultations", result.getTotalElements());
-        return result;
-    }
-
-    @Transactional(readOnly = true)
-    public Page<Consultation> findByEncounterFromDateNotCancelled(
-            Long encounterId,
-            Instant fromDate,
-            Pageable pageable
-    ) {
-        LOG.debug("[FIND_FROM_DATE_NOT_CANCELLED] encounterId={} fromDate={} pageable={}", encounterId, fromDate, pageable);
-        Page<Consultation> result = repository.findByEncounterIdAndCreatedDateAfterAndStatusNot(
-                encounterId,
-                fromDate,
-                ConsultationStatus.CANCELLED,
-                pageable
-        );
-        LOG.debug("[FIND_FROM_DATE_NOT_CANCELLED] Found {} consultations", result.getTotalElements());
-        return result;
-    }
-
-    @Transactional(readOnly = true)
-    public Page<Consultation> findByEncounterToDateNotCancelled(
-            Long encounterId,
-            Instant toDate,
-            Pageable pageable
-    ) {
-        LOG.debug("[FIND_TO_DATE_NOT_CANCELLED] encounterId={} toDate={} pageable={}", encounterId, toDate, pageable);
-        Page<Consultation> result = repository.findByEncounterIdAndCreatedDateBeforeAndStatusNot(
-                encounterId,
-                toDate,
-                ConsultationStatus.CANCELLED,
-                pageable
-        );
-        LOG.debug("[FIND_TO_DATE_NOT_CANCELLED] Found {} consultations", result.getTotalElements());
-        return result;
-    }
 
     @Transactional(readOnly = true)
     public Page<Consultation> findByEncounterNotCancelled(
@@ -296,7 +225,7 @@ public class ConsultationService {
             Pageable pageable
     ) {
         LOG.debug("[FIND_NOT_CANCELLED] encounterId={} pageable={}", encounterId, pageable);
-        Page<Consultation> result = repository.findByEncounterIdAndStatusNot(
+        Page<Consultation> result = consultationRepository.findByEncounterIdAndStatusNot(
                 encounterId,
                 ConsultationStatus.CANCELLED,
                 pageable
@@ -314,7 +243,7 @@ public class ConsultationService {
     ) {
         LOG.debug("[FIND_DATE_RANGE] encounterId={} fromDate={} toDate={} pageable={}",
                 encounterId, fromDate, toDate, pageable);
-        Page<Consultation> result = repository.findByEncounterIdAndCreatedDateBetween(
+        Page<Consultation> result = consultationRepository.findByEncounterIdAndCreatedDateBetween(
                 encounterId,
                 fromDate,
                 toDate,
@@ -333,7 +262,7 @@ public class ConsultationService {
     ) {
         LOG.debug("[FIND_DATE_RANGE_NOT_CANCELLED] encounterId={} fromDate={} toDate={} pageable={}",
                 encounterId, fromDate, toDate, pageable);
-        Page<Consultation> result = repository.findByEncounterIdAndCreatedDateBetweenAndStatusNot(
+        Page<Consultation> result = consultationRepository.findByEncounterIdAndCreatedDateBetweenAndStatusNot(
                 encounterId,
                 fromDate,
                 toDate,
@@ -346,10 +275,10 @@ public class ConsultationService {
 
 
     @Transactional(readOnly = true)
-    public List<Long> getDepartmentIdsByEncounterId(Long encounterId) {
+    public List<Long> getConsultationDepartmentIdsByEncounterId(Long encounterId) {
         LOG.debug("[GET_DEPARTMENT_IDS] encounterId={}", encounterId);
 
-        List<Long> departmentIds = repository
+        List<Long> departmentIds = consultationRepository
                 .findByEncounterIdAndDestinationType(
                         encounterId,
                         DestinationType.DEPARTMENT
@@ -365,10 +294,10 @@ public class ConsultationService {
     }
 
     @Transactional(readOnly = true)
-    public List<Long> getPractitionerIdsByEncounterId(Long encounterId) {
+    public List<Long> getConsultationPractitionerIdsByEncounterId(Long encounterId) {
         LOG.debug("[GET_PRACTITIONER_IDS] encounterId={}", encounterId);
 
-        List<Long> practitionerIds = repository
+        List<Long> practitionerIds = consultationRepository
                 .findByEncounterIdAndDestinationType(
                         encounterId,
                         DestinationType.CONSULTANT
@@ -386,7 +315,7 @@ public class ConsultationService {
     @Transactional(readOnly = true)
     public Consultation findById(Long id) {
         LOG.debug("[FIND_BY_ID] id={}", id);
-        Consultation consultation = repository.findById(id)
+        Consultation consultation = consultationRepository.findById(id)
                 .orElseThrow(() ->
                         new NotFoundAlertException(
                                 "Consultation not found with id " + id,
@@ -398,22 +327,6 @@ public class ConsultationService {
         return consultation;
     }
 
-
-    private ConsultationLevel parseConsultationLevel(String value) {
-        LOG.debug("[PARSE_CONSULTATION_LEVEL] value={}", value);
-        try {
-            ConsultationLevel level = ConsultationLevel.valueOf(value.trim().toUpperCase());
-            LOG.debug("[PARSE_CONSULTATION_LEVEL] Parsed level={}", level);
-            return level;
-        } catch (Exception ex) {
-            LOG.error("[PARSE_CONSULTATION_LEVEL] Invalid consultation level value={}", value, ex);
-            throw new BadRequestAlertException(
-                    "Invalid consultation level",
-                    "consultation",
-                    "consultationLevel.invalid"
-            );
-        }
-    }
 
     private void handleConstraintsOnCreateOrUpdate(RuntimeException exception) {
         Throwable root = getRootCause(exception);
