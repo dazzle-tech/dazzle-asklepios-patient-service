@@ -1,4 +1,3 @@
-// AdditionalMeasurementsInfantCreateDTO.java
 package com.dazzle.asklepios.service.dto.additionalMeasurements;
 
 import com.dazzle.asklepios.domain.enumeration.AgeGroupType;
@@ -16,12 +15,12 @@ public record AdditionalMeasurementsInfantCreateDTO(
 
         @NotBlank String hearingTest,
 
-        Boolean dehydration,
-        Boolean nasalFlaring,
-        Boolean responseToLight,
-        Boolean pupilResponse,
-        Boolean abilityToFollowTarget,
-        Boolean colorTesting,
+        @NotNull  Boolean dehydration,
+        @NotNull Boolean nasalFlaring,
+        @NotNull Boolean responseToLight,
+        @NotNull Boolean pupilResponse,
+        @NotNull Boolean abilityToFollowTarget,
+        @NotNull Boolean colorTesting,
 
         @NotNull Boolean isActive
 ) implements Serializable {}

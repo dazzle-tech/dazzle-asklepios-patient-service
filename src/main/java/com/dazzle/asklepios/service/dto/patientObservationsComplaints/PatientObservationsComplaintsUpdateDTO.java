@@ -18,6 +18,8 @@ public record PatientObservationsComplaintsUpdateDTO(
         @NotNull
         Long encounterId,
 
+        String patientConditions,
+
         String functionalStatus,
 
         @NotEmpty

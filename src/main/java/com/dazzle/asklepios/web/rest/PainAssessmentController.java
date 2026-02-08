@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import java.net.URI;
 
 @RestController
-@RequestMapping("/api/patient/pain-assessment")
+@RequestMapping("/api/patient")
 @RequiredArgsConstructor
 public class PainAssessmentController {
 
@@ -33,7 +33,7 @@ public class PainAssessmentController {
 
     private final PainAssessmentService painAssessmentService;
 
-    @PostMapping
+    @PostMapping("/pain-assessment")
     public ResponseEntity<PainAssessment> create(@Valid @RequestBody PainAssessmentCreateDTO dto) {
         LOG.debug("[REST][CREATE] PainAssessment payload={}", dto);
 
@@ -57,7 +57,7 @@ public class PainAssessmentController {
                 .body(saved);
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/pain-assessment/{id}")
     public ResponseEntity<PainAssessment> update(
             @PathVariable Long id,
             @Valid @RequestBody PainAssessmentUpdateDTO dto
@@ -90,7 +90,7 @@ public class PainAssessmentController {
     }
 
 
-    @GetMapping("/latest/encounter/{encounterId}")
+    @GetMapping("/pain-assessment/latest/encounter/{encounterId}")
     @Transactional(readOnly = true)
     public ResponseEntity<PainAssessment> findLatestByEncounterId(@PathVariable Long encounterId) {
         if (encounterId == null) {

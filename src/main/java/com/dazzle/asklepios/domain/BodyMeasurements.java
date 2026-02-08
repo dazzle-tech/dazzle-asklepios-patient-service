@@ -42,9 +42,11 @@ public class BodyMeasurements extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "encounter_id", nullable = false)
     private Long encounterId;
 
+    @NotNull
     @Column(name = "weight", precision = 6, scale = 2)
     private BigDecimal weight;
 
+    @NotNull
     @Column(name = "height", precision = 6, scale = 2)
     private BigDecimal height;
 
@@ -53,6 +55,5 @@ public class BodyMeasurements extends AbstractAuditingEntity<Long> implements Se
 
     @NotNull
     @Column(name = "is_active", nullable = false)
-    @Builder.Default
     private Boolean isActive = true;
 }

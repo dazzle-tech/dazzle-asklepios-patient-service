@@ -1,4 +1,3 @@
-// AdditionalMeasurementsGeriatricCreateDTO.java
 package com.dazzle.asklepios.service.dto.additionalMeasurements;
 
 import com.dazzle.asklepios.domain.enumeration.AgeGroupType;

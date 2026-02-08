@@ -16,6 +16,7 @@ import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -40,17 +41,20 @@ public class PainAssessmentService {
                         "patient.notfound"
                 ));
 
-        PainAssessment entity = PainAssessment.builder()
-                .patient(patient)
-                .encounterId(dto.encounterId())
-                .painDegree(dto.painDegree())
-                .painLevel(dto.painLevel())
-                .painDescription(dto.painDescription())
-                .isActive(dto.isActive())
-                .build();
-
         try {
+            resetIsActiveForEncounterToday(dto.encounterId());
+
+            PainAssessment entity = PainAssessment.builder()
+                    .patient(patient)
+                    .encounterId(dto.encounterId())
+                    .painDegree(dto.painDegree())
+                    .painLevel(dto.painLevel())
+                    .painDescription(dto.painDescription())
+                    .isActive(true)
+                    .build();
+
             return painAssessmentRepository.saveAndFlush(entity);
+
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
         }
@@ -89,6 +93,36 @@ public class PainAssessmentService {
         LOG.debug("[FIND_LATEST_BY_ENCOUNTER] encounterId={}", encounterId);
         return painAssessmentRepository.findFirstByEncounterIdAndIsActiveTrueOrderByCreatedDateDesc(encounterId);
     }
+    private void resetIsActiveForEncounterToday(Long encounterId) {
+
+        Instant now = Instant.now();
+        Instant dayStart = now.truncatedTo(java.time.temporal.ChronoUnit.DAYS);
+        Instant dayEnd = dayStart.plus(1, java.time.temporal.ChronoUnit.DAYS);
+
+        LOG.debug(
+                "[RESET ACTIVE] Setting latest PainAssessment isActive=false for today, encounterId={}",
+                encounterId
+        );
+
+        painAssessmentRepository
+                .findFirstByEncounterIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateDesc(
+                        encounterId,
+                        dayStart,
+                        dayEnd
+                )
+                .ifPresentOrElse(painAssessment -> {
+                    painAssessment.setIsActive(false);
+                    painAssessmentRepository.flush();
+                    LOG.debug(
+                            "[RESET ACTIVE] Reset done. painAssessmentId={} encounterId={}",
+                            painAssessment.getId(),
+                            encounterId
+                    );
+                }, () -> LOG.debug(
+                        "[RESET ACTIVE] No active PainAssessment found to reset"
+                ));
+    }
+
 
     private RuntimeException handleConstraintViolation(Exception exception) {
         Throwable root = getRootCause(exception);

@@ -9,16 +9,23 @@ import com.dazzle.asklepios.service.dto.bodyMeasurements.BodyMeasurementsUpdateD
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 
+import com.dazzle.asklepios.web.rest.vm.observations.BodyMeasurementsResponseVM;
+import com.dazzle.asklepios.web.rest.vm.observations.HeightResponseVM;
+import com.dazzle.asklepios.web.rest.vm.observations.WeightResponseVM;
 import lombok.RequiredArgsConstructor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -43,21 +50,25 @@ public class BodyMeasurementsService {
                         "patient.notfound"
                 ));
 
-        BodyMeasurements entity = BodyMeasurements.builder()
-                .patient(patient)
-                .encounterId(dto.encounterId())
-                .weight(dto.weight())
-                .height(dto.height())
-                .headCircumference(dto.headCircumference())
-                .isActive(dto.isActive())
-                .build();
-
         try {
+            resetIsActiveForEncounterToday(dto.encounterId());
+
+            BodyMeasurements entity = BodyMeasurements.builder()
+                    .patient(patient)
+                    .encounterId(dto.encounterId())
+                    .weight(dto.weight())
+                    .height(dto.height())
+                    .headCircumference(dto.headCircumference())
+                    .isActive(true)
+                    .build();
+
             return bodyMeasurementsRepository.saveAndFlush(entity);
+
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
         }
     }
+
 
     public Optional<BodyMeasurements> update(Long id, BodyMeasurementsUpdateDTO dto) {
         Long targetId = id != null ? id : dto.id();
@@ -88,6 +99,73 @@ public class BodyMeasurementsService {
     }
 
     @Transactional(readOnly = true)
+    public Page<BodyMeasurementsResponseVM> findBodyMeasurementsVmByPatientBetweenDates(
+            Long patientId,
+            Instant from,
+            Instant to,
+            Pageable pageable
+    ) {
+        LOG.debug("[FIND_BODY_MEASUREMENTS_VM_PAGE] patientId={} from={} to={} pageable={}", patientId, from, to, pageable);
+
+        patientRepository.findById(patientId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found with id " + patientId,
+                        "bodyMeasurements",
+                        "patient.notfound"
+                ));
+
+        return bodyMeasurementsRepository
+                .findByPatientIdAndIsActiveTrueAndCreatedDateBetween(patientId, from, to, pageable)
+                .map(bm -> BodyMeasurementsResponseVM.builder()
+                        .weight(bm.getWeight())
+                        .height(bm.getHeight())
+                        .createdAt(bm.getCreatedDate())
+                        .build()
+                );
+
+    }
+        @Transactional(readOnly = true)
+    public List<WeightResponseVM> findWeightByPatientBetweenDates(Long patientId, Instant from, Instant to) {
+        LOG.debug("[FIND_WEIGHT_LIST] patientId={} from={} to={}", patientId, from, to);
+        validatePatient(patientId);
+
+        return bodyMeasurementsRepository
+                .findByPatientIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateAsc(patientId, from, to)
+                .stream()
+                .map(bm -> WeightResponseVM.builder()
+                        .weight(bm.getWeight())
+                        .createdAt(bm.getCreatedDate())
+                        .build())
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<HeightResponseVM> findHeightByPatientBetweenDates(Long patientId, Instant from, Instant to) {
+        LOG.debug("[FIND_HEIGHT_LIST] patientId={} from={} to={}", patientId, from, to);
+        validatePatient(patientId);
+
+        return bodyMeasurementsRepository
+                .findByPatientIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateAsc(patientId, from, to)
+                .stream()
+                .map(bm -> HeightResponseVM.builder()
+                        .height(bm.getHeight())
+                        .createdAt(bm.getCreatedDate())
+                        .build())
+                .toList();
+    }
+
+    private void validatePatient(Long patientId) {
+        patientRepository.findById(patientId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found with id " + patientId,
+                        "bodyMeasurements",
+                        "patient.notfound"
+                ));
+    }
+
+
+
+    @Transactional(readOnly = true)
     public Optional<BodyMeasurements> findLatestByPatientId(Long patientId) {
         LOG.debug("[FIND_LATEST_BY_PATIENT] patientId={}", patientId);
         return bodyMeasurementsRepository.findFirstByPatient_IdAndIsActiveTrueOrderByCreatedDateDesc(patientId);
@@ -98,6 +176,37 @@ public class BodyMeasurementsService {
         LOG.debug("[FIND_LATEST_BY_ENCOUNTER] encounterId={}", encounterId);
         return bodyMeasurementsRepository.findFirstByEncounterIdAndIsActiveTrueOrderByCreatedDateDesc(encounterId);
     }
+
+    private void resetIsActiveForEncounterToday(Long encounterId) {
+
+        Instant now = Instant.now();
+        Instant dayStart = now.truncatedTo(java.time.temporal.ChronoUnit.DAYS);
+        Instant dayEnd = dayStart.plus(1, java.time.temporal.ChronoUnit.DAYS);
+
+        LOG.debug(
+                "[RESET ACTIVE] Setting latest BodyMeasurements isActive=false for today, encounterId={}",
+                encounterId
+        );
+
+        bodyMeasurementsRepository
+                .findFirstByEncounterIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateDesc(
+                        encounterId,
+                        dayStart,
+                        dayEnd
+                )
+                .ifPresentOrElse(bodyMeasurements -> {
+                    bodyMeasurements.setIsActive(false);
+                    bodyMeasurementsRepository.flush();
+                    LOG.debug(
+                            "[RESET ACTIVE] Reset done. bodyMeasurementsId={} encounterId={}",
+                            bodyMeasurements.getId(),
+                            encounterId
+                    );
+                }, () -> LOG.debug(
+                        "[RESET ACTIVE] No active BodyMeasurements found to reset"
+                ));
+    }
+
 
     private RuntimeException handleConstraintViolation(Exception exception) {
         Throwable root = getRootCause(exception);

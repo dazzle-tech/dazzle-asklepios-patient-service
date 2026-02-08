@@ -41,19 +41,20 @@ public class PatientObservationsComplaints extends AbstractAuditingEntity<Long> 
     @Column(name = "encounter_id", nullable = false)
     private Long encounterId;
 
-    @NotNull
-    @Column(name = "functional_status", columnDefinition = "text", nullable = false)
+    @Column(name = "functional_status", columnDefinition = "text")
     private String functionalStatus;
 
+    @Column(name = "patient_conditions", columnDefinition = "text")
+    private String patientConditions;
+
+    @NotNull
     @Column(name = "reason_of_visit", columnDefinition = "text")
     private String reasonOfVisit;
 
-    @NotNull
-    @Column(name = "cognitive_check", columnDefinition = "text", nullable = false)
+    @Column(name = "cognitive_check", columnDefinition = "text")
     private String cognitiveCheck;
 
     @NotNull
     @Column(name = "is_active", nullable = false)
-    @Builder.Default
     private Boolean isActive = true;
 }

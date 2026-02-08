@@ -50,39 +50,30 @@ public class AdditionalMeasurements extends AbstractAuditingEntity<Long> impleme
     @Column(name = "hearing_test", columnDefinition = "text")
     private String hearingTest;
 
-    @Builder.Default
     @Column(name = "dehydration", nullable = false)
     private Boolean dehydration = false;
 
-    @Builder.Default
     @Column(name = "nasal_flaring", nullable = false)
     private Boolean nasalFlaring = false;
 
-    @Builder.Default
     @Column(name = "response_to_light", nullable = false)
     private Boolean responseToLight = false;
 
-    @Builder.Default
     @Column(name = "pupil_response", nullable = false)
     private Boolean pupilResponse = false;
 
-    @Builder.Default
     @Column(name = "ability_to_follow_target", nullable = false)
     private Boolean abilityToFollowTarget = false;
 
-    @Builder.Default
     @Column(name = "color_testing", nullable = false)
     private Boolean colorTesting = false;
 
-    @Builder.Default
     @Column(name = "fall_risk", nullable = false)
     private Boolean fallRisk = false;
 
-    @Builder.Default
     @Column(name = "vision_problems_affecting_function", nullable = false)
     private Boolean visionProblemsAffectingFunction = false;
 
-    @Builder.Default
     @Column(name = "hearing_problems_affecting_function", nullable = false)
     private Boolean hearingProblemsAffectingFunction = false;
 
@@ -93,7 +84,6 @@ public class AdditionalMeasurements extends AbstractAuditingEntity<Long> impleme
     private String actionToTake;
 
     @NotNull
-    @Builder.Default
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 }
