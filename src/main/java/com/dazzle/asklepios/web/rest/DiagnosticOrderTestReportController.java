@@ -85,13 +85,72 @@ public class DiagnosticOrderTestReportController {
 
 
     /**
-     * Filters radiology reports using only fields from diagnostic_order_tests_report.
+     * Filters radiology diagnostic order test reports using dynamic criteria.
+     *
      * <p>
-     * Rules:
+     * This endpoint returns records from {@code diagnostic_order_tests_report}
+     * and applies additional filters related to the parent order and patient
+     * only when explicitly requested.
+     * </p>
+     *
+     * <h3>Filtering behavior</h3>
      * <ul>
-     *   <li>Use either processingStatus or processingStatusIn, not both.</li>
-     *   <li>Use either imageStatus or imageStatusIn, not both.</li>
+     *   <li>All report-level fields (status, dates, severity, etc.) are filtered
+     *       directly on {@code diagnostic_order_tests_report}.</li>
+     *
+     *   <li>{@code fromDepartmentIn} is applied on the parent
+     *       {@code diagnostic_orders.from_department_id}.</li>
+     *
+     *   <li>Patient-related filters ({@code mrn}, {@code patientName}) are applied
+     *       <strong>only</strong> when provided. If neither is present, the query
+     *       does <strong>not</strong> require a matching patient record.</li>
+     *
+     *   <li>The query does not enforce any filtering by test type. It returns all
+     *       reports matching the provided criteria regardless of LAB/RADIOLOGY type.</li>
      * </ul>
+     *
+     * <h3>Mutual exclusivity rules</h3>
+     * <ul>
+     *   <li>Use either {@code processingStatus} or {@code processingStatusIn}, not both.</li>
+     *   <li>Use either {@code imageStatus} or {@code imageStatusIn}, not both.</li>
+     * </ul>
+     *
+     * <h3>Notes</h3>
+     * <ul>
+     *   <li>If only {@code fromDepartmentIn} is provided, reports are returned even
+     *       when the parent order has no resolvable patient record.</li>
+     *
+     *   <li>Pagination is applied using standard Spring Data mechanisms.</li>
+     * </ul>
+     *
+     * @param id optional report id
+     * @param orderId optional parent order id
+     * @param orderTestId optional diagnostic order test id
+     * @param severity optional severity value
+     * @param approvedBy optional approver username
+     * @param rejectedBy optional rejector username
+     * @param reviewBy optional reviewer username
+     * @param approvedDateFrom optional approved date lower bound (inclusive)
+     * @param approvedDateTo optional approved date upper bound (inclusive)
+     * @param rejectedDateFrom optional rejected date lower bound (inclusive)
+     * @param rejectedDateTo optional rejected date upper bound (inclusive)
+     * @param reviewDateFrom optional review date lower bound (inclusive)
+     * @param reviewDateTo optional review date upper bound (inclusive)
+     * @param processingStatusIn optional list of allowed processing statuses
+     * @param processingStatusNotIn optional list of excluded processing statuses
+     * @param imageStatusIn optional list of allowed image statuses
+     * @param imageStatusNotIn optional list of excluded image statuses
+     * @param createdDateFrom optional created date lower bound (inclusive)
+     * @param createdDateTo optional created date upper bound (inclusive)
+     * @param lastModifiedDateFrom optional last modified date lower bound (inclusive)
+     * @param lastModifiedDateTo optional last modified date upper bound (inclusive)
+     * @param fromDepartmentIn optional list of originating department ids
+     * @param patientName optional patient name (partial, case-insensitive)
+     * @param mrn optional medical record number (partial, case-insensitive)
+     * @param pageable pagination and sorting information
+     *
+     * @return paged list of {@link DiagnosticOrderTestReportResponseVM}
+     *
      */
     @GetMapping("/radiology/reports")
     public ResponseEntity<List<DiagnosticOrderTestReportResponseVM>> filterReports(
@@ -112,11 +171,9 @@ public class DiagnosticOrderTestReportController {
             @RequestParam(name = "reviewDateFrom", required = false) Instant reviewDateFrom,
             @RequestParam(name = "reviewDateTo", required = false) Instant reviewDateTo,
 
-            @RequestParam(name = "processingStatus", required = false) DiagnosticStatus processingStatus,
             @RequestParam(name = "processingStatusIn", required = false) List<DiagnosticStatus> processingStatusIn,
             @RequestParam(name = "processingStatusNotIn", required = false) List<DiagnosticStatus> processingStatusNotIn,
 
-            @RequestParam(name = "imageStatus", required = false) RadiologyImageStatus imageStatus,
             @RequestParam(name = "imageStatusIn", required = false) List<RadiologyImageStatus> imageStatusIn,
             @RequestParam(name = "imageStatusNotIn", required = false) List<RadiologyImageStatus> imageStatusNotIn,
 
@@ -125,30 +182,20 @@ public class DiagnosticOrderTestReportController {
             @RequestParam(name = "lastModifiedDateFrom", required = false) Instant lastModifiedDateFrom,
             @RequestParam(name = "lastModifiedDateTo", required = false) Instant lastModifiedDateTo,
 
-            @RequestParam(name = "fromDepartment", required = false) String fromDepartment,
+            @RequestParam(name = "fromDepartmentIn", required = false) List<Long> fromDepartmentIn,
             @RequestParam(name = "patientName", required = false) String patientName,
             @RequestParam(name = "mrn", required = false) String mrn,
 
             @ParameterObject Pageable pageable
     ) {
         LOG.debug(
-                "REST filter reports orderId={} orderTestId={} fromDepartment={} patientName={} mrn={}",
-                orderId, orderTestId, fromDepartment, patientName, mrn
+                "REST filter reports orderId={} orderTestId={} fromDepartmentIn={} patientName={} mrn={}",
+                orderId, orderTestId, fromDepartmentIn, patientName, mrn
         );
-
-        if (processingStatus != null && processingStatusIn != null && !processingStatusIn.isEmpty()) {
-            throw new IllegalArgumentException("Use either processingStatus or processingStatusIn, not both");
-        }
-        if (imageStatus != null && imageStatusIn != null && !imageStatusIn.isEmpty()) {
-            throw new IllegalArgumentException("Use either imageStatus or imageStatusIn, not both");
-        }
 
         Specification<DiagnosticOrderTestReport> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-        /* =======================
-           Report-level filters
-           ======================= */
             if (id != null) predicates.add(cb.equal(root.get("id"), id));
             if (orderId != null) predicates.add(cb.equal(root.get("orderId"), orderId));
             if (orderTestId != null) predicates.add(cb.equal(root.get("orderTestId"), orderTestId));
@@ -174,13 +221,11 @@ public class DiagnosticOrderTestReportController {
             if (reviewDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("reviewDate"), reviewDateFrom));
             if (reviewDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("reviewDate"), reviewDateTo));
 
-            if (processingStatus != null) predicates.add(cb.equal(root.get("processingStatus"), processingStatus));
             if (processingStatusIn != null && !processingStatusIn.isEmpty())
                 predicates.add(root.get("processingStatus").in(processingStatusIn));
             if (processingStatusNotIn != null && !processingStatusNotIn.isEmpty())
                 predicates.add(cb.not(root.get("processingStatus").in(processingStatusNotIn)));
 
-            if (imageStatus != null) predicates.add(cb.equal(root.get("imageStatus"), imageStatus));
             if (imageStatusIn != null && !imageStatusIn.isEmpty())
                 predicates.add(root.get("imageStatus").in(imageStatusIn));
             if (imageStatusNotIn != null && !imageStatusNotIn.isEmpty())
@@ -195,51 +240,54 @@ public class DiagnosticOrderTestReportController {
             if (lastModifiedDateTo != null)
                 predicates.add(cb.lessThanOrEqualTo(root.get("lastModifiedDate"), lastModifiedDateTo));
 
-        /* =======================
-           Order + Patient filters
-           ======================= */
-            boolean needOrderPatientSubquery =
-                    (fromDepartment != null && !fromDepartment.isBlank()) ||
-                            (patientName != null && !patientName.isBlank()) ||
+            boolean needOrderFilter = (fromDepartmentIn != null && !fromDepartmentIn.isEmpty());
+
+            boolean needPatientFilter =
+                    (patientName != null && !patientName.isBlank()) ||
                             (mrn != null && !mrn.isBlank());
 
+            boolean needOrderPatientSubquery = needOrderFilter || needPatientFilter;
+
             if (needOrderPatientSubquery) {
-                var sub = query.subquery(Long.class);
-                var order = sub.from(DiagnosticOrder.class);
-                var patient = sub.from(Patient.class);
+                jakarta.persistence.criteria.Subquery<Long> subquery = query.subquery(Long.class);
+                jakarta.persistence.criteria.Root<DiagnosticOrder> orderRoot = subquery.from(DiagnosticOrder.class);
 
-                List<Predicate> subPreds = new ArrayList<>();
+                List<Predicate> subPredicates = new ArrayList<>();
 
-                // report -> order
-                subPreds.add(cb.equal(order.get("id"), root.get("orderId")));
+                subPredicates.add(cb.equal(orderRoot.get("id"), root.get("orderId")));
 
-                // order -> patient
-                subPreds.add(cb.equal(patient.get("id"), order.get("patientId")));
 
-                if (fromDepartment != null && !fromDepartment.isBlank()) {
-                    subPreds.add(cb.equal(order.get("fromDepartment"), fromDepartment));
+                if (needOrderFilter) {
+                    subPredicates.add(orderRoot.get("fromDepartmentId").in(fromDepartmentIn));
                 }
 
-                if (mrn != null && !mrn.isBlank()) {
-                    subPreds.add(cb.like(
-                            cb.lower(patient.get("medicalRecordNumber")),
-                            "%" + mrn.trim().toLowerCase() + "%"
-                    ));
+                if (needPatientFilter) {
+                    jakarta.persistence.criteria.Root<Patient> patientRoot = subquery.from(Patient.class);
 
+                    subPredicates.add(cb.equal(patientRoot.get("id"), orderRoot.get("patientId")));
+
+                    if (mrn != null && !mrn.isBlank()) {
+                        subPredicates.add(cb.like(
+                                cb.lower(patientRoot.get("medicalRecordNumber")),
+                                "%" + mrn.trim().toLowerCase() + "%"
+                        ));
+                    }
+
+                    if (patientName != null && !patientName.isBlank()) {
+                        String like = "%" + patientName.trim().toLowerCase() + "%";
+                        subPredicates.add(cb.or(
+                                cb.like(cb.lower(patientRoot.get("firstName")), like),
+                                cb.like(cb.lower(patientRoot.get("secondName")), like),
+                                cb.like(cb.lower(patientRoot.get("thirdName")), like),
+                                cb.like(cb.lower(patientRoot.get("lastName")), like)
+                        ));
+                    }
                 }
 
-                if (patientName != null && !patientName.isBlank()) {
-                    String like = "%" + patientName.trim().toLowerCase() + "%";
-                    subPreds.add(cb.or(
-                            cb.like(cb.lower(patient.get("firstName")), like),
-                            cb.like(cb.lower(patient.get("secondName")), like),
-                            cb.like(cb.lower(patient.get("thirdName")), like),
-                            cb.like(cb.lower(patient.get("lastName")), like)
-                    ));
-                }
+                subquery.select(orderRoot.get("id"))
+                        .where(subPredicates.toArray(new Predicate[0]));
 
-                sub.select(order.get("id")).where(subPreds.toArray(new Predicate[0]));
-                predicates.add(cb.exists(sub));
+                predicates.add(cb.exists(subquery));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));
