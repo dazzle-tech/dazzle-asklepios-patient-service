@@ -2,33 +2,56 @@ package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.EncounterVaccination;
 import com.dazzle.asklepios.domain.enumeration.EncounterVaccinationStatus;
+
+import com.dazzle.asklepios.repository.projection.EncounterVaccinationProjections;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 
-public interface EncounterVaccinationRepository extends JpaRepository<EncounterVaccination, Long> {
+public interface EncounterVaccinationRepository
+        extends JpaRepository<EncounterVaccination, Long> {
 
-    Page<EncounterVaccination> findByPatient_Id(Long patientId, Pageable pageable);
-    Page<EncounterVaccination> findByPatient_IdAndStatus(Long patientId, EncounterVaccinationStatus status, Pageable pageable);
-    Page<EncounterVaccination> findByPatient_IdAndStatusNot(Long patientId, EncounterVaccinationStatus status, Pageable pageable);
+    /* =========================
+       Basic finders
+       ========================= */
 
-    Page<EncounterVaccination> findByEncounterId(Long encounterId, Pageable pageable);
-    Page<EncounterVaccination> findByEncounterIdAndStatus(Long encounterId, EncounterVaccinationStatus status, Pageable pageable);
-    Page<EncounterVaccination> findByEncounterIdAndStatusNot(Long encounterId, EncounterVaccinationStatus status, Pageable pageable);
+    Page<EncounterVaccination> findByPatient_Id(
+            Long patientId,
+            Pageable pageable
+    );
 
-    Page<EncounterVaccination> findByPatient_IdAndEncounterId(Long patientId, Long encounterId, Pageable pageable);
-    Page<EncounterVaccination> findByPatient_IdAndEncounterIdAndStatus(Long patientId, Long encounterId, EncounterVaccinationStatus status, Pageable pageable);
-    Page<EncounterVaccination> findByPatient_IdAndEncounterIdAndStatusNot(Long patientId, Long encounterId, EncounterVaccinationStatus status, Pageable pageable);
+    Page<EncounterVaccination> findByEncounterId(
+            Long encounterId,
+            Pageable pageable
+    );
 
-    interface VaccineIdOnly {
-        Long getVaccineId();
-    }
-    List<VaccineIdOnly> findDistinctByPatient_Id(Long patientId);
+    /* =========================
+       Excluding status
+       ========================= */
 
-    Page<EncounterVaccination> findByPatient_IdAndVaccineId(Long patientId, Long vaccineId, Pageable pageable);
+    Page<EncounterVaccination> findByPatient_IdAndStatusNot(
+            Long patientId,
+            EncounterVaccinationStatus status,
+            Pageable pageable
+    );
 
+    Page<EncounterVaccination> findByEncounterIdAndStatusNot(
+            Long encounterId,
+            EncounterVaccinationStatus status,
+            Pageable pageable
+    );
+
+    /* =========================
+       Patient + Vaccine
+       ========================= */
+
+    Page<EncounterVaccination> findByPatient_IdAndVaccineId(
+            Long patientId,
+            Long vaccineId,
+            Pageable pageable
+    );
 
     Page<EncounterVaccination> findByPatient_IdAndVaccineIdAndStatusNot(
             Long patientId,
@@ -37,26 +60,31 @@ public interface EncounterVaccinationRepository extends JpaRepository<EncounterV
             Pageable pageable
     );
 
-    interface VaccineBrandIdOnly {
-        Long getVaccineBrandId();
-    }
+    /* =========================
+       Projections
+       ========================= */
 
-    List<VaccineBrandIdOnly> findDistinctBrandIdsByPatient_IdAndVaccineId(Long patientId, Long vaccineId);
+    List<EncounterVaccinationProjections.VaccineIdView> findDistinctByPatient_Id(
+            Long patientId
+    );
 
-    List<VaccineBrandIdOnly> findDistinctBrandIdsByPatient_IdAndVaccineIdAndStatusNot(
+    List<EncounterVaccinationProjections.VaccineBrandIdView> findDistinctBrandIdsByPatient_IdAndVaccineId(
+            Long patientId,
+            Long vaccineId
+    );
+
+    List<EncounterVaccinationProjections.VaccineBrandIdView> findDistinctBrandIdsByPatient_IdAndVaccineIdAndStatusNot(
             Long patientId,
             Long vaccineId,
             EncounterVaccinationStatus status
     );
 
+    List<EncounterVaccinationProjections.VaccineDoseIdView> findDistinctDoseIdsByPatient_IdAndVaccineId(
+            Long patientId,
+            Long vaccineId
+    );
 
-    interface VaccineDoseIdOnly {
-        Long getVaccineDoseId();
-    }
-
-    List<VaccineDoseIdOnly> findDistinctDoseIdsByPatient_IdAndVaccineId(Long patientId, Long vaccineId);
-
-    List<VaccineDoseIdOnly> findDistinctDoseIdsByPatient_IdAndVaccineIdAndStatusNot(
+    List<EncounterVaccinationProjections.VaccineDoseIdView> findDistinctDoseIdsByPatient_IdAndVaccineIdAndStatusNot(
             Long patientId,
             Long vaccineId,
             EncounterVaccinationStatus status
