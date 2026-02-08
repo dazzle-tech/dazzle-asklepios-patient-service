@@ -51,6 +51,9 @@ public class PainAssessment extends AbstractAuditingEntity<Long> implements Seri
     @Column(name = "pain_level")
     private PainLevel painLevel;
 
+    @Column(name = "pain_pattern", length = 255)
+    private String painPattern;
+
     @Column(name = "pain_description", columnDefinition = "text")
     private String painDescription;
 

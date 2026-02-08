@@ -49,6 +49,7 @@ public class PainAssessmentService {
                     .encounterId(dto.encounterId())
                     .painDegree(dto.painDegree())
                     .painLevel(dto.painLevel())
+                    .painPattern(dto.painPattern())
                     .painDescription(dto.painDescription())
                     .isActive(true)
                     .build();
@@ -77,6 +78,7 @@ public class PainAssessmentService {
             entity.setEncounterId(dto.encounterId());
             entity.setPainDegree(dto.painDegree());
             entity.setPainLevel(dto.painLevel());
+            entity.setPainPattern(dto.painPattern());
             entity.setPainDescription(dto.painDescription());
             entity.setIsActive(dto.isActive());
 
