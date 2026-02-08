@@ -144,11 +144,21 @@ public class VitalSignsController {
         }
 
         Page<VitalSignsResponseVM> page =
-                vitalSignsService.findVitalSignsByPatientIdBetweenDates(patientId, from, to, pageable);
+                vitalSignsService
+                        .findVitalSignsByPatientIdBetweenDates(patientId, from, to, pageable)
+                        .map(vitalSigns -> VitalSignsResponseVM.builder()
+                                .temperature(vitalSigns.getTemperature())
+                                .pulseRate(vitalSigns.getHeartRate())
+                                .respiratoryRate(vitalSigns.getRespiratoryRate())
+                                .bloodPressureSystolic(vitalSigns.getBloodPressureSystolic())
+                                .bloodPressureDiastolic(vitalSigns.getBloodPressureDiastolic())
+                                .oxygenSaturation(vitalSigns.getOxygenSaturation())
+                                .createdAt(vitalSigns.getCreatedDate())
+                                .build()
+                        );
 
         return ResponseEntity.ok(page);
     }
-
 
     @GetMapping("/vital-signs/patient/{patientId}/respiratory-rate/list")
     @Transactional(readOnly = true)
@@ -164,9 +174,18 @@ public class VitalSignsController {
             throw new BadRequestAlertException("From and To dates are required", ENTITY_NAME, "date.required");
         }
 
-        return ResponseEntity.ok(
-                vitalSignsService.findRespiratoryRateByPatientBetweenDates(patientId, from, to)
-        );
+        List<RespiratoryRateResponseVM> result =
+                vitalSignsService
+                        .findVitalSignsListByPatientBetweenDates(patientId, from, to)
+                        .stream()
+                        .map(vitalSigns -> RespiratoryRateResponseVM.builder()
+                                .respiratoryRate(vitalSigns.getRespiratoryRate())
+                                .createdAt(vitalSigns.getCreatedDate())
+                                .build()
+                        )
+                        .toList();
+
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/vital-signs/patient/{patientId}/temperature/list")
@@ -183,9 +202,18 @@ public class VitalSignsController {
             throw new BadRequestAlertException("From and To dates are required", ENTITY_NAME, "date.required");
         }
 
-        return ResponseEntity.ok(
-                vitalSignsService.findTemperatureByPatientBetweenDates(patientId, from, to)
-        );
+        List<TemperatureResponseVM> result =
+                vitalSignsService
+                        .findVitalSignsListByPatientBetweenDates(patientId, from, to)
+                        .stream()
+                        .map(vitalSigns -> TemperatureResponseVM.builder()
+                                .temperature(vitalSigns.getTemperature())
+                                .createdAt(vitalSigns.getCreatedDate())
+                                .build()
+                        )
+                        .toList();
+
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/vital-signs/patient/{patientId}/pulse-rate/list")
@@ -202,9 +230,18 @@ public class VitalSignsController {
             throw new BadRequestAlertException("From and To dates are required", ENTITY_NAME, "date.required");
         }
 
-        return ResponseEntity.ok(
-                vitalSignsService.findPulseRateByPatientBetweenDates(patientId, from, to)
-        );
+        List<PulseRateResponseVM> result =
+                vitalSignsService
+                        .findVitalSignsListByPatientBetweenDates(patientId, from, to)
+                        .stream()
+                        .map(vitalSigns -> PulseRateResponseVM.builder()
+                                .pulseRate(vitalSigns.getHeartRate())
+                                .createdAt(vitalSigns.getCreatedDate())
+                                .build()
+                        )
+                        .toList();
+
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/vital-signs/patient/{patientId}/oxygen-saturation/list")
@@ -221,9 +258,18 @@ public class VitalSignsController {
             throw new BadRequestAlertException("From and To dates are required", ENTITY_NAME, "date.required");
         }
 
-        return ResponseEntity.ok(
-                vitalSignsService.findOxygenSaturationByPatientBetweenDates(patientId, from, to)
-        );
+        List<OxygenSaturationResponseVM> result =
+                vitalSignsService
+                        .findVitalSignsListByPatientBetweenDates(patientId, from, to)
+                        .stream()
+                        .map(vitalSigns -> OxygenSaturationResponseVM.builder()
+                                .oxygenSaturation(vitalSigns.getOxygenSaturation())
+                                .createdAt(vitalSigns.getCreatedDate())
+                                .build()
+                        )
+                        .toList();
+
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/vital-signs/patient/{patientId}/blood-pressure/list")
@@ -240,9 +286,18 @@ public class VitalSignsController {
             throw new BadRequestAlertException("From and To dates are required", ENTITY_NAME, "date.required");
         }
 
-        return ResponseEntity.ok(
-                vitalSignsService.findBloodPressureByPatientBetweenDates(patientId, from, to)
-        );
-    }
+        List<BloodPressureResponseVM> result =
+                vitalSignsService
+                        .findVitalSignsListByPatientBetweenDates(patientId, from, to)
+                        .stream()
+                        .map(vitalSigns -> BloodPressureResponseVM.builder()
+                                .systolic(vitalSigns.getBloodPressureSystolic())
+                                .diastolic(vitalSigns.getBloodPressureDiastolic())
+                                .createdAt(vitalSigns.getCreatedDate())
+                                .build()
+                        )
+                        .toList();
 
+        return ResponseEntity.ok(result);
+    }
 }

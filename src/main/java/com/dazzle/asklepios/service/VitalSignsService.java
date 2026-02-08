@@ -126,39 +126,6 @@ public class VitalSignsService {
                 .findFirstByEncounterIdAndIsTriageTrueAndIsActiveTrueOrderByCreatedDateDesc(encounterId);
     }
 
-    @Transactional(readOnly = true)
-    public Page<VitalSignsResponseVM> findVitalSignsByPatientIdBetweenDates(
-            Long patientId,
-            Instant from,
-            Instant to,
-            Pageable pageable
-    ) {
-        LOG.debug(
-                "[FIND_BY_PATIENT_BETWEEN_DATES] patientId={} from={} to={} pageable={}",
-                patientId, from, to, pageable
-        );
-
-        patientRepository.findById(patientId)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient not found with id " + patientId,
-                        "vitalSigns",
-                        "patient.notfound"
-                ));
-
-        return vitalSignsRepository
-                .findByPatientIdAndIsActiveTrueAndCreatedDateBetween(patientId, from, to, pageable)
-                .map(vs -> VitalSignsResponseVM.builder()
-                        .temperature(vs.getTemperature())
-                        .pulseRate(vs.getHeartRate())
-                        .respiratoryRate(vs.getRespiratoryRate())
-                        .bloodPressureSystolic(vs.getBloodPressureSystolic())
-                        .bloodPressureDiastolic(vs.getBloodPressureDiastolic())
-                        .oxygenSaturation(vs.getOxygenSaturation())
-                        .createdAt(vs.getCreatedDate())
-                        .build()
-                );
-    }
-
     private RuntimeException handleConstraintViolation(Exception exception) {
         Throwable root = getRootCause(exception);
         String message = root != null ? root.getMessage() : exception.getMessage();
@@ -178,14 +145,6 @@ public class VitalSignsService {
         );
     }
 
-    private void validatePatient(Long patientId) {
-        patientRepository.findById(patientId)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient not found with id " + patientId,
-                        "vitalSigns",
-                        "patient.notfound"
-                ));
-    }
     private void resetIsActiveForEncounterToday(Long encounterId) {
 
         Instant now = Instant.now();
@@ -218,90 +177,45 @@ public class VitalSignsService {
 
 
     @Transactional(readOnly = true)
-    public List<RespiratoryRateResponseVM> findRespiratoryRateByPatientBetweenDates(
+    public Page<VitalSigns> findVitalSignsByPatientIdBetweenDates(
+            Long patientId,
+            Instant from,
+            Instant to,
+            Pageable pageable
+    ) {
+        LOG.debug(
+                "[FIND_BY_PATIENT_BETWEEN_DATES] patientId={} from={} to={} pageable={}",
+                patientId, from, to, pageable
+        );
+
+        patientRepository.findById(patientId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found with id " + patientId,
+                        "vitalSigns",
+                        "patient.notfound"
+                ));
+
+        return vitalSignsRepository
+                .findByPatientIdAndIsActiveTrueAndCreatedDateBetween(patientId, from, to, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public List<VitalSigns> findVitalSignsListByPatientBetweenDates(
             Long patientId,
             Instant from,
             Instant to
     ) {
-        LOG.debug(
-                "[FIND_RESPIRATORY_RATE_LIST] patientId={} from={} to={}",
-                patientId, from, to
-        );
+        LOG.debug("[FIND_VITAL_SIGNS_LIST] patientId={} from={} to={}", patientId, from, to);
 
-        validatePatient(patientId);
-
-        return vitalSignsRepository.findByPatientIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateAsc(
-                        patientId, from, to
-                )
-                .stream()
-                .map(vs -> RespiratoryRateResponseVM.builder()
-                        .respiratoryRate(vs.getRespiratoryRate())
-                        .createdAt(vs.getCreatedDate())
-                        .build()
-                )
-                .toList();
-    }
-
-    @Transactional(readOnly = true)
-    public List<TemperatureResponseVM> findTemperatureByPatientBetweenDates(Long patientId, Instant from, Instant to) {
-        LOG.debug("[FIND_TEMPERATURE_LIST] patientId={} from={} to={}", patientId, from, to);
-        validatePatient(patientId);
+        patientRepository.findById(patientId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found with id " + patientId,
+                        "vitalSigns",
+                        "patient.notfound"
+                ));
 
         return vitalSignsRepository
-                .findByPatientIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateAsc(patientId, from, to)
-                .stream()
-                .map(vs -> TemperatureResponseVM.builder()
-                        .temperature(vs.getTemperature())
-                        .createdAt(vs.getCreatedDate())
-                        .build())
-                .toList();
+                .findByPatientIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateAsc(patientId, from, to);
     }
-
-    @Transactional(readOnly = true)
-    public List<PulseRateResponseVM> findPulseRateByPatientBetweenDates(Long patientId, Instant from, Instant to) {
-        LOG.debug("[FIND_PULSE_RATE_LIST] patientId={} from={} to={}", patientId, from, to);
-        validatePatient(patientId);
-
-        return vitalSignsRepository
-                .findByPatientIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateAsc(patientId, from, to)
-                .stream()
-                .map(vs -> PulseRateResponseVM.builder()
-                        .pulseRate(vs.getHeartRate())
-                        .createdAt(vs.getCreatedDate())
-                        .build())
-                .toList();
-    }
-
-    @Transactional(readOnly = true)
-    public List<OxygenSaturationResponseVM> findOxygenSaturationByPatientBetweenDates(Long patientId, Instant from, Instant to) {
-        LOG.debug("[FIND_OXYGEN_SAT_LIST] patientId={} from={} to={}", patientId, from, to);
-        validatePatient(patientId);
-
-        return vitalSignsRepository
-                .findByPatientIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateAsc(patientId, from, to)
-                .stream()
-                .map(vs -> OxygenSaturationResponseVM.builder()
-                        .oxygenSaturation(vs.getOxygenSaturation())
-                        .createdAt(vs.getCreatedDate())
-                        .build())
-                .toList();
-    }
-
-    @Transactional(readOnly = true)
-    public List<BloodPressureResponseVM> findBloodPressureByPatientBetweenDates(Long patientId, Instant from, Instant to) {
-        LOG.debug("[FIND_BLOOD_PRESSURE_LIST] patientId={} from={} to={}", patientId, from, to);
-        validatePatient(patientId);
-
-        return vitalSignsRepository
-                .findByPatientIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateAsc(patientId, from, to)
-                .stream()
-                .map(vs -> BloodPressureResponseVM.builder()
-                        .systolic(vs.getBloodPressureSystolic())
-                        .diastolic(vs.getBloodPressureDiastolic())
-                        .createdAt(vs.getCreatedDate())
-                        .build())
-                .toList();
-    }
-
 
 }

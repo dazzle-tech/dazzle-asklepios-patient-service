@@ -135,9 +135,17 @@ public class BodyMeasurementsController {
             throw new BadRequestAlertException("From and To dates are required", ENTITY_NAME, "date.required");
         }
 
-        return ResponseEntity.ok(
-                bodyMeasurementsService.findBodyMeasurementsVmByPatientBetweenDates(patientId, from, to, pageable)
-        );
+        Page<BodyMeasurementsResponseVM> result =
+                bodyMeasurementsService
+                        .findBodyMeasurementsByPatientBetweenDates(patientId, from, to, pageable)
+                        .map(bodyMeasurements -> BodyMeasurementsResponseVM.builder()
+                                .weight(bodyMeasurements.getWeight())
+                                .height(bodyMeasurements.getHeight())
+                                .createdAt(bodyMeasurements.getCreatedDate())
+                                .build()
+                        );
+
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/body-measurements/patient/{patientId}/weight/list")
@@ -154,9 +162,18 @@ public class BodyMeasurementsController {
             throw new BadRequestAlertException("From and To dates are required", ENTITY_NAME, "date.required");
         }
 
-        return ResponseEntity.ok(
-                bodyMeasurementsService.findWeightByPatientBetweenDates(patientId, from, to)
-        );
+        List<WeightResponseVM> result =
+                bodyMeasurementsService
+                        .findBodyMeasurementsListByPatientBetweenDates(patientId, from, to)
+                        .stream()
+                        .map(bodyMeasurements -> WeightResponseVM.builder()
+                                .weight(bodyMeasurements.getWeight())
+                                .createdAt(bodyMeasurements.getCreatedDate())
+                                .build()
+                        )
+                        .toList();
+
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/body-measurements/patient/{patientId}/height/list")
@@ -173,8 +190,17 @@ public class BodyMeasurementsController {
             throw new BadRequestAlertException("From and To dates are required", ENTITY_NAME, "date.required");
         }
 
-        return ResponseEntity.ok(
-                bodyMeasurementsService.findHeightByPatientBetweenDates(patientId, from, to)
-        );
+        List<HeightResponseVM> result =
+                bodyMeasurementsService
+                        .findBodyMeasurementsListByPatientBetweenDates(patientId, from, to)
+                        .stream()
+                        .map(bodyMeasurements -> HeightResponseVM.builder()
+                                .height(bodyMeasurements.getHeight())
+                                .createdAt(bodyMeasurements.getCreatedDate())
+                                .build()
+                        )
+                        .toList();
+
+        return ResponseEntity.ok(result);
     }
 }

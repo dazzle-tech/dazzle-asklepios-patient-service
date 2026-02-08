@@ -99,13 +99,13 @@ public class BodyMeasurementsService {
     }
 
     @Transactional(readOnly = true)
-    public Page<BodyMeasurementsResponseVM> findBodyMeasurementsVmByPatientBetweenDates(
+    public Page<BodyMeasurements> findBodyMeasurementsByPatientBetweenDates(
             Long patientId,
             Instant from,
             Instant to,
             Pageable pageable
     ) {
-        LOG.debug("[FIND_BODY_MEASUREMENTS_VM_PAGE] patientId={} from={} to={} pageable={}", patientId, from, to, pageable);
+        LOG.debug("[FIND_BODY_MEASUREMENTS_PAGE] patientId={} from={} to={} pageable={}", patientId, from, to, pageable);
 
         patientRepository.findById(patientId)
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -113,57 +113,29 @@ public class BodyMeasurementsService {
                         "bodyMeasurements",
                         "patient.notfound"
                 ));
-
+        
         return bodyMeasurementsRepository
-                .findByPatientIdAndIsActiveTrueAndCreatedDateBetween(patientId, from, to, pageable)
-                .map(bm -> BodyMeasurementsResponseVM.builder()
-                        .weight(bm.getWeight())
-                        .height(bm.getHeight())
-                        .createdAt(bm.getCreatedDate())
-                        .build()
-                );
-
-    }
-        @Transactional(readOnly = true)
-    public List<WeightResponseVM> findWeightByPatientBetweenDates(Long patientId, Instant from, Instant to) {
-        LOG.debug("[FIND_WEIGHT_LIST] patientId={} from={} to={}", patientId, from, to);
-        validatePatient(patientId);
-
-        return bodyMeasurementsRepository
-                .findByPatientIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateAsc(patientId, from, to)
-                .stream()
-                .map(bm -> WeightResponseVM.builder()
-                        .weight(bm.getWeight())
-                        .createdAt(bm.getCreatedDate())
-                        .build())
-                .toList();
+                .findByPatientIdAndIsActiveTrueAndCreatedDateBetween(patientId, from, to, pageable);
     }
 
     @Transactional(readOnly = true)
-    public List<HeightResponseVM> findHeightByPatientBetweenDates(Long patientId, Instant from, Instant to) {
-        LOG.debug("[FIND_HEIGHT_LIST] patientId={} from={} to={}", patientId, from, to);
-        validatePatient(patientId);
+    public List<BodyMeasurements> findBodyMeasurementsListByPatientBetweenDates(
+            Long patientId,
+            Instant from,
+            Instant to
+    ) {
+        LOG.debug("[FIND_BODY_MEASUREMENTS_LIST] patientId={} from={} to={}", patientId, from, to);
 
-        return bodyMeasurementsRepository
-                .findByPatientIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateAsc(patientId, from, to)
-                .stream()
-                .map(bm -> HeightResponseVM.builder()
-                        .height(bm.getHeight())
-                        .createdAt(bm.getCreatedDate())
-                        .build())
-                .toList();
-    }
-
-    private void validatePatient(Long patientId) {
         patientRepository.findById(patientId)
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Patient not found with id " + patientId,
                         "bodyMeasurements",
                         "patient.notfound"
                 ));
+
+        return bodyMeasurementsRepository
+                .findByPatientIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateAsc(patientId, from, to);
     }
-
-
 
     @Transactional(readOnly = true)
     public Optional<BodyMeasurements> findLatestByPatientId(Long patientId) {
