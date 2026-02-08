@@ -66,7 +66,7 @@ public class EncounterVaccination extends AbstractAuditingEntity<Long> implement
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
-    private EncounterVaccinationStatus status;
+    private EncounterVaccinationStatus status = EncounterVaccinationStatus.ACTIVE;
 
     @Column(name = "cancellation_reason")
     private String cancellationReason;

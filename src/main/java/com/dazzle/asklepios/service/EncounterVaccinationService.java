@@ -25,7 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -86,54 +85,83 @@ public class EncounterVaccinationService {
         }
     }
 
-    public Optional<EncounterVaccination> update(Long id, EncounterVaccinationUpdateDTO dto) {
+    public EncounterVaccination update(Long id, EncounterVaccinationUpdateDTO dto) {
         LOG.info("[UPDATE] EncounterVaccination id={} payload={}", id, dto);
-        return encounterVaccinationRepository.findById(id).map(entity -> {
 
-            Patient patient = patientRepository.findById(dto.patientId())
-                    .orElseThrow(() -> {
-                        LOG.warn("[UPDATE] EncounterVaccination rejected: patient not found patientId={} id={}", dto.patientId(), id);
-                        return new NotFoundAlertException(
-                                "Patient not found with id " + dto.patientId(),
-                                "encounterVaccination",
-                                "patient.notfound"
+        return encounterVaccinationRepository.findById(id)
+                .map(entity -> {
+
+                    Patient patient = patientRepository.findById(dto.patientId())
+                            .orElseThrow(() -> {
+                                LOG.warn(
+                                        "[UPDATE] EncounterVaccination rejected: patient not found patientId={} id={}",
+                                        dto.patientId(), id
+                                );
+                                return new NotFoundAlertException(
+                                        "Patient not found with id " + dto.patientId(),
+                                        "encounterVaccination",
+                                        "patient.notfound"
+                                );
+                            });
+
+                    entity.setPatient(patient);
+                    entity.setEncounterId(dto.encounterId());
+                    entity.setVaccineId(dto.vaccineId());
+                    entity.setVaccineBrandId(dto.vaccineBrandId());
+                    entity.setVaccineDoseId(dto.vaccineDoseId());
+                    entity.setVaccineLotNumber(dto.vaccineLotNumber());
+                    entity.setDateAdministered(dto.dateAdministered());
+                    entity.setStatus(dto.status());
+                    entity.setCancellationReason(dto.cancellationReason());
+
+                    entity.setCancelledAt(dto.cancelledAt());
+                    entity.setCancelledById(dto.cancelledById());
+
+                    entity.setAdministeredLocation(dto.administeredLocation());
+                    entity.setAdministrationReactions(dto.administrationReactions());
+                    entity.setExternalFacilityName(dto.externalFacilityName());
+                    entity.setNotes(dto.notes());
+
+                    entity.setReviewedAt(dto.reviewedAt());
+                    entity.setReviewedById(dto.reviewedById());
+
+                    try {
+                        EncounterVaccination saved =
+                                encounterVaccinationRepository.saveAndFlush(entity);
+
+                        LOG.info(
+                                "[UPDATE] EncounterVaccination success id={} patientId={} encounterId={} vaccineId={} doseId={} status={}",
+                                saved.getId(),
+                                dto.patientId(),
+                                dto.encounterId(),
+                                dto.vaccineId(),
+                                dto.vaccineDoseId(),
+                                dto.status()
                         );
-                    });
 
-            entity.setPatient(patient);
-            entity.setEncounterId(dto.encounterId());
-            entity.setVaccineId(dto.vaccineId());
-            entity.setVaccineBrandId(dto.vaccineBrandId());
-            entity.setVaccineDoseId(dto.vaccineDoseId());
-            entity.setVaccineLotNumber(dto.vaccineLotNumber());
-            entity.setDateAdministered(dto.dateAdministered()); // Instant
-            entity.setStatus(dto.status());
-            entity.setCancellationReason(dto.cancellationReason());
-
-            entity.setCancelledAt(dto.cancelledAt());
-            entity.setCancelledById(dto.cancelledById());
-
-            entity.setAdministeredLocation(dto.administeredLocation());
-            entity.setAdministrationReactions(dto.administrationReactions());
-            entity.setExternalFacilityName(dto.externalFacilityName());
-            entity.setNotes(dto.notes());
-
-            entity.setReviewedAt(dto.reviewedAt());
-            entity.setReviewedById(dto.reviewedById());
-
-            try {
-                EncounterVaccination saved = encounterVaccinationRepository.saveAndFlush(entity);
-                LOG.info("[UPDATE] EncounterVaccination success id={} patientId={} encounterId={} vaccineId={} doseId={} status={}",
-                        saved.getId(), dto.patientId(), dto.encounterId(), dto.vaccineId(), dto.vaccineDoseId(), dto.status());
-                return saved;
-            } catch (DataIntegrityViolationException | JpaSystemException ex) {
-                LOG.warn("[UPDATE] EncounterVaccination failed (constraint) id={} payload={}", id, dto, ex);
-                throw handleConstraintViolation(ex);
-            } catch (RuntimeException ex) {
-                LOG.error("[UPDATE] EncounterVaccination failed (unexpected) id={} payload={}", id, dto, ex);
-                throw ex;
-            }
-        });
+                        return saved;
+                    } catch (DataIntegrityViolationException | JpaSystemException ex) {
+                        LOG.warn(
+                                "[UPDATE] EncounterVaccination failed (constraint) id={} payload={}",
+                                id, dto, ex
+                        );
+                        throw handleConstraintViolation(ex);
+                    } catch (RuntimeException ex) {
+                        LOG.error(
+                                "[UPDATE] EncounterVaccination failed (unexpected) id={} payload={}",
+                                id, dto, ex
+                        );
+                        throw ex;
+                    }
+                })
+                .orElseThrow(() -> {
+                    LOG.warn("[UPDATE] EncounterVaccination rejected: not found id={}", id);
+                    return new NotFoundAlertException(
+                            "EncounterVaccination not found with id " + id,
+                            "encounterVaccination",
+                            "id.notfound"
+                    );
+                });
     }
 
     public EncounterVaccination cancel(EncounterVaccinationCancelDTO dto) {

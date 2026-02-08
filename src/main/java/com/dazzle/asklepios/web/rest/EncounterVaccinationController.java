@@ -66,7 +66,6 @@ public class EncounterVaccinationController {
                 .created(URI.create("/api/patient/encounter-vaccination/" + created.getId()))
                 .body(created);
     }
-
     @PutMapping("/encounter-vaccination/{id}")
     public ResponseEntity<EncounterVaccination> update(
             @PathVariable Long id,
@@ -84,9 +83,8 @@ public class EncounterVaccinationController {
             throw new BadRequestAlertException("Patient id is required", "encounterVaccination", "patient.required");
         }
 
-        return encounterVaccinationService.update(id, dto)
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        EncounterVaccination updated = encounterVaccinationService.update(id, dto);
+        return ResponseEntity.ok(updated);
     }
 
     @PutMapping("/encounter-vaccination/cancel")
