@@ -163,6 +163,7 @@ public class DiagnosticOrderTestReportController {
             @RequestParam(name = "approvedBy", required = false) String approvedBy,
             @RequestParam(name = "rejectedBy", required = false) String rejectedBy,
             @RequestParam(name = "reviewBy", required = false) String reviewBy,
+            @RequestParam(name = "reviewed", required = false) Boolean reviewed,
 
             @RequestParam(name = "approvedDateFrom", required = false) Instant approvedDateFrom,
             @RequestParam(name = "approvedDateTo", required = false) Instant approvedDateTo,
@@ -195,6 +196,13 @@ public class DiagnosticOrderTestReportController {
 
         Specification<DiagnosticOrderTestReport> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+            if (reviewed != null) {
+                if (reviewed) {
+                    predicates.add(cb.isNotNull(root.get("reviewDate")));
+                } else {
+                    predicates.add(cb.isNull(root.get("reviewDate")));
+                }
+            }
 
             if (id != null) predicates.add(cb.equal(root.get("id"), id));
             if (orderId != null) predicates.add(cb.equal(root.get("orderId"), orderId));
