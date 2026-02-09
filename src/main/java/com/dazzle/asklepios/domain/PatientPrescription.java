@@ -10,6 +10,8 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
@@ -37,8 +39,9 @@ public class PatientPrescription extends AbstractAuditingEntity<Long> implements
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "patient_id", nullable = false)
-    private Long patientId;
+    @ManyToOne
+    @JoinColumn(name = "patient_id", nullable = false)
+    private Patient patient;
 
     @Column(name = "encounter_id", nullable = false)
     private Long encounterId;
@@ -50,7 +53,7 @@ public class PatientPrescription extends AbstractAuditingEntity<Long> implements
     private LocalDate prescriptionDate;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "urgency_level", nullable = false, length = 50)
+    @Column(name = "urgency_level", length = 50)
     private PrescriptionUrgencyLevel urgencyLevel;
 
     @Enumerated(EnumType.STRING)

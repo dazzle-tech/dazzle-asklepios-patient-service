@@ -7,6 +7,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Optional;
+
 public interface PatientPrescriptionRepository extends JpaRepository<PatientPrescription, Long> {
 
     Page<PatientPrescription> findByPatientId(Long patientId, Pageable pageable);
@@ -25,5 +27,11 @@ public interface PatientPrescriptionRepository extends JpaRepository<PatientPres
     Page<PatientPrescription> findByPrescriptionNum(Long prescriptionNum, Pageable pageable);
 
     Page<PatientPrescription> findByPatientIdAndPrescriptionNum(Long patientId, Long prescriptionNum, Pageable pageable);
+
+    Optional<PatientPrescription> findTopByEncounterIdAndStatusOrderByCreatedDateDesc(
+            Long encounterId,
+            PrescriptionStatus status
+    );
+
 }
 

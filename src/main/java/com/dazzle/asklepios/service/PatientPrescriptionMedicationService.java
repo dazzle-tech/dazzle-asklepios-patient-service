@@ -6,17 +6,15 @@ import com.dazzle.asklepios.domain.enumeration.PrescriptionInstructionsType;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
 import com.dazzle.asklepios.repository.PatientPrescriptionMedicationRepository;
 import com.dazzle.asklepios.repository.PatientPrescriptionRepository;
-import com.dazzle.asklepios.service.vm.PrescriptionMedicationCreateVM;
-import com.dazzle.asklepios.service.vm.PrescriptionMedicationUpdateVM;
-import com.dazzle.asklepios.web.rest.dto.PatientPrescriptionMedicationDTO;
+import com.dazzle.asklepios.service.dto.patientPrescription.PrescriptionMedicationCreateDTO;
+import com.dazzle.asklepios.service.dto.patientPrescription.PrescriptionMedicationUpdateDTO;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
@@ -26,46 +24,44 @@ public class PatientPrescriptionMedicationService {
     private final PatientPrescriptionMedicationRepository repo;
     private final PatientPrescriptionRepository headerRepo;
 
-    // ===== create (VM -> Entity -> DTO) =====
-    public PatientPrescriptionMedicationDTO create(PrescriptionMedicationCreateVM vm) {
-        PatientPrescription header = headerRepo.findById(vm.prescriptionHeaderId)
-                .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + vm.prescriptionHeaderId));
+    public PatientPrescriptionMedication create(PrescriptionMedicationCreateDTO prescriptionMedicationCreateDTO) {
+        PatientPrescription header = headerRepo.findById(prescriptionMedicationCreateDTO.prescriptionHeaderId)
+                .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + prescriptionMedicationCreateDTO.prescriptionHeaderId));
 
-        validateChronicVsDuration(vm.chronicMedication, vm.duration);
-        validateRoa(vm.rout);
+        validateChronicVsDuration(prescriptionMedicationCreateDTO.chronicMedication, prescriptionMedicationCreateDTO.duration);
+        validateRoa(prescriptionMedicationCreateDTO.rout);
 
         PatientPrescriptionMedication entity = PatientPrescriptionMedication.builder()
                 .prescriptionHeader(header)
-                .medicationsId(vm.medicationsId)
-                .instructionsType(required(vm.instructionsType, "instructionsType"))
-                .instructions(buildInstructions(vm))
-                .dose(vm.dose)
-                .doesUnit(vm.doesUnit)
-                .rout(vm.rout)
-                .frequency(vm.frequency)
-                .chronicMedication(vm.chronicMedication)
-                .duration(vm.duration)
-                .durationType(vm.durationType)
-                .maximumDose(vm.maximumDose)
-                .validUtil(vm.validUtil)
-                .allowedSubstitute(vm.allowedSubstitute)
-                .indicationManually(vm.indicationManually)
-                .indicationUse(vm.indicationUse)
-                .indicationIcd(vm.indicationIcd)
-                .parametersToMonitor(vm.parametersToMonitor)
-                .numberOfRefills(vm.numberOfRefills)
-                .refillValue(vm.refillValue)
-                .refillUnit(vm.refillUnit)
-                .notes(vm.notes)
-                .extraDocumentation(vm.extraDocumentation)
+                .medicationsId(prescriptionMedicationCreateDTO.medicationsId)
+                .instructionsType(required(prescriptionMedicationCreateDTO.instructionsType, "instructionsType"))
+                .instructions(buildInstructions(prescriptionMedicationCreateDTO))
+                .dose(prescriptionMedicationCreateDTO.dose)
+                .doesUnit(prescriptionMedicationCreateDTO.doesUnit)
+                .rout(prescriptionMedicationCreateDTO.rout)
+                .frequency(prescriptionMedicationCreateDTO.frequency)
+                .chronicMedication(prescriptionMedicationCreateDTO.chronicMedication)
+                .duration(prescriptionMedicationCreateDTO.duration)
+                .durationType(prescriptionMedicationCreateDTO.durationType)
+                .maximumDose(prescriptionMedicationCreateDTO.maximumDose)
+                .validUtil(prescriptionMedicationCreateDTO.validUtil)
+                .allowedSubstitute(prescriptionMedicationCreateDTO.allowedSubstitute)
+                .indicationManually(prescriptionMedicationCreateDTO.indicationManually)
+                .indicationUse(prescriptionMedicationCreateDTO.indicationUse)
+                .indicationIcd(prescriptionMedicationCreateDTO.indicationIcd)
+                .parametersToMonitor(prescriptionMedicationCreateDTO.parametersToMonitor)
+                .numberOfRefills(prescriptionMedicationCreateDTO.numberOfRefills)
+                .refillValue(prescriptionMedicationCreateDTO.refillValue)
+                .refillUnit(prescriptionMedicationCreateDTO.refillUnit)
+                .notes(prescriptionMedicationCreateDTO.notes)
+                .extraDocumentation(prescriptionMedicationCreateDTO.extraDocumentation)
                 .status(PrescriptionStatus.DRAFT)
                 .build();
 
         return toDto(repo.save(entity));
     }
 
-    // ===== update (VM -> Entity -> DTO) =====
-    public PatientPrescriptionMedicationDTO update(Long id, PrescriptionMedicationUpdateVM vm) {
+    public PatientPrescriptionMedication update(Long id, PrescriptionMedicationUpdateDTO vm) {
         PatientPrescriptionMedication entity = repo.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescriptionMedication not found: " + id));
 
@@ -82,7 +78,6 @@ public class PatientPrescriptionMedicationService {
         }
         if (vm.frequency != null) entity.setFrequency(vm.frequency);
 
-        // XOR validation on updates
         if (vm.chronicMedication != null || vm.duration != null) {
             Boolean chronic = vm.chronicMedication != null ? vm.chronicMedication : entity.getChronicMedication();
             Long duration = vm.duration != null ? vm.duration : entity.getDuration();
@@ -112,15 +107,14 @@ public class PatientPrescriptionMedicationService {
         return toDto(repo.save(entity));
     }
 
-    // ===== get/list (DTO) =====
     @Transactional(readOnly = true)
-    public PatientPrescriptionMedicationDTO get(Long id) {
+    public PatientPrescriptionMedication get(Long id) {
         return repo.findById(id).map(this::toDto)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescriptionMedication not found: " + id));
     }
 
     @Transactional(readOnly = true)
-    public Page<PatientPrescriptionMedicationDTO> list(Long prescriptionHeaderId, Pageable pageable) {
+    public Page<PatientPrescriptionMedication> list(Long prescriptionHeaderId, Pageable pageable) {
         return repo.findByPrescriptionHeader_Id(prescriptionHeaderId, pageable).map(this::toDto);
     }
 
@@ -131,46 +125,56 @@ public class PatientPrescriptionMedicationService {
         repo.deleteById(id);
     }
 
-    // ===== validations =====
     private void validateChronicVsDuration(Boolean chronic, Long duration) {
         if (Boolean.TRUE.equals(chronic) && duration != null) {
-            throw new IllegalArgumentException("Cannot set chronic medication and duration together.");
+            throw new BadRequestAlertException(
+                    "Cannot set chronic medication and duration together.",
+                    "patientPrescriptionMedication",
+                    "validate"
+            );
         }
     }
 
     private void validateRoa(String roa) {
         if (roa == null || roa.isBlank()) {
-            throw new IllegalArgumentException("ROA (rout) is required.");
+            throw new BadRequestAlertException(
+                    "ROA (rout) is required.",
+                    "patientPrescriptionMedication",
+                    "validate"
+            );
         }
     }
 
     private <T> T required(T value, String field) {
-        if (value == null) throw new IllegalArgumentException(field + " is required.");
+        if (value == null)
+        throw new BadRequestAlertException(
+                 (field + " is required."),
+                "patientPrescriptionMedication",
+                "validate"
+        );
         return value;
     }
 
-    // ===== instructions builder =====
-    private String buildInstructions(PrescriptionMedicationCreateVM vm) {
+    private String buildInstructions(PrescriptionMedicationCreateDTO dto) {
 
-        if (vm.instructionsType == PrescriptionInstructionsType.MANUAL_INSTRUCTIONS ||
-                vm.instructionsType == PrescriptionInstructionsType.PRE_DEFINED_INSTRUCTIONS) {
-            return vm.instructions; // الفرونت يرسل النص النهائي
+        if (dto.instructionsType == PrescriptionInstructionsType.MANUAL_INSTRUCTIONS ){
+//                ||
+//                vm.instructionsType == PrescriptionInstructionsType.PRE_DEFINED_INSTRUCTIONS) {
+            return dto.instructions;
         }
 
-        // CUSTOM: إذا الفرونت ما يبنيها، الباك يبنيها
-        String dosePart = (vm.dose != null ? vm.dose : "") + (vm.doesUnit != null ? " " + vm.doesUnit : "");
-        String freqPart = (vm.frequency != null ? vm.frequency : "");
+        String dosePart = (dto.dose != null ? dto.dose : "") + (dto.doesUnit != null ? " " + dto.doesUnit : "");
+        String freqPart = (dto.frequency != null ? dto.frequency : "");
         String durationPart =
-                (vm.duration != null ? " for " + vm.duration : "") + (vm.durationType != null ? " " + vm.durationType : "");
+                (dto.duration != null ? " for " + dto.duration : "") + (dto.durationType != null ? " " + dto.durationType : "");
 
         return (dosePart + " " + freqPart + durationPart).trim();
     }
 
-    // ===== mapper Entity -> DTO =====
-    private PatientPrescriptionMedicationDTO toDto(PatientPrescriptionMedication e) {
-        PatientPrescriptionMedicationDTO dto = new PatientPrescriptionMedicationDTO();
+    private PatientPrescriptionMedication toDto(PatientPrescriptionMedication e) {
+        PatientPrescriptionMedication dto = new PatientPrescriptionMedication();
         dto.setId(e.getId());
-        dto.setPrescriptionHeaderId(e.getPrescriptionHeader().getId());
+        dto.setPrescriptionHeader(e.getPrescriptionHeader());
         dto.setMedicationsId(e.getMedicationsId());
         dto.setInstructionsType(e.getInstructionsType());
         dto.setInstructions(e.getInstructions());

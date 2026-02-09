@@ -1,10 +1,10 @@
 package com.dazzle.asklepios.web.rest;
 
+import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.service.PatientPrescriptionMedicationService;
-import com.dazzle.asklepios.service.vm.PrescriptionMedicationCreateVM;
-import com.dazzle.asklepios.service.vm.PrescriptionMedicationUpdateVM;
+import com.dazzle.asklepios.service.dto.patientPrescription.PrescriptionMedicationCreateDTO;
+import com.dazzle.asklepios.service.dto.patientPrescription.PrescriptionMedicationUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
-import com.dazzle.asklepios.web.rest.dto.PatientPrescriptionMedicationDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -30,12 +30,12 @@ public class PatientPrescriptionMedicationController {
 
     private final PatientPrescriptionMedicationService service;
 
-    @GetMapping
-    public ResponseEntity<List<PatientPrescriptionMedicationDTO>> list(
+    @GetMapping("/patient-prescription-medications")
+    public ResponseEntity<List<PatientPrescriptionMedication>> list(
             @RequestParam Long prescriptionHeaderId,
             Pageable pageable
     ) {
-        Page<PatientPrescriptionMedicationDTO> page = service.list(prescriptionHeaderId, pageable);
+        Page<PatientPrescriptionMedication> page = service.list(prescriptionHeaderId, pageable);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
@@ -44,17 +44,17 @@ public class PatientPrescriptionMedicationController {
     }
 
     @GetMapping("/patient-prescription-medications/{id}")
-    public ResponseEntity<PatientPrescriptionMedicationDTO> get(@PathVariable Long id) {
+    public ResponseEntity<PatientPrescriptionMedication> get(@PathVariable Long id) {
         return ResponseEntity.ok(service.get(id));
     }
 
     @PostMapping("/patient-prescription-medications")
-    public ResponseEntity<PatientPrescriptionMedicationDTO> create(@RequestBody PrescriptionMedicationCreateVM vm) {
+    public ResponseEntity<PatientPrescriptionMedication> create(@RequestBody PrescriptionMedicationCreateDTO vm) {
         return ResponseEntity.ok(service.create(vm));
     }
 
     @PutMapping("/patient-prescription-medications/{id}")
-    public ResponseEntity<PatientPrescriptionMedicationDTO> update(@PathVariable Long id, @RequestBody PrescriptionMedicationUpdateVM vm) {
+    public ResponseEntity<PatientPrescriptionMedication> update(@PathVariable Long id, @RequestBody PrescriptionMedicationUpdateDTO vm) {
         return ResponseEntity.ok(service.update(id, vm));
     }
 

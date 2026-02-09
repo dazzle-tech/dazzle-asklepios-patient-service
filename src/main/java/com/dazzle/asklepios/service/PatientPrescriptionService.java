@@ -1,15 +1,18 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientPrescription;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionUrgencyLevel;
 import com.dazzle.asklepios.repository.PatientPrescriptionMedicationRepository;
 import com.dazzle.asklepios.repository.PatientPrescriptionRepository;
-import com.dazzle.asklepios.service.vm.PatientPrescriptionCreateVM;
-import com.dazzle.asklepios.service.vm.PatientPrescriptionUpdateVM;
-import com.dazzle.asklepios.web.rest.dto.PatientPrescriptionDTO;
+import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.service.dto.patientPrescription.PatientPrescriptionCreateDto;
+import com.dazzle.asklepios.service.dto.patientPrescription.PatientPrescriptionUpdateDTO;
+import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -17,9 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.logging.Logger;
-
-import static org.hibernate.id.SequenceMismatchStrategy.LOG;
 
 @Service
 @RequiredArgsConstructor
@@ -28,27 +28,31 @@ public class PatientPrescriptionService {
 
     private final PatientPrescriptionRepository repo;
 
-    private static final Logger LOG = Logger.getLogger(PatientPrescriptionService.class.getName());
+    private static final org.slf4j.Logger LOG = LoggerFactory.getLogger(PatientPrescriptionService.class);
     private final PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository;
+    private final PatientRepository patientRepository;
+    private final PatientPrescriptionRepository patientPrescriptionRepository;
 
-    public PatientPrescriptionDTO create(PatientPrescriptionCreateVM vm) {
+    public PatientPrescription create(PatientPrescriptionCreateDto prescriptionCreateDto) {
+
+        Patient patient = getPatient(prescriptionCreateDto.patientId);
 
         PatientPrescription entity = PatientPrescription.builder()
-                .patientId(vm.patientId)
-                .encounterId(vm.encounterId)
-                .prescriptionDate(vm.prescriptionDate != null ? vm.prescriptionDate : LocalDate.now())
-                .urgencyLevel(vm.urgencyLevel)
+                .patient(patient)
+                .encounterId(prescriptionCreateDto.encounterId)
+                .prescriptionDate(prescriptionCreateDto.prescriptionDate != null ? prescriptionCreateDto.prescriptionDate : LocalDate.now())
+                .urgencyLevel(prescriptionCreateDto.urgencyLevel)
                 .status(PrescriptionStatus.DRAFT)
-                .fromFacilityId(vm.fromFacilityId)
-                .fromDepartmentId(vm.fromDepartmentId)
-                .toFacilityId(vm.toFacilityId)
-                .toDepartmentId(vm.toDepartmentId)
+                .fromFacilityId(prescriptionCreateDto.fromFacilityId)
+                .fromDepartmentId(prescriptionCreateDto.fromDepartmentId)
+                .toFacilityId(prescriptionCreateDto.toFacilityId)
+                .toDepartmentId(prescriptionCreateDto.toDepartmentId)
                 .build();
 
         return toDto(repo.save(entity));
     }
 
-    public PatientPrescriptionDTO update(Long id, PatientPrescriptionUpdateVM vm) {
+    public PatientPrescription update(Long id, PatientPrescriptionUpdateDTO vm) {
         PatientPrescription entity = repo.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
 
@@ -68,34 +72,39 @@ public class PatientPrescriptionService {
      * - If there is already a record for this encounter -> return it (do NOT create new one)
      * - Otherwise create once and return it
      */
-    public PatientPrescriptionDTO createOrGetByEncounter(PatientPrescriptionDTO dto) {
-        LOG.("createOrGetByEncounter Patient Prescription payload={}", dto);
+    public PatientPrescription createOrGetByEncounter(PatientPrescriptionCreateDto dto) {
+        LOG.debug("createOrGetByEncounter Patient Prescription payload={}", dto);
 
-        return patientPrescriptionMedicationRepository
-                .findTopByEncounterIdOrderByCreatedDateDesc(dto.getEncounterId())
+        return patientPrescriptionRepository
+                .findTopByEncounterIdAndStatusOrderByCreatedDateDesc(dto.getEncounterId(), PrescriptionStatus.DRAFT)
                 .orElseGet(() -> {
-                    Patient patient = getPatient(dto.patientId());
-
-                    EmergencyTriage entity = EmergencyTriage.builder()
+                    Patient patient = getPatient(dto.getPatientId());
+                    PatientPrescription entity = PatientPrescription.builder()
                             .patient(patient)
-                            .encounterId(dto.encounterId())
+                            .encounterId(dto.getEncounterId())
+                            .prescriptionDate(
+                                    dto.getPrescriptionDate() != null
+                                            ? dto.getPrescriptionDate()
+                                            : java.time.LocalDate.now()
+                            )
+                            .status(PrescriptionStatus.DRAFT)
+                            .fromFacilityId(dto.getFromFacilityId())
+                            .fromDepartmentId(dto.getFromDepartmentId())
                             .build();
-
-                    EmergencyTriage saved = emergencyTriageRepository.save(entity);
-                    LOG.debug("createOrGetByEncounter: created id={}", saved.getId());
-                    return saved;
+                    return patientPrescriptionRepository.save(entity);
                 });
+
     }
 
     @Transactional(readOnly = true)
-    public PatientPrescriptionDTO getPrescription(Long id) {
+    public PatientPrescription getPrescription(Long id) {
         return repo.findById(id)
                 .map(this::toDto)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
     }
 
     @Transactional(readOnly = true)
-    public Page<PatientPrescriptionDTO> list(
+    public Page<PatientPrescription> list(
             Long patientId,
             Long encounterId,
             PrescriptionStatus status,
@@ -103,7 +112,6 @@ public class PatientPrescriptionService {
             Long prescriptionNum,
             Pageable pageable
     ) {
-        // أهم فلتر لو موجود: prescriptionNum
         if (prescriptionNum != null) {
             if (patientId != null) {
                 return repo.findByPatientIdAndPrescriptionNum(patientId, prescriptionNum, pageable).map(this::toDto);
@@ -126,18 +134,16 @@ public class PatientPrescriptionService {
             return repo.findByPatientIdAndEncounterId(patientId, encounterId, pageable).map(this::toDto);
         }
 
-        // patientId فقط
         if (patientId != null) {
             return repo.findByPatientId(patientId, pageable).map(this::toDto);
         }
 
-        // fallback
         return repo.findAll(pageable).map(this::toDto);
     }
 
 
     // ===== submit/cancel (مش VM، فقط id + user) =====
-    public PatientPrescriptionDTO submit(Long id, String lastModifiedBy) {
+    public PatientPrescription submit(Long id, String lastModifiedBy) {
         PatientPrescription entity = repo.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
 
@@ -148,7 +154,7 @@ public class PatientPrescriptionService {
         return toDto(repo.save(entity));
     }
 
-    public PatientPrescriptionDTO cancel(Long id, String lastModifiedBy) {
+    public PatientPrescription cancel(Long id, String lastModifiedBy) {
         PatientPrescription entity = repo.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
 
@@ -160,10 +166,10 @@ public class PatientPrescriptionService {
     }
 
     // ===== mapper (Entity -> DTO) =====
-    private PatientPrescriptionDTO toDto(PatientPrescription e) {
-        PatientPrescriptionDTO dto = new PatientPrescriptionDTO();
+    private PatientPrescription toDto(PatientPrescription e) {
+        PatientPrescription dto = new PatientPrescription();
         dto.setId(e.getId());
-        dto.setPatientId(e.getPatientId());
+        dto.setPatient(e.getPatient());
         dto.setEncounterId(e.getEncounterId());
         dto.setPrescriptionNum(e.getPrescriptionNum());
         dto.setPrescriptionDate(e.getPrescriptionDate());
@@ -178,6 +184,12 @@ public class PatientPrescriptionService {
         dto.setLastModifiedBy(e.getLastModifiedBy());
         dto.setLastModifiedDate(e.getLastModifiedDate());
         return dto;
+    }
+
+    private Patient getPatient(Long id) {
+        return patientRepository
+                .findById(id)
+                .orElseThrow(() -> new NotFoundAlertException("Patient not found: " + id, "Patient", "notfound"));
     }
 }
 

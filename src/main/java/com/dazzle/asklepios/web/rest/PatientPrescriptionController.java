@@ -1,12 +1,12 @@
 package com.dazzle.asklepios.web.rest;
 
+import com.dazzle.asklepios.domain.PatientPrescription;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionUrgencyLevel;
 import com.dazzle.asklepios.service.PatientPrescriptionService;
-import com.dazzle.asklepios.service.vm.PatientPrescriptionCreateVM;
-import com.dazzle.asklepios.service.vm.PatientPrescriptionUpdateVM;
+import com.dazzle.asklepios.service.dto.patientPrescription.PatientPrescriptionCreateDto;
+import com.dazzle.asklepios.service.dto.patientPrescription.PatientPrescriptionUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
-import com.dazzle.asklepios.web.rest.dto.PatientPrescriptionDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -31,8 +31,16 @@ public class PatientPrescriptionController {
 
     private final PatientPrescriptionService service;
 
-    @GetMapping
-    public ResponseEntity<List<PatientPrescriptionDTO>> list(
+
+    @PostMapping("/patient-prescriptions/create-or-get")
+    public ResponseEntity<PatientPrescription> createOrGetByEncounter(
+            @RequestBody PatientPrescriptionCreateDto dto
+    ) {
+        return ResponseEntity.ok(service.createOrGetByEncounter(dto));
+    }
+
+    @GetMapping("/patient-prescriptions")
+    public ResponseEntity<List<PatientPrescription>> list(
             @RequestParam(required = false) Long patientId,
             @RequestParam(required = false) Long encounterId,
             @RequestParam(required = false) PrescriptionStatus status,
@@ -40,7 +48,7 @@ public class PatientPrescriptionController {
             @RequestParam(required = false) Long prescriptionNum,
             Pageable pageable
     ) {
-        Page<PatientPrescriptionDTO> page =
+        Page<PatientPrescription> page =
                 service.list(patientId, encounterId, status, urgencyLevel, prescriptionNum, pageable);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
@@ -51,22 +59,22 @@ public class PatientPrescriptionController {
     }
 
     @GetMapping("/patient-prescriptions/{id}")
-    public ResponseEntity<PatientPrescriptionDTO> get(@PathVariable Long id) {
-        return ResponseEntity.ok(service.get(id));
+    public ResponseEntity<PatientPrescription> get(@PathVariable Long id) {
+        return ResponseEntity.ok(service.getPrescription(id));
     }
 
     @PostMapping("/patient-prescriptions")
-    public ResponseEntity<PatientPrescriptionDTO> create(@RequestBody PatientPrescriptionCreateVM vm) {
+    public ResponseEntity<PatientPrescription> create(@RequestBody PatientPrescriptionCreateDto vm) {
         return ResponseEntity.ok(service.create(vm));
     }
 
     @PutMapping("/patient-prescriptions/{id}")
-    public ResponseEntity<PatientPrescriptionDTO> update(@PathVariable Long id, @RequestBody PatientPrescriptionUpdateVM vm) {
+    public ResponseEntity<PatientPrescription> update(@PathVariable Long id, @RequestBody PatientPrescriptionUpdateDTO vm) {
         return ResponseEntity.ok(service.update(id, vm));
     }
 
     @PostMapping("/patient-prescriptions/{id}/submit")
-    public ResponseEntity<PatientPrescriptionDTO> submit(
+    public ResponseEntity<PatientPrescription> submit(
             @PathVariable Long id,
             @RequestParam String lastModifiedBy
     ) {
@@ -74,7 +82,7 @@ public class PatientPrescriptionController {
     }
 
     @PostMapping("/patient-prescriptions/{id}/cancel")
-    public ResponseEntity<PatientPrescriptionDTO> cancel(
+    public ResponseEntity<PatientPrescription> cancel(
             @PathVariable Long id,
             @RequestParam String lastModifiedBy
     ) {

@@ -1,4 +1,4 @@
-package com.dazzle.asklepios.service.vm;
+package com.dazzle.asklepios.service.dto.patientPrescription;
 
 import com.dazzle.asklepios.domain.enumeration.PrescriptionInstructionsType;
 import lombok.Data;
@@ -6,7 +6,7 @@ import lombok.Data;
 import java.time.LocalDate;
 
 @Data
-public class PrescriptionMedicationUpdateVM {
+public class PrescriptionMedicationUpdateDTO {
 
     public PrescriptionInstructionsType instructionsType;
     public String instructions;
