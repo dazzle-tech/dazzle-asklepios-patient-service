@@ -73,14 +73,6 @@ public class PatientDiagnosisService {
     public PatientDiagnosis update(Long id, PatientDiagnosisUpdateDTO dto) {
         LOG.info("[UPDATE] Request to update PatientDiagnosis id={} payload={}", id, dto);
 
-        if (!id.equals(dto.id())) {
-            throw new BadRequestAlertException(
-                    "Path id does not match payload id.",
-                    "patientDiagnosis",
-                    "id.mismatch"
-            );
-        }
-
         PatientDiagnosis existing = patientDiagnosisRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException(
                         "PatientDiagnosis not found with id " + id,

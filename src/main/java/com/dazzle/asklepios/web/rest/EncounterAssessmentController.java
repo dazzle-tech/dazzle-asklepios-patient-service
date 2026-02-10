@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.net.URI;
 
 @RestController
-@RequestMapping("/api/patient/encounter-assessments")
+@RequestMapping("/api/patient")
 public class EncounterAssessmentController {
 
     private static final Logger LOG = LoggerFactory.getLogger(EncounterAssessmentController.class);
@@ -32,7 +32,7 @@ public class EncounterAssessmentController {
         this.encounterAssessmentService = encounterAssessmentService;
     }
 
-    @PostMapping
+    @PostMapping("/encounter-assessments")
     public ResponseEntity<EncounterAssessment> create(@Valid @RequestBody EncounterAssessmentCreateDTO dto) {
         LOG.debug("REST create EncounterAssessment payload={}", dto);
 
@@ -51,7 +51,7 @@ public class EncounterAssessmentController {
                 .body(created);
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/encounter-assessments/{id}")
     public ResponseEntity<EncounterAssessment> update(
             @PathVariable Long id,
             @Valid @RequestBody EncounterAssessmentUpdateDTO dto
@@ -79,11 +79,7 @@ public class EncounterAssessmentController {
         return ResponseEntity.ok(updated);
     }
 
-    /**
-     * Get latest assessment by encounterId & userId
-     * Example: GET /api/encounter-assessments/latest?encounterId=10&userId=5
-     */
-    @GetMapping("/latest")
+    @GetMapping("/encounter-assessments/latest")
     public ResponseEntity<EncounterAssessment> getLatest(
             @RequestParam("encounterId") Long encounterId,
             @RequestParam("userId") Long userId

@@ -1,6 +1,3 @@
-// =========================
-// Service
-// =========================
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.EncounterPlan;
@@ -109,7 +106,11 @@ public class EncounterPlanService {
 
         return encounterPlanRepository
                 .findTopByEncounterIdOrderByCreatedDateDesc(encounterId)
-                .orElse(null);
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "No encounter plan found for encounterId=" + encounterId,
+                        "encounterPlan",
+                        "notfound"
+                ));
     }
 
     private void handleConstraintsOnCreateOrUpdate(RuntimeException exception) {

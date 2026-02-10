@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.net.URI;
 
 @RestController
-@RequestMapping("/api/patient/encounter-plans")
+@RequestMapping("/api/patient")
 public class EncounterPlanController {
 
     private static final Logger LOG = LoggerFactory.getLogger(EncounterPlanController.class);
@@ -32,7 +32,7 @@ public class EncounterPlanController {
         this.encounterPlanService = encounterPlanService;
     }
 
-    @PostMapping
+    @PostMapping("/encounter-plans")
     public ResponseEntity<EncounterPlan> create(
             @Valid @RequestBody EncounterPlanCreateDTO dto
     ) {
@@ -53,7 +53,7 @@ public class EncounterPlanController {
                 .body(created);
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/encounter-plans/{id}")
     public ResponseEntity<EncounterPlan> update(
             @PathVariable Long id,
             @Valid @RequestBody EncounterPlanUpdateDTO dto
@@ -81,12 +81,8 @@ public class EncounterPlanController {
         return ResponseEntity.ok(updated);
     }
 
-    /**
-     * Get latest plan by encounterId
-     * Example:
-     * GET /api/patient/encounter-plans/latest?encounterId=10
-     */
-    @GetMapping("/latest")
+
+    @GetMapping("/encounter-plans/latest")
     public ResponseEntity<EncounterPlan> getLatest(
             @RequestParam("encounterId") Long encounterId
     ) {
