@@ -4,8 +4,7 @@ public enum ConsultationStatus {
     SUBMITTED,
     REQUESTED,
     CONFIRMED,
-    COMPLETED,
+    READY,
     REJECTED,
     CANCELLED
 }
-

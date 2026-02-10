@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -310,6 +311,14 @@ public class PatientService {
         Page<PatientDocument> docsPage =
                 patientDocumentRepository.findByIsPrimaryTrueAndNumberContainingIgnoreCase(numberPart, pageable);
         return docsPage.map(PatientDocument::getPatient);
+    }
+    @Transactional(readOnly = true)
+    public List<Patient> findByIds(List<Long> ids) {
+        LOG.debug("[BULK FIND] Fetching Patients by ids count={} ids={}", ids.size(), ids);
+        List<Patient> patients = patientRepository.findAllById(ids);
+
+        LOG.debug("[BULK FIND] Found Patients count={}", patients.size());
+        return patients;
     }
 
     @Transactional(readOnly = true)

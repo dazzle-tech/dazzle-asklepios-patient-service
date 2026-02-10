@@ -7,6 +7,7 @@ import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.PatientResponseVM;
+import com.dazzle.asklepios.web.rest.vm.patient.PatientBasicInformationResponseVM;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -295,5 +296,23 @@ public class PatientController {
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
 
+    @PostMapping("/patients/bulk/basic-info")
+    public ResponseEntity<List<PatientBasicInformationResponseVM>> getBulkPatientBasicInfo(
+            @RequestBody List<Long> ids
+    ) {
+        LOG.debug("REST bulk Patient BASIC INFO idsCount={} ids={}",
+                ids == null ? 0 : ids.size(), ids);
+
+        if (ids == null || ids.isEmpty()) {
+            return ResponseEntity.ok(List.of());
+        }
+
+        List<PatientBasicInformationResponseVM> body = patientService.findByIds(ids).stream()
+                .map(PatientBasicInformationResponseVM::ofEntity)
+                .toList();
+
+        LOG.debug("REST bulk Patient BASIC INFO responseCount={}", body.size());
+        return ResponseEntity.ok(body);
+    }
 
 }

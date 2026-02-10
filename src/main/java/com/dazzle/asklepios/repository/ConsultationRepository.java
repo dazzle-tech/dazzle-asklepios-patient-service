@@ -73,4 +73,65 @@ public interface ConsultationRepository
             DestinationType destinationType
     );
 
+
+
+    // ======================================================
+// Practitioner (بدون Departments) + StatusNotIn
+// ======================================================
+    Page<Consultation>
+    findByCreatedDateBetweenAndFromFacilityIdAndPractitionerIdAndStatusNotIn(
+            Instant fromDate,
+            Instant toDate,
+            Long fromFacilityId,
+            Long practitionerId,
+            List<ConsultationStatus> excludedStatuses,
+            Pageable pageable
+    );
+
+
+    // ======================================================
+// Practitioner (مع Departments) + StatusNotIn
+// ======================================================
+    Page<Consultation>
+    findByCreatedDateBetweenAndFromFacilityIdAndPractitionerIdAndFromDepartmentIdInAndStatusNotIn(
+            Instant fromDate,
+            Instant toDate,
+            Long fromFacilityId,
+            Long practitionerId,
+            List<Long> fromDepartmentIds,
+            List<ConsultationStatus> excludedStatuses,
+            Pageable pageable
+    );
+
+
+    // ======================================================
+// ToDepartment (بدون Departments) + StatusNotIn
+// ======================================================
+    Page<Consultation>
+    findByCreatedDateBetweenAndFromFacilityIdAndToDepartmentIdAndStatusNotIn(
+            Instant fromDate,
+            Instant toDate,
+            Long fromFacilityId,
+            Long toDepartmentId,
+            List<ConsultationStatus> excludedStatuses,
+            Pageable pageable
+    );
+
+
+    // ======================================================
+// ToDepartment (مع Departments) + StatusNotIn
+// ======================================================
+    Page<Consultation>
+    findByCreatedDateBetweenAndFromFacilityIdAndToDepartmentIdAndFromDepartmentIdInAndStatusNotIn(
+            Instant fromDate,
+            Instant toDate,
+            Long fromFacilityId,
+            Long toDepartmentId,
+            List<Long> fromDepartmentIds,
+            List<ConsultationStatus> excludedStatuses,
+            Pageable pageable
+    );
+
+
+
 }
