@@ -120,7 +120,7 @@ public class DiagnosticOrderTestReportController {
      * </ul>
      *
      * @param id optional report id
-     * @param orderId optional parent order id
+     * @param orderIdIn optional parent order id
      * @param orderTestId optional diagnostic order test id
      * @param severity optional severity value
      * @param approvedBy optional approver username
@@ -151,7 +151,7 @@ public class DiagnosticOrderTestReportController {
     @GetMapping("/radiology/reports")
     public ResponseEntity<List<DiagnosticOrderTestReportResponseVM>> filterReports(
             @RequestParam(name = "id", required = false) Long id,
-            @RequestParam(name = "orderId", required = false) Long orderId,
+            @RequestParam(name = "orderIdIn", required = false) List<Long> orderIdIn,
             @RequestParam(name = "orderTestId", required = false) Long orderTestId,
 
             @RequestParam(name = "severity", required = false) String severity,
@@ -187,7 +187,7 @@ public class DiagnosticOrderTestReportController {
     ) {
         LOG.debug(
                 "REST filter reports orderId={} orderTestId={} fromDepartmentIn={} patientName={} mrn={}",
-                orderId, orderTestId, fromDepartmentIn, patientName, mrn
+                orderIdIn, orderTestId, fromDepartmentIn, patientName, mrn
         );
 
         Specification<DiagnosticOrderTestReport> spec = (root, query, cb) -> {
@@ -201,7 +201,9 @@ public class DiagnosticOrderTestReportController {
             }
 
             if (id != null) predicates.add(cb.equal(root.get("id"), id));
-            if (orderId != null) predicates.add(cb.equal(root.get("orderId"), orderId));
+            if (orderIdIn != null && !orderIdIn.isEmpty()) {
+                predicates.add(root.get("orderId").in(orderIdIn));
+            }
             if (orderTestId != null) predicates.add(cb.equal(root.get("orderTestId"), orderTestId));
 
             if (severity != null && !severity.isBlank()) {
