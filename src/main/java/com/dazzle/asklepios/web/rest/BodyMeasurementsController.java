@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.BodyMeasurements;
 import com.dazzle.asklepios.service.BodyMeasurementsService;
 import com.dazzle.asklepios.service.dto.bodyMeasurements.BodyMeasurementsCreateDTO;
 import com.dazzle.asklepios.service.dto.bodyMeasurements.BodyMeasurementsUpdateDTO;
+import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.observations.BodyMeasurementsResponseVM;
@@ -16,12 +17,16 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
 import java.time.Instant;
@@ -122,11 +127,11 @@ public class BodyMeasurementsController {
 
     @GetMapping("/body-measurements/patient/{patientId}")
     @Transactional(readOnly = true)
-    public ResponseEntity<Page<BodyMeasurementsResponseVM>> findBodyMeasurementsVmBetweenDates(
+    public ResponseEntity<List<BodyMeasurementsResponseVM>> findBodyMeasurementsVmBetweenDates(
             @PathVariable Long patientId,
             @RequestParam Instant from,
             @RequestParam Instant to,
-            Pageable pageable
+            @ParameterObject Pageable pageable
     ) {
         if (patientId == null) {
             throw new BadRequestAlertException("Patient id is required", ENTITY_NAME, "patient.required");
@@ -145,7 +150,12 @@ public class BodyMeasurementsController {
                                 .build()
                         );
 
-        return ResponseEntity.ok(result);
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                result
+        );
+
+        return new ResponseEntity<>(result.getContent(), headers, HttpStatus.OK);
     }
 
     @GetMapping("/body-measurements/patient/{patientId}/weight/list")

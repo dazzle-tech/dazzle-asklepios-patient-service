@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.VitalSigns;
 import com.dazzle.asklepios.service.VitalSignsService;
 import com.dazzle.asklepios.service.dto.vitalSigns.VitalSignsCreateDTO;
 import com.dazzle.asklepios.service.dto.vitalSigns.VitalSignsUpdateDTO;
+import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.observations.BloodPressureResponseVM;
@@ -18,8 +19,11 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -30,6 +34,8 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+
 import java.net.URI;
 import java.time.Instant;
 import java.util.List;
@@ -130,11 +136,11 @@ public class VitalSignsController {
 
     @GetMapping("/vital-signs/patient/{patientId}/between-dates")
     @Transactional(readOnly = true)
-    public ResponseEntity<Page<VitalSignsResponseVM>> findByPatientBetweenDates(
+    public ResponseEntity<List<VitalSignsResponseVM>> findByPatientBetweenDates(
             @PathVariable Long patientId,
             @RequestParam Instant from,
             @RequestParam Instant to,
-            Pageable pageable
+            @ParameterObject Pageable pageable
     ) {
         if (patientId == null) {
             throw new BadRequestAlertException("Patient id is required", ENTITY_NAME, "patient.required");
@@ -157,8 +163,14 @@ public class VitalSignsController {
                                 .build()
                         );
 
-        return ResponseEntity.ok(page);
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                page
+        );
+
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
+
 
     @GetMapping("/vital-signs/patient/{patientId}/respiratory-rate/list")
     @Transactional(readOnly = true)
