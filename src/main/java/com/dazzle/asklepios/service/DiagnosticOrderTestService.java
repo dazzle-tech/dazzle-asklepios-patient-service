@@ -84,11 +84,9 @@ public class DiagnosticOrderTestService {
         orderTest.setStatus(DiagnosticOrderTestStatus.NEW);
 
         // Set processing status if provided; otherwise default to NEW
-        if (dto.processingStatus() != null) {
-            orderTest.setProcessingStatus(dto.processingStatus());
-        } else {
+
             orderTest.setProcessingStatus(DiagnosticStatus.NEW);
-        }
+
 
         // Additional metadata and routing information
         orderTest.setReceivedDepartmentId(dto.receivedDepartmentId());

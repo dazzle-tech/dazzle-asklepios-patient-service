@@ -10,10 +10,6 @@ public record DiagnosticOrderUpdateDTO(
         @NotNull Long id,
         @NotNull Long patientId,
         @NotNull Long encounterId,
-        @NotNull  Boolean saveDraft,
-
-        @NotNull Boolean isUrgent,
-        @NotNull Long fromDepartmentId,
-        @NotNull Long fromFacilityId
+        @NotNull Boolean isUrgent
 ) implements Serializable {
 }

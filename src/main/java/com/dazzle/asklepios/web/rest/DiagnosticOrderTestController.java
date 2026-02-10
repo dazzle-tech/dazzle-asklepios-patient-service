@@ -308,8 +308,6 @@ public class DiagnosticOrderTestController {
      */
     @GetMapping("/diagnostic-order-tests")
     public ResponseEntity<List<DiagnosticOrderTestResponseVM>> filterDiagnosticOrderTests(
-            @RequestParam(name = "patientId", required = false) Long patientId,
-            @RequestParam(name = "encounterId", required = false) Long encounterId,
             @RequestParam(name = "orderId", required = false) Long orderId,
             @RequestParam(name = "testId", required = false) Long testId,
 
@@ -335,8 +333,8 @@ public class DiagnosticOrderTestController {
 
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("[DiagnosticOrderTest] FILTER - request received. patientId={} encounterId={} orderId={} testId={} status={} statusIn={} statusNotIn={} excludeStatus={} receivedDepartmentId={} processingStatus={} orderType={} acceptedBy={} rejectedBy={} category={} testName={} submitDateFrom={} submitDateTo={} pageable={}",
-                patientId, encounterId, orderId, testId, status, includedStatuses, excludedStatuses, excludedStatus,
+        LOG.debug("[DiagnosticOrderTest] FILTER - request received.  orderId={} testId={} status={} statusIn={} statusNotIn={} excludeStatus={} receivedDepartmentId={} processingStatus={} orderType={} acceptedBy={} rejectedBy={} category={} testName={} submitDateFrom={} submitDateTo={} pageable={}",
+               orderId, testId, status, includedStatuses, excludedStatuses, excludedStatus,
                 receivedDepartmentId, processingStatus, orderType, acceptedBy, rejectedBy, category, testName,
                 submitDateFrom, submitDateTo, pageable);
         if (status != null && includedStatuses != null && !includedStatuses.isEmpty()) {
@@ -362,8 +360,6 @@ public class DiagnosticOrderTestController {
             List<Predicate> filterPredicates = new ArrayList<>();
 
             // Core identifiers
-            if (patientId != null) filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("patientId"), patientId));
-            if (encounterId != null) filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("encounterId"), encounterId));
             if (orderId != null) filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("orderId"), orderId));
             if (testId != null) filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("testId"), testId));
 

@@ -17,6 +17,5 @@ public record DiagnosticOrderTestCreateDTO(
         Long receivedDepartmentId,
         String reason,
         String notes,
-        @NotNull DiagnosticStatus processingStatus,
         @NotNull TestType orderType
 ) implements Serializable { }

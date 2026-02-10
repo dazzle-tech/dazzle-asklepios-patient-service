@@ -47,9 +47,8 @@ public class DiagnosticOrder extends AbstractAuditingEntity implements Serializa
     @Column(name = "patient_id")
     private Long patientId;
 
-    @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "patient_id", nullable = false)
+    @JoinColumn(name = "patient_id", nullable = false , insertable = false, updatable = false)
     private Patient patient;
 
     @NotNull

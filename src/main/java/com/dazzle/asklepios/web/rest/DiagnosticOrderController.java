@@ -124,10 +124,7 @@ public class DiagnosticOrderController {
                 id,
                 dto.patientId(),
                 dto.encounterId(),
-                dto.saveDraft(),
-                dto.isUrgent(),
-                dto.fromDepartmentId(),
-                dto.fromFacilityId()
+                dto.isUrgent()
 
         );
 

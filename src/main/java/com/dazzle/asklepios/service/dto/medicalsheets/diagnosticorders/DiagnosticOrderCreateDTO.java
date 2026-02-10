@@ -10,7 +10,6 @@ import java.io.Serializable;
 public record DiagnosticOrderCreateDTO(
         @NotNull Long patientId,
         @NotNull Long encounterId,
-       @NotNull DiagnosticStatus status,
         Boolean isUrgent,
         DiagnosticStatus labStatus,
         DiagnosticStatus radStatus,
