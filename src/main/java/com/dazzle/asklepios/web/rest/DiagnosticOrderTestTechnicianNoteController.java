@@ -9,8 +9,9 @@ import com.dazzle.asklepios.service.DiagnosticOrderTestTechnicianNoteService;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.techniciannotes.DiagnosticOrderTestTechnicianNoteDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.vm.diagnosticorders.DiagnosticOrderTestTechnicianNoteResponseVM;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -33,6 +34,8 @@ import java.util.List;
 @RequestMapping("/api/patient")
 public class DiagnosticOrderTestTechnicianNoteController {
 
+    private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderTestTechnicianNoteController.class);
+
     private final DiagnosticOrderTestTechnicianNoteService noteService;
     private final DiagnosticOrderTestTechnicianNoteRepository noteRepository;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
@@ -49,11 +52,12 @@ public class DiagnosticOrderTestTechnicianNoteController {
 
 
     @PostMapping("/diagnostic-order-test-notes")
-    public ResponseEntity<DiagnosticOrderTestTechnicianNoteResponseVM> create(
+    public ResponseEntity<DiagnosticOrderTestTechnicianNote> create(
             @Valid @RequestBody DiagnosticOrderTestTechnicianNoteDTO dto
     ) {
+        LOG.debug("[TechnicianNote] CREATE - request received. payload={}", dto);
         // Validate order_test exists
-        DiagnosticOrderTest test = diagnosticOrderTestRepository.findById(dto.orderTestId())
+        DiagnosticOrderTest orderTest= diagnosticOrderTestRepository.findById(dto.orderTestId())
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
                         "diagnostic_order_tests",
@@ -61,7 +65,7 @@ public class DiagnosticOrderTestTechnicianNoteController {
                 ));
 
         // Validate order_id matches the test's order_id
-        if (test.getOrderId() == null || !test.getOrderId().equals(dto.orderId())) {
+        if (orderTest.getOrderId() == null || !orderTest.getOrderId().equals(dto.orderId())) {
             throw new BadRequestAlertException(
                     "order_mismatch",
                     "diagnostic_order_test_technician_notes",
@@ -72,62 +76,66 @@ public class DiagnosticOrderTestTechnicianNoteController {
 
         DiagnosticOrderTestTechnicianNote saved = noteService.create(dto);
 
+        LOG.debug("[TechnicianNote] CREATE - created successfully. id={}", saved.getId());
         return ResponseEntity
                 .created(URI.create("/api/patient/diagnostic-order-test-notes/" + saved.getId()))
-                .body(DiagnosticOrderTestTechnicianNoteResponseVM.ofEntity(saved));
+                .body(saved);
     }
 
     @GetMapping("/diagnostic-order-test-notes/{id}")
-    public ResponseEntity<DiagnosticOrderTestTechnicianNoteResponseVM> getById(@PathVariable Long id) {
+    public ResponseEntity<DiagnosticOrderTestTechnicianNote> getById(@PathVariable Long id) {
+        LOG.debug("[TechnicianNote] GET_BY_ID - request received. id={}", id);
         DiagnosticOrderTestTechnicianNote existing = noteRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
                         "diagnostic_order_test_technician_notes",
                         "Note not found with id " + id
                 ));
-        return ResponseEntity.ok(DiagnosticOrderTestTechnicianNoteResponseVM.ofEntity(existing));
+        LOG.debug("[TechnicianNote] GET_BY_ID - found. id={}", existing.getId());
+        return ResponseEntity.ok(existing);
     }
 
-    @GetMapping("/diagnostic-order-tests/{orderTestId}/notes")
-    public ResponseEntity<List<DiagnosticOrderTestTechnicianNoteResponseVM>> listByOrderTestId(
+    @GetMapping("/diagnostic-order-test-notes/by-diagnostic-order-tests/{orderTestId}")
+    public ResponseEntity<List<DiagnosticOrderTestTechnicianNote>> listByOrderTestId(
             @PathVariable Long orderTestId,
             @ParameterObject Pageable pageable
     ) {
+        LOG.debug("[TechnicianNote] LIST_BY_ORDER_TEST - request received. orderTestId={} pageable={}", orderTestId, pageable);
         Page<DiagnosticOrderTestTechnicianNote> page = noteRepository.findByOrderTestId(orderTestId, pageable);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
         );
 
-        List<DiagnosticOrderTestTechnicianNoteResponseVM> body = page.getContent()
-                .stream()
-                .map(DiagnosticOrderTestTechnicianNoteResponseVM::ofEntity)
-                .toList();
+        List<DiagnosticOrderTestTechnicianNote> body = page.getContent();
 
+        LOG.debug("[TechnicianNote] LIST_BY_ORDER_TEST - response ready. orderTestId={} returned={} totalElements={} totalPages={}",
+                orderTestId, page.getNumberOfElements(), page.getTotalElements(), page.getTotalPages());
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
 
-    @GetMapping("/diagnostic-orders/{orderId}/notes")
-    public ResponseEntity<List<DiagnosticOrderTestTechnicianNoteResponseVM>> listByOrderId(
+    @GetMapping("/diagnostic-order-test-notes/by-diagnostic-orders/{orderId}")
+    public ResponseEntity<List<DiagnosticOrderTestTechnicianNote>> listByOrderId(
             @PathVariable Long orderId,
             @ParameterObject Pageable pageable
     ) {
+        LOG.debug("[TechnicianNote] LIST_BY_ORDER - request received. orderId={} pageable={}", orderId, pageable);
         Page<DiagnosticOrderTestTechnicianNote> page = noteRepository.findByOrderId(orderId, pageable);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
         );
 
-        List<DiagnosticOrderTestTechnicianNoteResponseVM> body = page.getContent()
-                .stream()
-                .map(DiagnosticOrderTestTechnicianNoteResponseVM::ofEntity)
-                .toList();
+        List<DiagnosticOrderTestTechnicianNote> body = page.getContent();
 
+        LOG.debug("[TechnicianNote] LIST_BY_ORDER - response ready. orderId={} returned={} totalElements={} totalPages={}",
+                orderId, page.getNumberOfElements(), page.getTotalElements(), page.getTotalPages());
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
 
     @DeleteMapping("/diagnostic-order-test-notes/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ResponseEntity<Void> delete(@Valid @PathVariable Long id) {
+        LOG.debug("[TechnicianNote] DELETE - request received. id={}", id);
         DiagnosticOrderTestTechnicianNote existing = noteRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
@@ -136,6 +144,7 @@ public class DiagnosticOrderTestTechnicianNoteController {
                 ));
 
         noteService.delete(existing.getId());
+        LOG.debug("[TechnicianNote] DELETE - deleted successfully. id={}", id);
         return ResponseEntity.noContent().build();
     }
 }

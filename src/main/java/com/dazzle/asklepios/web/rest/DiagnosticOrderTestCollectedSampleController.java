@@ -5,13 +5,13 @@ import com.dazzle.asklepios.domain.DiagnosticOrderTestCollectedSample;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestCollectedSampleRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.service.DiagnosticOrderTestCollectedSampleService;
-import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.collectedsamples.DiagnosticOrderTestCollectedSampleBulkDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.collectedsamples.DiagnosticOrderTestCollectedSampleBulkSameDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.collectedsamples.DiagnosticOrderTestCollectedSampleDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.vm.diagnosticorders.collectedsample.DiagnosticOrderTestCollectedSampleResponseVM;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -34,22 +34,27 @@ import java.util.List;
 @RequestMapping("/api/patient")
 public class DiagnosticOrderTestCollectedSampleController {
 
+    private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderTestCollectedSampleController.class);
+
     private final DiagnosticOrderTestCollectedSampleService service;
     private final DiagnosticOrderTestCollectedSampleRepository repository;
     private final DiagnosticOrderTestRepository orderTestRepository;
 
-    public DiagnosticOrderTestCollectedSampleController(DiagnosticOrderTestCollectedSampleService service, DiagnosticOrderTestCollectedSampleRepository repository, DiagnosticOrderTestRepository orderTestRepository) {
+    public DiagnosticOrderTestCollectedSampleController(
+            DiagnosticOrderTestCollectedSampleService service,
+            DiagnosticOrderTestCollectedSampleRepository repository,
+            DiagnosticOrderTestRepository orderTestRepository
+    ) {
         this.service = service;
         this.repository = repository;
         this.orderTestRepository = orderTestRepository;
     }
 
-
     @PostMapping("/diagnostic-order-test-collected-samples")
-    public ResponseEntity<DiagnosticOrderTestCollectedSampleResponseVM> create(
+    public ResponseEntity<DiagnosticOrderTestCollectedSample> create(
             @Valid @RequestBody DiagnosticOrderTestCollectedSampleDTO dto
     ) {
-        // Validate order_test exists
+        LOG.debug("[CollectedSample] CREATE - request received. payload={}", dto);
         DiagnosticOrderTest test = orderTestRepository.findById(dto.orderTestId())
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
@@ -57,7 +62,6 @@ public class DiagnosticOrderTestCollectedSampleController {
                         "DiagnosticOrderTest not found with id " + dto.orderTestId()
                 ));
 
-        // Validate order_id matches test.orderId
         if (test.getOrderId() == null || !test.getOrderId().equals(dto.orderId())) {
             throw new BadRequestAlertException(
                     "order_mismatch",
@@ -68,62 +72,62 @@ public class DiagnosticOrderTestCollectedSampleController {
 
         DiagnosticOrderTestCollectedSample saved = service.create(dto);
 
+        LOG.debug("[CollectedSample] CREATE - created successfully. id={}", saved.getId());
         return ResponseEntity
                 .created(URI.create("/api/patient/diagnostic-order-test-collected-samples/" + saved.getId()))
-                .body(DiagnosticOrderTestCollectedSampleResponseVM.ofEntity(saved));
+                .body(saved);
     }
 
     @GetMapping("/diagnostic-order-test-collected-samples/{id}")
-    public ResponseEntity<DiagnosticOrderTestCollectedSampleResponseVM> getById(@PathVariable Long id) {
+    public ResponseEntity<DiagnosticOrderTestCollectedSample> getById(@PathVariable Long id) {
+        LOG.debug("[CollectedSample] GET_BY_ID - request received. id={}", id);
         DiagnosticOrderTestCollectedSample existing = repository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
                         "diagnostic_order_test_collected_samples",
                         "Collected sample not found with id " + id
                 ));
-        return ResponseEntity.ok(DiagnosticOrderTestCollectedSampleResponseVM.ofEntity(existing));
+        LOG.debug("[CollectedSample] GET_BY_ID - found. id={}", existing.getId());
+        return ResponseEntity.ok(existing);
     }
 
-    @GetMapping("/diagnostic-order-tests/{orderTestId}/collected-samples")
-    public ResponseEntity<List<DiagnosticOrderTestCollectedSampleResponseVM>> listByOrderTestId(
+    @GetMapping("/diagnostic-order-test-collected-samples/by-diagnostic-order-tests/{orderTestId}")
+    public ResponseEntity<List<DiagnosticOrderTestCollectedSample>> listByOrderTestId(
             @PathVariable Long orderTestId,
             @ParameterObject Pageable pageable
     ) {
+        LOG.debug("[CollectedSample] LIST_BY_ORDER_TEST - request received. orderTestId={} pageable={}", orderTestId, pageable);
         Page<DiagnosticOrderTestCollectedSample> page = repository.findByOrderTestId(orderTestId, pageable);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
         );
 
-        List<DiagnosticOrderTestCollectedSampleResponseVM> body = page.getContent()
-                .stream()
-                .map(DiagnosticOrderTestCollectedSampleResponseVM::ofEntity)
-                .toList();
-
-        return new ResponseEntity<>(body, headers, HttpStatus.OK);
+        LOG.debug("[CollectedSample] LIST_BY_ORDER_TEST - response ready. orderTestId={} returned={} totalElements={} totalPages={}",
+                orderTestId, page.getNumberOfElements(), page.getTotalElements(), page.getTotalPages());
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
-    @GetMapping("/diagnostic-orders/{orderId}/collected-samples")
-    public ResponseEntity<List<DiagnosticOrderTestCollectedSampleResponseVM>> listByOrderId(
+    @GetMapping("/diagnostic-order-test-collected-samples/by-diagnostic-orders/{orderId}")
+    public ResponseEntity<List<DiagnosticOrderTestCollectedSample>> listByOrderId(
             @PathVariable Long orderId,
             @ParameterObject Pageable pageable
     ) {
+        LOG.debug("[CollectedSample] LIST_BY_ORDER - request received. orderId={} pageable={}", orderId, pageable);
         Page<DiagnosticOrderTestCollectedSample> page = repository.findByOrderId(orderId, pageable);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
         );
 
-        List<DiagnosticOrderTestCollectedSampleResponseVM> body = page.getContent()
-                .stream()
-                .map(DiagnosticOrderTestCollectedSampleResponseVM::ofEntity)
-                .toList();
-
-        return new ResponseEntity<>(body, headers, HttpStatus.OK);
+        LOG.debug("[CollectedSample] LIST_BY_ORDER - response ready. orderId={} returned={} totalElements={} totalPages={}",
+                orderId, page.getNumberOfElements(), page.getTotalElements(), page.getTotalPages());
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
     @DeleteMapping("/diagnostic-order-test-collected-samples/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ResponseEntity<Void> delete(@Valid @PathVariable Long id) {
+        LOG.debug("[CollectedSample] DELETE - request received. id={}", id);
         DiagnosticOrderTestCollectedSample existing = repository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
@@ -132,22 +136,25 @@ public class DiagnosticOrderTestCollectedSampleController {
                 ));
 
         service.delete(existing.getId());
+        LOG.debug("[CollectedSample] DELETE - deleted successfully. id={}", id);
         return ResponseEntity.noContent().build();
     }
-    @PostMapping("/diagnostic-order-test-collected-samples/bulk-same")
-    public ResponseEntity<List<DiagnosticOrderTestCollectedSampleResponseVM>> bulkCreateSame(
+
+    @PostMapping("/diagnostic-order-test-collected-samples/bulk-with-same-details")
+    public ResponseEntity<List<DiagnosticOrderTestCollectedSample>> bulkCreateWithSameDetails(
             @Valid @RequestBody DiagnosticOrderTestCollectedSampleBulkSameDTO dto
     ) {
-        // Validate all orderTestIds exist and belong to the same orderId
+        LOG.debug("[CollectedSample] BULK_CREATE_SAME - request received. orderId={} orderTestIdsCount={}",
+                dto.orderId(), dto.orderTestIds() == null ? 0 : dto.orderTestIds().size());
         for (Long orderTestId : dto.orderTestIds()) {
-            DiagnosticOrderTest test = orderTestRepository.findById(orderTestId)
+            DiagnosticOrderTest orderTest = orderTestRepository.findById(orderTestId)
                     .orElseThrow(() -> new BadRequestAlertException(
                             "notfound",
                             "diagnostic_order_tests",
                             "DiagnosticOrderTest not found with id " + orderTestId
                     ));
 
-            if (test.getOrderId() == null || !test.getOrderId().equals(dto.orderId())) {
+            if (orderTest.getOrderId() == null || !orderTest.getOrderId().equals(dto.orderId())) {
                 throw new BadRequestAlertException(
                         "order_mismatch",
                         "diagnostic_order_test_collected_samples",
@@ -156,14 +163,8 @@ public class DiagnosticOrderTestCollectedSampleController {
             }
         }
 
-        List<DiagnosticOrderTestCollectedSample> saved = service.bulkCreateSame(dto);
-
-        List<DiagnosticOrderTestCollectedSampleResponseVM> body = saved.stream()
-                .map(DiagnosticOrderTestCollectedSampleResponseVM::ofEntity)
-                .toList();
-
-        return ResponseEntity.status(HttpStatus.CREATED).body(body);
+        List<DiagnosticOrderTestCollectedSample> saved = service.bulkCreateWithSameDetails(dto);
+        LOG.debug("[CollectedSample] BULK_CREATE_SAME - created successfully. savedCount={}", saved.size());
+        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
-
-
 }

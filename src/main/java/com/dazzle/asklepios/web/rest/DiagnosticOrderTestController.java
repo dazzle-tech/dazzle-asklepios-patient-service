@@ -8,7 +8,6 @@ import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
-import com.dazzle.asklepios.repository.ExternalTestRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.DiagnosticOrderTestService;
 import com.dazzle.asklepios.service.DiagnosticOrderTestStatusService;
@@ -31,38 +30,82 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
 import java.time.Instant;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.List;
 
+/**
+ * REST controller for managing {@link DiagnosticOrderTest} resources.
+ * <p>
+ * Endpoints provided:
+ * <ul>
+ *   <li>CRUD operations on diagnostic order tests</li>
+ *   <li>Listing tests for a specific order with include/exclude status filters + pagination</li>
+ *   <li>Advanced filtering using query params (Specification-based)</li>
+ *   <li>Status/action endpoints (collect sample, accept, mark ready, review, approve, reject, cancel)</li>
+ * </ul>
+ */
 @RestController
 @RequestMapping("/api/patient")
 public class DiagnosticOrderTestController {
 
+    /**
+     * Logger for tracing incoming REST requests.
+     */
     private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderTestController.class);
 
+    /**
+     * Service handling create/update/delete and list operations.
+     */
     private final DiagnosticOrderTestService diagnosticOrderTestService;
-    private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
-    private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
-    private final ExternalTestRepository externalTestRepository;
 
+    /**
+     * Service handling state transitions for processing/status actions.
+     */
+    private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
+
+    /**
+     * Repository used directly for lookups and Specification-based queries.
+     */
+    private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
+
+    /**
+     * Controller constructor.
+     *
+     * @param diagnosticOrderTestService       business logic for CRUD
+     * @param diagnosticOrderTestStatusService business logic for status transitions
+     * @param diagnosticOrderTestRepository    persistence/retrieval access
+     */
     public DiagnosticOrderTestController(
             DiagnosticOrderTestService diagnosticOrderTestService,
             DiagnosticOrderTestStatusService diagnosticOrderTestStatusService,
-            DiagnosticOrderTestRepository diagnosticOrderTestRepository,
-            ExternalTestRepository externalTestRepository
+            DiagnosticOrderTestRepository diagnosticOrderTestRepository
     ) {
         this.diagnosticOrderTestService = diagnosticOrderTestService;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
-        this.externalTestRepository = externalTestRepository;
     }
 
+    /**
+     * Returns the current authenticated username (login).
+     *
+     * @return username of the authenticated user
+     * @throws BadRequestAlertException if no user is authenticated
+     */
     private String currentUsername() {
+        LOG.debug("[DiagnosticOrderTest] CURRENT_USER - resolving username");
         return SecurityUtils.getCurrentUserLogin()
                 .orElseThrow(() -> new BadRequestAlertException(
                         "unauthenticated",
@@ -72,39 +115,20 @@ public class DiagnosticOrderTestController {
     }
 
     /**
-     * IMPORTANT:
-     * external_test.test_id -> diagnostic_order_tests.id
-     * so we check by DiagnosticOrderTest.getId()
+     * Creates a new DiagnosticOrderTest.
+     *
+     * @param requestDto request body payload
+     * @return created entity response with Location header
      */
-    private DiagnosticOrderTestResponseVM toVm(DiagnosticOrderTest t) {
-        boolean sent = externalTestRepository.existsByTestId(t.getId());
-        return DiagnosticOrderTestResponseVM.ofEntity(t, sent);
-    }
-
-    private List<DiagnosticOrderTestResponseVM> toVmListWithBulkSentFlag(List<DiagnosticOrderTest> tests) {
-        if (tests == null || tests.isEmpty()) return List.of();
-
-        Set<Long> ids = tests.stream()
-                .map(DiagnosticOrderTest::getId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-
-        Set<Long> sentIds = new HashSet<>(externalTestRepository.findExistingTestIds(ids));
-
-        return tests.stream()
-                .map(t -> DiagnosticOrderTestResponseVM.ofEntity(t, sentIds.contains(t.getId())))
-                .toList();
-    }
-
     @PostMapping("/diagnostic-order-tests")
-    public ResponseEntity<DiagnosticOrderTestResponseVM> create(@Valid @RequestBody DiagnosticOrderTestCreateDTO dto) {
-        LOG.debug("REST create DiagnosticOrderTest payload={}", dto);
-
+    public ResponseEntity<DiagnosticOrderTestResponseVM> create(@Valid @RequestBody DiagnosticOrderTestCreateDTO requestDto) {
+        LOG.debug("[DiagnosticOrderTest] CREATE - request received. payload={}", requestDto);
         if (diagnosticOrderTestRepository.existsByOrderIdAndTestIdAndStatusNot(
-                dto.orderId(),
-                dto.testId(),
+                requestDto.orderId(),
+                requestDto.testId(),
                 DiagnosticOrderTestStatus.CANCELLED
-        )) {
+        ))
+        {
             throw new BadRequestAlertException(
                     "duplicate_test_in_order",
                     "diagnostic_order_tests",
@@ -112,37 +136,50 @@ public class DiagnosticOrderTestController {
             );
         }
 
-        DiagnosticOrderTest saved = diagnosticOrderTestService.create(dto);
+        DiagnosticOrderTest createdTest = diagnosticOrderTestService.create(requestDto);
 
+        LOG.debug("[DiagnosticOrderTest] CREATE - created successfully. id={}", createdTest.getId());
         return ResponseEntity
-                .created(URI.create("/api/patient/diagnostic-order-tests/" + saved.getId()))
-                .body(toVm(saved));
+                .created(URI.create("/api/patient/diagnostic-order-tests/" + createdTest.getId()))
+                .body(DiagnosticOrderTestResponseVM.ofEntity(createdTest));
     }
 
+    /**
+     * Updates an existing DiagnosticOrderTest by id.
+     * <p>
+     * Validates that the path id matches the DTO id to avoid accidental updates.
+     *
+     * @param requestDto  path variable (entity id)
+     * @param orderTestId request body payload (must include matching id)
+     * @return updated entity response
+     */
     @PutMapping("/diagnostic-order-tests/{id}")
     public ResponseEntity<DiagnosticOrderTestResponseVM> update(
-            @PathVariable Long id,
-            @Valid @RequestBody DiagnosticOrderTestUpdateDTO dto
+            @PathVariable("id") Long orderTestId,
+            @Valid @RequestBody DiagnosticOrderTestUpdateDTO requestDto
     ) {
-        LOG.debug("REST update DiagnosticOrderTest id={} payload={}", id, dto);
+        LOG.debug("[DiagnosticOrderTest] UPDATE - request received. id={} payload={}", orderTestId, requestDto);
 
-        DiagnosticOrderTest existing = diagnosticOrderTestRepository.findById(id)
+        // Load existing entity or fail fast
+        DiagnosticOrderTest existingTest = diagnosticOrderTestRepository.findById(orderTestId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
                         "diagnostic_order_tests",
-                        "DiagnosticOrderTest not found with id " + id
+                        "DiagnosticOrderTest not found with id " + orderTestId
                 ));
 
-        if (!id.equals(dto.id())) {
+        // Guard against path/body id mismatch
+        if (!orderTestId.equals(requestDto.id())) {
             throw new BadRequestAlertException("Path id and body id mismatch", "diagnostic_order_tests", "idmismatch");
         }
-
-        if (diagnosticOrderTestRepository.existsByOrderIdAndTestIdAndIdNotAndStatusNot(
-                dto.orderId(),
-                dto.testId(),
-                id,
-                DiagnosticOrderTestStatus.CANCELLED
-        )) {
+        if (
+                diagnosticOrderTestRepository.existsByOrderIdAndTestIdAndIdNotAndStatusNot(
+                        requestDto.orderId(),
+                        requestDto.testId(),
+                        orderTestId
+                        , DiagnosticOrderTestStatus.CANCELLED
+                )
+        ) {
             throw new BadRequestAlertException(
                     "duplicate_test_in_order",
                     "diagnostic_order_tests",
@@ -150,71 +187,134 @@ public class DiagnosticOrderTestController {
             );
         }
 
-        DiagnosticOrderTest updated = diagnosticOrderTestService.update(existing, dto);
-        return ResponseEntity.ok(toVm(updated));
+
+        DiagnosticOrderTest updatedTest = diagnosticOrderTestService.update(existingTest, requestDto);
+        LOG.debug("[DiagnosticOrderTest] UPDATE - updated successfully. id={}", updatedTest.getId());
+        return ResponseEntity.ok(DiagnosticOrderTestResponseVM.ofEntity(updatedTest));
     }
 
+    /**
+     * Retrieves a DiagnosticOrderTest by its id.
+     *
+     * @param orderTestId entity id
+     * @return entity response
+     */
     @GetMapping("/diagnostic-order-tests/{id}")
-    public ResponseEntity<DiagnosticOrderTestResponseVM> getById(@PathVariable Long id) {
-        DiagnosticOrderTest existing = diagnosticOrderTestRepository.findById(id)
+    public ResponseEntity<DiagnosticOrderTestResponseVM> getById(@PathVariable("id") Long orderTestId) {
+        LOG.debug("[DiagnosticOrderTest] GET_BY_ID - request received. id={}", orderTestId);
+        DiagnosticOrderTest existingTest = diagnosticOrderTestRepository.findById(orderTestId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
                         "diagnostic_order_tests",
-                        "DiagnosticOrderTest not found with id " + id
+                        "DiagnosticOrderTest not found with id " + orderTestId
                 ));
-        return ResponseEntity.ok(toVm(existing));
+        LOG.debug("[DiagnosticOrderTest] GET_BY_ID - found. id={}", existingTest.getId());
+        return ResponseEntity.ok(DiagnosticOrderTestResponseVM.ofEntity(existingTest));
     }
 
+    /**
+     * Deletes a DiagnosticOrderTest by its id.
+     *
+     * @param orderTestId entity id
+     * @return 204 No Content if deleted
+     */
     @DeleteMapping("/diagnostic-order-tests/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        DiagnosticOrderTest existing = diagnosticOrderTestRepository.findById(id)
+    public ResponseEntity<Void> delete(@PathVariable("id") Long orderTestId) {
+        LOG.debug("[DiagnosticOrderTest] DELETE - request received. id={}", orderTestId);
+        // Ensure the entity exists before deleting (for consistent error handling)
+        DiagnosticOrderTest existingTest = diagnosticOrderTestRepository.findById(orderTestId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
                         "diagnostic_order_tests",
-                        "DiagnosticOrderTest not found with id " + id
+                        "DiagnosticOrderTest not found with id " + orderTestId
                 ));
 
-        diagnosticOrderTestService.delete(existing.getId());
+        diagnosticOrderTestService.delete(existingTest.getId());
+        LOG.debug("[DiagnosticOrderTest] DELETE - deleted successfully. id={}", orderTestId);
         return ResponseEntity.noContent().build();
     }
 
     // -------------------------------------------------------
     // List tests by orderId (status include/exclude) - pagination
     // -------------------------------------------------------
-    @GetMapping("/diagnostic-orders/{orderId}/tests")
+
+    /**
+     * Lists tests under a specific diagnostic order id with optional include/exclude filters.
+     * <p>
+     * Supports:
+     * <ul>
+     *   <li>{@code status}: include only this {@link DiagnosticOrderTestStatus}</li>
+     *   <li>{@code excludeStatus}: exclude these statuses</li>
+     *   <li>Pagination via {@link Pageable}</li>
+     * </ul>
+     *
+     * @param orderId       parent order id
+     * @param status        optional exact status filter
+     * @param excludedStatuses optional list of statuses to exclude (used when status is null)
+     * @param pageable      paging and sorting
+     * @return paginated list of response VMs plus pagination headers
+     */
+    @GetMapping("/diagnostic-order-tests/by-order/{orderId}")
     public ResponseEntity<List<DiagnosticOrderTestResponseVM>> getByOrderId(
             @PathVariable Long orderId,
             @RequestParam(name = "status", required = false) DiagnosticOrderTestStatus status,
-            @RequestParam(name = "excludeStatus", required = false) List<DiagnosticOrderTestStatus> excludeStatus,
+            @RequestParam(name = "excludeStatus", required = false) List<DiagnosticOrderTestStatus> excludedStatuses,
             @ParameterObject Pageable pageable
     ) {
-        Page<DiagnosticOrderTest> page = diagnosticOrderTestService.findByOrderIdFilterStatus(
-                orderId, status, excludeStatus, pageable
+        LOG.debug("[DiagnosticOrderTest] LIST_BY_ORDER - request received. orderId={} status={} excludeStatus={} pageable={}",
+                orderId, status, excludedStatuses, pageable);
+        Page<DiagnosticOrderTest> orderTestsPage;
+        if (status != null) {
+            orderTestsPage = diagnosticOrderTestService.findByOrderIdAndStatus(orderId, status, pageable);
+        } else if (excludedStatuses != null && !excludedStatuses.isEmpty()) {
+            orderTestsPage = diagnosticOrderTestService.findByOrderIdExcludingStatuses(orderId, excludedStatuses, pageable);
+        } else {
+            orderTestsPage = diagnosticOrderTestService.findByOrderId(orderId, pageable);
+        }
+
+        // Attach standard pagination headers (Link + X-Total-Count style)
+        HttpHeaders paginationHeaders = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), orderTestsPage
         );
 
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(), page
-        );
+        // Map entities to response view-models
+        List<DiagnosticOrderTestResponseVM> responseBody = orderTestsPage.getContent()
+                .stream()
+                .map(DiagnosticOrderTestResponseVM::ofEntity)
+                .toList();
 
-        List<DiagnosticOrderTestResponseVM> body = toVmListWithBulkSentFlag(page.getContent());
-
-        return new ResponseEntity<>(body, headers, HttpStatus.OK);
+        LOG.debug("[DiagnosticOrderTest] LIST_BY_ORDER - response ready. orderId={} returned={} totalElements={} totalPages={}",
+                orderId, responseBody.size(), orderTestsPage.getTotalElements(), orderTestsPage.getTotalPages());
+        return new ResponseEntity<>(responseBody, paginationHeaders, HttpStatus.OK);
     }
 
     // -------------------------
     // FILTER (exact matching)
     // -------------------------
+
+    /**
+     * Filters DiagnosticOrderTest records using query parameters.
+     * <p>
+     * Implementation uses JPA {@link Specification} for exact-match predicates (plus submitDate range).
+     * Results are pageable.
+     * <p>
+     * Notes/constraints:
+     * <ul>
+     *   <li>Cannot use both {@code status} and {@code statusIn} at the same time.</li>
+     *   <li>{@code submitDateFrom}/{@code submitDateTo} apply inclusive bounds.</li>
+     * </ul>
+     *
+     * @return paginated list of matching tests plus pagination headers
+     */
     @GetMapping("/diagnostic-order-tests")
     public ResponseEntity<List<DiagnosticOrderTestResponseVM>> filterDiagnosticOrderTests(
-            @RequestParam(name = "patientId", required = false) Long patientId,
-            @RequestParam(name = "encounterId", required = false) Long encounterId,
             @RequestParam(name = "orderId", required = false) Long orderId,
             @RequestParam(name = "testId", required = false) Long testId,
 
             @RequestParam(name = "status", required = false) DiagnosticStatus status,
-            @RequestParam(name = "statusIn", required = false) List<DiagnosticStatus> statusIn,
-            @RequestParam(name = "statusNotIn", required = false) List<DiagnosticStatus> statusNotIn,
-            @RequestParam(name = "excludeStatus", required = false) DiagnosticStatus excludeStatus,
+            @RequestParam(name = "statusIn", required = false) List<DiagnosticStatus> includedStatuses,
+            @RequestParam(name = "statusNotIn", required = false) List<DiagnosticStatus> excludedStatuses,
+            @RequestParam(name = "excludeStatus", required = false) DiagnosticStatus excludedStatus,
 
             @RequestParam(name = "receivedDepartmentId", required = false) Long receivedDepartmentId,
             @RequestParam(name = "processingStatus", required = false) DiagnosticStatus processingStatus,
@@ -224,6 +324,7 @@ public class DiagnosticOrderTestController {
             @RequestParam(name = "acceptedBy", required = false) String acceptedBy,
             @RequestParam(name = "rejectedBy", required = false) String rejectedBy,
 
+            // independent filters
             @RequestParam(name = "category", required = false) Long category,
             @RequestParam(name = "testName", required = false) String testName,
 
@@ -232,10 +333,19 @@ public class DiagnosticOrderTestController {
 
             @ParameterObject Pageable pageable
     ) {
-        if (status != null && statusIn != null && !statusIn.isEmpty()) {
-            throw new IllegalArgumentException("Use either status or statusIn, not both");
+        LOG.debug("[DiagnosticOrderTest] FILTER - request received.  orderId={} testId={} status={} statusIn={} statusNotIn={} excludeStatus={} receivedDepartmentId={} processingStatus={} orderType={} acceptedBy={} rejectedBy={} category={} testName={} submitDateFrom={} submitDateTo={} pageable={}",
+                orderId, testId, status, includedStatuses, excludedStatuses, excludedStatus,
+                receivedDepartmentId, processingStatus, orderType, acceptedBy, rejectedBy, category, testName,
+                submitDateFrom, submitDateTo, pageable);
+        if (status != null && includedStatuses != null && !includedStatuses.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "invalid_filter",
+                    "diagnostic_order_tests",
+                    "Use either status or statusIn, not both"
+            );
         }
 
+        // categoryId requires orderType (because category lives in different detail tables)
         if (category != null && orderType == null) {
             throw new BadRequestAlertException(
                     "missing_order_type",
@@ -244,123 +354,213 @@ public class DiagnosticOrderTestController {
             );
         }
 
-        boolean hasNameFilter = testName != null && !testName.isBlank();
+        boolean hasTestNameFilter = testName != null && !testName.isBlank();
 
-        Specification<DiagnosticOrderTest> spec = (root, query, cb) -> {
-            List<Predicate> predicates = new ArrayList<>();
+        Specification<DiagnosticOrderTest> filterSpec = (orderTestRoot, criteriaQuery, criteriaBuilder) -> {
+            List<Predicate> filterPredicates = new ArrayList<>();
 
-            if (patientId != null) predicates.add(cb.equal(root.get("patientId"), patientId));
-            if (encounterId != null) predicates.add(cb.equal(root.get("encounterId"), encounterId));
-            if (orderId != null) predicates.add(cb.equal(root.get("orderId"), orderId));
-            if (testId != null) predicates.add(cb.equal(root.get("testId"), testId));
+            // Core identifiers
+            if (orderId != null) filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("orderId"), orderId));
+            if (testId != null) filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("testId"), testId));
 
-            if (status != null) predicates.add(cb.equal(root.get("status"), status));
-            if (statusIn != null && !statusIn.isEmpty()) predicates.add(root.get("status").in(statusIn));
-            if (excludeStatus != null) predicates.add(cb.notEqual(root.get("status"), excludeStatus));
-            if (statusNotIn != null && !statusNotIn.isEmpty()) {
-                predicates.add(cb.not(root.get("status").in(statusNotIn)));
+            // Status filtering
+            if (status != null) filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("status"), status));
+            if (includedStatuses != null && !includedStatuses.isEmpty())
+                filterPredicates.add(orderTestRoot.get("status").in(includedStatuses));
+            if (excludedStatus != null) filterPredicates.add(criteriaBuilder.notEqual(orderTestRoot.get("status"), excludedStatus));
+            if (excludedStatuses != null && !excludedStatuses.isEmpty()) {
+                filterPredicates.add(criteriaBuilder.not(orderTestRoot.get("status").in(excludedStatuses)));
             }
 
+            // Department & processing details
             if (receivedDepartmentId != null)
-                predicates.add(cb.equal(root.get("receivedDepartmentId"), receivedDepartmentId));
-            if (processingStatus != null) predicates.add(cb.equal(root.get("processingStatus"), processingStatus));
-            if (orderType != null) predicates.add(cb.equal(root.get("orderType"), orderType));
+                filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("receivedDepartmentId"), receivedDepartmentId));
+            if (processingStatus != null) filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("processingStatus"), processingStatus));
+            if (orderType != null) filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("orderType"), orderType));
 
+            // Audit fields
             if (acceptedBy != null && !acceptedBy.isBlank())
-                predicates.add(cb.equal(root.get("acceptedBy"), acceptedBy));
+                filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("acceptedBy"), acceptedBy));
             if (rejectedBy != null && !rejectedBy.isBlank())
-                predicates.add(cb.equal(root.get("rejectedBy"), rejectedBy));
+                filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("rejectedBy"), rejectedBy));
 
-            if (submitDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("submitDate"), submitDateFrom));
-            if (submitDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("submitDate"), submitDateTo));
+            // Submit date range
+            if (submitDateFrom != null)
+                filterPredicates.add(criteriaBuilder.greaterThanOrEqualTo(orderTestRoot.get("submitDate"), submitDateFrom));
+            if (submitDateTo != null)
+                filterPredicates.add(criteriaBuilder.lessThanOrEqualTo(orderTestRoot.get("submitDate"), submitDateTo));
 
-            if (hasNameFilter) {
-                Root<DiagnosticTest> dt = query.from(DiagnosticTest.class);
-                predicates.add(cb.equal(dt.get("id"), root.get("testId")));
-                predicates.add(cb.like(cb.lower(dt.get("name")), "%" + testName.toLowerCase() + "%"));
-                query.distinct(true);
+            // -----------------------------
+            // (1) testName filter (ONLY from diagnostic_test)
+            // Does NOT depend on categoryId or orderType
+            // -----------------------------
+            if (hasTestNameFilter) {
+                Root<DiagnosticTest> testRoot = criteriaQuery.from(DiagnosticTest.class);
+                filterPredicates.add(criteriaBuilder.equal(testRoot.get("id"), orderTestRoot.get("testId")));
+                filterPredicates.add(criteriaBuilder.like(
+                        criteriaBuilder.lower(testRoot.get("name")),
+                        "%" + testName.toLowerCase() + "%"
+                ));
+                criteriaQuery.distinct(true);
             }
 
+            // -----------------------------
+            // (2) categoryId filter (ONLY from detail table based on orderType)
+            // Does NOT depend on testName
+            // -----------------------------
             if (category != null) {
                 if (orderType == TestType.LABORATORY) {
-                    Root<DiagnosticTestLaboratory> lab = query.from(DiagnosticTestLaboratory.class);
-                    predicates.add(cb.equal(lab.get("test").get("id"), root.get("testId")));
-                    predicates.add(cb.equal(lab.get("category"), category));
-                    query.distinct(true);
+                    Root<DiagnosticTestLaboratory> labRoot = criteriaQuery.from(DiagnosticTestLaboratory.class);
+
+                    // Link: DiagnosticOrderTest.testId -> DiagnosticTestLaboratory.test.id
+                    filterPredicates.add(criteriaBuilder.equal(labRoot.get("test").get("id"), orderTestRoot.get("testId")));
+                    filterPredicates.add(criteriaBuilder.equal(labRoot.get("category"), category));
+
+                    criteriaQuery.distinct(true);
                 } else if (orderType == TestType.RADIOLOGY) {
-                    Root<DiagnosticTestRadiology> rad = query.from(DiagnosticTestRadiology.class);
-                    predicates.add(cb.equal(rad.get("test").get("id"), root.get("testId")));
-                    predicates.add(cb.equal(rad.get("category"), category));
-                    query.distinct(true);
+                    Root<DiagnosticTestRadiology> radRoot = criteriaQuery.from(DiagnosticTestRadiology.class);
+
+                    filterPredicates.add(criteriaBuilder.equal(radRoot.get("test").get("id"), orderTestRoot.get("testId")));
+                    filterPredicates.add(criteriaBuilder.equal(radRoot.get("category"), category));
+
+                    criteriaQuery.distinct(true);
                 }
             }
 
-            return cb.and(predicates.toArray(new Predicate[0]));
+            return criteriaBuilder.and(filterPredicates.toArray(new Predicate[0]));
         };
 
-        Page<DiagnosticOrderTest> page = diagnosticOrderTestRepository.findAll(spec, pageable);
+        Page<DiagnosticOrderTest> filteredPage = diagnosticOrderTestRepository.findAll(filterSpec, pageable);
 
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(), page
+        HttpHeaders paginationHeaders = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), filteredPage
         );
 
-        List<DiagnosticOrderTestResponseVM> body = toVmListWithBulkSentFlag(page.getContent());
+        List<DiagnosticOrderTestResponseVM> responseBody = filteredPage.getContent()
+                .stream()
+                .map(DiagnosticOrderTestResponseVM::ofEntity)
+                .toList();
 
-        return new ResponseEntity<>(body, headers, HttpStatus.OK);
+        LOG.debug("[DiagnosticOrderTest] FILTER - response ready. returned={} totalElements={} totalPages={}",
+                filteredPage.getNumberOfElements(), filteredPage.getTotalElements(), filteredPage.getTotalPages());
+        return new ResponseEntity<>(responseBody, paginationHeaders, HttpStatus.OK);
     }
+
 
     // -------------------------
     // ACTIONS (status changes)
     // -------------------------
-    @PostMapping("/diagnostic-order-tests/{id}/collect-sample")
-    public ResponseEntity<DiagnosticOrderTestResponseVM> collectSample(@PathVariable Long id) {
-        DiagnosticOrderTest updated = diagnosticOrderTestStatusService.collectSample(id);
-        return ResponseEntity.ok(toVm(updated));
-    }
 
+
+    /**
+     * Action endpoint: accept a test (processingStatus transition).
+     * <p>
+     * Uses the currently authenticated username as the accepter.
+     *
+     * @param orderTestId order test id
+     * @return updated entity response
+     */
     @PostMapping("/diagnostic-order-tests/{id}/accept")
-    public ResponseEntity<DiagnosticOrderTestResponseVM> accept(@PathVariable Long id) {
+    public ResponseEntity<DiagnosticOrderTestResponseVM> accept(@Valid @PathVariable("id") Long orderTestId) {
+        LOG.debug("[DiagnosticOrderTest] ACCEPT - request received. id={}", orderTestId);
         String username = currentUsername();
-        DiagnosticOrderTest updated = diagnosticOrderTestStatusService.accept(id, username);
-        return ResponseEntity.ok(toVm(updated));
+        DiagnosticOrderTest updatedTest = diagnosticOrderTestStatusService.accept(orderTestId, username);
+        LOG.debug("[DiagnosticOrderTest] ACCEPT - done. id={}", updatedTest.getId());
+        return ResponseEntity.ok(DiagnosticOrderTestResponseVM.ofEntity(updatedTest));
     }
 
+    /**
+     * Action endpoint: mark a test as ready (processingStatus transition).
+     *
+     * @param orderTestId order test id
+     * @return updated entity response
+     */
     @PostMapping("/diagnostic-order-tests/{id}/mark-ready")
-    public ResponseEntity<DiagnosticOrderTestResponseVM> markReady(@PathVariable Long id) {
-        DiagnosticOrderTest updated = diagnosticOrderTestStatusService.markReady(id);
-        return ResponseEntity.ok(toVm(updated));
+    public ResponseEntity<DiagnosticOrderTestResponseVM> markReady(@Valid @PathVariable("id") Long orderTestId) {
+        LOG.debug("[DiagnosticOrderTest] MARK_READY - request received. id={}", orderTestId);
+        DiagnosticOrderTest updatedTest = diagnosticOrderTestStatusService.markReady(orderTestId);
+        LOG.debug("[DiagnosticOrderTest] MARK_READY - done. id={}", updatedTest.getId());
+        return ResponseEntity.ok(DiagnosticOrderTestResponseVM.ofEntity(updatedTest));
     }
 
+    /**
+     * Action endpoint: review a test (optional processingStatus transition).
+     *
+     * @param orderTestId order test id
+     * @return updated entity response
+     */
     @PostMapping("/diagnostic-order-tests/{id}/review")
-    public ResponseEntity<DiagnosticOrderTestResponseVM> review(@PathVariable Long id) {
+    public ResponseEntity<DiagnosticOrderTestResponseVM> review(@Valid  @PathVariable("id") Long orderTestId) {
+        // Username retrieved but not currently used in service call (kept for future audit support)
+        LOG.debug("[DiagnosticOrderTest] REVIEW - request received. id={}", orderTestId);
         String username = currentUsername();
-        DiagnosticOrderTest updated = diagnosticOrderTestStatusService.review(id /*, username */);
-        return ResponseEntity.ok(toVm(updated));
+
+        DiagnosticOrderTest updatedTest = diagnosticOrderTestStatusService.review(orderTestId /*, username */);
+        LOG.debug("[DiagnosticOrderTest] REVIEW - done. id={}", updatedTest.getId());
+        return ResponseEntity.ok(DiagnosticOrderTestResponseVM.ofEntity(updatedTest));
     }
 
+    /**
+     * Action endpoint: approve a test result (processingStatus transition).
+     *
+     * @param orderTestId order test id
+     * @return updated entity response
+     */
     @PostMapping("/diagnostic-order-tests/{id}/approve")
-    public ResponseEntity<DiagnosticOrderTestResponseVM> approve(@PathVariable Long id) {
-        DiagnosticOrderTest updated = diagnosticOrderTestStatusService.approve(id);
-        return ResponseEntity.ok(toVm(updated));
+    public ResponseEntity<DiagnosticOrderTestResponseVM> approve(@Valid  @PathVariable("id") Long orderTestId) {
+        LOG.debug("[DiagnosticOrderTest] APPROVE - request received. id={}", orderTestId);
+        DiagnosticOrderTest updatedTest = diagnosticOrderTestStatusService.approve(orderTestId);
+        LOG.debug("[DiagnosticOrderTest] APPROVE - done. id={}", updatedTest.getId());
+        return ResponseEntity.ok(DiagnosticOrderTestResponseVM.ofEntity(updatedTest));
     }
 
+    /**
+     * Action endpoint: reject a test.
+     * <p>
+     * Uses the currently authenticated username as the rejecter.
+     *
+     * @param rejectRequest order  test id
+     * @param orderTestId rejection payload (reason)
+     * @return updated entity response
+     */
     @PostMapping("/diagnostic-order-tests/{id}/reject")
     public ResponseEntity<DiagnosticOrderTestResponseVM> reject(
-            @PathVariable Long id,
-            @Valid @RequestBody DiagnosticOrderTestRejectDTO dto
+            @PathVariable("id") Long orderTestId,
+            @Valid @RequestBody DiagnosticOrderTestRejectDTO rejectRequest
     ) {
+        LOG.debug("[DiagnosticOrderTest] REJECT - request received. id={} payload={}", orderTestId, rejectRequest);
         String username = currentUsername();
-        DiagnosticOrderTest updated = diagnosticOrderTestStatusService.reject(id, username, dto.rejectedReason());
-        return ResponseEntity.ok(toVm(updated));
+        DiagnosticOrderTest updatedTest = diagnosticOrderTestStatusService.reject(
+                orderTestId,
+                username,
+                rejectRequest.rejectedReason()
+        );
+        LOG.debug("[DiagnosticOrderTest] REJECT - done. id={}", updatedTest.getId());
+        return ResponseEntity.ok(DiagnosticOrderTestResponseVM.ofEntity(updatedTest));
     }
 
+    /**
+     * Action endpoint: cancel a test.
+     * <p>
+     * Uses the currently authenticated username as the canceller.
+     *
+     * @param orderTestId  order test id
+     * @param cancelRequest cancellation payload (reason)
+     * @return updated entity response
+     */
     @PostMapping("/diagnostic-order-tests/{id}/cancel")
     public ResponseEntity<DiagnosticOrderTestResponseVM> cancel(
-            @PathVariable Long id,
-            @Valid @RequestBody DiagnosticOrderTestCancelDTO dto
+            @PathVariable("id") Long orderTestId,
+            @Valid @RequestBody DiagnosticOrderTestCancelDTO cancelRequest
     ) {
+        LOG.debug("[DiagnosticOrderTest] CANCEL - request received. id={} payload={}", orderTestId, cancelRequest);
         String username = currentUsername();
-        DiagnosticOrderTest updated = diagnosticOrderTestStatusService.cancel(id, username, dto.cancellationReason());
-        return ResponseEntity.ok(toVm(updated));
+        DiagnosticOrderTest updatedTest = diagnosticOrderTestStatusService.cancel(
+                orderTestId,
+                username,
+                cancelRequest.cancellationReason()
+        );
+        LOG.debug("[DiagnosticOrderTest] CANCEL - done. id={}", updatedTest.getId());
+        return ResponseEntity.ok(DiagnosticOrderTestResponseVM.ofEntity(updatedTest));
     }
 }

@@ -1,20 +1,15 @@
 package com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders;
 
-import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.NotNull;
 
 import java.io.Serializable;
-import java.time.Instant;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record DiagnosticOrderUpdateDTO(
         @NotNull Long id,
         @NotNull Long patientId,
         @NotNull Long encounterId,
-        DiagnosticStatus status,
-        Boolean saveDraft,
-        String submittedBy,
-        Instant submittedDate,
-        Boolean isUrgent,
-        Long fromDepartmentId,
-        Long fromFacilityId
-) implements Serializable {}
+        @NotNull Boolean isUrgent
+) implements Serializable {
+}

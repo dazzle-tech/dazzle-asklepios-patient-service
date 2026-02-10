@@ -10,11 +10,9 @@ import java.time.Instant;
 
 public record DiagnosticOrderTestResponseVM(
         Long id,
-        Long patientId,
-        Long encounterId,
 
-        DiagnosticOrderTestStatus status,      // lifecycle: NEW/SUBMITTED/CANCELLED
-        DiagnosticStatus processingStatus,     // workflow: SAMPLE_COLLECTED/ACCEPTED/...
+        DiagnosticOrderTestStatus status,
+        DiagnosticStatus processingStatus,    
 
         Long orderId,
         Long testId,
@@ -36,8 +34,6 @@ public record DiagnosticOrderTestResponseVM(
         String rejectedReason,
         String patientArrivedNoteRad,
 
-        boolean testWasSent, // NEW
-
         String cancellationReason,
         String cancelledBy,
         Instant cancelledDate,
@@ -48,14 +44,8 @@ public record DiagnosticOrderTestResponseVM(
 ) implements Serializable {
 
     public static DiagnosticOrderTestResponseVM ofEntity(DiagnosticOrderTest t) {
-        return ofEntity(t, false);
-    }
-
-    public static DiagnosticOrderTestResponseVM ofEntity(DiagnosticOrderTest t, boolean testWasSent) {
         return new DiagnosticOrderTestResponseVM(
                 t.getId(),
-                t.getPatientId(),
-                t.getEncounterId(),
 
                 t.getStatus(),
                 t.getProcessingStatus(),
@@ -79,8 +69,6 @@ public record DiagnosticOrderTestResponseVM(
                 t.getRejectedBy(),
                 t.getRejectedReason(),
                 t.getPatientArrivedNoteRad(),
-
-                testWasSent,
 
                 t.getCancellationReason(),
                 t.getCancelledBy(),
