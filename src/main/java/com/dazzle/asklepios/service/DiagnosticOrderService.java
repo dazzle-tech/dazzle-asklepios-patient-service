@@ -55,8 +55,7 @@ public class DiagnosticOrderService {
         LOG.debug("[DiagnosticOrderService] CREATE - start. payload={}", dto);
 
         DiagnosticOrder order = new DiagnosticOrder();
-//        Patient patientRef = patientRepository.getReferenceById(dto.patientId());
-//        order.setPatient(patientRef);
+
         order.setEncounterId(dto.encounterId());
         order.setPatientId(dto.patientId());
         // Apply safe defaults to avoid null workflow statuses
@@ -94,8 +93,7 @@ public class DiagnosticOrderService {
     public DiagnosticOrder update(DiagnosticOrder existing, DiagnosticOrderUpdateDTO dto) {
         LOG.debug("[DiagnosticOrderService] UPDATE - start. id={} payload={}", existing.getId(), dto);
 
-        Patient patientRef = patientRepository.getReferenceById(dto.patientId());
-        existing.setPatient(patientRef);
+
         existing.setEncounterId(dto.encounterId());
 
         if (dto.isUrgent() != null) {

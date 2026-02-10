@@ -61,8 +61,8 @@ public class DiagnosticOrderTestStatusService {
         DiagnosticOrderTest test = getTest(testId);
 
         // Normalize null status to NEW then validate transition
-        DiagnosticStatus from = test.getProcessingStatus();
-        ensureTransition(from, DiagnosticStatus.SAMPLE_COLLECTED);
+        DiagnosticStatus currentProcessingStatus = test.getProcessingStatus();
+        ensureTransition(currentProcessingStatus, DiagnosticStatus.SAMPLE_COLLECTED);
 
         test.setProcessingStatus(DiagnosticStatus.SAMPLE_COLLECTED);
 
@@ -87,8 +87,8 @@ public class DiagnosticOrderTestStatusService {
         LOG.debug("[DiagnosticOrderTestStatus] ACCEPT - start. testId={} acceptedBy={}", testId, acceptedBy);
         DiagnosticOrderTest test = getTest(testId);
 
-        DiagnosticStatus from = test.getProcessingStatus();
-        ensureTransition(from, DiagnosticStatus.ACCEPTED);
+        DiagnosticStatus currentProcessingStatus = test.getProcessingStatus();
+        ensureTransition(currentProcessingStatus, DiagnosticStatus.ACCEPTED);
 
         test.setProcessingStatus(DiagnosticStatus.ACCEPTED);
         test.setAcceptedBy(acceptedBy);
@@ -113,8 +113,8 @@ public class DiagnosticOrderTestStatusService {
         LOG.debug("[DiagnosticOrderTestStatus] MARK_READY - start. testId={}", testId);
         DiagnosticOrderTest test = getTest(testId);
 
-        DiagnosticStatus from = test.getProcessingStatus();
-        ensureTransition(from, DiagnosticStatus.RESULT_READY);
+        DiagnosticStatus currentProcessingStatus = test.getProcessingStatus();
+        ensureTransition(currentProcessingStatus, DiagnosticStatus.RESULT_READY);
 
         test.setProcessingStatus(DiagnosticStatus.RESULT_READY);
         test.setReadyDate(Instant.now());
@@ -138,8 +138,8 @@ public class DiagnosticOrderTestStatusService {
         LOG.debug("[DiagnosticOrderTestStatus] REVIEW - start. testId={}", testId);
         DiagnosticOrderTest test = getTest(testId);
 
-        DiagnosticStatus from = test.getProcessingStatus();
-        ensureTransition(from, DiagnosticStatus.REVIEWED);
+        DiagnosticStatus currentProcessingStatus = test.getProcessingStatus();
+        ensureTransition(currentProcessingStatus, DiagnosticStatus.REVIEWED);
 
         test.setProcessingStatus(DiagnosticStatus.REVIEWED);
 
@@ -162,8 +162,8 @@ public class DiagnosticOrderTestStatusService {
         LOG.debug("[DiagnosticOrderTestStatus] APPROVE - start. testId={}", testId);
         DiagnosticOrderTest test = getTest(testId);
 
-        DiagnosticStatus from = test.getProcessingStatus();
-        ensureTransition(from, DiagnosticStatus.RESULT_APPROVED);
+        DiagnosticStatus currentProcessingStatus = test.getProcessingStatus();
+        ensureTransition(currentProcessingStatus, DiagnosticStatus.RESULT_APPROVED);
 
         test.setProcessingStatus(DiagnosticStatus.RESULT_APPROVED);
         test.setApprovedDate(Instant.now());
@@ -190,8 +190,8 @@ public class DiagnosticOrderTestStatusService {
                 testId, rejectedBy, rejectedReason);
         DiagnosticOrderTest test = getTest(testId);
 
-        DiagnosticStatus from = test.getProcessingStatus();
-        ensureTransition(from, DiagnosticStatus.REJECTED);
+        DiagnosticStatus currentProcessingStatus = test.getProcessingStatus();
+        ensureTransition(currentProcessingStatus, DiagnosticStatus.REJECTED);
 
         test.setProcessingStatus(DiagnosticStatus.REJECTED);
         test.setRejectedBy(rejectedBy);
