@@ -12,7 +12,7 @@ public record DiagnosticOrderTestResponseVM(
         Long id,
 
         DiagnosticOrderTestStatus status,
-        DiagnosticStatus processingStatus,    
+        DiagnosticStatus processingStatus,
 
         Long orderId,
         Long testId,
@@ -43,41 +43,41 @@ public record DiagnosticOrderTestResponseVM(
         String lastModifiedBy
 ) implements Serializable {
 
-    public static DiagnosticOrderTestResponseVM ofEntity(DiagnosticOrderTest t) {
+    public static DiagnosticOrderTestResponseVM ofEntity(DiagnosticOrderTest orderTest) {
         return new DiagnosticOrderTestResponseVM(
-                t.getId(),
+                orderTest.getId(),
 
-                t.getStatus(),
-                t.getProcessingStatus(),
+                orderTest.getStatus(),
+                orderTest.getProcessingStatus(),
 
-                t.getOrderId(),
-                t.getTestId(),
-                t.getOrderType(),
+                orderTest.getOrderId(),
+                orderTest.getTestId(),
+                orderTest.getOrderType(),
 
-                t.getReceivedDepartmentId(),
-                t.getReason(),
-                t.getNotes(),
+                orderTest.getReceivedDepartmentId(),
+                orderTest.getReason(),
+                orderTest.getNotes(),
 
-                t.getSubmitDate(),
-                t.getAcceptedDate(),
-                t.getRejectedDate(),
-                t.getPatientArrivedDate(),
-                t.getReadyDate(),
-                t.getApprovedDate(),
+                orderTest.getSubmitDate(),
+                orderTest.getAcceptedDate(),
+                orderTest.getRejectedDate(),
+                orderTest.getPatientArrivedDate(),
+                orderTest.getReadyDate(),
+                orderTest.getApprovedDate(),
 
-                t.getAcceptedBy(),
-                t.getRejectedBy(),
-                t.getRejectedReason(),
-                t.getPatientArrivedNoteRad(),
+                orderTest.getAcceptedBy(),
+                orderTest.getRejectedBy(),
+                orderTest.getRejectedReason(),
+                orderTest.getPatientArrivedNoteRad(),
 
-                t.getCancellationReason(),
-                t.getCancelledBy(),
-                t.getCancelledDate(),
+                orderTest.getCancellationReason(),
+                orderTest.getCancelledBy(),
+                orderTest.getCancelledDate(),
 
-                t.getCreatedDate(),
-                t.getLastModifiedDate(),
-                t.getCreatedBy(),
-                t.getLastModifiedBy()
+                orderTest.getCreatedDate(),
+                orderTest.getLastModifiedDate(),
+                orderTest.getCreatedBy(),
+                orderTest.getLastModifiedBy()
         );
     }
 }

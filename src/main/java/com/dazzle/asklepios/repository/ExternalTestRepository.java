@@ -10,7 +10,5 @@ public interface ExternalTestRepository extends JpaRepository<ExternalTest, Long
     Optional<ExternalTest> findByTestId(Long testId);
     boolean existsByTestId(Long testId);
     void deleteByTestId(Long testId);
-    @Query("select e.testId from ExternalTest e where e.testId in ?1")
-    List<Long> findExistingTestIds(Collection<Long> ids);
 
 }

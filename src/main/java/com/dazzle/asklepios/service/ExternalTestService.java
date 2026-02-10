@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.ExternalTest;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.ExternalTestRepository;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.sendtest.ExternalTestDTO;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,37 +28,49 @@ public class ExternalTestService {
     public ExternalTest create(ExternalTestDTO dto) {
         // validate diagnostic_test exists
         if (!diagnosticTestRepository.existsById(dto.testId())) {
-            throw new IllegalArgumentException("DiagnosticTest not found with id " + dto.testId());
+            throw new BadRequestAlertException(
+                    "notfound",
+                    "external_tests",
+                    "DiagnosticTest not found with id " + dto.testId()
+            );
         }
 
-        ExternalTest e = new ExternalTest();
-        e.setTestId(dto.testId());
-        e.setFacilityName(dto.facilityName());
-        e.setReason(dto.reason());
+        ExternalTest externalTest = new ExternalTest();
+        externalTest.setTestId(dto.testId());
+        externalTest.setFacilityName(dto.facilityName());
+        externalTest.setReason(dto.reason());
 
         try {
-            return externalTestRepository.save(e);
+            return externalTestRepository.save(externalTest);
         } catch (DataIntegrityViolationException ex) {
-            // UNIQUE(test_id)
-            throw new IllegalArgumentException("ExternalTest already exists for testId " + dto.testId());
+
+            throw new BadRequestAlertException(
+                    "duplicate",
+                    "external_tests",
+                    "ExternalTest already exists for testId " + dto.testId()
+            );
         }
     }
 
     @Transactional(readOnly = true)
     public ExternalTest getByTestId(Long testId) {
         return externalTestRepository.findByTestId(testId)
-                .orElseThrow(() -> new IllegalArgumentException("ExternalTest not found for testId " + testId));
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "external_tests",
+                        "ExternalTest not found for testId " + testId
+                ));
     }
 
     public void deleteByTestId(Long testId) {
         if (!externalTestRepository.existsByTestId(testId)) {
-            throw new IllegalArgumentException("ExternalTest not found for testId " + testId);
+            throw new BadRequestAlertException(
+                    "notfound",
+                    "external_tests",
+                    "ExternalTest not found for testId " + testId
+            );
         }
         externalTestRepository.deleteByTestId(testId);
     }
 
-    @Transactional(readOnly = true)
-    public boolean isSentToExternal(Long testId) {
-        return externalTestRepository.existsByTestId(testId);
-    }
 }

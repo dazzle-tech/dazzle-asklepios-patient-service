@@ -9,14 +9,14 @@ public record ExternalTestResponseVM(
         String createdBy,
         Instant createdDate
 ) {
-    public static ExternalTestResponseVM ofEntity(ExternalTest e) {
+    public static ExternalTestResponseVM ofEntity(ExternalTest externalTest) {
         return new ExternalTestResponseVM(
-                e.getId(),
-                e.getTestId(),
-                e.getFacilityName(),
-                e.getReason(),
-                e.getCreatedBy(),
-                e.getCreatedDate()
+                externalTest.getId(),
+                externalTest.getTestId(),
+                externalTest.getFacilityName(),
+                externalTest.getReason(),
+                externalTest.getCreatedBy(),
+                externalTest.getCreatedDate()
         );
     }
 }
