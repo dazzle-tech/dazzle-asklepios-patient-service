@@ -45,6 +45,7 @@ public record DiagnosticOrderTestResponseVM(
 
     public static DiagnosticOrderTestResponseVM ofEntity(DiagnosticOrderTest orderTest) {
         return new DiagnosticOrderTestResponseVM(
+
                 orderTest.getId(),
 
                 orderTest.getStatus(),
