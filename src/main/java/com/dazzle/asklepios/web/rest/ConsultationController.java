@@ -179,7 +179,7 @@ public class ConsultationController {
             );
         }
 
-        if (existing.getStatus() == ConsultationStatus.COMPLETED) {
+        if (existing.getStatus() == ConsultationStatus.READY) {
             throw new BadRequestAlertException(
                     "Completed consultation cannot be cancelled",
                     "consultation",

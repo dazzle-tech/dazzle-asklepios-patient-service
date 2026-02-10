@@ -130,4 +130,11 @@ public class Consultation extends AbstractAuditingEntity<Long> implements Serial
     @Column(name = "cancelled_by")
     private Long cancelledBy;
 
+    @Column(name = "confirmed_date")
+    private Instant confirmedDate;
+
+    @Column(name = "confirmed_by")
+    private Long confirmedBy;
+
+
 }
