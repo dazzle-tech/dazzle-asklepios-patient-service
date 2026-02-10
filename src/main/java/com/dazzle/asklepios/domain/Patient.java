@@ -2,9 +2,12 @@ package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.Gender;
 import com.dazzle.asklepios.domain.enumeration.PreferredWayOfContact;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.Id;
 import jakarta.persistence.GeneratedValue;
@@ -21,7 +24,9 @@ import org.hibernate.annotations.Generated;
 import org.hibernate.annotations.GenerationTime;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
 @Entity
 @Table(name = "patients")
@@ -156,6 +161,10 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
 
     @Column(name = "is_completed_patient", nullable = false)
     private Boolean isCompletedPatient;
+
+    @JsonIgnore
+    @OneToMany(mappedBy = "patient", fetch = FetchType.LAZY)
+    private List<DiagnosticOrder> diagnosticOrders = new ArrayList<>();
 
     @AssertTrue(message = "When patient is not unknown, firstName, lastName, sexAtBirth, dateOfBirth, primaryMobileNumber and email are required")
     public boolean isValidWhenNotUnknown() {

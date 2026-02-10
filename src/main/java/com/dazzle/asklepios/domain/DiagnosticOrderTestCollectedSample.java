@@ -1,0 +1,52 @@
+package com.dazzle.asklepios.domain;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+import java.io.Serial;
+import java.io.Serializable;
+import java.math.BigDecimal;
+import java.time.Instant;
+
+@Entity
+@Table(name = "diagnostic_order_test_collected_samples")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+@EqualsAndHashCode(callSuper = false)
+public class DiagnosticOrderTestCollectedSample extends AbstractAuditingEntity implements Serializable {
+
+    @Serial
+    private static final long serialVersionUID = 1L;
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "order_id", nullable = false)
+    private Long orderId;
+
+    @Column(name = "order_test_id", nullable = false)
+    private Long orderTestId;
+
+    @Column(name = "unit", columnDefinition = "text", nullable = false)
+    private String unit;
+
+    @Column(name = "quantity", precision = 19, scale = 2, nullable = false)
+    private BigDecimal quantity;
+
+    @Column(name = "collected_at", nullable = false)
+    private Instant collectedAt;
+}
