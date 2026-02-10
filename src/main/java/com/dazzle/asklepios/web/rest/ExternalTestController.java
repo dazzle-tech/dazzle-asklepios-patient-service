@@ -32,7 +32,6 @@ public class ExternalTestController {
         this.externalTestService = externalTestService;
     }
 
-    // create api/patient/external-test
     @PostMapping("/external-test")
     public ResponseEntity<ExternalTestResponseVM> create(@Valid @RequestBody ExternalTestDTO dto) {
         LOG.debug("[ExternalTest] CREATE - request received. payload={}", dto);
@@ -44,7 +43,6 @@ public class ExternalTestController {
                 .body(ExternalTestResponseVM.ofEntity(saved));
     }
 
-    // getByTestId api/patient/external-test/{id}  (id = testId)
     @GetMapping("/external-test/{id}")
     public ResponseEntity<ExternalTestResponseVM> getByTestId(@Valid @PathVariable("id") Long testId) {
         LOG.debug("[ExternalTest] GET_BY_TEST_ID - request received. testId={}", testId);
@@ -53,7 +51,6 @@ public class ExternalTestController {
         return ResponseEntity.ok(ExternalTestResponseVM.ofEntity(existing));
     }
 
-    // deleteByTestId api/patient/external-test/{testId}
     @DeleteMapping("/external-test/{testId}")
     public ResponseEntity<Void> deleteByTestId(@Valid @PathVariable Long testId) {
         LOG.debug("[ExternalTest] DELETE - request received. testId={}", testId);
