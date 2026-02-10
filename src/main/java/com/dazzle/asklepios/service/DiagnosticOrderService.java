@@ -1,10 +1,12 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.DiagnosticOrder;
+import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderUpdateDTO;
 import org.slf4j.Logger;
@@ -24,13 +26,16 @@ public class DiagnosticOrderService {
 
     private final DiagnosticOrderRepository diagnosticOrderRepository;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
+    private final PatientRepository patientRepository;
 
     public DiagnosticOrderService(
             DiagnosticOrderRepository diagnosticOrderRepository,
-            DiagnosticOrderTestRepository diagnosticOrderTestRepository
+            DiagnosticOrderTestRepository diagnosticOrderTestRepository,
+            PatientRepository patientRepository
     ) {
         this.diagnosticOrderRepository = diagnosticOrderRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
+        this.patientRepository = patientRepository;
     }
 
     /**
@@ -50,23 +55,22 @@ public class DiagnosticOrderService {
         LOG.debug("[DiagnosticOrderService] CREATE - start. payload={}", dto);
 
         DiagnosticOrder order = new DiagnosticOrder();
-        order.setPatientId(dto.patientId());
+        Patient patientRef = patientRepository.getReferenceById(dto.patientId());
+        order.setPatient(patientRef);
         order.setEncounterId(dto.encounterId());
 
         // Apply safe defaults to avoid null workflow statuses
-        DiagnosticStatus status = dto.status() != null ? dto.status() : DiagnosticStatus.NEW;
+
         DiagnosticStatus labStatus = dto.labStatus() != null ? dto.labStatus() : DiagnosticStatus.NEW;
         DiagnosticStatus radStatus = dto.radStatus() != null ? dto.radStatus() : DiagnosticStatus.NEW;
 
-        order.setStatus(status);
+        order.setStatus(DiagnosticStatus.NEW);
         order.setLabStatus(labStatus);
         order.setRadStatus(radStatus);
         order.setFromDepartmentId(dto.fromDepartmentId());
         order.setFromFacilityId(dto.fromFacilityId());
 
         order.setSaveDraft(true);
-        order.setSubmittedBy(dto.submittedBy());
-        order.setSubmittedDate(dto.submittedDate());
         order.setIsUrgent(dto.isUrgent() != null ? dto.isUrgent() : false);
 
         DiagnosticOrder saved = diagnosticOrderRepository.save(order);
@@ -86,25 +90,17 @@ public class DiagnosticOrderService {
         return saved;
     }
 
-    /**
-     * Updates an existing {@link DiagnosticOrder}.
-     *
-     * IMPORTANT:
-     * - This method is intended for standard update operations, not workflow actions.
-     * - Submitting an order should be done via {@link #submit(DiagnosticOrder, String)}.
-     * - Any business validation (e.g. "do not update after submission") is enforced in the controller layer
-     *   per the current project decision (no validations in services).
-     */
+
     public DiagnosticOrder update(DiagnosticOrder existing, DiagnosticOrderUpdateDTO dto) {
         LOG.debug("[DiagnosticOrderService] UPDATE - start. id={} payload={}", existing.getId(), dto);
 
-        existing.setPatientId(dto.patientId());
+        Patient patientRef = patientRepository.getReferenceById(dto.patientId());
+        existing.setPatient(patientRef);
         existing.setEncounterId(dto.encounterId());
         if (dto.saveDraft() != null) {
             existing.setSaveDraft(dto.saveDraft());
         }
-        existing.setSubmittedBy(dto.submittedBy());
-        existing.setSubmittedDate(dto.submittedDate());
+
 
         if (dto.isUrgent() != null) {
             existing.setIsUrgent(dto.isUrgent());
@@ -113,12 +109,10 @@ public class DiagnosticOrderService {
         DiagnosticOrder saved = diagnosticOrderRepository.save(existing);
 
         LOG.debug(
-                "[DiagnosticOrderService] UPDATE - done. id={} status={} saveDraft={} submittedBy={} submittedDate={} isUrgent={}",
+                "[DiagnosticOrderService] UPDATE - done. id={} status={} saveDraft={} isUrgent={}",
                 saved.getId(),
                 saved.getStatus(),
                 saved.getSaveDraft(),
-                saved.getSubmittedBy(),
-                saved.getSubmittedDate(),
                 saved.getIsUrgent(),
                 saved.getFromDepartmentId(),
                 saved.getFromFacilityId()
@@ -131,12 +125,10 @@ public class DiagnosticOrderService {
      * Retrieves diagnostic orders by encounter id with an optional status filter.
      */
     @Transactional(readOnly = true)
-    public Page<DiagnosticOrder> findByEncounter(Long encounterId, String status, Pageable pageable) {
-        LOG.debug("[DiagnosticOrderService] FIND_BY_ENCOUNTER - encounterId={} status={} pageable={}", encounterId, status, pageable);
+    public Page<DiagnosticOrder> findByEncounter(Long encounterId, Pageable pageable) {
+        LOG.debug("[DiagnosticOrderService] FIND_BY_ENCOUNTER - encounterId={} pageable={}", encounterId, pageable);
 
-        Page<DiagnosticOrder> page = (status == null || status.isBlank())
-                ? diagnosticOrderRepository.findByEncounterId(encounterId, pageable)
-                : diagnosticOrderRepository.findByEncounterIdAndStatus(encounterId, status, pageable);
+        Page<DiagnosticOrder> page = diagnosticOrderRepository.findByEncounterId(encounterId, pageable);
 
         LOG.debug(
                 "[DiagnosticOrderService] FIND_BY_ENCOUNTER - done. encounterId={} returned={} totalElements={} totalPages={}",
@@ -146,16 +138,27 @@ public class DiagnosticOrderService {
         return page;
     }
 
+    public Page<DiagnosticOrder> findByEncounterAndStatus(Long encounterId, DiagnosticStatus status, Pageable pageable) {
+        LOG.debug("[DiagnosticOrderService] FIND_BY_ENCOUNTER_AND_STATUS - encounterId={} status={} pageable={}", encounterId, status, pageable);
+
+        Page<DiagnosticOrder> page = diagnosticOrderRepository.findByEncounterIdAndStatus(encounterId, status, pageable);
+
+        LOG.debug(
+                "[DiagnosticOrderService] FIND_BY_ENCOUNTER_AND_STATUS - done. encounterId={} status={} returned={} totalElements={} totalPages={}",
+                encounterId, status, page.getNumberOfElements(), page.getTotalElements(), page.getTotalPages()
+        );
+
+        return page;
+    }
+
     /**
      * Retrieves diagnostic orders by patient id with an optional status filter.
      */
     @Transactional(readOnly = true)
-    public Page<DiagnosticOrder> findByPatient(Long patientId, String status, Pageable pageable) {
-        LOG.debug("[DiagnosticOrderService] FIND_BY_PATIENT - patientId={} status={} pageable={}", patientId, status, pageable);
+    public Page<DiagnosticOrder> findByPatient(Long patientId, Pageable pageable) {
+        LOG.debug("[DiagnosticOrderService] FIND_BY_PATIENT - patientId={} pageable={}", patientId, pageable);
 
-        Page<DiagnosticOrder> page = (status == null || status.isBlank())
-                ? diagnosticOrderRepository.findByPatientId(patientId, pageable)
-                : diagnosticOrderRepository.findByPatientIdAndStatus(patientId, status, pageable);
+        Page<DiagnosticOrder> page = diagnosticOrderRepository.findByPatient_Id(patientId, pageable);
 
         LOG.debug(
                 "[DiagnosticOrderService] FIND_BY_PATIENT - done. patientId={} returned={} totalElements={} totalPages={}",
@@ -165,21 +168,53 @@ public class DiagnosticOrderService {
         return page;
     }
 
+    public Page<DiagnosticOrder> findByPatientAndStatus(Long patientId, DiagnosticStatus status, Pageable pageable) {
+        LOG.debug("[DiagnosticOrderService] FIND_BY_PATIENT_AND_STATUS - patientId={} status={} pageable={}", patientId, status, pageable);
+
+        Page<DiagnosticOrder> page = diagnosticOrderRepository.findByPatient_IdAndStatus(patientId, status, pageable);
+
+        LOG.debug(
+                "[DiagnosticOrderService] FIND_BY_PATIENT_AND_STATUS - done. patientId={} status={} returned={} totalElements={} totalPages={}",
+                patientId, status, page.getNumberOfElements(), page.getTotalElements(), page.getTotalPages()
+        );
+
+        return page;
+    }
+
     /**
      * Retrieves diagnostic orders by patient id + encounter id with an optional status filter.
      */
     @Transactional(readOnly = true)
-    public Page<DiagnosticOrder> findByPatientAndEncounter(Long patientId, Long encounterId, String status, Pageable pageable) {
-        LOG.debug("[DiagnosticOrderService] FIND_BY_PATIENT_AND_ENCOUNTER - patientId={} encounterId={} status={} pageable={}",
-                patientId, encounterId, status, pageable);
+    public Page<DiagnosticOrder> findByPatientAndEncounter(Long patientId, Long encounterId, Pageable pageable) {
+        LOG.debug("[DiagnosticOrderService] FIND_BY_PATIENT_AND_ENCOUNTER - patientId={} encounterId={} pageable={}",
+                patientId, encounterId, pageable);
 
-        Page<DiagnosticOrder> page = (status == null || status.isBlank())
-                ? diagnosticOrderRepository.findByPatientIdAndEncounterId(patientId, encounterId, pageable)
-                : diagnosticOrderRepository.findByPatientIdAndEncounterIdAndStatus(patientId, encounterId, status, pageable);
+        Page<DiagnosticOrder> page = diagnosticOrderRepository.findByPatient_IdAndEncounterId(patientId, encounterId, pageable);
 
         LOG.debug(
                 "[DiagnosticOrderService] FIND_BY_PATIENT_AND_ENCOUNTER - done. patientId={} encounterId={} returned={} totalElements={} totalPages={}",
                 patientId, encounterId, page.getNumberOfElements(), page.getTotalElements(), page.getTotalPages()
+        );
+
+        return page;
+    }
+
+    public Page<DiagnosticOrder> findByPatientAndEncounterAndStatus(
+            Long patientId,
+            Long encounterId,
+            DiagnosticStatus status,
+            Pageable pageable
+    ) {
+        LOG.debug("[DiagnosticOrderService] FIND_BY_PATIENT_AND_ENCOUNTER_AND_STATUS - patientId={} encounterId={} status={} pageable={}",
+                patientId, encounterId, status, pageable);
+
+        Page<DiagnosticOrder> page = diagnosticOrderRepository.findByPatient_IdAndEncounterIdAndStatus(
+                patientId, encounterId, status, pageable
+        );
+
+        LOG.debug(
+                "[DiagnosticOrderService] FIND_BY_PATIENT_AND_ENCOUNTER_AND_STATUS - done. patientId={} encounterId={} status={} returned={} totalElements={} totalPages={}",
+                patientId, encounterId, status, page.getNumberOfElements(), page.getTotalElements(), page.getTotalPages()
         );
 
         return page;

@@ -22,7 +22,7 @@ import java.util.List;
  * <ul>
  *   <li>Create new diagnostic order test records.</li>
  *   <li>Update existing diagnostic order test records.</li>
- *   <li>Query diagnostic order tests by orderId with optional status filters.</li>
+ *   <li>Query diagnostic order tests by orderId, by orderId + status, or excluding statuses.</li>
  *   <li>Delete diagnostic order test records.</li>
  * </ul>
  */
@@ -76,32 +76,33 @@ public class DiagnosticOrderTestService {
         LOG.debug("Request to create DiagnosticOrderTest: {}", dto);
 
         // Build a new entity instance from DTO fields
-        DiagnosticOrderTest t = new DiagnosticOrderTest();
-        t.setOrderId(dto.orderId());
-        t.setTestId(dto.testId());
+        DiagnosticOrderTest orderTest = new DiagnosticOrderTest();
+        orderTest.setOrderId(dto.orderId());
+        orderTest.setTestId(dto.testId());
 
         // Initial lifecycle status for a newly created order test
-        t.setStatus(DiagnosticOrderTestStatus.NEW);
+        orderTest.setStatus(DiagnosticOrderTestStatus.NEW);
 
         // Set processing status if provided; otherwise default to NEW
         if (dto.processingStatus() != null) {
-            t.setProcessingStatus(dto.processingStatus());
+            orderTest.setProcessingStatus(dto.processingStatus());
         } else {
-            t.setProcessingStatus(DiagnosticStatus.NEW);
+            orderTest.setProcessingStatus(DiagnosticStatus.NEW);
         }
 
         // Additional metadata and routing information
-        t.setReceivedDepartmentId(dto.receivedDepartmentId());
-        t.setReason(dto.reason());
-        t.setNotes(dto.notes());
-        t.setSubmitDate(dto.submitDate());
-        t.setOrderType(dto.orderType());
+        orderTest.setReceivedDepartmentId(dto.receivedDepartmentId());
+        orderTest.setReason(dto.reason());
+        orderTest.setNotes(dto.notes());
+        orderTest.setOrderType(dto.orderType());
 
         // Persist the entity
-        DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(t);
+        DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(orderTest);
 
-        // Recompute aggregated statuses for the parent diagnostic order (lab/rad)
+        LOG.debug("[DiagnosticOrderTestService] CREATE - saved. id={} orderId={} testId={} status={} processingStatus={}",
+                saved.getId(), saved.getOrderId(), saved.getTestId(), saved.getStatus(), saved.getProcessingStatus());
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
+        LOG.debug("[DiagnosticOrderTestService] CREATE - recompute status done. orderId={}", saved.getOrderId());
 
         return saved;
     }
@@ -131,44 +132,70 @@ public class DiagnosticOrderTestService {
         existing.setNotes(dto.notes());
 
         // Persist the updated entity
-        return diagnosticOrderTestRepository.save(existing);
+        DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(existing);
+        LOG.debug("[DiagnosticOrderTestService] UPDATE - done. id={} orderId={} testId={}",
+                saved.getId(), saved.getOrderId(), saved.getTestId());
+        return saved;
     }
 
     /**
-     * Retrieves {@link DiagnosticOrderTest} records for a given orderId with optional status filtering.
-     * <p>
-     * Filtering rules (in priority order):
-     * <ol>
-     *   <li>If {@code status} is provided: return items matching that status.</li>
-     *   <li>Else if {@code excludeStatuses} is provided and not empty: return items NOT in that list.</li>
-     *   <li>Else: return all items by orderId.</li>
-     * </ol>
+     * Retrieves {@link DiagnosticOrderTest} records for a given orderId.
      *
-     * @param orderId         parent diagnostic order identifier
-     * @param status          optional exact status filter (highest priority)
-     * @param excludeStatuses optional list of statuses to exclude if {@code status} is null
-     * @param pageable        pagination and sorting information
-     * @return paged results matching the filter criteria
+     * @param orderId  parent diagnostic order identifier
+     * @param pageable pagination and sorting information
+     * @return paged results for the order
      */
     @Transactional(readOnly = true)
-    public Page<DiagnosticOrderTest> findByOrderIdFilterStatus(
+    public Page<DiagnosticOrderTest> findByOrderId(Long orderId, Pageable pageable) {
+        LOG.debug("[DiagnosticOrderTestService] FIND_BY_ORDER - start. orderId={} pageable={}", orderId, pageable);
+        Page<DiagnosticOrderTest> page = diagnosticOrderTestRepository.findByOrderId(orderId, pageable);
+        LOG.debug("[DiagnosticOrderTestService] FIND_BY_ORDER - done. orderId={} returned={} totalElements={} totalPages={}",
+                orderId, page.getNumberOfElements(), page.getTotalElements(), page.getTotalPages());
+        return page;
+    }
+
+    /**
+     * Retrieves {@link DiagnosticOrderTest} records for a given orderId with an exact status filter.
+     *
+     * @param orderId  parent diagnostic order identifier
+     * @param status   exact status to include
+     * @param pageable pagination and sorting information
+     * @return paged results matching the status
+     */
+    public Page<DiagnosticOrderTest> findByOrderIdAndStatus(
             Long orderId,
             DiagnosticOrderTestStatus status,
+            Pageable pageable
+    ) {
+        LOG.debug("[DiagnosticOrderTestService] FIND_BY_ORDER_AND_STATUS - start. orderId={} status={} pageable={}",
+                orderId, status, pageable);
+        Page<DiagnosticOrderTest> page = diagnosticOrderTestRepository.findByOrderIdAndStatus(orderId, status, pageable);
+        LOG.debug("[DiagnosticOrderTestService] FIND_BY_ORDER_AND_STATUS - done. orderId={} status={} returned={} totalElements={} totalPages={}",
+                orderId, status, page.getNumberOfElements(), page.getTotalElements(), page.getTotalPages());
+        return page;
+    }
+
+    /**
+     * Retrieves {@link DiagnosticOrderTest} records for a given orderId excluding provided statuses.
+     *
+     * @param orderId          parent diagnostic order identifier
+     * @param excludeStatuses  list of statuses to exclude
+     * @param pageable         pagination and sorting information
+     * @return paged results excluding the provided statuses
+     */
+    public Page<DiagnosticOrderTest> findByOrderIdExcludingStatuses(
+            Long orderId,
             List<DiagnosticOrderTestStatus> excludeStatuses,
             Pageable pageable
     ) {
-        // Exact status filter has priority over exclude list
-        if (status != null) {
-            return diagnosticOrderTestRepository.findByOrderIdAndStatus(orderId, status, pageable);
-        }
-
-        // Exclude statuses when provided
-        if (excludeStatuses != null && !excludeStatuses.isEmpty()) {
-            return diagnosticOrderTestRepository.findByOrderIdAndStatusNotIn(orderId, excludeStatuses, pageable);
-        }
-
-        // Default: return all tests for the order
-        return diagnosticOrderTestRepository.findByOrderId(orderId, pageable);
+        LOG.debug("[DiagnosticOrderTestService] FIND_BY_ORDER_EXCLUDING - start. orderId={} excludeStatuses={} pageable={}",
+                orderId, excludeStatuses, pageable);
+        Page<DiagnosticOrderTest> page = diagnosticOrderTestRepository.findByOrderIdAndStatusNotIn(
+                orderId, excludeStatuses, pageable
+        );
+        LOG.debug("[DiagnosticOrderTestService] FIND_BY_ORDER_EXCLUDING - done. orderId={} returned={} totalElements={} totalPages={}",
+                orderId, page.getNumberOfElements(), page.getTotalElements(), page.getTotalPages());
+        return page;
     }
 
     /**
@@ -177,6 +204,8 @@ public class DiagnosticOrderTestService {
      * @param id entity identifier
      */
     public void delete(Long id) {
+        LOG.debug("[DiagnosticOrderTestService] DELETE - start. id={}", id);
         diagnosticOrderTestRepository.deleteById(id);
+        LOG.debug("[DiagnosticOrderTestService] DELETE - done. id={}", id);
     }
 }

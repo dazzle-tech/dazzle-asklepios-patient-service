@@ -6,6 +6,8 @@ import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +25,8 @@ import java.time.Instant;
 @Service
 @Transactional
 public class DiagnosticOrderTestStatusService {
+
+    private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderTestStatusService.class);
 
     /** Repository for persisting and loading DiagnosticOrderTest entities. */
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
@@ -53,10 +57,11 @@ public class DiagnosticOrderTestStatusService {
      * @return updated and persisted entity
      */
     public DiagnosticOrderTest collectSample(Long testId) {
+        LOG.debug("[DiagnosticOrderTestStatus] COLLECT_SAMPLE - start. testId={}", testId);
         DiagnosticOrderTest test = getTest(testId);
 
         // Normalize null status to NEW then validate transition
-        DiagnosticStatus from = normalize(test.getProcessingStatus());
+        DiagnosticStatus from = test.getProcessingStatus();
         ensureTransition(from, DiagnosticStatus.SAMPLE_COLLECTED);
 
         test.setProcessingStatus(DiagnosticStatus.SAMPLE_COLLECTED);
@@ -64,6 +69,8 @@ public class DiagnosticOrderTestStatusService {
         // Persist and recompute aggregated statuses for the parent order
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
+        LOG.debug("[DiagnosticOrderTestStatus] COLLECT_SAMPLE - done. testId={} orderId={} status={}",
+                saved.getId(), saved.getOrderId(), saved.getProcessingStatus());
         return saved;
     }
 
@@ -77,9 +84,10 @@ public class DiagnosticOrderTestStatusService {
      * @return updated and persisted entity
      */
     public DiagnosticOrderTest accept(Long testId, String acceptedBy) {
+        LOG.debug("[DiagnosticOrderTestStatus] ACCEPT - start. testId={} acceptedBy={}", testId, acceptedBy);
         DiagnosticOrderTest test = getTest(testId);
 
-        DiagnosticStatus from = normalize(test.getProcessingStatus());
+        DiagnosticStatus from = test.getProcessingStatus();
         ensureTransition(from, DiagnosticStatus.ACCEPTED);
 
         test.setProcessingStatus(DiagnosticStatus.ACCEPTED);
@@ -88,6 +96,8 @@ public class DiagnosticOrderTestStatusService {
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
+        LOG.debug("[DiagnosticOrderTestStatus] ACCEPT - done. testId={} orderId={} status={} acceptedBy={}",
+                saved.getId(), saved.getOrderId(), saved.getProcessingStatus(), saved.getAcceptedBy());
         return saved;
     }
 
@@ -100,9 +110,10 @@ public class DiagnosticOrderTestStatusService {
      * @return updated and persisted entity
      */
     public DiagnosticOrderTest markReady(Long testId) {
+        LOG.debug("[DiagnosticOrderTestStatus] MARK_READY - start. testId={}", testId);
         DiagnosticOrderTest test = getTest(testId);
 
-        DiagnosticStatus from = normalize(test.getProcessingStatus());
+        DiagnosticStatus from = test.getProcessingStatus();
         ensureTransition(from, DiagnosticStatus.RESULT_READY);
 
         test.setProcessingStatus(DiagnosticStatus.RESULT_READY);
@@ -110,6 +121,8 @@ public class DiagnosticOrderTestStatusService {
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
+        LOG.debug("[DiagnosticOrderTestStatus] MARK_READY - done. testId={} orderId={} status={}",
+                saved.getId(), saved.getOrderId(), saved.getProcessingStatus());
         return saved;
     }
 
@@ -122,15 +135,18 @@ public class DiagnosticOrderTestStatusService {
      * @return updated and persisted entity
      */
     public DiagnosticOrderTest review(Long testId) {
+        LOG.debug("[DiagnosticOrderTestStatus] REVIEW - start. testId={}", testId);
         DiagnosticOrderTest test = getTest(testId);
 
-        DiagnosticStatus from = normalize(test.getProcessingStatus());
+        DiagnosticStatus from = test.getProcessingStatus();
         ensureTransition(from, DiagnosticStatus.REVIEWED);
 
         test.setProcessingStatus(DiagnosticStatus.REVIEWED);
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
+        LOG.debug("[DiagnosticOrderTestStatus] REVIEW - done. testId={} orderId={} status={}",
+                saved.getId(), saved.getOrderId(), saved.getProcessingStatus());
         return saved;
     }
 
@@ -143,9 +159,10 @@ public class DiagnosticOrderTestStatusService {
      * @return updated and persisted entity
      */
     public DiagnosticOrderTest approve(Long testId) {
+        LOG.debug("[DiagnosticOrderTestStatus] APPROVE - start. testId={}", testId);
         DiagnosticOrderTest test = getTest(testId);
 
-        DiagnosticStatus from = normalize(test.getProcessingStatus());
+        DiagnosticStatus from = test.getProcessingStatus();
         ensureTransition(from, DiagnosticStatus.RESULT_APPROVED);
 
         test.setProcessingStatus(DiagnosticStatus.RESULT_APPROVED);
@@ -153,6 +170,8 @@ public class DiagnosticOrderTestStatusService {
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
+        LOG.debug("[DiagnosticOrderTestStatus] APPROVE - done. testId={} orderId={} status={}",
+                saved.getId(), saved.getOrderId(), saved.getProcessingStatus());
         return saved;
     }
 
@@ -167,9 +186,11 @@ public class DiagnosticOrderTestStatusService {
      * @return updated and persisted entity
      */
     public DiagnosticOrderTest reject(Long testId, String rejectedBy, String rejectedReason) {
+        LOG.debug("[DiagnosticOrderTestStatus] REJECT - start. testId={} rejectedBy={} reason={}",
+                testId, rejectedBy, rejectedReason);
         DiagnosticOrderTest test = getTest(testId);
 
-        DiagnosticStatus from = normalize(test.getProcessingStatus());
+        DiagnosticStatus from = test.getProcessingStatus();
         ensureTransition(from, DiagnosticStatus.REJECTED);
 
         test.setProcessingStatus(DiagnosticStatus.REJECTED);
@@ -179,6 +200,8 @@ public class DiagnosticOrderTestStatusService {
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
+        LOG.debug("[DiagnosticOrderTestStatus] REJECT - done. testId={} orderId={} status={} rejectedBy={}",
+                saved.getId(), saved.getOrderId(), saved.getProcessingStatus(), saved.getRejectedBy());
         return saved;
     }
 
@@ -195,6 +218,8 @@ public class DiagnosticOrderTestStatusService {
      * @return updated and persisted entity
      */
     public DiagnosticOrderTest cancel(Long testId, String cancelledBy, String cancellationReason) {
+        LOG.debug("[DiagnosticOrderTestStatus] CANCEL - start. testId={} cancelledBy={} reason={}",
+                testId, cancelledBy, cancellationReason);
         DiagnosticOrderTest test = getTest(testId);
 
         // Treat null as NEW for entity-level status
@@ -210,6 +235,8 @@ public class DiagnosticOrderTestStatusService {
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
+        LOG.debug("[DiagnosticOrderTestStatus] CANCEL - done. testId={} orderId={} status={} cancelledBy={}",
+                saved.getId(), saved.getOrderId(), saved.getStatus(), saved.getCancelledBy());
         return saved;
     }
 
@@ -220,6 +247,7 @@ public class DiagnosticOrderTestStatusService {
      * @return loaded entity
      */
     private DiagnosticOrderTest getTest(Long testId) {
+        LOG.debug("[DiagnosticOrderTestStatus] GET_TEST - testId={}", testId);
         return diagnosticOrderTestRepository.findById(testId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
@@ -234,10 +262,6 @@ public class DiagnosticOrderTestStatusService {
      * @param status current processing status (may be null)
      * @return normalized status
      */
-    private DiagnosticStatus normalize(DiagnosticStatus status) {
-        return status == null ? DiagnosticStatus.NEW : status;
-    }
-
     /**
      * Validates whether a transition from {@code from} to {@code to} is allowed.
      * <p>
@@ -247,43 +271,41 @@ public class DiagnosticOrderTestStatusService {
      * @param to target processing status
      */
     private void ensureTransition(DiagnosticStatus from, DiagnosticStatus to) {
-
-        // NEW or SAMPLE_COLLECTED -> SAMPLE_COLLECTED (idempotent)
-        if (to == DiagnosticStatus.SAMPLE_COLLECTED) {
-            if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.SAMPLE_COLLECTED)) {
-                throw invalid(from, to);
+        LOG.debug("[DiagnosticOrderTestStatus] ENSURE_TRANSITION - from={} to={}", from, to);
+        switch (to) {
+            case SAMPLE_COLLECTED -> {
+                if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.SAMPLE_COLLECTED)) {
+                    throw invalid(from, to);
+                }
             }
-            return;
-        }
-
-        // SAMPLE_COLLECTED -> ACCEPTED
-        if (to == DiagnosticStatus.ACCEPTED) {
-            if (from != DiagnosticStatus.SAMPLE_COLLECTED) throw invalid(from, to);
-            return;
-        }
-
-        // ACCEPTED -> RESULT_READY
-        if (to == DiagnosticStatus.RESULT_READY) {
-            if (from != DiagnosticStatus.ACCEPTED) throw invalid(from, to);
-            return;
-        }
-
-        // RESULT_READY -> REVIEWED
-        if (to == DiagnosticStatus.REVIEWED) {
-            if (from != DiagnosticStatus.RESULT_READY) throw invalid(from, to);
-            return;
-        }
-
-        // RESULT_READY or REVIEWED -> RESULT_APPROVED
-        if (to == DiagnosticStatus.RESULT_APPROVED) {
-            if (!(from == DiagnosticStatus.RESULT_READY || from == DiagnosticStatus.REVIEWED)) throw invalid(from, to);
-            return;
-        }
-
-        // Allowed rejection paths (as coded): NEW or SAMPLE_COLLECTED -> REJECTED
-        if (to == DiagnosticStatus.REJECTED) {
-            if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.SAMPLE_COLLECTED)) throw invalid(from, to);
-            return;
+            case ACCEPTED -> {
+                if (from != DiagnosticStatus.SAMPLE_COLLECTED) {
+                    throw invalid(from, to);
+                }
+            }
+            case RESULT_READY -> {
+                if (from != DiagnosticStatus.ACCEPTED) {
+                    throw invalid(from, to);
+                }
+            }
+            case REVIEWED -> {
+                if (from != DiagnosticStatus.RESULT_READY) {
+                    throw invalid(from, to);
+                }
+            }
+            case RESULT_APPROVED -> {
+                if (!(from == DiagnosticStatus.RESULT_READY || from == DiagnosticStatus.REVIEWED)) {
+                    throw invalid(from, to);
+                }
+            }
+            case REJECTED -> {
+                if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.SAMPLE_COLLECTED)) {
+                    throw invalid(from, to);
+                }
+            }
+            default -> {
+                // No-op: handled by specific cases only
+            }
         }
     }
 
@@ -295,6 +317,7 @@ public class DiagnosticOrderTestStatusService {
      * @return exception describing the invalid transition
      */
     private BadRequestAlertException invalid(DiagnosticStatus from, DiagnosticStatus to) {
+        LOG.debug("[DiagnosticOrderTestStatus] INVALID_TRANSITION - from={} to={}", from, to);
         return new BadRequestAlertException(
                 "invalid_transition",
                 "diagnostic_order_tests",
