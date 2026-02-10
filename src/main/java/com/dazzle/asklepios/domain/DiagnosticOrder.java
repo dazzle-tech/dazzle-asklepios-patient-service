@@ -44,6 +44,7 @@ public class DiagnosticOrder extends AbstractAuditingEntity implements Serializa
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @NotNull
     @Column(name = "patient_id")
     private Long patientId;
 
