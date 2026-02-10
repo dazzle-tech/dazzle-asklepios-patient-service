@@ -10,6 +10,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
@@ -38,35 +39,29 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "patient_id")
-    private Long patientId;
-
-    @Column(name = "encounter_id")
-    private Long encounterId;
-
-    // Liquibase: varchar(50)
+    @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 50)
     private DiagnosticOrderTestStatus status;
 
+    @NotNull
     @Column(name = "order_id")
     private Long orderId;
 
+    @NotNull
     @Column(name = "test_id")
     private Long testId;
 
     @Column(name = "received_department_id")
     private Long receivedDepartmentId;
 
-    // Liquibase: varchar(50)
     @Column(name = "reason", length = 50)
     private String reason;
 
-    // Liquibase: text
     @Column(name = "notes", columnDefinition = "text")
     private String notes;
 
-    // Liquibase: varchar(50)
+    @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "processing_status", length = 50)
     private DiagnosticStatus processingStatus;
@@ -92,32 +87,27 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
     @Column(name = "approved_date")
     private Instant approvedDate;
 
-    // Liquibase: varchar(50)
+
+    @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "order_type", length = 50)
     private TestType orderType;
 
-    // Liquibase: varchar(50)
     @Column(name = "accepted_by", length = 50)
     private String acceptedBy;
 
-    // Liquibase: varchar(50)
     @Column(name = "rejected_by", length = 50)
     private String rejectedBy;
 
-    // Liquibase: varchar(50)
     @Column(name = "cancelled_by", length = 50)
     private String cancelledBy;
 
-    // Liquibase: varchar(200)
     @Column(name = "rejected_reason", length = 200)
     private String rejectedReason;
 
-    // Liquibase: varchar(150)
     @Column(name = "patient_arrived_note_rad", length = 150)
     private String patientArrivedNoteRad;
 
-    // Liquibase: varchar(250)
     @Column(name = "cancellation_reason", length = 250)
     private String cancellationReason;
 

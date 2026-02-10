@@ -8,7 +8,7 @@ public record DiagnosticTestRequestUpdateDTO(
         @NotNull Long id,
         @NotNull TestType type,
         @NotBlank String name,
-        String indication,
-        Long fromDepartmentId,
-        Long fromFacilityId
+        @NotBlank String indication,
+        @NotNull Long fromDepartmentId,
+        @NotNull Long fromFacilityId
 ) {}

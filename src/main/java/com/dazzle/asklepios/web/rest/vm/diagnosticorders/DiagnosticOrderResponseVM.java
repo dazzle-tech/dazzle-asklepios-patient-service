@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.web.rest.vm.diagnosticorders;
 
 import com.dazzle.asklepios.domain.DiagnosticOrder;
+import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 
 import java.io.Serializable;
@@ -47,4 +48,6 @@ public record DiagnosticOrderResponseVM(
                 o.getFromFacilityId()
         );
     }
+
+
 }

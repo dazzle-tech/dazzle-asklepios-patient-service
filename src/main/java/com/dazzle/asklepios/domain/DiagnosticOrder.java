@@ -9,7 +9,11 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
@@ -40,48 +44,54 @@ public class DiagnosticOrder extends AbstractAuditingEntity implements Serializa
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @NotNull
     @Column(name = "patient_id")
     private Long patientId;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "patient_id", nullable = false , insertable = false, updatable = false)
+    private Patient patient;
+
+    @NotNull
     @Column(name = "encounter_id")
     private Long encounterId;
 
-    // Liquibase: varchar(50)
+    @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 50)
-    private DiagnosticStatus status;
+    private DiagnosticStatus status=DiagnosticStatus.NEW;;
 
-    // DB-generated (sequence default). Must NOT be included in INSERT.
     @Generated(GenerationTime.INSERT)
-    @Column(name = "order_number", nullable = false, updatable = false, insertable = false)
+    @Column(name = "order_number", nullable = false)
     private Long orderNumber;
 
+    @NotNull
     @Column(name = "save_draft")
     private Boolean saveDraft = true;
 
-    // Liquibase: varchar(50)
     @Column(name = "submitted_by", length = 50)
     private String submittedBy;
 
     @Column(name = "submitted_date")
     private Instant submittedDate;
 
+    @NotNull
     @Column(name = "is_urgent", nullable = false)
     private Boolean isUrgent = false;
 
-    // Liquibase: varchar(50)
     @Enumerated(EnumType.STRING)
     @Column(name = "lab_status", length = 50)
     private DiagnosticStatus labStatus;
 
-    // Liquibase: varchar(50)
     @Enumerated(EnumType.STRING)
     @Column(name = "rad_status", length = 50)
     private DiagnosticStatus radStatus;
 
+    @NotNull
     @Column(name = "from_department_id")
     private Long fromDepartmentId;
 
+    @NotNull
     @Column(name = "from_facility_id")
     private Long fromFacilityId;
 }

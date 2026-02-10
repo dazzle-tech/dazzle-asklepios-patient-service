@@ -6,6 +6,7 @@ import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
+import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.EntityManager;
@@ -21,7 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -47,10 +47,6 @@ public class PatientService {
 
     public Patient create(PatientCreateDTO dto) {
         LOG.info("[CREATE] Request to create Patient payload={}", dto);
-
-        if (dto == null) {
-            throw new BadRequestAlertException("Patient payload is required", "patient", "payload.required");
-        }
 
         boolean verified = Boolean.TRUE.equals(dto.isVerified());
         boolean completed = Boolean.TRUE.equals(dto.isCompletedPatient());
@@ -105,9 +101,7 @@ public class PatientService {
                 .build();
 
         try {
-            Patient saved = patientRepository.saveAndFlush(entity);
-            entityManager.refresh(saved);
-            return saved;
+            return patientRepository.saveAndFlush(entity);
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
@@ -119,39 +113,29 @@ public class PatientService {
         }
     }
 
-    @Transactional
-    public Patient createUnknown() {
-        Patient entity = Patient.builder()
-                .isUnknown(true)
-                .isVerified(false)
-                .isCompletedPatient(false)
+    public Patient createUnknown(UnknownPatientCreateDTO dto) {
+        Patient unknownPatient = Patient.builder()
+                .isUnknown(dto.isUnknown())
+                .isVerified(dto.isVerified())
+                .isCompletedPatient(dto.isCompletedPatient())
                 .build();
 
         try {
-            Patient saved = patientRepository.saveAndFlush(entity);
+            Patient createdPatient = patientRepository.saveAndFlush(unknownPatient);
 
-            try {
-                entityManager.refresh(saved);
-            } catch (Exception refreshEx) {
-                LOG.debug("refresh skipped: {}", refreshEx.getMessage());
-            }
+            String mrn = createdPatient.getMedicalRecordNumber();
 
-            String medicalRecordNumber = saved.getMedicalRecordNumber();
-            if (medicalRecordNumber == null || medicalRecordNumber.isBlank()) {
-                LOG.warn("UNKNOWN patient created but MRN is null/blank for id={}", saved.getId());
-                return saved;
-            }
+            createdPatient.setFirstName("Unknown " + mrn);
+            createdPatient.setLastName(null);
 
-            saved.setFirstName("Unknown " + medicalRecordNumber);
-
-            saved.setLastName(null);
-
-            saved = patientRepository.saveAndFlush(saved);
+            Patient updatedPatient = patientRepository.saveAndFlush(createdPatient);
 
             LOG.info("Created UNKNOWN patient id={} medicalRecordNumber={} firstName={}",
-                    saved.getId(), saved.getMedicalRecordNumber(), saved.getFirstName());
+                    updatedPatient.getId(),
+                    updatedPatient.getMedicalRecordNumber(),
+                    updatedPatient.getFirstName());
 
-            return saved;
+            return updatedPatient;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
@@ -163,8 +147,7 @@ public class PatientService {
         }
     }
 
-
-    public Optional<Patient> update(Long id, PatientUpdateDTO dto) {
+    public Patient update(Long id, PatientUpdateDTO dto) {
         LOG.info("[UPDATE] Request to update Patient id={} payload={}", id, dto);
 
         Patient existing = patientRepository.findById(id)
@@ -228,14 +211,13 @@ public class PatientService {
         existing.setLastModifiedDate(Instant.now());
 
         try {
-            Patient updated = patientRepository.saveAndFlush(existing);
-            entityManager.refresh(updated);
+            Patient updatedPatient = patientRepository.saveAndFlush(existing);
 
             LOG.info(
                     "Successfully updated patient id={} (medicalRecordNumber='{}')",
-                    updated.getId(), updated.getMedicalRecordNumber()
+                    updatedPatient.getId(), updatedPatient.getMedicalRecordNumber()
             );
-            return Optional.of(updated);
+            return updatedPatient;
 
         } catch (DataIntegrityViolationException | JpaSystemException exception) {
             LOG.error(
@@ -253,12 +235,6 @@ public class PatientService {
                     "db.constraint"
             );
         }
-    }
-
-    @Transactional(readOnly = true)
-    public Page<Patient> findAll(Pageable pageable) {
-        LOG.debug("[FIND ALL] Fetching all patients with pageable={}", pageable);
-        return patientRepository.findAll(pageable);
     }
 
     @Transactional(readOnly = true)
@@ -309,6 +285,7 @@ public class PatientService {
                 );
     }
 
+
     @Transactional(readOnly = true)
     public Page<Patient> findUnknownPatients(Pageable pageable) {
         LOG.debug("[FIND UNKNOWN] Fetching unknown patients with pageable={}", pageable);
@@ -324,13 +301,26 @@ public class PatientService {
     }
 
     @Transactional(readOnly = true)
+    public Patient findById(Long id) {
+        LOG.debug("[FIND BY ID] Fetching Patient id={}", id);
+
+        return patientRepository.findById(id)
+                .orElseThrow(() -> {
+                    LOG.error("Patient not found with id={}", id);
+                    return new NotFoundAlertException(
+                            "Patient not found with id " + id,
+                            "patient",
+                            "notfound"
+                    );
+                });
+    }
+    @Transactional(readOnly = true)
     public Page<Patient> findByAnyDocumentNumber(String numberPart, Pageable pageable) {
         LOG.debug("[FIND BY ANY DOCUMENT] numberPart='{}' pageable={}", numberPart, pageable);
         Page<PatientDocument> docsPage =
                 patientDocumentRepository.findByNumberContainingIgnoreCase(numberPart, pageable);
         return docsPage.map(PatientDocument::getPatient);
     }
-
     private void handleConstraintsOnCreateOrUpdate(RuntimeException exception) {
         Throwable root = getRootCause(exception);
         String message = (root != null ? root.getMessage() : exception.getMessage());

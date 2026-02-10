@@ -1,4 +1,3 @@
-
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.DiagnosticTestRequest;
@@ -12,9 +11,10 @@ import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.requests.
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.requests.commands.DiagnosticTestRequestRejectDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.vm.diagnosticorders.requests.DiagnosticTestRequestResponseVM;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -22,7 +22,15 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
@@ -33,6 +41,8 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/patient")
 public class DiagnosticTestRequestController {
+
+    private static final Logger LOG = LoggerFactory.getLogger(DiagnosticTestRequestController.class);
 
     private final DiagnosticTestRequestService service;
     private final DiagnosticTestRequestRepository repository;
@@ -55,61 +65,73 @@ public class DiagnosticTestRequestController {
     }
 
     @PostMapping("/diagnostic-test-requests")
-    public ResponseEntity<DiagnosticTestRequestResponseVM> create(@Valid @RequestBody DiagnosticTestRequestCreateDTO dto) {
+    public ResponseEntity<DiagnosticTestRequest> create(@Valid @RequestBody DiagnosticTestRequestCreateDTO dto) {
+        LOG.debug("[DiagnosticTestRequest] CREATE - request received. payload={}", dto);
         String username = currentUsername();
         DiagnosticTestRequest saved = service.create(dto, username);
 
+        LOG.debug("[DiagnosticTestRequest] CREATE - created successfully. id={}", saved.getId());
         return ResponseEntity
                 .created(URI.create("/api/patient/diagnostic-test-requests/" + saved.getId()))
-                .body(DiagnosticTestRequestResponseVM.ofEntity(saved));
+                .body(saved);
     }
 
     @PutMapping("/diagnostic-test-requests/{id}")
-    public ResponseEntity<DiagnosticTestRequestResponseVM> update(
+    public ResponseEntity<DiagnosticTestRequest> update(
             @PathVariable Long id,
             @Valid @RequestBody DiagnosticTestRequestUpdateDTO dto
     ) {
+        LOG.debug("[DiagnosticTestRequest] UPDATE - request received. id={} payload={}", id, dto);
         if (!id.equals(dto.id())) {
             throw new BadRequestAlertException("idmismatch", "diagnostic_test_requests", "Path id and body id mismatch");
         }
+
         String username = currentUsername();
         DiagnosticTestRequest updated = service.update(dto, username);
-        return ResponseEntity.ok(DiagnosticTestRequestResponseVM.ofEntity(updated));
+        LOG.debug("[DiagnosticTestRequest] UPDATE - updated successfully. id={}", updated.getId());
+        return ResponseEntity.ok(updated);
     }
 
     @GetMapping("/diagnostic-test-requests/{id}")
-    public ResponseEntity<DiagnosticTestRequestResponseVM> get(@PathVariable Long id) {
-        return ResponseEntity.ok(DiagnosticTestRequestResponseVM.ofEntity(service.get(id)));
+    public ResponseEntity<DiagnosticTestRequest> getTestRequestById(@PathVariable Long id) {
+        LOG.debug("[DiagnosticTestRequest] GET_BY_ID - request received. id={}", id);
+        DiagnosticTestRequest existing = service.getDiagnosticTestRequestById(id);
+        LOG.debug("[DiagnosticTestRequest] GET_BY_ID - found. id={}", existing.getId());
+        return ResponseEntity.ok(existing);
     }
 
     @DeleteMapping("/diagnostic-test-requests/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ResponseEntity<Void> delete(@Valid @PathVariable Long id) {
+        LOG.debug("[DiagnosticTestRequest] DELETE - request received. id={}", id);
         String username = currentUsername();
         service.delete(id, username);
+        LOG.debug("[DiagnosticTestRequest] DELETE - deleted successfully. id={}", id);
         return ResponseEntity.noContent().build();
     }
 
-    // Approve WITHOUT body
     @PostMapping("/diagnostic-test-requests/{id}/approve")
-    public ResponseEntity<DiagnosticTestRequestResponseVM> approve(@PathVariable Long id) {
+    public ResponseEntity<DiagnosticTestRequest> approve(@Valid @PathVariable Long id) {
+        LOG.debug("[DiagnosticTestRequest] APPROVE - request received. id={}", id);
         String username = currentUsername();
         DiagnosticTestRequest updated = service.approve(id, username);
-        return ResponseEntity.ok(DiagnosticTestRequestResponseVM.ofEntity(updated));
+        LOG.debug("[DiagnosticTestRequest] APPROVE - approved successfully. id={}", updated.getId());
+        return ResponseEntity.ok(updated);
     }
 
     @PostMapping("/diagnostic-test-requests/{id}/reject")
-    public ResponseEntity<DiagnosticTestRequestResponseVM> reject(
+    public ResponseEntity<DiagnosticTestRequest> reject(
             @PathVariable Long id,
             @Valid @RequestBody DiagnosticTestRequestRejectDTO dto
     ) {
+        LOG.debug("[DiagnosticTestRequest] REJECT - request received. id={} payload={}", id, dto);
         String username = currentUsername();
         DiagnosticTestRequest updated = service.reject(id, username, dto.rejectedReason());
-        return ResponseEntity.ok(DiagnosticTestRequestResponseVM.ofEntity(updated));
+        LOG.debug("[DiagnosticTestRequest] REJECT - rejected successfully. id={}", updated.getId());
+        return ResponseEntity.ok(updated);
     }
 
-    // Optional filter endpoint
     @GetMapping("/diagnostic-test-requests")
-    public ResponseEntity<List<DiagnosticTestRequestResponseVM>> filter(
+    public ResponseEntity<List<DiagnosticTestRequest>> filter(
             @RequestParam(name = "status", required = false) DiagnosticTestRequestStatus status,
             @RequestParam(name = "type", required = false) TestType type,
             @RequestParam(name = "name", required = false) String name,
@@ -120,33 +142,46 @@ public class DiagnosticTestRequestController {
             @RequestParam(name = "createdDateTo", required = false) Instant createdDateTo,
             @ParameterObject Pageable pageable
     ) {
-        Specification<DiagnosticTestRequest> spec = (root, query, cb) -> {
+        LOG.debug("[DiagnosticTestRequest] FILTER - request received. status={} type={} name={} fromDepartmentId={} fromFacilityId={} createdBy={} createdDateFrom={} createdDateTo={} pageable={}",
+                status, type, name, fromDepartmentId, fromFacilityId, createdBy, createdDateFrom, createdDateTo, pageable);
+
+        Specification<DiagnosticTestRequest> filterSpec = (requestRoot, criteriaQuery, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            if (status != null) predicates.add(cb.equal(root.get("status"), status));
-            if (type != null) predicates.add(cb.equal(root.get("type"), type));
-            if (name != null && !name.isBlank())
-                predicates.add(cb.like(cb.lower(root.get("name")), "%" + name.toLowerCase() + "%"));
-            if (fromDepartmentId != null) predicates.add(cb.equal(root.get("fromDepartmentId"), fromDepartmentId));
-            if (fromFacilityId != null) predicates.add(cb.equal(root.get("fromFacilityId"), fromFacilityId));
-            if (createdBy != null && !createdBy.isBlank()) predicates.add(cb.equal(root.get("createdBy"), createdBy));
-            if (createdDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("createdDate"), createdDateFrom));
-            if (createdDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("createdDate"), createdDateTo));
+            if (status != null) predicates.add(criteriaBuilder.equal(requestRoot.get("status"), status));
+            if (type != null) predicates.add(criteriaBuilder.equal(requestRoot.get("type"), type));
 
-            return cb.and(predicates.toArray(new Predicate[0]));
+            if (name != null && !name.isBlank()) {
+                predicates.add(criteriaBuilder.like(
+                        criteriaBuilder.lower(requestRoot.get("name")),
+                        "%" + name.trim().toLowerCase() + "%"
+                ));
+            }
+
+            if (fromDepartmentId != null)
+                predicates.add(criteriaBuilder.equal(requestRoot.get("fromDepartmentId"), fromDepartmentId));
+            if (fromFacilityId != null)
+                predicates.add(criteriaBuilder.equal(requestRoot.get("fromFacilityId"), fromFacilityId));
+            if (createdBy != null && !createdBy.isBlank())
+                predicates.add(criteriaBuilder.equal(requestRoot.get("createdBy"), createdBy));
+
+            if (createdDateFrom != null)
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(requestRoot.get("createdDate"), createdDateFrom));
+            if (createdDateTo != null)
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(requestRoot.get("createdDate"), createdDateTo));
+
+            return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
         };
 
-        Page<DiagnosticTestRequest> page = repository.findAll(spec, pageable);
+        Page<DiagnosticTestRequest> page = repository.findAll(filterSpec, pageable);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
         );
 
-        List<DiagnosticTestRequestResponseVM> body = page.getContent()
-                .stream()
-                .map(DiagnosticTestRequestResponseVM::ofEntity)
-                .toList();
+        LOG.debug("[DiagnosticTestRequest] FILTER - response ready. returned={} totalElements={} totalPages={}",
+                page.getNumberOfElements(), page.getTotalElements(), page.getTotalPages());
 
-        return new ResponseEntity<>(body, headers, HttpStatus.OK);
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 }

@@ -2,6 +2,7 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
+import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
@@ -85,6 +86,7 @@ public class DiagnosticOrderController {
      * @throws BadRequestAlertException if no authenticated user is available
      */
     private String currentUsername() {
+        LOG.debug("[DiagnosticOrder] CURRENT_USER - resolving username");
         return SecurityUtils.getCurrentUserLogin()
                 .orElseThrow(() -> new BadRequestAlertException(
                         "unauthenticated",
@@ -104,12 +106,12 @@ public class DiagnosticOrderController {
     public ResponseEntity<DiagnosticOrderResponseVM> create(@Valid @RequestBody DiagnosticOrderCreateDTO dto) {
         LOG.debug("[DiagnosticOrder] CREATE - request received. payload={}", dto);
 
-        DiagnosticOrder saved = diagnosticOrderService.create(dto);
+        DiagnosticOrder createdOrder = diagnosticOrderService.create(dto);
 
-        LOG.debug("[DiagnosticOrder] CREATE - created successfully. id={}", saved.getId());
+        LOG.debug("[DiagnosticOrder] CREATE - created successfully. id={}", createdOrder.getId());
         return ResponseEntity
-                .created(URI.create("/api/patient/diagnostic-orders/" + saved.getId()))
-                .body(DiagnosticOrderResponseVM.ofEntity(saved));
+                .created(URI.create("/api/patient/diagnostic-orders/" + createdOrder.getId()))
+                .body(DiagnosticOrderResponseVM.ofEntity(createdOrder));
     }
 
     /**
@@ -130,30 +132,27 @@ public class DiagnosticOrderController {
     ) {
         LOG.debug("[DiagnosticOrder] UPDATE - request received. id={} payload={}", id, dto);
 
-        DiagnosticOrder existing = diagnosticOrderRepository.findById(id)
+        DiagnosticOrder orderToUpdate = diagnosticOrderRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
                         "diagnostic_orders",
                         "DiagnosticOrder not found with id " + id
                 ));
 
-        DiagnosticOrderUpdateDTO fixed = new DiagnosticOrderUpdateDTO(
+
+        // Ensure the DTO id matches the path variable id
+        DiagnosticOrderUpdateDTO fixedDto = new DiagnosticOrderUpdateDTO(
                 id,
                 dto.patientId(),
                 dto.encounterId(),
-                dto.status(),
-                dto.saveDraft(),
-                dto.submittedBy(),
-                dto.submittedDate(),
-                dto.isUrgent(),
-                dto.fromDepartmentId(),
-                dto.fromFacilityId()
+                dto.isUrgent()
+
         );
 
-        DiagnosticOrder updated = diagnosticOrderService.update(existing, fixed);
+        DiagnosticOrder updatedOrder = diagnosticOrderService.update(orderToUpdate, fixedDto);
 
-        LOG.debug("[DiagnosticOrder] UPDATE - updated successfully. id={}", updated.getId());
-        return ResponseEntity.ok(DiagnosticOrderResponseVM.ofEntity(updated));
+        LOG.debug("[DiagnosticOrder] UPDATE - updated successfully. id={}", updatedOrder.getId());
+        return ResponseEntity.ok(DiagnosticOrderResponseVM.ofEntity(updatedOrder));
     }
 
     /**
@@ -167,15 +166,15 @@ public class DiagnosticOrderController {
     public ResponseEntity<DiagnosticOrderResponseVM> getById(@PathVariable Long id) {
         LOG.debug("[DiagnosticOrder] GET_BY_ID - request received. id={}", id);
 
-        DiagnosticOrder existing = diagnosticOrderRepository.findById(id)
+        DiagnosticOrder order = diagnosticOrderRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
                         "diagnostic_orders",
                         "DiagnosticOrder not found with id " + id
                 ));
 
-        LOG.debug("[DiagnosticOrder] GET_BY_ID - found. id={}", existing.getId());
-        return ResponseEntity.ok(DiagnosticOrderResponseVM.ofEntity(existing));
+        LOG.debug("[DiagnosticOrder] GET_BY_ID - found. id={}", order.getId());
+        return ResponseEntity.ok(DiagnosticOrderResponseVM.ofEntity(order));
     }
 
     /**
@@ -186,30 +185,32 @@ public class DiagnosticOrderController {
      * @param pageable pagination and sorting
      * @return list of orders mapped to response VMs with pagination headers (HTTP 200)
      */
-    @GetMapping("/patients/{patientId}/diagnostic-orders")
+    @GetMapping(" /diagnostic-orders/by-patient/{patientId}")
     public ResponseEntity<List<DiagnosticOrderResponseVM>> getByPatient(
             @PathVariable Long patientId,
-            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "status", required = false) DiagnosticStatus status,
             @ParameterObject Pageable pageable
     ) {
         LOG.debug("[DiagnosticOrder] LIST_BY_PATIENT - request received. patientId={} status={} pageable={}",
                 patientId, status, pageable);
 
-        Page<DiagnosticOrder> page = diagnosticOrderService.findByPatient(patientId, status, pageable);
+        Page<DiagnosticOrder> ordersPage = (status == null)
+                ? diagnosticOrderService.findByPatient(patientId, pageable)
+                : diagnosticOrderService.findByPatientAndStatus(patientId, status, pageable);
 
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(), page
+        HttpHeaders paginationHeaders = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), ordersPage
         );
 
-        List<DiagnosticOrderResponseVM> body = page.getContent()
+        List<DiagnosticOrderResponseVM> responseBody = ordersPage.getContent()
                 .stream()
                 .map(DiagnosticOrderResponseVM::ofEntity)
                 .toList();
 
         LOG.debug("[DiagnosticOrder] LIST_BY_PATIENT - response ready. patientId={} returned={} totalElements={} totalPages={}",
-                patientId, body.size(), page.getTotalElements(), page.getTotalPages());
+                patientId, responseBody.size(), ordersPage.getTotalElements(), ordersPage.getTotalPages());
 
-        return new ResponseEntity<>(body, headers, HttpStatus.OK);
+        return new ResponseEntity<>(responseBody, paginationHeaders, HttpStatus.OK);
     }
 
     /**
@@ -221,32 +222,34 @@ public class DiagnosticOrderController {
      * @param pageable pagination and sorting
      * @return list of orders mapped to response VMs with pagination headers (HTTP 200)
      */
-    @GetMapping("/patients/{patientId}/encounters/{encounterId}/diagnostic-orders")
+    @GetMapping("/diagnostic-orders/by-patient/{patientId}/by-encounter/{encounterId}")
     public ResponseEntity<List<DiagnosticOrderResponseVM>> getByPatientAndEncounter(
             @PathVariable Long patientId,
             @PathVariable Long encounterId,
-            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "status", required = false) DiagnosticStatus status,
             @ParameterObject Pageable pageable
     ) {
         LOG.debug("[DiagnosticOrder] LIST_BY_PATIENT_AND_ENCOUNTER - request received. patientId={} encounterId={} status={} pageable={}",
                 patientId, encounterId, status, pageable);
 
-        Page<DiagnosticOrder> page =
-                diagnosticOrderService.findByPatientAndEncounter(patientId, encounterId, status, pageable);
 
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(), page
+        Page<DiagnosticOrder> ordersPage = (status == null)
+                ? diagnosticOrderService.findByPatientAndEncounter(patientId, encounterId, pageable)
+                : diagnosticOrderService.findByPatientAndEncounterAndStatus(patientId, encounterId, status, pageable);
+
+        HttpHeaders paginationHeaders = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), ordersPage
         );
 
-        List<DiagnosticOrderResponseVM> body = page.getContent()
+        List<DiagnosticOrderResponseVM> responseBody = ordersPage.getContent()
                 .stream()
                 .map(DiagnosticOrderResponseVM::ofEntity)
                 .toList();
 
         LOG.debug("[DiagnosticOrder] LIST_BY_PATIENT_AND_ENCOUNTER - response ready. patientId={} encounterId={} returned={} totalElements={} totalPages={}",
-                patientId, encounterId, body.size(), page.getTotalElements(), page.getTotalPages());
+                patientId, encounterId, responseBody.size(), ordersPage.getTotalElements(), ordersPage.getTotalPages());
 
-        return new ResponseEntity<>(body, headers, HttpStatus.OK);
+        return new ResponseEntity<>(responseBody, paginationHeaders, HttpStatus.OK);
     }
 
     /**
@@ -257,30 +260,32 @@ public class DiagnosticOrderController {
      * @param pageable pagination and sorting
      * @return list of orders mapped to response VMs with pagination headers (HTTP 200)
      */
-    @GetMapping("/encounters/{encounterId}/diagnostic-orders")
+    @GetMapping("/diagnostic-orders/by-encounter/{encounterId}")
     public ResponseEntity<List<DiagnosticOrderResponseVM>> getByEncounter(
             @PathVariable Long encounterId,
-            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "status", required = false) DiagnosticStatus status,
             @ParameterObject Pageable pageable
     ) {
         LOG.debug("[DiagnosticOrder] LIST_BY_ENCOUNTER - request received. encounterId={} status={} pageable={}",
                 encounterId, status, pageable);
 
-        Page<DiagnosticOrder> page = diagnosticOrderService.findByEncounter(encounterId, status, pageable);
+        Page<DiagnosticOrder> ordersPage = (status == null)
+                ? diagnosticOrderService.findByEncounter(encounterId, pageable)
+                : diagnosticOrderService.findByEncounterAndStatus(encounterId, status, pageable);
 
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(), page
+        HttpHeaders paginationHeaders = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), ordersPage
         );
 
-        List<DiagnosticOrderResponseVM> body = page.getContent()
+        List<DiagnosticOrderResponseVM> responseBody = ordersPage.getContent()
                 .stream()
                 .map(DiagnosticOrderResponseVM::ofEntity)
                 .toList();
 
         LOG.debug("[DiagnosticOrder] LIST_BY_ENCOUNTER - response ready. encounterId={} returned={} totalElements={} totalPages={}",
-                encounterId, body.size(), page.getTotalElements(), page.getTotalPages());
+                encounterId, responseBody.size(), ordersPage.getTotalElements(), ordersPage.getTotalPages());
 
-        return new ResponseEntity<>(body, headers, HttpStatus.OK);
+        return new ResponseEntity<>(responseBody, paginationHeaders, HttpStatus.OK);
     }
 
     /**
@@ -291,17 +296,17 @@ public class DiagnosticOrderController {
      * @throws BadRequestAlertException if the order does not exist
      */
     @DeleteMapping("/diagnostic-orders/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ResponseEntity<Void> delete(@Valid @PathVariable Long id) {
         LOG.debug("[DiagnosticOrder] DELETE - request received. id={}", id);
 
-        DiagnosticOrder existing = diagnosticOrderRepository.findById(id)
+        DiagnosticOrder orderToDelete = diagnosticOrderRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
                         "diagnostic_orders",
                         "DiagnosticOrder not found with id " + id
                 ));
 
-        diagnosticOrderService.delete(existing.getId());
+        diagnosticOrderService.delete(orderToDelete.getId());
 
         LOG.debug("[DiagnosticOrder] DELETE - deleted successfully. id={}", id);
         return ResponseEntity.noContent().build();
@@ -339,15 +344,16 @@ public class DiagnosticOrderController {
      * along with pagination headers
      * @throws IllegalArgumentException if the request contains conflicting filters (e.g. both {@code status} and {@code statusIn})
      */
+
     @GetMapping("/diagnostic-orders")
     public ResponseEntity<List<DiagnosticOrderResponseVM>> filter(
             @RequestParam(name = "patientId", required = false) Long patientId,
             @RequestParam(name = "encounterId", required = false) Long encounterId,
 
-            @RequestParam(name = "status", required = false) String status,
-            @RequestParam(name = "statusIn", required = false) List<String> statusIn,
-            @RequestParam(name = "statusNotIn", required = false) List<String> statusNotIn,
-            @RequestParam(name = "excludeStatus", required = false) String excludeStatus,
+            @RequestParam(name = "status", required = false) DiagnosticStatus status,
+            @RequestParam(name = "statusIn", required = false) List<DiagnosticStatus> statusIn,
+            @RequestParam(name = "statusNotIn", required = false) List<DiagnosticStatus> statusNotIn,
+            @RequestParam(name = "excludeStatus", required = false) DiagnosticStatus excludeStatus,
 
             @RequestParam(name = "saveDraft", required = false) Boolean saveDraft,
             @RequestParam(name = "isUrgent", required = false) Boolean isUrgent,
@@ -358,76 +364,86 @@ public class DiagnosticOrderController {
             @RequestParam(name = "submittedDateTo", required = false) Instant submittedDateTo,
 
             @RequestParam(name = "departmentId", required = false) Long departmentId,
+            @RequestParam(name = "testType", required = false) TestType testType,
 
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("[DiagnosticOrder] FILTER - request received. patientId={} encounterId={} status={} statusIn={} statusNotIn={} excludeStatus={} saveDraft={} isUrgent={} labStatus={} radStatus={} submittedDateFrom={} submittedDateTo={} departmentId={} pageable={}",
-                patientId, encounterId, status, statusIn, statusNotIn, excludeStatus, saveDraft, isUrgent, labStatus, radStatus, submittedDateFrom, submittedDateTo, departmentId, pageable);
+
+        LOG.debug("[DiagnosticOrder] FILTER - request received. patientId={} encounterId={} status={} statusIn={} statusNotIn={} excludeStatus={} saveDraft={} isUrgent={} labStatus={} radStatus={} submittedDateFrom={} submittedDateTo={} departmentId={} testType={} pageable={}",
+                patientId, encounterId, status, statusIn, statusNotIn, excludeStatus, saveDraft, isUrgent, labStatus,
+                radStatus, submittedDateFrom, submittedDateTo, departmentId, testType, pageable);
 
         if (status != null && statusIn != null && !statusIn.isEmpty()) {
-            throw new IllegalArgumentException("Use either status or statusIn, not both");
+            throw new BadRequestAlertException(
+                    "invalid_filter",
+                    "diagnostic_orders",
+                    "Use either status or statusIn, not both"
+            );
         }
 
-        Specification<DiagnosticOrder> spec = (root, query, cb) -> {
-            List<Predicate> predicates = new ArrayList<>();
+        Specification<DiagnosticOrder> filterSpec = (orderRoot, criteriaQuery, criteriaBuilder) -> {
+            List<Predicate> filterPredicates = new ArrayList<>();
 
-            // Base filters
-            if (patientId != null) predicates.add(cb.equal(root.get("patientId"), patientId));
-            if (encounterId != null) predicates.add(cb.equal(root.get("encounterId"), encounterId));
+            if (patientId != null) filterPredicates.add(criteriaBuilder.equal(orderRoot.get("patientId"), patientId));
+            if (encounterId != null) filterPredicates.add(criteriaBuilder.equal(orderRoot.get("encounterId"), encounterId));
 
-            if (status != null && !status.isBlank()) predicates.add(cb.equal(root.get("status"), status));
-            if (statusIn != null && !statusIn.isEmpty()) predicates.add(root.get("status").in(statusIn));
-            if (excludeStatus != null && !excludeStatus.isBlank())
-                predicates.add(cb.notEqual(root.get("status"), excludeStatus));
+            if (status != null) filterPredicates.add(criteriaBuilder.equal(orderRoot.get("status"), status));
+            if (statusIn != null && !statusIn.isEmpty()) filterPredicates.add(orderRoot.get("status").in(statusIn));
+            if (excludeStatus != null)
+                filterPredicates.add(criteriaBuilder.notEqual(orderRoot.get("status"), excludeStatus));
             if (statusNotIn != null && !statusNotIn.isEmpty())
-                predicates.add(cb.not(root.get("status").in(statusNotIn)));
+                filterPredicates.add(criteriaBuilder.not(orderRoot.get("status").in(statusNotIn)));
 
-            if (saveDraft != null) predicates.add(cb.equal(root.get("saveDraft"), saveDraft));
-            if (isUrgent != null) predicates.add(cb.equal(root.get("isUrgent"), isUrgent));
+            if (saveDraft != null) filterPredicates.add(criteriaBuilder.equal(orderRoot.get("saveDraft"), saveDraft));
+            if (isUrgent != null) filterPredicates.add(criteriaBuilder.equal(orderRoot.get("isUrgent"), isUrgent));
 
             if (labStatus != null && !labStatus.isBlank())
-                predicates.add(cb.equal(root.get("labStatus"), labStatus));
+                filterPredicates.add(criteriaBuilder.equal(orderRoot.get("labStatus"), labStatus));
             if (radStatus != null && !radStatus.isBlank())
-                predicates.add(cb.equal(root.get("radStatus"), radStatus));
+                filterPredicates.add(criteriaBuilder.equal(orderRoot.get("radStatus"), radStatus));
 
             if (submittedDateFrom != null)
-                predicates.add(cb.greaterThanOrEqualTo(root.get("submittedDate"), submittedDateFrom));
+                filterPredicates.add(criteriaBuilder.greaterThanOrEqualTo(orderRoot.get("submittedDate"), submittedDateFrom));
             if (submittedDateTo != null)
-                predicates.add(cb.lessThanOrEqualTo(root.get("submittedDate"), submittedDateTo));
+                filterPredicates.add(criteriaBuilder.lessThanOrEqualTo(orderRoot.get("submittedDate"), submittedDateTo));
 
             if (departmentId != null) {
-                Subquery<Long> sq = query.subquery(Long.class);
-                Root<DiagnosticOrderTest> t = sq.from(DiagnosticOrderTest.class);
+                Subquery<Long> orderTestSubquery = criteriaQuery.subquery(Long.class);
+                Root<DiagnosticOrderTest> orderTestRoot = orderTestSubquery.from(DiagnosticOrderTest.class);
 
-                sq.select(t.get("id"))
-                        .where(
-                                cb.equal(t.get("orderId"), root.get("id")),
-                                cb.equal(t.get("receivedDepartmentId"), departmentId),
-                                cb.notEqual(t.get("status"), DiagnosticStatus.CANCELLED),
-                                cb.equal(t.get("orderType"), TestType.LABORATORY)
-                        );
 
-                predicates.add(cb.exists(sq));
+                List<Predicate> subqueryPredicates = new ArrayList<>();
+                subqueryPredicates.add(criteriaBuilder.equal(orderTestRoot.get("orderId"), orderRoot.get("id")));
+                subqueryPredicates.add(criteriaBuilder.equal(orderTestRoot.get("receivedDepartmentId"), departmentId));
+                subqueryPredicates.add(criteriaBuilder.notEqual(orderTestRoot.get("status"), DiagnosticOrderTestStatus.CANCELLED));
+
+                if (testType != null) {
+                    subqueryPredicates.add(criteriaBuilder.equal(orderTestRoot.get("orderType"), testType));
+                }
+
+                orderTestSubquery.select(orderTestRoot.get("id")).where(subqueryPredicates.toArray(new Predicate[0]));
+                filterPredicates.add(criteriaBuilder.exists(orderTestSubquery));
             }
 
-            return cb.and(predicates.toArray(new Predicate[0]));
+            return criteriaBuilder.and(filterPredicates.toArray(new Predicate[0]));
         };
 
-        Page<DiagnosticOrder> page = diagnosticOrderRepository.findAll(spec, pageable);
+        Page<DiagnosticOrder> ordersPage = diagnosticOrderRepository.findAll(filterSpec, pageable);
 
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(), page
+        HttpHeaders paginationHeaders = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), ordersPage
         );
 
-        List<DiagnosticOrderResponseVM> body = page.getContent()
+        List<DiagnosticOrderResponseVM> responseBody = ordersPage.getContent()
                 .stream()
                 .map(DiagnosticOrderResponseVM::ofEntity)
                 .toList();
 
         LOG.debug("[DiagnosticOrder] FILTER - response ready. returned={} totalElements={} totalPages={}",
-                body.size(), page.getTotalElements(), page.getTotalPages());
 
-        return new ResponseEntity<>(body, headers, HttpStatus.OK);
+                ordersPage.getNumberOfElements(), ordersPage.getTotalElements(), ordersPage.getTotalPages());
+
+        return new ResponseEntity<>(responseBody, paginationHeaders, HttpStatus.OK);
     }
 
     /**
@@ -441,17 +457,18 @@ public class DiagnosticOrderController {
      * @throws BadRequestAlertException if the order does not exist or is already submitted
      */
     @PostMapping("/diagnostic-orders/{id}/submit")
-    public ResponseEntity<DiagnosticOrderResponseVM> submit(@PathVariable Long id) {
+
+    public ResponseEntity<DiagnosticOrderResponseVM> submit(@Valid @PathVariable Long id) {
         LOG.debug("[DiagnosticOrder] SUBMIT - request received. id={}", id);
 
-        DiagnosticOrder existing = diagnosticOrderRepository.findById(id)
+        DiagnosticOrder order = diagnosticOrderRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
                         "diagnostic_orders",
                         "DiagnosticOrder not found with id " + id
                 ));
 
-        if (Boolean.FALSE.equals(existing.getSaveDraft())) {
+        if (Boolean.FALSE.equals(order.getSaveDraft())) {
             throw new BadRequestAlertException(
                     "already_submitted",
                     "diagnostic_orders",
@@ -461,9 +478,9 @@ public class DiagnosticOrderController {
 
         String username = currentUsername();
 
-        DiagnosticOrder saved = diagnosticOrderService.submit(existing, username);
-
-        LOG.debug("[DiagnosticOrder] SUBMIT - submitted successfully. id={} submittedBy={}", saved.getId(), username);
-        return ResponseEntity.ok(DiagnosticOrderResponseVM.ofEntity(saved));
+        DiagnosticOrder submittedOrder = diagnosticOrderService.submit(order, username);
+        
+        LOG.debug("[DiagnosticOrder] SUBMIT - submitted successfully. id={}", submittedOrder.getId());
+        return ResponseEntity.ok(DiagnosticOrderResponseVM.ofEntity(submittedOrder));
     }
 }
