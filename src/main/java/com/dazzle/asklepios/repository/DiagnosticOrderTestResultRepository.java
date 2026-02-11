@@ -18,16 +18,25 @@ import java.util.List;
 public interface DiagnosticOrderTestResultRepository extends JpaRepository<DiagnosticOrderTestResult, Long>,
         JpaSpecificationExecutor<DiagnosticOrderTestResult> {
 
+
     /**
      * Returns processing statuses of results for a given test, excluding CANCELLED statuses.
      *
      * @param orderTestId diagnostic order test id
-
+     * @return list of processing statuses (excluding CANCELLED)
      */
+    @Query("""
+                select r.processingStatus
+                  from DiagnosticOrderTestResult r
+                 where r.orderTestId = ?1
+                   and (r.processingStatus is null
+                        or r.processingStatus <> com.dazzle.asklepios.domain.enumeration.DiagnosticStatus.CANCELLED)
+            """)
+    List<DiagnosticStatus> findProcessingStatusesByOrderTestId(Long orderTestId);
 
-    List<DiagnosticStatus> findProcessingStatusByOrderTestIdAndProcessingStatusNot( Long orderTestId, DiagnosticStatus status );
-
-
-    List<Long> findDistinctProfileTestIdByOrderTestId(Long orderTestId);
-
-}
+    @Query("""
+    select distinct r.profileTestId
+      from DiagnosticOrderTestResult r
+     where r.orderTestId = ?1
+""")
+    List<Long> findDistinctProfileTestIdsByOrderTestId(Long orderTestId);}
