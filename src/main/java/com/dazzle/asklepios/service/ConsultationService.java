@@ -161,7 +161,8 @@ public class ConsultationService {
             Pageable pageable
     ) {
         LOG.debug("[FIND_NOT_CANCELLED] encounterId={} pageable={}", encounterId, pageable);
-        Page<Consultation> result = consultationRepository.findByEncounterIdAndStatusNot(
+        Page<Consultation> result =
+                consultationRepository.findByEncounterIdAndStatusNotOrderByCreatedDateDesc(
                 encounterId,
                 ConsultationStatus.CANCELLED,
                 pageable
@@ -176,7 +177,8 @@ public class ConsultationService {
             Pageable pageable
     ) {
         LOG.debug("[FIND_BY_ENCOUNTER] encounterId={} pageable={}", encounterId, pageable);
-        Page<Consultation> result = consultationRepository.findByEncounterId(encounterId, pageable);
+        Page<Consultation> result =
+                consultationRepository.findByEncounterIdOrderByCreatedDateDesc(encounterId, pageable);
         LOG.debug("[FIND_BY_ENCOUNTER] Found {} consultations", result.getTotalElements());
         return result;
     }
@@ -226,7 +228,8 @@ public class ConsultationService {
             Pageable pageable
     ) {
         LOG.debug("[FIND_NOT_CANCELLED] encounterId={} pageable={}", encounterId, pageable);
-        Page<Consultation> result = consultationRepository.findByEncounterIdAndStatusNot(
+        Page<Consultation> result =
+                consultationRepository.findByEncounterIdAndStatusNotOrderByCreatedDateDesc(
                 encounterId,
                 ConsultationStatus.CANCELLED,
                 pageable
@@ -244,7 +247,8 @@ public class ConsultationService {
     ) {
         LOG.debug("[FIND_DATE_RANGE] encounterId={} fromDate={} toDate={} pageable={}",
                 encounterId, fromDate, toDate, pageable);
-        Page<Consultation> result = consultationRepository.findByEncounterIdAndCreatedDateBetween(
+        Page<Consultation> result =
+                consultationRepository.findByEncounterIdAndCreatedDateBetweenOrderByCreatedDateDesc(
                 encounterId,
                 fromDate,
                 toDate,
@@ -263,7 +267,9 @@ public class ConsultationService {
     ) {
         LOG.debug("[FIND_DATE_RANGE_NOT_CANCELLED] encounterId={} fromDate={} toDate={} pageable={}",
                 encounterId, fromDate, toDate, pageable);
-        Page<Consultation> result = consultationRepository.findByEncounterIdAndCreatedDateBetweenAndStatusNot(
+        Page<Consultation> result =
+                consultationRepository
+                        .findByEncounterIdAndCreatedDateBetweenAndStatusNotOrderByCreatedDateDesc(
                 encounterId,
                 fromDate,
                 toDate,

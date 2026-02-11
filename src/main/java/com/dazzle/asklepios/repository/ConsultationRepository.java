@@ -15,58 +15,31 @@ import java.util.List;
 public interface ConsultationRepository
         extends JpaRepository<Consultation, Long> {
 
-    Page<Consultation> findByEncounterId(
+    Page<Consultation> findByEncounterIdOrderByCreatedDateDesc(
             Long encounterId,
             Pageable pageable
     );
 
-    Page<Consultation> findByEncounterIdAndStatusNot(
+    Page<Consultation> findByEncounterIdAndStatusNotOrderByCreatedDateDesc(
             Long encounterId,
             ConsultationStatus status,
             Pageable pageable
     );
 
-    Page<Consultation> findByEncounterIdAndCreatedDateBetween(
+    Page<Consultation> findByEncounterIdAndCreatedDateBetweenOrderByCreatedDateDesc(
             Long encounterId,
             Instant from,
             Instant to,
             Pageable pageable
     );
 
-    Page<Consultation> findByEncounterIdAndCreatedDateBetweenAndStatusNot(
+    Page<Consultation> findByEncounterIdAndCreatedDateBetweenAndStatusNotOrderByCreatedDateDesc(
             Long encounterId,
             Instant from,
             Instant to,
             ConsultationStatus status,
             Pageable pageable
     );
-
-    Page<Consultation> findByEncounterIdAndCreatedDateAfter(
-            Long encounterId,
-            Instant fromDate,
-            Pageable pageable
-    );
-
-    Page<Consultation> findByEncounterIdAndCreatedDateBefore(
-            Long encounterId,
-            Instant toDate,
-            Pageable pageable
-    );
-
-    Page<Consultation> findByEncounterIdAndCreatedDateAfterAndStatusNot(
-            Long encounterId,
-            Instant fromDate,
-            ConsultationStatus status,
-            Pageable pageable
-    );
-
-    Page<Consultation> findByEncounterIdAndCreatedDateBeforeAndStatusNot(
-            Long encounterId,
-            Instant toDate,
-            ConsultationStatus status,
-            Pageable pageable
-    );
-
 
     List<Consultation> findByEncounterIdAndDestinationType(
             Long encounterId,
@@ -75,9 +48,6 @@ public interface ConsultationRepository
 
 
 
-    // ======================================================
-// Practitioner (بدون Departments) + StatusNotIn
-// ======================================================
     Page<Consultation>
     findByCreatedDateBetweenAndFromFacilityIdAndPractitionerIdAndStatusNotIn(
             Instant fromDate,
@@ -88,10 +58,6 @@ public interface ConsultationRepository
             Pageable pageable
     );
 
-
-    // ======================================================
-// Practitioner (مع Departments) + StatusNotIn
-// ======================================================
     Page<Consultation>
     findByCreatedDateBetweenAndFromFacilityIdAndPractitionerIdAndFromDepartmentIdInAndStatusNotIn(
             Instant fromDate,
@@ -103,10 +69,6 @@ public interface ConsultationRepository
             Pageable pageable
     );
 
-
-    // ======================================================
-// ToDepartment (بدون Departments) + StatusNotIn
-// ======================================================
     Page<Consultation>
     findByCreatedDateBetweenAndFromFacilityIdAndToDepartmentIdAndStatusNotIn(
             Instant fromDate,
@@ -117,10 +79,6 @@ public interface ConsultationRepository
             Pageable pageable
     );
 
-
-    // ======================================================
-// ToDepartment (مع Departments) + StatusNotIn
-// ======================================================
     Page<Consultation>
     findByCreatedDateBetweenAndFromFacilityIdAndToDepartmentIdAndFromDepartmentIdInAndStatusNotIn(
             Instant fromDate,

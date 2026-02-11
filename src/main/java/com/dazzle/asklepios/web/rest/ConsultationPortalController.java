@@ -50,19 +50,10 @@ public class ConsultationPortalController {
     ) {
         this.consultationPortalService = consultationPortalService;
         this.consultationService = consultationService;
-        LOG.debug(
-                "ConsultationPortalController initialized consultationPortalService={} consultationService={}",
-                consultationPortalService,
-                consultationService
-        );
     }
 
-    /**
-     * Controller for: listPractitionerAndDepartmentConsultations
-     * GET /api/patient/consultation-portal/search
-     */
     @GetMapping("/consultation-portal/search")
-    public ResponseEntity<List<Consultation>> searchConsultations(
+    public ResponseEntity<List<Consultation>> listPractitionerAndDepartmentConsultations(
             @RequestParam Instant fromDate,
             @RequestParam Instant toDate,
             @RequestParam Long fromFacilityId,
@@ -77,7 +68,6 @@ public class ConsultationPortalController {
                 fromDate, toDate, fromFacilityId, practitionerId, toDepartmentId, fromDepartmentIds, pageable, showRejected
         );
 
-        // Validation
         if (fromDate == null || toDate == null) {
             throw new BadRequestAlertException(
                     "fromDate and toDate are required",
@@ -137,10 +127,6 @@ public class ConsultationPortalController {
         );
     }
 
-    /**
-     * Controller for: confirmConsultation
-     * PUT /api/patient/consultation/{id}/confirm
-     */
     @PutMapping("/consultation/{id}/confirm")
     public ResponseEntity<Consultation> confirmConsultation(
             @PathVariable Long id,
@@ -148,7 +134,6 @@ public class ConsultationPortalController {
     ) {
         LOG.debug("REST confirm Consultation payload id={} dto={}", id, dto);
 
-        // Validation
         if (id == null) {
             LOG.warn("REST confirm Consultation - id is missing");
             throw new BadRequestAlertException(
@@ -186,10 +171,6 @@ public class ConsultationPortalController {
         return ResponseEntity.ok(confirmed);
     }
 
-    /**
-     * Controller for: rejectConsultation
-     * PUT /api/patient/consultation/{id}/reject
-     */
     @PutMapping("/consultation/{id}/reject")
     public ResponseEntity<Consultation> rejectConsultation(
             @PathVariable Long id,
@@ -197,7 +178,6 @@ public class ConsultationPortalController {
     ) {
         LOG.debug("REST reject Consultation payload id={} dto={}", id, dto);
 
-        // Validation
         if (id == null) {
             LOG.warn("REST reject Consultation - id is missing");
             throw new BadRequestAlertException(
@@ -235,10 +215,6 @@ public class ConsultationPortalController {
         return ResponseEntity.ok(rejected);
     }
 
-    /**
-     * Controller for: submitConsultationResponse
-     * PUT /api/patient/consultation/{id}/response
-     */
     @PutMapping("/consultation/{id}/response")
     public ResponseEntity<Consultation> submitConsultationResponse(
             @PathVariable Long id,
@@ -246,7 +222,6 @@ public class ConsultationPortalController {
     ) {
         LOG.debug("REST submit Consultation response payload id={} dto={}", id, dto);
 
-        // Validation
         if (id == null) {
             LOG.warn("REST submit Consultation response - id is missing");
             throw new BadRequestAlertException(
@@ -284,17 +259,12 @@ public class ConsultationPortalController {
         return ResponseEntity.ok(updated);
     }
 
-    /**
-     * Controller for: submitConsultations
-     * PUT /api/patient/consultation/submit
-     */
     @PutMapping("/consultation/submit")
     public ResponseEntity<ConsultationSubmitResultDTO> submitConsultations(
             @Valid @RequestBody ConsultationSubmitRequestDTO dto
     ) {
         LOG.debug("REST submit consultations payload={}", dto);
 
-        // Validation
         if (dto == null) {
             LOG.warn("REST submit consultations - request body is missing");
             throw new BadRequestAlertException(
