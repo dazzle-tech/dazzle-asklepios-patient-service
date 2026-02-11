@@ -250,6 +250,15 @@ public class DiagnosticOrderTestResultService {
         if (best.resultLov() != null && !best.resultLov().isBlank())
             return best.resultLov();
 
+        // ✅ add this block for LOV keys
+        if (best.lovKeys() != null && !best.lovKeys().isEmpty()) {
+            // Option A: show keys as-is
+            return String.join(", ", best.lovKeys());
+
+            // Option B (better): prefix to make it clear it's allowed list
+            // return "Allowed: " + String.join(", ", best.lovKeys());
+        }
+
         Double from = best.rangeFrom();
         Double to = best.rangeTo();
 
