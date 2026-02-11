@@ -11,17 +11,17 @@ public record PatientProcedureUpdateDTO(
 
         @NotNull Long id,
 
-        Long procedureId,
+        @NotNull Long procedureId,
         Long indicationId,
 
-        String procedureLevel,
-        Priority priority,
+        @NotNull String procedureLevel,
+        @NotNull Priority priority,
 
-        String bodyPart,
+        @NotNull String bodyPart,
         String side,
 
-        Long toFacilityId,
-        Long toDepartmentId,
+        @NotNull Long toFacilityId,
+        @NotNull Long toDepartmentId,
 
         @NotNull
         @FutureOrPresent

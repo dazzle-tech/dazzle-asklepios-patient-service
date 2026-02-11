@@ -20,7 +20,7 @@ public record PatientProcedureCreateDTO(
         @NotNull(message = "facility.required") Long toFacilityId,
 
         @NotNull Long fromDepartmentId,
-        Long toDepartmentId,
+        @NotNull Long toDepartmentId,
 
         Long indicationId,
 

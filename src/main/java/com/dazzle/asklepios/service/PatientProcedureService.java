@@ -29,56 +29,56 @@ public class PatientProcedureService {
 
     private static final Logger LOG = LoggerFactory.getLogger(PatientProcedureService.class);
 
-    private final PatientProcedureRepository repository;
+    private final PatientProcedureRepository procedureRepository;
     private final PatientRepository patientRepository;
 
-    public PatientProcedure create(PatientProcedureCreateDTO dto) {
-        LOG.info("[CREATE] PatientProcedure payload={}", dto);
+    public PatientProcedure create(PatientProcedureCreateDTO procedureCreateDTO) {
+        LOG.info("[CREATE] PatientProcedure payload={}", procedureCreateDTO);
 
-        Patient patient = patientRepository.findById(dto.patientId())
+        Patient patient = patientRepository.findById(procedureCreateDTO.patientId())
                 .orElseThrow(() -> {
-                    LOG.warn("[CREATE] PatientProcedure rejected: patient not found patientId={}", dto.patientId());
+                    LOG.warn("[CREATE] PatientProcedure rejected: patient not found patientId={}", procedureCreateDTO.patientId());
                     return new NotFoundAlertException(
-                            "Patient not found with id " + dto.patientId(),
+                            "Patient not found with id " + procedureCreateDTO.patientId(),
                             "procedure",
                             "patient.notfound"
                     );
                 });
 
-        PatientProcedure entity = PatientProcedure.builder()
-                .procedureId(dto.procedureId())
+        PatientProcedure procedureEntity = PatientProcedure.builder()
+                .procedureId(procedureCreateDTO.procedureId())
                 .patient(patient)
-                .encounterId(dto.encounterId())
-                .fromFacilityId(dto.fromFacilityId())
-                .toFacilityId(dto.toFacilityId())
-                .fromDepartmentId(dto.fromDepartmentId())
-                .toDepartmentId(dto.toDepartmentId())
-                .indicationId(dto.indicationId())
-                .procedureLevel(dto.procedureLevel())
-                .priority(dto.priority())
-                .bodyPart(dto.bodyPart())
-                .side(dto.side())
-                .scheduledDateTime(dto.scheduledDateTime())
-                .notes(dto.notes())
-                .extraDocumentation(dto.extraDocumentation())
+                .encounterId(procedureCreateDTO.encounterId())
+                .fromFacilityId(procedureCreateDTO.fromFacilityId())
+                .toFacilityId(procedureCreateDTO.toFacilityId())
+                .fromDepartmentId(procedureCreateDTO.fromDepartmentId())
+                .toDepartmentId(procedureCreateDTO.toDepartmentId())
+                .indicationId(procedureCreateDTO.indicationId())
+                .procedureLevel(procedureCreateDTO.procedureLevel())
+                .priority(procedureCreateDTO.priority())
+                .bodyPart(procedureCreateDTO.bodyPart())
+                .side(procedureCreateDTO.side())
+                .scheduledDateTime(procedureCreateDTO.scheduledDateTime())
+                .notes(procedureCreateDTO.notes())
+                .extraDocumentation(procedureCreateDTO.extraDocumentation())
                 .status(ProcStatus.REQUESTED)
                 .build();
 
         try {
-            PatientProcedure saved = repository.saveAndFlush(entity);
+            PatientProcedure saved = procedureRepository.saveAndFlush(procedureEntity);
             LOG.info("[CREATE] PatientProcedure success id={}", saved.getId());
             return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
-            LOG.warn("[CREATE] PatientProcedure failed (constraint) payload={}", dto, ex);
+            LOG.warn("[CREATE] PatientProcedure failed (constraint) payload={}", procedureCreateDTO, ex);
             throw handleConstraintViolation(ex);
         }
     }
 
-    public PatientProcedure update(Long id, PatientProcedureUpdateDTO dto) {
-        LOG.info("[UPDATE] PatientProcedure id={} payload={}", id, dto);
+    public PatientProcedure update(Long id, PatientProcedureUpdateDTO procedureUpdateDTO) {
+        LOG.info("[UPDATE] PatientProcedure id={} payload={}", id, procedureUpdateDTO);
 
-        PatientProcedure entity = repository.findById(id)
+        PatientProcedure procedureEntity = procedureRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Procedure not found with id " + id,
                         "procedure",
@@ -86,21 +86,21 @@ public class PatientProcedureService {
                 ));
 
 
-        entity.setSide(dto.side());
-        entity.setIndicationId(dto.indicationId());
-        entity.setToFacilityId(dto.toFacilityId());
-        entity.setToDepartmentId(dto.toDepartmentId());
-        entity.setScheduledDateTime(dto.scheduledDateTime());
-        entity.setNotes(dto.notes());
-        entity.setExtraDocumentation(dto.extraDocumentation());
+        procedureEntity.setSide(procedureUpdateDTO.side());
+        procedureEntity.setIndicationId(procedureUpdateDTO.indicationId());
+        procedureEntity.setToFacilityId(procedureUpdateDTO.toFacilityId());
+        procedureEntity.setToDepartmentId(procedureUpdateDTO.toDepartmentId());
+        procedureEntity.setScheduledDateTime(procedureUpdateDTO.scheduledDateTime());
+        procedureEntity.setNotes(procedureUpdateDTO.notes());
+        procedureEntity.setExtraDocumentation(procedureUpdateDTO.extraDocumentation());
 
         try {
-            PatientProcedure saved = repository.saveAndFlush(entity);
+            PatientProcedure saved = procedureRepository.saveAndFlush(procedureEntity);
             LOG.info("[UPDATE] PatientProcedure success id={}", saved.getId());
             return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
-            LOG.warn("[UPDATE] PatientProcedure failed (constraint) id={} payload={}", id, dto, ex);
+            LOG.warn("[UPDATE] PatientProcedure failed (constraint) id={} payload={}", id, procedureUpdateDTO, ex);
             throw handleConstraintViolation(ex);
         }
     }
@@ -108,20 +108,20 @@ public class PatientProcedureService {
     public PatientProcedure cancel(Long id, String reason, Long cancelledBy) {
         LOG.info("[CANCEL] PatientProcedure id={} cancelledBy={} reason={}", id, cancelledBy, reason);
 
-        PatientProcedure entity = repository.findById(id)
+        PatientProcedure procedureEntity = procedureRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Procedure not found with id " + id,
                         "procedure",
                         "notfound"
                 ));
 
-        entity.setStatus(ProcStatus.CANCELLED);
-        entity.setCancelledDate(Instant.now());
-        entity.setCancelledBy(cancelledBy);
-        entity.setCancellationReason(reason);
+        procedureEntity.setStatus(ProcStatus.CANCELLED);
+        procedureEntity.setCancelledDate(Instant.now());
+        procedureEntity.setCancelledBy(cancelledBy);
+        procedureEntity.setCancellationReason(reason);
 
         try {
-            PatientProcedure saved = repository.saveAndFlush(entity);
+            PatientProcedure saved = procedureRepository.saveAndFlush(procedureEntity);
             LOG.info("[CANCEL] PatientProcedure success id={}", saved.getId());
             return saved;
 
@@ -134,18 +134,26 @@ public class PatientProcedureService {
     @Transactional(readOnly = true)
     public Page<PatientProcedure> findByEncounter(Long encounterId, boolean includeCancelled, Pageable pageable) {
         return includeCancelled
-                ? repository.findByEncounterId(encounterId, pageable)
-                : repository.findByEncounterIdAndStatusNot(encounterId, ProcStatus.CANCELLED, pageable);
+                ? procedureRepository.findByEncounterId(encounterId, pageable)
+                : procedureRepository.findByEncounterIdAndStatusNot(encounterId, ProcStatus.CANCELLED, pageable);
     }
 
     @Transactional(readOnly = true)
     public PatientProcedure findById(Long id) {
-        return repository.findById(id)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Procedure not found",
-                        "procedure",
-                        "notfound"
-                ));
+        LOG.info("[GET] PatientProcedure id={}", id);
+
+        PatientProcedure procedure = procedureRepository.findById(id)
+                .orElseThrow(() -> {
+                    LOG.warn("[GET] PatientProcedure not found id={}", id);
+                    return new NotFoundAlertException(
+                            "Procedure not found",
+                            "procedure",
+                            "notfound"
+                    );
+                });
+
+        LOG.info("[GET] PatientProcedure found id={}", procedure.getId());
+        return procedure;
     }
 
     private RuntimeException handleConstraintViolation(Exception exception) {

@@ -9,6 +9,8 @@ import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedureUpdateD
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -29,8 +31,10 @@ import java.net.URI;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/patient/procedure")
+@RequestMapping("/api/patient")
 public class PatientProcedureController {
+
+    private static final Logger LOG = LoggerFactory.getLogger(PatientProcedureController.class);
 
     private final PatientProcedureService service;
 
@@ -38,22 +42,25 @@ public class PatientProcedureController {
         this.service = service;
     }
 
-    @PostMapping
+    @PostMapping("/procedure")
     public ResponseEntity<PatientProcedure> create(
-            @Valid @RequestBody PatientProcedureCreateDTO dto
+            @Valid @RequestBody PatientProcedureCreateDTO procedureCreateDTO
     ) {
-        PatientProcedure created = service.create(dto);
+        LOG.info("REST CREATE PatientProcedure payload={}", procedureCreateDTO);
+        PatientProcedure created = service.create(procedureCreateDTO);
+        LOG.info("REST CREATE PatientProcedure success id={}", created.getId());
         return ResponseEntity
                 .created(URI.create("/api/patient/procedure/" + created.getId()))
                 .body(created);
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/procedure/{id}")
     public ResponseEntity<PatientProcedure> update(
             @PathVariable Long id,
-            @Valid @RequestBody PatientProcedureUpdateDTO dto
+            @Valid @RequestBody PatientProcedureUpdateDTO procedureUpdateDTO
     ) {
-        if (!id.equals(dto.id())) {
+        LOG.info("REST UPDATE PatientProcedure id={} payload={}", id, procedureUpdateDTO);
+        if (!id.equals(procedureUpdateDTO.id())) {
             throw new BadRequestAlertException(
                     "Path id does not match payload id",
                     "procedure",
@@ -71,17 +78,17 @@ public class PatientProcedureController {
             );
         }
 
-        if (dto.procedureId() == null &&
-                dto.procedureLevel() == null &&
-                dto.priority() == null &&
-                dto.bodyPart() == null &&
-                dto.side() == null &&
-                dto.indicationId() == null &&
-                dto.toFacilityId() == null &&
-                dto.toDepartmentId() == null &&
-                dto.scheduledDateTime() == null &&
-                dto.notes() == null &&
-                dto.extraDocumentation() == null
+        if (procedureUpdateDTO.procedureId() == null &&
+                procedureUpdateDTO.procedureLevel() == null &&
+                procedureUpdateDTO.priority() == null &&
+                procedureUpdateDTO.bodyPart() == null &&
+                procedureUpdateDTO.side() == null &&
+                procedureUpdateDTO.indicationId() == null &&
+                procedureUpdateDTO.toFacilityId() == null &&
+                procedureUpdateDTO.toDepartmentId() == null &&
+                procedureUpdateDTO.scheduledDateTime() == null &&
+                procedureUpdateDTO.notes() == null &&
+                procedureUpdateDTO.extraDocumentation() == null
         ) {
             throw new BadRequestAlertException(
                     "No updatable fields provided",
@@ -90,27 +97,34 @@ public class PatientProcedureController {
             );
         }
 
-        return ResponseEntity.ok(service.update(id, dto));
+        PatientProcedure updated = service.update(id, procedureUpdateDTO);
+        LOG.info("REST UPDATE PatientProcedure success id={}", updated.getId());
+        return ResponseEntity.ok(updated);
     }
 
 
 
-    @PutMapping("/{id}/cancel")
+    @PutMapping("/procedure/{id}/cancel")
     public ResponseEntity<PatientProcedure> cancel(
             @PathVariable Long id,
-            @Valid @RequestBody PatientProcedureCancelDTO dto
+            @Valid @RequestBody PatientProcedureCancelDTO procedureCancelDTO
     ) {
-        return ResponseEntity.ok(
-                service.cancel(id, dto.cancellationReason(), dto.cancelledBy())
-        );
+        LOG.info("REST CANCEL PatientProcedure id={} cancelledBy={} reason={}",
+                id, procedureCancelDTO.cancelledBy(), procedureCancelDTO.cancellationReason());
+        PatientProcedure cancelled =
+                service.cancel(id, procedureCancelDTO.cancellationReason(), procedureCancelDTO.cancelledBy());
+        LOG.info("REST CANCEL PatientProcedure success id={}", cancelled.getId());
+        return ResponseEntity.ok(cancelled);
     }
 
-    @GetMapping("/by-encounter/{encounterId}")
+    @GetMapping("/procedure/by-encounter/{encounterId}")
     public ResponseEntity<List<PatientProcedure>> findByEncounter(
             @PathVariable Long encounterId,
             @RequestParam(defaultValue = "false") boolean includeCancelled,
             @ParameterObject Pageable pageable
     ) {
+        LOG.info("REST FIND PatientProcedure by encounterId={} includeCancelled={} pageable={}",
+                encounterId, includeCancelled, pageable);
         Page<PatientProcedure> page =
                 service.findByEncounter(encounterId, includeCancelled, pageable);
 
