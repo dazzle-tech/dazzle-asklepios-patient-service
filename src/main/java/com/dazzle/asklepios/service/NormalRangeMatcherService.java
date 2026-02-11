@@ -186,9 +186,9 @@ public class NormalRangeMatcherService {
         };
     }
 
-    private String toGenderString(Gender g) {
-        if (g == null) return null;
-        return g.name().toLowerCase(Locale.ROOT);
+    private String toGenderString(Gender gender) {
+        if (gender == null) return null;
+        return gender.name().toLowerCase(Locale.ROOT);
     }
 
     private LocalDate toLocalDate(Date date) {

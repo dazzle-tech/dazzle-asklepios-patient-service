@@ -1,11 +1,9 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.client.SetupServiceClient;
-import com.dazzle.asklepios.client.dto.NormalRangeMatchDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
-import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.DiagnosticOrderService;
@@ -69,6 +67,7 @@ public class DiagnosticOrderTestResultController {
     private final SetupServiceClient setupServiceClient;
     private final NormalRangeMatcherService normalRangeMatcherService;
     private final DiagnosticOrderService diagnosticOrderService;
+
     /**
      * Creates a new controller instance.
      *
@@ -240,28 +239,28 @@ public class DiagnosticOrderTestResultController {
      * </ul>
      * </p>
      *
-     * @param orderIdFilter optional diagnostic order id (applied via orderTest subquery)
-     * @param orderTestIdFilter optional diagnostic order test id
-     * @param profileTestIdFilter optional profile test id
-     * @param markerFilter optional result marker (exact match)
-     * @param excludeMarkerFilter optional marker to exclude
+     * @param orderIdFilter          optional diagnostic order id (applied via orderTest subquery)
+     * @param orderTestIdFilter      optional diagnostic order test id
+     * @param profileTestIdFilter    optional profile test id
+     * @param markerFilter           optional result marker (exact match)
+     * @param excludeMarkerFilter    optional marker to exclude
      * @param processingStatusFilter optional processing status (exact match)
-     * @param approvedByFilter optional approvedBy (exact match)
-     * @param rejectedByFilter optional rejectedBy (exact match)
-     * @param reviewByFilter optional reviewBy (exact match)
+     * @param approvedByFilter       optional approvedBy (exact match)
+     * @param rejectedByFilter       optional rejectedBy (exact match)
+     * @param reviewByFilter         optional reviewBy (exact match)
      * @param approvedDateFromFilter optional lower bound (inclusive) for approvedDate
-     * @param approvedDateToFilter optional upper bound (inclusive) for approvedDate
+     * @param approvedDateToFilter   optional upper bound (inclusive) for approvedDate
      * @param rejectedDateFromFilter optional lower bound (inclusive) for rejectedDate
-     * @param rejectedDateToFilter optional upper bound (inclusive) for rejectedDate
-     * @param reviewDateFromFilter optional lower bound (inclusive) for reviewDate
-     * @param reviewDateToFilter optional upper bound (inclusive) for reviewDate
-     * @param pageable pagination and sorting
+     * @param rejectedDateToFilter   optional upper bound (inclusive) for rejectedDate
+     * @param reviewDateFromFilter   optional lower bound (inclusive) for reviewDate
+     * @param reviewDateToFilter     optional upper bound (inclusive) for reviewDate
+     * @param pageable               pagination and sorting
      * @return list of results mapped to response VMs with pagination headers (HTTP 200)
      */
 
     @GetMapping("/diagnostic-order-tests-results")
     public ResponseEntity<List<DiagnosticOrderTestResultResponseVM>> filter(
-            @RequestParam(name = "orderId", required = false) Long orderIdFilter,
+            @RequestParam(name = "orderIdIn", required = false) List<Long> orderIdInFilter,
             @RequestParam(name = "orderTestId", required = false) Long orderTestIdFilter,
             @RequestParam(name = "profileTestId", required = false) Long profileTestIdFilter,
 
@@ -288,22 +287,27 @@ public class DiagnosticOrderTestResultController {
             List<Predicate> predicates = new ArrayList<>();
 
 
-            if (orderIdFilter != null) {
+            if (orderIdInFilter != null && !orderIdInFilter.isEmpty()) {
                 var subQuery = criteriaQuery.subquery(Long.class);
                 var testRoot = subQuery.from(DiagnosticOrderTest.class);
 
                 subQuery.select(testRoot.get("id"))
-                        .where(criteriaBuilder.equal(testRoot.get("orderId"), orderIdFilter));
+                        .where(testRoot.get("orderId").in(orderIdInFilter));
 
                 predicates.add(orderTestRoot.get("orderTestId").in(subQuery));
             }
 
-            if (orderTestIdFilter != null) predicates.add(criteriaBuilder.equal(orderTestRoot.get("orderTestId"), orderTestIdFilter));
-            if (profileTestIdFilter != null) predicates.add(criteriaBuilder.equal(orderTestRoot.get("profileTestId"), profileTestIdFilter));
+
+            if (orderTestIdFilter != null)
+                predicates.add(criteriaBuilder.equal(orderTestRoot.get("orderTestId"), orderTestIdFilter));
+            if (profileTestIdFilter != null)
+                predicates.add(criteriaBuilder.equal(orderTestRoot.get("profileTestId"), profileTestIdFilter));
 
             if (markerFilter != null) predicates.add(criteriaBuilder.equal(orderTestRoot.get("marker"), markerFilter));
-            if (excludeMarkerFilter != null) predicates.add(criteriaBuilder.notEqual(orderTestRoot.get("marker"), excludeMarkerFilter));
-            if (processingStatusFilter != null) predicates.add(criteriaBuilder.equal(orderTestRoot.get("processingStatus"), processingStatusFilter));
+            if (excludeMarkerFilter != null)
+                predicates.add(criteriaBuilder.notEqual(orderTestRoot.get("marker"), excludeMarkerFilter));
+            if (processingStatusFilter != null)
+                predicates.add(criteriaBuilder.equal(orderTestRoot.get("processingStatus"), processingStatusFilter));
 
             if (approvedByFilter != null && !approvedByFilter.isBlank())
                 predicates.add(criteriaBuilder.equal(orderTestRoot.get("approvedBy"), approvedByFilter));
