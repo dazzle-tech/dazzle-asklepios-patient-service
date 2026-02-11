@@ -334,7 +334,8 @@ public class DiagnosticOrderTestController {
             @ParameterObject Pageable pageable
     ) {
         LOG.debug("[DiagnosticOrderTest] FILTER - request received.  orderId={} testId={} status={} statusIn={} statusNotIn={} excludeStatus={} receivedDepartmentId={} processingStatus={} orderType={} acceptedBy={} rejectedBy={} category={} testName={} submitDateFrom={} submitDateTo={} pageable={}",
-               orderId, testId, status, includedStatuses, excludedStatuses, excludedStatus,
+                orderId, testId, status, includedStatuses, excludedStatuses, excludedStatus,
+
                 receivedDepartmentId, processingStatus, orderType, acceptedBy, rejectedBy, category, testName,
                 submitDateFrom, submitDateTo, pageable);
         if (status != null && includedStatuses != null && !includedStatuses.isEmpty()) {
