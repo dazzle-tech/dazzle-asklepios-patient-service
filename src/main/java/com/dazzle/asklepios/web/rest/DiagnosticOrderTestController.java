@@ -336,7 +336,8 @@ public class DiagnosticOrderTestController {
             @ParameterObject Pageable pageable
     ) {
         LOG.debug("[DiagnosticOrderTest] FILTER - request received.  orderId={} testId={} status={} statusIn={} statusNotIn={} excludeStatus={} receivedDepartmentId={} processingStatus={} orderType={} acceptedBy={} rejectedBy={} category={} testName={} submitDateFrom={} submitDateTo={} pageable={}",
-               orderId, testId, status, includedStatuses, excludedStatuses, excludedStatus,
+                orderId, testId, status, includedStatuses, excludedStatuses, excludedStatus,
+
                 receivedDepartmentId, processingStatus, orderType, acceptedBy, rejectedBy, category, testName,
                 submitDateFrom, submitDateTo, pageable);
         if (status != null && includedStatuses != null && !includedStatuses.isEmpty()) {
@@ -566,6 +567,7 @@ public class DiagnosticOrderTestController {
         return ResponseEntity.ok(DiagnosticOrderTestResponseVM.ofEntity(updatedTest));
     }
 
+
     /**
      * Bulk action: accept multiple tests.
      * <p>
@@ -623,3 +625,5 @@ public class DiagnosticOrderTestController {
 
 
 }
+
+
