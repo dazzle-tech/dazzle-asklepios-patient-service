@@ -2,14 +2,13 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.client.SetupServiceClient;
 import com.dazzle.asklepios.client.dto.NormalRangeMatchDTO;
+import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
-import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
-import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
-import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.DiagnosticOrderService;
 import com.dazzle.asklepios.service.DiagnosticOrderTestResultService;
 import com.dazzle.asklepios.service.DiagnosticOrderTestResultStatusService;
 import com.dazzle.asklepios.service.NormalRangeMatcherService;
@@ -45,8 +44,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.stream.Collectors;
 
 /**
  * REST controller for managing {@link DiagnosticOrderTestResult} resources.
@@ -67,32 +64,26 @@ public class DiagnosticOrderTestResultController {
 
     private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderTestResultController.class);
 
-    private final DiagnosticOrderTestResultService service;
-    private final DiagnosticOrderTestResultStatusService statusService;
-    private final DiagnosticOrderTestResultRepository repository;
+    private final DiagnosticOrderTestResultService diagnosticOrderTestResultService;
+    private final DiagnosticOrderTestResultStatusService diagnosticOrderTestResultStatusService;
     private final SetupServiceClient setupServiceClient;
     private final NormalRangeMatcherService normalRangeMatcherService;
-    private final DiagnosticOrderRepository diagnosticOrderRepository;
-    private final PatientRepository patientRepository;
+    private final DiagnosticOrderService diagnosticOrderService;
     /**
      * Creates a new controller instance.
      *
-     * @param service service for create/update/delete operations
-     * @param statusService service for lifecycle transitions (review/approve/reject) and syncing parent statuses
-     * @param repository repository for fetching existing results and filter queries
+     * @param diagnosticOrderTestResultService       service for create/update/filter operations
+     * @param diagnosticOrderTestResultStatusService service for lifecycle transitions (review/approve/reject)
      */
     public DiagnosticOrderTestResultController(
-            DiagnosticOrderTestResultService service,
-            DiagnosticOrderTestResultStatusService statusService,
-            DiagnosticOrderTestResultRepository repository, SetupServiceClient setupServiceClient, NormalRangeMatcherService normalRangeMatcherService, DiagnosticOrderRepository diagnosticOrderRepository, PatientRepository patientRepository
+            DiagnosticOrderTestResultService diagnosticOrderTestResultService,
+            DiagnosticOrderTestResultStatusService diagnosticOrderTestResultStatusService, SetupServiceClient setupServiceClient, NormalRangeMatcherService normalRangeMatcherService, DiagnosticOrderService diagnosticOrderService
     ) {
-        this.service = service;
-        this.statusService = statusService;
-        this.repository = repository;
+        this.diagnosticOrderTestResultService = diagnosticOrderTestResultService;
+        this.diagnosticOrderTestResultStatusService = diagnosticOrderTestResultStatusService;
         this.setupServiceClient = setupServiceClient;
         this.normalRangeMatcherService = normalRangeMatcherService;
-        this.diagnosticOrderRepository = diagnosticOrderRepository;
-        this.patientRepository = patientRepository;
+        this.diagnosticOrderService = diagnosticOrderService;
     }
 
     /**
@@ -117,23 +108,23 @@ public class DiagnosticOrderTestResultController {
      * it sets the result processing status to {@link DiagnosticStatus#RESULT_READY} and triggers
      * recomputation of the parent test processing status from all its results.</p>
      *
-     * @param dto payload for creating a test result
+     * @param requestDto payload for creating a test result
      * @return created result mapped to response VM (HTTP 201)
      */
     @PostMapping("/diagnostic-order-tests-results")
     public ResponseEntity<DiagnosticOrderTestResultResponseVM> create(
-            @Valid @RequestBody DiagnosticOrderTestResultCreateDTO dto
+            @Valid @RequestBody DiagnosticOrderTestResultCreateDTO requestDto
     ) {
-        LOG.debug("[DiagnosticOrderTestResult] CREATE - request received. payload={}", dto);
+        LOG.debug("[DiagnosticOrderTestResult] CREATE - request received. payload={}", requestDto);
 
-        DiagnosticOrderTestResult saved = service.create(dto);
+        DiagnosticOrderTestResult createdResult = diagnosticOrderTestResultService.create(requestDto);
 
         LOG.debug("[DiagnosticOrderTestResult] CREATE - created successfully. id={} orderTestId={}",
-                saved.getId(), saved.getOrderTestId());
+                createdResult.getId(), createdResult.getOrderTestId());
 
         return ResponseEntity
-                .created(URI.create("/api/patient/diagnostic-order-tests-results/" + saved.getId()))
-                .body(DiagnosticOrderTestResultResponseVM.ofEntity(saved));
+                .created(URI.create("/api/patient/diagnostic-order-tests-results/" + createdResult.getId()))
+                .body(DiagnosticOrderTestResultResponseVM.ofEntity(createdResult));
     }
 
     /**
@@ -142,41 +133,22 @@ public class DiagnosticOrderTestResultController {
      * <p>This endpoint updates result data fields only (value/marker/normal range, and identifiers).
      * It does not perform approve/reject transitions; those are handled by the status endpoints.</p>
      *
-     * @param id result id (path variable)
-     * @param dto payload for update
+     * @param resultId   result id (path variable)
+     * @param requestDto payload for update
      * @return updated result mapped to response VM (HTTP 200)
      * @throws BadRequestAlertException if the result does not exist
      */
     @PutMapping("/diagnostic-order-tests-results/{id}")
     public ResponseEntity<DiagnosticOrderTestResultResponseVM> update(
-            @PathVariable Long id,
-            @Valid @RequestBody DiagnosticOrderTestResultUpdateDTO dto
+            @PathVariable("id") Long resultId,
+            @Valid @RequestBody DiagnosticOrderTestResultUpdateDTO requestDto
     ) {
-        LOG.debug("[DiagnosticOrderTestResult] UPDATE - request received. id={} payload={}", id, dto);
+        LOG.debug("[DiagnosticOrderTestResult] UPDATE - request received. id={} payload={}", resultId, requestDto);
 
-        DiagnosticOrderTestResult existing = repository.findById(id)
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
-                        "diagnostic_order_tests_result",
-                        "DiagnosticOrderTestResult not found with id " + id
-                ));
+        DiagnosticOrderTestResult updatedResult = diagnosticOrderTestResultService.updateById(resultId, requestDto);
 
-        // Ensure DTO id matches the path id
-        DiagnosticOrderTestResultUpdateDTO fixed = new DiagnosticOrderTestResultUpdateDTO(
-                id,
-                dto.orderId(),
-                dto.orderTestId(),
-                dto.profileTestId(),
-                dto.resultValueNumber(),
-                dto.resultValueText(),
-                dto.marker(),
-                dto.normalRangeValue()
-        );
-
-        DiagnosticOrderTestResult updated = service.update(existing, fixed);
-
-        LOG.debug("[DiagnosticOrderTestResult] UPDATE - updated successfully. id={}", updated.getId());
-        return ResponseEntity.ok(DiagnosticOrderTestResultResponseVM.ofEntity(updated));
+        LOG.debug("[DiagnosticOrderTestResult] UPDATE - updated successfully. id={}", updatedResult.getId());
+        return ResponseEntity.ok(DiagnosticOrderTestResultResponseVM.ofEntity(updatedResult));
     }
 
     /**
@@ -185,72 +157,41 @@ public class DiagnosticOrderTestResultController {
      * <p>If the result has no {@code reviewDate}, it sets {@code reviewBy} and {@code reviewDate}.
      * If it is already reviewed, it clears {@code reviewBy} and {@code reviewDate}.</p>
      *
-     * @param id result id
+     * @param resultId result id
      * @return updated result mapped to response VM (HTTP 200)
      */
     @PostMapping("/diagnostic-order-tests-results/{id}/toggle-review")
-    public ResponseEntity<DiagnosticOrderTestResultResponseVM> toggleReview(@PathVariable Long id) {
-        LOG.debug("[DiagnosticOrderTestResult] TOGGLE_REVIEW - request received. id={}", id);
+    public ResponseEntity<DiagnosticOrderTestResultResponseVM> toggleReview(@PathVariable("id") Long resultId) {
+        LOG.debug("[DiagnosticOrderTestResult] TOGGLE_REVIEW - request received. id={}", resultId);
 
         String username = currentUsername();
-        DiagnosticOrderTestResult saved = statusService.toggleReview(id, username);
+        DiagnosticOrderTestResult updatedResult = diagnosticOrderTestResultStatusService.toggleReview(resultId, username);
 
         LOG.debug("[DiagnosticOrderTestResult] TOGGLE_REVIEW - done. id={} reviewed={}",
-                saved.getId(), saved.getReviewDate() != null);
+                updatedResult.getId(), updatedResult.getReviewDate() != null);
 
-        return ResponseEntity.ok(DiagnosticOrderTestResultResponseVM.ofEntity(saved));
+        return ResponseEntity.ok(DiagnosticOrderTestResultResponseVM.ofEntity(updatedResult));
     }
 
     /**
      * Approves a result.
      *
-     * <p>Rules are enforced by {@link DiagnosticOrderTestResultStatusService#approve(Long, String,TestResultMarker,String)}.
+     * <p>Rules are enforced by {@link DiagnosticOrderTestResultStatusService#approve(Long, String, TestResultMarker, String)}.
      * On success, it also updates the parent test status and recomputes aggregated order statuses.</p>
      *
-     * @param id result id
+     * @param resultId result id
      * @return approved result mapped to response VM (HTTP 200)
      */
     @PostMapping("/diagnostic-order-tests-results/{id}/approve")
-    public ResponseEntity<DiagnosticOrderTestResultResponseVM> approve(@PathVariable Long id) {
-        LOG.debug("[DiagnosticOrderTestResult] APPROVE - request received. id={}", id);
+    public ResponseEntity<DiagnosticOrderTestResultResponseVM> approve(@PathVariable("id") Long resultId) {
+        LOG.debug("[DiagnosticOrderTestResult] APPROVE - request received. id={}", resultId);
 
         String username = currentUsername();
-        DiagnosticOrderTestResult r = repository.findById(id)
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
-                        "diagnostic_order_tests_result",
-                        "DiagnosticOrderTestResult not found with id " + id
-                ));
+        DiagnosticOrderTestResult approvedResult =
+                diagnosticOrderTestResultService.approveWithComputedMarker(resultId, username);
 
-        Long patientId = diagnosticOrderRepository.findById(r.getOrderId())
-                .map(o -> o.getPatientId())
-                .orElse(null);
-
-        TestResultMarker viewMarker = r.getMarker();
-        String viewNormalRange = r.getNormalRangeValue();
-        TestResultType resultType;
-        try {
-            resultType = setupServiceClient.getResultTypeByProfileTestIdInternal(r.getProfileTestId());
-        } catch (Exception e) {
-            throw new BadRequestAlertException("setup_service_error", "diagnostic_order_tests_result",
-                    "Failed to fetch result type for profileTestId " + r.getProfileTestId());
-        }
-        if (patientId != null) {
-            NormalRangeMatchDTO best = normalRangeMatcherService.findBestNormalRange(r.getProfileTestId(), patientId);
-            viewMarker = NormalRangeMatcherService.calculateMarker(
-                    resultType,
-                    r.getResultValueNumber(),
-                    r.getResultValueText(),
-                    best
-            );
-
-            // optional: compute a display string (you can implement it in matcher service)
-            viewNormalRange = buildViewNormalRange(best);
-        }
-        DiagnosticOrderTestResult saved = statusService.approve(id, username,viewMarker,viewNormalRange);
-
-        LOG.debug("[DiagnosticOrderTestResult] APPROVE - done. id={} approvedBy={}", saved.getId(), username);
-        return ResponseEntity.ok(DiagnosticOrderTestResultResponseVM.ofEntity(saved));
+        LOG.debug("[DiagnosticOrderTestResult] APPROVE - done. id={} approvedBy={}", approvedResult.getId(), username);
+        return ResponseEntity.ok(DiagnosticOrderTestResultResponseVM.ofEntity(approvedResult));
     }
 
     /**
@@ -259,22 +200,26 @@ public class DiagnosticOrderTestResultController {
      * <p>Rules are enforced by {@link DiagnosticOrderTestResultStatusService#reject(Long, String, String)}.
      * On success, it also updates the parent test status and recomputes aggregated order statuses.</p>
      *
-     * @param id result id
-     * @param dto payload containing rejected reason
+     * @param resultId      result id
+     * @param rejectRequest payload containing rejected reason
      * @return rejected result mapped to response VM (HTTP 200)
      */
     @PostMapping("/diagnostic-order-tests-results/{id}/reject")
     public ResponseEntity<DiagnosticOrderTestResultResponseVM> reject(
-            @PathVariable Long id,
-            @Valid @RequestBody DiagnosticOrderTestResultRejectDTO dto
+            @PathVariable("id") Long resultId,
+            @Valid @RequestBody DiagnosticOrderTestResultRejectDTO rejectRequest
     ) {
-        LOG.debug("[DiagnosticOrderTestResult] REJECT - request received. id={} payload={}", id, dto);
+        LOG.debug("[DiagnosticOrderTestResult] REJECT - request received. id={} payload={}", resultId, rejectRequest);
 
         String username = currentUsername();
-        DiagnosticOrderTestResult saved = statusService.reject(id, username, dto.rejectedReason());
+        DiagnosticOrderTestResult rejectedResult = diagnosticOrderTestResultStatusService.reject(
+                resultId,
+                username,
+                rejectRequest.rejectedReason()
+        );
 
-        LOG.debug("[DiagnosticOrderTestResult] REJECT - done. id={} rejectedBy={}", saved.getId(), username);
-        return ResponseEntity.ok(DiagnosticOrderTestResultResponseVM.ofEntity(saved));
+        LOG.debug("[DiagnosticOrderTestResult] REJECT - done. id={} rejectedBy={}", rejectedResult.getId(), username);
+        return ResponseEntity.ok(DiagnosticOrderTestResultResponseVM.ofEntity(rejectedResult));
     }
 
 
@@ -284,6 +229,9 @@ public class DiagnosticOrderTestResultController {
      * <p>Returns a paginated list of {@link DiagnosticOrderTestResult} records using optional query parameters.
      * Filters are applied with exact semantics and optional date ranges.</p>
      *
+     * <p><b>Important:</b> {@code orderId} is filtered indirectly through {@code orderTestId} because
+     * {@link DiagnosticOrderTestResult} no longer contains {@code orderId} directly.</p>
+     *
      * <p>Notes:
      * <ul>
      *   <li>{@code marker} matches exactly.</li>
@@ -292,185 +240,127 @@ public class DiagnosticOrderTestResultController {
      * </ul>
      * </p>
      *
-     * @param orderId          optional diagnostic order id
-     * @param orderTestId      optional diagnostic order test id
-     * @param profileTestId    optional profile test id
-     * @param marker           optional result marker (exact match)
-     * @param excludeMarker    optional marker to exclude
-     * @param processingStatus optional processing status (exact match)
-     * @param approvedBy       optional approvedBy (exact match)
-     * @param rejectedBy       optional rejectedBy (exact match)
-     * @param reviewBy         optional reviewBy (exact match)
-     * @param approvedDateFrom optional lower bound (inclusive) for approvedDate
-     * @param approvedDateTo   optional upper bound (inclusive) for approvedDate
-     * @param rejectedDateFrom optional lower bound (inclusive) for rejectedDate
-     * @param rejectedDateTo   optional upper bound (inclusive) for rejectedDate
-     * @param reviewDateFrom   optional lower bound (inclusive) for reviewDate
-     * @param reviewDateTo     optional upper bound (inclusive) for reviewDate
-     * @param pageable         pagination and sorting
+     * @param orderIdFilter optional diagnostic order id (applied via orderTest subquery)
+     * @param orderTestIdFilter optional diagnostic order test id
+     * @param profileTestIdFilter optional profile test id
+     * @param markerFilter optional result marker (exact match)
+     * @param excludeMarkerFilter optional marker to exclude
+     * @param processingStatusFilter optional processing status (exact match)
+     * @param approvedByFilter optional approvedBy (exact match)
+     * @param rejectedByFilter optional rejectedBy (exact match)
+     * @param reviewByFilter optional reviewBy (exact match)
+     * @param approvedDateFromFilter optional lower bound (inclusive) for approvedDate
+     * @param approvedDateToFilter optional upper bound (inclusive) for approvedDate
+     * @param rejectedDateFromFilter optional lower bound (inclusive) for rejectedDate
+     * @param rejectedDateToFilter optional upper bound (inclusive) for rejectedDate
+     * @param reviewDateFromFilter optional lower bound (inclusive) for reviewDate
+     * @param reviewDateToFilter optional upper bound (inclusive) for reviewDate
+     * @param pageable pagination and sorting
      * @return list of results mapped to response VMs with pagination headers (HTTP 200)
      */
 
     @GetMapping("/diagnostic-order-tests-results")
     public ResponseEntity<List<DiagnosticOrderTestResultResponseVM>> filter(
-            @RequestParam(name = "orderId", required = false) Long orderId,
-            @RequestParam(name = "orderTestId", required = false) Long orderTestId,
-            @RequestParam(name = "profileTestId", required = false) Long profileTestId,
+            @RequestParam(name = "orderId", required = false) Long orderIdFilter,
+            @RequestParam(name = "orderTestId", required = false) Long orderTestIdFilter,
+            @RequestParam(name = "profileTestId", required = false) Long profileTestIdFilter,
 
-            @RequestParam(name = "marker", required = false) TestResultMarker marker,
-            @RequestParam(name = "excludeMarker", required = false) TestResultMarker excludeMarker,
-            @RequestParam(name = "processingStatus", required = false) DiagnosticStatus processingStatus,
+            @RequestParam(name = "marker", required = false) TestResultMarker markerFilter,
+            @RequestParam(name = "excludeMarker", required = false) TestResultMarker excludeMarkerFilter,
+            @RequestParam(name = "processingStatus", required = false) DiagnosticStatus processingStatusFilter,
 
-            @RequestParam(name = "approvedBy", required = false) String approvedBy,
-            @RequestParam(name = "rejectedBy", required = false) String rejectedBy,
-            @RequestParam(name = "reviewBy", required = false) String reviewBy,
+            @RequestParam(name = "approvedBy", required = false) String approvedByFilter,
+            @RequestParam(name = "rejectedBy", required = false) String rejectedByFilter,
+            @RequestParam(name = "reviewBy", required = false) String reviewByFilter,
 
-            @RequestParam(name = "approvedDateFrom", required = false) Instant approvedDateFrom,
-            @RequestParam(name = "approvedDateTo", required = false) Instant approvedDateTo,
+            @RequestParam(name = "approvedDateFrom", required = false) Instant approvedDateFromFilter,
+            @RequestParam(name = "approvedDateTo", required = false) Instant approvedDateToFilter,
 
-            @RequestParam(name = "rejectedDateFrom", required = false) Instant rejectedDateFrom,
-            @RequestParam(name = "rejectedDateTo", required = false) Instant rejectedDateTo,
+            @RequestParam(name = "rejectedDateFrom", required = false) Instant rejectedDateFromFilter,
+            @RequestParam(name = "rejectedDateTo", required = false) Instant rejectedDateToFilter,
 
-            @RequestParam(name = "reviewDateFrom", required = false) Instant reviewDateFrom,
-            @RequestParam(name = "reviewDateTo", required = false) Instant reviewDateTo,
-
-            // NEW: needed to compute marker correctly (until you fetch it from setup-service)
-            @RequestParam(name = "resultType", required = false) TestResultType resultType,
+            @RequestParam(name = "reviewDateFrom", required = false) Instant reviewDateFromFilter,
+            @RequestParam(name = "reviewDateTo", required = false) Instant reviewDateToFilter,
 
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("[DiagnosticOrderTestResult] FILTER - request received. orderId={} orderTestId={} profileTestId={} marker={} excludeMarker={} processingStatus={} approvedBy={} rejectedBy={} reviewBy={} approvedDateFrom={} approvedDateTo={} rejectedDateFrom={} rejectedDateTo={} reviewDateFrom={} reviewDateTo={} resultType={} pageable={}",
-                orderId, orderTestId, profileTestId, marker, excludeMarker, processingStatus, approvedBy, rejectedBy, reviewBy,
-                approvedDateFrom, approvedDateTo, rejectedDateFrom, rejectedDateTo, reviewDateFrom, reviewDateTo, resultType, pageable);
-
-        Specification<DiagnosticOrderTestResult> spec = (root, query, cb) -> {
+        Specification<DiagnosticOrderTestResult> spec = (orderTestRoot, criteriaQuery, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            if (orderId != null) predicates.add(cb.equal(root.get("orderId"), orderId));
-            if (orderTestId != null) predicates.add(cb.equal(root.get("orderTestId"), orderTestId));
-            if (profileTestId != null) predicates.add(cb.equal(root.get("profileTestId"), profileTestId));
 
-            if (marker != null) predicates.add(cb.equal(root.get("marker"), marker));
-            if (excludeMarker != null) predicates.add(cb.notEqual(root.get("marker"), excludeMarker));
-            if (processingStatus != null) predicates.add(cb.equal(root.get("processingStatus"), processingStatus));
+            if (orderIdFilter != null) {
+                var subQuery = criteriaQuery.subquery(Long.class);
+                var testRoot = subQuery.from(DiagnosticOrderTest.class);
 
-            if (approvedBy != null && !approvedBy.isBlank()) predicates.add(cb.equal(root.get("approvedBy"), approvedBy));
-            if (rejectedBy != null && !rejectedBy.isBlank()) predicates.add(cb.equal(root.get("rejectedBy"), rejectedBy));
-            if (reviewBy != null && !reviewBy.isBlank()) predicates.add(cb.equal(root.get("reviewBy"), reviewBy));
+                subQuery.select(testRoot.get("id"))
+                        .where(criteriaBuilder.equal(testRoot.get("orderId"), orderIdFilter));
 
-            if (approvedDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("approvedDate"), approvedDateFrom));
-            if (approvedDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("approvedDate"), approvedDateTo));
+                predicates.add(orderTestRoot.get("orderTestId").in(subQuery));
+            }
 
-            if (rejectedDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("rejectedDate"), rejectedDateFrom));
-            if (rejectedDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("rejectedDate"), rejectedDateTo));
+            if (orderTestIdFilter != null) predicates.add(criteriaBuilder.equal(orderTestRoot.get("orderTestId"), orderTestIdFilter));
+            if (profileTestIdFilter != null) predicates.add(criteriaBuilder.equal(orderTestRoot.get("profileTestId"), profileTestIdFilter));
 
-            if (reviewDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("reviewDate"), reviewDateFrom));
-            if (reviewDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("reviewDate"), reviewDateTo));
+            if (markerFilter != null) predicates.add(criteriaBuilder.equal(orderTestRoot.get("marker"), markerFilter));
+            if (excludeMarkerFilter != null) predicates.add(criteriaBuilder.notEqual(orderTestRoot.get("marker"), excludeMarkerFilter));
+            if (processingStatusFilter != null) predicates.add(criteriaBuilder.equal(orderTestRoot.get("processingStatus"), processingStatusFilter));
 
-            return cb.and(predicates.toArray(new Predicate[0]));
+            if (approvedByFilter != null && !approvedByFilter.isBlank())
+                predicates.add(criteriaBuilder.equal(orderTestRoot.get("approvedBy"), approvedByFilter));
+            if (rejectedByFilter != null && !rejectedByFilter.isBlank())
+                predicates.add(criteriaBuilder.equal(orderTestRoot.get("rejectedBy"), rejectedByFilter));
+            if (reviewByFilter != null && !reviewByFilter.isBlank())
+                predicates.add(criteriaBuilder.equal(orderTestRoot.get("reviewBy"), reviewByFilter));
+
+            if (approvedDateFromFilter != null)
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(orderTestRoot.get("approvedDate"), approvedDateFromFilter));
+            if (approvedDateToFilter != null)
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(orderTestRoot.get("approvedDate"), approvedDateToFilter));
+
+            if (rejectedDateFromFilter != null)
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(orderTestRoot.get("rejectedDate"), rejectedDateFromFilter));
+            if (rejectedDateToFilter != null)
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(orderTestRoot.get("rejectedDate"), rejectedDateToFilter));
+
+            if (reviewDateFromFilter != null)
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(orderTestRoot.get("reviewDate"), reviewDateFromFilter));
+            if (reviewDateToFilter != null)
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(orderTestRoot.get("reviewDate"), reviewDateToFilter));
+
+            return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
         };
 
-        Page<DiagnosticOrderTestResult> page = repository.findAll(spec, pageable);
+        Page<DiagnosticOrderTestResult> resultsPage = diagnosticOrderTestResultService.findAll(spec, pageable);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(), page
+                ServletUriComponentsBuilder.fromCurrentRequest(), resultsPage
         );
 
-        List<DiagnosticOrderTestResultResponseVM> body = page.getContent()
-                .stream()
-                .map(r -> {
-                    // 1) derive patientId from orderId
-                    Long patientId = diagnosticOrderRepository.findById(r.getOrderId())
-                            .map(o -> o.getPatientId())
-                            .orElse(null);
-
-                    // 2) compute best normal range + marker preview
-                    TestResultMarker viewMarker = r.getMarker();
-                    String viewNormalRange = r.getNormalRangeValue();
-                    TestResultType resultTypes;
-                    try {
-                        resultTypes = setupServiceClient.getResultTypeByProfileTestIdInternal(r.getProfileTestId());
-                    } catch (Exception e) {
-                        throw new BadRequestAlertException("setup_service_error", "diagnostic_order_tests_result",
-                                "Failed to fetch result type for profileTestId " + r.getProfileTestId());
-                    }
-
-                    if (patientId != null) {
-                        NormalRangeMatchDTO best = normalRangeMatcherService.findBestNormalRange(r.getProfileTestId(), patientId);
-                        viewMarker = NormalRangeMatcherService.calculateMarker(
-                                resultTypes,
-                                r.getResultValueNumber(),
-                                r.getResultValueText(),
-                                best
-                        );
-
-                        // optional: compute a display string (you can implement it in matcher service)
-                        viewNormalRange = buildViewNormalRange(best);
-                    }
-
-                    return DiagnosticOrderTestResultResponseVM.ofEntityWithView(r, viewMarker, viewNormalRange);
-                })
-                .toList();
-
-        LOG.debug("[DiagnosticOrderTestResult] FILTER - response ready. returned={} totalElements={} totalPages={}",
-                body.size(), page.getTotalElements(), page.getTotalPages());
+        List<DiagnosticOrderTestResultResponseVM> body =
+                diagnosticOrderTestResultService.buildViewResponses(resultsPage.getContent());
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
-    }
-
-    // helper in controller (or move to service)
-    private String buildViewNormalRange(NormalRangeMatchDTO best) {
-        if (best == null) return null;
-
-        if (best.resultText() != null && !best.resultText().isBlank()) return best.resultText();
-        if (best.resultLov() != null && !best.resultLov().isBlank()) return best.resultLov();
-
-        Double from = best.rangeFrom();
-        Double to = best.rangeTo();
-        if (from != null && to != null) return from + " - " + to;
-        if (from != null) return ">= " + from;
-        if (to != null) return "<= " + to;
-
-        return null;
     }
 
     @GetMapping("/diagnostic-order-tests-results/internal/filled-profile-test-ids")
     public ResponseEntity<List<Long>> findFilledProfileTestIds(
             @RequestParam(name = "orderTestIds") List<Long> orderTestIds
     ) {
-        if (orderTestIds == null || orderTestIds.isEmpty()) {
-            return ResponseEntity.ok(List.of());
-        }
-
-        List<Long> ids = orderTestIds.stream()
-                .filter(Objects::nonNull)
-                .flatMap(orderTestId -> repository
-                        .findDistinctProfileTestIdsByOrderTestId(orderTestId)
-                        .stream()
-                )
-                .distinct()
-                .toList();
-
-        return ResponseEntity.ok(ids);
+        LOG.debug("[DiagnosticOrderTestResult] FILLED_PROFILE_IDS - request received. orderTestIdsCount={}",
+                orderTestIds == null ? 0 : orderTestIds.size());
+        List<Long> filledProfileTestIds = diagnosticOrderTestResultService.findFilledProfileTestIds(orderTestIds);
+        return ResponseEntity.ok(filledProfileTestIds);
     }
 
     @GetMapping("/diagnostic-order-tests-results/internal/filled-profile-test-ids/by-order-test")
     public ResponseEntity<Map<Long, List<Long>>> findFilledProfileTestIdsByOrderTest(
             @RequestParam(name = "orderTestIds") List<Long> orderTestIds
     ) {
-        if (orderTestIds == null || orderTestIds.isEmpty()) {
-            return ResponseEntity.ok(Map.of());
-        }
-
-        Map<Long, List<Long>> map = orderTestIds.stream()
-                .filter(Objects::nonNull)
-                .distinct()
-                .collect(Collectors.toMap(
-                        id -> id,
-                        id -> repository.findDistinctProfileTestIdsByOrderTestId(id)
-                ));
-
-        return ResponseEntity.ok(map);
+        LOG.debug("[DiagnosticOrderTestResult] FILLED_PROFILE_IDS_BY_ORDER_TEST - request received. orderTestIdsCount={}",
+                orderTestIds == null ? 0 : orderTestIds.size());
+        Map<Long, List<Long>> filledProfileIdsMap =
+                diagnosticOrderTestResultService.findFilledProfileTestIdsByOrderTest(orderTestIds);
+        return ResponseEntity.ok(filledProfileIdsMap);
     }
 
 }

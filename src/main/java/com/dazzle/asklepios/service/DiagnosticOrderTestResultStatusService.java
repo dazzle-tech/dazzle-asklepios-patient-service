@@ -202,7 +202,7 @@ public class DiagnosticOrderTestResultStatusService {
         }
 
         // profile ids that already have results (excluding CANCELLED results)
-        List<Long> filledProfileIds = resultRepository.findDistinctProfileTestIdsByOrderTestId(orderTestId);
+        List<Long> filledProfileIds = resultRepository.findDistinctProfileTestIdByOrderTestId(orderTestId);
         if (filledProfileIds == null) filledProfileIds = List.of();
 
         boolean hasAnyResult = !filledProfileIds.isEmpty();
@@ -210,7 +210,7 @@ public class DiagnosticOrderTestResultStatusService {
 
         // Keep your aggregation logic for "what is the strongest status among existing results"
         // but prevent READY/RESULT_READY unless ALL profiles have results.
-        List<DiagnosticStatus> statuses = resultRepository.findProcessingStatusesByOrderTestId(orderTestId);
+        List<DiagnosticStatus> statuses = resultRepository.findProcessingStatusByOrderTestIdAndProcessingStatusNot(orderTestId,DiagnosticStatus.CANCELLED);
         DiagnosticStatus aggregated = aggregate(statuses);
 
         DiagnosticStatus target;

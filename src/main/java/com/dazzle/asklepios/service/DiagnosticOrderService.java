@@ -9,6 +9,7 @@ import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderUpdateDTO;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -268,5 +269,21 @@ public class DiagnosticOrderService {
         LOG.debug("[DiagnosticOrderService] DELETE - start. id={}", id);
         diagnosticOrderRepository.deleteById(id);
         LOG.debug("[DiagnosticOrderService] DELETE - done. id={}", id);
+    }
+    @Transactional(readOnly = true)
+    public DiagnosticOrder findById(Long orderId) {
+        LOG.debug("[DiagnosticOrderService] FIND_BY_ID - start. orderId={}", orderId);
+
+        DiagnosticOrder order = diagnosticOrderRepository.findById(orderId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_orders",
+                        "DiagnosticOrder not found with id " + orderId
+                ));
+
+        LOG.debug("[DiagnosticOrderService] FIND_BY_ID - done. orderId={} status={} saveDraft={}",
+                order.getId(), order.getStatus(), order.getSaveDraft());
+
+        return order;
     }
 }

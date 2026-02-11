@@ -40,8 +40,6 @@ public class DiagnosticOrderTestResult extends AbstractAuditingEntity implements
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "order_id", nullable = false)
-    private Long orderId;
 
     @Column(name = "order_test_id", nullable = false)
     private Long orderTestId;

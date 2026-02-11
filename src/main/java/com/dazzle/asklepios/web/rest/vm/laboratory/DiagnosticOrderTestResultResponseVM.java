@@ -10,7 +10,6 @@ import java.time.Instant;
 
 public record DiagnosticOrderTestResultResponseVM(
         Long id,
-        Long orderId,
         Long orderTestId,
         Long profileTestId,
         BigDecimal resultValueNumber,
@@ -41,66 +40,64 @@ public record DiagnosticOrderTestResultResponseVM(
         String lastModifiedBy
 ) implements Serializable {
 
-    public static DiagnosticOrderTestResultResponseVM ofEntity(DiagnosticOrderTestResult r) {
+    public static DiagnosticOrderTestResultResponseVM ofEntity(DiagnosticOrderTestResult diagnosticOrderTestResult) {
         return new DiagnosticOrderTestResultResponseVM(
-                r.getId(),
-                r.getOrderId(),
-                r.getOrderTestId(),
-                r.getProfileTestId(),
-                r.getResultValueNumber(),
-                r.getResultValueText(),
-                r.getMarker(),
+                diagnosticOrderTestResult.getId(),
+                diagnosticOrderTestResult.getOrderTestId(),
+                diagnosticOrderTestResult.getProfileTestId(),
+                diagnosticOrderTestResult.getResultValueNumber(),
+                diagnosticOrderTestResult.getResultValueText(),
+                diagnosticOrderTestResult.getMarker(),
 
                 // view-only defaults = persisted values
-                r.getMarker(),
-                r.getNormalRangeValue(),
+                diagnosticOrderTestResult.getMarker(),
+                diagnosticOrderTestResult.getNormalRangeValue(),
 
-                r.getApprovedBy(),
-                r.getApprovedDate(),
-                r.getRejectedBy(),
-                r.getRejectedDate(),
-                r.getRejectedReason(),
-                r.getReviewBy(),
-                r.getReviewDate(),
-                r.getProcessingStatus(),
-                r.getNormalRangeValue(),
-                r.getCreatedDate(),
-                r.getLastModifiedDate(),
-                r.getCreatedBy(),
-                r.getLastModifiedBy()
+                diagnosticOrderTestResult.getApprovedBy(),
+                diagnosticOrderTestResult.getApprovedDate(),
+                diagnosticOrderTestResult.getRejectedBy(),
+                diagnosticOrderTestResult.getRejectedDate(),
+                diagnosticOrderTestResult.getRejectedReason(),
+                diagnosticOrderTestResult.getReviewBy(),
+                diagnosticOrderTestResult.getReviewDate(),
+                diagnosticOrderTestResult.getProcessingStatus(),
+                diagnosticOrderTestResult.getNormalRangeValue(),
+                diagnosticOrderTestResult.getCreatedDate(),
+                diagnosticOrderTestResult.getLastModifiedDate(),
+                diagnosticOrderTestResult.getCreatedBy(),
+                diagnosticOrderTestResult.getLastModifiedBy()
         );
     }
 
     public static DiagnosticOrderTestResultResponseVM ofEntityWithView(
-            DiagnosticOrderTestResult r,
+            DiagnosticOrderTestResult diagnosticOrderTestResult,
             TestResultMarker viewMarker,
             String viewNormalRange
     ) {
         return new DiagnosticOrderTestResultResponseVM(
-                r.getId(),
-                r.getOrderId(),
-                r.getOrderTestId(),
-                r.getProfileTestId(),
-                r.getResultValueNumber(),
-                r.getResultValueText(),
-                r.getMarker(),
+                diagnosticOrderTestResult.getId(),
+                diagnosticOrderTestResult.getOrderTestId(),
+                diagnosticOrderTestResult.getProfileTestId(),
+                diagnosticOrderTestResult.getResultValueNumber(),
+                diagnosticOrderTestResult.getResultValueText(),
+                diagnosticOrderTestResult.getMarker(),
 
                 viewMarker,
                 viewNormalRange,
 
-                r.getApprovedBy(),
-                r.getApprovedDate(),
-                r.getRejectedBy(),
-                r.getRejectedDate(),
-                r.getRejectedReason(),
-                r.getReviewBy(),
-                r.getReviewDate(),
-                r.getProcessingStatus(),
-                r.getNormalRangeValue(),
-                r.getCreatedDate(),
-                r.getLastModifiedDate(),
-                r.getCreatedBy(),
-                r.getLastModifiedBy()
+                diagnosticOrderTestResult.getApprovedBy(),
+                diagnosticOrderTestResult.getApprovedDate(),
+                diagnosticOrderTestResult.getRejectedBy(),
+                diagnosticOrderTestResult.getRejectedDate(),
+                diagnosticOrderTestResult.getRejectedReason(),
+                diagnosticOrderTestResult.getReviewBy(),
+                diagnosticOrderTestResult.getReviewDate(),
+                diagnosticOrderTestResult.getProcessingStatus(),
+                diagnosticOrderTestResult.getNormalRangeValue(),
+                diagnosticOrderTestResult.getCreatedDate(),
+                diagnosticOrderTestResult.getLastModifiedDate(),
+                diagnosticOrderTestResult.getCreatedBy(),
+                diagnosticOrderTestResult.getLastModifiedBy()
         );
     }
 

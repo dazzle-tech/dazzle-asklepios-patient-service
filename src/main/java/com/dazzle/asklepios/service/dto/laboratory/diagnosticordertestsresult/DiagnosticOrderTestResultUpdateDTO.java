@@ -7,7 +7,6 @@ import java.math.BigDecimal;
 
 public record DiagnosticOrderTestResultUpdateDTO(
         @NotNull Long id,
-        @NotNull Long orderId,
         @NotNull Long orderTestId,
         @NotNull Long profileTestId,
         BigDecimal resultValueNumber,

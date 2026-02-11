@@ -479,7 +479,7 @@ public class DiagnosticOrderController {
         String username = currentUsername();
 
         DiagnosticOrder submittedOrder = diagnosticOrderService.submit(order, username);
-        
+
         LOG.debug("[DiagnosticOrder] SUBMIT - submitted successfully. id={}", submittedOrder.getId());
         return ResponseEntity.ok(DiagnosticOrderResponseVM.ofEntity(submittedOrder));
     }
