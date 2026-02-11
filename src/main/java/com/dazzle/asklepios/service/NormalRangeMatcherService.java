@@ -147,15 +147,15 @@ public class NormalRangeMatcherService {
         return score;
     }
 
-    private double ageWindowWidthOrInfinity(NormalRangeMatchDTO r) {
-        if (r.ageFrom() == null || r.ageTo() == null) {
+    private double ageWindowWidthOrInfinity(NormalRangeMatchDTO normalRange) {
+        if (normalRange.ageFrom() == null || normalRange.ageTo() == null) {
             return Double.POSITIVE_INFINITY;
         }
-        AgeUnit fromUnit = Objects.requireNonNullElse(r.ageFromUnit(), AgeUnit.YEARS);
-        AgeUnit toUnit = Objects.requireNonNullElse(r.ageToUnit(), AgeUnit.YEARS);
+        AgeUnit fromUnit = Objects.requireNonNullElse(normalRange.ageFromUnit(), AgeUnit.YEARS);
+        AgeUnit toUnit = Objects.requireNonNullElse(normalRange.ageToUnit(), AgeUnit.YEARS);
 
-        double fromDays = toDays(r.ageFrom(), fromUnit);
-        double toDays = toDays(r.ageTo(), toUnit);
+        double fromDays = toDays(normalRange.ageFrom(), fromUnit);
+        double toDays = toDays(normalRange.ageTo(), toUnit);
         return Math.abs(toDays - fromDays);
     }
 
@@ -203,7 +203,7 @@ public class NormalRangeMatcherService {
             NormalRangeMatchDTO normalRange
     ) {
         if (normalRange == null || resultType == null) {
-            return TestResultMarker.NORMAL_MARKER;
+            return TestResultMarker.UNKNOWN;
         }
 
         return switch (resultType) {
@@ -259,8 +259,5 @@ public class NormalRangeMatcherService {
         return TestResultMarker.NORMAL_MARKER;
     }
 
-    private static boolean equalsIgnoreCase(String a, String b) {
-        return a != null && b != null && a.trim().equalsIgnoreCase(b.trim());
-    }
-}
 
+}

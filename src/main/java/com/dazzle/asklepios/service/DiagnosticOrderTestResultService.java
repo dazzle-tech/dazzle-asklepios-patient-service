@@ -15,7 +15,6 @@ import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.Di
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.laboratory.DiagnosticOrderTestResultResponseVM;
-import jakarta.persistence.criteria.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -24,286 +23,277 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
-/**
- * Service responsible for create/update/delete operations for {@link DiagnosticOrderTestResult}.
- *
- * <p>This service handles result data persistence and enforces basic invariants:
- * <ul>
- *   <li>New results are created with {@link DiagnosticStatus#RESULT_READY} as processing status.</li>
- *   <li>Status transitions (approve/reject/review) are not handled here; use
- *       {@link DiagnosticOrderTestResultStatusService} instead.</li>
- * </ul>
- * </p>
- */
 @Service
 @Transactional
 public class DiagnosticOrderTestResultService {
 
-    private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderTestResultService.class);
+    private static final Logger LOG =
+            LoggerFactory.getLogger(DiagnosticOrderTestResultService.class);
 
-    /** Repository for persistence operations. */
-    private final DiagnosticOrderTestResultRepository diagnosticOrderTestResultRepository;
-
-    /** Service that recomputes parent test/order state from results. */
-    private final DiagnosticOrderTestResultStatusService diagnosticOrderTestResultStatusService;
-
-    private final DiagnosticOrderRepository diagnosticOrderRepository;
-    private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
-
+    private final DiagnosticOrderTestResultRepository repository;
+    private final DiagnosticOrderTestResultStatusService statusService;
+    private final DiagnosticOrderTestRepository orderTestRepository;
+    private final DiagnosticOrderRepository orderRepository;
     private final SetupServiceClient setupServiceClient;
     private final NormalRangeMatcherService normalRangeMatcherService;
 
     public DiagnosticOrderTestResultService(
             DiagnosticOrderTestResultRepository repository,
-            DiagnosticOrderTestResultStatusService diagnosticOrderTestResultStatusService,
-            DiagnosticOrderRepository diagnosticOrderRepository,
-            DiagnosticOrderTestRepository diagnosticOrderTestRepository,
+            DiagnosticOrderTestResultStatusService statusService,
+            DiagnosticOrderTestRepository orderTestRepository,
+            DiagnosticOrderRepository orderRepository,
             SetupServiceClient setupServiceClient,
             NormalRangeMatcherService normalRangeMatcherService
     ) {
-        this.diagnosticOrderTestResultRepository = repository;
-        this.diagnosticOrderTestResultStatusService = diagnosticOrderTestResultStatusService;
-        this.diagnosticOrderRepository = diagnosticOrderRepository;
-        this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
+        this.repository = repository;
+        this.statusService = statusService;
+        this.orderTestRepository = orderTestRepository;
+        this.orderRepository = orderRepository;
         this.setupServiceClient = setupServiceClient;
         this.normalRangeMatcherService = normalRangeMatcherService;
     }
 
+    // =========================================================
+    // CREATE
+    // =========================================================
+
     public DiagnosticOrderTestResult create(DiagnosticOrderTestResultCreateDTO dto) {
-        LOG.debug("[DiagnosticOrderTestResultService] CREATE - start. payload={}", dto);
 
-        DiagnosticOrderTestResult diagnosticOrderTestResult = new DiagnosticOrderTestResult();
-        diagnosticOrderTestResult.setOrderTestId(dto.orderTestId());
-        diagnosticOrderTestResult.setProfileTestId(dto.profileTestId());
+        DiagnosticOrderTestResult r = new DiagnosticOrderTestResult();
 
-        diagnosticOrderTestResult.setResultValueNumber(dto.resultValueNumber());
-        diagnosticOrderTestResult.setResultValueText(dto.resultValueText());
-        diagnosticOrderTestResult.setMarker(dto.marker());
-        diagnosticOrderTestResult.setNormalRangeValue(dto.normalRangeValue());
+        r.setOrderTestId(dto.orderTestId());
+        r.setProfileTestId(dto.profileTestId());
+        r.setResultValueNumber(dto.resultValueNumber());
+        r.setResultValueText(dto.resultValueText());
+        r.setMarker(dto.marker());
+        r.setNormalRangeValue(dto.normalRangeValue());
+        r.setProcessingStatus(DiagnosticStatus.RESULT_READY);
 
-        diagnosticOrderTestResult.setProcessingStatus(DiagnosticStatus.RESULT_READY);
+        DiagnosticOrderTestResult saved = repository.save(r);
 
-        DiagnosticOrderTestResult saved = diagnosticOrderTestResultRepository.save(diagnosticOrderTestResult);
-
-        diagnosticOrderTestResultStatusService.recomputeTestProcessingStatusFromResults(saved.getOrderTestId());
-
-        LOG.debug("[DiagnosticOrderTestResultService] CREATE - done. id={} orderTestId={} processingStatus={}",
-                saved.getId(), saved.getOrderTestId(), saved.getProcessingStatus());
+        statusService.recomputeTestProcessingStatusFromResults(
+                saved.getOrderTestId()
+        );
 
         return saved;
     }
 
-    public DiagnosticOrderTestResult update(DiagnosticOrderTestResult existing, DiagnosticOrderTestResultUpdateDTO dto) {
-        LOG.debug("[DiagnosticOrderTestResultService] UPDATE - start. id={} payload={}", existing.getId(), dto);
+    // =========================================================
+    // UPDATE WITH VALIDATION
+    // =========================================================
+
+    public DiagnosticOrderTestResult updateWithValidation(
+            Long id,
+            DiagnosticOrderTestResultUpdateDTO dto
+    ) {
+
+        DiagnosticOrderTestResult existing = repository.findById(id)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_order_tests_result",
+                        "DiagnosticOrderTestResult not found with id " + id
+                ));
 
         existing.setOrderTestId(dto.orderTestId());
         existing.setProfileTestId(dto.profileTestId());
-
         existing.setResultValueNumber(dto.resultValueNumber());
         existing.setResultValueText(dto.resultValueText());
         existing.setMarker(dto.marker());
         existing.setNormalRangeValue(dto.normalRangeValue());
 
-        DiagnosticOrderTestResult saved = diagnosticOrderTestResultRepository.save(existing);
-
-        LOG.debug("[DiagnosticOrderTestResultService] UPDATE - done. id={} processingStatus={}",
-                saved.getId(), saved.getProcessingStatus());
-
-        return saved;
+        return repository.save(existing);
     }
 
-    public DiagnosticOrderTestResult updateById(Long resultId, DiagnosticOrderTestResultUpdateDTO requestDto) {
-        LOG.debug("[DiagnosticOrderTestResultService] UPDATE_BY_ID - start. id={} payload={}", resultId, requestDto);
-        DiagnosticOrderTestResult existingResult = getExistingResult(resultId);
+    // =========================================================
+    // APPROVE WITH FULL BUSINESS LOGIC
+    // =========================================================
 
-        DiagnosticOrderTestResultUpdateDTO fixedDto = new DiagnosticOrderTestResultUpdateDTO(
-                resultId,
-                requestDto.orderTestId(),
-                requestDto.profileTestId(),
-                requestDto.resultValueNumber(),
-                requestDto.resultValueText(),
-                requestDto.marker(),
-                requestDto.normalRangeValue()
-        );
+    public DiagnosticOrderTestResult approveWithBusinessLogic(
+            Long id,
+            String username
+    ) {
 
-        DiagnosticOrderTestResult updatedResult = update(existingResult, fixedDto);
-        LOG.debug("[DiagnosticOrderTestResultService] UPDATE_BY_ID - done. id={}", updatedResult.getId());
-        return updatedResult;
-    }
-
-    public DiagnosticOrderTestResult approveWithComputedMarker(Long resultId, String username) {
-        LOG.debug("[DiagnosticOrderTestResultService] APPROVE - start. resultId={} username={}", resultId, username);
-
-        DiagnosticOrderTestResult existingResult = getExistingResult(resultId);
-
-        // result -> orderTestId -> orderTest -> orderId -> order -> patientId
-        Long orderId = diagnosticOrderTestRepository.findById(existingResult.getOrderTestId())
-                .map(DiagnosticOrderTest::getOrderId)
-                .orElse(null);
-
-        Long patientId = (orderId == null) ? null
-                : diagnosticOrderRepository.findById(orderId)
-                .map(DiagnosticOrder::getPatientId)
-                .orElse(null);
-
-        TestResultMarker viewMarker = existingResult.getMarker();
-        String viewNormalRange = existingResult.getNormalRangeValue();
-
-        TestResultType resultType;
-        try {
-            resultType = setupServiceClient.getResultTypeByProfileTestIdInternal(existingResult.getProfileTestId());
-        } catch (Exception e) {
-            throw new BadRequestAlertException(
-                    "setup_service_error",
-                    "diagnostic_order_tests_result",
-                    "Failed to fetch result type for profileTestId " + existingResult.getProfileTestId()
-            );
-        }
-
-        if (patientId != null) {
-            NormalRangeMatchDTO best = normalRangeMatcherService.findBestNormalRange(
-                    existingResult.getProfileTestId(),
-                    patientId
-            );
-            viewMarker = NormalRangeMatcherService.calculateMarker(
-                    resultType,
-                    existingResult.getResultValueNumber(),
-                    existingResult.getResultValueText(),
-                    best
-            );
-            viewNormalRange = buildViewNormalRange(best);
-        }
-
-        DiagnosticOrderTestResult approvedResult = diagnosticOrderTestResultStatusService.approve(
-                resultId,
-                username,
-                viewMarker,
-                viewNormalRange
-        );
-
-        LOG.debug("[DiagnosticOrderTestResultService] APPROVE - done. id={} approvedBy={}",
-                approvedResult.getId(), approvedResult.getApprovedBy());
-
-        return approvedResult;
-    }
-
-
-    @Transactional(readOnly = true)
-    public List<DiagnosticOrderTestResultResponseVM> buildViewResponses(List<DiagnosticOrderTestResult> results) {
-        if (results == null || results.isEmpty()) {
-            return List.of();
-        }
-        return results.stream()
-                .map(this::buildViewResponse)
-                .toList();
-    }
-
-    @Transactional(readOnly = true)
-    public List<Long> findFilledProfileTestIds(List<Long> orderTestIds) {
-        if (orderTestIds == null || orderTestIds.isEmpty()) {
-            return List.of();
-        }
-        return orderTestIds.stream()
-                .filter(Objects::nonNull)
-                .flatMap(orderTestId -> diagnosticOrderTestResultRepository.findDistinctProfileTestIdByOrderTestId(orderTestId).stream())
-                .distinct()
-                .toList();
-    }
-
-    @Transactional(readOnly = true)
-    public Map<Long, List<Long>> findFilledProfileTestIdsByOrderTest(List<Long> orderTestIds) {
-        if (orderTestIds == null || orderTestIds.isEmpty()) {
-            return Map.of();
-        }
-
-        return orderTestIds.stream()
-                .filter(Objects::nonNull)
-                .distinct()
-                .collect(Collectors.toMap(
-                        orderTestId -> orderTestId,
-                        orderTestId -> diagnosticOrderTestResultRepository.findDistinctProfileTestIdByOrderTestId(orderTestId)
-                ));
-    }
-
-    private DiagnosticOrderTestResult getExistingResult(Long resultId) {
-        return diagnosticOrderTestResultRepository.findById(resultId)
+        DiagnosticOrderTestResult result = repository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
                         "diagnostic_order_tests_result",
-                        "DiagnosticOrderTestResult not found with id " + resultId
+                        "DiagnosticOrderTestResult not found with id " + id
                 ));
-    }
 
-    private DiagnosticOrderTestResultResponseVM buildViewResponse(DiagnosticOrderTestResult result) {
-
-        Long orderId = diagnosticOrderTestRepository.findById(result.getOrderTestId())
-                .map(DiagnosticOrderTest::getOrderId)
-                .orElse(null);
-
-        Long patientId = (orderId == null) ? null
-                : diagnosticOrderRepository.findById(orderId)
-                .map(DiagnosticOrder::getPatientId)
-                .orElse(null);
+        Long patientId = resolvePatientId(result.getOrderTestId());
 
         TestResultMarker viewMarker = result.getMarker();
         String viewNormalRange = result.getNormalRangeValue();
 
         TestResultType resultType;
+
         try {
-            resultType = setupServiceClient.getResultTypeByProfileTestIdInternal(result.getProfileTestId());
+            resultType = setupServiceClient
+                    .getResultTypeByProfileTestIdInternal(
+                            result.getProfileTestId()
+                    );
         } catch (Exception e) {
             throw new BadRequestAlertException(
                     "setup_service_error",
                     "diagnostic_order_tests_result",
-                    "Failed to fetch result type for profileTestId " + result.getProfileTestId()
+                    "Failed to fetch result type for profileTestId "
+                            + result.getProfileTestId()
             );
         }
 
         if (patientId != null) {
-            NormalRangeMatchDTO best = normalRangeMatcherService.findBestNormalRange(
-                    result.getProfileTestId(),
-                    patientId
-            );
+
+            NormalRangeMatchDTO best =
+                    normalRangeMatcherService.findBestNormalRange(
+                            result.getProfileTestId(),
+                            patientId
+                    );
+
             viewMarker = NormalRangeMatcherService.calculateMarker(
                     resultType,
                     result.getResultValueNumber(),
                     result.getResultValueText(),
                     best
             );
+
             viewNormalRange = buildViewNormalRange(best);
         }
 
-        return DiagnosticOrderTestResultResponseVM.ofEntityWithView(result, viewMarker, viewNormalRange);
+        return statusService.approve(
+                id,
+                username,
+                viewMarker,
+                viewNormalRange
+        );
     }
 
-    public String buildViewNormalRange(NormalRangeMatchDTO best) {
-        if (best == null) return null;
+    // =========================================================
+    // FILTER WITH VIEW
+    // =========================================================
 
-        if (best.resultText() != null && !best.resultText().isBlank()) return best.resultText();
-        if (best.resultLov() != null && !best.resultLov().isBlank()) return best.resultLov();
+    @Transactional(readOnly = true)
+    public Page<DiagnosticOrderTestResultResponseVM> filterWithView(
+            Specification<DiagnosticOrderTestResult> spec,
+            Pageable pageable
+    ) {
+
+        Page<DiagnosticOrderTestResult> page =
+                repository.findAll(spec, pageable);
+
+        return page.map(result -> {
+
+            Long patientId =
+                    resolvePatientId(result.getOrderTestId());
+
+            TestResultMarker viewMarker = TestResultMarker.UNKNOWN;
+            String viewNormalRange = "UNKNOWN";
+
+            TestResultType resultType = null;
+
+            try {
+                resultType = setupServiceClient
+                        .getResultTypeByProfileTestIdInternal(
+                                result.getProfileTestId()
+                        );
+            } catch (Exception ignored) {
+                LOG.warn("ResultType fetch failed for profileTestId={}",
+                        result.getProfileTestId());
+            }
+
+            if (patientId != null && resultType != null) {
+
+                NormalRangeMatchDTO best =
+                        normalRangeMatcherService.findBestNormalRange(
+                                result.getProfileTestId(),
+                                patientId
+                        );
+
+                viewMarker = NormalRangeMatcherService.calculateMarker(
+                        resultType,
+                        result.getResultValueNumber(),
+                        result.getResultValueText(),
+                        best
+                );
+
+                viewNormalRange = buildViewNormalRange(best);
+            }
+
+            return DiagnosticOrderTestResultResponseVM
+                    .ofEntityWithView(result, viewMarker, viewNormalRange);
+        });
+    }
+
+    // =========================================================
+    // INTERNAL UTILITIES
+    // =========================================================
+
+    private Long resolvePatientId(Long orderTestId) {
+
+        return orderTestRepository.findById(orderTestId)
+                .map(DiagnosticOrderTest::getOrderId)
+                .flatMap(orderRepository::findById)
+                .map(DiagnosticOrder::getPatientId)
+                .orElse(null);
+    }
+
+    private String buildViewNormalRange(NormalRangeMatchDTO best) {
+
+        if (best == null) return "UNKNOWN";
+
+        if (best.resultText() != null && !best.resultText().isBlank())
+            return best.resultText();
+
+        if (best.resultLov() != null && !best.resultLov().isBlank())
+            return best.resultLov();
 
         Double from = best.rangeFrom();
         Double to = best.rangeTo();
-        if (from != null && to != null) return from + " - " + to;
-        if (from != null) return ">= " + from;
-        if (to != null) return "<= " + to;
 
-        return null;
+        if (from != null && to != null)
+            return from + " - " + to;
+
+        if (from != null)
+            return ">= " + from;
+
+        if (to != null)
+            return "<= " + to;
+
+        return "UNKNOWN";
     }
+
+    // =========================================================
+    // INTERNAL ENDPOINT HELPERS
+    // =========================================================
+
     @Transactional(readOnly = true)
-    public Page<DiagnosticOrderTestResult> findAll(Specification<DiagnosticOrderTestResult> spec, Pageable pageable) {
-        return diagnosticOrderTestResultRepository.findAll(spec, pageable);
+    public List<Long> findFilledProfileTestIds(
+            List<Long> orderTestIds
+    ) {
+
+        return repository.findByOrderTestIdIn(orderTestIds)
+                .stream()
+                .map(DiagnosticOrderTestResult::getProfileTestId)
+                .distinct()
+                .toList();
     }
-    public void delete(Long id) {
-        LOG.debug("[DiagnosticOrderTestResultService] DELETE - start. id={}", id);
-        diagnosticOrderTestResultRepository.deleteById(id);
-        LOG.debug("[DiagnosticOrderTestResultService] DELETE - done. id={}", id);
+
+    @Transactional(readOnly = true)
+    public Map<Long, List<Long>> findFilledProfileTestIdsByOrderTest(
+            List<Long> orderTestIds
+    ) {
+
+        return repository.findByOrderTestIdIn(orderTestIds)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        DiagnosticOrderTestResult::getOrderTestId,
+                        Collectors.mapping(
+                                DiagnosticOrderTestResult::getProfileTestId,
+                                Collectors.toList()
+                        )
+                ));
     }
 }
