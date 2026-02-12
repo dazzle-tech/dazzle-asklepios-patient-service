@@ -4,7 +4,6 @@ import com.dazzle.asklepios.client.SetupServiceClient;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
-import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.ApproveResultDTO;
@@ -34,22 +33,34 @@ public class DiagnosticOrderTestResultStatusService {
     private static final Logger LOG =
             LoggerFactory.getLogger(DiagnosticOrderTestResultStatusService.class);
 
-    /** Repository used to load and persist results. */
+    /**
+     * Repository used to load and persist results.
+     */
     private final DiagnosticOrderTestResultRepository resultRepository;
 
-    /** Service used to apply status transitions on the parent test. */
+    /**
+     * Service used to apply status transitions on the parent test.
+     */
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
 
-    /** Repository used to load and persist the parent test when recomputing from results. */
+    /**
+     * Repository used to load and persist the parent test when recomputing from results.
+     */
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
 
-    /** Service used to recompute aggregated lab/radiology statuses on the parent order. */
+    /**
+     * Service used to recompute aggregated lab/radiology statuses on the parent order.
+     */
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
 
-    /** Matcher used elsewhere; kept as dependency (not used in this snippet). */
+    /**
+     * Matcher used elsewhere; kept as dependency (not used in this snippet).
+     */
     private final NormalRangeMatcherService normalRangeMatcherService;
 
-    /** Setup service client used to fetch expected profile tests for a test. */
+    /**
+     * Setup service client used to fetch expected profile tests for a test.
+     */
     private final SetupServiceClient setupServiceClient;
 
     public DiagnosticOrderTestResultStatusService(
@@ -264,7 +275,7 @@ public class DiagnosticOrderTestResultStatusService {
     private void ensureTransition(DiagnosticStatus fromStatus, DiagnosticStatus toStatus) {
 
         if (toStatus == DiagnosticStatus.RESULT_APPROVED) {
-            if (fromStatus != DiagnosticStatus.RESULT_READY ) throw invalid(fromStatus, toStatus);
+            if (fromStatus != DiagnosticStatus.RESULT_READY) throw invalid(fromStatus, toStatus);
             return;
         }
 

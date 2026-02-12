@@ -129,8 +129,7 @@ public class DiagnosticOrderTestController {
                 requestDto.orderId(),
                 requestDto.testId(),
                 DiagnosticOrderTestStatus.CANCELLED
-        ))
-        {
+        )) {
             throw new BadRequestAlertException(
                     "duplicate_test_in_order",
                     "diagnostic_order_tests",
@@ -250,10 +249,10 @@ public class DiagnosticOrderTestController {
      *   <li>Pagination via {@link Pageable}</li>
      * </ul>
      *
-     * @param orderId       parent order id
-     * @param status        optional exact status filter
+     * @param orderId          parent order id
+     * @param status           optional exact status filter
      * @param excludedStatuses optional list of statuses to exclude (used when status is null)
-     * @param pageable      paging and sorting
+     * @param pageable         paging and sorting
      * @return paginated list of response VMs plus pagination headers
      */
     @GetMapping("/diagnostic-order-tests/by-order/{orderId}")
@@ -370,7 +369,8 @@ public class DiagnosticOrderTestController {
             if (status != null) filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("status"), status));
             if (includedStatuses != null && !includedStatuses.isEmpty())
                 filterPredicates.add(orderTestRoot.get("status").in(includedStatuses));
-            if (excludedStatus != null) filterPredicates.add(criteriaBuilder.notEqual(orderTestRoot.get("status"), excludedStatus));
+            if (excludedStatus != null)
+                filterPredicates.add(criteriaBuilder.notEqual(orderTestRoot.get("status"), excludedStatus));
             if (excludedStatuses != null && !excludedStatuses.isEmpty()) {
                 filterPredicates.add(criteriaBuilder.not(orderTestRoot.get("status").in(excludedStatuses)));
             }
@@ -378,8 +378,10 @@ public class DiagnosticOrderTestController {
             // Department & processing details
             if (receivedDepartmentId != null)
                 filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("receivedDepartmentId"), receivedDepartmentId));
-            if (processingStatus != null) filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("processingStatus"), processingStatus));
-            if (orderType != null) filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("orderType"), orderType));
+            if (processingStatus != null)
+                filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("processingStatus"), processingStatus));
+            if (orderType != null)
+                filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("orderType"), orderType));
 
             // Audit fields
             if (acceptedBy != null && !acceptedBy.isBlank())
@@ -493,7 +495,7 @@ public class DiagnosticOrderTestController {
      * @return updated entity response
      */
     @PostMapping("/diagnostic-order-tests/{id}/review")
-    public ResponseEntity<DiagnosticOrderTestResponseVM> review(@Valid  @PathVariable("id") Long orderTestId) {
+    public ResponseEntity<DiagnosticOrderTestResponseVM> review(@Valid @PathVariable("id") Long orderTestId) {
         // Username retrieved but not currently used in service call (kept for future audit support)
         LOG.debug("[DiagnosticOrderTest] REVIEW - request received. id={}", orderTestId);
         String username = currentUsername();
@@ -510,7 +512,7 @@ public class DiagnosticOrderTestController {
      * @return updated entity response
      */
     @PostMapping("/diagnostic-order-tests/{id}/approve")
-    public ResponseEntity<DiagnosticOrderTestResponseVM> approve(@Valid  @PathVariable("id") Long orderTestId) {
+    public ResponseEntity<DiagnosticOrderTestResponseVM> approve(@Valid @PathVariable("id") Long orderTestId) {
         LOG.debug("[DiagnosticOrderTest] APPROVE - request received. id={}", orderTestId);
         DiagnosticOrderTest updatedTest = diagnosticOrderTestStatusService.approve(orderTestId);
         LOG.debug("[DiagnosticOrderTest] APPROVE - done. id={}", updatedTest.getId());
@@ -523,7 +525,7 @@ public class DiagnosticOrderTestController {
      * Uses the currently authenticated username as the rejecter.
      *
      * @param rejectRequest order  test id
-     * @param orderTestId rejection payload (reason)
+     * @param orderTestId   rejection payload (reason)
      * @return updated entity response
      */
     @PostMapping("/diagnostic-order-tests/{id}/reject")
@@ -547,7 +549,7 @@ public class DiagnosticOrderTestController {
      * <p>
      * Uses the currently authenticated username as the canceller.
      *
-     * @param orderTestId  order test id
+     * @param orderTestId   order test id
      * @param cancelRequest cancellation payload (reason)
      * @return updated entity response
      */

@@ -1,23 +1,29 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.DiagnosticOrder;
-import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
-import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 @Transactional
@@ -27,16 +33,13 @@ public class DiagnosticOrderService {
 
     private final DiagnosticOrderRepository diagnosticOrderRepository;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
-    private final PatientRepository patientRepository;
 
     public DiagnosticOrderService(
             DiagnosticOrderRepository diagnosticOrderRepository,
-            DiagnosticOrderTestRepository diagnosticOrderTestRepository,
-            PatientRepository patientRepository
+            DiagnosticOrderTestRepository diagnosticOrderTestRepository
     ) {
         this.diagnosticOrderRepository = diagnosticOrderRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
-        this.patientRepository = patientRepository;
     }
 
     /**
@@ -221,9 +224,6 @@ public class DiagnosticOrderService {
      * Side effects:
      * - Updates order: saveDraft=false, status=SUBMITTED, submittedBy/submittedDate set
      * - Updates tests: bulk updates all tests under this order to SUBMITTED, excluding CANCELLED tests
-     *
-     * IMPORTANT:
-     * - Controller must validate draft state / authorization (per current decision).
      */
     public DiagnosticOrder submit(DiagnosticOrder existing, String submittedBy) {
         LOG.debug(
@@ -258,6 +258,18 @@ public class DiagnosticOrderService {
         return saved;
     }
 
+    public DiagnosticOrder submit(Long orderId, String submittedBy) {
+        DiagnosticOrder order = findById(orderId);
+        if (Boolean.FALSE.equals(order.getSaveDraft())) {
+            throw new BadRequestAlertException(
+                    "already_submitted",
+                    "diagnostic_orders",
+                    "Order already submitted"
+            );
+        }
+        return submit(order, submittedBy);
+    }
+
     /**
      * Deletes a diagnostic order by id.
      *
@@ -269,6 +281,75 @@ public class DiagnosticOrderService {
         LOG.debug("[DiagnosticOrderService] DELETE - start. id={}", id);
         diagnosticOrderRepository.deleteById(id);
         LOG.debug("[DiagnosticOrderService] DELETE - done. id={}", id);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<DiagnosticOrder> filter(
+            Long patientId,
+            Long encounterId,
+            DiagnosticStatus status,
+            List<DiagnosticStatus> statusIn,
+            List<DiagnosticStatus> statusNotIn,
+            DiagnosticStatus excludeStatus,
+            Boolean saveDraft,
+            Boolean isUrgent,
+            String labStatus,
+            String radStatus,
+            Instant submittedDateFrom,
+            Instant submittedDateTo,
+            Long departmentId,
+            TestType testType,
+            Pageable pageable
+    ) {
+        if (status != null && statusIn != null && !statusIn.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "invalid_filter",
+                    "diagnostic_orders",
+                    "Use either status or statusIn, not both"
+            );
+        }
+
+        Specification<DiagnosticOrder> filterSpec = (orderRoot, criteriaQuery, criteriaBuilder) -> {
+            List<Predicate> filterPredicates = new ArrayList<>();
+
+            if (patientId != null) filterPredicates.add(criteriaBuilder.equal(orderRoot.get("patientId"), patientId));
+            if (encounterId != null) filterPredicates.add(criteriaBuilder.equal(orderRoot.get("encounterId"), encounterId));
+
+            if (status != null) filterPredicates.add(criteriaBuilder.equal(orderRoot.get("status"), status));
+            if (statusIn != null && !statusIn.isEmpty()) filterPredicates.add(orderRoot.get("status").in(statusIn));
+            if (excludeStatus != null) filterPredicates.add(criteriaBuilder.notEqual(orderRoot.get("status"), excludeStatus));
+            if (statusNotIn != null && !statusNotIn.isEmpty()) filterPredicates.add(criteriaBuilder.not(orderRoot.get("status").in(statusNotIn)));
+
+            if (saveDraft != null) filterPredicates.add(criteriaBuilder.equal(orderRoot.get("saveDraft"), saveDraft));
+            if (isUrgent != null) filterPredicates.add(criteriaBuilder.equal(orderRoot.get("isUrgent"), isUrgent));
+
+            if (labStatus != null && !labStatus.isBlank()) filterPredicates.add(criteriaBuilder.equal(orderRoot.get("labStatus"), labStatus));
+            if (radStatus != null && !radStatus.isBlank()) filterPredicates.add(criteriaBuilder.equal(orderRoot.get("radStatus"), radStatus));
+
+            if (submittedDateFrom != null) filterPredicates.add(criteriaBuilder.greaterThanOrEqualTo(orderRoot.get("submittedDate"), submittedDateFrom));
+            if (submittedDateTo != null) filterPredicates.add(criteriaBuilder.lessThanOrEqualTo(orderRoot.get("submittedDate"), submittedDateTo));
+
+            if (departmentId != null) {
+                Subquery<Long> orderTestSubquery = criteriaQuery.subquery(Long.class);
+                Root<DiagnosticOrderTest> orderTestRoot = orderTestSubquery.from(DiagnosticOrderTest.class);
+
+                List<Predicate> subqueryPredicates = new ArrayList<>();
+                subqueryPredicates.add(criteriaBuilder.equal(orderTestRoot.get("orderId"), orderRoot.get("id")));
+                subqueryPredicates.add(criteriaBuilder.equal(orderTestRoot.get("receivedDepartmentId"), departmentId));
+                subqueryPredicates.add(criteriaBuilder.notEqual(orderTestRoot.get("status"), DiagnosticOrderTestStatus.CANCELLED));
+
+                if (testType != null) {
+                    subqueryPredicates.add(criteriaBuilder.equal(orderTestRoot.get("orderType"), testType));
+                }
+
+                orderTestSubquery.select(orderTestRoot.get("id")).where(subqueryPredicates.toArray(new Predicate[0]));
+                filterPredicates.add(criteriaBuilder.exists(orderTestSubquery));
+            }
+
+            return criteriaBuilder.and(filterPredicates.toArray(new Predicate[0]));
+        };
+
+        return diagnosticOrderRepository.findAll(filterSpec, pageable);
     }
     @Transactional(readOnly = true)
     public DiagnosticOrder findById(Long orderId) {
