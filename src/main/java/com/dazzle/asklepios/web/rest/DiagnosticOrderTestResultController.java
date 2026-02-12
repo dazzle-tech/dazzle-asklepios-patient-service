@@ -2,6 +2,7 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
+import com.dazzle.asklepios.domain.LabResultLog;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import com.dazzle.asklepios.security.SecurityUtils;
@@ -14,6 +15,7 @@ import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.Re
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.laboratory.DiagnosticOrderTestResultResponseVM;
+import com.dazzle.asklepios.web.rest.vm.laboratory.LabResultLogResponseVM;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -235,10 +237,6 @@ public class DiagnosticOrderTestResultController {
 
         return ResponseEntity.ok(DiagnosticOrderTestResultResponseVM.ofEntity(saved));
     }
-
-    // =========================================================
-    // FILTER
-    // =========================================================
 
     /**
      * Filters diagnostic order test results using optional query parameters with pagination.
@@ -468,4 +466,20 @@ public class DiagnosticOrderTestResultController {
                 service.findFilledProfileTestIdsByOrderTest(orderTestIds)
         );
     }
+
+    @GetMapping("/lab-result-logs/by-result/{resultId}")
+    public ResponseEntity<List<LabResultLogResponseVM>> getByResultId(@PathVariable Long resultId) {
+        LOG.debug("[LabResultLog] GET_BY_RESULT_ID - request received. resultId={}", resultId);
+
+        List<LabResultLog> labResultLogs = service.findLabResultLogsByResultId(resultId);
+
+        List<LabResultLogResponseVM> body = labResultLogs.stream()
+                .map(LabResultLogResponseVM::ofEntity)
+                .toList();
+
+        LOG.debug("[LabResultLog] GET_BY_RESULT_ID - response ready. resultId={} returned={}", resultId, body.size());
+        return ResponseEntity.ok(body);
+    }
+
+
 }
