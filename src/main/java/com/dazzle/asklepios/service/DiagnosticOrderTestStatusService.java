@@ -365,8 +365,8 @@ public class DiagnosticOrderTestStatusService {
     }
 
     /**
-     * Normalizes a nullable {@link DiagnosticStatus} to a non-null value.
-     *
+
+     
      * @param status current processing status (may be null)
      * @return {@link DiagnosticStatus#NEW} if status is null; otherwise the provided status
      */
@@ -402,7 +402,7 @@ public class DiagnosticOrderTestStatusService {
                 }
             }
             case RESULT_APPROVED -> {
-                if (!(from == DiagnosticStatus.RESULT_READY || from == DiagnosticStatus.REVIEWED)) {
+                if (!(from == DiagnosticStatus.RESULT_READY || from == DiagnosticStatus.PARTIALLY)) {
                     throw invalid(from, to);
                 }
             }

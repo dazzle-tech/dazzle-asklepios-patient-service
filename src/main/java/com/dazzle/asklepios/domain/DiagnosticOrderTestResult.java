@@ -11,6 +11,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
@@ -78,9 +79,10 @@ public class DiagnosticOrderTestResult extends AbstractAuditingEntity implements
     @Column(name = "review_date")
     private Instant reviewDate;
 
+    @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "processing_status", length = 50)
-    private DiagnosticStatus processingStatus;
+    private DiagnosticStatus processingStatus=DiagnosticStatus.NEW;
 
     @Column(name = "normal_range_value", length = 150)
     private String normalRangeValue;

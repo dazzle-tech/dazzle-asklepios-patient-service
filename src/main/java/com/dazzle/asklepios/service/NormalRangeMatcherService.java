@@ -63,60 +63,60 @@ public class NormalRangeMatcherService {
                         "Patient not found with id " + patientId
                 ));
 
-        return pickBest(candidates, patient).orElse(null);
+        return getBestNormalRangeMatchForPatient(candidates, patient).orElse(null);
     }
 
-    private Optional<NormalRangeMatchDTO> pickBest(List<NormalRangeMatchDTO> candidates, Patient patient) {
+    private Optional<NormalRangeMatchDTO> getBestNormalRangeMatchForPatient(List<NormalRangeMatchDTO> candidates, Patient patient) {
         String patientGender = toGenderString(patient.getSexAtBirth());
-        LocalDate dob = toLocalDate(patient.getDateOfBirth());
+        LocalDate patientDateOfBirth = toLocalDate(patient.getDateOfBirth());
 
         return candidates.stream()
-                .filter(r -> matchesGender(r, patientGender))
-                .filter(r -> matchesAge(r, dob))
-                .filter(r -> matchesCondition(r, patient))
+                .filter(normalRange -> matchesGender(normalRange, patientGender))
+                .filter(normalRange -> matchesAge(normalRange, patientDateOfBirth))
+                .filter(normalRange -> matchesCondition(normalRange, patient))
                 .max(Comparator
-                        .comparingInt((NormalRangeMatchDTO r) -> specificityScore(r))
+                        .comparingInt((NormalRangeMatchDTO normalRange) -> specificityScore(normalRange))
                         .thenComparingDouble(this::ageWindowWidthOrInfinity).reversed()
-                        .thenComparingLong(r -> r.id() == null ? Long.MAX_VALUE : r.id())
+                        .thenComparingLong(normalRange -> normalRange.id() == null ? Long.MAX_VALUE : normalRange.id())
                 );
     }
 
-    private boolean matchesGender(NormalRangeMatchDTO r, String patientGender) {
-        if (r.gender() == null || r.gender().isBlank()) {
+    private boolean matchesGender(NormalRangeMatchDTO normalRange, String patientGender) {
+        if (normalRange.gender() == null || normalRange.gender().isBlank()) {
             return true;
         }
         if (patientGender == null) {
             return false;
         }
-        return r.gender().trim().equalsIgnoreCase(patientGender);
+        return normalRange.gender().trim().equalsIgnoreCase(patientGender);
     }
 
-    private boolean matchesAge(NormalRangeMatchDTO r, LocalDate dob) {
+    private boolean matchesAge(NormalRangeMatchDTO normalRange, LocalDate patientDateOfBirth) {
         boolean hasAnyAgeConstraint =
-                r.ageFrom() != null || r.ageTo() != null || r.ageFromUnit() != null || r.ageToUnit() != null;
+                normalRange.ageFrom() != null || normalRange.ageTo() != null || normalRange.ageFromUnit() != null || normalRange.ageToUnit() != null;
 
         if (!hasAnyAgeConstraint) {
             return true;
         }
 
-        if (dob == null) {
+        if (patientDateOfBirth == null) {
             return false;
         }
 
-        Instant now = Instant.now();
+        Instant currentInstant = Instant.now();
 
-        if (r.ageFrom() != null) {
-            AgeUnit unit = Objects.requireNonNullElse(r.ageFromUnit(), AgeUnit.YEARS);
-            double patientAge = patientAgeInUnit(dob, unit, now);
-            if (patientAge < r.ageFrom()) {
+        if (normalRange.ageFrom() != null) {
+            AgeUnit ageFromUnit = Objects.requireNonNullElse(normalRange.ageFromUnit(), AgeUnit.YEARS);
+            double patientAgeAtLowerBoundUnit = patientAgeInUnit(patientDateOfBirth, ageFromUnit, currentInstant);
+            if (patientAgeAtLowerBoundUnit < normalRange.ageFrom()) {
                 return false;
             }
         }
 
-        if (r.ageTo() != null) {
-            AgeUnit unit = Objects.requireNonNullElse(r.ageToUnit(), AgeUnit.YEARS);
-            double patientAge = patientAgeInUnit(dob, unit, now);
-            if (patientAge > r.ageTo()) {
+        if (normalRange.ageTo() != null) {
+            AgeUnit ageToUnit = Objects.requireNonNullElse(normalRange.ageToUnit(), AgeUnit.YEARS);
+            double patientAgeAtUpperBoundUnit = patientAgeInUnit(patientDateOfBirth, ageToUnit, currentInstant);
+            if (patientAgeAtUpperBoundUnit > normalRange.ageTo()) {
                 return false;
             }
         }
@@ -128,21 +128,21 @@ public class NormalRangeMatcherService {
      * Placeholder: patient domain does not include condition currently.
      * If you later add condition on Patient, implement strict comparison here.
      */
-    private boolean matchesCondition(NormalRangeMatchDTO r, Patient patient) {
-        return r.condition() == null;
+    private boolean matchesCondition(NormalRangeMatchDTO normalRange, Patient patient) {
+        return normalRange.condition() == null;
     }
 
-    private int specificityScore(NormalRangeMatchDTO r) {
+    private int specificityScore(NormalRangeMatchDTO normalRange) {
         int score = 0;
 
-        if (r.gender() != null && !r.gender().isBlank()) score += 4;
+        if (normalRange.gender() != null && !normalRange.gender().isBlank()) score += 4;
 
-        boolean hasFrom = r.ageFrom() != null;
-        boolean hasTo = r.ageTo() != null;
-        boolean hasAnyAge = hasFrom || hasTo || r.ageFromUnit() != null || r.ageToUnit() != null;
+        boolean hasLowerBound = normalRange.ageFrom() != null;
+        boolean hasUpperBound = normalRange.ageTo() != null;
+        boolean hasAnyAge = hasLowerBound || hasUpperBound || normalRange.ageFromUnit() != null || normalRange.ageToUnit() != null;
         if (hasAnyAge) score += 2;
 
-        if (r.condition() != null) score += 1;
+        if (normalRange.condition() != null) score += 1;
 
         return score;
     }
@@ -159,17 +159,17 @@ public class NormalRangeMatcherService {
         return Math.abs(toDays - fromDays);
     }
 
-    private double patientAgeInUnit(LocalDate dob, AgeUnit unit, Instant nowInstant) {
-        LocalDate now = nowInstant.atZone(ZoneId.systemDefault()).toLocalDate();
+    private double patientAgeInUnit(LocalDate dateOfBirth, AgeUnit unit, Instant nowInstant) {
+        LocalDate currentDate = nowInstant.atZone(ZoneId.systemDefault()).toLocalDate();
 
         return switch (unit) {
-            case YEARS -> ChronoUnit.YEARS.between(dob, now);
-            case MONTHS -> ChronoUnit.MONTHS.between(dob, now);
-            case WEEKS -> ChronoUnit.WEEKS.between(dob, now);
-            case DAYS -> ChronoUnit.DAYS.between(dob, now);
+            case YEARS -> ChronoUnit.YEARS.between(dateOfBirth, currentDate);
+            case MONTHS -> ChronoUnit.MONTHS.between(dateOfBirth, currentDate);
+            case WEEKS -> ChronoUnit.WEEKS.between(dateOfBirth, currentDate);
+            case DAYS -> ChronoUnit.DAYS.between(dateOfBirth, currentDate);
             case HOURS -> {
-                long hours = ChronoUnit.HOURS.between(dob.atStartOfDay(ZoneId.systemDefault()).toInstant(), nowInstant);
-                yield hours;
+                long ageInHours = ChronoUnit.HOURS.between(dateOfBirth.atStartOfDay(ZoneId.systemDefault()).toInstant(), nowInstant);
+                yield ageInHours;
             }
         };
     }
@@ -214,45 +214,53 @@ public class NormalRangeMatcherService {
 
     private static TestResultMarker calculateNumber(BigDecimal resultValueNumber, NormalRangeMatchDTO normalRange) {
         if (resultValueNumber == null) {
-
-            throw new IllegalArgumentException("Numeric result is required for NUMBER profile");
+            throw new BadRequestAlertException(
+                    "Numeric result is required for NUMBER profile",
+                    "diagnostic_order_test_results",
+                    "result.number.required"
+            );
         }
 
-        double v = resultValueNumber.doubleValue();
+        double numericResultValue = resultValueNumber.doubleValue();
 
         if (Boolean.TRUE.equals(normalRange.criticalValue())) {
-            Double lessThan = normalRange.criticalValueLessThan();
-            if (lessThan != null && v < lessThan) return TestResultMarker.CRITICAL_LOWER;
+            Double criticalLowerThreshold = normalRange.criticalValueLessThan();
+            if (criticalLowerThreshold != null && numericResultValue < criticalLowerThreshold) return TestResultMarker.CRITICAL_LOWER;
 
-            Double moreThan = normalRange.criticalValueMoreThan();
-            if (moreThan != null && v > moreThan) return TestResultMarker.CRITICAL_UPPER;
+            Double criticalUpperThreshold = normalRange.criticalValueMoreThan();
+            if (criticalUpperThreshold != null && numericResultValue > criticalUpperThreshold) return TestResultMarker.CRITICAL_UPPER;
         }
 
-        Double from = normalRange.rangeFrom();
-        if (from != null && v < from) return TestResultMarker.LOWER_LIMIT;
+        Double normalLowerLimit = normalRange.rangeFrom();
+        if (normalLowerLimit != null && numericResultValue < normalLowerLimit) return TestResultMarker.LOWER_LIMIT;
 
-        Double to = normalRange.rangeTo();
-        if (to != null && v > to) return TestResultMarker.UPPER_LIMIT;
+        Double normalUpperLimit = normalRange.rangeTo();
+        if (normalUpperLimit != null && numericResultValue > normalUpperLimit) return TestResultMarker.UPPER_LIMIT;
 
         return TestResultMarker.NORMAL_MARKER;
     }
 
     private static TestResultMarker calculateLov(String resultValueText, NormalRangeMatchDTO normalRange) {
         if (resultValueText == null || resultValueText.isBlank()) {
-            throw new IllegalArgumentException("Text/LOV result is required for LOV profile");
+            throw new BadRequestAlertException(
+                    "Text/LOV result is required for LOV profile",
+                    "diagnostic_order_test_results",
+                    "result.lov.required"
+            );
         }
 
-        String v = resultValueText.trim();
+        String normalizedResultValue = resultValueText.trim();
 
         if (normalRange.resultLov() != null && !normalRange.resultLov().isBlank()) {
-            return v.equalsIgnoreCase(normalRange.resultLov().trim())
+            return normalizedResultValue.equalsIgnoreCase(normalRange.resultLov().trim())
                     ? TestResultMarker.NORMAL_MARKER
                     : TestResultMarker.ABNORMAL_MARKER;
         }
 
         if (normalRange.lovKeys() != null && !normalRange.lovKeys().isEmpty()) {
-            boolean ok = normalRange.lovKeys().stream().anyMatch(k -> v.equalsIgnoreCase(k.trim()));
-            return ok ? TestResultMarker.NORMAL_MARKER : TestResultMarker.ABNORMAL_MARKER;
+            boolean matchesAllowedLovKey = normalRange.lovKeys().stream()
+                    .anyMatch(allowedLovKey -> normalizedResultValue.equalsIgnoreCase(allowedLovKey.trim()));
+            return matchesAllowedLovKey ? TestResultMarker.NORMAL_MARKER : TestResultMarker.ABNORMAL_MARKER;
         }
 
 

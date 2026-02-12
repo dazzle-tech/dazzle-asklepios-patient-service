@@ -7,7 +7,11 @@ import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
+import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.ApproveResultDTO;
+import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.RejectResultDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,14 +24,15 @@ import java.util.List;
  * <p>This service enforces allowed transitions for {@link DiagnosticStatus} (processingStatus) and updates audit fields
  * (approvedBy/date, rejectedBy/date/reason, reviewBy/date).</p>
  *
- <p>After a successful approve/reject transition, it updates the
- {@link DiagnosticOrderTestResult} lifecycle only.
- Parent test and order statuses are NOT affected here.</p>
-
+ * <p>After a successful approve/reject transition, it updates the {@link DiagnosticOrderTestResult} lifecycle only.
+ * Parent test and order statuses are recomputed via status services.</p>
  */
 @Service
 @Transactional
 public class DiagnosticOrderTestResultStatusService {
+
+    private static final Logger LOG =
+            LoggerFactory.getLogger(DiagnosticOrderTestResultStatusService.class);
 
     /** Repository used to load and persist results. */
     private final DiagnosticOrderTestResultRepository resultRepository;
@@ -40,21 +45,20 @@ public class DiagnosticOrderTestResultStatusService {
 
     /** Service used to recompute aggregated lab/radiology statuses on the parent order. */
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
-    private final  NormalRangeMatcherService normalRangeMatcherService;
-    private  final SetupServiceClient setupServiceClient;
-    /**
-     * Constructs the service with required dependencies.
-     *
-     * @param resultRepository repository for result persistence
-     * @param diagnosticOrderTestStatusService service for updating parent test status
-     * @param diagnosticOrderTestRepository repository for reading/writing parent tests
-     * @param diagnosticOrderStatusService service for recomputing parent order statuses
-     */
+
+    /** Matcher used elsewhere; kept as dependency (not used in this snippet). */
+    private final NormalRangeMatcherService normalRangeMatcherService;
+
+    /** Setup service client used to fetch expected profile tests for a test. */
+    private final SetupServiceClient setupServiceClient;
+
     public DiagnosticOrderTestResultStatusService(
             DiagnosticOrderTestResultRepository resultRepository,
             DiagnosticOrderTestStatusService diagnosticOrderTestStatusService,
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
-            DiagnosticOrderStatusService diagnosticOrderStatusService, NormalRangeMatcherService normalRangeMatcherService, SetupServiceClient setupServiceClient
+            DiagnosticOrderStatusService diagnosticOrderStatusService,
+            NormalRangeMatcherService normalRangeMatcherService,
+            SetupServiceClient setupServiceClient
     ) {
         this.resultRepository = resultRepository;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
@@ -69,30 +73,24 @@ public class DiagnosticOrderTestResultStatusService {
      *
      * <p>Allowed transition: {@link DiagnosticStatus#RESULT_READY} -&gt; {@link DiagnosticStatus#RESULT_APPROVED}.</p>
      *
-     * <p>Side effects:
-     * <ul>
-     *   <li>Sets {@code approvedBy} and {@code approvedDate}.</li>
-     *   <li>Transitions the parent test to approved via {@link DiagnosticOrderTestStatusService#approve(Long)}.</li>
-     *   <li>Recomputes the parent test processing status from all its results (aggregate).</li>
-     * </ul>
-     * </p>
-     *
-     * @param resultId result id
-     * @param approvedBy username approving the result
-     * @return updated result
+     * @param approveResultDTO approval command containing result id, approver username, computed marker, and normal range
+     * @return updated result after applying approval and persisting audit fields
      */
-    public DiagnosticOrderTestResult approve(Long resultId, String approvedBy, TestResultMarker marker,String normalrange) {
-        DiagnosticOrderTestResult r = getResult(resultId);
+    public DiagnosticOrderTestResult approve(ApproveResultDTO approveResultDTO) {
+        DiagnosticOrderTestResult result = getResult(approveResultDTO.resultId());
 
-        DiagnosticStatus from = normalize(r.getProcessingStatus());
-        ensureTransition(from, DiagnosticStatus.RESULT_APPROVED);
+        LOG.debug("[ResultApprove] start approveResultDTO={} currentStatus={} orderTestId={}",
+                approveResultDTO, result.getProcessingStatus(), result.getOrderTestId());
 
-        r.setProcessingStatus(DiagnosticStatus.RESULT_APPROVED);
-        r.setApprovedBy(approvedBy);
-        r.setApprovedDate(Instant.now());
-        r.setMarker(marker);
-        r.setNormalRangeValue(normalrange);
-        DiagnosticOrderTestResult saved = resultRepository.save(r);
+        ensureTransition(result.getProcessingStatus(), DiagnosticStatus.RESULT_APPROVED);
+
+        result.setProcessingStatus(DiagnosticStatus.RESULT_APPROVED);
+        result.setApprovedBy(approveResultDTO.approvedBy());
+        result.setApprovedDate(Instant.now());
+        result.setMarker(approveResultDTO.marker());
+        result.setNormalRangeValue(approveResultDTO.normalRange());
+
+        DiagnosticOrderTestResult saved = resultRepository.save(result);
 
         diagnosticOrderTestStatusService.approve(saved.getOrderTestId());
         recomputeTestProcessingStatusFromResults(saved.getOrderTestId());
@@ -100,39 +98,32 @@ public class DiagnosticOrderTestResultStatusService {
         return saved;
     }
 
+
     /**
      * Rejects a result.
      *
      * <p>Allowed transition:
-     * {@link DiagnosticStatus#NEW}, {@link DiagnosticStatus#RESULT_READY}, or {@link DiagnosticStatus#REVIEWED}
-     * -&gt; {@link DiagnosticStatus#REJECTED}.</p>
+     * {@link DiagnosticStatus#NEW} or {@link DiagnosticStatus#RESULT_READY}
+     * -&gt; {@link DiagnosticStatus#RESULT_REJECTED}.</p>
      *
-     * <p>Side effects:
-     * <ul>
-     *   <li>Sets {@code rejectedBy}, {@code rejectedDate}, and {@code rejectedReason}.</li>
-     *   <li>Transitions the parent test to rejected via
-     *       {@link DiagnosticOrderTestStatusService#reject(Long, String, String)}.</li>
-     *   <li>Recomputes the parent test processing status from all its results (aggregate).</li>
-     * </ul>
-     * </p>
-     *
-     * @param resultId result id
-     * @param rejectedBy username rejecting the result
-     * @param rejectedReason rejection reason
-     * @return updated result
+     * @param rejectResultDTO rejection command containing result id, rejecting username, and rejection reason
+     * @return updated result after applying rejection and persisting audit fields
      */
-    public DiagnosticOrderTestResult reject(Long resultId, String rejectedBy, String rejectedReason) {
-        DiagnosticOrderTestResult r = getResult(resultId);
+    public DiagnosticOrderTestResult reject(RejectResultDTO rejectResultDTO) {
+        DiagnosticOrderTestResult result = getResult(rejectResultDTO.resultId());
 
-        DiagnosticStatus from = normalize(r.getProcessingStatus());
-        ensureTransition(from, DiagnosticStatus.RESULT_REJECTED);
+        LOG.debug("[ResultReject] start rejectResultDTO={} currentStatus={} orderTestId={}",
+                rejectResultDTO, result.getProcessingStatus(), result.getOrderTestId());
 
-        r.setProcessingStatus(DiagnosticStatus.RESULT_REJECTED);
-        r.setRejectedBy(rejectedBy);
-        r.setRejectedReason(rejectedReason);
-        r.setRejectedDate(Instant.now());
+        ensureTransition(result.getProcessingStatus(), DiagnosticStatus.RESULT_REJECTED);
 
-        DiagnosticOrderTestResult saved = resultRepository.save(r);
+        result.setProcessingStatus(DiagnosticStatus.RESULT_REJECTED);
+        result.setRejectedBy(rejectResultDTO.rejectedBy());
+        result.setRejectedReason(rejectResultDTO.rejectedReason());
+        result.setRejectedDate(Instant.now());
+
+        DiagnosticOrderTestResult saved = resultRepository.save(result);
+
         recomputeTestProcessingStatusFromResults(saved.getOrderTestId());
 
         return saved;
@@ -145,100 +136,122 @@ public class DiagnosticOrderTestResultStatusService {
      * <p>If the result has no {@code reviewDate}, it sets {@code reviewBy} and {@code reviewDate}.
      * If it is already reviewed, it clears {@code reviewBy} and {@code reviewDate}.</p>
      *
-     * <p>This method does not change {@code processingStatus}.</p>
-     *
      * @param resultId result id
      * @param username current username
      * @return updated result
      */
     public DiagnosticOrderTestResult toggleReview(Long resultId, String username) {
-        DiagnosticOrderTestResult r = getResult(resultId);
+        DiagnosticOrderTestResult result = getResult(resultId);
 
-        boolean reviewed = r.getReviewDate() != null;
+        boolean isReviewed = result.getReviewDate() != null;
 
-        if (!reviewed) {
-            r.setReviewBy(username);
-            r.setReviewDate(Instant.now());
+        LOG.debug("[ResultToggleReview] start resultId={} orderTestId={} isReviewed={} user={}",
+                resultId, result.getOrderTestId(), isReviewed, username);
+
+        if (!isReviewed) {
+            result.setReviewBy(username);
+            result.setReviewDate(Instant.now());
         } else {
-            r.setReviewBy(null);
-            r.setReviewDate(null);
+            result.setReviewBy(null);
+            result.setReviewDate(null);
         }
 
-        return resultRepository.save(r);
+        DiagnosticOrderTestResult saved = resultRepository.save(result);
+
+        LOG.debug("[ResultToggleReview] done resultId={} orderTestId={} isReviewedNow={}",
+                saved.getId(), saved.getOrderTestId(), saved.getReviewDate() != null);
+
+        return saved;
     }
 
     /**
      * Recomputes and persists the parent {@link DiagnosticOrderTest} processing status based on its results.
      *
-     * <p>Aggregation rules (current implementation):
+     * <p>Rules:
      * <ul>
-     *   <li>If any result is {@code REJECTED} -&gt; test becomes {@code REJECTED}.</li>
-     *   <li>If all results are {@code RESULT_APPROVED} -&gt; test becomes {@code RESULT_APPROVED}.</li>
-     *   <li>If any result is {@code RESULT_READY} -&gt; test becomes {@code RESULT_READY}.</li>
-     *   <li>Otherwise -&gt; test becomes {@code NEW}.</li>
+     *   <li>If not all expected profile tests are filled -&gt; {@link DiagnosticStatus#PARTIALLY}</li>
+     *   <li>If all expected profiles are filled:
+     *       <ul>
+     *         <li>If all result statuses are the same -&gt; that status</li>
+     *         <li>Otherwise -&gt; {@link DiagnosticStatus#PARTIALLY}</li>
+     *       </ul>
+     *   </li>
      * </ul>
      * </p>
      *
-     * <p>After updating the test, it recomputes the aggregated lab/radiology statuses on the parent order.</p>
+     * <p>After updating the test, it recomputes aggregated lab/radiology statuses on the parent order.</p>
      *
      * @param orderTestId diagnostic order test id
-     * @return updated parent test
-     * @throws BadRequestAlertException if the parent test does not exist
+     * @return updated parent test (or unchanged test)
      */
     public DiagnosticOrderTest recomputeTestProcessingStatusFromResults(Long orderTestId) {
 
-        DiagnosticOrderTest test = diagnosticOrderTestRepository.findById(orderTestId)
+        DiagnosticOrderTest orderTest = diagnosticOrderTestRepository.findById(orderTestId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
                         "diagnostic_order_tests",
                         "DiagnosticOrderTest not found with id " + orderTestId
                 ));
 
-        List<Long> profileIds = setupServiceClient.getTestProfilesIdsByTestId(test.getTestId());
-        if (profileIds == null || profileIds.isEmpty()) {
-            return test;
+        List<Long> expectedProfileTestIds =
+                setupServiceClient.getTestProfilesIdsByTestId(orderTest.getTestId());
+
+        if (expectedProfileTestIds == null || expectedProfileTestIds.isEmpty()) {
+            LOG.debug("[TestRecompute] skip no expected profiles orderTestId={} testId={}",
+                    orderTestId, orderTest.getTestId());
+            return orderTest;
         }
 
-        List<Long> filledProfileIds = resultRepository.findDistinctProfileTestIdsByOrderTestId(orderTestId);
-        if (filledProfileIds == null) filledProfileIds = List.of();
+        List<Long> filledProfileTestIds =
+                resultRepository.findDistinctProfileTestIdsByOrderTestId(orderTestId);
 
-        if (filledProfileIds.isEmpty()) {
-            return test;
+        if (filledProfileTestIds == null || filledProfileTestIds.isEmpty()) {
+            LOG.debug("[TestRecompute] skip no filled profiles orderTestId={} testId={}",
+                    orderTestId, orderTest.getTestId());
+            return orderTest;
         }
 
-        boolean allProfilesFilled = filledProfileIds.containsAll(profileIds);
+        boolean areAllProfilesFilled = filledProfileTestIds.containsAll(expectedProfileTestIds);
 
-        DiagnosticStatus target;
-        if (!allProfilesFilled) {
-            target = DiagnosticStatus.PARTIALLY;
+        LOG.debug("[TestRecompute] inputs orderTestId={} testId={} expectedProfiles={} filledProfiles={} allProfilesFilled={} oldTestStatus={}",
+                orderTestId,
+                orderTest.getTestId(),
+                expectedProfileTestIds.size(),
+                filledProfileTestIds.size(),
+                areAllProfilesFilled,
+                orderTest.getProcessingStatus());
+
+        List<DiagnosticStatus> resultProcessingStatuses = null;
+        DiagnosticStatus newProcessingStatus;
+
+        if (!areAllProfilesFilled) {
+            newProcessingStatus = DiagnosticStatus.PARTIALLY;
         } else {
-            List<DiagnosticStatus> statuses = resultRepository.findProcessingStatusesByOrderTestId(orderTestId);
-            if (statuses == null || statuses.isEmpty()) {
-                return test; // احتياط: ما تعدل إذا ما رجع statuses
-            }
-
-            DiagnosticStatus first = normalize(statuses.get(0));
-            boolean allSame = statuses.stream()
-                    .map(this::normalize)
-                    .allMatch(s -> s == first);
-
-            target = allSame ? first : DiagnosticStatus.PARTIALLY;
+            resultProcessingStatuses = resultRepository.findProcessingStatusesByOrderTestId(orderTestId);
+            newProcessingStatus = aggregateResultStatuses(resultProcessingStatuses);
         }
 
-        test.setProcessingStatus(target);
-        DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
+        LOG.debug("[TestRecompute] decision orderTestId={} resultStatuses={} newTestStatus={}",
+                orderTestId, resultProcessingStatuses, newProcessingStatus);
 
-        diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
-        return saved;
+        if (orderTest.getProcessingStatus() == newProcessingStatus) {
+            LOG.debug("[TestRecompute] no change orderTestId={} status={}", orderTestId, newProcessingStatus);
+            return orderTest;
+        }
+
+        orderTest.setProcessingStatus(newProcessingStatus);
+        DiagnosticOrderTest savedOrderTest = diagnosticOrderTestRepository.save(orderTest);
+
+        LOG.info("[TestRecompute] updated orderTestId={} testId={} oldStatus={} newStatus={} orderId={}",
+                orderTestId, savedOrderTest.getTestId(), orderTest.getProcessingStatus(), savedOrderTest.getProcessingStatus(), savedOrderTest.getOrderId());
+
+        diagnosticOrderStatusService.recomputeLabRadStatuses(savedOrderTest.getOrderId());
+
+        LOG.debug("[TestRecompute] recompute order statuses done orderId={}", savedOrderTest.getOrderId());
+
+        return savedOrderTest;
     }
 
-
-    /**
-     * Loads a result by id or throws a {@link BadRequestAlertException} if not found.
-     *
-     * @param id result id
-     * @return existing result
-     */
     private DiagnosticOrderTestResult getResult(Long id) {
         return resultRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
@@ -248,77 +261,53 @@ public class DiagnosticOrderTestResultStatusService {
                 ));
     }
 
-    /**
-     * Normalizes a nullable status to {@link DiagnosticStatus#NEW}.
-     *
-     * @param status current status (nullable)
-     * @return normalized status
-     */
-    private DiagnosticStatus normalize(DiagnosticStatus status) {
-        return status == null ? DiagnosticStatus.NEW : status;
-    }
+    private void ensureTransition(DiagnosticStatus fromStatus, DiagnosticStatus toStatus) {
 
-    /**
-     * Validates that a transition from {@code from} to {@code to} is allowed for results.
-     *
-     * @param from current status
-     * @param to target status
-     * @throws BadRequestAlertException if the transition is not allowed
-     */
-    private void ensureTransition(DiagnosticStatus from, DiagnosticStatus to) {
-
-        if (to == DiagnosticStatus.RESULT_APPROVED) {
-            if (from != DiagnosticStatus.RESULT_READY)
-                throw invalid(from, to);
+        if (toStatus == DiagnosticStatus.RESULT_APPROVED) {
+            if (fromStatus != DiagnosticStatus.RESULT_READY ) throw invalid(fromStatus, toStatus);
             return;
         }
 
-        if (to == DiagnosticStatus.RESULT_REJECTED) {
-            if (!(from == DiagnosticStatus.NEW
-                    || from == DiagnosticStatus.RESULT_READY
-            )) {
-                throw invalid(from, to);
+        if (toStatus == DiagnosticStatus.RESULT_REJECTED) {
+            if (fromStatus != DiagnosticStatus.NEW && fromStatus != DiagnosticStatus.RESULT_READY) {
+                throw invalid(fromStatus, toStatus);
             }
             return;
         }
 
-        throw invalid(from, to);
+        throw invalid(fromStatus, toStatus);
     }
 
-    /**
-     * Builds a standardized invalid transition exception.
-     *
-     * @param from current status
-     * @param to target status
-     * @return exception to be thrown
-     */
-    private BadRequestAlertException invalid(DiagnosticStatus from, DiagnosticStatus to) {
+    private BadRequestAlertException invalid(DiagnosticStatus fromStatus, DiagnosticStatus toStatus) {
         return new BadRequestAlertException(
                 "invalid_transition",
                 "diagnostic_order_tests_result",
-                "Invalid transition " + from + " -> " + to
+                "Invalid transition " + fromStatus + " -> " + toStatus
         );
     }
 
     /**
      * Aggregates multiple result statuses into a single status for the parent test.
      *
-     * @param statuses list of result processing statuses
-     * @return aggregated status
+     * <p>Rule: if all statuses are equal -&gt; return that status, otherwise -&gt; PARTIALLY.</p>
      */
-    private DiagnosticStatus aggregate(List<DiagnosticStatus> statuses) {
-        if (statuses.stream().anyMatch(s -> s == DiagnosticStatus.RESULT_REJECTED)) {
-            return DiagnosticStatus.RESULT_REJECTED;
+    private DiagnosticStatus aggregateResultStatuses(List<DiagnosticStatus> resultStatuses) {
+        if (resultStatuses == null || resultStatuses.isEmpty()) {
+            LOG.debug("[TestAggregate] empty statuses -> NEW");
+            return DiagnosticStatus.NEW;
         }
 
-        if (statuses.stream().allMatch(s -> s == DiagnosticStatus.RESULT_APPROVED)) {
-            return DiagnosticStatus.RESULT_APPROVED;
-        }
+        DiagnosticStatus firstStatus = resultStatuses.get(0);
 
-        if (statuses.stream().anyMatch(s -> s == DiagnosticStatus.RESULT_READY)) {
-            return DiagnosticStatus.RESULT_READY;
-        }
+        boolean areAllSameStatus =
+                resultStatuses.stream().allMatch(status -> status == firstStatus);
 
-        return DiagnosticStatus.NEW;
+        DiagnosticStatus aggregated =
+                areAllSameStatus ? firstStatus : DiagnosticStatus.PARTIALLY;
+
+        LOG.debug("[TestAggregate] statuses={} first={} allSame={} aggregated={}",
+                resultStatuses, firstStatus, areAllSameStatus, aggregated);
+
+        return aggregated;
     }
 }

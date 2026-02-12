@@ -10,6 +10,7 @@ import com.dazzle.asklepios.service.DiagnosticOrderTestResultStatusService;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultCreateDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultRejectDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultUpdateDTO;
+import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.RejectResultDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.laboratory.DiagnosticOrderTestResultResponseVM;
@@ -23,7 +24,6 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
@@ -140,7 +140,7 @@ public class DiagnosticOrderTestResultController {
         String username = currentUsername();
 
         DiagnosticOrderTestResult saved =
-                service.approveWithBusinessLogic(id, username);
+                service.approveResult(id, username);
 
         return ResponseEntity.ok(
                 DiagnosticOrderTestResultResponseVM.ofEntity(saved)
@@ -156,16 +156,19 @@ public class DiagnosticOrderTestResultController {
             @PathVariable Long id,
             @Valid @RequestBody DiagnosticOrderTestResultRejectDTO dto
     ) {
-
         String username = currentUsername();
 
-        DiagnosticOrderTestResult saved =
-                statusService.reject(id, username, dto.rejectedReason());
-
-        return ResponseEntity.ok(
-                DiagnosticOrderTestResultResponseVM.ofEntity(saved)
+        DiagnosticOrderTestResult saved = statusService.reject(
+                new RejectResultDTO(
+                        id,
+                        username,
+                        dto.rejectedReason()
+                )
         );
+
+        return ResponseEntity.ok(DiagnosticOrderTestResultResponseVM.ofEntity(saved));
     }
+
 
     // =========================================================
     // FILTER
@@ -218,11 +221,12 @@ public class DiagnosticOrderTestResultController {
 
             @RequestParam(name = "reviewDateTo", required = false)
             Instant reviewDateToFilter,
-
+            @RequestParam(name = "reviewed", required = false)
+            Boolean reviewed,
             @ParameterObject Pageable pageable
     ) {
 
-        Specification<DiagnosticOrderTestResult> spec = (root, query, cb) -> {
+        Specification<DiagnosticOrderTestResult> resultSpecification = (testResultRoot, criteriaQuery, criteriaBuilder) -> {
 
             List<Predicate> predicates = new ArrayList<>();
 
@@ -230,24 +234,24 @@ public class DiagnosticOrderTestResultController {
             // BASIC FILTERS
             // =============================
             if (orderIdInFilter != null && !orderIdInFilter.isEmpty()) {
-                var subQuery = query.subquery(Long.class);
+                var subQuery = criteriaQuery.subquery(Long.class);
                 var testRoot = subQuery.from(DiagnosticOrderTest.class);
 
                 subQuery.select(testRoot.get("id"))
                         .where(testRoot.get("orderId").in(orderIdInFilter));
 
-                predicates.add(root.get("orderTestId").in(subQuery));
+                predicates.add(testResultRoot.get("orderTestId").in(subQuery));
             }
             if (orderTestIdFilter != null) {
-                predicates.add(cb.equal(root.get("orderTestId"), orderTestIdFilter));
+                predicates.add(criteriaBuilder.equal(testResultRoot.get("orderTestId"), orderTestIdFilter));
             }
 
             if (profileTestIdFilter != null) {
-                predicates.add(cb.equal(root.get("profileTestId"), profileTestIdFilter));
+                predicates.add(criteriaBuilder.equal(testResultRoot.get("profileTestId"), profileTestIdFilter));
             }
 
             if (processingStatusFilter != null) {
-                predicates.add(cb.equal(root.get("processingStatus"), processingStatusFilter));
+                predicates.add(criteriaBuilder.equal(testResultRoot.get("processingStatus"), processingStatusFilter));
             }
 
             // =============================
@@ -255,11 +259,11 @@ public class DiagnosticOrderTestResultController {
             // =============================
 
             if (markerFilter != null) {
-                predicates.add(cb.equal(root.get("marker"), markerFilter));
+                predicates.add(criteriaBuilder.equal(testResultRoot.get("marker"), markerFilter));
             }
 
             if (excludeMarkerFilter != null) {
-                predicates.add(cb.notEqual(root.get("marker"), excludeMarkerFilter));
+                predicates.add(criteriaBuilder.notEqual(testResultRoot.get("marker"), excludeMarkerFilter));
             }
 
             // =============================
@@ -267,15 +271,15 @@ public class DiagnosticOrderTestResultController {
             // =============================
 
             if (approvedByFilter != null) {
-                predicates.add(cb.equal(root.get("approvedBy"), approvedByFilter));
+                predicates.add(criteriaBuilder.equal(testResultRoot.get("approvedBy"), approvedByFilter));
             }
 
             if (rejectedByFilter != null) {
-                predicates.add(cb.equal(root.get("rejectedBy"), rejectedByFilter));
+                predicates.add(criteriaBuilder.equal(testResultRoot.get("rejectedBy"), rejectedByFilter));
             }
 
             if (reviewByFilter != null) {
-                predicates.add(cb.equal(root.get("reviewBy"), reviewByFilter));
+                predicates.add(criteriaBuilder.equal(testResultRoot.get("reviewBy"), reviewByFilter));
             }
 
             // =============================
@@ -283,53 +287,62 @@ public class DiagnosticOrderTestResultController {
             // =============================
 
             if (approvedDateFromFilter != null) {
-                predicates.add(cb.greaterThanOrEqualTo(
-                        root.get("approvedDate"),
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(
+                        testResultRoot.get("approvedDate"),
                         approvedDateFromFilter
                 ));
             }
 
             if (approvedDateToFilter != null) {
-                predicates.add(cb.lessThanOrEqualTo(
-                        root.get("approvedDate"),
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(
+                        testResultRoot.get("approvedDate"),
                         approvedDateToFilter
                 ));
             }
 
             if (rejectedDateFromFilter != null) {
-                predicates.add(cb.greaterThanOrEqualTo(
-                        root.get("rejectedDate"),
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(
+                        testResultRoot.get("rejectedDate"),
                         rejectedDateFromFilter
                 ));
             }
 
             if (rejectedDateToFilter != null) {
-                predicates.add(cb.lessThanOrEqualTo(
-                        root.get("rejectedDate"),
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(
+                        testResultRoot.get("rejectedDate"),
                         rejectedDateToFilter
                 ));
             }
 
             if (reviewDateFromFilter != null) {
-                predicates.add(cb.greaterThanOrEqualTo(
-                        root.get("reviewDate"),
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(
+                        testResultRoot.get("reviewDate"),
                         reviewDateFromFilter
                 ));
             }
 
             if (reviewDateToFilter != null) {
-                predicates.add(cb.lessThanOrEqualTo(
-                        root.get("reviewDate"),
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(
+                        testResultRoot.get("reviewDate"),
                         reviewDateToFilter
                 ));
             }
 
-            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            if (reviewed != null) {
+                if (reviewed) {
+                    predicates.add(criteriaBuilder.isNotNull(testResultRoot.get("reviewDate")));
+                } else {
+                    predicates.add(criteriaBuilder.isNull(testResultRoot.get("reviewDate")));
+                }
+            }
+
+
+            return criteriaBuilder.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
         };
 
 
         Page<DiagnosticOrderTestResultResponseVM> page =
-                service.filterWithView(spec, pageable);
+                service.resultFilter(resultSpecification, pageable);
 
         HttpHeaders headers =
                 PaginationUtil.generatePaginationHttpHeaders(
