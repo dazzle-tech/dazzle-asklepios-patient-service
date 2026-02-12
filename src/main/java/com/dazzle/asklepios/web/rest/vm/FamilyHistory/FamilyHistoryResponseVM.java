@@ -10,7 +10,7 @@ public record FamilyHistoryResponseVM(
         Long patientId,
         String condition,
         Relations relation,
-        String inheritedDiseases,
+        Boolean inheritedDiseases,
         String createdBy,
         Instant createdDate
 ) {

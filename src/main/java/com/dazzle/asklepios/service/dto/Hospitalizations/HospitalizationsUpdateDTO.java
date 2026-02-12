@@ -16,11 +16,9 @@ public record HospitalizationsUpdateDTO(
         @NotNull
         Long patientId,
 
-        @NotNull
         @NotBlank
         String facility,
 
-        @NotNull
         @NotBlank
         String reason,
 

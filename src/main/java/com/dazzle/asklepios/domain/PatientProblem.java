@@ -47,7 +47,6 @@ public class PatientProblem extends AbstractAuditingEntity<Long>
     @JoinColumn( name = "patient_id", nullable = false)
     private Patient patient;
 
-    @NotNull
     @NotBlank
     @Column(name = "condition", nullable = false)
     private String condition;
@@ -60,6 +59,7 @@ public class PatientProblem extends AbstractAuditingEntity<Long>
     @Column(name = "status", nullable = false)
     private EncounterVaccinationStatus status;
 
+    @NotNull
     @Column(name = "type")
     private String type;
 

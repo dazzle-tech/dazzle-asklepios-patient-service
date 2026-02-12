@@ -8,8 +8,6 @@ import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -34,8 +32,6 @@ public class PatientService {
     private final PatientRepository patientRepository;
     private final PatientDocumentRepository patientDocumentRepository;
 
-    @PersistenceContext
-    private EntityManager entityManager;
 
     public PatientService(
             PatientRepository patientRepository,
@@ -106,7 +102,6 @@ public class PatientService {
 
         try {
             Patient saved = patientRepository.saveAndFlush(entity);
-            entityManager.refresh(saved);
             return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -130,11 +125,7 @@ public class PatientService {
         try {
             Patient saved = patientRepository.saveAndFlush(entity);
 
-            try {
-                entityManager.refresh(saved);
-            } catch (Exception refreshEx) {
-                LOG.debug("refresh skipped: {}", refreshEx.getMessage());
-            }
+
 
             String medicalRecordNumber = saved.getMedicalRecordNumber();
             if (medicalRecordNumber == null || medicalRecordNumber.isBlank()) {
@@ -229,7 +220,6 @@ public class PatientService {
 
         try {
             Patient updated = patientRepository.saveAndFlush(existing);
-            entityManager.refresh(updated);
 
             LOG.info(
                     "Successfully updated patient id={} (medicalRecordNumber='{}')",

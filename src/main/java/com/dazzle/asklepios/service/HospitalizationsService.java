@@ -8,8 +8,6 @@ import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationsCreateD
 import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationsUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,27 +28,15 @@ public class HospitalizationsService {
     private static final Logger LOG =
             LoggerFactory.getLogger(HospitalizationsService.class);
 
-    private final HospitalizationRepository repository;
+    private final HospitalizationRepository hospitalizationRepository;
     private final PatientRepository patientRepository;
 
-    @PersistenceContext
-    private EntityManager entityManager;
-
     private Patient refPatient(Long patientId) {
-        return entityManager.getReference(Patient.class, patientId);
+        return patientRepository.getReferenceById(patientId);
     }
-
 
     public Hospitalization create(HospitalizationsCreateDTO hospitalizationsCreateDTO) {
         LOG.info("[CREATE] Hospitalization payload={}", hospitalizationsCreateDTO);
-
-        if (hospitalizationsCreateDTO == null) {
-            throw new BadRequestAlertException(
-                    "Patient admission payload is required",
-                    "hospitalization",
-                    "payload.required"
-            );
-        }
 
         Hospitalization entity = Hospitalization.builder()
                 .patient(refPatient(hospitalizationsCreateDTO.patientId()))
@@ -64,9 +50,7 @@ public class HospitalizationsService {
                 .build();
 
         try {
-            Hospitalization saved = repository.saveAndFlush(entity);
-            entityManager.refresh(saved);
-            return saved;
+            return hospitalizationRepository.saveAndFlush(entity);
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
@@ -78,11 +62,10 @@ public class HospitalizationsService {
         }
     }
 
-
     public Hospitalization update(HospitalizationsUpdateDTO hospitalizationsUpdateDTO) {
         LOG.info("[UPDATE] Hospitalization payload={}", hospitalizationsUpdateDTO);
 
-        Hospitalization entity = repository.findById(hospitalizationsUpdateDTO.id())
+        Hospitalization entity = hospitalizationRepository.findById(hospitalizationsUpdateDTO.id())
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Patient admission not found with id " + hospitalizationsUpdateDTO.id(),
                         "hospitalization",
@@ -99,9 +82,7 @@ public class HospitalizationsService {
         entity.setMedicalInterventionsPerformed(hospitalizationsUpdateDTO.medicalInterventionsPerformed());
 
         try {
-            Hospitalization updated = repository.saveAndFlush(entity);
-            entityManager.refresh(updated);
-            return updated;
+            return hospitalizationRepository.saveAndFlush(entity);
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
@@ -113,27 +94,24 @@ public class HospitalizationsService {
         }
     }
 
-
     public void delete(Long id) {
         LOG.info("[DELETE] Hospitalization id={}", id);
 
-        Hospitalization entity = repository.findById(id)
+        Hospitalization entity = hospitalizationRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Patient admission not found with id " + id,
                         "hospitalization",
                         "notfound"
                 ));
 
-        repository.delete(entity);
+        hospitalizationRepository.delete(entity);
     }
-
 
     @Transactional(readOnly = true)
     public Page<Hospitalization> findByPatientId(Long patientId, Pageable pageable) {
         LOG.debug("[LIST] Hospitalization patientId={} pageable={}", patientId, pageable);
-        return repository.findAllByPatientId(patientId, pageable);
+        return hospitalizationRepository.findAllByPatientId(patientId, pageable);
     }
-
 
     private void handleConstraints(RuntimeException exception) {
         Throwable root = getRootCause(exception);
@@ -151,7 +129,6 @@ public class HospitalizationsService {
                     "duplicate"
             );
         }
-
 
         if (lower.contains("fk_patient_admissions_patient")
                 || (lower.contains("foreign key") && lower.contains("patient"))) {

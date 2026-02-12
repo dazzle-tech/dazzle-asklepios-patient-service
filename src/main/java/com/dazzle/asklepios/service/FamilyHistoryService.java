@@ -8,8 +8,6 @@ import com.dazzle.asklepios.service.dto.FamilyHistory.FamilyHistoryCreateDTO;
 import com.dazzle.asklepios.service.dto.FamilyHistory.FamilyHistoryUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,14 +28,12 @@ public class FamilyHistoryService {
     private static final Logger LOG =
             LoggerFactory.getLogger(FamilyHistoryService.class);
 
-    private final FamilyHistoryRepository repository;
+    private final FamilyHistoryRepository familyHistoryRepository;
     private final PatientRepository patientRepository;
 
-    @PersistenceContext
-    private EntityManager entityManager;
 
     private Patient refPatient(Long patientId) {
-        return entityManager.getReference(Patient.class, patientId);
+        return patientRepository.getReferenceById(patientId);
     }
 
 
@@ -52,8 +48,8 @@ public class FamilyHistoryService {
                 .build();
 
         try {
-            FamilyHistory saved = repository.saveAndFlush(entity);
-            entityManager.refresh(saved);
+            FamilyHistory saved = familyHistoryRepository.saveAndFlush(entity);
+
             return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -70,7 +66,7 @@ public class FamilyHistoryService {
     public FamilyHistory update(FamilyHistoryUpdateDTO familyHistoryUpdateDTO) {
         LOG.info("[UPDATE] FamilyHistory payload={}", familyHistoryUpdateDTO);
 
-        FamilyHistory entity = repository.findById(familyHistoryUpdateDTO.id())
+        FamilyHistory entity = familyHistoryRepository.findById(familyHistoryUpdateDTO.id())
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Family history not found with id " + familyHistoryUpdateDTO.id(),
                         "familyHistory",
@@ -83,8 +79,7 @@ public class FamilyHistoryService {
         entity.setInheritedDiseases(familyHistoryUpdateDTO.inheritedDiseases());
 
         try {
-            FamilyHistory updated = repository.saveAndFlush(entity);
-            entityManager.refresh(updated);
+            FamilyHistory updated = familyHistoryRepository.saveAndFlush(entity);
             return updated;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -101,21 +96,21 @@ public class FamilyHistoryService {
     public void delete(Long id) {
         LOG.info("[DELETE] FamilyHistory id={}", id);
 
-        FamilyHistory entity = repository.findById(id)
+        FamilyHistory entity = familyHistoryRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Family history not found with id " + id,
                         "familyHistory",
                         "notfound"
                 ));
 
-        repository.delete(entity);
+        familyHistoryRepository.delete(entity);
     }
 
 
     @Transactional(readOnly = true)
     public Page<FamilyHistory> findByPatientId(Long patientId, Pageable pageable) {
         LOG.debug("[LIST] FamilyHistory patientId={} pageable={}", patientId, pageable);
-        return repository.findAllByPatientId(patientId, pageable);
+        return familyHistoryRepository.findAllByPatientId(patientId, pageable);
     }
 
 

@@ -10,9 +10,9 @@ import java.util.Date;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record PatientProblemCreateDTO(
         @NotNull Long patientId,
-        @NotNull @NotBlank String condition,
+        @NotBlank String condition,
         @NotNull Date dateOfDiagnosis,
-        EncounterVaccinationStatus status,
+        @NotNull EncounterVaccinationStatus status,
         String type,
         Date dateOfResolution,
         @NotNull Boolean byPatient,

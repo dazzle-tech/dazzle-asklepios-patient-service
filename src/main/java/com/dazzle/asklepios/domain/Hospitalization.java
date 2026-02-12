@@ -44,17 +44,16 @@ public class Hospitalization extends AbstractAuditingEntity<Long>
     @JoinColumn( name = "patient_id", nullable = false)
     private Patient patient;
 
-    @NotNull
     @NotBlank
     @Column(name = "facility", nullable = false)
     private String facility;
 
-    @NotNull
     @NotBlank
     @Column(name = "reason", nullable = false)
     private String reason;
 
-    @Column(name = "admission_type", length = 100)
+    @NotNull
+    @Column(name = "admission_type", nullable = false, length = 100)
     private String admissionType;
 
     @NotNull

@@ -47,7 +47,6 @@ public class FamilyHistory extends AbstractAuditingEntity<Long>
     @JoinColumn( name = "patient_id", nullable = false)
     private Patient patient;
 
-    @NotNull
     @NotBlank
     @Column(name = "condition", nullable = false)
     private String condition;
@@ -58,5 +57,5 @@ public class FamilyHistory extends AbstractAuditingEntity<Long>
     private Relations relation;
 
     @Column(name = "inherited_diseases")
-    private String inheritedDiseases;
+    private Boolean inheritedDiseases;
 }

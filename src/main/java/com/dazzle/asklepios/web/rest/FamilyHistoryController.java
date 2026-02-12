@@ -35,10 +35,10 @@ public class FamilyHistoryController {
     private static final Logger LOG =
             LoggerFactory.getLogger(FamilyHistoryController.class);
 
-    private final FamilyHistoryService service;
+    private final FamilyHistoryService familyHistoryService;
 
     public FamilyHistoryController(FamilyHistoryService service) {
-        this.service = service;
+        this.familyHistoryService = service;
     }
 
 
@@ -54,7 +54,8 @@ public class FamilyHistoryController {
                     "payload.required"
             );
         }
-        FamilyHistory created = service.create(familyHistoryCreateDTO);
+        FamilyHistory created = familyHistoryService.create(familyHistoryCreateDTO);
+        LOG.info("REST create FamilyHistory - created id={}", created.getId());
 
         return ResponseEntity
                 .created(URI.create("/api/patient/family-history/" + created.getId()))
@@ -66,7 +67,9 @@ public class FamilyHistoryController {
     public ResponseEntity<FamilyHistoryResponseVM> update(
             @Valid @RequestBody FamilyHistoryUpdateDTO familyHistoryUpdateDTO
     ) {
-        FamilyHistory updated = service.update(familyHistoryUpdateDTO);
+        LOG.debug("REST update FamilyHistory payload={}", familyHistoryUpdateDTO);
+        FamilyHistory updated = familyHistoryService.update(familyHistoryUpdateDTO);
+        LOG.info("REST update FamilyHistory - updated id={}", updated.getId());
 
         return ResponseEntity.ok(
                 FamilyHistoryResponseVM.ofEntity(updated)
@@ -76,7 +79,9 @@ public class FamilyHistoryController {
 
     @DeleteMapping("/family-history/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-        service.delete(id);
+        LOG.debug("REST delete FamilyHistory id={}", id);
+        familyHistoryService.delete(id);
+        LOG.info("REST delete FamilyHistory - deleted id={}", id);
         return ResponseEntity.noContent().build();
     }
 
@@ -85,8 +90,10 @@ public class FamilyHistoryController {
             @RequestParam Long patientId,
             @ParameterObject Pageable pageable
     ) {
+        LOG.debug("REST list FamilyHistory patientId={} pageable={}", patientId, pageable);
         Page<FamilyHistory> page =
-                service.findByPatientId(patientId, pageable);
+                familyHistoryService.findByPatientId(patientId, pageable);
+        LOG.info("REST list FamilyHistory - returned {} items", page.getContent().size());
 
         HttpHeaders headers =
                 com.dazzle.asklepios.web.rest.Helper.PaginationUtil

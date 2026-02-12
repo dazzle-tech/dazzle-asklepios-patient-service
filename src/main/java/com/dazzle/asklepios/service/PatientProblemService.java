@@ -8,8 +8,6 @@ import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemCreateDTO;
 import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,31 +28,33 @@ public class PatientProblemService {
     private static final Logger LOG =
             LoggerFactory.getLogger(PatientProblemService.class);
 
-    private final PatientProblemRepository repository;
+    private final PatientProblemRepository patientProblemRepository;
     private final PatientRepository patientRepository;
 
-    private Patient refPatient(Long patientId) {
-        return entityManager.getReference(Patient.class, patientId);
-    }
+    private Patient resolvePatient(Long patientId) {
+        if (patientId == null) {
+            throw new BadRequestAlertException(
+                    "Invalid patient reference.",
+                    "patientProblem",
+                    "patient.invalid"
+            );
+        }
 
-    @PersistenceContext
-    private EntityManager entityManager;
+        return patientRepository.findById(patientId)
+                .orElseGet(() -> patientRepository.findByPreviousId(String.valueOf(patientId))
+                        .orElseThrow(() -> new BadRequestAlertException(
+                                "Invalid patient reference.",
+                                "patientProblem",
+                                "patient.invalid"
+                        )));
+    }
 
 
     public PatientProblem create(PatientProblemCreateDTO patientProblemCreateDTO) {
         LOG.info("[CREATE] PatientProblem payload={}", patientProblemCreateDTO);
 
-        if (patientProblemCreateDTO == null) {
-            throw new BadRequestAlertException(
-                    "Patient problem payload is required",
-                    "patientProblem",
-                    "payload.required"
-            );
-        }
-
-
         PatientProblem entity = PatientProblem.builder()
-                .patient(refPatient(patientProblemCreateDTO.patientId()))
+                .patient(resolvePatient(patientProblemCreateDTO.patientId()))
                 .condition(patientProblemCreateDTO.condition())
                 .dateOfDiagnosis(patientProblemCreateDTO.dateOfDiagnosis())
                 .status(patientProblemCreateDTO.status())
@@ -65,9 +65,7 @@ public class PatientProblemService {
                 .build();
 
         try {
-            PatientProblem saved = repository.saveAndFlush(entity);
-            entityManager.refresh(saved);
-            return saved;
+            return patientProblemRepository.saveAndFlush(entity);
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
@@ -83,7 +81,7 @@ public class PatientProblemService {
     public PatientProblem update(PatientProblemUpdateDTO patientProblemUpdateDTO) {
         LOG.info("[UPDATE] PatientProblem payload={}", patientProblemUpdateDTO);
 
-        PatientProblem entity = repository.findById(patientProblemUpdateDTO.id())
+        PatientProblem entity = patientProblemRepository.findById(patientProblemUpdateDTO.id())
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Patient problem not found with id " + patientProblemUpdateDTO.id(),
                         "patientProblem",
@@ -91,7 +89,7 @@ public class PatientProblemService {
                 ));
 
 
-        entity.setPatient(refPatient((patientProblemUpdateDTO.patientId())));
+        entity.setPatient(resolvePatient((patientProblemUpdateDTO.patientId())));
         entity.setCondition(patientProblemUpdateDTO.condition());
         entity.setDateOfDiagnosis(patientProblemUpdateDTO.dateOfDiagnosis());
         entity.setStatus(patientProblemUpdateDTO.status());
@@ -101,9 +99,7 @@ public class PatientProblemService {
         entity.setSourceOfInformation(patientProblemUpdateDTO.sourceOfInformation());
 
         try {
-            PatientProblem updated = repository.saveAndFlush(entity);
-            entityManager.refresh(updated);
-            return updated;
+            return patientProblemRepository.saveAndFlush(entity);
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
@@ -119,21 +115,23 @@ public class PatientProblemService {
     public void delete(Long id) {
         LOG.info("[DELETE] PatientProblem id={}", id);
 
-        PatientProblem entity = repository.findById(id)
+        PatientProblem entity = patientProblemRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Patient problem not found with id " + id,
                         "patientProblem",
                         "notfound"
                 ));
 
-        repository.delete(entity);
+        patientProblemRepository.delete(entity);
     }
 
 
     @Transactional(readOnly = true)
     public Page<PatientProblem> findByPatientId(Long patientId, Pageable pageable) {
-        LOG.debug("[LIST] PatientProblems patientId={} pageable={}", patientId, pageable);
-        return repository.findAllByPatientId(patientId, pageable);
+        Patient patient = resolvePatient(patientId);
+        LOG.debug("[LIST] PatientProblems patientId={} resolvedId={} pageable={}",
+                patientId, patient.getId(), pageable);
+        return patientProblemRepository.findAllByPatientId(patient.getId(), pageable);
     }
 
 

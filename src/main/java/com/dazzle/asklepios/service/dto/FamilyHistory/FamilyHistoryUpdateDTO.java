@@ -16,14 +16,13 @@ public record FamilyHistoryUpdateDTO(
         @NotNull
         Long patientId,
 
-        @NotNull
         @NotBlank
         String condition,
 
         @NotNull
         Relations relation,
 
-        String inheritedDiseases
+        Boolean inheritedDiseases
 
 ) implements Serializable {
 }

@@ -2,6 +2,8 @@ package com.dazzle.asklepios.web.rest.vm.PatientProblems;
 
 import com.dazzle.asklepios.domain.PatientProblem;
 import com.dazzle.asklepios.domain.enumeration.EncounterVaccinationStatus;
+import jakarta.validation.constraints.NotNull;
+
 import java.time.Instant;
 import java.util.Date;
 
@@ -10,6 +12,7 @@ public record PatientProblemResponseVM(
         Long patientId,
         String condition,
         Date dateOfDiagnosis,
+        @NotNull
         EncounterVaccinationStatus status,
         String type,
         Date dateOfResolution,

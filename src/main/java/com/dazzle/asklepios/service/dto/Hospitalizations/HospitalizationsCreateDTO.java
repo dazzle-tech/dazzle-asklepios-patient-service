@@ -13,11 +13,9 @@ public record HospitalizationsCreateDTO(
         @NotNull
         Long patientId,
 
-        @NotNull
         @NotBlank
         String facility,
 
-        @NotNull
         @NotBlank
         String reason,
 

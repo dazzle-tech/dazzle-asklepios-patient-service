@@ -35,10 +35,10 @@ public class PatientProblemController {
     private static final Logger LOG =
             LoggerFactory.getLogger(PatientProblemController.class);
 
-    private final PatientProblemService service;
+    private final PatientProblemService patientProblemService;
 
     public PatientProblemController(PatientProblemService service) {
-        this.service = service;
+        this.patientProblemService = service;
     }
 
 
@@ -54,7 +54,7 @@ public class PatientProblemController {
                     "payload.required"
             );
         }
-        PatientProblem created = service.create(patientProblemCreateDTO);
+        PatientProblem created = patientProblemService.create(patientProblemCreateDTO);
 
         return ResponseEntity
                 .created(URI.create("/api/patient/problems/" + created.getId()))
@@ -65,7 +65,7 @@ public class PatientProblemController {
     public ResponseEntity<PatientProblemResponseVM> update(
             @Valid @RequestBody PatientProblemUpdateDTO patientProblemUpdateDTO
     ) {
-        PatientProblem updated = service.update(patientProblemUpdateDTO);
+        PatientProblem updated = patientProblemService.update(patientProblemUpdateDTO);
 
         return ResponseEntity.ok(
                 PatientProblemResponseVM.ofEntity(updated)
@@ -75,7 +75,7 @@ public class PatientProblemController {
 
     @DeleteMapping("/problems/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-        service.delete(id);
+        patientProblemService.delete(id);
         return ResponseEntity.noContent().build();
     }
 
@@ -86,7 +86,7 @@ public class PatientProblemController {
             @ParameterObject Pageable pageable
     ) {
         Page<PatientProblem> page =
-                service.findByPatientId(patientId, pageable);
+                patientProblemService.findByPatientId(patientId, pageable);
 
         HttpHeaders headers =
                 com.dazzle.asklepios.web.rest.Helper.PaginationUtil

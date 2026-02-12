@@ -35,10 +35,10 @@ public class HospitalizationsController {
     private static final Logger LOG =
             LoggerFactory.getLogger(HospitalizationsController.class);
 
-    private final HospitalizationsService service;
+    private final HospitalizationsService hospitalizationsService;
 
     public HospitalizationsController(HospitalizationsService service) {
-        this.service = service;
+        this.hospitalizationsService = service;
     }
 
 
@@ -54,7 +54,8 @@ public class HospitalizationsController {
                     "payload.required"
             );
         }
-        Hospitalization created = service.create(hospitalizationsCreateDTO);
+
+        Hospitalization created = hospitalizationsService.create(hospitalizationsCreateDTO);
 
         return ResponseEntity
                 .created(URI.create("/api/patient/admissions/" + created.getId()))
@@ -64,9 +65,9 @@ public class HospitalizationsController {
 
     @PutMapping("/hospitalizations")
     public ResponseEntity<HospitalizationsResponseVM> update(
-            @Valid @RequestBody HospitalizationsUpdateDTO dto
+            @Valid @RequestBody HospitalizationsUpdateDTO hospitalizationsUpdateDTO
     ) {
-        Hospitalization updated = service.update(dto);
+        Hospitalization updated = hospitalizationsService.update(hospitalizationsUpdateDTO);
 
         return ResponseEntity.ok(
                 HospitalizationsResponseVM.ofEntity(updated)
@@ -76,7 +77,7 @@ public class HospitalizationsController {
 
     @DeleteMapping("/hospitalizations/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-        service.delete(id);
+        hospitalizationsService.delete(id);
         return ResponseEntity.noContent().build();
     }
 
@@ -87,7 +88,7 @@ public class HospitalizationsController {
             @ParameterObject Pageable pageable
     ) {
         Page<Hospitalization> page =
-                service.findByPatientId(patientId, pageable);
+                hospitalizationsService.findByPatientId(patientId, pageable);
 
         HttpHeaders headers =
                 com.dazzle.asklepios.web.rest.Helper.PaginationUtil

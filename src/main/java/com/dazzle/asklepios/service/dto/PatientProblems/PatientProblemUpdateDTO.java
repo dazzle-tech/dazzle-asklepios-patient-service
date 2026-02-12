@@ -17,13 +17,13 @@ public record PatientProblemUpdateDTO(
         @NotNull
         Long patientId,
 
-        @NotNull
         @NotBlank
         String condition,
 
         @NotNull
         Date dateOfDiagnosis,
 
+        @NotNull
         EncounterVaccinationStatus status,
         String type,
         Date dateOfResolution,
