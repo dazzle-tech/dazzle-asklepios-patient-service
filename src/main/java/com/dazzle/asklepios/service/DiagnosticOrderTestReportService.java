@@ -7,10 +7,8 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.RadiologyImageStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
-import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
-import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportCreateDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportRejectDTO;
@@ -94,16 +92,21 @@ public class DiagnosticOrderTestReportService {
 
     @Transactional(readOnly = true)
     public DiagnosticOrderTestReport getByOrderTestIdForRadiology(Long orderTestId) {
+        LOG.debug("[DiagnosticOrderTestReportService] GET_BY_ORDER_TEST_ID - start. orderTestId={}", orderTestId);
         requireRadiologyTest(orderTestId);
-        return reportRepository.findByOrderTestId(orderTestId)
+        DiagnosticOrderTestReport report = reportRepository.findByOrderTestId(orderTestId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
                         "diagnostic_order_tests_report",
                         "Report not found for orderTestId " + orderTestId
                 ));
+        LOG.debug("[DiagnosticOrderTestReportService] GET_BY_ORDER_TEST_ID - done. reportId={} orderTestId={}",
+                report.getId(), report.getOrderTestId());
+        return report;
     }
 
     public DiagnosticOrderTestReport createRadiologyReport(DiagnosticOrderTestReportCreateDTO dto) {
+        LOG.debug("[DiagnosticOrderTestReportService] CREATE_RADIOLOGY_REPORT - start. payload={}", dto);
         DiagnosticOrderTest test = requireRadiologyTest(dto.orderTestId());
 
 
@@ -112,7 +115,7 @@ public class DiagnosticOrderTestReportService {
                     "Radiology test must be ACCEPTED before creating report");
         }
 
-        reportRepository.findByOrderTestId( dto.orderTestId())
+        reportRepository.findByOrderTestId(dto.orderTestId())
                 .ifPresent(existing -> {
                     throw new BadRequestAlertException(
                             "already_exists",
@@ -136,10 +139,13 @@ public class DiagnosticOrderTestReportService {
 
         recomputeOrderStatusesByOrderTestId(saved.getOrderTestId());
 
+        LOG.debug("[DiagnosticOrderTestReportService] CREATE_RADIOLOGY_REPORT - done. reportId={} orderTestId={} processingStatus={} imageStatus={}",
+                saved.getId(), saved.getOrderTestId(), saved.getProcessingStatus(), saved.getImageStatus());
         return saved;
     }
 
     public DiagnosticOrderTestReport updateRadiologyReport(Long reportId, DiagnosticOrderTestReportUpdateDTO dto) {
+        LOG.debug("[DiagnosticOrderTestReportService] UPDATE_RADIOLOGY_REPORT - start. reportId={} payload={}", reportId, dto);
         DiagnosticOrderTestReport report = reportRepository.findById(reportId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
@@ -165,10 +171,13 @@ public class DiagnosticOrderTestReportService {
 
         recomputeOrderStatusesByOrderTestId(saved.getOrderTestId());
 
+        LOG.debug("[DiagnosticOrderTestReportService] UPDATE_RADIOLOGY_REPORT - done. reportId={} orderTestId={} severity={}",
+                saved.getId(), saved.getOrderTestId(), saved.getSeverity());
         return saved;
     }
 
     public DiagnosticOrderTestReport reviewRadiologyReport(DiagnosticOrderTestReportReviewDTO dto) {
+        LOG.debug("[DiagnosticOrderTestReportService] REVIEW_RADIOLOGY_REPORT - start. payload={}", dto);
         requireRadiologyTest(dto.orderTestId());
 
         DiagnosticOrderTestReport report = reportRepository.findByOrderTestId(dto.orderTestId())
@@ -186,10 +195,13 @@ public class DiagnosticOrderTestReportService {
 
         recomputeOrderStatusesByOrderTestId(saved.getOrderTestId());
 
+        LOG.debug("[DiagnosticOrderTestReportService] REVIEW_RADIOLOGY_REPORT - done. reportId={} orderTestId={} reviewBy={}",
+                saved.getId(), saved.getOrderTestId(), saved.getReviewBy());
         return saved;
     }
 
     public DiagnosticOrderTestReport rejectRadiologyReport(DiagnosticOrderTestReportRejectDTO dto) {
+        LOG.debug("[DiagnosticOrderTestReportService] REJECT_RADIOLOGY_REPORT - start. payload={}", dto);
         requireRadiologyTest(dto.orderTestId());
 
         DiagnosticOrderTestReport report = reportRepository.findByOrderTestId(dto.orderTestId())
@@ -208,10 +220,13 @@ public class DiagnosticOrderTestReportService {
 
         recomputeOrderStatusesByOrderTestId(saved.getOrderTestId());
 
+        LOG.debug("[DiagnosticOrderTestReportService] REJECT_RADIOLOGY_REPORT - done. reportId={} orderTestId={} rejectedBy={}",
+                saved.getId(), saved.getOrderTestId(), saved.getRejectedBy());
         return saved;
     }
 
     public RadiologyImageStatusResponseVM startRadiologyImage(Long testId) {
+        LOG.debug("[DiagnosticOrderTestReportService] START_RADIOLOGY_IMAGE - start. testId={}", testId);
         DiagnosticOrderTest test = requireRadiologyTest(testId);
 
         if (test.getProcessingStatus() != DiagnosticStatus.ACCEPTED) {
@@ -236,15 +251,19 @@ public class DiagnosticOrderTestReportService {
 
         recomputeOrderStatusesByOrderTestId(saved.getOrderTestId());
 
-        return new RadiologyImageStatusResponseVM(
+        RadiologyImageStatusResponseVM response = new RadiologyImageStatusResponseVM(
                 saved.getId(),
                 saved.getOrderTestId(),
                 saved.getImageStatus(),
                 saved.getLastModifiedDate()
         );
+        LOG.debug("[DiagnosticOrderTestReportService] START_RADIOLOGY_IMAGE - done. reportId={} orderTestId={} imageStatus={}",
+                saved.getId(), saved.getOrderTestId(), saved.getImageStatus());
+        return response;
     }
 
     public RadiologyImageStatusResponseVM pauseRadiologyImage(Long testId) {
+        LOG.debug("[DiagnosticOrderTestReportService] PAUSE_RADIOLOGY_IMAGE - start. testId={}", testId);
         requireRadiologyTest(testId);
 
         reportRepository.findByOrderTestId(testId)
@@ -254,10 +273,14 @@ public class DiagnosticOrderTestReportService {
                         "Report not found for orderTestId " + testId
                 ));
 
-        return setImageStatusByReport(testId, RadiologyImageStatus.PAUSED);
+        RadiologyImageStatusResponseVM response = setImageStatusByReport(testId, RadiologyImageStatus.PAUSED);
+        LOG.debug("[DiagnosticOrderTestReportService] PAUSE_RADIOLOGY_IMAGE - done. testId={} imageStatus={}",
+                testId, response.imageStatus());
+        return response;
     }
 
     public RadiologyImageStatusResponseVM resumeRadiologyImage(Long testId) {
+        LOG.debug("[DiagnosticOrderTestReportService] RESUME_RADIOLOGY_IMAGE - start. testId={}", testId);
         requireRadiologyTest(testId);
 
         reportRepository.findByOrderTestId(testId)
@@ -267,10 +290,14 @@ public class DiagnosticOrderTestReportService {
                         "Report not found for orderTestId " + testId
                 ));
 
-        return setImageStatusByReport(testId, RadiologyImageStatus.RESUMED);
+        RadiologyImageStatusResponseVM response = setImageStatusByReport(testId, RadiologyImageStatus.RESUMED);
+        LOG.debug("[DiagnosticOrderTestReportService] RESUME_RADIOLOGY_IMAGE - done. testId={} imageStatus={}",
+                testId, response.imageStatus());
+        return response;
     }
 
     public RadiologyImageStatusResponseVM finishRadiologyImage(Long testId) {
+        LOG.debug("[DiagnosticOrderTestReportService] FINISH_RADIOLOGY_IMAGE - start. testId={}", testId);
         requireRadiologyTest(testId);
 
         reportRepository.findByOrderTestId(testId)
@@ -284,10 +311,13 @@ public class DiagnosticOrderTestReportService {
 
         diagnosticOrderTestStatusService.markReady(testId);
 
+        LOG.debug("[DiagnosticOrderTestReportService] FINISH_RADIOLOGY_IMAGE - done. testId={} imageStatus={}",
+                testId, vm.imageStatus());
         return vm;
     }
 
     public DiagnosticOrderTestReport approveRadiologyReport(Long reportId) {
+        LOG.debug("[DiagnosticOrderTestReportService] APPROVE_RADIOLOGY_REPORT - start. reportId={}", reportId);
         DiagnosticOrderTestReport report = reportRepository.findById(reportId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
@@ -306,10 +336,13 @@ public class DiagnosticOrderTestReportService {
         diagnosticOrderTestStatusService.approve(saved.getOrderTestId());
         recomputeOrderStatusesByOrderTestId(saved.getOrderTestId());
 
+        LOG.debug("[DiagnosticOrderTestReportService] APPROVE_RADIOLOGY_REPORT - done. reportId={} orderTestId={} approvedBy={}",
+                saved.getId(), saved.getOrderTestId(), saved.getApprovedBy());
         return saved;
     }
 
     public DiagnosticOrderTestReport secondApproveRadiologyReport(Long reportId) {
+        LOG.debug("[DiagnosticOrderTestReportService] SECOND_APPROVE_RADIOLOGY_REPORT - start. reportId={}", reportId);
         DiagnosticOrderTestReport report = reportRepository.findById(reportId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
@@ -352,10 +385,13 @@ public class DiagnosticOrderTestReportService {
 
         recomputeOrderStatusesByOrderTestId(saved.getOrderTestId());
 
+        LOG.debug("[DiagnosticOrderTestReportService] SECOND_APPROVE_RADIOLOGY_REPORT - done. reportId={} orderTestId={} secondApprovedBy={}",
+                saved.getId(), saved.getOrderTestId(), saved.getSecondApprovedBy());
         return saved;
     }
 
     private RadiologyImageStatusResponseVM setImageStatusByReport(Long testId, RadiologyImageStatus to) {
+        LOG.debug("[DiagnosticOrderTestReportService] SET_IMAGE_STATUS - start. testId={} to={}", testId, to);
         DiagnosticOrderTestReport report = reportRepository.findByOrderTestId(testId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
@@ -375,18 +411,24 @@ public class DiagnosticOrderTestReportService {
 
         recomputeOrderStatusesByOrderTestId(saved.getOrderTestId());
 
-        return new RadiologyImageStatusResponseVM(
+        RadiologyImageStatusResponseVM response = new RadiologyImageStatusResponseVM(
                 saved.getId(),
                 saved.getOrderTestId(),
                 saved.getImageStatus(),
                 saved.getLastModifiedDate()
         );
+
+        LOG.debug("[DiagnosticOrderTestReportService] SET_IMAGE_STATUS - done. reportId={} orderTestId={} imageStatus={}",
+                saved.getId(), saved.getOrderTestId(), saved.getImageStatus());
+        return response;
     }
 
     private void ensureImageTransitionAllowed(RadiologyImageStatus from, RadiologyImageStatus to) {
+        LOG.debug("[DiagnosticOrderTestReportService] ENSURE_IMAGE_TRANSITION_ALLOWED - from={} to={}", from, to);
         if (to == RadiologyImageStatus.STARTED) {
             if (from == null) return;
-            if (from == RadiologyImageStatus.STARTED || from == RadiologyImageStatus.RESUMED || from == RadiologyImageStatus.PAUSED) return;
+            if (from == RadiologyImageStatus.STARTED || from == RadiologyImageStatus.RESUMED || from == RadiologyImageStatus.PAUSED)
+                return;
             if (from == RadiologyImageStatus.FINISHED) throw invalidImageTransition(from, to);
             return;
         }
@@ -444,80 +486,114 @@ public class DiagnosticOrderTestReportService {
             String mrn,
             Pageable pageable
     ) {
-        Specification<DiagnosticOrderTestReport> spec = (root, query, cb) -> {
+        LOG.debug("[DiagnosticOrderTestReportService] FILTER_REPORTS - start. id={} orderIdIn={} orderTestId={} severity={} approvedBy={} rejectedBy={} reviewBy={} reviewed={} pageable={}",
+                id, orderIdIn, orderTestId, severity, approvedBy, rejectedBy, reviewBy, reviewed, pageable);
+        Specification<DiagnosticOrderTestReport> spec = (reportRoot, criteriaQuery, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
 
             if (reviewed != null) {
-                predicates.add(reviewed ? cb.isNotNull(root.get("reviewDate")) : cb.isNull(root.get("reviewDate")));
+                predicates.add(reviewed ? criteriaBuilder.isNotNull(reportRoot.get("reviewDate")) : criteriaBuilder.isNull(reportRoot.get("reviewDate")));
             }
 
-            if (id != null) predicates.add(cb.equal(root.get("id"), id));
+            if (id != null) predicates.add(criteriaBuilder.equal(reportRoot.get("id"), id));
 
             if (orderIdIn != null && !orderIdIn.isEmpty()) {
-                predicates.add(root.get("orderId").in(orderIdIn));
+                predicates.add(reportRoot.get("orderId").in(orderIdIn));
             }
 
-            if (orderTestId != null) predicates.add(cb.equal(root.get("orderTestId"), orderTestId));
+            if (orderTestId != null) predicates.add(criteriaBuilder.equal(reportRoot.get("orderTestId"), orderTestId));
 
-            if (severity != null && !severity.isBlank()) predicates.add(cb.equal(root.get("severity"), severity));
+            if (severity != null && !severity.isBlank())
+                predicates.add(criteriaBuilder.equal(reportRoot.get("severity"), severity));
 
-            if (approvedBy != null && !approvedBy.isBlank()) predicates.add(cb.equal(root.get("approvedBy"), approvedBy));
-            if (rejectedBy != null && !rejectedBy.isBlank()) predicates.add(cb.equal(root.get("rejectedBy"), rejectedBy));
-            if (reviewBy != null && !reviewBy.isBlank()) predicates.add(cb.equal(root.get("reviewBy"), reviewBy));
+            if (approvedBy != null && !approvedBy.isBlank())
+                predicates.add(criteriaBuilder.equal(reportRoot.get("approvedBy"), approvedBy));
+            if (rejectedBy != null && !rejectedBy.isBlank())
+                predicates.add(criteriaBuilder.equal(reportRoot.get("rejectedBy"), rejectedBy));
+            if (reviewBy != null && !reviewBy.isBlank())
+                predicates.add(criteriaBuilder.equal(reportRoot.get("reviewBy"), reviewBy));
 
-            if (approvedDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("approvedDate"), approvedDateFrom));
-            if (approvedDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("approvedDate"), approvedDateTo));
+            if (approvedDateFrom != null)
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(reportRoot.get("approvedDate"), approvedDateFrom));
+            if (approvedDateTo != null)
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(reportRoot.get("approvedDate"), approvedDateTo));
 
-            if (rejectedDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("rejectedDate"), rejectedDateFrom));
-            if (rejectedDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("rejectedDate"), rejectedDateTo));
+            if (rejectedDateFrom != null)
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(reportRoot.get("rejectedDate"), rejectedDateFrom));
+            if (rejectedDateTo != null)
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(reportRoot.get("rejectedDate"), rejectedDateTo));
 
-            if (reviewDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("reviewDate"), reviewDateFrom));
-            if (reviewDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("reviewDate"), reviewDateTo));
+            if (reviewDateFrom != null)
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(reportRoot.get("reviewDate"), reviewDateFrom));
+            if (reviewDateTo != null)
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(reportRoot.get("reviewDate"), reviewDateTo));
 
-            if (processingStatusIn != null && !processingStatusIn.isEmpty()) predicates.add(root.get("processingStatus").in(processingStatusIn));
-            if (processingStatusNotIn != null && !processingStatusNotIn.isEmpty()) predicates.add(cb.not(root.get("processingStatus").in(processingStatusNotIn)));
+            if (processingStatusIn != null && !processingStatusIn.isEmpty())
+                predicates.add(reportRoot.get("processingStatus").in(processingStatusIn));
+            if (processingStatusNotIn != null && !processingStatusNotIn.isEmpty())
+                predicates.add(criteriaBuilder.not(reportRoot.get("processingStatus").in(processingStatusNotIn)));
 
-            if (imageStatusIn != null && !imageStatusIn.isEmpty()) predicates.add(root.get("imageStatus").in(imageStatusIn));
-            if (imageStatusNotIn != null && !imageStatusNotIn.isEmpty()) predicates.add(cb.not(root.get("imageStatus").in(imageStatusNotIn)));
+            if (imageStatusIn != null && !imageStatusIn.isEmpty())
+                predicates.add(reportRoot.get("imageStatus").in(imageStatusIn));
+            if (imageStatusNotIn != null && !imageStatusNotIn.isEmpty())
+                predicates.add(criteriaBuilder.not(reportRoot.get("imageStatus").in(imageStatusNotIn)));
 
-            if (createdDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("createdDate"), createdDateFrom));
-            if (createdDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("createdDate"), createdDateTo));
+            if (createdDateFrom != null)
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(reportRoot.get("createdDate"), createdDateFrom));
+            if (createdDateTo != null)
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(reportRoot.get("createdDate"), createdDateTo));
 
-            if (lastModifiedDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("lastModifiedDate"), lastModifiedDateFrom));
-            if (lastModifiedDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("lastModifiedDate"), lastModifiedDateTo));
+            if (lastModifiedDateFrom != null)
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(reportRoot.get("lastModifiedDate"), lastModifiedDateFrom));
+            if (lastModifiedDateTo != null)
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(reportRoot.get("lastModifiedDate"), lastModifiedDateTo));
 
             boolean needOrderFilter = (fromDepartmentIn != null && !fromDepartmentIn.isEmpty());
             boolean needPatientFilter = (patientName != null && !patientName.isBlank()) || (mrn != null && !mrn.isBlank());
-            boolean needOrderPatientSubquery = needOrderFilter || needPatientFilter;
+            boolean needOrderIdFilter = (orderIdIn != null && !orderIdIn.isEmpty());
 
-            if (needOrderPatientSubquery) {
-                var subquery = query.subquery(Long.class);
+            boolean needSubquery = needOrderFilter || needPatientFilter || needOrderIdFilter;
 
+            if (needSubquery) {
+                var subquery = criteriaQuery.subquery(Long.class);
+
+                var testRoot = subquery.from(DiagnosticOrderTest.class);
                 var orderRoot = subquery.from(DiagnosticOrder.class);
+
                 List<Predicate> subPredicates = new ArrayList<>();
 
-                subPredicates.add(cb.equal(orderRoot.get("id"), root.get("orderId")));
+                subPredicates.add(criteriaBuilder.equal(testRoot.get("id"), reportRoot.get("orderTestId")));
 
+                subPredicates.add(criteriaBuilder.equal(orderRoot.get("id"), testRoot.get("orderId")));
+
+                if (needOrderIdFilter) {
+                    subPredicates.add(orderRoot.get("id").in(orderIdIn));
+                }
+
+                // fromDepartmentIn filter
                 if (needOrderFilter) {
                     subPredicates.add(orderRoot.get("fromDepartmentId").in(fromDepartmentIn));
                 }
 
+                // patient filters
                 if (needPatientFilter) {
                     var patientRoot = subquery.from(Patient.class);
-                    subPredicates.add(cb.equal(patientRoot.get("id"), orderRoot.get("patientId")));
+                    subPredicates.add(criteriaBuilder.equal(patientRoot.get("id"), orderRoot.get("patientId")));
 
                     if (mrn != null && !mrn.isBlank()) {
-                        subPredicates.add(cb.like(cb.lower(patientRoot.get("medicalRecordNumber")),
-                                "%" + mrn.trim().toLowerCase() + "%"));
+                        subPredicates.add(criteriaBuilder.like(
+                                criteriaBuilder.lower(patientRoot.get("medicalRecordNumber")),
+                                "%" + mrn.trim().toLowerCase() + "%"
+                        ));
                     }
 
                     if (patientName != null && !patientName.isBlank()) {
                         String like = "%" + patientName.trim().toLowerCase() + "%";
-                        subPredicates.add(cb.or(
-                                cb.like(cb.lower(patientRoot.get("firstName")), like),
-                                cb.like(cb.lower(patientRoot.get("secondName")), like),
-                                cb.like(cb.lower(patientRoot.get("thirdName")), like),
-                                cb.like(cb.lower(patientRoot.get("lastName")), like)
+                        subPredicates.add(criteriaBuilder.or(
+                                criteriaBuilder.like(criteriaBuilder.lower(patientRoot.get("firstName")), like),
+                                criteriaBuilder.like(criteriaBuilder.lower(patientRoot.get("secondName")), like),
+                                criteriaBuilder.like(criteriaBuilder.lower(patientRoot.get("thirdName")), like),
+                                criteriaBuilder.like(criteriaBuilder.lower(patientRoot.get("lastName")), like)
                         ));
                     }
                 }
@@ -525,12 +601,16 @@ public class DiagnosticOrderTestReportService {
                 subquery.select(orderRoot.get("id"))
                         .where(subPredicates.toArray(new Predicate[0]));
 
-                predicates.add(cb.exists(subquery));
+                predicates.add(criteriaBuilder.exists(subquery));
             }
 
-            return cb.and(predicates.toArray(new Predicate[0]));
+
+            return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
         };
 
-        return reportRepository.findAll(spec, pageable);
+        Page<DiagnosticOrderTestReport> page = reportRepository.findAll(spec, pageable);
+        LOG.debug("[DiagnosticOrderTestReportService] FILTER_REPORTS - done. returned={} totalElements={} totalPages={}",
+                page.getNumberOfElements(), page.getTotalElements(), page.getTotalPages());
+        return page;
     }
 }

@@ -33,10 +33,14 @@ public class DiagnosticOrderTestStatusService {
 
     private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderTestStatusService.class);
 
-    /** Repository for persisting and loading DiagnosticOrderTest entities. */
+    /**
+     * Repository for persisting and loading DiagnosticOrderTest entities.
+     */
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
 
-    /** Service used to recompute overall/aggregated statuses for the parent diagnostic order. */
+    /**
+     * Service used to recompute overall/aggregated statuses for the parent diagnostic order.
+     */
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
 
     public DiagnosticOrderTestStatusService(
@@ -308,7 +312,7 @@ public class DiagnosticOrderTestStatusService {
 
     /**
      * Validates whether a transition to {@code to} is allowed for the given test.
-     *
+     * <p>
      * Rules:
      * - Laboratory: NEW -> SAMPLE_COLLECTED -> ACCEPTED -> RESULT_READY -> REVIEWED -> RESULT_APPROVED
      * - Radiology: NEW -> PATIENT_ARRIVED -> ACCEPTED -> RESULT_READY -> REVIEWED -> RESULT_APPROVED
@@ -353,13 +357,14 @@ public class DiagnosticOrderTestStatusService {
         }
 
         if (to == DiagnosticStatus.RESULT_APPROVED) {
-            if (!(from == DiagnosticStatus.RESULT_READY || from == DiagnosticStatus.REVIEWED)) throw invalid(from, to);
+            if (!(from == DiagnosticStatus.RESULT_READY || from == DiagnosticStatus.PARTIALLY)) throw invalid(from, to);
             return;
         }
 
         if (to == DiagnosticStatus.REJECTED) {
             if (type == TestType.RADIOLOGY) {
-                if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.PATIENT_ARRIVED)) throw invalid(from, to);
+                if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.PATIENT_ARRIVED))
+                    throw invalid(from, to);
                 return;
             }
             if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.SAMPLE_COLLECTED)) throw invalid(from, to);
