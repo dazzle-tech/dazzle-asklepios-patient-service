@@ -12,5 +12,4 @@ public interface DiagnosticOrderTestReportRepository
 
     Optional<DiagnosticOrderTestReport> findByOrderTestId(Long orderTestId);
 
-    Optional<DiagnosticOrderTestReport> findByOrderIdAndOrderTestId(Long orderId, Long orderTestId);
 }
