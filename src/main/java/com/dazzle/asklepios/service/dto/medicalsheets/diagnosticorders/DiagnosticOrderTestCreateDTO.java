@@ -1,13 +1,14 @@
-// src/main/java/com/dazzle/asklepios/service/dto/medicalsheets/diagnosticorders/DiagnosticOrderTestCreateDTO.java
 package com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders;
 
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.NotNull;
 
 import java.io.Serializable;
 import java.time.Instant;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record DiagnosticOrderTestCreateDTO(
 
         @NotNull Long orderId,
@@ -16,11 +17,5 @@ public record DiagnosticOrderTestCreateDTO(
         Long receivedDepartmentId,
         String reason,
         String notes,
-
-
-        DiagnosticStatus processingStatus,
-
-        Instant submitDate,
-
-        TestType orderType
+        @NotNull TestType orderType
 ) implements Serializable { }

@@ -7,6 +7,8 @@ import com.dazzle.asklepios.repository.DiagnosticTestRequestRepository;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.requests.DiagnosticTestRequestCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.requests.DiagnosticTestRequestUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +18,8 @@ import java.time.Instant;
 @Transactional
 public class DiagnosticTestRequestService {
 
+    private static final Logger LOG = LoggerFactory.getLogger(DiagnosticTestRequestService.class);
+
     private final DiagnosticTestRequestRepository repository;
 
     public DiagnosticTestRequestService(DiagnosticTestRequestRepository repository) {
@@ -23,29 +27,27 @@ public class DiagnosticTestRequestService {
     }
 
     public DiagnosticTestRequest create(DiagnosticTestRequestCreateDTO dto, String username) {
-        DiagnosticTestRequest e = new DiagnosticTestRequest();
-        e.setStatus(DiagnosticTestRequestStatus.REQUESTED);
-        e.setType(dto.type());
-        e.setName(dto.name());
-        e.setIndication(dto.indication());
-        e.setFromDepartmentId(dto.fromDepartmentId());
-        e.setFromFacilityId(dto.fromFacilityId());
+        LOG.debug("[DiagnosticTestRequestService] CREATE - start. payload={} username={}", dto, username);
+        DiagnosticTestRequest request = new DiagnosticTestRequest();
+        request.setStatus(DiagnosticTestRequestStatus.REQUESTED);
+        request.setType(dto.type());
+        request.setName(dto.name());
+        request.setIndication(dto.indication());
+        request.setFromDepartmentId(dto.fromDepartmentId());
+        request.setFromFacilityId(dto.fromFacilityId());
 
-        Instant now = Instant.now();
-        e.setCreatedBy(username);
-        e.setCreatedDate(now);
-        e.setLastModifiedBy(username);
-        e.setLastModifiedDate(now);
-
-        return repository.save(e);
+        DiagnosticTestRequest saved = repository.save(request);
+        LOG.debug("[DiagnosticTestRequestService] CREATE - done. id={} status={}", saved.getId(), saved.getStatus());
+        return saved;
     }
 
     public DiagnosticTestRequest update(DiagnosticTestRequestUpdateDTO dto, String username) {
-        DiagnosticTestRequest e = get(dto.id());
+        LOG.debug("[DiagnosticTestRequestService] UPDATE - start. id={} payload={} username={}", dto.id(), dto, username);
+        DiagnosticTestRequest request = getDiagnosticTestRequestById(dto.id());
 
-        ensureOwner(e, username, "update_not_allowed", "Only the creator can update this request");
+        ensureOwner(request, username, "update_not_allowed", "Only the creator can update this request");
 
-        if (e.getStatus() != DiagnosticTestRequestStatus.REQUESTED) {
+        if (request.getStatus() != DiagnosticTestRequestStatus.REQUESTED) {
             throw new BadRequestAlertException(
                     "locked",
                     "diagnostic_test_requests",
@@ -53,22 +55,22 @@ public class DiagnosticTestRequestService {
             );
         }
 
-        e.setType(dto.type());
-        e.setName(dto.name());
-        e.setIndication(dto.indication());
-        e.setFromDepartmentId(dto.fromDepartmentId());
-        e.setFromFacilityId(dto.fromFacilityId());
+        request.setType(dto.type());
+        request.setName(dto.name());
+        request.setIndication(dto.indication());
+        request.setFromDepartmentId(dto.fromDepartmentId());
+        request.setFromFacilityId(dto.fromFacilityId());
 
-        e.setLastModifiedBy(username);
-        e.setLastModifiedDate(Instant.now());
-
-        return repository.save(e);
+        DiagnosticTestRequest saved = repository.save(request);
+        LOG.debug("[DiagnosticTestRequestService] UPDATE - done. id={} status={}", saved.getId(), saved.getStatus());
+        return saved;
     }
 
     public DiagnosticTestRequest approve(Long id, String username) {
-        DiagnosticTestRequest e = get(id);
+        LOG.debug("[DiagnosticTestRequestService] APPROVE - start. id={} username={}", id, username);
+        DiagnosticTestRequest request = getDiagnosticTestRequestById(id);
 
-        if (e.getStatus() != DiagnosticTestRequestStatus.REQUESTED) {
+        if (request.getStatus() != DiagnosticTestRequestStatus.REQUESTED) {
             throw new BadRequestAlertException(
                     "invalid_transition",
                     "diagnostic_test_requests",
@@ -76,19 +78,21 @@ public class DiagnosticTestRequestService {
             );
         }
 
-        e.setStatus(DiagnosticTestRequestStatus.APPROVED);
-        e.setApprovedBy(username);
-        e.setApprovedDate(Instant.now());
-        e.setLastModifiedBy(username);
-        e.setLastModifiedDate(Instant.now());
+        request.setStatus(DiagnosticTestRequestStatus.APPROVED);
+        request.setApprovedBy(username);
+        request.setApprovedDate(Instant.now());
 
-        return repository.save(e);
+        DiagnosticTestRequest saved = repository.save(request);
+        LOG.debug("[DiagnosticTestRequestService] APPROVE - done. id={} status={} approvedBy={}",
+                saved.getId(), saved.getStatus(), saved.getApprovedBy());
+        return saved;
     }
 
     public DiagnosticTestRequest reject(Long id, String username, String rejectedReason) {
-        DiagnosticTestRequest e = get(id);
+        LOG.debug("[DiagnosticTestRequestService] REJECT - start. id={} username={} reason={}", id, username, rejectedReason);
+        DiagnosticTestRequest request = getDiagnosticTestRequestById(id);
 
-        if (e.getStatus() != DiagnosticTestRequestStatus.REQUESTED) {
+        if (request.getStatus() != DiagnosticTestRequestStatus.REQUESTED) {
             throw new BadRequestAlertException(
                     "invalid_transition",
                     "diagnostic_test_requests",
@@ -96,22 +100,23 @@ public class DiagnosticTestRequestService {
             );
         }
 
-        e.setStatus(DiagnosticTestRequestStatus.REJECTED);
-        e.setRejectedBy(username);
-        e.setRejectedReason(rejectedReason);
-        e.setRejectedDate(Instant.now());
-        e.setLastModifiedBy(username);
-        e.setLastModifiedDate(Instant.now());
-
-        return repository.save(e);
+        request.setStatus(DiagnosticTestRequestStatus.REJECTED);
+        request.setRejectedBy(username);
+        request.setRejectedReason(rejectedReason);
+        request.setRejectedDate(Instant.now());
+        DiagnosticTestRequest saved = repository.save(request);
+        LOG.debug("[DiagnosticTestRequestService] REJECT - done. id={} status={} rejectedBy={}",
+                saved.getId(), saved.getStatus(), saved.getRejectedBy());
+        return saved;
     }
 
     public void delete(Long id, String username) {
-        DiagnosticTestRequest e = get(id);
+        LOG.debug("[DiagnosticTestRequestService] DELETE - start. id={} username={}", id, username);
+        DiagnosticTestRequest request = getDiagnosticTestRequestById(id);
 
-        ensureOwner(e, username, "delete_not_allowed", "Only the creator can delete this request");
+        ensureOwner(request, username, "delete_not_allowed", "Only the creator can delete this request");
 
-        if (e.getStatus() != DiagnosticTestRequestStatus.REQUESTED) {
+        if (request.getStatus() != DiagnosticTestRequestStatus.REQUESTED) {
             throw new BadRequestAlertException(
                     "locked",
                     "diagnostic_test_requests",
@@ -120,10 +125,12 @@ public class DiagnosticTestRequestService {
         }
 
         repository.deleteById(id);
+        LOG.debug("[DiagnosticTestRequestService] DELETE - done. id={}", id);
     }
 
     @Transactional(readOnly = true)
-    public DiagnosticTestRequest get(Long id) {
+    public DiagnosticTestRequest getDiagnosticTestRequestById(Long id) {
+        LOG.debug("[DiagnosticTestRequestService] GET - id={}", id);
         return repository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
@@ -132,8 +139,8 @@ public class DiagnosticTestRequestService {
                 ));
     }
 
-    private void ensureOwner(DiagnosticTestRequest e, String username, String errorKey, String message) {
-        String owner = e.getCreatedBy();
+    private void ensureOwner(DiagnosticTestRequest request, String username, String errorKey, String message) {
+        String owner = request.getCreatedBy();
         if (owner == null || !owner.equals(username)) {
             throw new BadRequestAlertException(errorKey, "diagnostic_test_requests", message);
         }
