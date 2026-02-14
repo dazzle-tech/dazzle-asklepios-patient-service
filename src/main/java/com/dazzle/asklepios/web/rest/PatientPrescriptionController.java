@@ -34,9 +34,9 @@ public class PatientPrescriptionController {
 
     @PostMapping("/patient-prescriptions/create-or-get")
     public ResponseEntity<PatientPrescription> createOrGetByEncounter(
-            @RequestBody PatientPrescriptionCreateDto dto
+            @RequestBody PatientPrescriptionCreateDto patientPrescriptionCreateDto
     ) {
-        return ResponseEntity.ok(service.createOrGetByEncounter(dto));
+        return ResponseEntity.ok(service.createOrGetByEncounter(patientPrescriptionCreateDto));
     }
 
     @GetMapping("/patient-prescriptions")
@@ -46,10 +46,11 @@ public class PatientPrescriptionController {
             @RequestParam(required = false) PrescriptionStatus status,
             @RequestParam(required = false) PrescriptionUrgencyLevel urgencyLevel,
             @RequestParam(required = false) Long prescriptionNum,
+            @RequestParam(required = false, defaultValue = "false") boolean includeCanceled,
             Pageable pageable
     ) {
         Page<PatientPrescription> page =
-                service.list(patientId, encounterId, status, urgencyLevel, prescriptionNum, pageable);
+                service.list(patientId, encounterId, status, urgencyLevel, prescriptionNum, includeCanceled, pageable);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
@@ -58,19 +59,20 @@ public class PatientPrescriptionController {
         return ResponseEntity.ok().headers(headers).body(page.getContent());
     }
 
+
     @GetMapping("/patient-prescriptions/{id}")
     public ResponseEntity<PatientPrescription> get(@PathVariable Long id) {
         return ResponseEntity.ok(service.getPrescription(id));
     }
 
     @PostMapping("/patient-prescriptions")
-    public ResponseEntity<PatientPrescription> create(@RequestBody PatientPrescriptionCreateDto vm) {
-        return ResponseEntity.ok(service.create(vm));
+    public ResponseEntity<PatientPrescription> create(@RequestBody PatientPrescriptionCreateDto patientPrescriptionCreateDto) {
+        return ResponseEntity.ok(service.create(patientPrescriptionCreateDto));
     }
 
     @PutMapping("/patient-prescriptions/{id}")
-    public ResponseEntity<PatientPrescription> update(@PathVariable Long id, @RequestBody PatientPrescriptionUpdateDTO vm) {
-        return ResponseEntity.ok(service.update(id, vm));
+    public ResponseEntity<PatientPrescription> update(@PathVariable Long id, @RequestBody PatientPrescriptionUpdateDTO patientPrescriptionUpdateDTO) {
+        return ResponseEntity.ok(service.update(id, patientPrescriptionUpdateDTO));
     }
 
     @PostMapping("/patient-prescriptions/{id}/submit")

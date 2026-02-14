@@ -52,16 +52,16 @@ public class PatientPrescriptionService {
         return toDto(repo.save(entity));
     }
 
-    public PatientPrescription update(Long id, PatientPrescriptionUpdateDTO vm) {
+    public PatientPrescription update(Long id, PatientPrescriptionUpdateDTO patientPrescriptionUpdateDTO) {
         PatientPrescription entity = repo.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
 
-        if (vm.prescriptionDate != null) entity.setPrescriptionDate(vm.prescriptionDate);
-        if (vm.urgencyLevel != null) entity.setUrgencyLevel(vm.urgencyLevel);
-        if (vm.toFacilityId != null) entity.setToFacilityId(vm.toFacilityId);
-        if (vm.toDepartmentId != null) entity.setToDepartmentId(vm.toDepartmentId);
+        if (patientPrescriptionUpdateDTO.prescriptionDate != null) entity.setPrescriptionDate(patientPrescriptionUpdateDTO.prescriptionDate);
+        if (patientPrescriptionUpdateDTO.urgencyLevel != null) entity.setUrgencyLevel(patientPrescriptionUpdateDTO.urgencyLevel);
+        if (patientPrescriptionUpdateDTO.toFacilityId != null) entity.setToFacilityId(patientPrescriptionUpdateDTO.toFacilityId);
+        if (patientPrescriptionUpdateDTO.toDepartmentId != null) entity.setToDepartmentId(patientPrescriptionUpdateDTO.toDepartmentId);
 
-        entity.setLastModifiedBy(vm.lastModifiedBy);
+        entity.setLastModifiedBy(patientPrescriptionUpdateDTO.lastModifiedBy);
         entity.setLastModifiedDate(Instant.now());
 
         return toDto(repo.save(entity));
@@ -72,24 +72,24 @@ public class PatientPrescriptionService {
      * - If there is already a record for this encounter -> return it (do NOT create new one)
      * - Otherwise create once and return it
      */
-    public PatientPrescription createOrGetByEncounter(PatientPrescriptionCreateDto dto) {
-        LOG.debug("createOrGetByEncounter Patient Prescription payload={}", dto);
+    public PatientPrescription createOrGetByEncounter(PatientPrescriptionCreateDto patientPrescriptionCreateDto) {
+        LOG.debug("createOrGetByEncounter Patient Prescription payload={}", patientPrescriptionCreateDto);
 
         return patientPrescriptionRepository
-                .findTopByEncounterIdAndStatusOrderByCreatedDateDesc(dto.getEncounterId(), PrescriptionStatus.DRAFT)
+                .findTopByEncounterIdAndStatusOrderByCreatedDateDesc(patientPrescriptionCreateDto.getEncounterId(), PrescriptionStatus.DRAFT)
                 .orElseGet(() -> {
-                    Patient patient = getPatient(dto.getPatientId());
+                    Patient patient = getPatient(patientPrescriptionCreateDto.getPatientId());
                     PatientPrescription entity = PatientPrescription.builder()
                             .patient(patient)
-                            .encounterId(dto.getEncounterId())
+                            .encounterId(patientPrescriptionCreateDto.getEncounterId())
                             .prescriptionDate(
-                                    dto.getPrescriptionDate() != null
-                                            ? dto.getPrescriptionDate()
+                                    patientPrescriptionCreateDto.getPrescriptionDate() != null
+                                            ? patientPrescriptionCreateDto.getPrescriptionDate()
                                             : java.time.LocalDate.now()
                             )
                             .status(PrescriptionStatus.DRAFT)
-                            .fromFacilityId(dto.getFromFacilityId())
-                            .fromDepartmentId(dto.getFromDepartmentId())
+                            .fromFacilityId(patientPrescriptionCreateDto.getFromFacilityId())
+                            .fromDepartmentId(patientPrescriptionCreateDto.getFromDepartmentId())
                             .build();
                     return patientPrescriptionRepository.save(entity);
                 });
@@ -103,46 +103,34 @@ public class PatientPrescriptionService {
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
     }
 
-    @Transactional(readOnly = true)
     public Page<PatientPrescription> list(
             Long patientId,
             Long encounterId,
             PrescriptionStatus status,
             PrescriptionUrgencyLevel urgencyLevel,
             Long prescriptionNum,
+            boolean includeCanceled,
             Pageable pageable
     ) {
-        if (prescriptionNum != null) {
-            if (patientId != null) {
-                return repo.findByPatientIdAndPrescriptionNum(patientId, prescriptionNum, pageable).map(this::toDto);
-            }
-            return repo.findByPrescriptionNum(prescriptionNum, pageable).map(this::toDto);
-        }
-
-        // patientId + encounterId combos
         if (patientId != null && encounterId != null) {
-            if (status != null && urgencyLevel != null) {
-                return repo.findByPatientIdAndEncounterIdAndStatusAndUrgencyLevel(patientId, encounterId, status, urgencyLevel, pageable)
-                        .map(this::toDto);
-            }
+
             if (status != null) {
-                return repo.findByPatientIdAndEncounterIdAndStatus(patientId, encounterId, status, pageable).map(this::toDto);
+                return patientPrescriptionRepository.findByPatientIdAndEncounterIdAndStatus(patientId, encounterId, status, pageable);
             }
-            if (urgencyLevel != null) {
-                return repo.findByPatientIdAndEncounterIdAndUrgencyLevel(patientId, encounterId, urgencyLevel, pageable).map(this::toDto);
+
+            if (!includeCanceled) {
+                return patientPrescriptionRepository.findByPatientIdAndEncounterIdAndStatusNot(
+                        patientId, encounterId, PrescriptionStatus.CANCELLED, pageable
+                );
             }
-            return repo.findByPatientIdAndEncounterId(patientId, encounterId, pageable).map(this::toDto);
+
+            return patientPrescriptionRepository.findByPatientIdAndEncounterId(patientId, encounterId, pageable);
         }
 
-        if (patientId != null) {
-            return repo.findByPatientId(patientId, pageable).map(this::toDto);
-        }
-
-        return repo.findAll(pageable).map(this::toDto);
+        return patientPrescriptionRepository.findAll(pageable).map(this::toDto);
     }
 
 
-    // ===== submit/cancel (مش VM، فقط id + user) =====
     public PatientPrescription submit(Long id, String lastModifiedBy) {
         PatientPrescription entity = repo.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
@@ -165,7 +153,6 @@ public class PatientPrescriptionService {
         return toDto(repo.save(entity));
     }
 
-    // ===== mapper (Entity -> DTO) =====
     private PatientPrescription toDto(PatientPrescription e) {
         PatientPrescription dto = new PatientPrescription();
         dto.setId(e.getId());
