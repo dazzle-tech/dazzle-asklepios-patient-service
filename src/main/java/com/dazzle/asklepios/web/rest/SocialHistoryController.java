@@ -5,7 +5,7 @@ import com.dazzle.asklepios.service.SocialHistoryService;
 import com.dazzle.asklepios.service.dto.socialHistory.SocialHistoryCreateDTO;
 import com.dazzle.asklepios.service.dto.socialHistory.SocialHistoryUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.vm.socialHistory.SocialHistoryResponseVM;
+import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,20 +37,19 @@ public class SocialHistoryController {
     private static final Logger LOG =
             LoggerFactory.getLogger(SocialHistoryController.class);
 
-    private final SocialHistoryService service;
+    private final SocialHistoryService socialHistoryService;
 
-    public SocialHistoryController(SocialHistoryService service) {
-        this.service = service;
+    public SocialHistoryController(SocialHistoryService socialHistoryService) {
+        this.socialHistoryService = socialHistoryService;
     }
 
-
     @PostMapping("/social-history")
-    public ResponseEntity<SocialHistoryResponseVM> create(
-            @Valid @RequestBody SocialHistoryCreateDTO dto
+    public ResponseEntity<SocialHistory> create(
+            @Valid @RequestBody SocialHistoryCreateDTO createDTO
     ) {
-        LOG.debug("REST create SocialHistory payload={}", dto);
+        LOG.debug("REST create SocialHistory payload={}", createDTO);
 
-        if (dto == null) {
+        if (createDTO == null) {
             throw new BadRequestAlertException(
                     "Social history payload is required",
                     "socialHistory",
@@ -58,61 +57,66 @@ public class SocialHistoryController {
             );
         }
 
-        SocialHistory created = service.create(dto);
+        SocialHistory created = socialHistoryService.create(createDTO);
+
+        LOG.info("REST create SocialHistory - created id={}", created.getId());
 
         return ResponseEntity
                 .created(URI.create("/api/patient/social-history/" + created.getId()))
-                .body(SocialHistoryResponseVM.ofEntity(created));
+                .body(created);
     }
-
 
     @PutMapping("/social-history")
-    public ResponseEntity<SocialHistoryResponseVM> update(
-            @Valid @RequestBody SocialHistoryUpdateDTO dto
+    public ResponseEntity<SocialHistory> update(
+            @Valid @RequestBody SocialHistoryUpdateDTO updateDTO
     ) {
-        SocialHistoryUpdateDTO sanitizedDto = sanitizeUpdateDTO(dto);
-        SocialHistory updated = service.update(sanitizedDto);
+        LOG.debug("REST update SocialHistory payload={}", updateDTO);
 
-        return ResponseEntity.ok(
-                SocialHistoryResponseVM.ofEntity(updated)
-        );
+        SocialHistoryUpdateDTO sanitizedDTO = sanitizeUpdateDTO(updateDTO);
+
+        SocialHistory updated = socialHistoryService.update(sanitizedDTO);
+
+        LOG.info("REST update SocialHistory - updated id={}", updated.getId());
+
+        return ResponseEntity.ok(updated);
     }
-
 
     @DeleteMapping("/social-history/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-        service.delete(id);
+
+        LOG.debug("REST delete SocialHistory id={}", id);
+
+        socialHistoryService.delete(id);
+
+        LOG.info("REST delete SocialHistory - deleted id={}", id);
+
         return ResponseEntity.noContent().build();
     }
 
-
     @GetMapping("/social-history")
-    public ResponseEntity<List<SocialHistoryResponseVM>> list(
+    public ResponseEntity<List<SocialHistory>> list(
             @RequestParam Long patientId,
             @ParameterObject Pageable pageable
     ) {
+        LOG.debug("REST list SocialHistory patientId={} pageable={}", patientId, pageable);
+
         Page<SocialHistory> page =
-                service.findByPatientId(patientId, pageable);
+                socialHistoryService.findByPatientId(patientId, pageable);
 
         HttpHeaders headers =
-                com.dazzle.asklepios.web.rest.Helper.PaginationUtil
-                        .generatePaginationHttpHeaders(
-                                ServletUriComponentsBuilder.fromCurrentRequest(),
-                                page
-                        );
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
 
-        List<SocialHistoryResponseVM> body =
-                page.getContent()
-                        .stream()
-                        .map(SocialHistoryResponseVM::ofEntity)
-                        .toList();
+        LOG.debug("REST list SocialHistory - returning {} records",
+                page.getContent().size());
 
-        return new ResponseEntity<>(body, headers, HttpStatus.OK);
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
-
-
     private SocialHistoryUpdateDTO sanitizeUpdateDTO(SocialHistoryUpdateDTO dto) {
+
         Date smokeStartDate = dto.smokeStartDate();
         Integer cigaretteAmount = dto.cigaretteAmount();
         String cigaretteType = dto.cigaretteType();

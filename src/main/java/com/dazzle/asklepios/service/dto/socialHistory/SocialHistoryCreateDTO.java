@@ -13,6 +13,7 @@ public record SocialHistoryCreateDTO(
         @NotNull
         Long patientId,
 
+        @NotNull
         Boolean isCurrentSmoker,
 
         @PastOrPresent
@@ -20,18 +21,25 @@ public record SocialHistoryCreateDTO(
         Integer cigaretteAmount,
         String cigaretteType,
 
+        @NotNull
         Boolean isPreviousSmoker,
+
         @PastOrPresent
         Date smokeQuitDate,
 
+        @NotNull
         Boolean exposureToSecondHandSmoke,
 
+        @NotNull
         Boolean alcoholConsumption,
         String typeOfAlcohol,
+
         @PastOrPresent
         Date alcoholSinceWhen,
 
+        @NotNull
         Boolean substanceUse,
+
         String route,
         String frequency,
 
