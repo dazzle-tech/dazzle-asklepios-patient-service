@@ -116,15 +116,27 @@ public class ProgressNoteService {
     }
 
     @Transactional(readOnly = true)
-    public Page<ProgressNote> findByEncounter(
+    public Page<ProgressNote> findByEncounterNotCancelled(
             Long encounterId,
-            boolean includeCancelled,
             Pageable pageable
     ) {
-        return includeCancelled
-                ? repository.findByEncounterId(encounterId, pageable)
-                : repository.findByEncounterIdAndCancelledDateIsNull(encounterId, pageable);
+        return repository.findByEncounterIdAndCancelledDateIsNull(
+                encounterId,
+                pageable
+        );
     }
+
+    @Transactional(readOnly = true)
+    public Page<ProgressNote> findByEncounterAll(
+            Long encounterId,
+            Pageable pageable
+    ) {
+        return repository.findByEncounterId(
+                encounterId,
+                pageable
+        );
+    }
+
 
     @Transactional(readOnly = true)
     public ProgressNote findById(Long id) {

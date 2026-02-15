@@ -86,14 +86,29 @@ public class ProgressNoteController {
         );
     }
 
-    @GetMapping("/by-encounter/{encounterId}")
-    public ResponseEntity<List<ProgressNote>> findByEncounter(
+    @GetMapping("/by-encounter/{encounterId}/not-cancelled")
+    public ResponseEntity<List<ProgressNote>> findByEncounterNotCancelled(
             @PathVariable Long encounterId,
-            @RequestParam(defaultValue = "false") boolean includeCancelled,
             @ParameterObject Pageable pageable
     ) {
         Page<ProgressNote> page =
-                service.findByEncounter(encounterId, includeCancelled, pageable);
+                service.findByEncounterNotCancelled(encounterId, pageable);
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(), page
+                );
+
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+    }
+
+    @GetMapping("/by-encounter/{encounterId}/all")
+    public ResponseEntity<List<ProgressNote>> findByEncounterAll(
+            @PathVariable Long encounterId,
+            @ParameterObject Pageable pageable
+    ) {
+        Page<ProgressNote> page =
+                service.findByEncounterAll(encounterId, pageable);
 
         HttpHeaders headers =
                 PaginationUtil.generatePaginationHttpHeaders(

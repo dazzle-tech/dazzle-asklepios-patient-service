@@ -42,7 +42,6 @@ public class ProgressNote extends AbstractAuditingEntity<Long> implements Serial
     @Column(name = "encounter_id", nullable = false)
     private Long encounterId;
 
-    @Lob
     @NotBlank
     @Column(name = "note_text", nullable = false)
     private String noteText;

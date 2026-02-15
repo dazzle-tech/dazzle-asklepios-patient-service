@@ -22,7 +22,7 @@ import java.time.Instant;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class ProgressNoteLog implements Serializable {
+public class ProgressNoteLog extends AbstractAuditingEntity<Long> implements Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -32,19 +32,7 @@ public class ProgressNoteLog implements Serializable {
     private Long progressNoteId;
 
     @Column(name = "action", nullable = false, length = 10)
-    private String action; // INSERT | UPDATE | DELETE
-
-    @Column(name = "created_by")
-    private String createdBy;
-
-    @Column(name = "created_date")
-    private Instant createdDate;
-
-    @Column(name = "last_modified_by")
-    private String lastModifiedBy;
-
-    @Column(name = "last_modified_date")
-    private Instant lastModifiedDate;
+    private String action;
 
     @Column(name = "payload", columnDefinition = "jsonb")
     private String payload;
