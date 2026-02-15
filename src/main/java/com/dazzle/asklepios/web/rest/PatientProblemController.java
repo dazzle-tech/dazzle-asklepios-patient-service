@@ -55,6 +55,7 @@ public class PatientProblemController {
             );
         }
         PatientProblem created = patientProblemService.create(patientProblemCreateDTO);
+        LOG.info("REST create PatientProblem - created id={}", created.getId());
 
         return ResponseEntity
                 .created(URI.create("/api/patient/problems/" + created.getId()))
@@ -65,7 +66,9 @@ public class PatientProblemController {
     public ResponseEntity<PatientProblemResponseVM> update(
             @Valid @RequestBody PatientProblemUpdateDTO patientProblemUpdateDTO
     ) {
+        LOG.debug("REST update PatientProblem payload={}", patientProblemUpdateDTO);
         PatientProblem updated = patientProblemService.update(patientProblemUpdateDTO);
+        LOG.info("REST update PatientProblem - updated id={}", updated.getId());
 
         return ResponseEntity.ok(
                 PatientProblemResponseVM.ofEntity(updated)
@@ -75,7 +78,9 @@ public class PatientProblemController {
 
     @DeleteMapping("/problems/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
+        LOG.debug("REST delete PatientProblem id={}", id);
         patientProblemService.delete(id);
+        LOG.info("REST delete PatientProblem - deleted id={}", id);
         return ResponseEntity.noContent().build();
     }
 
@@ -85,8 +90,10 @@ public class PatientProblemController {
             @RequestParam Long patientId,
             @ParameterObject Pageable pageable
     ) {
+        LOG.debug("REST list PatientProblem patientId={} pageable={}", patientId, pageable);
         Page<PatientProblem> page =
                 patientProblemService.findByPatientId(patientId, pageable);
+        LOG.info("REST list PatientProblem - returned {} items", page.getContent().size());
 
         HttpHeaders headers =
                 com.dazzle.asklepios.web.rest.Helper.PaginationUtil
