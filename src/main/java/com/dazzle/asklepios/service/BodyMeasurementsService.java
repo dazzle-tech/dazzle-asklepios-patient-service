@@ -8,22 +8,15 @@ import com.dazzle.asklepios.service.dto.bodyMeasurements.BodyMeasurementsCreateD
 import com.dazzle.asklepios.service.dto.bodyMeasurements.BodyMeasurementsUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-
-import com.dazzle.asklepios.web.rest.vm.observations.BodyMeasurementsResponseVM;
-import com.dazzle.asklepios.web.rest.vm.observations.HeightResponseVM;
-import com.dazzle.asklepios.web.rest.vm.observations.WeightResponseVM;
 import lombok.RequiredArgsConstructor;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -53,7 +46,7 @@ public class BodyMeasurementsService {
         try {
             resetIsActiveForEncounterToday(dto.encounterId());
 
-            BodyMeasurements entity = BodyMeasurements.builder()
+            BodyMeasurements bodyMeasurements = BodyMeasurements.builder()
                     .patient(patient)
                     .encounterId(dto.encounterId())
                     .weight(dto.weight())
@@ -62,7 +55,7 @@ public class BodyMeasurementsService {
                     .isActive(true)
                     .build();
 
-            return bodyMeasurementsRepository.saveAndFlush(entity);
+            return bodyMeasurementsRepository.saveAndFlush(bodyMeasurements);
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
@@ -74,7 +67,7 @@ public class BodyMeasurementsService {
         Long targetId = id != null ? id : dto.id();
         LOG.info("[UPDATE] BodyMeasurements id={} payload={}", targetId, dto);
 
-        return bodyMeasurementsRepository.findById(targetId).map(entity -> {
+        return bodyMeasurementsRepository.findById(targetId).map(bodyMeasurements -> {
 
             Patient patient = patientRepository.findById(dto.patientId())
                     .orElseThrow(() -> new NotFoundAlertException(
@@ -83,15 +76,15 @@ public class BodyMeasurementsService {
                             "patient.notfound"
                     ));
 
-            entity.setPatient(patient);
-            entity.setEncounterId(dto.encounterId());
-            entity.setWeight(dto.weight());
-            entity.setHeight(dto.height());
-            entity.setHeadCircumference(dto.headCircumference());
-            entity.setIsActive(dto.isActive());
+            bodyMeasurements.setPatient(patient);
+            bodyMeasurements.setEncounterId(dto.encounterId());
+            bodyMeasurements.setWeight(dto.weight());
+            bodyMeasurements.setHeight(dto.height());
+            bodyMeasurements.setHeadCircumference(dto.headCircumference());
+            bodyMeasurements.setIsActive(dto.isActive());
 
             try {
-                return bodyMeasurementsRepository.saveAndFlush(entity);
+                return bodyMeasurementsRepository.saveAndFlush(bodyMeasurements);
             } catch (DataIntegrityViolationException | JpaSystemException ex) {
                 throw handleConstraintViolation(ex);
             }
