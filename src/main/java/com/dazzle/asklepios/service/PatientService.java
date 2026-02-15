@@ -9,8 +9,6 @@ import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -19,9 +17,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -34,8 +32,7 @@ public class PatientService {
     private final PatientRepository patientRepository;
     private final PatientDocumentRepository patientDocumentRepository;
 
-    @PersistenceContext
-    private EntityManager entityManager;
+
 
     public PatientService(
             PatientRepository patientRepository,
@@ -114,38 +111,41 @@ public class PatientService {
     }
 
     public Patient createUnknown(UnknownPatientCreateDTO dto) {
-        Patient unknownPatient = Patient.builder()
-                .isUnknown(dto.isUnknown())
-                .isVerified(dto.isVerified())
-                .isCompletedPatient(dto.isCompletedPatient())
-                .build();
 
-        try {
-            Patient createdPatient = patientRepository.saveAndFlush(unknownPatient);
+    Patient unknownPatient = Patient.builder()
+            .isUnknown(true)
+            .isVerified(Boolean.TRUE.equals(dto.isVerified()))
+            .isCompletedPatient(Boolean.TRUE.equals(dto.isCompletedPatient()))
+            .build();
 
-            String mrn = createdPatient.getMedicalRecordNumber();
+    try {
+        Patient createdPatient = patientRepository.saveAndFlush(unknownPatient);
 
+        String mrn = createdPatient.getMedicalRecordNumber();
+
+        if (mrn != null && !mrn.isBlank()) {
             createdPatient.setFirstName("Unknown " + mrn);
             createdPatient.setLastName(null);
 
-            Patient updatedPatient = patientRepository.saveAndFlush(createdPatient);
-
-            LOG.info("Created UNKNOWN patient id={} medicalRecordNumber={} firstName={}",
-                    updatedPatient.getId(),
-                    updatedPatient.getMedicalRecordNumber(),
-                    updatedPatient.getFirstName());
-
-            return updatedPatient;
-
-        } catch (DataIntegrityViolationException | JpaSystemException ex) {
-            handleConstraintsOnCreateOrUpdate(ex);
-            throw new BadRequestAlertException(
-                    "Database constraint violated while saving patient.",
-                    "patient",
-                    "db.constraint"
-            );
+            createdPatient = patientRepository.saveAndFlush(createdPatient);
         }
+
+        LOG.info("Created UNKNOWN patient id={} MRN={}",
+                createdPatient.getId(),
+                createdPatient.getMedicalRecordNumber());
+
+        return createdPatient;
+
+    } catch (DataIntegrityViolationException | JpaSystemException ex) {
+        handleConstraintsOnCreateOrUpdate(ex);
+        throw new BadRequestAlertException(
+                "Database constraint violated while saving patient.",
+                "patient",
+                "db.constraint"
+        );
     }
+}
+
 
     public Patient update(Long id, PatientUpdateDTO dto) {
         LOG.info("[UPDATE] Request to update Patient id={} payload={}", id, dto);
@@ -298,6 +298,14 @@ public class PatientService {
         Page<PatientDocument> docsPage =
                 patientDocumentRepository.findByIsPrimaryTrueAndNumberContainingIgnoreCase(numberPart, pageable);
         return docsPage.map(PatientDocument::getPatient);
+    }
+    @Transactional(readOnly = true)
+    public List<Patient> findByIds(List<Long> ids) {
+        LOG.debug("[BULK FIND] Fetching Patients by ids count={} ids={}", ids.size(), ids);
+        List<Patient> patients = patientRepository.findAllById(ids);
+
+        LOG.debug("[BULK FIND] Found Patients count={}", patients.size());
+        return patients;
     }
 
     @Transactional(readOnly = true)
