@@ -6,6 +6,7 @@ import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
+import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
@@ -16,10 +17,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.Optional;
+import java.util.List;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -33,6 +33,7 @@ public class PatientService {
     private final PatientDocumentRepository patientDocumentRepository;
 
 
+
     public PatientService(
             PatientRepository patientRepository,
             PatientDocumentRepository patientDocumentRepository
@@ -43,10 +44,6 @@ public class PatientService {
 
     public Patient create(PatientCreateDTO dto) {
         LOG.info("[CREATE] Request to create Patient payload={}", dto);
-
-        if (dto == null) {
-            throw new BadRequestAlertException("Patient payload is required", "patient", "payload.required");
-        }
 
         boolean verified = Boolean.TRUE.equals(dto.isVerified());
         boolean completed = Boolean.TRUE.equals(dto.isCompletedPatient());
@@ -101,8 +98,7 @@ public class PatientService {
                 .build();
 
         try {
-            Patient saved = patientRepository.saveAndFlush(entity);
-            return saved;
+            return patientRepository.saveAndFlush(entity);
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
@@ -114,48 +110,44 @@ public class PatientService {
         }
     }
 
-    @Transactional
-    public Patient createUnknown() {
-        Patient entity = Patient.builder()
-                .isUnknown(true)
-                .isVerified(false)
-                .isCompletedPatient(false)
-                .build();
+    public Patient createUnknown(UnknownPatientCreateDTO dto) {
 
-        try {
-            Patient saved = patientRepository.saveAndFlush(entity);
+    Patient unknownPatient = Patient.builder()
+            .isUnknown(true)
+            .isVerified(Boolean.TRUE.equals(dto.isVerified()))
+            .isCompletedPatient(Boolean.TRUE.equals(dto.isCompletedPatient()))
+            .build();
 
+    try {
+        Patient createdPatient = patientRepository.saveAndFlush(unknownPatient);
 
+        String mrn = createdPatient.getMedicalRecordNumber();
 
-            String medicalRecordNumber = saved.getMedicalRecordNumber();
-            if (medicalRecordNumber == null || medicalRecordNumber.isBlank()) {
-                LOG.warn("UNKNOWN patient created but MRN is null/blank for id={}", saved.getId());
-                return saved;
-            }
+        if (mrn != null && !mrn.isBlank()) {
+            createdPatient.setFirstName("Unknown " + mrn);
+            createdPatient.setLastName(null);
 
-            saved.setFirstName("Unknown " + medicalRecordNumber);
-
-            saved.setLastName(null);
-
-            saved = patientRepository.saveAndFlush(saved);
-
-            LOG.info("Created UNKNOWN patient id={} medicalRecordNumber={} firstName={}",
-                    saved.getId(), saved.getMedicalRecordNumber(), saved.getFirstName());
-
-            return saved;
-
-        } catch (DataIntegrityViolationException | JpaSystemException ex) {
-            handleConstraintsOnCreateOrUpdate(ex);
-            throw new BadRequestAlertException(
-                    "Database constraint violated while saving patient.",
-                    "patient",
-                    "db.constraint"
-            );
+            createdPatient = patientRepository.saveAndFlush(createdPatient);
         }
+
+        LOG.info("Created UNKNOWN patient id={} MRN={}",
+                createdPatient.getId(),
+                createdPatient.getMedicalRecordNumber());
+
+        return createdPatient;
+
+    } catch (DataIntegrityViolationException | JpaSystemException ex) {
+        handleConstraintsOnCreateOrUpdate(ex);
+        throw new BadRequestAlertException(
+                "Database constraint violated while saving patient.",
+                "patient",
+                "db.constraint"
+        );
     }
+}
 
 
-    public Optional<Patient> update(Long id, PatientUpdateDTO dto) {
+    public Patient update(Long id, PatientUpdateDTO dto) {
         LOG.info("[UPDATE] Request to update Patient id={} payload={}", id, dto);
 
         Patient existing = patientRepository.findById(id)
@@ -219,13 +211,13 @@ public class PatientService {
         existing.setLastModifiedDate(Instant.now());
 
         try {
-            Patient updated = patientRepository.saveAndFlush(existing);
+            Patient updatedPatient = patientRepository.saveAndFlush(existing);
 
             LOG.info(
                     "Successfully updated patient id={} (medicalRecordNumber='{}')",
-                    updated.getId(), updated.getMedicalRecordNumber()
+                    updatedPatient.getId(), updatedPatient.getMedicalRecordNumber()
             );
-            return Optional.of(updated);
+            return updatedPatient;
 
         } catch (DataIntegrityViolationException | JpaSystemException exception) {
             LOG.error(
@@ -243,12 +235,6 @@ public class PatientService {
                     "db.constraint"
             );
         }
-    }
-
-    @Transactional(readOnly = true)
-    public Page<Patient> findAll(Pageable pageable) {
-        LOG.debug("[FIND ALL] Fetching all patients with pageable={}", pageable);
-        return patientRepository.findAll(pageable);
     }
 
     @Transactional(readOnly = true)
@@ -299,6 +285,7 @@ public class PatientService {
                 );
     }
 
+
     @Transactional(readOnly = true)
     public Page<Patient> findUnknownPatients(Pageable pageable) {
         LOG.debug("[FIND UNKNOWN] Fetching unknown patients with pageable={}", pageable);
@@ -312,7 +299,29 @@ public class PatientService {
                 patientDocumentRepository.findByIsPrimaryTrueAndNumberContainingIgnoreCase(numberPart, pageable);
         return docsPage.map(PatientDocument::getPatient);
     }
+    @Transactional(readOnly = true)
+    public List<Patient> findByIds(List<Long> ids) {
+        LOG.debug("[BULK FIND] Fetching Patients by ids count={} ids={}", ids.size(), ids);
+        List<Patient> patients = patientRepository.findAllById(ids);
 
+        LOG.debug("[BULK FIND] Found Patients count={}", patients.size());
+        return patients;
+    }
+
+    @Transactional(readOnly = true)
+    public Patient findById(Long id) {
+        LOG.debug("[FIND BY ID] Fetching Patient id={}", id);
+
+        return patientRepository.findById(id)
+                .orElseThrow(() -> {
+                    LOG.error("Patient not found with id={}", id);
+                    return new NotFoundAlertException(
+                            "Patient not found with id " + id,
+                            "patient",
+                            "notfound"
+                    );
+                });
+    }
     @Transactional(readOnly = true)
     public Page<Patient> findByAnyDocumentNumber(String numberPart, Pageable pageable) {
         LOG.debug("[FIND BY ANY DOCUMENT] numberPart='{}' pageable={}", numberPart, pageable);
@@ -320,7 +329,6 @@ public class PatientService {
                 patientDocumentRepository.findByNumberContainingIgnoreCase(numberPart, pageable);
         return docsPage.map(PatientDocument::getPatient);
     }
-
     private void handleConstraintsOnCreateOrUpdate(RuntimeException exception) {
         Throwable root = getRootCause(exception);
         String message = (root != null ? root.getMessage() : exception.getMessage());
