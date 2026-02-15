@@ -1,11 +1,14 @@
-// DiagnosticTest.java
-package com.dazzle.asklepios.client.domain;
+
+package com.dazzle.asklepios.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -14,19 +17,23 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "diagnostic_test")
+@Table(name = "diagnostic_test_radiology")
 @Getter
 @Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class DiagnosticTest {
+public class DiagnosticTestRadiology {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Adjust column name if different in DB (e.g. test_name, name, etc.)
-    @Column(name = "name")
-    private String name;
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "test_id", nullable = false, unique = true)
+    private DiagnosticTest test;
+
+    @Column(name = "category")
+    private String category;
 }

@@ -5,12 +5,14 @@ import com.dazzle.asklepios.client.dto.NormalRangeMatchDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
+import com.dazzle.asklepios.domain.LabResultLog;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
+import com.dazzle.asklepios.repository.LabResultLogRepository;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.ApproveResultDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultCreateDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultUpdateDTO;
@@ -39,6 +41,7 @@ public class DiagnosticOrderTestResultService {
     private final DiagnosticOrderTestResultStatusService orderTestResultStatusService;
     private final DiagnosticOrderTestRepository orderTestRepository;
     private final DiagnosticOrderRepository orderRepository;
+    private final LabResultLogRepository labResultLogRepository;
     private final SetupServiceClient setupServiceClient;
     private final NormalRangeMatcherService normalRangeMatcherService;
 
@@ -47,6 +50,7 @@ public class DiagnosticOrderTestResultService {
             DiagnosticOrderTestResultStatusService statusService,
             DiagnosticOrderTestRepository orderTestRepository,
             DiagnosticOrderRepository orderRepository,
+            LabResultLogRepository labResultLogRepository,
             SetupServiceClient setupServiceClient,
             NormalRangeMatcherService normalRangeMatcherService
     ) {
@@ -54,6 +58,7 @@ public class DiagnosticOrderTestResultService {
         this.orderTestResultStatusService = statusService;
         this.orderTestRepository = orderTestRepository;
         this.orderRepository = orderRepository;
+        this.labResultLogRepository = labResultLogRepository;
         this.setupServiceClient = setupServiceClient;
         this.normalRangeMatcherService = normalRangeMatcherService;
     }
@@ -305,5 +310,10 @@ public class DiagnosticOrderTestResultService {
                                 Collectors.toList()
                         )
                 ));
+    }
+
+    @Transactional(readOnly = true)
+    public List<LabResultLog> findLabResultLogsByResultId(Long resultId) {
+        return labResultLogRepository.findAllByResultIdOrderByResultDateDesc(resultId);
     }
 }
