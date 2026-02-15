@@ -14,6 +14,7 @@ import com.dazzle.asklepios.web.rest.vm.observations.RespiratoryRateResponseVM;
 import com.dazzle.asklepios.web.rest.vm.observations.TemperatureResponseVM;
 import com.dazzle.asklepios.web.rest.vm.observations.VitalSignsResponseVM;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 
 import org.slf4j.Logger;
@@ -26,6 +27,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -43,6 +45,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/patient")
 @RequiredArgsConstructor
+@Validated
 public class VitalSignsController {
 
     private static final Logger LOG = LoggerFactory.getLogger(VitalSignsController.class);
@@ -73,16 +76,13 @@ public class VitalSignsController {
 
     @PutMapping("/vital-signs/{id}")
     public ResponseEntity<VitalSigns> update(
-            @PathVariable Long id,
+            @PathVariable @NotNull Long id,
             @Valid @RequestBody VitalSignsUpdateDTO dto
     ) {
         LOG.debug("[REST][UPDATE] VitalSigns id={} payload={}", id, dto);
 
         if (dto == null) {
             throw new BadRequestAlertException("VitalSigns payload is required", ENTITY_NAME, "payload.required");
-        }
-        if (id == null) {
-            throw new BadRequestAlertException("VitalSigns id is required", ENTITY_NAME, "id.required");
         }
         if (dto.patientId() == null) {
             throw new BadRequestAlertException("Patient id is required", ENTITY_NAME, "patient.required");
@@ -102,15 +102,9 @@ public class VitalSignsController {
 
     @GetMapping("/vital-signs/latest/encounter/{encounterId}")
     @Transactional(readOnly = true)
-    public ResponseEntity<VitalSigns> findLatestByEncounterId(@PathVariable Long encounterId) {
-        if (encounterId == null) {
-            throw new BadRequestAlertException(
-                    "Encounter id is required",
-                    ENTITY_NAME,
-                    "encounter.required"
-            );
-        }
-
+    public ResponseEntity<VitalSigns> findLatestByEncounterId(
+            @PathVariable @NotNull Long encounterId
+    ) {
         return vitalSignsService.findLatestByEncounterId(encounterId)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.noContent().build());
@@ -119,16 +113,8 @@ public class VitalSignsController {
     @GetMapping("/vital-signs/latest/triage/encounter/{encounterId}")
     @Transactional(readOnly = true)
     public ResponseEntity<VitalSigns> findLatestTriageByEncounter(
-            @PathVariable Long encounterId
+            @PathVariable @NotNull Long encounterId
     ) {
-        if (encounterId == null) {
-            throw new BadRequestAlertException(
-                    "Encounter id is required",
-                    ENTITY_NAME,
-                    "encounter.required"
-            );
-        }
-
         return vitalSignsService.findLatestTriageByEncounterId(encounterId)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.noContent().build());
@@ -137,16 +123,19 @@ public class VitalSignsController {
     @GetMapping("/vital-signs/patient/{patientId}/between-dates")
     @Transactional(readOnly = true)
     public ResponseEntity<List<VitalSignsResponseVM>> findByPatientBetweenDates(
-            @PathVariable Long patientId,
-            @RequestParam Instant from,
-            @RequestParam Instant to,
+            @PathVariable @NotNull Long patientId,
+            @RequestParam @NotNull Instant from,
+            @RequestParam @NotNull Instant to,
             @ParameterObject Pageable pageable
     ) {
-        if (patientId == null) {
-            throw new BadRequestAlertException("Patient id is required", ENTITY_NAME, "patient.required");
-        }
-        if (from == null || to == null) {
-            throw new BadRequestAlertException("From and To dates are required", ENTITY_NAME, "date.required");
+        LOG.debug("[REST][FIND BETWEEN DATES] patientId={} from={} to={}", patientId, from, to);
+
+        if (from.isAfter(to)) {
+            throw new BadRequestAlertException(
+                    "`from` must be before or equal to `to`",
+                    ENTITY_NAME,
+                    "date.range.invalid"
+            );
         }
 
         Page<VitalSignsResponseVM> page =
@@ -171,19 +160,17 @@ public class VitalSignsController {
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
-
     @GetMapping("/vital-signs/patient/{patientId}/respiratory-rate/list")
     @Transactional(readOnly = true)
     public ResponseEntity<List<RespiratoryRateResponseVM>> findRespiratoryRateBetweenDatesList(
-            @PathVariable Long patientId,
-            @RequestParam Instant from,
-            @RequestParam Instant to
+            @PathVariable @NotNull Long patientId,
+            @RequestParam @NotNull Instant from,
+            @RequestParam @NotNull Instant to
     ) {
-        if (patientId == null) {
-            throw new BadRequestAlertException("Patient id is required", ENTITY_NAME, "patient.required");
-        }
-        if (from == null || to == null) {
-            throw new BadRequestAlertException("From and To dates are required", ENTITY_NAME, "date.required");
+        LOG.debug("[REST][LIST RESPIRATORY RATE] patientId={} from={} to={}", patientId, from, to);
+
+        if (from.isAfter(to)) {
+            throw new BadRequestAlertException("Invalid date range", ENTITY_NAME, "date.range.invalid");
         }
 
         List<RespiratoryRateResponseVM> result =
@@ -203,15 +190,14 @@ public class VitalSignsController {
     @GetMapping("/vital-signs/patient/{patientId}/temperature/list")
     @Transactional(readOnly = true)
     public ResponseEntity<List<TemperatureResponseVM>> findTemperatureBetweenDatesList(
-            @PathVariable Long patientId,
-            @RequestParam Instant from,
-            @RequestParam Instant to
+            @PathVariable @NotNull Long patientId,
+            @RequestParam @NotNull Instant from,
+            @RequestParam @NotNull Instant to
     ) {
-        if (patientId == null) {
-            throw new BadRequestAlertException("Patient id is required", ENTITY_NAME, "patient.required");
-        }
-        if (from == null || to == null) {
-            throw new BadRequestAlertException("From and To dates are required", ENTITY_NAME, "date.required");
+        LOG.debug("[REST][LIST TEMPERATURE] patientId={} from={} to={}", patientId, from, to);
+
+        if (from.isAfter(to)) {
+            throw new BadRequestAlertException("Invalid date range", ENTITY_NAME, "date.range.invalid");
         }
 
         List<TemperatureResponseVM> result =
@@ -231,15 +217,14 @@ public class VitalSignsController {
     @GetMapping("/vital-signs/patient/{patientId}/pulse-rate/list")
     @Transactional(readOnly = true)
     public ResponseEntity<List<PulseRateResponseVM>> findPulseRateBetweenDatesList(
-            @PathVariable Long patientId,
-            @RequestParam Instant from,
-            @RequestParam Instant to
+            @PathVariable @NotNull Long patientId,
+            @RequestParam @NotNull Instant from,
+            @RequestParam @NotNull Instant to
     ) {
-        if (patientId == null) {
-            throw new BadRequestAlertException("Patient id is required", ENTITY_NAME, "patient.required");
-        }
-        if (from == null || to == null) {
-            throw new BadRequestAlertException("From and To dates are required", ENTITY_NAME, "date.required");
+        LOG.debug("[REST][LIST PULSE RATE] patientId={} from={} to={}", patientId, from, to);
+
+        if (from.isAfter(to)) {
+            throw new BadRequestAlertException("Invalid date range", ENTITY_NAME, "date.range.invalid");
         }
 
         List<PulseRateResponseVM> result =
@@ -259,15 +244,14 @@ public class VitalSignsController {
     @GetMapping("/vital-signs/patient/{patientId}/oxygen-saturation/list")
     @Transactional(readOnly = true)
     public ResponseEntity<List<OxygenSaturationResponseVM>> findOxygenSaturationBetweenDatesList(
-            @PathVariable Long patientId,
-            @RequestParam Instant from,
-            @RequestParam Instant to
+            @PathVariable @NotNull Long patientId,
+            @RequestParam @NotNull Instant from,
+            @RequestParam @NotNull Instant to
     ) {
-        if (patientId == null) {
-            throw new BadRequestAlertException("Patient id is required", ENTITY_NAME, "patient.required");
-        }
-        if (from == null || to == null) {
-            throw new BadRequestAlertException("From and To dates are required", ENTITY_NAME, "date.required");
+        LOG.debug("[REST][LIST OXYGEN SATURATION] patientId={} from={} to={}", patientId, from, to);
+
+        if (from.isAfter(to)) {
+            throw new BadRequestAlertException("Invalid date range", ENTITY_NAME, "date.range.invalid");
         }
 
         List<OxygenSaturationResponseVM> result =
@@ -287,27 +271,24 @@ public class VitalSignsController {
     @GetMapping("/vital-signs/patient/{patientId}/blood-pressure/list")
     @Transactional(readOnly = true)
     public ResponseEntity<List<BloodPressureResponseVM>> findBloodPressureBetweenDatesList(
-            @PathVariable Long patientId,
-            @RequestParam Instant from,
-            @RequestParam Instant to
+            @PathVariable @NotNull Long patientId,
+            @RequestParam @NotNull Instant from,
+            @RequestParam @NotNull Instant to
     ) {
-        if (patientId == null) {
-            throw new BadRequestAlertException("Patient id is required", ENTITY_NAME, "patient.required");
-        }
-        if (from == null || to == null) {
-            throw new BadRequestAlertException("From and To dates are required", ENTITY_NAME, "date.required");
+        LOG.debug("[REST][LIST BLOOD PRESSURE] patientId={} from={} to={}", patientId, from, to);
+
+        if (from.isAfter(to)) {
+            throw new BadRequestAlertException("Invalid date range", ENTITY_NAME, "date.range.invalid");
         }
 
         List<BloodPressureResponseVM> result =
-                vitalSignsService
-                        .findVitalSignsListByPatientBetweenDates(patientId, from, to)
+                vitalSignsService.findVitalSignsListByPatientBetweenDates(patientId, from, to)
                         .stream()
                         .map(vitalSigns -> BloodPressureResponseVM.builder()
                                 .systolic(vitalSigns.getBloodPressureSystolic())
                                 .diastolic(vitalSigns.getBloodPressureDiastolic())
                                 .createdAt(vitalSigns.getCreatedDate())
-                                .build()
-                        )
+                                .build())
                         .toList();
 
         return ResponseEntity.ok(result);
