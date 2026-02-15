@@ -31,14 +31,14 @@ public class DiagnosticOrderTestResultTechnicianNoteService {
     private static final Logger LOG =
             LoggerFactory.getLogger(DiagnosticOrderTestResultTechnicianNoteService.class);
 
-    private final DiagnosticOrderTestResultTechnicianNoteRepository noteRepository;
+    private final DiagnosticOrderTestResultTechnicianNoteRepository diagnosticOrderTestResultTechnicianNoteRepository;
     private final DiagnosticOrderTestResultRepository testResultRepository;
 
     public DiagnosticOrderTestResultTechnicianNoteService(
             DiagnosticOrderTestResultTechnicianNoteRepository noteRepository,
             DiagnosticOrderTestResultRepository testResultRepository
     ) {
-        this.noteRepository = noteRepository;
+        this.diagnosticOrderTestResultTechnicianNoteRepository = noteRepository;
         this.testResultRepository = testResultRepository;
     }
 
@@ -52,21 +52,21 @@ public class DiagnosticOrderTestResultTechnicianNoteService {
      * </ul>
      * </p>
      *
-     * @param dto note create payload
+     * @param orderTestResultTechnicianNoteDTO note create payload
      * @return persisted note
      * @throws BadRequestAlertException if result not found or orderTestId mismatch
      */
-    public DiagnosticOrderTestResultTechnicianNote create(DiagnosticOrderTestResultTechnicianNoteDTO dto) {
-        LOG.debug("[TestResultTechnicianNoteService] CREATE - start. payload={}", dto);
+    public DiagnosticOrderTestResultTechnicianNote create(DiagnosticOrderTestResultTechnicianNoteDTO orderTestResultTechnicianNoteDTO) {
+        LOG.debug("[TestResultTechnicianNoteService] CREATE - start. payload={}", orderTestResultTechnicianNoteDTO);
 
-        DiagnosticOrderTestResult testResult = testResultRepository.findById(dto.resultId())
+        DiagnosticOrderTestResult testResult = testResultRepository.findById(orderTestResultTechnicianNoteDTO.resultId())
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
                         "diagnostic_order_test_results",
-                        "DiagnosticOrderTestResult not found with id " + dto.resultId()
+                        "DiagnosticOrderTestResult not found with id " + orderTestResultTechnicianNoteDTO.resultId()
                 ));
 
-        if (!testResult.getOrderTestId().equals(dto.orderTestId())) {
+        if (!testResult.getOrderTestId().equals(orderTestResultTechnicianNoteDTO.orderTestId())) {
             throw new BadRequestAlertException(
                     "order_test_mismatch",
                     "diagnostic_order_test_result_technician_notes",
@@ -75,11 +75,11 @@ public class DiagnosticOrderTestResultTechnicianNoteService {
         }
 
         DiagnosticOrderTestResultTechnicianNote note = new DiagnosticOrderTestResultTechnicianNote();
-        note.setOrderTestId(dto.orderTestId());
-        note.setResultId(dto.resultId());
-        note.setNote(dto.note());
+        note.setOrderTestId(orderTestResultTechnicianNoteDTO.orderTestId());
+        note.setResultId(orderTestResultTechnicianNoteDTO.resultId());
+        note.setNote(orderTestResultTechnicianNoteDTO.note());
 
-        DiagnosticOrderTestResultTechnicianNote saved = noteRepository.save(note);
+        DiagnosticOrderTestResultTechnicianNote saved = diagnosticOrderTestResultTechnicianNoteRepository.save(note);
 
         LOG.debug("[TestResultTechnicianNoteService] CREATE - done. id={} orderTestId={} resultId={}",
                 saved.getId(), saved.getOrderTestId(), saved.getResultId());
@@ -96,12 +96,18 @@ public class DiagnosticOrderTestResultTechnicianNoteService {
      */
     @Transactional(readOnly = true)
     public DiagnosticOrderTestResultTechnicianNote getById(Long id) {
-        return noteRepository.findById(id)
+        LOG.debug("[TestResultTechnicianNoteService] GET_BY_ID - start. id={}", id);
+
+        DiagnosticOrderTestResultTechnicianNote note = diagnosticOrderTestResultTechnicianNoteRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
                         "diagnostic_order_test_result_technician_notes",
                         "Note not found with id " + id
                 ));
+
+        LOG.debug("[TestResultTechnicianNoteService] GET_BY_ID - done. id={} orderTestId={} resultId={}",
+                note.getId(), note.getOrderTestId(), note.getResultId());
+        return note;
     }
 
     /**
@@ -112,7 +118,12 @@ public class DiagnosticOrderTestResultTechnicianNoteService {
      */
     @Transactional(readOnly = true)
     public List<DiagnosticOrderTestResultTechnicianNote> listByOrderTestId(Long orderTestId) {
-        return noteRepository.findByOrderTestId(orderTestId);
+        LOG.debug("[TestResultTechnicianNoteService] LIST_BY_ORDER_TEST_ID - start. orderTestId={}", orderTestId);
+        List<DiagnosticOrderTestResultTechnicianNote> notes =
+                diagnosticOrderTestResultTechnicianNoteRepository.findByOrderTestId(orderTestId);
+        LOG.debug("[TestResultTechnicianNoteService] LIST_BY_ORDER_TEST_ID - done. orderTestId={} returned={}",
+                orderTestId, notes.size());
+        return notes;
     }
 
     /**
@@ -123,7 +134,12 @@ public class DiagnosticOrderTestResultTechnicianNoteService {
      */
     @Transactional(readOnly = true)
     public List<DiagnosticOrderTestResultTechnicianNote> listByResultId(Long resultId) {
-        return noteRepository.findByResultId(resultId);
+        LOG.debug("[TestResultTechnicianNoteService] LIST_BY_RESULT_ID - start. resultId={}", resultId);
+        List<DiagnosticOrderTestResultTechnicianNote> notes =
+                diagnosticOrderTestResultTechnicianNoteRepository.findByResultId(resultId);
+        LOG.debug("[TestResultTechnicianNoteService] LIST_BY_RESULT_ID - done. resultId={} returned={}",
+                resultId, notes.size());
+        return notes;
     }
 
     /**
@@ -135,7 +151,7 @@ public class DiagnosticOrderTestResultTechnicianNoteService {
     public void delete(Long id) {
         LOG.debug("[TestResultTechnicianNoteService] DELETE - start. id={}", id);
 
-        if (!noteRepository.existsById(id)) {
+        if (!diagnosticOrderTestResultTechnicianNoteRepository.existsById(id)) {
             throw new BadRequestAlertException(
                     "notfound",
                     "diagnostic_order_test_result_technician_notes",
@@ -143,7 +159,7 @@ public class DiagnosticOrderTestResultTechnicianNoteService {
             );
         }
 
-        noteRepository.deleteById(id);
+        diagnosticOrderTestResultTechnicianNoteRepository.deleteById(id);
 
         LOG.debug("[TestResultTechnicianNoteService] DELETE - done. id={}", id);
     }
