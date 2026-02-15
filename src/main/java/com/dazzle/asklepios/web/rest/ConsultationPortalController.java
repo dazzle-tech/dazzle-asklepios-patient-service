@@ -12,6 +12,7 @@ import com.dazzle.asklepios.service.dto.consultation.ConsultationSubmitResultDTO
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
@@ -63,9 +64,9 @@ public class ConsultationPortalController {
      */
     @GetMapping("/consultation-portal/search")
     public ResponseEntity<List<Consultation>> searchConsultations(
-            @RequestParam Instant fromDate,
-            @RequestParam Instant toDate,
-            @RequestParam Long fromFacilityId,
+            @RequestParam @NotNull Instant fromDate,
+            @RequestParam @NotNull Instant toDate,
+            @RequestParam @NotNull Long fromFacilityId,
             @RequestParam(required = false) Long practitionerId,
             @RequestParam(required = false) Long toDepartmentId,
             @RequestParam(required = false) List<Long> fromDepartmentIds,
@@ -77,20 +78,11 @@ public class ConsultationPortalController {
                 fromDate, toDate, fromFacilityId, practitionerId, toDepartmentId, fromDepartmentIds, pageable, showRejected
         );
 
-        // Validation
-        if (fromDate == null || toDate == null) {
+        if (fromDate.isAfter(toDate)) {
             throw new BadRequestAlertException(
-                    "fromDate and toDate are required",
+                    "fromDate must be before or equal to toDate",
                     "consultation",
-                    "date.required"
-            );
-        }
-
-        if (fromFacilityId == null) {
-            throw new BadRequestAlertException(
-                    "fromFacilityId is required",
-                    "consultation",
-                    "facility.required"
+                    "date.invalid.range"
             );
         }
 
@@ -144,9 +136,9 @@ public class ConsultationPortalController {
     @PutMapping("/consultation/{id}/confirm")
     public ResponseEntity<Consultation> confirmConsultation(
             @PathVariable Long id,
-            @Valid @RequestBody ConsultationConfirmDTO dto
+            @Valid @RequestBody ConsultationConfirmDTO consultationConfirmDTO
     ) {
-        LOG.debug("REST confirm Consultation payload id={} dto={}", id, dto);
+        LOG.debug("REST confirm Consultation payload id={} dto={}", id, consultationConfirmDTO);
 
         // Validation
         if (id == null) {
@@ -158,7 +150,7 @@ public class ConsultationPortalController {
             );
         }
 
-        if (dto == null) {
+        if (consultationConfirmDTO == null) {
             LOG.warn("REST confirm Consultation - request body is missing id={}", id);
             throw new BadRequestAlertException(
                     "Request body is required",
@@ -180,7 +172,7 @@ public class ConsultationPortalController {
             );
         }
 
-        Consultation confirmed = consultationPortalService.confirmConsultation(id, dto);
+        Consultation confirmed = consultationPortalService.confirmConsultation(id, consultationConfirmDTO);
         LOG.info("REST confirm Consultation - Successfully confirmed consultation id={}", confirmed.getId());
 
         return ResponseEntity.ok(confirmed);
@@ -192,22 +184,14 @@ public class ConsultationPortalController {
      */
     @PutMapping("/consultation/{id}/reject")
     public ResponseEntity<Consultation> rejectConsultation(
-            @PathVariable Long id,
-            @Valid @RequestBody ConsultationRejectDTO dto
+            @PathVariable @NotNull Long id,
+            @Valid @RequestBody ConsultationRejectDTO consultationRejectDTO
     ) {
-        LOG.debug("REST reject Consultation payload id={} dto={}", id, dto);
+        LOG.debug("REST reject Consultation payload id={} dto={}", id, consultationRejectDTO);
 
-        // Validation
-        if (id == null) {
-            LOG.warn("REST reject Consultation - id is missing");
-            throw new BadRequestAlertException(
-                    "Consultation id is required",
-                    "consultation",
-                    "id.required"
-            );
-        }
 
-        if (dto == null) {
+
+        if (consultationRejectDTO == null) {
             LOG.warn("REST reject Consultation - request body is missing id={}", id);
             throw new BadRequestAlertException(
                     "Request body is required",
@@ -229,7 +213,7 @@ public class ConsultationPortalController {
             );
         }
 
-        Consultation rejected = consultationPortalService.rejectConsultation(id, dto);
+        Consultation rejected = consultationPortalService.rejectConsultation(id, consultationRejectDTO);
         LOG.info("REST reject Consultation - Successfully rejected consultation id={}", rejected.getId());
 
         return ResponseEntity.ok(rejected);

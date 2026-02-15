@@ -381,13 +381,13 @@ public class ConsultationPortalService {
     @Transactional
     public Consultation submitConsultationResponse(
             Long consultationId,
-            ConsultationResponseDTO dto
+            ConsultationResponseDTO consultationResponseDTO
     ) {
 
         LOG.info(
                 "[ADD_RESPONSE] Consultation id={} responseBy={}",
                 consultationId,
-                dto.responseBy()
+                consultationResponseDTO.responseBy()
         );
 
         Consultation consultation =
@@ -399,8 +399,8 @@ public class ConsultationPortalService {
                                         "notfound"
                                 )
                         );
-        consultation.setResponseText(dto.responseText());
-        consultation.setResponseBy(dto.responseBy());
+        consultation.setResponseText(consultationResponseDTO.responseText());
+        consultation.setResponseBy(consultationResponseDTO.responseBy());
         consultation.setResponseDate(Instant.now());
         consultation.setStatus(ConsultationStatus.READY);
 
@@ -413,12 +413,12 @@ public class ConsultationPortalService {
 
     @Transactional
     public ConsultationSubmitResultDTO submitConsultations(
-            ConsultationSubmitRequestDTO dto
+            ConsultationSubmitRequestDTO consultationSubmitRequestDTO
     ) {
 
-        LOG.info("[SUBMIT] consultationIds={}", dto.consultationIds());
+        LOG.info("[SUBMIT] consultationIds={}", consultationSubmitRequestDTO.consultationIds());
 
-        List<Long> consultationIds = dto.consultationIds();
+        List<Long> consultationIds = consultationSubmitRequestDTO.consultationIds();
 
         List<Consultation> consultations =
                 consultationRepository.findAllById(consultationIds);
