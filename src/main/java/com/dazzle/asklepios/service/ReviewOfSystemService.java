@@ -28,17 +28,17 @@ public class ReviewOfSystemService {
         LOG.debug("Request to create ReviewOfSystem: {}", dto);
 
 
-        ReviewOfSystem ros = reviewOfSystemRepository
+        ReviewOfSystem reviewOfSystem = reviewOfSystemRepository
                 .findByEncounterIdAndBodySystemAndSystemDetail(dto.encounterId(), dto.bodySystem(), dto.systemDetail())
                 .orElseGet(ReviewOfSystem::new);
 
-        ros.setPatientId(dto.patientId());
-        ros.setEncounterId(dto.encounterId());
-        ros.setBodySystem(dto.bodySystem());
-        ros.setSystemDetail(dto.systemDetail());
-        ros.setNote(dto.note());
+        reviewOfSystem.setPatientId(dto.patientId());
+        reviewOfSystem.setEncounterId(dto.encounterId());
+        reviewOfSystem.setBodySystem(dto.bodySystem());
+        reviewOfSystem.setSystemDetail(dto.systemDetail());
+        reviewOfSystem.setNote(dto.note());
 
-        return reviewOfSystemRepository.save(ros);
+        return reviewOfSystemRepository.save(reviewOfSystem);
     }
 
     public ReviewOfSystem update(ReviewOfSystemUpdateDTO dto) {

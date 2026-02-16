@@ -10,7 +10,14 @@ import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
 import java.util.List;
@@ -27,7 +34,9 @@ public class ReviewOfSystemController {
         this.reviewOfSystemService = reviewOfSystemService;
     }
 
-    /** Create (upsert by encounterId+bodySystem+systemDetail) */
+    /**
+     * Create (upsert by encounterId+bodySystem+systemDetail)
+     */
     @PostMapping("/review-of-system")
     public ResponseEntity<ReviewOfSystemResponseVM> create(@Valid @RequestBody ReviewOfSystemCreateDTO dto) {
         LOG.debug("REST create ReviewOfSystem payload={}", dto);
@@ -37,7 +46,9 @@ public class ReviewOfSystemController {
                 .body(ReviewOfSystemResponseVM.ofEntity(saved));
     }
 
-    /** Update by id */
+    /**
+     * Update by id
+     */
     @PutMapping("/review-of-system/{id}")
     public ResponseEntity<ReviewOfSystemResponseVM> update(@PathVariable Long id, @Valid @RequestBody ReviewOfSystemUpdateDTO dto) {
         LOG.debug("REST update ReviewOfSystem id={} payload={}", id, dto);
@@ -46,14 +57,18 @@ public class ReviewOfSystemController {
         return ResponseEntity.ok(ReviewOfSystemResponseVM.ofEntity(updated));
     }
 
-    /** Get by id */
+    /**
+     * Get by id
+     */
     @GetMapping("/review-of-system/{id}")
     public ResponseEntity<ReviewOfSystemResponseVM> getById(@PathVariable Long id) {
         ReviewOfSystem ros = reviewOfSystemService.findOne(id);
         return ResponseEntity.ok(ReviewOfSystemResponseVM.ofEntity(ros));
     }
 
-    /** Get all by encounter */
+    /**
+     * Get all by encounter
+     */
     @GetMapping("/{encounterId}/review-of-system")
     public ResponseEntity<List<ReviewOfSystemResponseVM>> getByEncounter(@PathVariable Long encounterId) {
         List<ReviewOfSystemResponseVM> list = reviewOfSystemService.findByEncounter(encounterId)
@@ -61,7 +76,9 @@ public class ReviewOfSystemController {
         return ResponseEntity.ok(list);
     }
 
-    /** Get by encounter + bodySystem */
+    /**
+     * Get by encounter + bodySystem
+     */
     @GetMapping("/{encounterId}/review-of-system/{bodySystem}")
     public ResponseEntity<List<ReviewOfSystemResponseVM>> getByEncounterAndSystem(
             @PathVariable Long encounterId,
@@ -72,7 +89,9 @@ public class ReviewOfSystemController {
         return ResponseEntity.ok(list);
     }
 
-    /** Hard delete by unique key (unchecked) */
+    /**
+     * Hard delete by unique key (unchecked)
+     */
     @DeleteMapping("/{encounterId}/review-of-system/{bodySystem}/{systemDetail}")
     public ResponseEntity<Void> deleteByUnique(
             @PathVariable Long encounterId,
@@ -83,7 +102,9 @@ public class ReviewOfSystemController {
         return ResponseEntity.noContent().build();
     }
 
-    /** Hard delete by id */
+    /**
+     * Hard delete by id
+     */
     @DeleteMapping("/review-of-system/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         reviewOfSystemService.delete(id);
