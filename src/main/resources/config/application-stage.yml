@@ -23,11 +23,16 @@ spring:
       enabled: false
   datasource:
     type: com.zaxxer.hikari.HikariDataSource
-    url: jdbc:postgresql://db-postgresql-nyc3-94186-do-user-10936078-0.j.db.ondigitalocean.com:25060/asklepios?sslmode=require
+    url: jdbc:postgresql://161.35.195.29:5432/asklepios
     username: asklepios
     password: AVNS_Dw0mJXT6mnivz3bN70_
     hikari:
       poolName: Hikari
+      minimum-idle: 3
+      maximum-pool-size: 6
+      idle-timeout: 30000
+      max-lifetime: 600000
+      connection-timeout: 20000
       auto-commit: false
   thymeleaf:
     cache: true
@@ -52,7 +57,7 @@ spring:
 #     ciphers: TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 ,TLS_DHE_RSA_WITH_AES_128_GCM_SHA256 ,TLS_DHE_RSA_WITH_AES_256_GCM_SHA384 ,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384,TLS_DHE_RSA_WITH_AES_128_CBC_SHA256,TLS_DHE_RSA_WITH_AES_128_CBC_SHA,TLS_DHE_RSA_WITH_AES_256_CBC_SHA256,TLS_DHE_RSA_WITH_AES_256_CBC_SHA,TLS_RSA_WITH_AES_128_GCM_SHA256,TLS_RSA_WITH_AES_256_GCM_SHA384,TLS_RSA_WITH_AES_128_CBC_SHA256,TLS_RSA_WITH_AES_256_CBC_SHA256,TLS_RSA_WITH_AES_128_CBC_SHA,TLS_RSA_WITH_AES_256_CBC_SHA,TLS_DHE_RSA_WITH_CAMELLIA_256_CBC_SHA,TLS_RSA_WITH_CAMELLIA_256_CBC_SHA,TLS_DHE_RSA_WITH_CAMELLIA_128_CBC_SHA,TLS_RSA_WITH_CAMELLIA_128_CBC_SHA
 # ===================================================================
 server:
-  port: 8083
+  port: 8080
   forward-headers-strategy: framework
   shutdown: graceful # see https://docs.spring.io/spring-boot/docs/current/reference/html/spring-boot-features.html#boot-features-graceful-shutdown
   compression:
@@ -61,14 +66,6 @@ server:
     min-response-size: 1024
 
 patient:
-  cors:
-    allowed-origins: '*'
-    allowed-origin-patterns: '*'
-    allowed-methods: '*'
-    allowed-headers: '*'
-    exposed-headers: '*'
-    allow-credentials: true
-    max-age: 1800
   security:
     authentication:
       jwt:
@@ -85,12 +82,3 @@ patient:
       host: localhost
       port: 5000
       ring-buffer-size: 512
-  attachments:
-    bucket: asklepios
-    region: sfo3
-    endpoint: https://sfo3.digitaloceanspaces.com
-    accessKeyId: DO00TRNC7U4TLLL6ZAN2
-    secretAccessKey: mNFZKBA/BPXTHVUsde8y/2MslOn7zZEiPzwfIuhLrx4
-    presignExpirySeconds: 300
-    maxBytes: 52428800
-    allowed: application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png,text/plain

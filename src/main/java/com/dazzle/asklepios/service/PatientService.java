@@ -1,15 +1,14 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
-import com.dazzle.asklepios.domain.enumeration.SecurityLevel;
+import com.dazzle.asklepios.domain.PatientDocument;
+import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
+import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
+import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-
-import java.time.Instant;
-import java.time.LocalDate;
-import java.util.Optional;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -18,6 +17,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -28,93 +30,78 @@ public class PatientService {
     private static final Logger LOG = LoggerFactory.getLogger(PatientService.class);
 
     private final PatientRepository patientRepository;
+    private final PatientDocumentRepository patientDocumentRepository;
 
-    public PatientService(PatientRepository patientRepository) {
+
+
+    public PatientService(
+            PatientRepository patientRepository,
+            PatientDocumentRepository patientDocumentRepository
+    ) {
         this.patientRepository = patientRepository;
+        this.patientDocumentRepository = patientDocumentRepository;
     }
 
-    public String generateNextMrn() {
-        Integer maxNumber = patientRepository.findMaxMrnNumber();
-        int nextNumber = (maxNumber == null || maxNumber < 100) ? 100 : maxNumber + 1;
-        return "P" + nextNumber;
-    }
+    public Patient create(PatientCreateDTO dto) {
+        LOG.info("[CREATE] Request to create Patient payload={}", dto);
 
-
-    public Patient create(Patient incoming) {
-        LOG.info("[CREATE] Request to create Patient payload={}", incoming);
-
-        if (incoming == null) {
-            throw new BadRequestAlertException("Patient payload is required", "patient", "payload.required");
-        }
-
-        Boolean verified = Boolean.TRUE.equals(incoming.getIsVerified());
-        Boolean incomplete = Boolean.TRUE.equals(incoming.getIsCompletedPatient());
+        boolean verified = Boolean.TRUE.equals(dto.isVerified());
+        boolean completed = Boolean.TRUE.equals(dto.isCompletedPatient());
 
         Patient entity = Patient.builder()
-                .mrn(generateNextMrn())
+                .firstName(dto.firstName())
+                .secondName(dto.secondName())
+                .thirdName(dto.thirdName())
+                .lastName(dto.lastName())
 
-                .firstName(incoming.getFirstName())
-                .secondName(incoming.getSecondName())
-                .thirdName(incoming.getThirdName())
-                .lastName(incoming.getLastName())
-
-                .sexAtBirth(incoming.getSexAtBirth())
-                .dateOfBirth(incoming.getDateOfBirth())
-                .securityAccessLevel(
-                        (incoming.getSecurityAccessLevel() == null
-                                || incoming.getSecurityAccessLevel().toString().trim().isEmpty())
-                                ? SecurityLevel.NORMAL_1
-                                : incoming.getSecurityAccessLevel()
-                )
+                .sexAtBirth(dto.sexAtBirth())
+                .dateOfBirth(dto.dateOfBirth())
 
 
-                .patientClasses(incoming.getPatientClasses())
-                .isPrivatePatient(incoming.getIsPrivatePatient())
+                .patientClasses(dto.patientClasses())
+                .isPrivatePatient(dto.isPrivatePatient())
 
-                .firstNameSecondaryLang(incoming.getFirstNameSecondaryLang())
-                .secondNameSecondaryLang(incoming.getSecondNameSecondaryLang())
-                .thirdNameSecondaryLang(incoming.getThirdNameSecondaryLang())
-                .lastNameSecondaryLang(incoming.getLastNameSecondaryLang())
+                .firstNameSecondaryLang(dto.firstNameSecondaryLang())
+                .secondNameSecondaryLang(dto.secondNameSecondaryLang())
+                .thirdNameSecondaryLang(dto.thirdNameSecondaryLang())
+                .lastNameSecondaryLang(dto.lastNameSecondaryLang())
 
-                .primaryMobileNumber(incoming.getPrimaryMobileNumber())
-                .secondMobileNumber(incoming.getSecondMobileNumber())
-                .homePhone(incoming.getHomePhone())
-                .workPhone(incoming.getWorkPhone())
-                .email(incoming.getEmail())
-                .receiveSms(incoming.getReceiveSms())
-                .receiveEmail(incoming.getReceiveEmail())
-                .preferredWayOfContact(incoming.getPreferredWayOfContact())
+                .primaryMobileNumber(dto.primaryMobileNumber())
+                .secondMobileNumber(dto.secondMobileNumber())
+                .homePhone(dto.homePhone())
+                .workPhone(dto.workPhone())
+                .email(dto.email())
+                .receiveSms(dto.receiveSms())
+                .receiveEmail(dto.receiveEmail())
+                .preferredWayOfContact(dto.preferredWayOfContact())
 
-                .nativeLanguage(incoming.getNativeLanguage())
-                .emergencyContactName(incoming.getEmergencyContactName())
-                .emergencyContactRelation(incoming.getEmergencyContactRelation())
-                .emergencyContactPhone(incoming.getEmergencyContactPhone())
+                .nativeLanguage(dto.nativeLanguage())
+                .emergencyContactName(dto.emergencyContactName())
+                .emergencyContactRelation(dto.emergencyContactRelation())
+                .emergencyContactPhone(dto.emergencyContactPhone())
 
-                .role(incoming.getRole())
-                .maritalStatus(incoming.getMaritalStatus())
-                .nationality(incoming.getNationality())
-                .religion(incoming.getReligion())
-                .ethnicity(incoming.getEthnicity())
-                .occupation(incoming.getOccupation())
-                .responsibleParty(incoming.getResponsibleParty())
-                .educationalLevel(incoming.getEducationalLevel())
+                .role(dto.role())
+                .maritalStatus(dto.maritalStatus())
+                .nationality(dto.nationality())
+                .religion(dto.religion())
+                .ethnicity(dto.ethnicity())
+                .occupation(dto.occupation())
+                .responsibleParty(dto.responsibleParty())
+                .educationalLevel(dto.educationalLevel())
 
-                .previousId(incoming.getPreviousId())
-                .archivingNumber(incoming.getArchivingNumber())
-
-                .details(incoming.getDetails())
-                .isUnknown(incoming.getIsUnknown())
+                .previousId(dto.previousId())
+                .archivingNumber(dto.archivingNumber())
+                .details(dto.details())
+                .isUnknown(false)
                 .isVerified(verified)
-                .isCompletedPatient(incomplete)
+                .isCompletedPatient(completed)
                 .build();
 
         try {
-            Patient saved = patientRepository.saveAndFlush(entity);
-            LOG.info("Successfully created patient id={} mrn='{}'", saved.getId(), saved.getMrn());
-            return saved;
-        } catch (DataIntegrityViolationException | JpaSystemException constraintException) {
-            handleConstraintsOnCreateOrUpdate(constraintException);
+            return patientRepository.saveAndFlush(entity);
 
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            handleConstraintsOnCreateOrUpdate(ex);
             throw new BadRequestAlertException(
                     "Database constraint violated while saving patient (check required fields or unique constraints).",
                     "patient",
@@ -123,78 +110,124 @@ public class PatientService {
         }
     }
 
+    public Patient createUnknown(UnknownPatientCreateDTO dto) {
 
-    public Optional<Patient> update(Long id, Patient incoming) {
-        LOG.info("[UPDATE] Request to update Patient id={} payload={}", id, incoming);
+        Patient unknownPatient = Patient.builder()
+                .isUnknown(true)
+                .isVerified(Boolean.TRUE.equals(dto.isVerified()))
+                .isCompletedPatient(Boolean.TRUE.equals(dto.isCompletedPatient()))
+                .build();
 
-        if (incoming == null) {
-            throw new BadRequestAlertException("Patient payload is required", "patient", "payload.required");
+        try {
+            Patient createdPatient = patientRepository.saveAndFlush(unknownPatient);
+
+            String mrn = createdPatient.getMedicalRecordNumber();
+
+            if (mrn != null && !mrn.isBlank()) {
+                createdPatient.setFirstName("Unknown " + mrn);
+                createdPatient.setLastName(null);
+
+                createdPatient = patientRepository.saveAndFlush(createdPatient);
+            }
+
+            LOG.info("Created UNKNOWN patient id={} MRN={}",
+                    createdPatient.getId(),
+                    createdPatient.getMedicalRecordNumber());
+
+            return createdPatient;
+
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            handleConstraintsOnCreateOrUpdate(ex);
+            throw new BadRequestAlertException(
+                    "Database constraint violated while saving patient.",
+                    "patient",
+                    "db.constraint"
+            );
         }
+    }
+
+
+    public Patient update(Long id, PatientUpdateDTO dto) {
+        LOG.info("[UPDATE] Request to update Patient id={} payload={}", id, dto);
 
         Patient existing = patientRepository.findById(id)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient not found with id " + id,
-                        "patient",
-                        "notfound"
-                ));
+                .orElseThrow(() -> {
+                    LOG.error("Patient not found with id={}", id);
+                    return new NotFoundAlertException(
+                            "Patient not found with id " + id,
+                            "patient",
+                            "notfound"
+                    );
+                });
+
+        existing.setFirstName(dto.firstName());
+        existing.setSecondName(dto.secondName());
+        existing.setThirdName(dto.thirdName());
+        existing.setLastName(dto.lastName());
+
+        existing.setSexAtBirth(dto.sexAtBirth());
+        existing.setDateOfBirth(dto.dateOfBirth());
+
+        existing.setPatientClasses(dto.patientClasses());
+        existing.setIsPrivatePatient(dto.isPrivatePatient());
+
+        existing.setFirstNameSecondaryLang(dto.firstNameSecondaryLang());
+        existing.setSecondNameSecondaryLang(dto.secondNameSecondaryLang());
+        existing.setThirdNameSecondaryLang(dto.thirdNameSecondaryLang());
+        existing.setLastNameSecondaryLang(dto.lastNameSecondaryLang());
+
+        existing.setPrimaryMobileNumber(dto.primaryMobileNumber());
+        existing.setSecondMobileNumber(dto.secondMobileNumber());
+        existing.setHomePhone(dto.homePhone());
+        existing.setWorkPhone(dto.workPhone());
+        existing.setEmail(dto.email());
+        existing.setReceiveSms(dto.receiveSms());
+        existing.setReceiveEmail(dto.receiveEmail());
+        existing.setPreferredWayOfContact(dto.preferredWayOfContact());
+
+        existing.setNativeLanguage(dto.nativeLanguage());
+        existing.setEmergencyContactName(dto.emergencyContactName());
+        existing.setEmergencyContactRelation(dto.emergencyContactRelation());
+        existing.setEmergencyContactPhone(dto.emergencyContactPhone());
+
+        existing.setRole(dto.role());
+        existing.setMaritalStatus(dto.maritalStatus());
+        existing.setNationality(dto.nationality());
+        existing.setReligion(dto.religion());
+        existing.setEthnicity(dto.ethnicity());
+        existing.setOccupation(dto.occupation());
+        existing.setResponsibleParty(dto.responsibleParty());
+        existing.setEducationalLevel(dto.educationalLevel());
+
+        existing.setPreviousId(dto.previousId());
+        existing.setArchivingNumber(dto.archivingNumber());
+
+        existing.setDetails(dto.details());
+        existing.setIsUnknown(Boolean.TRUE.equals(dto.isUnknown()));
+        existing.setIsVerified(Boolean.TRUE.equals(dto.isVerified()));
+        existing.setIsCompletedPatient(Boolean.TRUE.equals(dto.isCompletedPatient()));
 
 
-        existing.setFirstName(incoming.getFirstName());
-        existing.setSecondName(incoming.getSecondName());
-        existing.setThirdName(incoming.getThirdName());
-        existing.setLastName(incoming.getLastName());
-
-        existing.setSexAtBirth(incoming.getSexAtBirth());
-        existing.setDateOfBirth(incoming.getDateOfBirth());
-        existing.setPatientClasses(incoming.getPatientClasses());
-        existing.setIsPrivatePatient(incoming.getIsPrivatePatient());
-
-        existing.setFirstNameSecondaryLang(incoming.getFirstNameSecondaryLang());
-        existing.setSecondNameSecondaryLang(incoming.getSecondNameSecondaryLang());
-        existing.setThirdNameSecondaryLang(incoming.getThirdNameSecondaryLang());
-        existing.setLastNameSecondaryLang(incoming.getLastNameSecondaryLang());
-
-        existing.setPrimaryMobileNumber(incoming.getPrimaryMobileNumber());
-        existing.setSecondMobileNumber(incoming.getSecondMobileNumber());
-        existing.setHomePhone(incoming.getHomePhone());
-        existing.setWorkPhone(incoming.getWorkPhone());
-        existing.setEmail(incoming.getEmail());
-        existing.setReceiveSms(incoming.getReceiveSms());
-        existing.setReceiveEmail(incoming.getReceiveEmail());
-        existing.setPreferredWayOfContact(incoming.getPreferredWayOfContact());
-
-        existing.setNativeLanguage(incoming.getNativeLanguage());
-        existing.setEmergencyContactName(incoming.getEmergencyContactName());
-        existing.setEmergencyContactRelation(incoming.getEmergencyContactRelation());
-        existing.setEmergencyContactPhone(incoming.getEmergencyContactPhone());
-
-        existing.setRole(incoming.getRole());
-        existing.setMaritalStatus(incoming.getMaritalStatus());
-        existing.setNationality(incoming.getNationality());
-        existing.setReligion(incoming.getReligion());
-        existing.setEthnicity(incoming.getEthnicity());
-        existing.setOccupation(incoming.getOccupation());
-        existing.setResponsibleParty(incoming.getResponsibleParty());
-        existing.setEducationalLevel(incoming.getEducationalLevel());
-
-        existing.setPreviousId(incoming.getPreviousId());
-        existing.setArchivingNumber(incoming.getArchivingNumber());
-
-        existing.setDetails(incoming.getDetails());
-        existing.setIsUnknown(incoming.getIsUnknown());
-
-        existing.setIsVerified(Boolean.TRUE.equals(incoming.getIsVerified()));
-        existing.setIsCompletedPatient(Boolean.TRUE.equals(incoming.getIsCompletedPatient()));
-
-        existing.setLastModifiedBy(incoming.getLastModifiedBy());
         existing.setLastModifiedDate(Instant.now());
 
         try {
-            Patient updated = patientRepository.saveAndFlush(existing);
-            LOG.info("Successfully updated patient id={} (mrn='{}')", updated.getId(), updated.getMrn());
-            return Optional.of(updated);
-        } catch (DataIntegrityViolationException | JpaSystemException constraintException) {
-            handleConstraintsOnCreateOrUpdate(constraintException);
+            Patient updatedPatient = patientRepository.saveAndFlush(existing);
+
+            LOG.info(
+                    "Successfully updated patient id={} (medicalRecordNumber='{}')",
+                    updatedPatient.getId(), updatedPatient.getMedicalRecordNumber()
+            );
+            return updatedPatient;
+
+        } catch (DataIntegrityViolationException | JpaSystemException exception) {
+            LOG.error(
+                    "Database constraint violation while updating patient id={}: {}",
+                    id,
+                    exception.getMessage(),
+                    exception
+            );
+
+            handleConstraintsOnCreateOrUpdate(exception);
 
             throw new BadRequestAlertException(
                     "Database constraint violated while updating patient (check required fields or unique constraints).",
@@ -204,40 +237,48 @@ public class PatientService {
         }
     }
 
-
     @Transactional(readOnly = true)
-    public Page<Patient> findAll(Pageable pageable) {
-        LOG.debug("Fetching paged Patients pageable={}", pageable);
-        return patientRepository.findAll(pageable);
-    }
-
-    @Transactional(readOnly = true)
-    public Page<Patient> findByMrn(String mrn, Pageable pageable) {
-        LOG.debug("Fetching Patients by MRN like='{}'", mrn);
-        return patientRepository.findByMrnContainingIgnoreCase(mrn, pageable);
+    public Page<Patient> findByMedicalRecordNumber(String medicalRecordNumber, Pageable pageable) {
+        LOG.debug(
+                "[FIND BY medicalRecordNumber] Searching patients by medicalRecordNumber='{}' pageable={}",
+                medicalRecordNumber, pageable
+        );
+        return patientRepository.findByMedicalRecordNumberContainingIgnoreCase(medicalRecordNumber, pageable);
     }
 
     @Transactional(readOnly = true)
     public Page<Patient> findByArchivingNumber(String archivingNumber, Pageable pageable) {
-        LOG.debug("Fetching Patients by archivingNumber like='{}'", archivingNumber);
+        LOG.debug(
+                "[FIND BY ARCHIVING] Searching patients by archivingNumber='{}' pageable={}",
+                archivingNumber, pageable
+        );
         return patientRepository.findByArchivingNumberContainingIgnoreCase(archivingNumber, pageable);
     }
 
     @Transactional(readOnly = true)
     public Page<Patient> findByPrimaryPhone(String primaryPhone, Pageable pageable) {
-        LOG.debug("Fetching Patients by primary phone like='{}'", primaryPhone);
+        LOG.debug(
+                "[FIND BY PHONE] Searching patients by primaryPhone='{}' pageable={}",
+                primaryPhone, pageable
+        );
         return patientRepository.findByPrimaryMobileNumberContaining(primaryPhone, pageable);
     }
 
     @Transactional(readOnly = true)
     public Page<Patient> findByDateOfBirth(LocalDate dateOfBirth, Pageable pageable) {
-        LOG.debug("Fetching Patients by dateOfBirth={}", dateOfBirth);
+        LOG.debug(
+                "[FIND BY DOB] Searching patients by dateOfBirth={} pageable={}",
+                dateOfBirth, pageable
+        );
         return patientRepository.findByDateOfBirth(dateOfBirth, pageable);
     }
 
     @Transactional(readOnly = true)
     public Page<Patient> findByFullName(String keyword, Pageable pageable) {
-        LOG.debug("Fetching Patients by full name keyword='{}'", keyword);
+        LOG.debug(
+                "[FIND BY NAME] Searching patients by keyword='{}' pageable={}",
+                keyword, pageable
+        );
         return patientRepository
                 .findByFirstNameContainingIgnoreCaseOrSecondNameContainingIgnoreCaseOrThirdNameContainingIgnoreCaseOrLastNameContainingIgnoreCase(
                         keyword, keyword, keyword, keyword, pageable
@@ -245,23 +286,83 @@ public class PatientService {
     }
 
 
-    private void handleConstraintsOnCreateOrUpdate(RuntimeException constraintException) {
-        Throwable root = getRootCause(constraintException);
-        String message = (root != null ? root.getMessage() : constraintException.getMessage());
+    @Transactional(readOnly = true)
+    public Page<Patient> findUnknownPatients(Pageable pageable) {
+        LOG.debug("[FIND UNKNOWN] Fetching unknown patients with pageable={}", pageable);
+        return patientRepository.findByIsUnknownTrue(pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<Patient> findByPrimaryDocumentNumber(String numberPart, Pageable pageable) {
+        LOG.debug("[FIND BY PRIMARY DOCUMENT] numberPart='{}' pageable={}", numberPart, pageable);
+        Page<PatientDocument> docsPage =
+                patientDocumentRepository.findByIsPrimaryTrueAndNumberContainingIgnoreCase(numberPart, pageable);
+        return docsPage.map(PatientDocument::getPatient);
+    }
+    @Transactional(readOnly = true)
+    public List<Patient> findByIds(List<Long> ids) {
+        LOG.debug("[BULK FIND] Fetching Patients by ids count={} ids={}", ids.size(), ids);
+        List<Patient> patients = patientRepository.findAllById(ids);
+
+        LOG.debug("[BULK FIND] Found Patients count={}", patients.size());
+        return patients;
+    }
+
+    @Transactional(readOnly = true)
+    public Patient findById(Long id) {
+        LOG.debug("[FIND BY ID] Fetching Patient id={}", id);
+
+        return patientRepository.findById(id)
+                .orElseThrow(() -> {
+                    LOG.error("Patient not found with id={}", id);
+                    return new NotFoundAlertException(
+                            "Patient not found with id " + id,
+                            "patient",
+                            "notfound"
+                    );
+                });
+    }
+    @Transactional(readOnly = true)
+    public Page<Patient> findByAnyDocumentNumber(String numberPart, Pageable pageable) {
+        LOG.debug("[FIND BY ANY DOCUMENT] numberPart='{}' pageable={}", numberPart, pageable);
+        Page<PatientDocument> docsPage =
+                patientDocumentRepository.findByNumberContainingIgnoreCase(numberPart, pageable);
+        return docsPage.map(PatientDocument::getPatient);
+    }
+    private void handleConstraintsOnCreateOrUpdate(RuntimeException exception) {
+        Throwable root = getRootCause(exception);
+        String message = (root != null ? root.getMessage() : exception.getMessage());
+
+        LOG.error("DB ROOT CAUSE: {}", message, exception);
+
         String lower = (message != null ? message.toLowerCase() : "");
 
-        LOG.error("Database constraint violation while saving patient: {}", message, constraintException);
+        if (lower.contains("medical_record_number") || lower.contains("medicalrecordnumber")) {
+            if (lower.contains("unique") || lower.contains("duplicate") || lower.contains("already exists")
+                    || lower.contains("duplicate key") || lower.contains("duplicate entry")) {
+                throw new BadRequestAlertException(
+                        "A patient with the same medicalRecordNumber already exists.",
+                        "patient",
+                        "unique.medical_record_number"
+                );
+            }
+        }
 
-        if (lower.contains("mrn") && (
-                lower.contains("ux") ||
-                        lower.contains("unique constraint") ||
-                        lower.contains("duplicate key") ||
-                        lower.contains("duplicate entry")
-        )) {
+        if (lower.contains("chk_patients_required_fields_when_not_unknown")
+                || (lower.contains("check constraint") && lower.contains("unknown"))) {
             throw new BadRequestAlertException(
-                    "A patient with the same MRN already exists.",
+                    "Required fields are missing for a non-unknown patient.",
                     "patient",
-                    "unique.mrn"
+                    "required.fields"
+            );
+        }
+
+
+        if (lower.contains("medical_record_number") && (lower.contains("null value") || lower.contains("not-null"))) {
+            throw new BadRequestAlertException(
+                    "medicalRecordNumber was not generated by the database (check entity mapping to allow DB default).",
+                    "patient",
+                    "mrn.not.generated"
             );
         }
 
@@ -271,5 +372,4 @@ public class PatientService {
                 "db.constraint"
         );
     }
-
 }
