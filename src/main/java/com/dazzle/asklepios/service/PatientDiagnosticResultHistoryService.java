@@ -99,7 +99,7 @@ public class PatientDiagnosticResultHistoryService {
             return List.of();
         }
 
-        List<PatientDiagnosticResultHistoryVM> history = diagnosticTestResults.stream()
+        List<PatientDiagnosticResultHistoryVM> patientDiagnosticResultHistoryVMS = diagnosticTestResults.stream()
                 .map(resultEntity -> {
                     Long diagnosticOrderId =
                             diagnosticOrderTestIdToDiagnosticOrderId.get(resultEntity.getOrderTestId());
@@ -112,10 +112,10 @@ public class PatientDiagnosticResultHistoryService {
         LOG.debug(
                 "[PatientDiagnosticResultHistoryService] GET_HISTORY - done. patientId={} resultCount={}",
                 patientId,
-                history.size()
+                patientDiagnosticResultHistoryVMS.size()
         );
 
-        return history;
+        return patientDiagnosticResultHistoryVMS;
     }
 
     /**
@@ -135,10 +135,10 @@ public class PatientDiagnosticResultHistoryService {
                 profileTestId
         );
 
-        List<PatientDiagnosticResultHistoryVM> flatResults =
+        List<PatientDiagnosticResultHistoryVM> resultHistoryVMS =
                 getHistory(patientId, fromDateTime, toDateTime, profileTestId);
 
-        if (flatResults.isEmpty()) {
+        if (resultHistoryVMS.isEmpty()) {
             LOG.debug(
                     "[PatientDiagnosticResultHistoryService] GET_GROUPED_HISTORY - no flat results to group. patientId={}",
                     patientId
@@ -147,7 +147,7 @@ public class PatientDiagnosticResultHistoryService {
         }
 
         List<PatientDiagnosticResultHistoryVM> reviewedResultsOnly =
-                flatResults.stream()
+                resultHistoryVMS.stream()
                         .filter(resultVm -> resultVm.reviewDate() != null)
                         .toList();
 
@@ -155,7 +155,7 @@ public class PatientDiagnosticResultHistoryService {
             LOG.debug(
                     "[PatientDiagnosticResultHistoryService] GET_GROUPED_HISTORY - no reviewed results found. patientId={} flatResultCount={}",
                     patientId,
-                    flatResults.size()
+                    resultHistoryVMS.size()
             );
             return List.of();
         }
@@ -172,10 +172,10 @@ public class PatientDiagnosticResultHistoryService {
     }
 
     private Map<Long, Long> mapDiagnosticOrderTestIdToDiagnosticOrderId(List<Long> diagnosticOrderTestIds) {
-        List<Object[]> idPairs = diagnosticOrderTestRepository.findIdAndOrderIdByIdIn(diagnosticOrderTestIds);
+        List<Object[]> idAndOrderIdByIdIn = diagnosticOrderTestRepository.findIdAndOrderIdByIdIn(diagnosticOrderTestIds);
 
-        Map<Long, Long> diagnosticOrderTestIdToDiagnosticOrderId = new HashMap<>(idPairs.size());
-        for (Object[] row : idPairs) {
+        Map<Long, Long> diagnosticOrderTestIdToDiagnosticOrderId = new HashMap<>(idAndOrderIdByIdIn.size());
+        for (Object[] row : idAndOrderIdByIdIn) {
             Long diagnosticOrderTestId = (Long) row[0];
             Long diagnosticOrderId = (Long) row[1];
             diagnosticOrderTestIdToDiagnosticOrderId.put(diagnosticOrderTestId, diagnosticOrderId);
@@ -185,10 +185,10 @@ public class PatientDiagnosticResultHistoryService {
     }
 
     private List<ProfileTestGroupedHistoryVM> groupResultsByProfileTestId(
-            List<PatientDiagnosticResultHistoryVM> flatResults
+            List<PatientDiagnosticResultHistoryVM> patientDiagnosticResultHistoryVMS
     ) {
         Map<Long, List<PatientDiagnosticResultHistoryVM>> resultsByProfileTestId =
-                flatResults.stream()
+                patientDiagnosticResultHistoryVMS.stream()
                         .collect(Collectors.groupingBy(
                                 PatientDiagnosticResultHistoryVM::profileTestId,
                                 LinkedHashMap::new,
