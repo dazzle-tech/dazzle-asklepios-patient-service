@@ -2,7 +2,6 @@ package com.dazzle.asklepios.web.rest.vm.relation;
 
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientRelation;
-import com.dazzle.asklepios.web.rest.vm.patient.PatientResponseVM;
 
 public record PatientRelationResponseVM(
         Long id,
