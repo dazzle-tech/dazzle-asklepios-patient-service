@@ -282,11 +282,12 @@ public class DiagnosticOrderTestResultController {
             @RequestParam(name = "profileTestId", required = false)
             Long profileTestIdFilter,
 
-            @RequestParam(name = "marker", required = false)
-            TestResultMarker markerFilter,
+            @RequestParam(name = "markerIn", required = false)
+            List<TestResultMarker> markerInFilter,
 
-            @RequestParam(name = "excludeMarker", required = false)
-            TestResultMarker excludeMarkerFilter,
+            @RequestParam(name = "excludeMarkerIn", required = false)
+            List<TestResultMarker> excludeMarkerInFilter,
+
 
             @RequestParam(name = "processingStatus", required = false)
             DiagnosticStatus processingStatusFilter,
@@ -350,13 +351,22 @@ public class DiagnosticOrderTestResultController {
                         predicates.add(criteriaBuilder.equal(testResultRoot.get("processingStatus"), processingStatusFilter));
                     }
 
-                    if (markerFilter != null) {
-                        predicates.add(criteriaBuilder.equal(testResultRoot.get("marker"), markerFilter));
+                    // marker IN
+                    if (markerInFilter != null && !markerInFilter.isEmpty()) {
+                        predicates.add(
+                                testResultRoot.get("marker").in(markerInFilter)
+                        );
                     }
 
-                    if (excludeMarkerFilter != null) {
-                        predicates.add(criteriaBuilder.notEqual(testResultRoot.get("marker"), excludeMarkerFilter));
+// marker NOT IN
+                    if (excludeMarkerInFilter != null && !excludeMarkerInFilter.isEmpty()) {
+                        predicates.add(
+                                criteriaBuilder.not(
+                                        testResultRoot.get("marker").in(excludeMarkerInFilter)
+                                )
+                        );
                     }
+
 
                     if (approvedByFilter != null) {
                         predicates.add(criteriaBuilder.equal(testResultRoot.get("approvedBy"), approvedByFilter));
