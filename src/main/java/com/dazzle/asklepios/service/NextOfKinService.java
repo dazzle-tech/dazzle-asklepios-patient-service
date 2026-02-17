@@ -89,11 +89,7 @@ public class NextOfKinService {
         LOG.debug("Request to get NextOfKin by patientId={}", patientId);
         return nextOfKinRepository.findByPatientId(patientId);
     }
-    @Transactional(readOnly = true)
-    public Optional<NextOfKin> findOne(Long id) {
-        LOG.debug("Request to get NextOfKin id={}", id);
-        return nextOfKinRepository.findById(id);
-    }
+
     public void delete(Long id) {
         LOG.debug("Request to delete NextOfKin id={}", id);
         nextOfKinRepository.deleteById(id);

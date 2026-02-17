@@ -43,34 +43,36 @@ public class PatientRelationService {
     // --------------------------------------------------
     public PatientRelation create(PatientRelation entity) {
 
-        Long p1Id = entity.getPatient().getId();
-        Long p2Id = entity.getRelativePatient().getId();
-        RelationType r1 = entity.getRelationType();
+        Long patientOneID = entity.getPatient().getId();
+        Long patientTowId = entity.getRelativePatient().getId();
+        RelationType relationType = entity.getRelationType();
 
-        LOG.debug("Create PatientRelation request: patientId={}, relativeId={}, relationType={}", p1Id, p2Id, r1);
+        LOG.info("[CREATE] PatientRelation request patientId={} relativeId={} relationType={}", patientOneID, patientTowId, relationType);
+        LOG.debug("Create PatientRelation request: patientId={}, relativeId={}, relationType={}", patientOneID, patientTowId, relationType);
 
-        if (p1Id.equals(p2Id)) {
-            LOG.warn("Reject create PatientRelation: same patientId={}", p1Id);
+        if (patientOneID.equals(patientTowId)) {
+            LOG.warn("Reject create PatientRelation: same patientId={}", patientOneID);
             throw new BadRequestAlertException(
-                    "A patient cannot be linked to themselves.",
+                    "A patient2 cannot be linked to themselves.",
                     "patientRelation",
                     "samePatient"
             );
         }
 
-        if (relationRepository.existsByPatient_IdAndRelativePatient_IdAndRelationType(p1Id, p2Id, r1)) {
-            LOG.warn("Reject create PatientRelation: duplicate relation patientId={}, relativeId={}, type={}", p1Id, p2Id, r1);
+        if (relationRepository.existsByPatient_IdAndRelativePatient_IdAndRelationType(patientOneID, patientTowId, relationType)) {
+            LOG.warn("Reject create PatientRelation: duplicate relation patientId={}, relativeId={}, type={}", patientOneID, patientTowId, relationType);
             throw new BadRequestAlertException(
                     "Duplicate ",
                     "patientRelation",
-                    "Duplicate relation is not allowed for the same patient."
+                    "Duplicate relation is not allowed for the same patient2."
             );
         }
-        if (r1 == RelationType.MOTH || r1 == RelationType.FATH) {
+        if (relationType == RelationType.MOTH || relationType == RelationType.FATH) {
             boolean parentExists = relationRepository
-                    .existsByPatient_IdAndRelationType(p1Id, r1);
+                    .existsByPatient_IdAndRelationType(patientOneID, relationType);
 
             if (parentExists) {
+                LOG.warn("Reject create PatientRelation: parent duplicate patientId={}, relationType={}", patientOneID, relationType);
                 throw new BadRequestAlertException(
                         "parentDuplicate",
                         "patientRelation",
@@ -79,33 +81,37 @@ public class PatientRelationService {
             }
         }
         // load genders from DB (important)
-        Patient p1 = patientRepository.findById(p1Id)
+        Patient patient1 = patientRepository.findById(patientOneID)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "PatientNotFound.",
                         "patientRelation",
                         "Patient not found."
                 ));
 
-        Patient p2 = patientRepository.findById(p2Id)
+        Patient patient2 = patientRepository.findById(patientTowId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "relativeNotFound ",
                         "patientRelation",
-                        "Relative patient not found."
+                        "Relative patient2 not found."
                 ));
 
-        entity.setPatient(p1);
-        entity.setRelativePatient(p2);
+        entity.setPatient(patient1);
+        entity.setRelativePatient(patient2);
 
         PatientRelation saved = relationRepository.save(entity);
-        LOG.debug("Saved PatientRelation id={} for patientId={}, relativeId={}", saved.getId(), p1Id, p2Id);
+        LOG.debug("Saved PatientRelation id={} for patientId={}, relativeId={}", saved.getId(), patientOneID, patientTowId);
 
-        Gender g1 = p1.getSexAtBirth();
-        Gender g2 = p2.getSexAtBirth();
+        Gender patient1SexAtBirth = patient1.getSexAtBirth();
+        Gender patient2SexAtBirth = patient2.getSexAtBirth();
 
         RelationsMatrix matrix = matrixRepository
-                .findFirstByFirstPatientGenderAndSecondPatientGenderAndFirstRelationCode(g1, g2, r1)
+                .findFirstByFirstPatientGenderAndSecondPatientGenderAndFirstRelationCodeWithLog(
+                        patient1SexAtBirth,
+                        patient2SexAtBirth,
+                        relationType
+                )
                 .orElseThrow(() -> {
-                    LOG.warn("No inverse mapping found in relations_matrix for g1={}, g2={}, r1={}", g1, g2, r1);
+                    LOG.warn("No inverse mapping found in relations_matrix for patient1SexAtBirth={}, patient2SexAtBirth={}, relationType={}", patient1SexAtBirth, patient2SexAtBirth, relationType);
                     return new BadRequestAlertException(
                             "noInverse",
                             "patientRelation",
@@ -116,12 +122,12 @@ public class PatientRelationService {
         RelationType inverseType = matrix.getSecondRelationCode();
 
         boolean inverseExists =
-                relationRepository.existsByPatient_IdAndRelativePatient_IdAndRelationType(p2Id, p1Id, inverseType);
+                relationRepository.existsByPatient_IdAndRelativePatient_IdAndRelationType(patientTowId, patientOneID, inverseType);
 
         if (!inverseExists) {
             PatientRelation inverse = PatientRelation.builder()
-                    .patient(p2)
-                    .relativePatient(p1)
+                    .patient(patient2)
+                    .relativePatient(patient1)
                     .relationType(inverseType)
                     .categoryType(entity.getCategoryType())
                     .isActive(true)
@@ -129,15 +135,19 @@ public class PatientRelationService {
 
             PatientRelation inverseSaved = relationRepository.save(inverse);
             LOG.debug("Created inverse PatientRelation id={} for patientId={}, relativeId={}, type={}",
-                    inverseSaved.getId(), p2Id, p1Id, inverseType);
+                    inverseSaved.getId(), patientTowId, patientOneID, inverseType);
         } else {
-            LOG.debug("Inverse relation already exists for patientId={}, relativeId={}, type={}", p2Id, p1Id, inverseType);
+            LOG.debug("Inverse relation already exists for patientId={}, relativeId={}, type={}", patientTowId, patientOneID, inverseType);
         }
 
+        LOG.info("[CREATE] PatientRelation success id={} patientId={} relativeId={} relationType={}",
+                saved.getId(), patientOneID, patientTowId, relationType);
         return saved;
     }
    //-----------------------------------------------
    public PatientRelation update(Long id, PatientRelation newEntity) {
+       LOG.info("[UPDATE] PatientRelation request id={} patientId={} relativeId={} relationType={}",
+               id, newEntity.getPatient().getId(), newEntity.getRelativePatient().getId(), newEntity.getRelationType());
 
        PatientRelation old = relationRepository.findById(id)
                .orElseThrow(() -> new BadRequestAlertException(
@@ -164,23 +174,20 @@ public class PatientRelationService {
 
        if (relationChanged) {
 
-           Long newP1Id = p1.getId(); // المريض بعد التعديل
+           Long newP1Id = p1.getId();
 
-           // ✅ فحص عدم تكرار الأم/الأب قبل الحذف
            if (newType == RelationType.MOTH || newType == RelationType.FATH) {
 
                boolean parentExists = relationRepository
                        .existsByPatient_IdAndRelationType(newP1Id, newType);
 
-            /*
-              إذا كان موجود Parent relation:
-              - وهاي ليست نفس العلاقة الحالية (يعني مش مجرد تعديل على نفس الأم/الأب)
-              إذن ارفض.
-            */
+
                boolean sameCurrentParent =
                        newP1Id.equals(oldP1Id) && newType == oldType;
 
                if (parentExists && !sameCurrentParent) {
+                   LOG.warn("Reject update PatientRelation: parent duplicate patientId={} relationType={} relationId={}",
+                           newP1Id, newType, id);
                    throw new BadRequestAlertException(
                            "Parent relation already exists.",
                            "patientRelation",
@@ -189,12 +196,12 @@ public class PatientRelationService {
                }
            }
 
-           // بعد ما اطمّنا، احذف القديم وأنشئ الجديد
+           LOG.info("[UPDATE] Relationship changed id={} oldPatientId={} oldRelativeId={} oldType={} newPatientId={} newRelativeId={} newType={}",
+                   id, oldP1Id, oldP2Id, oldType, p1.getId(), p2.getId(), newType);
            delete(id);
            return create(newEntity);
        }
 
-       // metadata only -> update both sides
        old.setCategoryType(newEntity.getCategoryType());
        old.setIsActive(newEntity.getIsActive());
 
@@ -204,7 +211,7 @@ public class PatientRelationService {
        Gender g2 = p2.getSexAtBirth();
 
        RelationType inverseType = matrixRepository
-               .findFirstByFirstPatientGenderAndSecondPatientGenderAndFirstRelationCode(g1, g2, oldType)
+               .findFirstByFirstPatientGenderAndSecondPatientGenderAndFirstRelationCodeWithLog(g1, g2, oldType)
                .map(RelationsMatrix::getSecondRelationCode)
                .orElse(null);
 
@@ -215,9 +222,12 @@ public class PatientRelationService {
                        inv.setCategoryType(newEntity.getCategoryType());
                        inv.setIsActive(newEntity.getIsActive());
                        relationRepository.save(inv);
+                       LOG.debug("Updated inverse PatientRelation id={} for relationId={}", inv.getId(), id);
                    });
        }
 
+       LOG.info("[UPDATE] PatientRelation success id={} patientId={} relativeId={} relationType={}",
+               savedOld.getId(), oldP1Id, oldP2Id, oldType);
        return savedOld;
    }
 
@@ -241,37 +251,46 @@ public class PatientRelationService {
     // DELETE both sides
     // --------------------------------------------------
     public void delete(Long id) {
+        LOG.info("[DELETE] PatientRelation request id={}", id);
         LOG.debug("Delete PatientRelation id={}", id);
 
-        PatientRelation rel = relationRepository.findById(id)
+        PatientRelation patientRelation = relationRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notFound ",
                         "patientRelation",
                         "Relation not found."
                 ));
 
-        Long p1 = rel.getPatient().getId();
-        Long p2 = rel.getRelativePatient().getId();
-        RelationType r1 = rel.getRelationType();
+        Long firstPatientId = patientRelation.getPatient().getId();
+        Long secondPatientId = patientRelation.getRelativePatient().getId();
+        RelationType relationType = patientRelation.getRelationType();
 
-        Gender g1 = rel.getPatient().getSexAtBirth();
-        Gender g2 = rel.getRelativePatient().getSexAtBirth();
+        Gender firstPatientGender = patientRelation.getPatient().getSexAtBirth();
+        Gender secondPatientGender = patientRelation.getRelativePatient().getSexAtBirth();
 
         RelationType inverseType = matrixRepository
-                .findFirstByFirstPatientGenderAndSecondPatientGenderAndFirstRelationCode(g1, g2, r1)
+                .findFirstByFirstPatientGenderAndSecondPatientGenderAndFirstRelationCodeWithLog(
+                        firstPatientGender,
+                        secondPatientGender,
+                        relationType
+                )
                 .map(RelationsMatrix::getSecondRelationCode)
                 .orElse(null);
 
-        relationRepository.delete(rel);
-        LOG.debug("Deleted PatientRelation id={} (patientId={}, relativeId={}, type={})", id, p1, p2, r1);
+        relationRepository.delete(patientRelation);
+        LOG.debug("Deleted PatientRelation id={} (patientId={}, relativeId={}, type={})", id, firstPatientId, secondPatientId, relationType);
+        LOG.info("[DELETE] PatientRelation deleted id={} patientId={} relativeId={} relationType={}",
+                id, firstPatientId, secondPatientId, relationType);
 
         if (inverseType != null) {
             relationRepository
-                    .findByPatient_IdAndRelativePatient_IdAndRelationType(p2, p1, inverseType)
+                    .findByPatient_IdAndRelativePatient_IdAndRelationType(secondPatientId, firstPatientId, inverseType)
                     .ifPresent(inv -> {
                         relationRepository.delete(inv);
                         LOG.debug("Deleted inverse PatientRelation id={} (patientId={}, relativeId={}, type={})",
-                                inv.getId(), p2, p1, inverseType);
+                                inv.getId(), secondPatientId, firstPatientId, inverseType);
+                        LOG.info("[DELETE] Inverse PatientRelation deleted id={} patientId={} relativeId={} relationType={}",
+                                inv.getId(), secondPatientId, firstPatientId, inverseType);
                     });
         } else {
             LOG.debug("No inverse type found for deletion. Skip inverse delete.");
