@@ -9,10 +9,7 @@ import com.dazzle.asklepios.domain.LabResultLog;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
-import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
-import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
-import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
-import com.dazzle.asklepios.repository.LabResultLogRepository;
+import com.dazzle.asklepios.repository.*;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.ApproveResultDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultCreateDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultUpdateDTO;
@@ -44,6 +41,7 @@ public class DiagnosticOrderTestResultService {
     private final LabResultLogRepository labResultLogRepository;
     private final SetupServiceClient setupServiceClient;
     private final NormalRangeMatcherService normalRangeMatcherService;
+    private final DiagnosticOrderTestResultTechnicianNoteRepository diagnosticOrderTestResultTechnicianNoteRepository;
 
     public DiagnosticOrderTestResultService(
             DiagnosticOrderTestResultRepository repository,
@@ -52,7 +50,7 @@ public class DiagnosticOrderTestResultService {
             DiagnosticOrderRepository orderRepository,
             LabResultLogRepository labResultLogRepository,
             SetupServiceClient setupServiceClient,
-            NormalRangeMatcherService normalRangeMatcherService
+            NormalRangeMatcherService normalRangeMatcherService, DiagnosticOrderTestResultTechnicianNoteRepository diagnosticOrderTestResultTechnicianNoteRepository
     ) {
         this.diagnosticOrderTestResultRepository = repository;
         this.orderTestResultStatusService = statusService;
@@ -61,6 +59,8 @@ public class DiagnosticOrderTestResultService {
         this.labResultLogRepository = labResultLogRepository;
         this.setupServiceClient = setupServiceClient;
         this.normalRangeMatcherService = normalRangeMatcherService;
+
+        this.diagnosticOrderTestResultTechnicianNoteRepository = diagnosticOrderTestResultTechnicianNoteRepository;
     }
 
     /**
@@ -230,9 +230,13 @@ public class DiagnosticOrderTestResultService {
 
                 viewNormalRange = buildViewNormalRange(best);
             }
+            boolean hasNote =
+                    diagnosticOrderTestResultTechnicianNoteRepository.existsByResultId(
+                            result.getId()
+                    );
 
             return DiagnosticOrderTestResultResponseVM
-                    .ofEntityWithView(result, viewMarker, viewNormalRange);
+                    .ofEntityWithViewNote(result, viewMarker, viewNormalRange,hasNote);
         });
     }
 
