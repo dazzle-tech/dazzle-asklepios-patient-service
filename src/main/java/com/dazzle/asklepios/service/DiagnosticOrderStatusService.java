@@ -24,7 +24,7 @@ import java.util.List;
  * <ul>
  *   <li>No tests (or no statuses) -> {@link DiagnosticStatus#NEW}</li>
  *   <li>All tests share the same status -> that status</li>
- *   <li>Multiple different statuses -> {@link DiagnosticStatus#PARTIAL}</li>
+ *   <li>Multiple different statuses -> {@link DiagnosticStatus#PARTIALLY}</li>
  * </ul>
  */
 @Service
@@ -114,6 +114,6 @@ public class DiagnosticOrderStatusService {
         }
 
         // Mixed statuses across tests -> PARTIAL
-        return DiagnosticStatus.PARTIAL;
+        return DiagnosticStatus.PARTIALLY;
     }
 }

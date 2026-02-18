@@ -7,7 +7,6 @@ import java.time.Instant;
 
 public record RadiologyImageStatusResponseVM(
         Long reportId,
-        Long orderId,
         Long orderTestId,
         RadiologyImageStatus imageStatus,
         Instant lastModifiedDate
