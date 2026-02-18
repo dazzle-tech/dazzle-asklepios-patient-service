@@ -15,13 +15,13 @@ public record DiagnosticOrderTestReportImageStatusLogResponseVM(
         String statusBy,
         RadiologyImageStatus statusValue
 ) {
-    public static DiagnosticOrderTestReportImageStatusLogResponseVM ofEntity(DiagnosticOrderTestReportImageStatusLog e) {
+    public static DiagnosticOrderTestReportImageStatusLogResponseVM ofEntity(DiagnosticOrderTestReportImageStatusLog diagnosticOrderTestReportImageStatusLog) {
         return new DiagnosticOrderTestReportImageStatusLogResponseVM(
-                e.getId(),
-                e.getReportId(),
-                e.getStatusDate(),
-                e.getStatusBy(),
-                e.getStatusValue()
+                diagnosticOrderTestReportImageStatusLog.getId(),
+                diagnosticOrderTestReportImageStatusLog.getReportId(),
+                diagnosticOrderTestReportImageStatusLog.getStatusDate(),
+                diagnosticOrderTestReportImageStatusLog.getStatusBy(),
+                diagnosticOrderTestReportImageStatusLog.getStatusValue()
         );
     }
 }
