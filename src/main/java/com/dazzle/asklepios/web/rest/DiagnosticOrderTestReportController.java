@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.RadiologyImageStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestReportImageStatusLogRepository;
 import com.dazzle.asklepios.service.DiagnosticOrderTestReportService;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportCreateDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportRejectDTO;
@@ -12,6 +13,7 @@ import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportRevie
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportImageStatusLogResponseVM;
 import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportResponseVM;
 import com.dazzle.asklepios.web.rest.vm.radiology.RadiologyImageStatusResponseVM;
 import jakarta.validation.Valid;
@@ -57,9 +59,11 @@ public class DiagnosticOrderTestReportController {
     private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderTestReportController.class);
 
     private final DiagnosticOrderTestReportService reportService;
-
-    public DiagnosticOrderTestReportController(DiagnosticOrderTestReportService reportService) {
+    private final DiagnosticOrderTestReportImageStatusLogRepository logRepository;
+    public DiagnosticOrderTestReportController(DiagnosticOrderTestReportService reportService, DiagnosticOrderTestReportImageStatusLogRepository logRepository) {
         this.reportService = reportService;
+
+        this.logRepository = logRepository;
     }
 
     /**
@@ -245,11 +249,25 @@ public class DiagnosticOrderTestReportController {
     }
 
     /**
-     * Backward compatible helper if you still need TestType enum in controller elsewhere.
-     * Prefer keeping all such checks in service.
+     * GET /{reportId}/image-status-log : Get image status log rows for a report.
+     *
+     * @param reportId report id
+     * @return list of log rows (empty if none)
      */
-    @SuppressWarnings("unused")
-    private void unused_reference(TestType ignored) {
-        throw new BadRequestAlertException("internal", "diagnostic_order_tests_report", "unused");
+    @GetMapping("/radiology/reports/{reportId}/image-status-log")
+    public ResponseEntity<List<DiagnosticOrderTestReportImageStatusLogResponseVM>> getByReportId(
+            @PathVariable Long reportId
+    ) {
+        LOG.debug("REST get image status log by reportId={}", reportId);
+
+        List<DiagnosticOrderTestReportImageStatusLogResponseVM> body = logRepository
+                .findByReportIdOrderByStatusDateDesc(reportId)
+                .stream()
+                .map(DiagnosticOrderTestReportImageStatusLogResponseVM::ofEntity)
+                .toList();
+
+        LOG.info("REST image status log rows={} for reportId={}", body.size(), reportId);
+        return ResponseEntity.ok(body);
+
     }
 }
