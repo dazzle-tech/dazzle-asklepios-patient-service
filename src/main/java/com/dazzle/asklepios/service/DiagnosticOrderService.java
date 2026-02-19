@@ -62,7 +62,8 @@ public class DiagnosticOrderService {
 
         order.setEncounterId(dto.encounterId());
         order.setPatientId(dto.patientId());
-        // Apply safe defaults to avoid null workflow statuses
+        order.setFromDepartmentId(dto.fromDepartmentId());
+        order.setFromFacilityId(dto.fromFacilityId());
 
         DiagnosticStatus labStatus = dto.labStatus() != null ? dto.labStatus() : DiagnosticStatus.NEW;
         DiagnosticStatus radStatus = dto.radStatus() != null ? dto.radStatus() : DiagnosticStatus.NEW;
@@ -70,8 +71,7 @@ public class DiagnosticOrderService {
         order.setStatus(DiagnosticStatus.NEW);
         order.setLabStatus(labStatus);
         order.setRadStatus(radStatus);
-        order.setFromDepartmentId(dto.fromDepartmentId());
-        order.setFromFacilityId(dto.fromFacilityId());
+
 
         order.setSaveDraft(true);
         order.setIsUrgent(dto.isUrgent() != null ? dto.isUrgent() : false);

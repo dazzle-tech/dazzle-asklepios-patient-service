@@ -127,7 +127,6 @@ public class DiagnosticOrderController {
                 dto.patientId(),
                 dto.encounterId(),
                 dto.isUrgent()
-
         );
 
         DiagnosticOrder updatedOrder = diagnosticOrderService.update(orderToUpdate, fixedDto);

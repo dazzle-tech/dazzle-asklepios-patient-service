@@ -3,8 +3,11 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
+import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.patientarrived.PatientArrivedCreateRequestDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.vm.diagnosticorders.PatientArrivedResponseVM;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -28,10 +31,11 @@ import java.util.Set;
 @Transactional
 public class DiagnosticOrderTestStatusService {
 
-
     private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderTestStatusService.class);
 
-    /** Repository for persisting and loading DiagnosticOrderTest entities. */
+    /**
+     * Repository for persisting and loading DiagnosticOrderTest entities.
+     */
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
 
     /**
@@ -39,12 +43,6 @@ public class DiagnosticOrderTestStatusService {
      */
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
 
-    /**
-     * Constructs the status service with required dependencies.
-     *
-     * @param diagnosticOrderTestRepository repository for {@link DiagnosticOrderTest} persistence
-     * @param diagnosticOrderStatusService  service that recomputes parent order statuses
-     */
     public DiagnosticOrderTestStatusService(
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
             DiagnosticOrderStatusService diagnosticOrderStatusService
@@ -57,21 +55,11 @@ public class DiagnosticOrderTestStatusService {
     // Standard transitions
     // ---------------------------------------------------------------------
 
-    /**
-     * Moves the test processing status to {@link DiagnosticStatus#SAMPLE_COLLECTED}.
-     *
-     * @param testId test id
-     * @return updated test
-     * @throws BadRequestAlertException if the test does not exist or the transition is not allowed
-     */
     public DiagnosticOrderTest collectSample(Long testId) {
         LOG.debug("[DiagnosticOrderTestStatus] COLLECT_SAMPLE - start. testId={}", testId);
         DiagnosticOrderTest test = getTest(testId);
 
-        // Normalize null status to NEW then validate transition
-        DiagnosticStatus currentProcessingStatus = test.getProcessingStatus();
-        ensureTransition(currentProcessingStatus, DiagnosticStatus.SAMPLE_COLLECTED);
-
+        ensureTransition(test, DiagnosticStatus.SAMPLE_COLLECTED);
 
         test.setProcessingStatus(DiagnosticStatus.SAMPLE_COLLECTED);
 
@@ -83,19 +71,36 @@ public class DiagnosticOrderTestStatusService {
     }
 
     /**
-     * Moves the test processing status to {@link DiagnosticStatus#ACCEPTED} and stores acceptance audit fields.
-     *
-     * @param testId     test id
-     * @param acceptedBy username or identifier of the user who accepted the test
-     * @return updated test
-     * @throws BadRequestAlertException if the test does not exist or the transition is not allowed
+     * Radiology-only: patient arrival. Sets processingStatus to PATIENT_ARRIVED and stores arrival metadata.
      */
+    public PatientArrivedResponseVM patientArrived(Long testId, PatientArrivedCreateRequestDTO dto) {
+        DiagnosticOrderTest test = getTest(testId);
+
+        if (test.getOrderType() != TestType.RADIOLOGY) {
+            throw new BadRequestAlertException("not_radiology", "diagnostic_order_tests", "Test is not radiology");
+        }
+
+        ensureTransition(test, DiagnosticStatus.PATIENT_ARRIVED);
+
+        test.setPatientArrivedDate(dto.patientArrivedDate() != null ? dto.patientArrivedDate() : Instant.now());
+        test.setPatientArrivedNoteRad(dto.patientArrivedNoteRad());
+        test.setProcessingStatus(DiagnosticStatus.PATIENT_ARRIVED);
+
+        DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
+        diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
+
+        return new PatientArrivedResponseVM(
+                saved.getId(),
+                saved.getPatientArrivedDate(),
+                saved.getPatientArrivedNoteRad()
+        );
+    }
+
     public DiagnosticOrderTest accept(Long testId, String acceptedBy) {
         LOG.debug("[DiagnosticOrderTestStatus] ACCEPT - start. testId={} acceptedBy={}", testId, acceptedBy);
         DiagnosticOrderTest test = getTest(testId);
 
-        DiagnosticStatus currentProcessingStatus = test.getProcessingStatus();
-        ensureTransition(currentProcessingStatus, DiagnosticStatus.ACCEPTED);
+        ensureTransition(test, DiagnosticStatus.ACCEPTED);
 
         test.setProcessingStatus(DiagnosticStatus.ACCEPTED);
         test.setAcceptedBy(acceptedBy);
@@ -108,19 +113,11 @@ public class DiagnosticOrderTestStatusService {
         return saved;
     }
 
-    /**
-     * Moves the test processing status to {@link DiagnosticStatus#RESULT_READY} and sets the ready timestamp.
-     *
-     * @param testId test id
-     * @return updated test
-     * @throws BadRequestAlertException if the test does not exist or the transition is not allowed
-     */
     public DiagnosticOrderTest markReady(Long testId) {
         LOG.debug("[DiagnosticOrderTestStatus] MARK_READY - start. testId={}", testId);
         DiagnosticOrderTest test = getTest(testId);
 
-        DiagnosticStatus currentProcessingStatus = test.getProcessingStatus();
-        ensureTransition(currentProcessingStatus, DiagnosticStatus.RESULT_READY);
+        ensureTransition(test, DiagnosticStatus.RESULT_READY);
 
         test.setProcessingStatus(DiagnosticStatus.RESULT_READY);
         test.setReadyDate(Instant.now());
@@ -132,19 +129,11 @@ public class DiagnosticOrderTestStatusService {
         return saved;
     }
 
-    /**
-     * Moves the test processing status to {@link DiagnosticStatus#REVIEWED}.
-     *
-     * @param testId test id
-     * @return updated test
-     * @throws BadRequestAlertException if the test does not exist or the transition is not allowed
-     */
     public DiagnosticOrderTest review(Long testId) {
         LOG.debug("[DiagnosticOrderTestStatus] REVIEW - start. testId={}", testId);
         DiagnosticOrderTest test = getTest(testId);
 
-        DiagnosticStatus currentProcessingStatus = test.getProcessingStatus();
-        ensureTransition(currentProcessingStatus, DiagnosticStatus.REVIEWED);
+        ensureTransition(test, DiagnosticStatus.REVIEWED);
 
         test.setProcessingStatus(DiagnosticStatus.REVIEWED);
 
@@ -155,19 +144,11 @@ public class DiagnosticOrderTestStatusService {
         return saved;
     }
 
-    /**
-     * Moves the test processing status to {@link DiagnosticStatus#RESULT_APPROVED} and sets the approval timestamp.
-     *
-     * @param testId test id
-     * @return updated test
-     * @throws BadRequestAlertException if the test does not exist or the transition is not allowed
-     */
     public DiagnosticOrderTest approve(Long testId) {
         LOG.debug("[DiagnosticOrderTestStatus] APPROVE - start. testId={}", testId);
         DiagnosticOrderTest test = getTest(testId);
 
-        DiagnosticStatus currentProcessingStatus = test.getProcessingStatus();
-        ensureTransition(currentProcessingStatus, DiagnosticStatus.RESULT_APPROVED);
+        ensureTransition(test, DiagnosticStatus.RESULT_APPROVED);
 
         test.setProcessingStatus(DiagnosticStatus.RESULT_APPROVED);
         test.setApprovedDate(Instant.now());
@@ -179,22 +160,12 @@ public class DiagnosticOrderTestStatusService {
         return saved;
     }
 
-    /**
-     * Moves the test processing status to {@link DiagnosticStatus#REJECTED} and stores rejection audit fields.
-     *
-     * @param testId         test id
-     * @param rejectedBy     username or identifier of the user who rejected the test
-     * @param rejectedReason rejection reason text
-     * @return updated test
-     * @throws BadRequestAlertException if the test does not exist or the transition is not allowed
-     */
     public DiagnosticOrderTest reject(Long testId, String rejectedBy, String rejectedReason) {
         LOG.debug("[DiagnosticOrderTestStatus] REJECT - start. testId={} rejectedBy={} reason={}",
                 testId, rejectedBy, rejectedReason);
         DiagnosticOrderTest test = getTest(testId);
 
-        DiagnosticStatus currentProcessingStatus = test.getProcessingStatus();
-        ensureTransition(currentProcessingStatus, DiagnosticStatus.REJECTED);
+        ensureTransition(test, DiagnosticStatus.REJECTED);
 
         test.setProcessingStatus(DiagnosticStatus.REJECTED);
         test.setRejectedBy(rejectedBy);
@@ -208,17 +179,6 @@ public class DiagnosticOrderTestStatusService {
         return saved;
     }
 
-    /**
-     * Cancels the test at the entity-level status ({@link DiagnosticOrderTestStatus}) and stores cancellation audit fields.
-     *
-     * <p>This does not modify {@link DiagnosticStatus} (processingStatus).</p>
-     *
-     * @param testId             test id
-     * @param cancelledBy        username or identifier of the user who cancelled the test
-     * @param cancellationReason cancellation reason text
-     * @return updated test
-     * @throws BadRequestAlertException if the test is already cancelled or does not exist
-     */
     public DiagnosticOrderTest cancel(Long testId, String cancelledBy, String cancellationReason) {
         LOG.debug("[DiagnosticOrderTestStatus] CANCEL - start. testId={} cancelledBy={} reason={}",
                 testId, cancelledBy, cancellationReason);
@@ -245,19 +205,8 @@ public class DiagnosticOrderTestStatusService {
     // Undo Accept
     // ---------------------------------------------------------------------
 
-    /**
-     * Undo accept for a test currently in {@link DiagnosticStatus#ACCEPTED}.
-     *
-     * <p>Resets the processing status back to {@link DiagnosticStatus#NEW} and clears
-     * acceptance audit fields.</p>
-     *
-     * @param testId test id
-     * @return updated test
-     * @throws BadRequestAlertException if the test is not currently ACCEPTED
-     */
     public DiagnosticOrderTest undoAccept(Long testId) {
         DiagnosticOrderTest test = getTest(testId);
-
 
         if (test.getProcessingStatus() != DiagnosticStatus.ACCEPTED) {
             throw new BadRequestAlertException(
@@ -267,7 +216,13 @@ public class DiagnosticOrderTestStatusService {
             );
         }
 
-        test.setProcessingStatus(DiagnosticStatus.SAMPLE_COLLECTED);
+        // Radiology goes back to PATIENT_ARRIVED, Lab goes back to SAMPLE_COLLECTED
+        if (test.getOrderType() == TestType.RADIOLOGY) {
+            test.setProcessingStatus(DiagnosticStatus.PATIENT_ARRIVED);
+        } else {
+            test.setProcessingStatus(DiagnosticStatus.SAMPLE_COLLECTED);
+        }
+
         test.setAcceptedBy(null);
         test.setAcceptedDate(null);
 
@@ -280,23 +235,13 @@ public class DiagnosticOrderTestStatusService {
     // Bulk actions
     // ---------------------------------------------------------------------
 
-    /**
-     * Accepts multiple tests in a single call.
-     *
-     * <p>For each test: sets {@link DiagnosticStatus#ACCEPTED}, fills acceptance audit fields, saves it,
-     * then recomputes parent order aggregated statuses once per affected order.</p>
-     *
-     * @param testIds    list of test ids to accept
-     * @param acceptedBy username or identifier of the user who accepted the tests
-     * @throws BadRequestAlertException if any test does not exist or any transition is not allowed
-     */
     public void bulkAccept(List<Long> testIds, String acceptedBy) {
         Set<Long> orderIds = new HashSet<>();
 
         for (Long id : testIds) {
             DiagnosticOrderTest test = getTest(id);
 
-            ensureTransition(test.getProcessingStatus(), DiagnosticStatus.ACCEPTED);
+            ensureTransition(test, DiagnosticStatus.ACCEPTED);
 
             test.setProcessingStatus(DiagnosticStatus.ACCEPTED);
             test.setAcceptedBy(acceptedBy);
@@ -311,23 +256,13 @@ public class DiagnosticOrderTestStatusService {
         }
     }
 
-    /**
-     * Rejects multiple tests in a single call.
-     *
-     * <p>For each test: sets {@link DiagnosticStatus#REJECTED}, fills rejection audit fields, saves it,
-     * then recomputes parent order aggregated statuses once per affected order.</p>
-     *
-     * @param testIds        list of test ids to reject
-     * @param rejectedBy     username or identifier of the user who rejected the tests
-     * @param rejectedReason rejection reason text
-     * @throws BadRequestAlertException if any test does not exist or any transition is not allowed
-     */
     public void bulkReject(List<Long> testIds, String rejectedBy, String rejectedReason) {
         Set<Long> orderIds = new HashSet<>();
 
         for (Long id : testIds) {
             DiagnosticOrderTest test = getTest(id);
-            ensureTransition(test.getProcessingStatus(), DiagnosticStatus.REJECTED);
+
+            ensureTransition(test, DiagnosticStatus.REJECTED);
 
             test.setProcessingStatus(DiagnosticStatus.REJECTED);
             test.setRejectedBy(rejectedBy);
@@ -344,16 +279,9 @@ public class DiagnosticOrderTestStatusService {
     }
 
     // ---------------------------------------------------------------------
-    // Helpers
+    // Reads / Helpers
     // ---------------------------------------------------------------------
 
-    /**
-     * Loads a {@link DiagnosticOrderTest} by id or throws a {@link BadRequestAlertException}.
-     *
-     * @param testId test id
-     * @return loaded test
-     * @throws BadRequestAlertException if no test exists with the given id
-     */
     private DiagnosticOrderTest getTest(Long testId) {
         LOG.debug("[DiagnosticOrderTestStatus] GET_TEST - testId={}", testId);
         return diagnosticOrderTestRepository.findById(testId)
@@ -364,66 +292,85 @@ public class DiagnosticOrderTestStatusService {
                 ));
     }
 
-    /**
+    @Transactional(readOnly = true)
+    public PatientArrivedResponseVM getPatientArrived(Long testId) {
+        DiagnosticOrderTest test = diagnosticOrderTestRepository.findById(testId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound", "diagnostic_order_tests", "DiagnosticOrderTest not found with id " + testId
+                ));
 
-     
-     * @param status current processing status (may be null)
-     * @return {@link DiagnosticStatus#NEW} if status is null; otherwise the provided status
-     */
-    /**
-     * Validates that the transition from {@code from} to {@code to} is allowed.
-     *
-     * @param from current processing status (non-null)
-     * @param to   requested processing status
-     * @throws BadRequestAlertException if the transition is not allowed
-     */
-    private void ensureTransition(DiagnosticStatus from, DiagnosticStatus to) {
+        return new PatientArrivedResponseVM(
+                test.getId(),
+                test.getPatientArrivedDate(),
+                test.getPatientArrivedNoteRad()
+        );
+    }
 
-        LOG.debug("[DiagnosticOrderTestStatus] ENSURE_TRANSITION - from={} to={}", from, to);
-        switch (to) {
-            case SAMPLE_COLLECTED -> {
-                if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.SAMPLE_COLLECTED || from ==DiagnosticStatus.ACCEPTED)) {
-                    throw invalid(from, to);
-                }
-            }
-            case ACCEPTED -> {
-                if (from != DiagnosticStatus.SAMPLE_COLLECTED) {
-                    throw invalid(from, to);
-                }
-            }
-            case RESULT_READY -> {
-                if (from != DiagnosticStatus.ACCEPTED) {
-                    throw invalid(from, to);
-                }
-            }
-            case REVIEWED -> {
-                if (from != DiagnosticStatus.RESULT_READY) {
-                    throw invalid(from, to);
-                }
-            }
-            case RESULT_APPROVED -> {
-                if (!(from == DiagnosticStatus.RESULT_READY || from == DiagnosticStatus.PARTIALLY)) {
-                    throw invalid(from, to);
-                }
-            }
-            case REJECTED -> {
-                if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.SAMPLE_COLLECTED  || from ==DiagnosticStatus.ACCEPTED)) {
-                    throw invalid(from, to);
-                }
-            }
-            default -> {
-                // No-op: handled by specific cases only
-            }
-        }
+    private DiagnosticStatus normalize(DiagnosticStatus status) {
+        return status == null ? DiagnosticStatus.NEW : status;
     }
 
     /**
-     * Builds a standardized {@link BadRequestAlertException} for invalid status transitions.
-     *
-     * @param from current processing status
-     * @param to   requested processing status
-     * @return exception instance describing the invalid transition
+     * Validates whether a transition to {@code to} is allowed for the given test.
+     * <p>
+     * Rules:
+     * - Laboratory: NEW -> SAMPLE_COLLECTED -> ACCEPTED -> RESULT_READY -> REVIEWED -> RESULT_APPROVED
+     * - Radiology: NEW -> PATIENT_ARRIVED -> ACCEPTED -> RESULT_READY -> REVIEWED -> RESULT_APPROVED
+     * - Radiology: SAMPLE_COLLECTED is not allowed
      */
+    private void ensureTransition(DiagnosticOrderTest test, DiagnosticStatus to) {
+        DiagnosticStatus from = normalize(test.getProcessingStatus());
+        TestType type = test.getOrderType();
+
+        LOG.debug("[DiagnosticOrderTestStatus] ENSURE_TRANSITION - type={} from={} to={}", type, from, to);
+
+        if (to == DiagnosticStatus.SAMPLE_COLLECTED) {
+            if (type == TestType.RADIOLOGY) throw invalid(from, to);
+            if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.SAMPLE_COLLECTED)) throw invalid(from, to);
+            return;
+        }
+
+        if (to == DiagnosticStatus.PATIENT_ARRIVED) {
+            if (type != TestType.RADIOLOGY) throw invalid(from, to);
+            if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.PATIENT_ARRIVED)) throw invalid(from, to);
+            return;
+        }
+
+        if (to == DiagnosticStatus.ACCEPTED) {
+            if (type == TestType.RADIOLOGY) {
+                if (from != DiagnosticStatus.PATIENT_ARRIVED) throw invalid(from, to);
+                if (test.getPatientArrivedDate() == null) throw invalid(from, to);
+                return;
+            }
+            if (from != DiagnosticStatus.SAMPLE_COLLECTED) throw invalid(from, to);
+            return;
+        }
+
+        if (to == DiagnosticStatus.RESULT_READY) {
+            if (from != DiagnosticStatus.ACCEPTED) throw invalid(from, to);
+            return;
+        }
+
+        if (to == DiagnosticStatus.REVIEWED) {
+            if (from != DiagnosticStatus.RESULT_READY) throw invalid(from, to);
+            return;
+        }
+
+        if (to == DiagnosticStatus.RESULT_APPROVED) {
+            if (!(from == DiagnosticStatus.RESULT_READY || from == DiagnosticStatus.PARTIALLY)) throw invalid(from, to);
+            return;
+        }
+
+        if (to == DiagnosticStatus.REJECTED) {
+            if (type == TestType.RADIOLOGY) {
+                if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.PATIENT_ARRIVED))
+                    throw invalid(from, to);
+                return;
+            }
+            if (!(from == DiagnosticStatus.NEW || from == DiagnosticStatus.SAMPLE_COLLECTED)) throw invalid(from, to);
+        }
+    }
+
     private BadRequestAlertException invalid(DiagnosticStatus from, DiagnosticStatus to) {
         LOG.debug("[DiagnosticOrderTestStatus] INVALID_TRANSITION - from={} to={}", from, to);
         return new BadRequestAlertException(

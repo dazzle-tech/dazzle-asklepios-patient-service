@@ -275,7 +275,7 @@ public class DiagnosticOrderTestResultStatusService {
     private void ensureTransition(DiagnosticStatus fromStatus, DiagnosticStatus toStatus) {
 
         if (toStatus == DiagnosticStatus.RESULT_APPROVED) {
-            if (fromStatus != DiagnosticStatus.RESULT_READY) throw invalid(fromStatus, toStatus);
+            if (fromStatus != DiagnosticStatus.RESULT_READY  ) throw invalid(fromStatus, toStatus);
             return;
         }
 
