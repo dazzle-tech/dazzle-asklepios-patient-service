@@ -1,54 +1,56 @@
 package com.dazzle.asklepios.web.rest;
 
-import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
-import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.RadiologyImageStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
-import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
-import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestReportImageStatusLogRepository;
 import com.dazzle.asklepios.service.DiagnosticOrderTestReportService;
-import com.dazzle.asklepios.service.DiagnosticOrderTestStatusService;
-import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportApproveDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportCreateDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportRejectDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportReviewDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportUpdateDTO;
-import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportImageStatusLogResponseVM;
 import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportResponseVM;
 import com.dazzle.asklepios.web.rest.vm.radiology.RadiologyImageStatusResponseVM;
-import org.springdoc.core.annotations.ParameterObject;
-import jakarta.persistence.criteria.Predicate;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
- * REST controller for managing radiology reports (DiagnosticOrderTestReport).
- * <p>
- * Responsibilities:
+ * REST controller for managing radiology reports ({@link DiagnosticOrderTestReport}).
+ *
+ * <p>Responsibilities:
  * <ul>
- *   <li>Validate test constraints (existence/type/order match/prerequisites).</li>
  *   <li>Expose CRUD endpoints for reports.</li>
- *   <li>Expose controlled endpoints for review/reject and image workflow.</li>
- *   <li>Expose filtering endpoint for reports with many optional query params.</li>
+ *   <li>Expose controlled endpoints for review/reject/approve and image workflow.</li>
+ *   <li>Expose filtering endpoint for reports.</li>
  * </ul>
+ *
+ * <p>Note: This controller does not access repositories directly; all persistence and
+ * validation logic is delegated to {@link DiagnosticOrderTestReportService}.</p>
  */
 @RestController
 @RequestMapping("/api/patient")
@@ -57,36 +59,22 @@ public class DiagnosticOrderTestReportController {
     private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderTestReportController.class);
 
     private final DiagnosticOrderTestReportService reportService;
-    private final DiagnosticOrderTestRepository testRepository;
-    private final DiagnosticOrderTestReportRepository reportRepository;
-    private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
-
-    public DiagnosticOrderTestReportController(
-            DiagnosticOrderTestReportService reportService,
-            DiagnosticOrderTestRepository testRepository,
-            DiagnosticOrderTestReportRepository reportRepository,
-            DiagnosticOrderTestStatusService diagnosticOrderTestStatusService
-    ) {
+    private final DiagnosticOrderTestReportImageStatusLogRepository logRepository;
+    public DiagnosticOrderTestReportController(DiagnosticOrderTestReportService reportService, DiagnosticOrderTestReportImageStatusLogRepository logRepository) {
         this.reportService = reportService;
-        this.testRepository = testRepository;
-        this.reportRepository = reportRepository;
-        this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
+
+        this.logRepository = logRepository;
     }
 
-
     /**
-     * Filters radiology reports using only fields from diagnostic_order_tests_report.
-     * <p>
-     * Rules:
-     * <ul>
-     *   <li>Use either processingStatus or processingStatusIn, not both.</li>
-     *   <li>Use either imageStatus or imageStatusIn, not both.</li>
-     * </ul>
+     * Filters radiology diagnostic order test reports using dynamic criteria.
+     *
+     * <p>All filtering is executed in the service layer and supports pagination.</p>
      */
     @GetMapping("/radiology/reports")
     public ResponseEntity<List<DiagnosticOrderTestReportResponseVM>> filterReports(
             @RequestParam(name = "id", required = false) Long id,
-            @RequestParam(name = "orderId", required = false) Long orderId,
+            @RequestParam(name = "orderIdIn", required = false) List<Long> orderIdIn,
             @RequestParam(name = "orderTestId", required = false) Long orderTestId,
 
             @RequestParam(name = "severity", required = false) String severity,
@@ -94,6 +82,7 @@ public class DiagnosticOrderTestReportController {
             @RequestParam(name = "approvedBy", required = false) String approvedBy,
             @RequestParam(name = "rejectedBy", required = false) String rejectedBy,
             @RequestParam(name = "reviewBy", required = false) String reviewBy,
+            @RequestParam(name = "reviewed", required = false) Boolean reviewed,
 
             @RequestParam(name = "approvedDateFrom", required = false) Instant approvedDateFrom,
             @RequestParam(name = "approvedDateTo", required = false) Instant approvedDateTo,
@@ -102,11 +91,9 @@ public class DiagnosticOrderTestReportController {
             @RequestParam(name = "reviewDateFrom", required = false) Instant reviewDateFrom,
             @RequestParam(name = "reviewDateTo", required = false) Instant reviewDateTo,
 
-            @RequestParam(name = "processingStatus", required = false) DiagnosticStatus processingStatus,
             @RequestParam(name = "processingStatusIn", required = false) List<DiagnosticStatus> processingStatusIn,
             @RequestParam(name = "processingStatusNotIn", required = false) List<DiagnosticStatus> processingStatusNotIn,
 
-            @RequestParam(name = "imageStatus", required = false) RadiologyImageStatus imageStatus,
             @RequestParam(name = "imageStatusIn", required = false) List<RadiologyImageStatus> imageStatusIn,
             @RequestParam(name = "imageStatusNotIn", required = false) List<RadiologyImageStatus> imageStatusNotIn,
 
@@ -115,122 +102,43 @@ public class DiagnosticOrderTestReportController {
             @RequestParam(name = "lastModifiedDateFrom", required = false) Instant lastModifiedDateFrom,
             @RequestParam(name = "lastModifiedDateTo", required = false) Instant lastModifiedDateTo,
 
-            @RequestParam(name = "fromDepartment", required = false) String fromDepartment,
+            @RequestParam(name = "fromDepartmentIn", required = false) List<Long> fromDepartmentIn,
             @RequestParam(name = "patientName", required = false) String patientName,
             @RequestParam(name = "mrn", required = false) String mrn,
 
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug(
-                "REST filter reports orderId={} orderTestId={} fromDepartment={} patientName={} mrn={}",
-                orderId, orderTestId, fromDepartment, patientName, mrn
+        LOG.debug("[RadiologyReport] FILTER orderIdIn={} orderTestId={} fromDepartmentIn={} patientName={} mrn={}",
+                orderIdIn, orderTestId, fromDepartmentIn, patientName, mrn);
+
+        Page<DiagnosticOrderTestReport> page = reportService.filterReports(
+                id,
+                orderIdIn,
+                orderTestId,
+                severity,
+                approvedBy,
+                rejectedBy,
+                reviewBy,
+                reviewed,
+                approvedDateFrom,
+                approvedDateTo,
+                rejectedDateFrom,
+                rejectedDateTo,
+                reviewDateFrom,
+                reviewDateTo,
+                processingStatusIn,
+                processingStatusNotIn,
+                imageStatusIn,
+                imageStatusNotIn,
+                createdDateFrom,
+                createdDateTo,
+                lastModifiedDateFrom,
+                lastModifiedDateTo,
+                fromDepartmentIn,
+                patientName,
+                mrn,
+                pageable
         );
-
-        if (processingStatus != null && processingStatusIn != null && !processingStatusIn.isEmpty()) {
-            throw new IllegalArgumentException("Use either processingStatus or processingStatusIn, not both");
-        }
-        if (imageStatus != null && imageStatusIn != null && !imageStatusIn.isEmpty()) {
-            throw new IllegalArgumentException("Use either imageStatus or imageStatusIn, not both");
-        }
-
-        Specification<DiagnosticOrderTestReport> spec = (root, query, cb) -> {
-            List<Predicate> predicates = new ArrayList<>();
-
-        /* =======================
-           Report-level filters
-           ======================= */
-            if (id != null) predicates.add(cb.equal(root.get("id"), id));
-            if (orderId != null) predicates.add(cb.equal(root.get("orderId"), orderId));
-            if (orderTestId != null) predicates.add(cb.equal(root.get("orderTestId"), orderTestId));
-
-            if (severity != null && !severity.isBlank()) {
-                predicates.add(cb.equal(root.get("severity"), severity));
-            }
-
-            if (approvedBy != null && !approvedBy.isBlank()) predicates.add(cb.equal(root.get("approvedBy"), approvedBy));
-            if (rejectedBy != null && !rejectedBy.isBlank()) predicates.add(cb.equal(root.get("rejectedBy"), rejectedBy));
-            if (reviewBy != null && !reviewBy.isBlank()) predicates.add(cb.equal(root.get("reviewBy"), reviewBy));
-
-            if (approvedDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("approvedDate"), approvedDateFrom));
-            if (approvedDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("approvedDate"), approvedDateTo));
-
-            if (rejectedDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("rejectedDate"), rejectedDateFrom));
-            if (rejectedDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("rejectedDate"), rejectedDateTo));
-
-            if (reviewDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("reviewDate"), reviewDateFrom));
-            if (reviewDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("reviewDate"), reviewDateTo));
-
-            if (processingStatus != null) predicates.add(cb.equal(root.get("processingStatus"), processingStatus));
-            if (processingStatusIn != null && !processingStatusIn.isEmpty())
-                predicates.add(root.get("processingStatus").in(processingStatusIn));
-            if (processingStatusNotIn != null && !processingStatusNotIn.isEmpty())
-                predicates.add(cb.not(root.get("processingStatus").in(processingStatusNotIn)));
-
-            if (imageStatus != null) predicates.add(cb.equal(root.get("imageStatus"), imageStatus));
-            if (imageStatusIn != null && !imageStatusIn.isEmpty())
-                predicates.add(root.get("imageStatus").in(imageStatusIn));
-            if (imageStatusNotIn != null && !imageStatusNotIn.isEmpty())
-                predicates.add(cb.not(root.get("imageStatus").in(imageStatusNotIn)));
-
-            if (createdDateFrom != null) predicates.add(cb.greaterThanOrEqualTo(root.get("createdDate"), createdDateFrom));
-            if (createdDateTo != null) predicates.add(cb.lessThanOrEqualTo(root.get("createdDate"), createdDateTo));
-
-            if (lastModifiedDateFrom != null)
-                predicates.add(cb.greaterThanOrEqualTo(root.get("lastModifiedDate"), lastModifiedDateFrom));
-            if (lastModifiedDateTo != null)
-                predicates.add(cb.lessThanOrEqualTo(root.get("lastModifiedDate"), lastModifiedDateTo));
-
-        /* =======================
-           Order + Patient filters
-           ======================= */
-            boolean needOrderPatientSubquery =
-                    (fromDepartment != null && !fromDepartment.isBlank()) ||
-                            (patientName != null && !patientName.isBlank()) ||
-                            (mrn != null && !mrn.isBlank());
-
-            if (needOrderPatientSubquery) {
-                var sub = query.subquery(Long.class);
-                var order = sub.from(DiagnosticOrder.class);
-                var patient = sub.from(Patient.class);
-
-                List<Predicate> subPreds = new ArrayList<>();
-
-                // report -> order
-                subPreds.add(cb.equal(order.get("id"), root.get("orderId")));
-
-                // order -> patient
-                subPreds.add(cb.equal(patient.get("id"), order.get("patientId")));
-
-                if (fromDepartment != null && !fromDepartment.isBlank()) {
-                    subPreds.add(cb.equal(order.get("fromDepartment"), fromDepartment));
-                }
-
-                if (mrn != null && !mrn.isBlank()) {
-                    subPreds.add(cb.like(
-                            cb.lower(patient.get("medicalRecordNumber")),
-                            "%" + mrn.trim().toLowerCase() + "%"
-                    ));
-
-                }
-
-                if (patientName != null && !patientName.isBlank()) {
-                    String like = "%" + patientName.trim().toLowerCase() + "%";
-                    subPreds.add(cb.or(
-                            cb.like(cb.lower(patient.get("firstName")), like),
-                            cb.like(cb.lower(patient.get("secondName")), like),
-                            cb.like(cb.lower(patient.get("thirdName")), like),
-                            cb.like(cb.lower(patient.get("lastName")), like)
-                    ));
-                }
-
-                sub.select(order.get("id")).where(subPreds.toArray(new Predicate[0]));
-                predicates.add(cb.exists(sub));
-            }
-
-            return cb.and(predicates.toArray(new Predicate[0]));
-        };
-
-        Page<DiagnosticOrderTestReport> page = reportRepository.findAll(spec, pageable);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
@@ -244,45 +152,20 @@ public class DiagnosticOrderTestReportController {
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
 
-
     @GetMapping("/radiology/reports/by-test/{orderTestId}")
     public ResponseEntity<DiagnosticOrderTestReportResponseVM> getByOrderTestId(@PathVariable Long orderTestId) {
-        LOG.debug("REST get report by orderTestId={}", orderTestId);
+        LOG.debug("[RadiologyReport] GET_BY_TEST orderTestId={}", orderTestId);
 
-        requireRadiologyTest(orderTestId);
+        DiagnosticOrderTestReport report = reportService.getByOrderTestIdForRadiology(orderTestId);
 
-        DiagnosticOrderTestReport report = reportService.getByOrderTestId(orderTestId);
         return ResponseEntity.ok(DiagnosticOrderTestReportResponseVM.ofEntity(report));
     }
 
     @PostMapping("/radiology/reports")
-    public ResponseEntity<DiagnosticOrderTestReportResponseVM> create(@Valid @RequestBody DiagnosticOrderTestReportCreateDTO dto) {
-        LOG.debug("REST create report payload={}", dto);
+    public ResponseEntity<DiagnosticOrderTestReportResponseVM> create(@Valid @RequestBody DiagnosticOrderTestReportCreateDTO orderTestReportCreateDTO) {
+        LOG.debug("[RadiologyReport] CREATE payload={}", orderTestReportCreateDTO);
 
-        DiagnosticOrderTest test = requireRadiologyTest(dto.orderTestId());
-
-        if (!test.getOrderId().equals(dto.orderId())) {
-            throw new BadRequestAlertException("mismatch", "diagnostic_order_tests_report", "orderId does not match test.orderId");
-        }
-
-        if (test.getProcessingStatus() != DiagnosticStatus.ACCEPTED) {
-            throw new BadRequestAlertException("not_accepted", "diagnostic_order_tests", "Radiology test must be ACCEPTED before creating report");
-        }
-
-        reportRepository.findByOrderIdAndOrderTestId(dto.orderId(), dto.orderTestId())
-                .ifPresent(r -> {
-                    throw new BadRequestAlertException(
-                            "already_exists",
-                            "diagnostic_order_tests_report",
-                            "Report already exists for orderId=" + dto.orderId() + " orderTestId=" + dto.orderTestId()
-                    );
-                });
-
-        DiagnosticOrderTestReport saved = reportService.create(dto);
-
-        if (dto.report() != null && !dto.report().isBlank()) {
-            diagnosticOrderTestStatusService.markReady(dto.orderTestId());
-        }
+        DiagnosticOrderTestReport saved = reportService.createRadiologyReport(orderTestReportCreateDTO);
 
         return ResponseEntity
                 .created(URI.create("/api/patient/radiology/reports/" + saved.getId()))
@@ -292,154 +175,100 @@ public class DiagnosticOrderTestReportController {
     @PutMapping("/radiology/reports/{reportId}")
     public ResponseEntity<DiagnosticOrderTestReportResponseVM> update(
             @PathVariable Long reportId,
-            @Valid @RequestBody DiagnosticOrderTestReportUpdateDTO dto
+            @Valid @RequestBody DiagnosticOrderTestReportUpdateDTO orderTestReportUpdateDTO
     ) {
-        LOG.debug("REST update report id={} payload={}", reportId, dto);
-
-        DiagnosticOrderTestReport updated = reportService.update(reportId, dto);
+        LOG.debug("[RadiologyReport] UPDATE reportId={} payload={}", reportId, orderTestReportUpdateDTO);
 
 
-        if (dto.report() != null) {
-            if (updated.getImageStatus() != RadiologyImageStatus.FINISHED) {
-                throw new BadRequestAlertException(
-                        "invalid_state",
-                        "diagnostic_order_tests_report",
-                        "Cannot write report before image  is FINISHED"
-                );
-            }
-            
-        }
+        DiagnosticOrderTestReport updated = reportService.updateRadiologyReport(reportId, orderTestReportUpdateDTO);
 
         return ResponseEntity.ok(DiagnosticOrderTestReportResponseVM.ofEntity(updated));
     }
 
     @PostMapping("/radiology/reports/review")
-    public ResponseEntity<DiagnosticOrderTestReportResponseVM> review(@Valid @RequestBody DiagnosticOrderTestReportReviewDTO dto) {
-        LOG.debug("REST review report payload={}", dto);
+    public ResponseEntity<DiagnosticOrderTestReportResponseVM> review(@Valid @RequestBody DiagnosticOrderTestReportReviewDTO orderTestReportReviewDTO) {
+        LOG.debug("[RadiologyReport] REVIEW payload={}", orderTestReportReviewDTO);
 
-        requireRadiologyTest(dto.orderTestId());
+        DiagnosticOrderTestReport updated = reportService.reviewRadiologyReport(orderTestReportReviewDTO);
 
-        DiagnosticOrderTestReport updated = reportService.review(dto);
         return ResponseEntity.ok(DiagnosticOrderTestReportResponseVM.ofEntity(updated));
     }
 
     @PostMapping("/radiology/reports/reject")
-    public ResponseEntity<DiagnosticOrderTestReportResponseVM> reject(@Valid @RequestBody DiagnosticOrderTestReportRejectDTO dto) {
-        LOG.debug("REST reject report payload={}", dto);
+    public ResponseEntity<DiagnosticOrderTestReportResponseVM> reject(@Valid @RequestBody DiagnosticOrderTestReportRejectDTO orderTestReportRejectDTO) {
+        LOG.debug("[RadiologyReport] REJECT payload={}", orderTestReportRejectDTO);
 
-        requireRadiologyTest(dto.orderTestId());
+        DiagnosticOrderTestReport updated = reportService.rejectRadiologyReport(orderTestReportRejectDTO);
 
-        DiagnosticOrderTestReport updated = reportService.reject(dto);
         return ResponseEntity.ok(DiagnosticOrderTestReportResponseVM.ofEntity(updated));
     }
 
-    /**
-     * Starts radiology imaging for a test.
-     * <p>
-     * Prerequisite:
-     * <ul>
-     *   <li>Test must be RADIOLOGY and processingStatus must be ACCEPTED.</li>
-     * </ul>
-     */
     @PostMapping("/radiology/reports/image/{testId}/start")
     public ResponseEntity<RadiologyImageStatusResponseVM> startImage(@PathVariable Long testId) {
-        LOG.debug("REST start image testId={}", testId);
+        LOG.debug("[RadiologyReport] IMAGE_START testId={}", testId);
 
-        DiagnosticOrderTest test = requireRadiologyTest(testId);
-
-        if (test.getProcessingStatus() != DiagnosticStatus.ACCEPTED) {
-            throw new BadRequestAlertException("not_accepted", "diagnostic_order_tests", "Radiology test must be ACCEPTED before starting imaging");
-        }
-
-        return ResponseEntity.ok(reportService.startImage(test.getOrderId(), test.getId()));
+        return ResponseEntity.ok(reportService.startRadiologyImage(testId));
     }
 
     @PostMapping("/radiology/reports/image/{testId}/pause")
     public ResponseEntity<RadiologyImageStatusResponseVM> pauseImage(@PathVariable Long testId) {
-        LOG.debug("REST pause image testId={}", testId);
+        LOG.debug("[RadiologyReport] IMAGE_PAUSE testId={}", testId);
 
-        requireRadiologyTest(testId);
-
-        reportRepository.findByOrderTestId(testId)
-                .orElseThrow(() -> new BadRequestAlertException("notfound", "diagnostic_order_tests_report", "Report not found for orderTestId " + testId));
-
-        return ResponseEntity.ok(reportService.pauseImage(testId));
+        return ResponseEntity.ok(reportService.pauseRadiologyImage(testId));
     }
 
     @PostMapping("/radiology/reports/image/{testId}/resume")
     public ResponseEntity<RadiologyImageStatusResponseVM> resumeImage(@PathVariable Long testId) {
-        LOG.debug("REST resume image testId={}", testId);
+        LOG.debug("[RadiologyReport] IMAGE_RESUME testId={}", testId);
 
-        requireRadiologyTest(testId);
-
-        reportRepository.findByOrderTestId(testId)
-                .orElseThrow(() -> new BadRequestAlertException("notfound", "diagnostic_order_tests_report", "Report not found for orderTestId " + testId));
-
-        return ResponseEntity.ok(reportService.resumeImage(testId));
+        return ResponseEntity.ok(reportService.resumeRadiologyImage(testId));
     }
 
-    /**
-     * Finishes imaging.
-     * <p>
-     * Effects:
-     * <ul>
-     *   <li>Report imageStatus becomes FINISHED.</li>
-     *   <li>Report processingStatus becomes RESULT_READY.</li>
-     *   <li>DiagnosticOrderTest processingStatus becomes RESULT_READY.</li>
-     * </ul>
-     */
     @PostMapping("/radiology/reports/image/{testId}/finish")
     public ResponseEntity<RadiologyImageStatusResponseVM> finishImage(@PathVariable Long testId) {
-        LOG.debug("REST finish image testId={}", testId);
+        LOG.debug("[RadiologyReport] IMAGE_FINISH testId={}", testId);
 
-        requireRadiologyTest(testId);
-
-        reportRepository.findByOrderTestId(testId)
-                .orElseThrow(() -> new BadRequestAlertException("notfound", "diagnostic_order_tests_report", "Report not found for orderTestId " + testId));
-
-        RadiologyImageStatusResponseVM vm = reportService.finishImage(testId);
-
-        diagnosticOrderTestStatusService.markReady(testId);
-
-        return ResponseEntity.ok(vm);
+        return ResponseEntity.ok(reportService.finishRadiologyImage(testId));
     }
-    /**
-     * Approves radiology report.
-     * Effects:
-     * - DiagnosticOrderTestReport.processingStatus -> RESULT_APPROVED
-     * - fills approvedBy/approvedDate
-     * - DiagnosticOrderTest.processingStatus -> RESULT_APPROVED (via DiagnosticOrderTestStatusService inside service)
-     */
+
     @PostMapping("/radiology/reports/{reportId}/approve")
     public ResponseEntity<DiagnosticOrderTestReportResponseVM> approve(@PathVariable Long reportId) {
-        LOG.debug("REST approve report reportId={}", reportId);
+        LOG.debug("[RadiologyReport] APPROVE reportId={}", reportId);
 
-        DiagnosticOrderTestReport updated = reportService.approve(reportId);
+        DiagnosticOrderTestReport updated = reportService.approveRadiologyReport(reportId);
+
         return ResponseEntity.ok(DiagnosticOrderTestReportResponseVM.ofEntity(updated));
-    }
-    private DiagnosticOrderTest requireRadiologyTest(Long testId) {
-        return testRepository.findById(testId)
-                .filter(t -> t.getOrderType() == TestType.RADIOLOGY)
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound_or_not_radiology",
-                        "diagnostic_order_tests",
-                        "Radiology DiagnosticOrderTest not found with id " + testId
-                ));
     }
 
     @PostMapping("/radiology/reports/{reportId}/second-approve")
     public ResponseEntity<DiagnosticOrderTestReportResponseVM> secondApprove(@PathVariable Long reportId) {
-        LOG.debug("REST second approve report reportId={}", reportId);
+        LOG.debug("[RadiologyReport] SECOND_APPROVE reportId={}", reportId);
 
-        DiagnosticOrderTestReport report = reportRepository.findById(reportId)
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
-                        "diagnostic_order_tests_report",
-                        "Report not found with id " + reportId
-                ));
+        DiagnosticOrderTestReport updated = reportService.secondApproveRadiologyReport(reportId);
 
-        DiagnosticOrderTestReport updated = reportService.secondApprove(report);
         return ResponseEntity.ok(DiagnosticOrderTestReportResponseVM.ofEntity(updated));
     }
 
+    /**
+     * GET /{reportId}/image-status-log : Get image status log rows for a report.
+     *
+     * @param reportId report id
+     * @return list of log rows (empty if none)
+     */
+    @GetMapping("/radiology/reports/{reportId}/image-status-log")
+    public ResponseEntity<List<DiagnosticOrderTestReportImageStatusLogResponseVM>> getByReportId(
+            @PathVariable Long reportId
+    ) {
+        LOG.debug("REST get image status log by reportId={}", reportId);
+
+        List<DiagnosticOrderTestReportImageStatusLogResponseVM> body = logRepository
+                .findByReportIdOrderByStatusDateDesc(reportId)
+                .stream()
+                .map(DiagnosticOrderTestReportImageStatusLogResponseVM::ofEntity)
+                .toList();
+
+        LOG.info("REST image status log rows={} for reportId={}", body.size(), reportId);
+        return ResponseEntity.ok(body);
+
+    }
 }

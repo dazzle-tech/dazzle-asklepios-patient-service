@@ -10,6 +10,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
@@ -40,9 +41,7 @@ public class DiagnosticOrderTestReport extends AbstractAuditingEntity implements
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "order_id", nullable = false)
-    private Long orderId;
-
+    @NotNull
     @Column(name = "order_test_id", nullable = false)
     private Long orderTestId;
 
@@ -79,10 +78,12 @@ public class DiagnosticOrderTestReport extends AbstractAuditingEntity implements
     @Column(name = "second_approved_date")
     private Instant secondApprovedDate;
 
+    @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "processing_status", length = 50)
     private DiagnosticStatus processingStatus;
 
+    @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "image_status", length = 50)
     private RadiologyImageStatus imageStatus;

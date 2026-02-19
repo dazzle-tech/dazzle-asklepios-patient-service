@@ -1,4 +1,3 @@
-// src/main/java/com/dazzle/asklepios/repository/DiagnosticOrderTestRepository.java
 package com.dazzle.asklepios.repository;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
@@ -45,7 +44,6 @@ public interface DiagnosticOrderTestRepository extends JpaRepository<DiagnosticO
     int bulkUpdateStatusForOrder(Long orderId, DiagnosticOrderTestStatus newStatus);
 
 
-    boolean existsByOrderIdAndTestId(Long orderId, Long testId);
     boolean existsByOrderIdAndTestIdAndStatusNot(Long orderId, Long testId, DiagnosticOrderTestStatus status);
 
     boolean existsByOrderIdAndTestIdAndIdNotAndStatusNot(@NotNull Long aLong, @NotNull Long aLong1, Long id, DiagnosticOrderTestStatus status);

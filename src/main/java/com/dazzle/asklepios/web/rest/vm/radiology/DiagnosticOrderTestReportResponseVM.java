@@ -10,7 +10,6 @@ import java.time.Instant;
 
 public record DiagnosticOrderTestReportResponseVM(
         Long id,
-        Long orderId,
         Long orderTestId,
         String report,
         String severity,
@@ -21,6 +20,8 @@ public record DiagnosticOrderTestReportResponseVM(
         String rejectedReason,
         String reviewBy,
         Instant reviewDate,
+        String secondApprovedBy,
+        Instant secondApprovedDate,
         DiagnosticStatus processingStatus,
         RadiologyImageStatus imageStatus,
         Instant createdDate,
@@ -32,7 +33,6 @@ public record DiagnosticOrderTestReportResponseVM(
     public static DiagnosticOrderTestReportResponseVM ofEntity(DiagnosticOrderTestReport e) {
         return new DiagnosticOrderTestReportResponseVM(
                 e.getId(),
-                e.getOrderId(),
                 e.getOrderTestId(),
                 e.getReport(),
                 e.getSeverity(),
@@ -43,6 +43,8 @@ public record DiagnosticOrderTestReportResponseVM(
                 e.getRejectedReason(),
                 e.getReviewBy(),
                 e.getReviewDate(),
+                e.getSecondApprovedBy(),
+                e.getSecondApprovedDate(),
                 e.getProcessingStatus(),
                 e.getImageStatus(),
                 e.getCreatedDate(),
