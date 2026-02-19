@@ -78,10 +78,12 @@ public class DiagnosticOrderTestReport extends AbstractAuditingEntity implements
     @Column(name = "second_approved_date")
     private Instant secondApprovedDate;
 
+    @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "processing_status", length = 50)
     private DiagnosticStatus processingStatus;
 
+    @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "image_status", length = 50)
     private RadiologyImageStatus imageStatus;

@@ -162,10 +162,10 @@ public class DiagnosticOrderTestReportController {
     }
 
     @PostMapping("/radiology/reports")
-    public ResponseEntity<DiagnosticOrderTestReportResponseVM> create(@Valid @RequestBody DiagnosticOrderTestReportCreateDTO dto) {
-        LOG.debug("[RadiologyReport] CREATE payload={}", dto);
+    public ResponseEntity<DiagnosticOrderTestReportResponseVM> create(@Valid @RequestBody DiagnosticOrderTestReportCreateDTO orderTestReportCreateDTO) {
+        LOG.debug("[RadiologyReport] CREATE payload={}", orderTestReportCreateDTO);
 
-        DiagnosticOrderTestReport saved = reportService.createRadiologyReport(dto);
+        DiagnosticOrderTestReport saved = reportService.createRadiologyReport(orderTestReportCreateDTO);
 
         return ResponseEntity
                 .created(URI.create("/api/patient/radiology/reports/" + saved.getId()))
@@ -175,29 +175,29 @@ public class DiagnosticOrderTestReportController {
     @PutMapping("/radiology/reports/{reportId}")
     public ResponseEntity<DiagnosticOrderTestReportResponseVM> update(
             @PathVariable Long reportId,
-            @Valid @RequestBody DiagnosticOrderTestReportUpdateDTO dto
+            @Valid @RequestBody DiagnosticOrderTestReportUpdateDTO orderTestReportUpdateDTO
     ) {
-        LOG.debug("[RadiologyReport] UPDATE reportId={} payload={}", reportId, dto);
+        LOG.debug("[RadiologyReport] UPDATE reportId={} payload={}", reportId, orderTestReportUpdateDTO);
 
-        DiagnosticOrderTestReport updated = reportService.updateRadiologyReport(reportId, dto);
+        DiagnosticOrderTestReport updated = reportService.updateRadiologyReport(reportId, orderTestReportUpdateDTO);
 
         return ResponseEntity.ok(DiagnosticOrderTestReportResponseVM.ofEntity(updated));
     }
 
     @PostMapping("/radiology/reports/review")
-    public ResponseEntity<DiagnosticOrderTestReportResponseVM> review(@Valid @RequestBody DiagnosticOrderTestReportReviewDTO dto) {
-        LOG.debug("[RadiologyReport] REVIEW payload={}", dto);
+    public ResponseEntity<DiagnosticOrderTestReportResponseVM> review(@Valid @RequestBody DiagnosticOrderTestReportReviewDTO orderTestReportReviewDTO) {
+        LOG.debug("[RadiologyReport] REVIEW payload={}", orderTestReportReviewDTO);
 
-        DiagnosticOrderTestReport updated = reportService.reviewRadiologyReport(dto);
+        DiagnosticOrderTestReport updated = reportService.reviewRadiologyReport(orderTestReportReviewDTO);
 
         return ResponseEntity.ok(DiagnosticOrderTestReportResponseVM.ofEntity(updated));
     }
 
     @PostMapping("/radiology/reports/reject")
-    public ResponseEntity<DiagnosticOrderTestReportResponseVM> reject(@Valid @RequestBody DiagnosticOrderTestReportRejectDTO dto) {
-        LOG.debug("[RadiologyReport] REJECT payload={}", dto);
+    public ResponseEntity<DiagnosticOrderTestReportResponseVM> reject(@Valid @RequestBody DiagnosticOrderTestReportRejectDTO orderTestReportRejectDTO) {
+        LOG.debug("[RadiologyReport] REJECT payload={}", orderTestReportRejectDTO);
 
-        DiagnosticOrderTestReport updated = reportService.rejectRadiologyReport(dto);
+        DiagnosticOrderTestReport updated = reportService.rejectRadiologyReport(orderTestReportRejectDTO);
 
         return ResponseEntity.ok(DiagnosticOrderTestReportResponseVM.ofEntity(updated));
     }
