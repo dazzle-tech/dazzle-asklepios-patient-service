@@ -9,7 +9,11 @@ import com.dazzle.asklepios.domain.LabResultLog;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
-import com.dazzle.asklepios.repository.*;
+import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestResultTechnicianNoteRepository;
+import com.dazzle.asklepios.repository.LabResultLogRepository;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.ApproveResultDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultCreateDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultUpdateDTO;
@@ -236,7 +240,7 @@ public class DiagnosticOrderTestResultService {
                     );
 
             return DiagnosticOrderTestResultResponseVM
-                    .ofEntityWithViewNote(result, viewMarker, viewNormalRange,hasNote);
+                    .ofEntityWithViewNote(result, viewMarker, viewNormalRange, hasNote);
         });
     }
 
