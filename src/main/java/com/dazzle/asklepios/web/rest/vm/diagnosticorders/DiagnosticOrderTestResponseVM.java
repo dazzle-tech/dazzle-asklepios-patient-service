@@ -40,7 +40,8 @@ public record DiagnosticOrderTestResponseVM(
         Instant createdDate,
         Instant lastModifiedDate,
         String createdBy,
-        String lastModifiedBy
+        String lastModifiedBy,
+        boolean hasNote
 ) implements Serializable {
 
     public static DiagnosticOrderTestResponseVM ofEntity(DiagnosticOrderTest orderTest) {
@@ -78,7 +79,47 @@ public record DiagnosticOrderTestResponseVM(
                 orderTest.getCreatedDate(),
                 orderTest.getLastModifiedDate(),
                 orderTest.getCreatedBy(),
-                orderTest.getLastModifiedBy()
+                orderTest.getLastModifiedBy(),
+                false
+        );
+    }
+    public static DiagnosticOrderTestResponseVM ofEntityWithNote(DiagnosticOrderTest orderTest,boolean hasNote) {
+        return new DiagnosticOrderTestResponseVM(
+
+                orderTest.getId(),
+
+                orderTest.getStatus(),
+                orderTest.getProcessingStatus(),
+
+                orderTest.getOrderId(),
+                orderTest.getTestId(),
+                orderTest.getOrderType(),
+
+                orderTest.getReceivedDepartmentId(),
+                orderTest.getReason(),
+                orderTest.getNotes(),
+
+                orderTest.getSubmitDate(),
+                orderTest.getAcceptedDate(),
+                orderTest.getRejectedDate(),
+                orderTest.getPatientArrivedDate(),
+                orderTest.getReadyDate(),
+                orderTest.getApprovedDate(),
+
+                orderTest.getAcceptedBy(),
+                orderTest.getRejectedBy(),
+                orderTest.getRejectedReason(),
+                orderTest.getPatientArrivedNoteRad(),
+
+                orderTest.getCancellationReason(),
+                orderTest.getCancelledBy(),
+                orderTest.getCancelledDate(),
+
+                orderTest.getCreatedDate(),
+                orderTest.getLastModifiedDate(),
+                orderTest.getCreatedBy(),
+                orderTest.getLastModifiedBy(),
+                hasNote
         );
     }
 }

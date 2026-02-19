@@ -328,7 +328,6 @@ public class DiagnosticOrderTestController {
             @RequestParam(name = "acceptedBy", required = false) String acceptedBy,
             @RequestParam(name = "rejectedBy", required = false) String rejectedBy,
 
-            // independent filters
             @RequestParam(name = "category", required = false) Long category,
             @RequestParam(name = "testName", required = false) String testName,
 
@@ -337,11 +336,7 @@ public class DiagnosticOrderTestController {
 
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("[DiagnosticOrderTest] FILTER - request received.  orderId={} testId={} status={} statusIn={} statusNotIn={} excludeStatus={} receivedDepartmentId={} processingStatus={} orderType={} acceptedBy={} rejectedBy={} category={} testName={} submitDateFrom={} submitDateTo={} pageable={}",
-                orderId, testId, status, includedStatuses, excludedStatuses, excludedStatus,
 
-                receivedDepartmentId, processingStatus, orderType, acceptedBy, rejectedBy, category, testName,
-                submitDateFrom, submitDateTo, pageable);
         if (status != null && includedStatuses != null && !includedStatuses.isEmpty()) {
             throw new BadRequestAlertException(
                     "invalid_filter",
@@ -350,7 +345,6 @@ public class DiagnosticOrderTestController {
             );
         }
 
-        // categoryId requires orderType (because category lives in different detail tables)
         if (category != null && orderType == null) {
             throw new BadRequestAlertException(
                     "missing_order_type",
@@ -361,97 +355,119 @@ public class DiagnosticOrderTestController {
 
         boolean hasTestNameFilter = testName != null && !testName.isBlank();
 
-        Specification<DiagnosticOrderTest> filterSpec = (orderTestRoot, criteriaQuery, criteriaBuilder) -> {
-            List<Predicate> filterPredicates = new ArrayList<>();
+        Specification<DiagnosticOrderTest> filterSpec =
+                (orderTestRoot, criteriaQuery, criteriaBuilder) -> {
 
-            // Core identifiers
-            if (orderId != null) filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("orderId"), orderId));
-            if (testId != null) filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("testId"), testId));
+                    List<Predicate> predicates = new ArrayList<>();
 
-            // Status filtering
-            if (status != null) filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("status"), status));
-            if (includedStatuses != null && !includedStatuses.isEmpty())
-                filterPredicates.add(orderTestRoot.get("status").in(includedStatuses));
-            if (excludedStatus != null)
-                filterPredicates.add(criteriaBuilder.notEqual(orderTestRoot.get("status"), excludedStatus));
-            if (excludedStatuses != null && !excludedStatuses.isEmpty()) {
-                filterPredicates.add(criteriaBuilder.not(orderTestRoot.get("status").in(excludedStatuses)));
-            }
+                    if (orderId != null)
+                        predicates.add(criteriaBuilder.equal(orderTestRoot.get("orderId"), orderId));
 
-            // Department & processing details
-            if (receivedDepartmentId != null)
-                filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("receivedDepartmentId"), receivedDepartmentId));
-            if (processingStatus != null)
-                filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("processingStatus"), processingStatus));
-            if (orderType != null)
-                filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("orderType"), orderType));
+                    if (testId != null)
+                        predicates.add(criteriaBuilder.equal(orderTestRoot.get("testId"), testId));
 
-            // Audit fields
-            if (acceptedBy != null && !acceptedBy.isBlank())
-                filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("acceptedBy"), acceptedBy));
-            if (rejectedBy != null && !rejectedBy.isBlank())
-                filterPredicates.add(criteriaBuilder.equal(orderTestRoot.get("rejectedBy"), rejectedBy));
+                    if (status != null)
+                        predicates.add(criteriaBuilder.equal(orderTestRoot.get("status"), status));
 
-            // Submit date range
-            if (submitDateFrom != null)
-                filterPredicates.add(criteriaBuilder.greaterThanOrEqualTo(orderTestRoot.get("submitDate"), submitDateFrom));
-            if (submitDateTo != null)
-                filterPredicates.add(criteriaBuilder.lessThanOrEqualTo(orderTestRoot.get("submitDate"), submitDateTo));
+                    if (includedStatuses != null && !includedStatuses.isEmpty())
+                        predicates.add(orderTestRoot.get("status").in(includedStatuses));
 
-            // -----------------------------
-            // (1) testName filter (ONLY from diagnostic_test)
-            // Does NOT depend on categoryId or orderType
-            // -----------------------------
-            if (hasTestNameFilter) {
-                Root<DiagnosticTest> testRoot = criteriaQuery.from(DiagnosticTest.class);
-                filterPredicates.add(criteriaBuilder.equal(testRoot.get("id"), orderTestRoot.get("testId")));
-                filterPredicates.add(criteriaBuilder.like(
-                        criteriaBuilder.lower(testRoot.get("name")),
-                        "%" + testName.toLowerCase() + "%"
-                ));
-                criteriaQuery.distinct(true);
-            }
+                    if (excludedStatus != null)
+                        predicates.add(criteriaBuilder.notEqual(orderTestRoot.get("status"), excludedStatus));
 
-            // -----------------------------
-            // (2) categoryId filter (ONLY from detail table based on orderType)
-            // Does NOT depend on testName
-            // -----------------------------
-            if (category != null) {
-                if (orderType == TestType.LABORATORY) {
-                    Root<DiagnosticTestLaboratory> labRoot = criteriaQuery.from(DiagnosticTestLaboratory.class);
+                    if (excludedStatuses != null && !excludedStatuses.isEmpty())
+                        predicates.add(criteriaBuilder.not(orderTestRoot.get("status").in(excludedStatuses)));
 
-                    // Link: DiagnosticOrderTest.testId -> DiagnosticTestLaboratory.test.id
-                    filterPredicates.add(criteriaBuilder.equal(labRoot.get("test").get("id"), orderTestRoot.get("testId")));
-                    filterPredicates.add(criteriaBuilder.equal(labRoot.get("category"), category));
+                    if (receivedDepartmentId != null)
+                        predicates.add(criteriaBuilder.equal(orderTestRoot.get("receivedDepartmentId"), receivedDepartmentId));
 
-                    criteriaQuery.distinct(true);
-                } else if (orderType == TestType.RADIOLOGY) {
-                    Root<DiagnosticTestRadiology> radRoot = criteriaQuery.from(DiagnosticTestRadiology.class);
+                    if (processingStatus != null)
+                        predicates.add(criteriaBuilder.equal(orderTestRoot.get("processingStatus"), processingStatus));
 
-                    filterPredicates.add(criteriaBuilder.equal(radRoot.get("test").get("id"), orderTestRoot.get("testId")));
-                    filterPredicates.add(criteriaBuilder.equal(radRoot.get("category"), category));
+                    if (orderType != null)
+                        predicates.add(criteriaBuilder.equal(orderTestRoot.get("orderType"), orderType));
 
-                    criteriaQuery.distinct(true);
-                }
-            }
+                    if (acceptedBy != null && !acceptedBy.isBlank())
+                        predicates.add(criteriaBuilder.equal(orderTestRoot.get("acceptedBy"), acceptedBy));
 
-            return criteriaBuilder.and(filterPredicates.toArray(new Predicate[0]));
-        };
+                    if (rejectedBy != null && !rejectedBy.isBlank())
+                        predicates.add(criteriaBuilder.equal(orderTestRoot.get("rejectedBy"), rejectedBy));
 
-        Page<DiagnosticOrderTest> filteredPage = diagnosticOrderTestRepository.findAll(filterSpec, pageable);
+                    if (submitDateFrom != null)
+                        predicates.add(criteriaBuilder.greaterThanOrEqualTo(orderTestRoot.get("submitDate"), submitDateFrom));
 
-        HttpHeaders paginationHeaders = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(), filteredPage
-        );
+                    if (submitDateTo != null)
+                        predicates.add(criteriaBuilder.lessThanOrEqualTo(orderTestRoot.get("submitDate"), submitDateTo));
 
-        List<DiagnosticOrderTestResponseVM> responseBody = filteredPage.getContent()
-                .stream()
-                .map(DiagnosticOrderTestResponseVM::ofEntity)
-                .toList();
+                    // testName filter
+                    if (hasTestNameFilter) {
+                        Root<DiagnosticTest> testRoot = criteriaQuery.from(DiagnosticTest.class);
 
-        LOG.debug("[DiagnosticOrderTest] FILTER - response ready. returned={} totalElements={} totalPages={}",
-                filteredPage.getNumberOfElements(), filteredPage.getTotalElements(), filteredPage.getTotalPages());
-        return new ResponseEntity<>(responseBody, paginationHeaders, HttpStatus.OK);
+                        predicates.add(criteriaBuilder.equal(
+                                testRoot.get("id"),
+                                orderTestRoot.get("testId")
+                        ));
+
+                        predicates.add(criteriaBuilder.like(
+                                criteriaBuilder.lower(testRoot.get("name")),
+                                "%" + testName.toLowerCase() + "%"
+                        ));
+
+                        criteriaQuery.distinct(true);
+                    }
+
+                    // category filter
+                    if (category != null) {
+
+                        if (orderType == TestType.LABORATORY) {
+                            Root<DiagnosticTestLaboratory> labRoot =
+                                    criteriaQuery.from(DiagnosticTestLaboratory.class);
+
+                            predicates.add(criteriaBuilder.equal(
+                                    labRoot.get("test").get("id"),
+                                    orderTestRoot.get("testId")
+                            ));
+
+                            predicates.add(criteriaBuilder.equal(
+                                    labRoot.get("category"),
+                                    category
+                            ));
+
+                            criteriaQuery.distinct(true);
+                        }
+
+                        if (orderType == TestType.RADIOLOGY) {
+                            Root<DiagnosticTestRadiology> radRoot =
+                                    criteriaQuery.from(DiagnosticTestRadiology.class);
+
+                            predicates.add(criteriaBuilder.equal(
+                                    radRoot.get("test").get("id"),
+                                    orderTestRoot.get("testId")
+                            ));
+
+                            predicates.add(criteriaBuilder.equal(
+                                    radRoot.get("category"),
+                                    category
+                            ));
+
+                            criteriaQuery.distinct(true);
+                        }
+                    }
+
+                    return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
+                };
+
+
+        Page<DiagnosticOrderTestResponseVM> page =
+                diagnosticOrderTestService.filterDiagnosticOrderTests(filterSpec, pageable);
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
 

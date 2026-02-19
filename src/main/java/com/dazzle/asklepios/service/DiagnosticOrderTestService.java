@@ -4,16 +4,21 @@ import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestTechnicianNoteRepository;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestUpdateDTO;
+import com.dazzle.asklepios.web.rest.vm.diagnosticorders.DiagnosticOrderTestResponseVM;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Service layer for managing {@link DiagnosticOrderTest} entities.
@@ -45,6 +50,8 @@ public class DiagnosticOrderTestService {
      */
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
 
+    private final DiagnosticOrderTestTechnicianNoteRepository diagnosticOrderTestTechnicianNoteRepository;
+
     /**
      * Creates the service with required dependencies.
      *
@@ -53,10 +60,12 @@ public class DiagnosticOrderTestService {
      */
     public DiagnosticOrderTestService(
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
-            DiagnosticOrderStatusService diagnosticOrderStatusService
+            DiagnosticOrderStatusService diagnosticOrderStatusService, DiagnosticOrderTestTechnicianNoteRepository diagnosticOrderTestTechnicianNoteRepository
     ) {
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
+
+        this.diagnosticOrderTestTechnicianNoteRepository = diagnosticOrderTestTechnicianNoteRepository;
     }
 
     /**
@@ -194,6 +203,34 @@ public class DiagnosticOrderTestService {
         LOG.debug("[DiagnosticOrderTestService] FIND_BY_ORDER_EXCLUDING - done. orderId={} returned={} totalElements={} totalPages={}",
                 orderId, page.getNumberOfElements(), page.getTotalElements(), page.getTotalPages());
         return page;
+    }
+    @Transactional(readOnly = true)
+    public Page<DiagnosticOrderTestResponseVM> filterDiagnosticOrderTests(
+            Specification<DiagnosticOrderTest> spec,
+            Pageable pageable
+    ) {
+
+        Page<DiagnosticOrderTest> page =
+                diagnosticOrderTestRepository.findAll(spec, pageable);
+
+        List<Long> orderTestIds = page.getContent()
+                .stream()
+                .map(DiagnosticOrderTest::getId)
+                .toList();
+
+        Set<Long> idsWithNotes =
+                new HashSet<>(
+                        diagnosticOrderTestTechnicianNoteRepository
+                                .findDistinctOrderTestIdsIn(orderTestIds)
+                );
+
+        return page.map(orderTest -> {
+
+            boolean hasNote = idsWithNotes.contains(orderTest.getId());
+
+            return DiagnosticOrderTestResponseVM
+                    .ofEntityWithNote(orderTest, hasNote);
+        });
     }
 
     /**

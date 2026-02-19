@@ -37,7 +37,8 @@ public record DiagnosticOrderTestResultResponseVM(
         Instant createdDate,
         Instant lastModifiedDate,
         String createdBy,
-        String lastModifiedBy
+        String lastModifiedBy,
+        boolean hasNote
 ) implements Serializable {
 
     public static DiagnosticOrderTestResultResponseVM ofEntity(DiagnosticOrderTestResult diagnosticOrderTestResult) {
@@ -65,14 +66,16 @@ public record DiagnosticOrderTestResultResponseVM(
                 diagnosticOrderTestResult.getCreatedDate(),
                 diagnosticOrderTestResult.getLastModifiedDate(),
                 diagnosticOrderTestResult.getCreatedBy(),
-                diagnosticOrderTestResult.getLastModifiedBy()
+                diagnosticOrderTestResult.getLastModifiedBy(),
+                false
         );
     }
 
-    public static DiagnosticOrderTestResultResponseVM ofEntityWithView(
+    public static DiagnosticOrderTestResultResponseVM ofEntityWithViewNote(
             DiagnosticOrderTestResult diagnosticOrderTestResult,
             TestResultMarker viewMarker,
-            String viewNormalRange
+            String viewNormalRange,
+            Boolean hasNote
     ) {
         return new DiagnosticOrderTestResultResponseVM(
                 diagnosticOrderTestResult.getId(),
@@ -97,7 +100,8 @@ public record DiagnosticOrderTestResultResponseVM(
                 diagnosticOrderTestResult.getCreatedDate(),
                 diagnosticOrderTestResult.getLastModifiedDate(),
                 diagnosticOrderTestResult.getCreatedBy(),
-                diagnosticOrderTestResult.getLastModifiedBy()
+                diagnosticOrderTestResult.getLastModifiedBy(),
+                hasNote
         );
     }
 
