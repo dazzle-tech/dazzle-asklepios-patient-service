@@ -3,12 +3,17 @@ package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestReportComments;
 import com.dazzle.asklepios.service.DiagnosticOrderTestReportCommentsService;
 import com.dazzle.asklepios.service.dto.radiology.comments.DiagnosticOrderTestReportCommentsDTO;
-import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.Objects;
@@ -25,10 +30,10 @@ import java.util.Objects;
  * </p>
  */
 @RestController
-@RequestMapping("/api/patient/report-comments")
+@RequestMapping("/api/patient")
 public class DiagnosticOrderTestReportCommentsController {
 
-    private static final Logger log = LoggerFactory.getLogger(DiagnosticOrderTestReportCommentsController.class);
+    private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderTestReportCommentsController.class);
 
     private final DiagnosticOrderTestReportCommentsService service;
 
@@ -39,18 +44,18 @@ public class DiagnosticOrderTestReportCommentsController {
     /**
      * Create a new report comment.
      *
-     * @param dto request payload
+     * @param orderTestReportCommentsDTO request payload
      * @return created entity
      */
-    @PostMapping
+    @PostMapping("/report-comments")
     public ResponseEntity<DiagnosticOrderTestReportComments> create(
-            @Valid @RequestBody DiagnosticOrderTestReportCommentsDTO dto
+            @Valid @RequestBody DiagnosticOrderTestReportCommentsDTO orderTestReportCommentsDTO
     ) {
-        log.debug("REST request to create DiagnosticOrderTestReportComments dto={}", dto);
+        LOG.debug("REST request to create DiagnosticOrderTestReportComments orderTestReportCommentsDTO={}", orderTestReportCommentsDTO);
 
-        DiagnosticOrderTestReportComments created = service.create(dto);
+        DiagnosticOrderTestReportComments created = service.create(orderTestReportCommentsDTO);
 
-        log.info("REST created DiagnosticOrderTestReportComments id={} reportId={} orderTestId={}",
+        LOG.info("REST created DiagnosticOrderTestReportComments id={} reportId={} orderTestId={}",
                 created.getId(), created.getReportId(), created.getOrderTestId());
 
         return ResponseEntity.ok(created);
@@ -62,14 +67,14 @@ public class DiagnosticOrderTestReportCommentsController {
      * @param reportId report id
      * @return list of comments for the given report
      */
-    @GetMapping("/by-report/{reportId}")
+    @GetMapping("/report-comments/by-report/{reportId}")
     public ResponseEntity<List<DiagnosticOrderTestReportComments>> getByReportId(@PathVariable Long reportId) {
         Objects.requireNonNull(reportId, "reportId must not be null");
-        log.debug("REST request to get DiagnosticOrderTestReportComments by reportId={}", reportId);
+        LOG.debug("REST request to get DiagnosticOrderTestReportComments by reportId={}", reportId);
 
         List<DiagnosticOrderTestReportComments> result = service.getByReportId(reportId);
 
-        log.info("REST response: {} DiagnosticOrderTestReportComments for reportId={}", result.size(), reportId);
+        LOG.info("REST response: {} DiagnosticOrderTestReportComments for reportId={}", result.size(), reportId);
         return ResponseEntity.ok(result);
     }
 
@@ -79,26 +84,16 @@ public class DiagnosticOrderTestReportCommentsController {
      * @param id comment id
      * @return 204 No Content if deleted
      */
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/report-comments/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         Objects.requireNonNull(id, "id must not be null");
-        log.debug("REST request to delete DiagnosticOrderTestReportComments id={}", id);
+        LOG.debug("REST request to delete DiagnosticOrderTestReportComments id={}", id);
 
         service.delete(id);
 
-        log.info("REST deleted DiagnosticOrderTestReportComments id={}", id);
+        LOG.info("REST deleted DiagnosticOrderTestReportComments id={}", id);
         return ResponseEntity.noContent().build();
     }
 
-    /**
-     * Maps {@link EntityNotFoundException} to 404 response.
-     *
-     * @param ex exception thrown when entity is not found
-     * @return 404 Not Found
-     */
-    @ExceptionHandler(EntityNotFoundException.class)
-    public ResponseEntity<Void> handleNotFound(EntityNotFoundException ex) {
-        log.warn("Report comment not found: {}", ex.getMessage());
-        return ResponseEntity.notFound().build();
-    }
+
 }

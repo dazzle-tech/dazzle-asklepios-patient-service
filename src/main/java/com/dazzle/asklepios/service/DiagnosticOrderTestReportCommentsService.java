@@ -16,7 +16,7 @@ import java.util.Objects;
 @Transactional
 public class DiagnosticOrderTestReportCommentsService {
 
-    private static final Logger log = LoggerFactory.getLogger(DiagnosticOrderTestReportCommentsService.class);
+    private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderTestReportCommentsService.class);
 
     private final DiagnosticOrderTestReportCommentsRepository noteRepository;
 
@@ -27,20 +27,20 @@ public class DiagnosticOrderTestReportCommentsService {
     /**
      * Create a new report comment.
      *
-     * @param dto request payload
+     * @param orderTestReportCommentsDTO request payload
      * @return persisted entity
      */
-    public DiagnosticOrderTestReportComments create(DiagnosticOrderTestReportCommentsDTO dto) {
-        Objects.requireNonNull(dto, "dto must not be null");
-        log.debug("Request to create DiagnosticOrderTestReportComments dto={}", dto);
+    public DiagnosticOrderTestReportComments create(DiagnosticOrderTestReportCommentsDTO orderTestReportCommentsDTO) {
+        Objects.requireNonNull(orderTestReportCommentsDTO, "orderTestReportCommentsDTO must not be null");
+        LOG.debug("Request to create DiagnosticOrderTestReportComments orderTestReportCommentsDTO={}", orderTestReportCommentsDTO);
 
-        DiagnosticOrderTestReportComments n = new DiagnosticOrderTestReportComments();
-        n.setOrderTestId(dto.orderTestId());
-        n.setReportId(dto.reportId());
-        n.setNote(dto.note());
+        DiagnosticOrderTestReportComments orderTestReportComments = new DiagnosticOrderTestReportComments();
+        orderTestReportComments.setOrderTestId(orderTestReportCommentsDTO.orderTestId());
+        orderTestReportComments.setReportId(orderTestReportCommentsDTO.reportId());
+        orderTestReportComments.setNote(orderTestReportCommentsDTO.note());
 
-        DiagnosticOrderTestReportComments saved = noteRepository.save(n);
-        log.info("Created DiagnosticOrderTestReportComments id={} reportId={} orderTestId={}",
+        DiagnosticOrderTestReportComments saved = noteRepository.save(orderTestReportComments);
+        LOG.info("Created DiagnosticOrderTestReportComments id={} reportId={} orderTestId={}",
                 saved.getId(), saved.getReportId(), saved.getOrderTestId());
 
         return saved;
@@ -53,15 +53,15 @@ public class DiagnosticOrderTestReportCommentsService {
      */
     public void delete(Long id) {
         Objects.requireNonNull(id, "id must not be null");
-        log.debug("Request to delete DiagnosticOrderTestReportComments id={}", id);
+        LOG.debug("Request to delete DiagnosticOrderTestReportComments id={}", id);
 
         if (!noteRepository.existsById(id)) {
-            log.warn("DiagnosticOrderTestReportComments not found for delete id={}", id);
+            LOG.warn("DiagnosticOrderTestReportComments not found for delete id={}", id);
             throw new EntityNotFoundException("DiagnosticOrderTestReportComments not found with id=" + id);
         }
 
         noteRepository.deleteById(id);
-        log.info("Deleted DiagnosticOrderTestReportComments id={}", id);
+        LOG.info("Deleted DiagnosticOrderTestReportComments id={}", id);
     }
 
     /**
@@ -73,13 +73,13 @@ public class DiagnosticOrderTestReportCommentsService {
     @Transactional(readOnly = true)
     public List<DiagnosticOrderTestReportComments> getByReportId(Long reportId) {
         Objects.requireNonNull(reportId, "reportId must not be null");
-        log.debug("Request to get DiagnosticOrderTestReportComments by reportId={}", reportId);
+        LOG.debug("Request to get DiagnosticOrderTestReportComments by reportId={}", reportId);
 
-        // لازم يكون موجود بالـ Repository:
-        // List<DiagnosticOrderTestReportComments> findByReportId(Long reportId);
+
+
         List<DiagnosticOrderTestReportComments> result = noteRepository.findByReportId(reportId);
 
-        log.info("Found {} DiagnosticOrderTestReportComments for reportId={}", result.size(), reportId);
+        LOG.info("Found {} DiagnosticOrderTestReportComments for reportId={}", result.size(), reportId);
         return result;
     }
 }
