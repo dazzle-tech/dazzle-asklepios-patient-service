@@ -1,10 +1,13 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.DuplicationCandidate;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
+import com.dazzle.asklepios.repository.DuplicationCandidateRepository;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
+import com.dazzle.asklepios.service.dto.patient.PatientDuplicationLookupDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -14,13 +17,17 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
-
+import java.util.Map;
+import jakarta.persistence.criteria.Predicate;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
@@ -31,15 +38,18 @@ public class PatientService {
 
     private final PatientRepository patientRepository;
     private final PatientDocumentRepository patientDocumentRepository;
+    private final DuplicationCandidateRepository duplicationCandidateRepository;
 
 
 
     public PatientService(
             PatientRepository patientRepository,
-            PatientDocumentRepository patientDocumentRepository
+            PatientDocumentRepository patientDocumentRepository, DuplicationCandidateRepository duplicationCandidateRepository
+
     ) {
         this.patientRepository = patientRepository;
         this.patientDocumentRepository = patientDocumentRepository;
+        this.duplicationCandidateRepository = duplicationCandidateRepository;
     }
 
     public Patient create(PatientCreateDTO dto) {
@@ -371,5 +381,129 @@ public class PatientService {
                 "patient",
                 "db.constraint"
         );
+    }
+
+
+
+    private Specification<Patient> buildDuplicationSpec(
+            Map<String, Boolean> fields,
+            PatientDuplicationLookupDTO dto
+    ) {
+        return (root, query, cb) -> {
+
+            LOG.debug("=== [DUPLICATION SPEC BUILD START] ===");
+            LOG.debug("Incoming DTO => ruleId={}, firstName={}, lastName={}, gender={}, dob={}, documentNo={}",
+                    dto.ruleId(),
+                    dto.firstName(),
+                    dto.lastName(),
+                    dto.gender(),
+                    dto.dateOfBirth(),
+                    dto.documentNo()
+            );
+
+            LOG.debug("Active Rule Fields => {}", fields);
+
+            List<Predicate> preds = new ArrayList<>();
+
+            if (Boolean.TRUE.equals(fields.get("DOB"))) {
+                LOG.debug("Checking DOB field...");
+                if (dto.dateOfBirth() == null) {
+                    LOG.debug("DOB is required by rule but DTO has null → returning disjunction");
+                    return cb.disjunction();
+                }
+
+                LOG.debug("Comparing dateOfBirth DB column with value={}", dto.dateOfBirth());
+
+                preds.add(
+                        cb.equal(
+                                root.get("dateOfBirth"),
+                               dto.dateOfBirth()
+                        )
+                );
+            }
+
+            if (Boolean.TRUE.equals(fields.get("GENDER"))) {
+                LOG.debug("Checking GENDER field...");
+                if (dto.gender() == null || dto.gender().isBlank()) {
+                    LOG.debug("GENDER is required by rule but DTO has blank/null → returning disjunction");
+                    return cb.disjunction();
+                }
+
+                LOG.debug("Comparing sexAtBirth with value={}", dto.gender().trim());
+                preds.add(cb.equal(root.get("sexAtBirth"), dto.gender().trim()));
+            }
+
+            if (Boolean.TRUE.equals(fields.get("FIRST_NAME"))) {
+                LOG.debug("Checking FIRST_NAME field...");
+                if (dto.firstName() == null || dto.firstName().isBlank()) {
+                    LOG.debug("FIRST_NAME is required but DTO empty → returning disjunction");
+                    return cb.disjunction();
+                }
+
+                LOG.debug("Comparing firstName (lowercase) with value={}",
+                        dto.firstName().trim().toLowerCase());
+
+                preds.add(cb.equal(
+                        cb.lower(root.get("firstName")),
+                        dto.firstName().trim().toLowerCase()
+                ));
+            }
+
+            if (Boolean.TRUE.equals(fields.get("LAST_NAME"))) {
+                LOG.debug("Checking LAST_NAME field...");
+                if (dto.lastName() == null || dto.lastName().isBlank()) {
+                    LOG.debug("LAST_NAME required but DTO empty → returning disjunction");
+                    return cb.disjunction();
+                }
+
+                LOG.debug("Comparing lastName (lowercase) with value={}",
+                        dto.lastName().trim().toLowerCase());
+
+                preds.add(cb.equal(
+                        cb.lower(root.get("lastName")),
+                        dto.lastName().trim().toLowerCase()
+                ));
+            }
+
+            if (Boolean.TRUE.equals(fields.get("DOCUMENT_NO"))) {
+                LOG.debug("Checking DOCUMENT_NO field...");
+                if (dto.documentNo() == null || dto.documentNo().isBlank()) {
+                    LOG.debug("DOCUMENT_NO required but DTO empty → returning disjunction");
+                    return cb.disjunction();
+                }
+
+                LOG.debug("Comparing primaryDocumentNumber with value={}",
+                        dto.documentNo().trim());
+
+                preds.add(cb.equal(
+                        root.get("primaryDocumentNumber"),
+                        dto.documentNo().trim()
+                ));
+            }
+
+            LOG.debug("Total predicates added: {}", preds.size());
+            LOG.debug("=== [DUPLICATION SPEC BUILD END] ===");
+
+            return cb.and(preds.toArray(new Predicate[0]));
+        };
+    }
+
+
+
+    public Page<Patient> findDuplicationCandidates(PatientDuplicationLookupDTO dto, Pageable pageable) {
+        if (dto == null || dto.ruleId() == null) {
+            return Page.empty(pageable);
+        }
+
+        DuplicationCandidate rule = duplicationCandidateRepository
+                .findByIdAndIsActiveTrue(dto.ruleId())
+                .orElse(null);
+
+        if (rule == null || rule.getFields() == null || rule.getFields().isEmpty()) {
+            return Page.empty(pageable);
+        }
+
+        Specification<Patient> spec = buildDuplicationSpec(rule.getFields(), dto);
+        return patientRepository.findAll(spec, pageable);
     }
 }
