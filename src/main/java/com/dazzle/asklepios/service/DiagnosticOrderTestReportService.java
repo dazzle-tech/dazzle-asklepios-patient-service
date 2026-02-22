@@ -1,15 +1,12 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.dto.NormalRangeMatchDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.RadiologyImageStatus;
-import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.TestType;
-import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportCommentsRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
@@ -19,7 +16,6 @@ import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportRejec
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportReviewDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.vm.laboratory.DiagnosticOrderTestResultResponseVM;
 import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportResponseVM;
 import com.dazzle.asklepios.web.rest.vm.radiology.RadiologyImageStatusResponseVM;
 import jakarta.persistence.criteria.Predicate;
@@ -32,7 +28,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Service layer for managing {@link DiagnosticOrderTestReport}.
@@ -54,6 +54,7 @@ public class DiagnosticOrderTestReportService {
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
     private final DiagnosticOrderTestReportCommentsRepository diagnosticOrderTestReportCommentsRepository;
+
     public DiagnosticOrderTestReportService(
             DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository,
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
@@ -465,7 +466,8 @@ public class DiagnosticOrderTestReportService {
             if (imageStatusFrom == null) return;
             if (imageStatusFrom == RadiologyImageStatus.STARTED || imageStatusFrom == RadiologyImageStatus.RESUMED || imageStatusFrom == RadiologyImageStatus.PAUSED)
                 return;
-            if (imageStatusFrom == RadiologyImageStatus.FINISHED) throw invalidImageTransition(imageStatusFrom, imageStatusTo);
+            if (imageStatusFrom == RadiologyImageStatus.FINISHED)
+                throw invalidImageTransition(imageStatusFrom, imageStatusTo);
             return;
         }
 
