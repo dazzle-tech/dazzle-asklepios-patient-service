@@ -37,15 +37,15 @@ public class PatientServiceAndProductService {
     }
 
 
-    public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
+    public PatientServiceAndProduct create(PatientServiceProductCreateDTO patientServiceProductCreateDTO) {
 
-        LOG.debug("Request to create Patient Service/Product : {}", dto);
+        LOG.debug("Request to create Patient Service/Product : {}", patientServiceProductCreateDTO);
 
         // Category rules
-        if (dto.category() == PatientServiceCategory.SERVICE) {
+        if (patientServiceProductCreateDTO.category() == PatientServiceCategory.SERVICE) {
 
-            if (dto.serviceId() == null) {
-                LOG.debug("service_id is null while category is SERVICE : {}", dto);
+            if (patientServiceProductCreateDTO.serviceId() == null) {
+                LOG.debug("service_id is null while category is SERVICE : {}", patientServiceProductCreateDTO);
                 throw new BadRequestAlertException(
                         "serviceIdRequired",
                         "patientServicesAndProducts",
@@ -53,8 +53,8 @@ public class PatientServiceAndProductService {
                 );
             }
 
-            if (dto.productId() != null) {
-                LOG.debug("product_id is not null while category is SERVICE : {}", dto);
+            if (patientServiceProductCreateDTO.productId() != null) {
+                LOG.debug("product_id is not null while category is SERVICE : {}", patientServiceProductCreateDTO);
                 throw new BadRequestAlertException(
                         "productMustBeNull",
                         "patientServicesAndProducts",
@@ -63,10 +63,10 @@ public class PatientServiceAndProductService {
             }
         }
 
-        if (dto.category() == PatientServiceCategory.PRODUCT) {
+        if (patientServiceProductCreateDTO.category() == PatientServiceCategory.PRODUCT) {
 
-            if (dto.productId() == null) {
-                LOG.debug("product_id is null while category is PRODUCT : {}", dto);
+            if (patientServiceProductCreateDTO.productId() == null) {
+                LOG.debug("product_id is null while category is PRODUCT : {}", patientServiceProductCreateDTO);
                 throw new BadRequestAlertException(
                         "productIdRequired",
                         "patientServicesAndProducts",
@@ -74,8 +74,8 @@ public class PatientServiceAndProductService {
                 );
             }
 
-            if (dto.serviceId() != null) {
-                LOG.debug("service_id is not null while category is PRODUCT : {}", dto);
+            if (patientServiceProductCreateDTO.serviceId() != null) {
+                LOG.debug("service_id is not null while category is PRODUCT : {}", patientServiceProductCreateDTO);
                 throw new BadRequestAlertException(
                         "serviceMustBeNull",
                         "patientServicesAndProducts",
@@ -85,12 +85,12 @@ public class PatientServiceAndProductService {
         }
 
         PatientServiceAndProduct entity = PatientServiceAndProduct.builder()
-                .patientId(dto.patientId())
-                .encounterId(dto.encounterId())
-                .category(dto.category())
-                .serviceId(dto.serviceId())
-                .productId(dto.productId())
-                .quantity(dto.quantity() == null ? 1L : dto.quantity())
+                .patientId(patientServiceProductCreateDTO.patientId())
+                .encounterId(patientServiceProductCreateDTO.encounterId())
+                .category(patientServiceProductCreateDTO.category())
+                .serviceId(patientServiceProductCreateDTO.serviceId())
+                .productId(patientServiceProductCreateDTO.productId())
+                .quantity(patientServiceProductCreateDTO.quantity() == null ? 1L : patientServiceProductCreateDTO.quantity())
                 .build();
 
         entity.setCreatedDate(Instant.now());
@@ -122,23 +122,23 @@ public class PatientServiceAndProductService {
 
 
     @Transactional
-    public PatientServiceAndProduct update(PatientServiceProductUpdateDTO dto) {
+    public PatientServiceAndProduct update(PatientServiceProductUpdateDTO patientServiceProductUpdateDTO) {
 
-        LOG.debug("Request to update Patient Service/Product : {}", dto);
+        LOG.debug("Request to update Patient Service/Product : {}", patientServiceProductUpdateDTO);
 
-        PatientServiceAndProduct entity = patientServiceAndProductRepository.findById(dto.id())
+        PatientServiceAndProduct entity = patientServiceAndProductRepository.findById(patientServiceProductUpdateDTO.id())
                 .orElseThrow(() -> new BadRequestAlertException(
                         "idNotFound",
                         "patientServicesAndProducts",
-                        "Record not found with id " + dto.id()
+                        "Record not found with id " + patientServiceProductUpdateDTO.id()
                 ));
 
         // ================= VALIDATIONS =================
 
-        if (dto.category() == PatientServiceCategory.SERVICE) {
+        if (patientServiceProductUpdateDTO.category() == PatientServiceCategory.SERVICE) {
 
-            if (dto.serviceId() == null) {
-                LOG.debug("updated service_id is null while category is SERVICE : {}", dto);
+            if (patientServiceProductUpdateDTO.serviceId() == null) {
+                LOG.debug("updated service_id is null while category is SERVICE : {}", patientServiceProductUpdateDTO);
                 throw new BadRequestAlertException(
                         "serviceIdRequired",
                         "patientServicesAndProducts",
@@ -146,8 +146,8 @@ public class PatientServiceAndProductService {
                 );
             }
 
-            if (dto.productId() != null) {
-                LOG.debug("updated product_id is not null while category is SERVICE : {}", dto);
+            if (patientServiceProductUpdateDTO.productId() != null) {
+                LOG.debug("updated product_id is not null while category is SERVICE : {}", patientServiceProductUpdateDTO);
                 throw new BadRequestAlertException(
                         "productMustBeNull",
                         "patientServicesAndProducts",
@@ -156,10 +156,10 @@ public class PatientServiceAndProductService {
             }
         }
 
-        if (dto.category() == PatientServiceCategory.PRODUCT) {
+        if (patientServiceProductUpdateDTO.category() == PatientServiceCategory.PRODUCT) {
 
-            if (dto.productId() == null) {
-                LOG.debug("updated product_id is null while category is PRODUCT : {}", dto);
+            if (patientServiceProductUpdateDTO.productId() == null) {
+                LOG.debug("updated product_id is null while category is PRODUCT : {}", patientServiceProductUpdateDTO);
                 throw new BadRequestAlertException(
                         "productIdRequired",
                         "patientServicesAndProducts",
@@ -167,8 +167,8 @@ public class PatientServiceAndProductService {
                 );
             }
 
-            if (dto.serviceId() != null) {
-                LOG.debug("updated service_id is not null while category is PRODUCT : {}", dto);
+            if (patientServiceProductUpdateDTO.serviceId() != null) {
+                LOG.debug("updated service_id is not null while category is PRODUCT : {}", patientServiceProductUpdateDTO);
                 throw new BadRequestAlertException(
                         "serviceMustBeNull",
                         "patientServicesAndProducts",
@@ -177,10 +177,10 @@ public class PatientServiceAndProductService {
             }
         }
 
-        entity.setCategory(dto.category());
-        entity.setServiceId(dto.serviceId());
-        entity.setProductId(dto.productId());
-        entity.setQuantity(dto.quantity());
+        entity.setCategory(patientServiceProductUpdateDTO.category());
+        entity.setServiceId(patientServiceProductUpdateDTO.serviceId());
+        entity.setProductId(patientServiceProductUpdateDTO.productId());
+        entity.setQuantity(patientServiceProductUpdateDTO.quantity());
         entity.setLastModifiedBy(getCurrentUser());
         entity.setLastModifiedDate(Instant.now());
 
