@@ -381,10 +381,10 @@ public class PatientController {
 
     @PostMapping("/duplication-candidates")
     public ResponseEntity<List<PatientBasicInformationResponseVM>> getDuplicationCandidates(
-            @RequestBody PatientDuplicationLookupDTO dto,
+            @RequestBody PatientDuplicationLookupDTO duplicationLookupDTO,
             @ParameterObject Pageable pageable
     ) {
-        Page<Patient> page = patientService.findDuplicationCandidates(dto, pageable);
+        Page<Patient> page = patientService.findDuplicationCandidates(duplicationLookupDTO, pageable);
 
         HttpHeaders headers =
                 PaginationUtil.generatePaginationHttpHeaders(
