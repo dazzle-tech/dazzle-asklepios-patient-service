@@ -1,12 +1,16 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.dto.NormalRangeMatchDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.RadiologyImageStatus;
+import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestReportCommentsRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
@@ -15,6 +19,8 @@ import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportRejec
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportReviewDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.vm.laboratory.DiagnosticOrderTestResultResponseVM;
+import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportResponseVM;
 import com.dazzle.asklepios.web.rest.vm.radiology.RadiologyImageStatusResponseVM;
 import jakarta.persistence.criteria.Predicate;
 import org.slf4j.Logger;
@@ -27,7 +33,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Service layer for managing {@link DiagnosticOrderTestReport}.
@@ -48,17 +56,18 @@ public class DiagnosticOrderTestReportService {
 
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
-
+    private final DiagnosticOrderTestReportCommentsRepository diagnosticOrderTestReportCommentsRepository;
     public DiagnosticOrderTestReportService(
             DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository,
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
             DiagnosticOrderStatusService diagnosticOrderStatusService,
-            DiagnosticOrderTestStatusService diagnosticOrderTestStatusService
+            DiagnosticOrderTestStatusService diagnosticOrderTestStatusService, DiagnosticOrderTestReportCommentsRepository diagnosticOrderTestReportCommentsRepository
     ) {
         this.diagnosticOrderTestReportRepository = diagnosticOrderTestReportRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
+        this.diagnosticOrderTestReportCommentsRepository = diagnosticOrderTestReportCommentsRepository;
     }
 
     private String currentUsername() {
@@ -214,7 +223,6 @@ public class DiagnosticOrderTestReportService {
 
         report.setReviewBy(currentUsername());
         report.setReviewDate(Instant.now());
-        report.setProcessingStatus(DiagnosticStatus.REVIEWED);
 
         DiagnosticOrderTestReport saved = diagnosticOrderTestReportRepository.save(report);
 
@@ -493,7 +501,7 @@ public class DiagnosticOrderTestReportService {
     }
 
     @Transactional(readOnly = true)
-    public Page<DiagnosticOrderTestReport> filterReports(
+    public Page<DiagnosticOrderTestReportResponseVM> filterReports(
             Long id,
             List<Long> orderIdIn,
             Long orderTestId,
@@ -644,8 +652,20 @@ public class DiagnosticOrderTestReportService {
         };
 
         Page<DiagnosticOrderTestReport> page = diagnosticOrderTestReportRepository.findAll(spec, pageable);
-        LOG.debug("[DiagnosticOrderTestReportService] FILTER_REPORTS - done. returned={} totalElements={} totalPages={}",
-                page.getNumberOfElements(), page.getTotalElements(), page.getTotalPages());
-        return page;
+
+        List<Long> reportIds = page.getContent()
+                .stream()
+                .map(DiagnosticOrderTestReport::getId)
+                .toList();
+
+        Set<Long> reportIdsWithNotes = new HashSet<>(
+                diagnosticOrderTestReportCommentsRepository.findDistinctReportIdByReportIdIn(reportIds)
+        );
+
+        return page.map(report -> {
+            boolean hasNote = reportIdsWithNotes.contains(report.getId());
+            return DiagnosticOrderTestReportResponseVM.ofEntityWithNote(report, hasNote);
+        });
+
     }
 }

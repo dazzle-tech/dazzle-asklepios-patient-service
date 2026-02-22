@@ -8,9 +8,8 @@ import java.util.List;
 public interface DiagnosticOrderTestReportCommentsRepository
         extends JpaRepository<DiagnosticOrderTestReportComments, Long> {
 
-    List<DiagnosticOrderTestReportComments> findByOrderTestId(Long orderTestId);
     List<DiagnosticOrderTestReportComments> findByReportId(Long reportId);
-
-
+    
+    List<Long> findDistinctReportIdByReportIdIn(List<Long> reportIds);
 
 }

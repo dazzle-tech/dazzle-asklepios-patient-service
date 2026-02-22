@@ -1,4 +1,3 @@
-// src/main/java/com/dazzle/asklepios/web/rest/vm/radiology/DiagnosticOrderTestReportResponseVM.java
 package com.dazzle.asklepios.web.rest.vm.radiology;
 
 import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
@@ -27,30 +26,57 @@ public record DiagnosticOrderTestReportResponseVM(
         Instant createdDate,
         String createdBy,
         Instant lastModifiedDate,
-        String lastModifiedBy
+        String lastModifiedBy,
+        boolean hasNote
 ) implements Serializable {
 
-    public static DiagnosticOrderTestReportResponseVM ofEntity(DiagnosticOrderTestReport e) {
+    public static DiagnosticOrderTestReportResponseVM ofEntity(DiagnosticOrderTestReport diagnosticOrderTestReport) {
         return new DiagnosticOrderTestReportResponseVM(
-                e.getId(),
-                e.getOrderTestId(),
-                e.getReport(),
-                e.getSeverity(),
-                e.getApprovedBy(),
-                e.getApprovedDate(),
-                e.getRejectedBy(),
-                e.getRejectedDate(),
-                e.getRejectedReason(),
-                e.getReviewBy(),
-                e.getReviewDate(),
-                e.getSecondApprovedBy(),
-                e.getSecondApprovedDate(),
-                e.getProcessingStatus(),
-                e.getImageStatus(),
-                e.getCreatedDate(),
-                e.getCreatedBy(),
-                e.getLastModifiedDate(),
-                e.getLastModifiedBy()
+                diagnosticOrderTestReport.getId(),
+                diagnosticOrderTestReport.getOrderTestId(),
+                diagnosticOrderTestReport.getReport(),
+                diagnosticOrderTestReport.getSeverity(),
+                diagnosticOrderTestReport.getApprovedBy(),
+                diagnosticOrderTestReport.getApprovedDate(),
+                diagnosticOrderTestReport.getRejectedBy(),
+                diagnosticOrderTestReport.getRejectedDate(),
+                diagnosticOrderTestReport.getRejectedReason(),
+                diagnosticOrderTestReport.getReviewBy(),
+                diagnosticOrderTestReport.getReviewDate(),
+                diagnosticOrderTestReport.getSecondApprovedBy(),
+                diagnosticOrderTestReport.getSecondApprovedDate(),
+                diagnosticOrderTestReport.getProcessingStatus(),
+                diagnosticOrderTestReport.getImageStatus(),
+                diagnosticOrderTestReport.getCreatedDate(),
+                diagnosticOrderTestReport.getCreatedBy(),
+                diagnosticOrderTestReport.getLastModifiedDate(),
+                diagnosticOrderTestReport.getLastModifiedBy(),
+                false
+        );
+    }
+    public static DiagnosticOrderTestReportResponseVM ofEntityWithNote(DiagnosticOrderTestReport diagnosticOrderTestReport,boolean hasNote) {
+        return new DiagnosticOrderTestReportResponseVM(
+                diagnosticOrderTestReport.getId(),
+                diagnosticOrderTestReport.getOrderTestId(),
+                diagnosticOrderTestReport.getReport(),
+                diagnosticOrderTestReport.getSeverity(),
+                diagnosticOrderTestReport.getApprovedBy(),
+                diagnosticOrderTestReport.getApprovedDate(),
+                diagnosticOrderTestReport.getRejectedBy(),
+                diagnosticOrderTestReport.getRejectedDate(),
+                diagnosticOrderTestReport.getRejectedReason(),
+                diagnosticOrderTestReport.getReviewBy(),
+                diagnosticOrderTestReport.getReviewDate(),
+                diagnosticOrderTestReport.getSecondApprovedBy(),
+                diagnosticOrderTestReport.getSecondApprovedDate(),
+                diagnosticOrderTestReport.getProcessingStatus(),
+                diagnosticOrderTestReport.getImageStatus(),
+                diagnosticOrderTestReport.getCreatedDate(),
+                diagnosticOrderTestReport.getCreatedBy(),
+                diagnosticOrderTestReport.getLastModifiedDate(),
+                diagnosticOrderTestReport.getLastModifiedBy(),
+                hasNote
+
         );
     }
 }
