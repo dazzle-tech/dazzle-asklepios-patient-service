@@ -111,7 +111,7 @@ public class DiagnosticOrderTestReportController {
         LOG.debug("[RadiologyReport] FILTER orderIdIn={} orderTestId={} fromDepartmentIn={} patientName={} mrn={}",
                 orderIdIn, orderTestId, fromDepartmentIn, patientName, mrn);
 
-        Page<DiagnosticOrderTestReport> page = reportService.filterReports(
+        Page<DiagnosticOrderTestReportResponseVM> page = reportService.filterReports(
                 id,
                 orderIdIn,
                 orderTestId,
@@ -144,12 +144,8 @@ public class DiagnosticOrderTestReportController {
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
         );
 
-        List<DiagnosticOrderTestReportResponseVM> body = page.getContent()
-                .stream()
-                .map(DiagnosticOrderTestReportResponseVM::ofEntity)
-                .toList();
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
 
-        return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
 
     @GetMapping("/radiology/reports/by-test/{orderTestId}")

@@ -16,7 +16,6 @@ public enum DiagnosticStatus {
     RESULT_REJECTED,
     PATIENT_ARRIVED,
     CANCELLED,
-    REVIEWED,
     SUBMITTED
 }
 

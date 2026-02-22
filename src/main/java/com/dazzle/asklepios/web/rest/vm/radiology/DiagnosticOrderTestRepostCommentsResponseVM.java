@@ -7,7 +7,7 @@ import java.time.Instant;
 public record DiagnosticOrderTestRepostCommentsResponseVM(
         Long id,
         Long reportId,
-        Long orderId,
+        Long orderTestId,
         String note,
         String createdBy,
         Instant createdDate
