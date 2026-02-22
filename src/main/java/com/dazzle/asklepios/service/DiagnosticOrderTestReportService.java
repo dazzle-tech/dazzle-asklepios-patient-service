@@ -32,10 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Service layer for managing {@link DiagnosticOrderTestReport}.
@@ -658,10 +655,11 @@ public class DiagnosticOrderTestReportService {
                 .map(DiagnosticOrderTestReport::getId)
                 .toList();
 
-        Set<Long> reportIdsWithNotes = new HashSet<>(
-                diagnosticOrderTestReportCommentsRepository.findDistinctReportIdByReportIdIn(reportIds)
-        );
 
+        Set<Long> reportIdsWithNotes = reportIds.isEmpty()
+                ? Collections.emptySet()
+                : new HashSet<>(diagnosticOrderTestReportCommentsRepository
+                .findDistinctReportIdByReportIdIn(reportIds));
         return page.map(report -> {
             boolean hasNote = reportIdsWithNotes.contains(report.getId());
             return DiagnosticOrderTestReportResponseVM.ofEntityWithNote(report, hasNote);
