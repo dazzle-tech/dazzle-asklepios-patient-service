@@ -10,6 +10,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -42,11 +43,11 @@ public class PatientWarnings extends AbstractAuditingEntity<Long> implements Ser
     private Long encounterId;
 
     @Column(name = "warning_type", nullable = false)
-    @NonNull
+    @NotBlank
     private String warningType;
 
     @Column(name = "warning")
-    @NonNull
+    @NotBlank
     private String warning;
 
     @Enumerated(EnumType.STRING)
@@ -54,7 +55,7 @@ public class PatientWarnings extends AbstractAuditingEntity<Long> implements Ser
     @NonNull
     private Severity severity;
 
-    @Column(name = "onset_date_undefined")
+    @Column(name = "onset_date_undefined", nullable = false)
     private boolean onsetDateUndefined = true;
 
     @Column(name = "onset_date")

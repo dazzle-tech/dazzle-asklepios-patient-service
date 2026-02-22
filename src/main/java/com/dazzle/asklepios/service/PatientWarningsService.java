@@ -208,7 +208,7 @@ public class PatientWarningsService {
     public PatientWarnings update(PatientWarningUpdateDTO patientWarningUpdateDTO) {
         LOG.debug("Request to update Patient Warning: {}", patientWarningUpdateDTO);
 
-        PatientWarnings entity = patientWarningsRepository.findById(patientWarningUpdateDTO.id())
+        PatientWarnings patientWarningObj = patientWarningsRepository.findById(patientWarningUpdateDTO.id())
                 .orElseThrow(() -> new BadRequestAlertException(
                         "idNotFound",
                         "patientWarnings",
@@ -216,8 +216,8 @@ public class PatientWarningsService {
                 ));
 
         // Only active warnings can be updated
-        if (!(entity.getStatus() == PatientWarningStatus.ACTIVE)) {
-            LOG.debug("The updated warning status is not active : {}", entity.getStatus());
+        if (!(patientWarningObj.getStatus() == PatientWarningStatus.ACTIVE)) {
+            LOG.debug("The updated warning status is not active : {}", patientWarningObj.getStatus());
             throw new BadRequestAlertException(
                     "statusMustBeActive",
                     "patientWarnings",
@@ -275,8 +275,8 @@ public class PatientWarningsService {
 
         // Only allow updates for today's records
         Instant todayStart = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.DAYS);
-        if (entity.getCreatedDate().isBefore(todayStart)) {
-            LOG.debug("The created date is before today: {}", entity.getCreatedDate());
+        if (patientWarningObj.getCreatedDate().isBefore(todayStart)) {
+            LOG.debug("The created date is before today: {}", patientWarningObj.getCreatedDate());
             throw new BadRequestAlertException(
                     "updateNotAllowed",
                     "patientWarnings",
@@ -284,18 +284,18 @@ public class PatientWarningsService {
             );
         }
 
-        entity.setWarningType(patientWarningUpdateDTO.warningType());
-        entity.setWarning(patientWarningUpdateDTO.warning());
-        entity.setSeverity(patientWarningUpdateDTO.severity());
-        entity.setOnsetDateUndefined(patientWarningUpdateDTO.onsetDateUndefined());
-        entity.setOnsetDate(patientWarningUpdateDTO.onsetDate());
-        entity.setByPatient(patientWarningUpdateDTO.byPatient());
-        entity.setSourceOfInformation(patientWarningUpdateDTO.sourceOfInformation());
-        entity.setNote(patientWarningUpdateDTO.note());
-        entity.setActionTaken(patientWarningUpdateDTO.actionTaken());
+        patientWarningObj.setWarningType(patientWarningUpdateDTO.warningType());
+        patientWarningObj.setWarning(patientWarningUpdateDTO.warning());
+        patientWarningObj.setSeverity(patientWarningUpdateDTO.severity());
+        patientWarningObj.setOnsetDateUndefined(patientWarningUpdateDTO.onsetDateUndefined());
+        patientWarningObj.setOnsetDate(patientWarningUpdateDTO.onsetDate());
+        patientWarningObj.setByPatient(patientWarningUpdateDTO.byPatient());
+        patientWarningObj.setSourceOfInformation(patientWarningUpdateDTO.sourceOfInformation());
+        patientWarningObj.setNote(patientWarningUpdateDTO.note());
+        patientWarningObj.setActionTaken(patientWarningUpdateDTO.actionTaken());
 
         try {
-            PatientWarnings updated = patientWarningsRepository.saveAndFlush(entity);
+            PatientWarnings updated = patientWarningsRepository.saveAndFlush(patientWarningObj);
             LOG.debug("Updated Patient Warning: {}", updated);
             return updated;
         } catch (DataIntegrityViolationException | JpaSystemException constraintException) {
