@@ -11,7 +11,7 @@ public record ConsultationUpdateDTO(
         @NotNull
         Long id,
 
-        @NotBlank
+        @NotNull
         DestinationType destinationType,
         @NotNull
         Long toFacilityId,
