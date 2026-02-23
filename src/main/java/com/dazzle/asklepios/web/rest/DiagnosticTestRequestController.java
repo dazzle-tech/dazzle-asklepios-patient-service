@@ -8,6 +8,7 @@ import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.DiagnosticTestRequestService;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.requests.DiagnosticTestRequestCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.requests.DiagnosticTestRequestUpdateDTO;
+import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.requests.commands.DiagnosticTestRequestLinkDiagnosticTestDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.requests.commands.DiagnosticTestRequestRejectDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -183,5 +184,16 @@ public class DiagnosticTestRequestController {
                 page.getNumberOfElements(), page.getTotalElements(), page.getTotalPages());
 
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+    }
+
+
+
+    @PutMapping("/diagnostic-test-requests/{id}/diagnostic-test")
+    public ResponseEntity<DiagnosticTestRequest> setDiagnosticTest(
+            @PathVariable Long id,
+            @Valid @RequestBody DiagnosticTestRequestLinkDiagnosticTestDTO dto
+    ) {
+
+        return ResponseEntity.ok(service.setDiagnosticTest(id, dto.diagnosticTestId()));
     }
 }
