@@ -133,10 +133,6 @@ public class DiagnosticOrderTestStatusService {
         LOG.debug("[DiagnosticOrderTestStatus] REVIEW - start. testId={}", testId);
         DiagnosticOrderTest test = getTest(testId);
 
-        ensureTransition(test, DiagnosticStatus.REVIEWED);
-
-        test.setProcessingStatus(DiagnosticStatus.REVIEWED);
-
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
         LOG.debug("[DiagnosticOrderTestStatus] REVIEW - done. testId={} orderId={} status={}",
@@ -351,10 +347,6 @@ public class DiagnosticOrderTestStatusService {
             return;
         }
 
-        if (to == DiagnosticStatus.REVIEWED) {
-            if (from != DiagnosticStatus.RESULT_READY) throw invalid(from, to);
-            return;
-        }
 
         if (to == DiagnosticStatus.RESULT_APPROVED) {
             if (!(from == DiagnosticStatus.RESULT_READY || from == DiagnosticStatus.PARTIALLY)) throw invalid(from, to);
