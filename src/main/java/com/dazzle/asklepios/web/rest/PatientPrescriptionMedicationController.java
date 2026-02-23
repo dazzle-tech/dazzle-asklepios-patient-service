@@ -60,7 +60,7 @@ public class PatientPrescriptionMedicationController {
 
     @DeleteMapping("/patient-prescription-medications/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-        service.delete(id);
+        service.cancel(id);
         return ResponseEntity.noContent().build();
     }
 }

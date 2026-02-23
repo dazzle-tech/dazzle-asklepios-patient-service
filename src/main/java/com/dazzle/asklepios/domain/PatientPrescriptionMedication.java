@@ -89,8 +89,8 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
     @Column(name = "indication_use", columnDefinition = "text")
     private String indicationUse;
 
-    @Column(name = "indication_icd", columnDefinition = "text")
-    private String indicationIcd;
+    @Column(name = "indication_icd")
+    private Long indicationIcd;
 
     @Column(name = "parameters_to_monitor", columnDefinition = "text")
     private String parametersToMonitor;

@@ -1,26 +1,26 @@
 package com.dazzle.asklepios.service.dto.patientPrescription;
 
 import com.dazzle.asklepios.domain.enumeration.PrescriptionInstructionsType;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.time.LocalDate;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 @Data
 public class PrescriptionMedicationCreateDTO {
 
-    public Long prescriptionHeaderId;
-    public Long medicationsId;
-
-    public PrescriptionInstructionsType instructionsType;
-
+    @NotNull public Long prescriptionHeaderId;
+    @NotNull public Long medicationsId;
+    @NotNull public PrescriptionInstructionsType instructionsType;
     public String instructions;
-
     public Long dose;
     public String doesUnit;
     public String rout;
     public String frequency;
 
-    public Boolean chronicMedication; // XOR مع duration
+    public Boolean chronicMedication;
     public Long duration;
     public String durationType;
 
@@ -30,7 +30,7 @@ public class PrescriptionMedicationCreateDTO {
 
     public String indicationManually;
     public String indicationUse;
-    public String indicationIcd;
+    public Long indicationIcd;
     public String parametersToMonitor;
 
     public Long numberOfRefills;

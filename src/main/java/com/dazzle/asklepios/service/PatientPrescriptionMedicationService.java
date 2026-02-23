@@ -29,7 +29,6 @@ public class PatientPrescriptionMedicationService {
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + prescriptionMedicationCreateDTO.prescriptionHeaderId));
 
         validateChronicVsDuration(prescriptionMedicationCreateDTO.chronicMedication, prescriptionMedicationCreateDTO.duration);
-        validateRoa(prescriptionMedicationCreateDTO.rout);
 
         PatientPrescriptionMedication entity = PatientPrescriptionMedication.builder()
                 .prescriptionHeader(header)
@@ -118,11 +117,14 @@ public class PatientPrescriptionMedicationService {
         return repo.findByPrescriptionHeader_Id(prescriptionHeaderId, pageable).map(this::toDto);
     }
 
-    public void delete(Long id) {
-        if (!repo.existsById(id)) {
-            throw new EntityNotFoundException("PatientPrescriptionMedication not found: " + id);
-        }
-        repo.deleteById(id);
+    @Transactional
+    public PatientPrescriptionMedication cancel(Long id) {
+        PatientPrescriptionMedication entity = repo.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("PatientPrescriptionMedication not found: " + id));
+
+        entity.setStatus(PrescriptionStatus.CANCELLED);
+
+        return toDto(repo.save(entity));
     }
 
     private void validateChronicVsDuration(Boolean chronic, Long duration) {
@@ -157,9 +159,8 @@ public class PatientPrescriptionMedicationService {
 
     private String buildInstructions(PrescriptionMedicationCreateDTO dto) {
 
-        if (dto.instructionsType == PrescriptionInstructionsType.MANUAL_INSTRUCTIONS ){
-//                ||
-//                vm.instructionsType == PrescriptionInstructionsType.PRE_DEFINED_INSTRUCTIONS) {
+        if (dto.instructionsType == PrescriptionInstructionsType.MANUAL_INSTRUCTIONS
+                || dto.instructionsType == PrescriptionInstructionsType.PRE_DEFINED_INSTRUCTIONS) {
             return dto.instructions;
         }
 
