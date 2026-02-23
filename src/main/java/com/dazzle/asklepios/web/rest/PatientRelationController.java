@@ -4,7 +4,6 @@ import com.dazzle.asklepios.domain.PatientRelation;
 import com.dazzle.asklepios.service.PatientRelationService;
 import com.dazzle.asklepios.service.dto.relation.PatientRelationCreateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
-import com.dazzle.asklepios.web.rest.vm.relation.PatientRelationResponseVM;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,29 +39,26 @@ public class PatientRelationController {
     }
 
     @PostMapping("/patient-relations")
-    public ResponseEntity<PatientRelationResponseVM> create(
+    public ResponseEntity<PatientRelation> create(
             @Valid @RequestBody PatientRelationCreateDTO dto
     ) {
         LOG.debug("REST create PatientRelation payload={}", dto);
-        PatientRelation saved = service.create(dto.toEntity());
-        PatientRelationResponseVM body = PatientRelationResponseVM.fromEntity(saved);
+        PatientRelation body = service.create(dto.toEntity());
         LOG.debug("REST create PatientRelation response={}", body);
 
         return ResponseEntity
-                .created(URI.create("/api/setup/patient-relations/" + saved.getId()))
+                .created(URI.create("/api/setup/patient-relations/" + body.getId()))
                 .body(body);
     }
 
     @PutMapping("/patient-relations/{id}")
-    public ResponseEntity<PatientRelationResponseVM> update(
+    public ResponseEntity<PatientRelation> update(
             @PathVariable Long id,
             @Valid @RequestBody PatientRelationCreateDTO dto
     ) {
         LOG.debug("REST update PatientRelation id={} payload={}", id, dto);
 
-        PatientRelation updated = service.update(id, dto.toEntity());
-
-        PatientRelationResponseVM body = PatientRelationResponseVM.fromEntity(updated);
+        PatientRelation body = service.update(id, dto.toEntity());
         LOG.debug("REST update PatientRelation response={}", body);
 
         return ResponseEntity.ok(body);
@@ -70,7 +66,7 @@ public class PatientRelationController {
 
 
     @GetMapping("/patient-relations")
-    public ResponseEntity<List<PatientRelationResponseVM>> findAll(@ParameterObject Pageable pageable) {
+    public ResponseEntity<List<PatientRelation>> findAll(@ParameterObject Pageable pageable) {
         LOG.debug("REST list PatientRelations page={}", pageable);
 
         Page<PatientRelation> page = service.findAll(pageable);
@@ -78,16 +74,13 @@ public class PatientRelationController {
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
         );
 
-        List<PatientRelationResponseVM> body = page.getContent()
-                .stream()
-                .map(PatientRelationResponseVM::fromEntity)
-                .toList();
+        List<PatientRelation> body = page.getContent();
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
 
     @GetMapping("/patient-relations/by-patient/{patientId}")
-    public ResponseEntity<List<PatientRelationResponseVM>> findByPatient(
+    public ResponseEntity<List<PatientRelation>> findByPatient(
             @PathVariable Long patientId,
             @ParameterObject Pageable pageable
     ) {
@@ -98,10 +91,7 @@ public class PatientRelationController {
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
         );
 
-        List<PatientRelationResponseVM> body = page.getContent()
-                .stream()
-                .map(PatientRelationResponseVM::fromEntity)
-                .toList();
+        List<PatientRelation> body = page.getContent();
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }

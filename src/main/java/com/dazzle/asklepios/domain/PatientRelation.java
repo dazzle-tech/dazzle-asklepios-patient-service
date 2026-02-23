@@ -47,6 +47,4 @@ public class PatientRelation extends AbstractAuditingEntity<Long> {
     @Column(name = "category_type", length = 20)
     private FamilyMemberCategory categoryType;
 
-    @Column(name = "is_active")
-    private Boolean isActive = true;
 }
