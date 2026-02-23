@@ -322,7 +322,7 @@ public class PatientWarningsService {
             );
         }
 
-        if (msgLower.contains("fk_patient_allergies_patient_id")) {
+        if (msgLower.contains("fk_patient_warnings_patient_id")) {
 
             return new BadRequestAlertException(
                     "patientId",
