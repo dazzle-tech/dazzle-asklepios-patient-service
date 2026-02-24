@@ -81,13 +81,24 @@ public class PatientDiagnosticResultHistoryService {
         Map<Long, Long> diagnosticOrderTestIdToDiagnosticOrderId =
                 mapDiagnosticOrderTestIdToDiagnosticOrderId(diagnosticOrderTestIds);
 
-        List<DiagnosticOrderTestResult> diagnosticTestResults =
-                diagnosticOrderTestResultRepository.findByOrderTestIdsAndOptionalProfileTestId(
-                        diagnosticOrderTestIds,
-                        fromDateTime,
-                        toDateTime,
-                        profileTestId
-                );
+        List<DiagnosticOrderTestResult> diagnosticTestResults;
+
+        if (profileTestId == null) {
+            diagnosticTestResults =
+                    diagnosticOrderTestResultRepository.findByOrderTestIdInAndCreatedDateBetween(
+                            diagnosticOrderTestIds,
+                            fromDateTime,
+                            toDateTime
+                    );
+        } else {
+            diagnosticTestResults =
+                    diagnosticOrderTestResultRepository.findByOrderTestIdInAndCreatedDateBetweenAndProfileTestId(
+                            diagnosticOrderTestIds,
+                            fromDateTime,
+                            toDateTime,
+                            profileTestId
+                    );
+        }
 
         if (diagnosticTestResults.isEmpty()) {
             LOG.debug(
