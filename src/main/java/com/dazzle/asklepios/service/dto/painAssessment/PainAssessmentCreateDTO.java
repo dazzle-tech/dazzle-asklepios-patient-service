@@ -22,6 +22,8 @@ public record PainAssessmentCreateDTO(
 
         String painDescription,
 
+        String painPattern,
+
         @NotNull
         Boolean isActive
 

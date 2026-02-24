@@ -17,12 +17,12 @@ public record AdditionalMeasurementsInfantUpdateDTO(
 
         @NotBlank String hearingTest,
 
-        Boolean dehydration,
-        Boolean nasalFlaring,
-        Boolean responseToLight,
-        Boolean pupilResponse,
-        Boolean abilityToFollowTarget,
-        Boolean colorTesting,
+        @NotNull Boolean dehydration,
+        @NotNull Boolean nasalFlaring,
+        @NotNull Boolean responseToLight,
+        @NotNull Boolean pupilResponse,
+        @NotNull Boolean abilityToFollowTarget,
+        @NotNull Boolean colorTesting,
 
         @NotNull Boolean isActive
 ) implements Serializable {}

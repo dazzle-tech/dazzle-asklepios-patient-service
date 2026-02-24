@@ -42,18 +42,22 @@ public class PainAssessment extends AbstractAuditingEntity<Long> implements Seri
     @Column(name = "encounter_id", nullable = false)
     private Long encounterId;
 
+    @NotNull
     @Column(name = "pain_degree", length = 200)
     private String painDegree;
 
+    @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "pain_level")
     private PainLevel painLevel;
+
+    @Column(name = "pain_pattern", length = 255)
+    private String painPattern;
 
     @Column(name = "pain_description", columnDefinition = "text")
     private String painDescription;
 
     @NotNull
     @Column(name = "is_active", nullable = false)
-    @Builder.Default
     private Boolean isActive = true;
 }

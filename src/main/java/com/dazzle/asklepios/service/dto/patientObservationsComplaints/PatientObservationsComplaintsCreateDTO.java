@@ -15,6 +15,7 @@ public record PatientObservationsComplaintsCreateDTO(
         @NotNull
         Long encounterId,
 
+        String patientConditions,
 
         String functionalStatus,
 

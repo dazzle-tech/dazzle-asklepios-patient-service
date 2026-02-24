@@ -18,6 +18,7 @@ import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -40,22 +41,25 @@ public class AdditionalMeasurementsService {
 
         Patient patient = loadPatient(dto.patientId());
 
-        AdditionalMeasurements entity = AdditionalMeasurements.builder()
-                .patient(patient)
-                .encounterId(dto.encounterId())
-                .ageGroup(dto.ageGroup())
-                .hearingTest(dto.hearingTest())
-                .dehydration(dto.dehydration())
-                .nasalFlaring(dto.nasalFlaring())
-                .responseToLight(dto.responseToLight())
-                .pupilResponse(dto.pupilResponse())
-                .abilityToFollowTarget(dto.abilityToFollowTarget())
-                .colorTesting(dto.colorTesting())
-                .isActive(dto.isActive())
-                .build();
-
         try {
+            resetIsActiveForEncounterToday(dto.encounterId());
+
+            AdditionalMeasurements entity = AdditionalMeasurements.builder()
+                    .patient(patient)
+                    .encounterId(dto.encounterId())
+                    .ageGroup(dto.ageGroup())
+                    .hearingTest(dto.hearingTest())
+                    .dehydration(dto.dehydration())
+                    .nasalFlaring(dto.nasalFlaring())
+                    .responseToLight(dto.responseToLight())
+                    .pupilResponse(dto.pupilResponse())
+                    .abilityToFollowTarget(dto.abilityToFollowTarget())
+                    .colorTesting(dto.colorTesting())
+                    .isActive(true)
+                    .build();
+
             return additionalMeasurementsRepository.saveAndFlush(entity);
+
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
         }
@@ -92,23 +96,25 @@ public class AdditionalMeasurementsService {
     public AdditionalMeasurements createGeriatric(AdditionalMeasurementsGeriatricCreateDTO dto) {
         LOG.info("[CREATE_GERIATRIC] AdditionalMeasurements payload={}", dto);
 
-
         Patient patient = loadPatient(dto.patientId());
 
-        AdditionalMeasurements entity = AdditionalMeasurements.builder()
-                .patient(patient)
-                .encounterId(dto.encounterId())
-                .ageGroup(dto.ageGroup())
-                .fallRisk(dto.fallRisk())
-                .visionProblemsAffectingFunction(dto.visionProblemsAffectingFunction())
-                .hearingProblemsAffectingFunction(dto.hearingProblemsAffectingFunction())
-                .details(dto.details())
-                .actionToTake(dto.actionToTake())
-                .isActive(dto.isActive())
-                .build();
-
         try {
+            resetIsActiveForEncounterToday(dto.encounterId());
+
+            AdditionalMeasurements entity = AdditionalMeasurements.builder()
+                    .patient(patient)
+                    .encounterId(dto.encounterId())
+                    .ageGroup(dto.ageGroup())
+                    .fallRisk(dto.fallRisk())
+                    .visionProblemsAffectingFunction(dto.visionProblemsAffectingFunction())
+                    .hearingProblemsAffectingFunction(dto.hearingProblemsAffectingFunction())
+                    .details(dto.details())
+                    .actionToTake(dto.actionToTake())
+                    .isActive(true)
+                    .build();
+
             return additionalMeasurementsRepository.saveAndFlush(entity);
+
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
         }
@@ -153,6 +159,36 @@ public class AdditionalMeasurementsService {
                         "Patient not found with id " + patientId,
                         ENTITY_NAME,
                         "patient.notfound"
+                ));
+    }
+
+    private void resetIsActiveForEncounterToday(Long encounterId) {
+
+        Instant now = Instant.now();
+        Instant dayStart = now.truncatedTo(java.time.temporal.ChronoUnit.DAYS);
+        Instant dayEnd = dayStart.plus(1, java.time.temporal.ChronoUnit.DAYS);
+
+        LOG.debug(
+                "[RESET ACTIVE] Setting latest isActive=false for today, encounterId={}",
+                encounterId
+        );
+
+        additionalMeasurementsRepository
+                .findFirstByEncounterIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateDesc(
+                        encounterId,
+                        dayStart,
+                        dayEnd
+                )
+                .ifPresentOrElse(additionalMeasurements -> {
+                    additionalMeasurements.setIsActive(false);
+                    additionalMeasurementsRepository.flush();
+                    LOG.debug(
+                            "[RESET ACTIVE] Reset done. additionalMeasurementsId={} encounterId={}",
+                            additionalMeasurements.getId(),
+                            encounterId
+                    );
+                }, () -> LOG.debug(
+                        "[RESET ACTIVE] No active AdditionalMeasurements found to reset"
                 ));
     }
 

@@ -49,6 +49,7 @@ public class PatientObservationsComplaintsService {
                 .functionalStatus(dto.functionalStatus())
                 .reasonOfVisit(dto.reasonOfVisit())
                 .cognitiveCheck(dto.cognitiveCheck())
+                .patientConditions(dto.patientConditions())
                 .isActive(dto.isActive())
                 .build();
 
@@ -77,6 +78,7 @@ public class PatientObservationsComplaintsService {
             entity.setFunctionalStatus(dto.functionalStatus());
             entity.setReasonOfVisit(dto.reasonOfVisit());
             entity.setCognitiveCheck(dto.cognitiveCheck());
+            entity.setPatientConditions(dto.patientConditions());
             entity.setIsActive(dto.isActive());
 
             try {

@@ -15,12 +15,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
 
 @RestController
-@RequestMapping("/api/patient/additional-measurements")
+@RequestMapping("/api/patient")
 @RequiredArgsConstructor
 public class AdditionalMeasurementsController {
 
@@ -30,7 +36,7 @@ public class AdditionalMeasurementsController {
 
     private final AdditionalMeasurementsService additionalMeasurementsService;
 
-    @PostMapping("/infant")
+    @PostMapping("/additional-measurements/infant")
     public ResponseEntity<AdditionalMeasurements> createInfant(
             @Valid @RequestBody AdditionalMeasurementsInfantCreateDTO dto
     ) {
@@ -59,7 +65,7 @@ public class AdditionalMeasurementsController {
                 .body(saved);
     }
 
-    @PutMapping("/infant/{id}")
+    @PutMapping("/additional-measurements/infant/{id}")
     public ResponseEntity<AdditionalMeasurements> updateInfant(
             @PathVariable Long id,
             @Valid @RequestBody AdditionalMeasurementsInfantUpdateDTO dto
@@ -94,7 +100,7 @@ public class AdditionalMeasurementsController {
                 ));
     }
 
-    @PostMapping("/geriatric")
+    @PostMapping("/additional-measurements/geriatric")
     public ResponseEntity<AdditionalMeasurements> createGeriatric(
             @Valid @RequestBody AdditionalMeasurementsGeriatricCreateDTO dto
     ) {
@@ -123,7 +129,7 @@ public class AdditionalMeasurementsController {
                 .body(saved);
     }
 
-    @PutMapping("/geriatric/{id}")
+    @PutMapping("/additional-measurements/geriatric/{id}")
     public ResponseEntity<AdditionalMeasurements> updateGeriatric(
             @PathVariable Long id,
             @Valid @RequestBody AdditionalMeasurementsGeriatricUpdateDTO dto
@@ -158,7 +164,7 @@ public class AdditionalMeasurementsController {
                 ));
     }
 
-    @GetMapping("/latest/encounter/{encounterId}")
+    @GetMapping("/additional-measurements/latest/encounter/{encounterId}")
     @Transactional(readOnly = true)
     public ResponseEntity<AdditionalMeasurements> findLatestByEncounterId(@PathVariable Long encounterId) {
         if (encounterId == null) {

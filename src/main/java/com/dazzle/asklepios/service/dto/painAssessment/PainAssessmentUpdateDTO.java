@@ -25,6 +25,8 @@ public record PainAssessmentUpdateDTO(
 
         String painDescription,
 
+        String painPattern,
+
         @NotNull
         Boolean isActive
 
