@@ -403,6 +403,9 @@ public class PatientPaymentsService {
                 amountPaid,
                 nonNullAmount(refreshed.getRemaining()),
                 nonNullAmount(refreshed.getRefunds()),
+                // NEW
+                nonNullAmount(refreshed.getPaidFromAmount()),
+                nonNullAmount(refreshed.getPaidFromBalance()),
                 refreshedServices
         );
     }
