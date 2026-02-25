@@ -37,21 +37,21 @@ public class EncounterAssessmentService {
         this.patientRepository = patientRepository;
     }
 
-    public EncounterAssessment create(EncounterAssessmentCreateDTO dto) {
-        LOG.info("[CREATE] Request to create EncounterAssessment payload={}", dto);
+    public EncounterAssessment create(EncounterAssessmentCreateDTO createRequest) {
+        LOG.info("[CREATE] Request to create EncounterAssessment payload={}", createRequest);
 
-        Patient patient = patientRepository.findById(dto.patientId())
+        Patient patient = patientRepository.findById(createRequest.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient not found with id " + dto.patientId(),
+                        "Patient not found with id " + createRequest.patientId(),
                         "patient",
                         "notfound"
                 ));
 
         EncounterAssessment entity = EncounterAssessment.builder()
                 .patient(patient)
-                .userId(dto.userId())
-                .encounterId(dto.encounterId())
-                .assessment(dto.assessment())
+                .userId(createRequest.userId())
+                .encounterId(createRequest.encounterId())
+                .assessment(createRequest.assessment())
                 .build();
 
         try {
@@ -67,8 +67,8 @@ public class EncounterAssessmentService {
         }
     }
 
-    public EncounterAssessment update(Long id, EncounterAssessmentUpdateDTO dto) {
-        LOG.info("[UPDATE] Request to update EncounterAssessment id={} payload={}", id, dto);
+    public EncounterAssessment update(Long id, EncounterAssessmentUpdateDTO updateRequest) {
+        LOG.info("[UPDATE] Request to update EncounterAssessment id={} payload={}", id, updateRequest);
 
         EncounterAssessment existing = encounterAssessmentRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -77,17 +77,17 @@ public class EncounterAssessmentService {
                         "notfound"
                 ));
 
-        Patient patient = patientRepository.findById(dto.patientId())
+        Patient patient = patientRepository.findById(updateRequest.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient not found with id " + dto.patientId(),
+                        "Patient not found with id " + updateRequest.patientId(),
                         "patient",
                         "notfound"
                 ));
 
         existing.setPatient(patient);
-        existing.setUserId(dto.userId());
-        existing.setEncounterId(dto.encounterId());
-        existing.setAssessment(dto.assessment());
+        existing.setUserId(updateRequest.userId());
+        existing.setEncounterId(updateRequest.encounterId());
+        existing.setAssessment(updateRequest.assessment());
         existing.setLastModifiedDate(Instant.now());
 
         try {
@@ -123,6 +123,14 @@ public class EncounterAssessmentService {
         LOG.error("DB ROOT CAUSE: {}", message, exception);
 
         String lower = (message != null ? message.toLowerCase() : "");
+
+        if (lower.contains("uk_enc_assessment_enc_patient_user")) {
+            throw new BadRequestAlertException(
+                    "Assessment already exists for this patient, encounter, and user.",
+                    "encounterAssessment",
+                    "duplicate.record"
+            );
+        }
 
         if (lower.contains("fk_enc_assessment_patient")) {
             throw new BadRequestAlertException(

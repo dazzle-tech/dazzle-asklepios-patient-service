@@ -36,20 +36,20 @@ public class EncounterPlanService {
         this.patientRepository = patientRepository;
     }
 
-    public EncounterPlan create(EncounterPlanCreateDTO dto) {
-        LOG.info("[CREATE] Request to create EncounterPlan payload={}", dto);
+    public EncounterPlan create(EncounterPlanCreateDTO createRequest) {
+        LOG.info("[CREATE] Request to create EncounterPlan payload={}", createRequest);
 
-        Patient patient = patientRepository.findById(dto.patientId())
+        Patient patient = patientRepository.findById(createRequest.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient not found with id " + dto.patientId(),
+                        "Patient not found with id " + createRequest.patientId(),
                         "patient",
                         "notfound"
                 ));
 
         EncounterPlan entity = EncounterPlan.builder()
                 .patient(patient)
-                .encounterId(dto.encounterId())
-                .planInstructions(dto.planInstructions())
+                .encounterId(createRequest.encounterId())
+                .planInstructions(createRequest.planInstructions())
                 .build();
 
         try {
@@ -65,8 +65,8 @@ public class EncounterPlanService {
         }
     }
 
-    public EncounterPlan update(Long id, EncounterPlanUpdateDTO dto) {
-        LOG.info("[UPDATE] Request to update EncounterPlan id={} payload={}", id, dto);
+    public EncounterPlan update(Long id, EncounterPlanUpdateDTO updateRequest) {
+        LOG.info("[UPDATE] Request to update EncounterPlan id={} payload={}", id, updateRequest);
 
         EncounterPlan existing = encounterPlanRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -75,16 +75,16 @@ public class EncounterPlanService {
                         "notfound"
                 ));
 
-        Patient patient = patientRepository.findById(dto.patientId())
+        Patient patient = patientRepository.findById(updateRequest.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient not found with id " + dto.patientId(),
+                        "Patient not found with id " + updateRequest.patientId(),
                         "patient",
                         "notfound"
                 ));
 
         existing.setPatient(patient);
-        existing.setEncounterId(dto.encounterId());
-        existing.setPlanInstructions(dto.planInstructions());
+        existing.setEncounterId(updateRequest.encounterId());
+        existing.setPlanInstructions(updateRequest.planInstructions());
         existing.setLastModifiedDate(Instant.now());
 
         try {
@@ -120,6 +120,14 @@ public class EncounterPlanService {
         LOG.error("DB ROOT CAUSE: {}", message, exception);
 
         String lower = (message != null ? message.toLowerCase() : "");
+
+        if (lower.contains("uk_enc_plan_enc_patient")) {
+            throw new BadRequestAlertException(
+                    "Plan already exists for this patient and encounter.",
+                    "encounterPlan",
+                    "duplicate.record"
+            );
+        }
 
         if (lower.contains("fk_enc_plan_patient")) {
             throw new BadRequestAlertException(

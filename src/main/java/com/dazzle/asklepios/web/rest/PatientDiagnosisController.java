@@ -42,11 +42,11 @@ public class PatientDiagnosisController {
 
     @PostMapping("/patient-diagnoses")
     public ResponseEntity<PatientDiagnosis> create(
-            @Valid @RequestBody PatientDiagnosisCreateDTO dto
+            @Valid @RequestBody PatientDiagnosisCreateDTO createRequest
     ) {
-        LOG.debug("REST create PatientDiagnosis payload={}", dto);
+        LOG.debug("REST create PatientDiagnosis payload={}", createRequest);
 
-        if (dto == null) {
+        if (createRequest == null) {
             throw new BadRequestAlertException(
                     "PatientDiagnosis payload is required",
                     "patientDiagnosis",
@@ -54,7 +54,7 @@ public class PatientDiagnosisController {
             );
         }
 
-        PatientDiagnosis created = patientDiagnosisService.create(dto);
+        PatientDiagnosis created = patientDiagnosisService.create(createRequest);
 
         return ResponseEntity
                 .created(URI.create("/api/patient/patient-diagnoses/" + created.getId()))
@@ -64,11 +64,11 @@ public class PatientDiagnosisController {
     @PutMapping("/patient-diagnoses/{id}")
     public ResponseEntity<PatientDiagnosis> update(
             @PathVariable Long id,
-            @Valid @RequestBody PatientDiagnosisUpdateDTO dto
+            @Valid @RequestBody PatientDiagnosisUpdateDTO updateRequest
     ) {
-        LOG.debug("REST update PatientDiagnosis id={} payload={}", id, dto);
+        LOG.debug("REST update PatientDiagnosis id={} payload={}", id, updateRequest);
 
-        if (dto == null) {
+        if (updateRequest == null) {
             throw new BadRequestAlertException(
                     "PatientDiagnosis payload is required",
                     "patientDiagnosis",
@@ -76,7 +76,7 @@ public class PatientDiagnosisController {
             );
         }
 
-        if (dto.id() == null || !dto.id().equals(id)) {
+        if (updateRequest.id() == null || !updateRequest.id().equals(id)) {
             throw new BadRequestAlertException(
                     "Path id does not match payload id",
                     "patientDiagnosis",
@@ -84,7 +84,7 @@ public class PatientDiagnosisController {
             );
         }
 
-        PatientDiagnosis updated = patientDiagnosisService.update(id, dto);
+        PatientDiagnosis updated = patientDiagnosisService.update(id, updateRequest);
 
         return ResponseEntity.ok(updated);
     }

@@ -51,9 +51,11 @@ public class PatientDiagnosis extends AbstractAuditingEntity<Long> implements Se
 
     @NotNull
     @Column(name = "suspected", nullable = false)
-    private Boolean suspected;
+    @Builder.Default
+    private Boolean suspected = false;
 
     @NotNull
     @Column(name = "major", nullable = false)
-    private Boolean major;
+    @Builder.Default
+    private Boolean major = false;
 }

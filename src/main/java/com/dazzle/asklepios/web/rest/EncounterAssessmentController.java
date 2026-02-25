@@ -33,10 +33,12 @@ public class EncounterAssessmentController {
     }
 
     @PostMapping("/encounter-assessments")
-    public ResponseEntity<EncounterAssessment> create(@Valid @RequestBody EncounterAssessmentCreateDTO dto) {
-        LOG.debug("REST create EncounterAssessment payload={}", dto);
+    public ResponseEntity<EncounterAssessment> create(
+            @Valid @RequestBody EncounterAssessmentCreateDTO createRequest
+    ) {
+        LOG.debug("REST create EncounterAssessment payload={}", createRequest);
 
-        if (dto == null) {
+        if (createRequest == null) {
             throw new BadRequestAlertException(
                     "EncounterAssessment payload is required",
                     "encounterAssessment",
@@ -44,21 +46,21 @@ public class EncounterAssessmentController {
             );
         }
 
-        EncounterAssessment created = encounterAssessmentService.create(dto);
+        EncounterAssessment created = encounterAssessmentService.create(createRequest);
 
         return ResponseEntity
-                .created(URI.create("/api/encounter-assessments/" + created.getId()))
+                .created(URI.create("/api/patient/encounter-assessments/" + created.getId()))
                 .body(created);
     }
 
     @PutMapping("/encounter-assessments/{id}")
     public ResponseEntity<EncounterAssessment> update(
             @PathVariable Long id,
-            @Valid @RequestBody EncounterAssessmentUpdateDTO dto
+            @Valid @RequestBody EncounterAssessmentUpdateDTO updateRequest
     ) {
-        LOG.debug("REST update EncounterAssessment id={} payload={}", id, dto);
+        LOG.debug("REST update EncounterAssessment id={} payload={}", id, updateRequest);
 
-        if (dto == null) {
+        if (updateRequest == null) {
             throw new BadRequestAlertException(
                     "EncounterAssessment payload is required",
                     "encounterAssessment",
@@ -66,7 +68,7 @@ public class EncounterAssessmentController {
             );
         }
 
-        if (dto.id() == null || !dto.id().equals(id)) {
+        if (updateRequest.id() == null || !updateRequest.id().equals(id)) {
             throw new BadRequestAlertException(
                     "Path id does not match payload id",
                     "encounterAssessment",
@@ -74,7 +76,7 @@ public class EncounterAssessmentController {
             );
         }
 
-        EncounterAssessment updated = encounterAssessmentService.update(id, dto);
+        EncounterAssessment updated = encounterAssessmentService.update(id, updateRequest);
 
         return ResponseEntity.ok(updated);
     }
