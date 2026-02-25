@@ -242,25 +242,32 @@ public class PatientEncounterService {
                 }
 
                 if (hasPatientName) {
-                    String pattern = "%" + filter.patientName().trim().toLowerCase() + "%";
+                    String raw = filter.patientName();
+                    if (raw != null) {
+                        String[] tokens = raw.trim().toLowerCase().split("\\s+");
 
-                    Expression<String> first = cb.coalesce(patientJoin.get("firstName"), "");
-                    Expression<String> second = cb.coalesce(patientJoin.get("secondName"), "");
-                    Expression<String> third = cb.coalesce(patientJoin.get("thirdName"), "");
-                    Expression<String> last = cb.coalesce(patientJoin.get("lastName"), "");
+                        Expression<String> first  = cb.lower(cb.coalesce(patientJoin.get("firstName"), ""));
+                        Expression<String> second = cb.lower(cb.coalesce(patientJoin.get("secondName"), ""));
+                        Expression<String> third  = cb.lower(cb.coalesce(patientJoin.get("thirdName"), ""));
+                        Expression<String> last   = cb.lower(cb.coalesce(patientJoin.get("lastName"), ""));
 
-                    Expression<String> fullName =
-                            cb.concat(
-                                    cb.concat(
-                                            cb.concat(cb.concat(first, " "),
-                                                    cb.concat(second, " ")
-                                            ),
-                                            cb.concat(third, " ")
-                                    ),
-                                    last
-                            );
+                        Predicate[] tokenPreds = java.util.Arrays.stream(tokens)
+                                .filter(t -> t != null && !t.isBlank())
+                                .map(t -> {
+                                    String like = "%" + t + "%";
+                                    return cb.or(
+                                            cb.like(first, like),
+                                            cb.like(second, like),
+                                            cb.like(third, like),
+                                            cb.like(last, like)
+                                    );
+                                })
+                                .toArray(Predicate[]::new);
 
-                    predicates.add(cb.like(cb.lower(fullName), pattern));
+                        if (tokenPreds.length > 0) {
+                            predicates.add(cb.and(tokenPreds));
+                        }
+                    }
                 }
             }
 
