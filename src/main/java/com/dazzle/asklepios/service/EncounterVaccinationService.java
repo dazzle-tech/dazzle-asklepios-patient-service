@@ -38,186 +38,200 @@ public class EncounterVaccinationService {
     private final EncounterVaccinationRepository encounterVaccinationRepository;
     private final PatientRepository patientRepository;
 
-    public EncounterVaccination create(EncounterVaccinationCreateDTO dto) {
-        LOG.info("[CREATE] EncounterVaccination payload={}", dto);
+    public EncounterVaccination create(EncounterVaccinationCreateDTO createRequest) {
+        LOG.info("[CREATE] EncounterVaccination payload={}", createRequest);
 
-        Patient patient = patientRepository.findById(dto.patientId())
+        Patient patient = patientRepository.findById(createRequest.patientId())
                 .orElseThrow(() -> {
-                    LOG.warn("[CREATE] EncounterVaccination rejected: patient not found patientId={}", dto.patientId());
+                    LOG.warn("[CREATE] EncounterVaccination rejected: patient not found patientId={}", createRequest.patientId());
                     return new NotFoundAlertException(
-                            "Patient not found with id " + dto.patientId(),
+                            "Patient not found with id " + createRequest.patientId(),
                             "encounterVaccination",
                             "patient.notfound"
                     );
                 });
 
-        EncounterVaccination entity = EncounterVaccination.builder()
+        String normalizedExternalFacilityName = Boolean.TRUE.equals(createRequest.isExternalFacility())
+                ? createRequest.externalFacilityName()
+                : null;
+
+        EncounterVaccination encounterVaccination = EncounterVaccination.builder()
                 .patient(patient)
-                .encounterId(dto.encounterId())
-                .vaccineId(dto.vaccineId())
-                .vaccineBrandId(dto.vaccineBrandId())
-                .vaccineDoseId(dto.vaccineDoseId())
-                .vaccineLotNumber(dto.vaccineLotNumber())
-                .dateAdministered(dto.dateAdministered())
-                .status(dto.status())
-                .cancellationReason(dto.cancellationReason())
-                .administeredLocation(dto.administeredLocation())
-                .administrationReactions(dto.administrationReactions())
-                .externalFacilityName(dto.externalFacilityName())
-                .notes(dto.notes())
+                .encounterId(createRequest.encounterId())
+                .vaccineId(createRequest.vaccineId())
+                .vaccineBrandId(createRequest.vaccineBrandId())
+                .vaccineDoseId(createRequest.vaccineDoseId())
+                .vaccineLotNumber(createRequest.vaccineLotNumber())
+                .dateAdministered(createRequest.dateAdministered())
+                .status(createRequest.status())
+                .cancellationReason(createRequest.cancellationReason())
+                .administeredLocation(createRequest.administeredLocation())
+                .administrationReactions(createRequest.administrationReactions())
+                .isExternalFacility(createRequest.isExternalFacility())
+                .externalFacilityName(normalizedExternalFacilityName)
+                .notes(createRequest.notes())
                 .build();
 
         try {
-            EncounterVaccination saved = encounterVaccinationRepository.saveAndFlush(entity);
+            EncounterVaccination savedEncounterVaccination = encounterVaccinationRepository.saveAndFlush(encounterVaccination);
             LOG.info("[CREATE] EncounterVaccination success id={} patientId={} encounterId={} vaccineId={} doseId={} status={}",
-                    saved.getId(), dto.patientId(), dto.encounterId(), dto.vaccineId(), dto.vaccineDoseId(), dto.status());
-            return saved;
+                    savedEncounterVaccination.getId(),
+                    createRequest.patientId(),
+                    createRequest.encounterId(),
+                    createRequest.vaccineId(),
+                    createRequest.vaccineDoseId(),
+                    createRequest.status()
+            );
+            return savedEncounterVaccination;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
-            LOG.warn("[CREATE] EncounterVaccination failed (constraint) payload={}", dto, ex);
+            LOG.warn("[CREATE] EncounterVaccination failed (constraint) payload={}", createRequest, ex);
             throw handleConstraintViolation(ex);
         } catch (RuntimeException ex) {
-            LOG.error("[CREATE] EncounterVaccination failed (unexpected) payload={}", dto, ex);
+            LOG.error("[CREATE] EncounterVaccination failed (unexpected) payload={}", createRequest, ex);
             throw ex;
         }
     }
 
-    public EncounterVaccination update(Long id, EncounterVaccinationUpdateDTO dto) {
-        LOG.info("[UPDATE] EncounterVaccination id={} payload={}", id, dto);
+    public EncounterVaccination update(Long encounterVaccinationId, EncounterVaccinationUpdateDTO updateRequest) {
+        LOG.info("[UPDATE] EncounterVaccination id={} payload={}", encounterVaccinationId, updateRequest);
 
-        return encounterVaccinationRepository.findById(id)
-                .map(entity -> {
+        return encounterVaccinationRepository.findById(encounterVaccinationId)
+                .map(encounterVaccination -> {
 
-                    Patient patient = patientRepository.findById(dto.patientId())
+                    Patient patient = patientRepository.findById(updateRequest.patientId())
                             .orElseThrow(() -> {
                                 LOG.warn(
                                         "[UPDATE] EncounterVaccination rejected: patient not found patientId={} id={}",
-                                        dto.patientId(), id
+                                        updateRequest.patientId(), encounterVaccinationId
                                 );
                                 return new NotFoundAlertException(
-                                        "Patient not found with id " + dto.patientId(),
+                                        "Patient not found with id " + updateRequest.patientId(),
                                         "encounterVaccination",
                                         "patient.notfound"
                                 );
                             });
 
-                    entity.setPatient(patient);
-                    entity.setEncounterId(dto.encounterId());
-                    entity.setVaccineId(dto.vaccineId());
-                    entity.setVaccineBrandId(dto.vaccineBrandId());
-                    entity.setVaccineDoseId(dto.vaccineDoseId());
-                    entity.setVaccineLotNumber(dto.vaccineLotNumber());
-                    entity.setDateAdministered(dto.dateAdministered());
-                    entity.setStatus(dto.status());
-                    entity.setAdministeredLocation(dto.administeredLocation());
-                    entity.setAdministrationReactions(dto.administrationReactions());
-                    entity.setExternalFacilityName(dto.externalFacilityName());
-                    entity.setNotes(dto.notes());
+                    encounterVaccination.setPatient(patient);
+                    encounterVaccination.setEncounterId(updateRequest.encounterId());
+                    encounterVaccination.setVaccineId(updateRequest.vaccineId());
+                    encounterVaccination.setVaccineBrandId(updateRequest.vaccineBrandId());
+                    encounterVaccination.setVaccineDoseId(updateRequest.vaccineDoseId());
+                    encounterVaccination.setVaccineLotNumber(updateRequest.vaccineLotNumber());
+                    encounterVaccination.setDateAdministered(updateRequest.dateAdministered());
+                    encounterVaccination.setStatus(updateRequest.status());
+                    encounterVaccination.setAdministeredLocation(updateRequest.administeredLocation());
+                    encounterVaccination.setAdministrationReactions(updateRequest.administrationReactions());
+                    encounterVaccination.setIsExternalFacility(updateRequest.isExternalFacility());
+                    encounterVaccination.setExternalFacilityName(Boolean.TRUE.equals(updateRequest.isExternalFacility())
+                            ? updateRequest.externalFacilityName()
+                            : null);
 
+                    encounterVaccination.setNotes(updateRequest.notes());
 
                     try {
-                        EncounterVaccination saved =
-                                encounterVaccinationRepository.saveAndFlush(entity);
+                        EncounterVaccination savedEncounterVaccination =
+                                encounterVaccinationRepository.saveAndFlush(encounterVaccination);
 
                         LOG.info(
                                 "[UPDATE] EncounterVaccination success id={} patientId={} encounterId={} vaccineId={} doseId={} status={}",
-                                saved.getId(),
-                                dto.patientId(),
-                                dto.encounterId(),
-                                dto.vaccineId(),
-                                dto.vaccineDoseId(),
-                                dto.status()
+                                savedEncounterVaccination.getId(),
+                                updateRequest.patientId(),
+                                updateRequest.encounterId(),
+                                updateRequest.vaccineId(),
+                                updateRequest.vaccineDoseId(),
+                                updateRequest.status()
                         );
 
-                        return saved;
+                        return savedEncounterVaccination;
                     } catch (DataIntegrityViolationException | JpaSystemException ex) {
                         LOG.warn(
                                 "[UPDATE] EncounterVaccination failed (constraint) id={} payload={}",
-                                id, dto, ex
+                                encounterVaccinationId, updateRequest, ex
                         );
                         throw handleConstraintViolation(ex);
                     } catch (RuntimeException ex) {
                         LOG.error(
                                 "[UPDATE] EncounterVaccination failed (unexpected) id={} payload={}",
-                                id, dto, ex
+                                encounterVaccinationId, updateRequest, ex
                         );
                         throw ex;
                     }
                 })
                 .orElseThrow(() -> {
-                    LOG.warn("[UPDATE] EncounterVaccination rejected: not found id={}", id);
+                    LOG.warn("[UPDATE] EncounterVaccination rejected: not found id={}", encounterVaccinationId);
                     return new NotFoundAlertException(
-                            "EncounterVaccination not found with id " + id,
+                            "EncounterVaccination not found with id " + encounterVaccinationId,
                             "encounterVaccination",
                             "id.notfound"
                     );
                 });
     }
 
-    public EncounterVaccination cancel(EncounterVaccinationCancelDTO dto) {
+    public EncounterVaccination cancel(EncounterVaccinationCancelDTO cancelRequest) {
         LOG.info(
                 "[CANCEL] EncounterVaccination id={} cancelledById={} reason={}",
-                dto.id(), dto.cancelledById(), dto.cancellationReason()
+                cancelRequest.id(), cancelRequest.cancelledById(), cancelRequest.cancellationReason()
         );
 
-        EncounterVaccination entity = encounterVaccinationRepository.findById(dto.id())
+        EncounterVaccination encounterVaccination = encounterVaccinationRepository.findById(cancelRequest.id())
                 .orElseThrow(() -> {
-                    LOG.warn("[CANCEL] EncounterVaccination not found id={}", dto.id());
+                    LOG.warn("[CANCEL] EncounterVaccination not found id={}", cancelRequest.id());
                     return new NotFoundAlertException(
-                            "EncounterVaccination not found with id " + dto.id(),
+                            "EncounterVaccination not found with id " + cancelRequest.id(),
                             "encounterVaccination",
                             "notfound"
                     );
                 });
 
-        entity.setStatus(EncounterVaccinationStatus.CANCELLED);
-        entity.setCancellationReason(dto.cancellationReason());
-        entity.setCancelledAt(Instant.now());
-        entity.setCancelledById(dto.cancelledById());
+        encounterVaccination.setStatus(EncounterVaccinationStatus.CANCELLED);
+        encounterVaccination.setCancellationReason(cancelRequest.cancellationReason());
+        encounterVaccination.setCancelledAt(Instant.now());
+        encounterVaccination.setCancelledById(cancelRequest.cancelledById());
 
         try {
-            EncounterVaccination saved = encounterVaccinationRepository.saveAndFlush(entity);
+            EncounterVaccination savedEncounterVaccination = encounterVaccinationRepository.saveAndFlush(encounterVaccination);
             LOG.info("[CANCEL] EncounterVaccination success id={} cancelledById={}",
-                    dto.id(), dto.cancelledById());
-            return saved;
+                    cancelRequest.id(), cancelRequest.cancelledById());
+            return savedEncounterVaccination;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             LOG.warn("[CANCEL] EncounterVaccination failed (constraint) id={} cancelledById={}",
-                    dto.id(), dto.cancelledById(), ex);
+                    cancelRequest.id(), cancelRequest.cancelledById(), ex);
             throw handleConstraintViolation(ex);
         } catch (RuntimeException ex) {
-            LOG.error("[CANCEL] EncounterVaccination failed (unexpected) id={}", dto.id(), ex);
+            LOG.error("[CANCEL] EncounterVaccination failed (unexpected) id={}", cancelRequest.id(), ex);
             throw ex;
         }
     }
 
-    public EncounterVaccination review(EncounterVaccinationReviewDTO dto) {
+    public EncounterVaccination review(EncounterVaccinationReviewDTO reviewRequest) {
         LOG.info("[REVIEW] EncounterVaccination id={} reviewedById={}",
-                dto.id(), dto.reviewedById());
+                reviewRequest.id(), reviewRequest.reviewedById());
 
-        EncounterVaccination entity = encounterVaccinationRepository.findById(dto.id())
+        EncounterVaccination encounterVaccination = encounterVaccinationRepository.findById(reviewRequest.id())
                 .orElseThrow(() -> {
-                    LOG.warn("[REVIEW] EncounterVaccination not found id={}", dto.id());
+                    LOG.warn("[REVIEW] EncounterVaccination not found id={}", reviewRequest.id());
                     return new NotFoundAlertException(
-                            "EncounterVaccination not found with id " + dto.id(),
+                            "EncounterVaccination not found with id " + reviewRequest.id(),
                             "encounterVaccination",
                             "notfound"
                     );
                 });
 
-        entity.setStatus(EncounterVaccinationStatus.REVIEW);
-        entity.setReviewedById(dto.reviewedById());
-        entity.setReviewedAt(Instant.now());
+        encounterVaccination.setStatus(EncounterVaccinationStatus.REVIEW);
+        encounterVaccination.setReviewedById(reviewRequest.reviewedById());
+        encounterVaccination.setReviewedAt(Instant.now());
 
         try {
-            EncounterVaccination saved = encounterVaccinationRepository.saveAndFlush(entity);
+            EncounterVaccination savedEncounterVaccination = encounterVaccinationRepository.saveAndFlush(encounterVaccination);
             LOG.info("[REVIEW] EncounterVaccination success id={} reviewedById={}",
-                    dto.id(), dto.reviewedById());
-            return saved;
+                    reviewRequest.id(), reviewRequest.reviewedById());
+            return savedEncounterVaccination;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             LOG.warn("[REVIEW] EncounterVaccination failed (constraint) id={} reviewedById={}",
-                    dto.id(), dto.reviewedById(), ex);
+                    reviewRequest.id(), reviewRequest.reviewedById(), ex);
             throw handleConstraintViolation(ex);
         } catch (RuntimeException ex) {
-            LOG.error("[REVIEW] EncounterVaccination failed (unexpected) id={}", dto.id(), ex);
+            LOG.error("[REVIEW] EncounterVaccination failed (unexpected) id={}", reviewRequest.id(), ex);
             throw ex;
         }
     }
@@ -235,10 +249,8 @@ public class EncounterVaccinationService {
 
     @Transactional(readOnly = true)
     public Page<EncounterVaccination> findEncounterVaccinationsAll(Long encounterId, Pageable pageable) {
-        LOG.debug(
-                "[FIND_ALL_BY_ENCOUNTER] encounterId={} pageable={}",
-                encounterId, pageable
-        );
+        LOG.debug("[FIND_ALL_BY_ENCOUNTER] encounterId={} pageable={}",
+                encounterId, pageable);
 
         return encounterVaccinationRepository.findByEncounterId(
                 encounterId,
@@ -258,14 +270,8 @@ public class EncounterVaccinationService {
     }
 
     @Transactional(readOnly = true)
-    public Page<EncounterVaccination> findPatientVaccinationsAll(
-            Long patientId,
-            Pageable pageable
-    ) {
-        LOG.debug(
-                "[FIND_ALL_BY_PATIENT] patientId={} pageable={}",
-                patientId, pageable
-        );
+    public Page<EncounterVaccination> findPatientVaccinationsAll(Long patientId, Pageable pageable) {
+        LOG.debug("[FIND_ALL_BY_PATIENT] patientId={} pageable={}", patientId, pageable);
 
         return encounterVaccinationRepository.findByPatient_Id(
                 patientId,
@@ -273,16 +279,15 @@ public class EncounterVaccinationService {
         );
     }
 
-
     @Transactional(readOnly = true)
-    public EncounterVaccination getById(Long id) {
-        LOG.debug("[GET_BY_ID] EncounterVaccination id={}", id);
+    public EncounterVaccination getById(Long encounterVaccinationId) {
+        LOG.debug("[GET_BY_ID] EncounterVaccination id={}", encounterVaccinationId);
 
-        return encounterVaccinationRepository.findById(id)
+        return encounterVaccinationRepository.findById(encounterVaccinationId)
                 .orElseThrow(() -> {
-                    LOG.warn("[GET_BY_ID] EncounterVaccination not found id={}", id);
+                    LOG.warn("[GET_BY_ID] EncounterVaccination not found id={}", encounterVaccinationId);
                     return new NotFoundAlertException(
-                            "EncounterVaccination not found with id " + id,
+                            "EncounterVaccination not found with id " + encounterVaccinationId,
                             "encounterVaccination",
                             "notfound"
                     );
@@ -315,14 +320,12 @@ public class EncounterVaccinationService {
                     .findDistinctBrandIdsByPatient_IdAndVaccineId(patientId, vaccineId)
                     .stream()
                     .map(EncounterVaccinationProjections.VaccineBrandIdView::getVaccineBrandId)
-                    .distinct()
                     .toList();
 
             doseIds = encounterVaccinationRepository
                     .findDistinctDoseIdsByPatient_IdAndVaccineId(patientId, vaccineId)
                     .stream()
                     .map(EncounterVaccinationProjections.VaccineDoseIdView::getVaccineDoseId)
-                    .distinct()
                     .toList();
 
         } else {
@@ -344,7 +347,6 @@ public class EncounterVaccinationService {
                     )
                     .stream()
                     .map(EncounterVaccinationProjections.VaccineBrandIdView::getVaccineBrandId)
-                    .distinct()
                     .toList();
 
             doseIds = encounterVaccinationRepository
@@ -355,7 +357,6 @@ public class EncounterVaccinationService {
                     )
                     .stream()
                     .map(EncounterVaccinationProjections.VaccineDoseIdView::getVaccineDoseId)
-                    .distinct()
                     .toList();
         }
 
@@ -375,19 +376,11 @@ public class EncounterVaccinationService {
     public List<Long> findPatientVaccineIds(Long patientId) {
         LOG.debug("[FIND_PATIENT_VACCINE_IDS] patientId={}", patientId);
 
-        List<Long> vaccineIds = encounterVaccinationRepository
+        return encounterVaccinationRepository
                 .findDistinctByPatient_Id(patientId)
                 .stream()
                 .map(EncounterVaccinationProjections.VaccineIdView::getVaccineId)
                 .toList();
-
-        LOG.debug(
-                "[FIND_PATIENT_VACCINE_IDS] patientId={} vaccineIdsCount={}",
-                patientId,
-                vaccineIds.size()
-        );
-
-        return vaccineIds;
     }
 
     private RuntimeException handleConstraintViolation(Exception exception) {
@@ -397,28 +390,23 @@ public class EncounterVaccinationService {
 
         LOG.warn("[DB_CONSTRAINT] EncounterVaccination constraint violated rootMessage={}", message, exception);
 
-        if (messageLower.contains("ux_encounter_vaccination_patient_vaccine_dose_active")) {
-            LOG.warn("[DB_CONSTRAINT] Duplicate active patient/vaccine/dose violated (partial unique index)");
+        if (messageLower.contains("ux_enc_vacc_patient_dose_active")) {
+            LOG.warn("[DB_CONSTRAINT] Duplicate active patient/dose violated (partial unique index)");
             return new BadRequestAlertException(
-                    "This patient already has the same vaccine and dose recorded (non-cancelled).",
+                    "This patient already has the same vaccine dose recorded (non-cancelled).",
                     "encounterVaccination",
-                    "patient.vaccine.dose.duplicate.active"
+                    "patient.dose.duplicate.active"
             );
         }
 
-        if (messageLower.contains("ix_encounter_vaccination_patient_vaccine_dose")
-                || messageLower.contains("encounter_vaccination_patient_id_vaccine_id_vaccine_dose_id_key")
-                || messageLower.contains("unique")
-                && messageLower.contains("patient_id")
-                && messageLower.contains("vaccine_id")
-                && messageLower.contains("vaccine_dose_id")) {
-            LOG.warn("[DB_CONSTRAINT] Duplicate patient/vaccine/dose violated (unique index)");
+        if (messageLower.contains("ck_encounter_vaccination_external_facility_name")) {
             return new BadRequestAlertException(
-                    "This patient already has the same vaccine and dose recorded.",
+                    "External facility name is required when isExternalFacility is true.",
                     "encounterVaccination",
-                    "patient.vaccine.dose.duplicate"
+                    "externalFacilityName.required"
             );
         }
+
         if (messageLower.contains("ck_encounter_vaccination_cancellation_reason")) {
             return new BadRequestAlertException(
                     "Cancellation reason is required when status is CANCELLED.",
@@ -509,5 +497,4 @@ public class EncounterVaccinationService {
                 "db.constraint"
         );
     }
-
 }

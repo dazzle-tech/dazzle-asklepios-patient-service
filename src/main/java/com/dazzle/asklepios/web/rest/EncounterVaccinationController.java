@@ -46,66 +46,124 @@ public class EncounterVaccinationController {
 
     @PostMapping("/encounter-vaccination")
     public ResponseEntity<EncounterVaccination> create(
-            @Valid @RequestBody EncounterVaccinationCreateDTO dto
+            @Valid @RequestBody EncounterVaccinationCreateDTO createRequest
     ) {
-        LOG.debug("REST create EncounterVaccination payload={}", dto);
+        LOG.debug("REST create EncounterVaccination payload={}", createRequest);
 
-        if (dto == null) {
+        if (createRequest == null) {
             LOG.warn("[CREATE] EncounterVaccination rejected: payload is null");
-            throw new BadRequestAlertException("EncounterVaccination payload is required", "encounterVaccination", "payload.required");
+            throw new BadRequestAlertException(
+                    "EncounterVaccination payload is required",
+                    "encounterVaccination",
+                    "payload.required"
+            );
         }
 
-        if (dto.patientId() == null) {
-            LOG.warn("[CREATE] EncounterVaccination rejected: patientId is null payload={}", dto);
-            throw new BadRequestAlertException("Patient id is required", "encounterVaccination", "patient.required");
+        if (createRequest.patientId() == null) {
+            LOG.warn("[CREATE] EncounterVaccination rejected: patientId is null payload={}", createRequest);
+            throw new BadRequestAlertException(
+                    "Patient id is required",
+                    "encounterVaccination",
+                    "patient.required"
+            );
         }
 
-        EncounterVaccination created = encounterVaccinationService.create(dto);
+        if (Boolean.FALSE.equals(createRequest.isExternalFacility()) && createRequest.externalFacilityName() != null) {
+            LOG.debug("[CREATE] Clearing externalFacilityName because isExternalFacility=false");
+            createRequest = new EncounterVaccinationCreateDTO(
+                    createRequest.patientId(),
+                    createRequest.encounterId(),
+                    createRequest.vaccineId(),
+                    createRequest.vaccineBrandId(),
+                    createRequest.vaccineDoseId(),
+                    createRequest.vaccineLotNumber(),
+                    createRequest.dateAdministered(),
+                    createRequest.status(),
+                    createRequest.cancellationReason(),
+                    createRequest.administeredLocation(),
+                    createRequest.administrationReactions(),
+                    createRequest.isExternalFacility(),
+                    null,
+                    createRequest.notes()
+            );
+        }
+
+        EncounterVaccination createdEncounterVaccination = encounterVaccinationService.create(createRequest);
 
         return ResponseEntity
-                .created(URI.create("/api/patient/encounter-vaccination/" + created.getId()))
-                .body(created);
+                .created(URI.create("/api/patient/encounter-vaccination/" + createdEncounterVaccination.getId()))
+                .body(createdEncounterVaccination);
     }
+
     @PutMapping("/encounter-vaccination/{id}")
     public ResponseEntity<EncounterVaccination> update(
             @PathVariable Long id,
-            @Valid @RequestBody EncounterVaccinationUpdateDTO dto
+            @Valid @RequestBody EncounterVaccinationUpdateDTO updateRequest
     ) {
-        LOG.debug("REST update EncounterVaccination id={} payload={}", id, dto);
+        LOG.debug("REST update EncounterVaccination id={} payload={}", id, updateRequest);
 
-        if (dto == null) {
+        if (updateRequest == null) {
             LOG.warn("[UPDATE] EncounterVaccination rejected: payload is null");
-            throw new BadRequestAlertException("EncounterVaccination payload is required", "encounterVaccination", "payload.required");
+            throw new BadRequestAlertException(
+                    "EncounterVaccination payload is required",
+                    "encounterVaccination",
+                    "payload.required"
+            );
         }
 
-        if (dto.patientId() == null) {
-            LOG.warn("[UPDATE] EncounterVaccination rejected: patientId is null payload={}", dto);
-            throw new BadRequestAlertException("Patient id is required", "encounterVaccination", "patient.required");
+        if (updateRequest.patientId() == null) {
+            LOG.warn("[UPDATE] EncounterVaccination rejected: patientId is null payload={}", updateRequest);
+            throw new BadRequestAlertException(
+                    "Patient id is required",
+                    "encounterVaccination",
+                    "patient.required"
+            );
         }
 
-        EncounterVaccination updated = encounterVaccinationService.update(id, dto);
-        return ResponseEntity.ok(updated);
+        // clear name rule at API level (optional redundancy; DB + DTO validation already cover it)
+        if (Boolean.FALSE.equals(updateRequest.isExternalFacility()) && updateRequest.externalFacilityName() != null) {
+            LOG.debug("[UPDATE] Clearing externalFacilityName because isExternalFacility=false");
+            updateRequest = new EncounterVaccinationUpdateDTO(
+                    updateRequest.id(),
+                    updateRequest.patientId(),
+                    updateRequest.encounterId(),
+                    updateRequest.vaccineId(),
+                    updateRequest.vaccineBrandId(),
+                    updateRequest.vaccineDoseId(),
+                    updateRequest.vaccineLotNumber(),
+                    updateRequest.dateAdministered(),
+                    updateRequest.status(),
+                    updateRequest.administeredLocation(),
+                    updateRequest.administrationReactions(),
+                    updateRequest.isExternalFacility(),
+                    null,
+                    updateRequest.notes()
+            );
+        }
+
+        EncounterVaccination updatedEncounterVaccination = encounterVaccinationService.update(id, updateRequest);
+        return ResponseEntity.ok(updatedEncounterVaccination);
     }
 
     @PutMapping("/encounter-vaccination/cancel")
     public ResponseEntity<EncounterVaccination> cancel(
-            @Valid @RequestBody EncounterVaccinationCancelDTO dto
+            @Valid @RequestBody EncounterVaccinationCancelDTO cancelRequest
     ) {
         LOG.debug(
                 "REST cancel EncounterVaccination id={} reason={} cancelledById={}",
-                dto.id(), dto.cancellationReason(), dto.cancelledById()
+                cancelRequest.id(), cancelRequest.cancellationReason(), cancelRequest.cancelledById()
         );
 
-        if (dto.id() == null) {
+        if (cancelRequest.id() == null) {
             LOG.warn("[CANCEL] EncounterVaccination rejected: id is null");
             throw new BadRequestAlertException("EncounterVaccination id is required", "encounterVaccination", "id.required");
         }
 
-        if (dto.cancelledById() == null) {
+        if (cancelRequest.cancelledById() == null) {
             throw new BadRequestAlertException("CancelledBy is required", "encounterVaccination", "cancelledBy.required");
         }
 
-        EncounterVaccination existing = encounterVaccinationService.getById(dto.id());
+        EncounterVaccination existing = encounterVaccinationService.getById(cancelRequest.id());
 
         if (existing.getStatus() == EncounterVaccinationStatus.CANCELLED) {
             throw new BadRequestAlertException("Encounter vaccination already cancelled", "encounterVaccination", "already.cancelled");
@@ -117,30 +175,30 @@ public class EncounterVaccinationController {
             throw new BadRequestAlertException("Resolved encounter vaccination cannot be cancelled", "encounterVaccination", "already.resolved");
         }
 
-        EncounterVaccination cancelled = encounterVaccinationService.cancel(dto);
+        EncounterVaccination cancelledEncounterVaccination = encounterVaccinationService.cancel(cancelRequest);
 
-        return ResponseEntity.ok(cancelled);
+        return ResponseEntity.ok(cancelledEncounterVaccination);
     }
 
     @PutMapping("/review")
     public ResponseEntity<EncounterVaccination> review(
-            @Valid @RequestBody EncounterVaccinationReviewDTO dto
+            @Valid @RequestBody EncounterVaccinationReviewDTO reviewRequest
     ) {
         LOG.debug(
                 "REST review EncounterVaccination id={} reviewedById={}",
-                dto.id(), dto.reviewedById()
+                reviewRequest.id(), reviewRequest.reviewedById()
         );
 
-        if (dto.id() == null) {
+        if (reviewRequest.id() == null) {
             LOG.warn("[REVIEW] EncounterVaccination rejected: id is null");
             throw new BadRequestAlertException("EncounterVaccination id is required", "encounterVaccination", "id.required");
         }
 
-        if (dto.reviewedById() == null) {
+        if (reviewRequest.reviewedById() == null) {
             throw new BadRequestAlertException("ReviewedBy is required", "encounterVaccination", "reviewedBy.required");
         }
 
-        EncounterVaccination existing = encounterVaccinationService.getById(dto.id());
+        EncounterVaccination existing = encounterVaccinationService.getById(reviewRequest.id());
 
         if (existing.getStatus() == EncounterVaccinationStatus.REVIEW) {
             throw new BadRequestAlertException("Encounter vaccination already reviewed", "encounterVaccination", "already.reviewed");
@@ -152,9 +210,9 @@ public class EncounterVaccinationController {
             throw new BadRequestAlertException("Resolved encounter vaccination cannot be reviewed", "encounterVaccination", "already.resolved");
         }
 
-        EncounterVaccination reviewed = encounterVaccinationService.review(dto);
+        EncounterVaccination reviewedEncounterVaccination = encounterVaccinationService.review(reviewRequest);
 
-        return ResponseEntity.ok(reviewed);
+        return ResponseEntity.ok(reviewedEncounterVaccination);
     }
 
     @GetMapping("/encounter-vaccination/encounter/{encounterId}")
@@ -282,9 +340,9 @@ public class EncounterVaccinationController {
             throw new BadRequestAlertException("Vaccine id is required", "encounterVaccination", "vaccine.required");
         }
 
-        PatientVaccineDetailsDTO dto =
+        PatientVaccineDetailsDTO detailsResponse =
                 encounterVaccinationService.findPatientVaccineDetails(patientId, vaccineId, includeCancelled, pageable);
 
-        return ResponseEntity.ok(dto);
+        return ResponseEntity.ok(detailsResponse);
     }
 }

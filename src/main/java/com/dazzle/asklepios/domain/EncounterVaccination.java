@@ -12,6 +12,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Column;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -89,10 +90,21 @@ public class EncounterVaccination extends AbstractAuditingEntity<Long> implement
     @Column(name = "administration_reactions", columnDefinition = "text")
     private String administrationReactions;
 
+    @NotNull
+    @Column(name = "is_external_facility", nullable = false)
+    @Builder.Default
+    private Boolean isExternalFacility = false;
+
     @Column(name = "external_facility_name")
     private String externalFacilityName;
 
     @Column(name = "notes", columnDefinition = "text")
     private String notes;
+
+    @AssertTrue(message = "External facility name must be provided when isExternalFacility is true")
+    public boolean isExternalFacilityValid() {
+        return Boolean.FALSE.equals(isExternalFacility)
+                || (externalFacilityName != null && !externalFacilityName.isBlank());
+    }
 }
 
