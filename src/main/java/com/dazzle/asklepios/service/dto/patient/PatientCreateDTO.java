@@ -71,8 +71,8 @@ public record PatientCreateDTO(
         String details,
         Boolean isUnknown,
         Boolean isVerified,
-        Boolean isCompletedPatient,
+        Boolean isCompletedPatient)
 
-        boolean b) implements Serializable {
+     implements Serializable {
 
 }

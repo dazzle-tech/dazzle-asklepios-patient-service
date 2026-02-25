@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Column;
+import jakarta.validation.constraints.AssertTrue;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.NoArgsConstructor;
@@ -156,4 +157,17 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
     @Column(name = "is_completed_patient", nullable = false)
     private Boolean isCompletedPatient;
 
+    @AssertTrue(message = "When patient is not unknown, firstName, lastName, sexAtBirth, dateOfBirth, primaryMobileNumber and email are required")
+    public boolean isValidWhenNotUnknown() {
+        if (Boolean.TRUE.equals(isUnknown)) {
+            return true;
+        }
+
+        return firstName != null
+                && lastName != null
+                && sexAtBirth != null
+                && dateOfBirth != null
+                && primaryMobileNumber != null
+                && email != null;
+    }
 }

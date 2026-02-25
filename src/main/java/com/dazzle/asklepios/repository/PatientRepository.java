@@ -6,6 +6,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDate;
+import java.util.Optional;
 
 public interface PatientRepository extends JpaRepository<Patient, Long> {
 
@@ -27,5 +28,7 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
     );
 
     Page<Patient> findByIsUnknownTrue(Pageable pageable);
+
+    Optional<Patient> findByPreviousId(String previousId);
 
 }
