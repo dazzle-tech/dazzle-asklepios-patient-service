@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.List;
 
 @Repository
@@ -46,4 +47,20 @@ public interface DiagnosticOrderTestResultRepository
     // =========================================================
 
     List<DiagnosticOrderTestResult> findByOrderTestIdIn(List<Long> orderTestIds);
+
+
+    List<DiagnosticOrderTestResult>
+    findByOrderTestIdInAndCreatedDateBetween(
+            List<Long> orderTestIds,
+            Instant from,
+            Instant to
+    );
+
+    List<DiagnosticOrderTestResult>
+    findByOrderTestIdInAndCreatedDateBetweenAndProfileTestId(
+            List<Long> orderTestIds,
+            Instant from,
+            Instant to,
+            Long profileTestId
+    );
 }
