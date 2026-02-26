@@ -208,29 +208,55 @@ public class DiagnosticOrderTestReportService {
         return saved;
     }
 
-    public DiagnosticOrderTestReport reviewRadiologyReport(DiagnosticOrderTestReportReviewDTO orderTestReportReviewDTO) {
-        LOG.debug("[DiagnosticOrderTestReportService] REVIEW_RADIOLOGY_REPORT - start. payload={}", orderTestReportReviewDTO);
+    @Transactional
+    public DiagnosticOrderTestReport reviewRadiologyReport(
+            DiagnosticOrderTestReportReviewDTO orderTestReportReviewDTO) {
+
+        LOG.debug("[DiagnosticOrderTestReportService] TOGGLE_REVIEW_RADIOLOGY_REPORT - start. payload={}",
+                orderTestReportReviewDTO);
+
         requireRadiologyTest(orderTestReportReviewDTO.orderTestId());
 
-        DiagnosticOrderTestReport report = diagnosticOrderTestReportRepository.findByOrderTestId(orderTestReportReviewDTO.orderTestId())
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
-                        "diagnostic_order_tests_report",
-                        "Report not found for orderTestId " + orderTestReportReviewDTO.orderTestId()
-                ));
+        DiagnosticOrderTestReport report =
+                diagnosticOrderTestReportRepository
+                        .findByOrderTestId(orderTestReportReviewDTO.orderTestId())
+                        .orElseThrow(() -> new BadRequestAlertException(
+                                "notfound",
+                                "diagnostic_order_tests_report",
+                                "Report not found for orderTestId "
+                                        + orderTestReportReviewDTO.orderTestId()
+                        ));
 
-        report.setReviewBy(currentUsername());
-        report.setReviewDate(Instant.now());
+        String currentUser = currentUsername();
+        Instant now = Instant.now();
 
-        DiagnosticOrderTestReport saved = diagnosticOrderTestReportRepository.save(report);
+        if (report.getReviewDate() == null) {
+
+            report.setReviewBy(currentUser);
+            report.setReviewDate(now);
+
+            LOG.debug("[DiagnosticOrderTestReportService] REPORT REVIEWED. orderTestId={} by={}",
+                    report.getOrderTestId(), currentUser);
+
+        } else {
+
+            report.setReviewBy(null);
+            report.setReviewDate(null);
+
+            LOG.debug("[DiagnosticOrderTestReportService] REPORT UNREVIEWED. orderTestId={}",
+                    report.getOrderTestId());
+        }
+
+        DiagnosticOrderTestReport saved =
+                diagnosticOrderTestReportRepository.save(report);
 
         recomputeOrderStatusesByOrderTestId(saved.getOrderTestId());
 
-        LOG.debug("[DiagnosticOrderTestReportService] REVIEW_RADIOLOGY_REPORT - done. reportId={} orderTestId={} reviewBy={}",
-                saved.getId(), saved.getOrderTestId(), saved.getReviewBy());
+        LOG.debug("[DiagnosticOrderTestReportService] TOGGLE_REVIEW_RADIOLOGY_REPORT - done. reportId={} orderTestId={}",
+                saved.getId(), saved.getOrderTestId());
+
         return saved;
     }
-
     public DiagnosticOrderTestReport rejectRadiologyReport(DiagnosticOrderTestReportRejectDTO orderTestReportRejectDTO) {
         LOG.debug("[DiagnosticOrderTestReportService] REJECT_RADIOLOGY_REPORT - start. payload={}", orderTestReportRejectDTO);
         requireRadiologyTest(orderTestReportRejectDTO.orderTestId());

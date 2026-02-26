@@ -181,11 +181,14 @@ public class DiagnosticOrderTestReportController {
         return ResponseEntity.ok(DiagnosticOrderTestReportResponseVM.ofEntity(updated));
     }
 
-    @PostMapping("/radiology/reports/review")
-    public ResponseEntity<DiagnosticOrderTestReportResponseVM> review(@Valid @RequestBody DiagnosticOrderTestReportReviewDTO orderTestReportReviewDTO) {
-        LOG.debug("[RadiologyReport] REVIEW payload={}", orderTestReportReviewDTO);
+    @PostMapping("/radiology/reports/review/toggle")
+    public ResponseEntity<DiagnosticOrderTestReportResponseVM> toggleReview(
+            @Valid @RequestBody DiagnosticOrderTestReportReviewDTO dto) {
 
-        DiagnosticOrderTestReport updated = reportService.reviewRadiologyReport(orderTestReportReviewDTO);
+        LOG.debug("[RadiologyReport] TOGGLE REVIEW payload={}", dto);
+
+        DiagnosticOrderTestReport updated =
+                reportService.reviewRadiologyReport(dto);
 
         return ResponseEntity.ok(DiagnosticOrderTestReportResponseVM.ofEntity(updated));
     }
