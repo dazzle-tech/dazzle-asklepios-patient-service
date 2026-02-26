@@ -112,39 +112,39 @@ public class PatientService {
 
     public Patient createUnknown(UnknownPatientCreateDTO dto) {
 
-    Patient unknownPatient = Patient.builder()
-            .isUnknown(true)
-            .isVerified(Boolean.TRUE.equals(dto.isVerified()))
-            .isCompletedPatient(Boolean.TRUE.equals(dto.isCompletedPatient()))
-            .build();
+        Patient unknownPatient = Patient.builder()
+                .isUnknown(true)
+                .isVerified(Boolean.TRUE.equals(dto.isVerified()))
+                .isCompletedPatient(Boolean.TRUE.equals(dto.isCompletedPatient()))
+                .build();
 
-    try {
-        Patient createdPatient = patientRepository.saveAndFlush(unknownPatient);
+        try {
+            Patient createdPatient = patientRepository.saveAndFlush(unknownPatient);
 
-        String mrn = createdPatient.getMedicalRecordNumber();
+            String mrn = createdPatient.getMedicalRecordNumber();
 
-        if (mrn != null && !mrn.isBlank()) {
-            createdPatient.setFirstName("Unknown " + mrn);
-            createdPatient.setLastName(null);
+            if (mrn != null && !mrn.isBlank()) {
+                createdPatient.setFirstName("Unknown " + mrn);
+                createdPatient.setLastName(null);
 
-            createdPatient = patientRepository.saveAndFlush(createdPatient);
+                createdPatient = patientRepository.saveAndFlush(createdPatient);
+            }
+
+            LOG.info("Created UNKNOWN patient id={} MRN={}",
+                    createdPatient.getId(),
+                    createdPatient.getMedicalRecordNumber());
+
+            return createdPatient;
+
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            handleConstraintsOnCreateOrUpdate(ex);
+            throw new BadRequestAlertException(
+                    "Database constraint violated while saving patient.",
+                    "patient",
+                    "db.constraint"
+            );
         }
-
-        LOG.info("Created UNKNOWN patient id={} MRN={}",
-                createdPatient.getId(),
-                createdPatient.getMedicalRecordNumber());
-
-        return createdPatient;
-
-    } catch (DataIntegrityViolationException | JpaSystemException ex) {
-        handleConstraintsOnCreateOrUpdate(ex);
-        throw new BadRequestAlertException(
-                "Database constraint violated while saving patient.",
-                "patient",
-                "db.constraint"
-        );
     }
-}
 
 
     public Patient update(Long id, PatientUpdateDTO dto) {
