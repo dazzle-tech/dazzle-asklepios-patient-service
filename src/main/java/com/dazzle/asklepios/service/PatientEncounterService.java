@@ -372,6 +372,60 @@ public class PatientEncounterService {
         }
     }
 
+    public PatientEncounter dischargeEncounter(Long encounterId) {
+        LOG.info("[DISCHARGE] PatientEncounter id={}", encounterId);
+
+        PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "PatientEncounter not found with id " + encounterId,
+                        "patientEncounter",
+                        "id.notfound"
+                ));
+
+        if (encounter.getStatus() != EncounterStatus.ONGOING) {
+            throw new BadRequestAlertException(
+                    "Discharge allowed only when status is ONGOING.",
+                    "patientEncounter",
+                    "discharge.notAllowed"
+            );
+        }
+
+        encounter.setStatus(EncounterStatus.DISCHARGED);
+
+        PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
+        entityManager.refresh(saved);
+
+        LOG.info("[DISCHARGE] success id={} status={}", saved.getId(), saved.getStatus());
+        return saved;
+    }
+
+    public PatientEncounter completeEncounter(Long encounterId) {
+        LOG.info("[COMPLETE] PatientEncounter id={}", encounterId);
+
+        PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "PatientEncounter not found with id " + encounterId,
+                        "patientEncounter",
+                        "id.notfound"
+                ));
+
+        if (encounter.getStatus() != EncounterStatus.ONGOING) {
+            throw new BadRequestAlertException(
+                    "Complete allowed only when status is ONGOING.",
+                    "patientEncounter",
+                    "complete.notAllowed"
+            );
+        }
+
+        encounter.setStatus(EncounterStatus.CLOSED);
+
+        PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
+        entityManager.refresh(saved);
+
+        LOG.info("[COMPLETE] success id={} status={}", saved.getId(), saved.getStatus());
+        return saved;
+    }
+
     @Transactional(readOnly = true)
     public long countTodayEncountersByFacility(Long facilityId) {
 
@@ -459,7 +513,16 @@ public class PatientEncounterService {
         return cancelled;
     }
 
+    @Transactional(readOnly = true)
+    public Page<PatientEncounter> getEncountersByPatientId(
+            Long patientId,
+            Pageable pageable
+    ) {
+        LOG.debug("[GET_BY_PATIENT] patientId={} pageable={}", patientId, pageable);
 
+        return patientEncounterRepository
+                .findByPatientIdOrderByCreatedDateDesc(patientId, pageable);
+    }
 
     private RuntimeException handleConstraintViolation(Exception exception) {
         Throwable root = getRootCause(exception);

@@ -142,6 +142,7 @@ public class PatientEncounterController {
 
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
+
     @GetMapping("/encounter/department/{departmentId}/count/today/total-patients")
     public ResponseEntity<Long> countTodayDepartmentTotalPatients(
             @PathVariable @NotNull Long departmentId
@@ -180,6 +181,7 @@ public class PatientEncounterController {
 
         return ResponseEntity.ok(completed);
     }
+
     @GetMapping("/encounter/department/{departmentId}/count/today/cancelled")
     public ResponseEntity<Long> countTodayDepartmentCancelled(
             @PathVariable @NotNull Long departmentId
@@ -192,6 +194,7 @@ public class PatientEncounterController {
 
         return ResponseEntity.ok(cancelled);
     }
+
     @GetMapping("/encounter/patient/{patientId}/department/{departmentId}/previous")
     public ResponseEntity<List<PatientEncounter>> listPreviousEncountersSameDepartment(
             @PathVariable @NotNull Long patientId,
@@ -222,6 +225,7 @@ public class PatientEncounterController {
         PatientEncounter started = patientEncounterService.startEncounter(encounterId);
         return ResponseEntity.ok(started);
     }
+
     @PostMapping("/encounter/{id}/cancel")
     public ResponseEntity<PatientEncounter> cancelEncounter(
             @PathVariable("id") @NotNull Long encounterId
@@ -231,6 +235,59 @@ public class PatientEncounterController {
 
         PatientEncounter cancelled = patientEncounterService.cancelEncounter(encounterId);
         return ResponseEntity.ok(cancelled);
+    }
+
+    @PostMapping("/encounter/{id}/discharge")
+    public ResponseEntity<PatientEncounter> dischargeEncounter(
+            @PathVariable("id") @NotNull Long encounterId
+    ) {
+
+        LOG.debug("REST discharge PatientEncounter id={}", encounterId);
+
+        PatientEncounter encounter =
+                patientEncounterService.getEncountersByPatientId(encounterId, Pageable.unpaged())
+                        .stream()
+                        .findFirst()
+                        .orElse(null);
+
+        PatientEncounter existing =
+                patientEncounterService.dischargeEncounter(encounterId);
+
+
+        return ResponseEntity.ok(existing);
+    }
+
+    @PostMapping("/encounter/{id}/complete")
+    public ResponseEntity<PatientEncounter> completeEncounter(
+            @PathVariable("id") @NotNull Long encounterId
+    ) {
+
+        LOG.debug("REST complete PatientEncounter id={}", encounterId);
+
+        PatientEncounter existing =
+                patientEncounterService.completeEncounter(encounterId);
+
+        return ResponseEntity.ok(existing);
+    }
+
+    @GetMapping("/encounter/patient/{patientId}")
+    public ResponseEntity<List<PatientEncounter>> getEncountersByPatient(
+            @PathVariable @NotNull Long patientId,
+            @ParameterObject Pageable pageable
+    ) {
+
+        LOG.debug("REST get PatientEncounters by patientId={} pageable={}", patientId, pageable);
+
+        Page<PatientEncounter> page =
+                patientEncounterService.getEncountersByPatientId(patientId, pageable);
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
 }

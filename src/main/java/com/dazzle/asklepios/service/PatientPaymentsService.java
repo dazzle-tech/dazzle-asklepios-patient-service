@@ -384,11 +384,7 @@ public class PatientPaymentsService {
         PatientPayments refreshed = entityManager.find(PatientPayments.class, saved.getId());
         List<PatientPaymentServices> refreshedServices = serviceRepository.findByPayment_Id(refreshed.getId());
 
-        PatientEncounter encounter = refreshed.getEncounter();
-        if (encounter != null) {
-            encounter.setStatus(EncounterStatus.NEW);
-            encounterRepository.saveAndFlush(encounter);
-        }
+
 
         BigDecimal amountPaid = refreshed.getAmountInFacilityCurrency() != null
                 ? refreshed.getAmountInFacilityCurrency()
@@ -409,7 +405,6 @@ public class PatientPaymentsService {
                 refreshedServices
         );
     }
-
 
     public PatientPaymentDetailsDTO create(PatientPaymentCreateDTO dto) {
         LOG.info("[CREATE] PatientPayments payload={}", dto);
@@ -507,8 +502,10 @@ public class PatientPaymentsService {
             LOG.info("[CREATE] PatientPayments saved paymentId={} patientId={} encounterId={} servicesCount={} dueAmount={}",
                     saved.getId(), dto.patientId(), dto.encounterId(), serviceRows.size(), dueAmount);
 
-            return finalizeAndReturnDetails(saved);
+            encounter.setStatus(EncounterStatus.NEW);
+            encounterRepository.saveAndFlush(encounter);
 
+            return finalizeAndReturnDetails(saved);
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             LOG.warn("[CREATE] PatientPayments failed (constraint) payload={}", dto, ex);
             throw handleConstraintViolation(ex);
@@ -572,6 +569,7 @@ public class PatientPaymentsService {
                 walletBalance
         );
     }
+
     private PatientInsurance resolvePlan(PatientPaymentCreateDTO dto) {
         PatientInsurance plan = null;
 

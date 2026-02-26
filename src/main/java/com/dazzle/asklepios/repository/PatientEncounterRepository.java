@@ -45,4 +45,9 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
             EncounterStatus status,
             Long id
     );
+
+    Page<PatientEncounter> findByPatientIdOrderByCreatedDateDesc(
+            Long patientId,
+            Pageable pageable
+    );
 }
