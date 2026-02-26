@@ -173,13 +173,6 @@ info:
 patient:
   clientApp:
     name: 'patientApp'
-  # By default CORS is disabled. Uncomment to enable.
-  # cors:
-  #   allowed-origins: "http://localhost:8100,http://localhost:9000"
-  #   allowed-methods: "*"
-  #   allowed-headers: "*"
-  #   allow-credentials: true
-  #   max-age: 1800
   mail:
     from: patient@localhost
   api-docs:

@@ -1,23 +1,22 @@
 package com.dazzle.asklepios.web.rest;
-
 import com.dazzle.asklepios.domain.Address;
 import com.dazzle.asklepios.service.AddressService;
-import com.dazzle.asklepios.web.rest.vm.address.AddressCreateVM;
-import com.dazzle.asklepios.web.rest.vm.address.AddressResponseVM;
-import com.dazzle.asklepios.web.rest.vm.address.AddressUpdateVM;
+
+import com.dazzle.asklepios.service.dto.patientAddress.AddressCreateDTO;
+import com.dazzle.asklepios.service.dto.patientAddress.AddressUpdateDTO;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.vm.AddressResponseVM;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-
-
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import java.net.URI;
 import java.util.List;
 
@@ -36,58 +35,44 @@ public class AddressController {
     @PostMapping("/addresses/patient/{patientId}")
     public ResponseEntity<AddressResponseVM> createAddress(
             @PathVariable Long patientId,
-            @Valid @RequestBody AddressCreateVM vm
+            @Valid @RequestBody AddressCreateDTO dto
     ) {
-        LOG.debug("REST create Address for patientId={} payload={}", patientId, vm);
+        LOG.debug("REST create Address for patientId={} payload={}", patientId, dto);
 
-        Address toCreate = Address.builder()
-                .country(vm.country())
-                .stateProvince(vm.stateProvince())
-                .city(vm.city())
-                .streetName(vm.streetName())
-                .houseApartmentNumber(vm.houseApartmentNumber())
-                .postalZipCode(vm.postalZipCode())
-                .additionalAddressLine(vm.additionalAddressLine())
-                .countryId(vm.countryId())
-                .build();
+        Address created = addressService.create(patientId, dto);
 
-        Address created = addressService.create(patientId, toCreate);
-        AddressResponseVM body = AddressResponseVM.ofEntity(created);
+        LOG.debug(
+                "REST create Address success id={} patientId={} isCurrent={}",
+                created.getId(),
+                patientId,
+                created.getIsCurrent()
+        );
 
         return ResponseEntity
-                .created(URI.create("/api/address/addresses/" + created.getId()))
-                .body(body);
+                .created(URI.create("/api/patient/addresses/patient/" + patientId))
+                .body(AddressResponseVM.ofEntity(created));
     }
 
 
     @PutMapping("/addresses/{id}")
     public ResponseEntity<AddressResponseVM> updateAddress(
             @PathVariable Long id,
-            @Valid @RequestBody AddressUpdateVM vm
+            @Valid @RequestBody AddressUpdateDTO dto
     ) {
-        LOG.debug("REST update Address id={} payload={}", id, vm);
+        if (dto == null) {
+            throw new BadRequestAlertException("Address payload is required", "address", "payload.required");
+        }
 
-        if (vm.id() == null || !vm.id().equals(id)) {
-            throw new com.dazzle.asklepios.web.rest.errors.BadRequestAlertException(
-                    "Invalid id", "address", "idinvalid"
+        if (dto.id() == null || !dto.id().equals(id)) {
+            throw new BadRequestAlertException(
+                    "Path id does not match payload id",
+                    "address",
+                    "id.mismatch"
             );
         }
 
-        Address patch = new Address();
-        patch.setId(vm.id());
-        patch.setCountry(vm.country());
-        patch.setStateProvince(vm.stateProvince());
-        patch.setCity(vm.city());
-        patch.setStreetName(vm.streetName());
-        patch.setHouseApartmentNumber(vm.houseApartmentNumber());
-        patch.setPostalZipCode(vm.postalZipCode());
-        patch.setAdditionalAddressLine(vm.additionalAddressLine());
-        patch.setCountryId(vm.countryId());
-
-        return addressService.update(id, patch)
-                .map(AddressResponseVM::ofEntity)
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        Address updated = addressService.update(dto);
+        return ResponseEntity.ok(AddressResponseVM.ofEntity(updated));
     }
 
 
@@ -95,9 +80,8 @@ public class AddressController {
     public ResponseEntity<List<AddressResponseVM>> getAddressesByPatient(
             @PathVariable Long patientId
     ) {
-        LOG.debug("REST list Addresses for patientId={}", patientId);
-
         List<Address> list = addressService.findAllByPatient(patientId);
+
         List<AddressResponseVM> body = list.stream()
                 .map(AddressResponseVM::ofEntity)
                 .toList();
@@ -105,14 +89,11 @@ public class AddressController {
         return ResponseEntity.ok(body);
     }
 
-
     @GetMapping("/addresses/patient/{patientId}/current")
-    public ResponseEntity<AddressResponseVM> getCurrentAddress(@PathVariable Long patientId) {
-        LOG.debug("REST get current Address for patientId={}", patientId);
-
+    public ResponseEntity<AddressResponseVM> getCurrentAddress(
+            @PathVariable Long patientId
+    ) {
         Address current = addressService.findCurrentByPatient(patientId);
-        AddressResponseVM body = AddressResponseVM.ofEntity(current);
-
-        return ResponseEntity.ok(body);
+        return ResponseEntity.ok(AddressResponseVM.ofEntity(current));
     }
 }

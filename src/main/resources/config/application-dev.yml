@@ -42,14 +42,6 @@ server:
   # make sure requests the proxy uri instead of the server one
   forward-headers-strategy: framework
 patient:
-  # CORS is disabled by default on microservices, as you should access them through a gateway.
-  # If you want to enable it, please uncomment the configuration below.
-  # cors:
-  #   allowed-origins: "http://localhost:9000,https://localhost:9000"
-  #   allowed-methods: "*"
-  #   allowed-headers: "*"
-  #   allow-credentials: true
-  #   max-age: 1800
   security:
     authentication:
       jwt:
