@@ -100,15 +100,17 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     private String chiefComplaint;
 
     @NotNull
+    @Builder.Default
     @Column(name = "has_prescription", nullable = false)
     private Boolean hasPrescription = false;
 
     @NotNull
+    @Builder.Default
     @Column(name = "has_order", nullable = false)
     private Boolean hasOrder = false;
 
     @NotNull
+    @Builder.Default
     @Column(name = "is_observed", nullable = false)
     private Boolean isObserved = false;
-
 }
