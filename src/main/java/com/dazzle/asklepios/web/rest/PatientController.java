@@ -350,7 +350,7 @@ public class PatientController {
                 HttpStatus.OK
         );
     }
-  
+
     @PostMapping("/bulk/basic-info")
     public ResponseEntity<List<PatientBasicInformationResponseVM>> getBulkPatientBasicInfo(
             @RequestBody List<Long> ids
@@ -399,3 +399,4 @@ public class PatientController {
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
 }
+
