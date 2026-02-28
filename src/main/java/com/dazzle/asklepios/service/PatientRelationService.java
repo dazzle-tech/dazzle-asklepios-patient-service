@@ -105,7 +105,7 @@ public class PatientRelationService {
         Gender relatedPatientGender = relatedPatient.getSexAtBirth();
 
         RelationsMatrix inverseMapping = matrixRepository
-                .findFirstByFirstPatientGenderAndSecondPatientGenderAndFirstRelationCodeWithLog(
+                .findFirstByFirstPatientGenderAndSecondPatientGenderAndFirstRelationCode(
                         sourcePatientGender,
                         relatedPatientGender,
                         requestedRelationType
@@ -209,7 +209,7 @@ public class PatientRelationService {
        Gender relatedPatientGender = newRelatedPatient.getSexAtBirth();
 
        RelationType inverseRelationType = matrixRepository
-               .findFirstByFirstPatientGenderAndSecondPatientGenderAndFirstRelationCodeWithLog(sourcePatientGender, relatedPatientGender, existingRelationType)
+               .findFirstByFirstPatientGenderAndSecondPatientGenderAndFirstRelationCode(sourcePatientGender, relatedPatientGender, existingRelationType)
                .map(RelationsMatrix::getSecondRelationCode)
                .orElse(null);
 
@@ -266,7 +266,7 @@ public class PatientRelationService {
         Gender relatedPatientGender = relationToDelete.getRelativePatient().getSexAtBirth();
 
         RelationType inverseRelationType = matrixRepository
-                .findFirstByFirstPatientGenderAndSecondPatientGenderAndFirstRelationCodeWithLog(
+                .findFirstByFirstPatientGenderAndSecondPatientGenderAndFirstRelationCode(
                         sourcePatientGender,
                         relatedPatientGender,
                         relationType

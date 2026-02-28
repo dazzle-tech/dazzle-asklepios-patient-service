@@ -26,13 +26,13 @@ public class RelationsMatrixService {
 
     public Page<RelationsMatrix> findByFirstGender(Gender firstGender, Pageable pageable) {
         LOG.debug("[FIND_BY_FIRST_GENDER] RelationsMatrixService firstGender={} pageable={}", firstGender, pageable);
-        return matrixRepository.findByFirstPatientGenderWithLog(firstGender, pageable);
+        return matrixRepository.findByFirstPatientGender(firstGender, pageable);
     }
 
     public Page<RelationsMatrix> findByFirstAndSecondGender(Gender firstGender, Gender secondGender, Pageable pageable) {
         LOG.debug("[FIND_BY_GENDERS] RelationsMatrixService firstGender={} secondGender={} pageable={}",
                 firstGender, secondGender, pageable);
-        return matrixRepository.findByFirstPatientGenderAndSecondPatientGenderWithLog(firstGender, secondGender, pageable);
+        return matrixRepository.findByFirstPatientGenderAndSecondPatientGender(firstGender, secondGender, pageable);
     }
 
 
