@@ -10,21 +10,21 @@ import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchF
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
-import org.springframework.data.jpa.domain.Specification;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -40,8 +40,6 @@ public class PatientEncounterService {
 
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientRepository patientRepository;
-
-    private final EntityManager entityManager;
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
         LOG.info("[CREATE] PatientEncounter payload={}", createDTO);
@@ -84,12 +82,11 @@ public class PatientEncounterService {
 
         try {
             PatientEncounter createdPatientEncounter = patientEncounterRepository.saveAndFlush(patientEncounterToCreate);
-            entityManager.refresh(createdPatientEncounter);
             LOG.info("[CREATE] PatientEncounter success id={} patientId={} departmentId={} status={}",
                     createdPatientEncounter.getId(),
                     createDTO.patientId(),
                     createDTO.departmentId(),
-                    createDTO.status()
+                    createdPatientEncounter.getStatus()
             );
             return createdPatientEncounter;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -113,6 +110,7 @@ public class PatientEncounterService {
                             "id.notfound"
                     );
                 });
+
         Patient patient = patientRepository.findById(updateDTO.patientId())
                 .orElseThrow(() -> {
                     LOG.warn("[UPDATE] PatientEncounter rejected: patient not found patientId={} encounterId={}",
@@ -140,7 +138,6 @@ public class PatientEncounterService {
         existingPatientEncounter.setIsObserved(updateDTO.isObserved());
         existingPatientEncounter.setHasPrescription(updateDTO.hasPrescription());
 
-
         if (updateDTO.followUpEncounterId() != null) {
             PatientEncounter followUpEncounter = patientEncounterRepository.findById(updateDTO.followUpEncounterId())
                     .orElseThrow(() -> new NotFoundAlertException(
@@ -155,7 +152,6 @@ public class PatientEncounterService {
 
         try {
             PatientEncounter updatedPatientEncounter = patientEncounterRepository.saveAndFlush(existingPatientEncounter);
-            entityManager.refresh(updatedPatientEncounter);
             LOG.info("[UPDATE] PatientEncounter success id={} patientId={} departmentId={} status={}",
                     updatedPatientEncounter.getId(),
                     updateDTO.patientId(),
@@ -174,8 +170,6 @@ public class PatientEncounterService {
 
     @Transactional(readOnly = true)
     public Page<PatientEncounter> filterEncounters(PatientEncounterSearchFilterDTO filter, Pageable pageable) {
-
-
         LOG.debug("Service filter PatientEncounters filter={} pageable={}", filter, pageable);
 
         LocalDate today = LocalDate.now();
@@ -196,8 +190,7 @@ public class PatientEncounterService {
                 effectiveFrom, effectiveTo, effectiveStatuses, hasPatientName, hasMrn, hasChief,
                 filter.hasPrescription(), filter.hasOrder(), filter.isObserved());
 
-        Specification<PatientEncounter> spec = (root, query, cb) -> {
-
+        Specification<PatientEncounter> encounterFilterSpec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
             predicates.add(cb.equal(root.get("departmentId"), filter.departmentId()));
@@ -234,7 +227,6 @@ public class PatientEncounterService {
             }
 
             if (hasPatientName || hasMrn) {
-
                 Join<PatientEncounter, Patient> patientJoin = root.join("patient", JoinType.INNER);
 
                 if (hasMrn) {
@@ -246,10 +238,10 @@ public class PatientEncounterService {
                     if (raw != null) {
                         String[] tokens = raw.trim().toLowerCase().split("\\s+");
 
-                        Expression<String> first  = cb.lower(cb.coalesce(patientJoin.get("firstName"), ""));
+                        Expression<String> first = cb.lower(cb.coalesce(patientJoin.get("firstName"), ""));
                         Expression<String> second = cb.lower(cb.coalesce(patientJoin.get("secondName"), ""));
-                        Expression<String> third  = cb.lower(cb.coalesce(patientJoin.get("thirdName"), ""));
-                        Expression<String> last   = cb.lower(cb.coalesce(patientJoin.get("lastName"), ""));
+                        Expression<String> third = cb.lower(cb.coalesce(patientJoin.get("thirdName"), ""));
+                        Expression<String> last = cb.lower(cb.coalesce(patientJoin.get("lastName"), ""));
 
                         Predicate[] tokenPreds = java.util.Arrays.stream(tokens)
                                 .filter(t -> t != null && !t.isBlank())
@@ -274,13 +266,14 @@ public class PatientEncounterService {
             return cb.and(predicates.toArray(new Predicate[0]));
         };
 
-        Page<PatientEncounter> result = patientEncounterRepository.findAll(spec, pageable);
+        Page<PatientEncounter> result = patientEncounterRepository.findAll(encounterFilterSpec, pageable);
 
         LOG.debug("[FILTER] PatientEncounters result totalElements={} totalPages={} pageNumber={} pageSize={}",
                 result.getTotalElements(), result.getTotalPages(), result.getNumber(), result.getSize());
 
         return result;
     }
+
     @Transactional(readOnly = true)
     public Page<PatientEncounter> findPreviousByPatientAndDepartment(
             Long patientId,
@@ -332,7 +325,6 @@ public class PatientEncounterService {
 
         try {
             PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
-            entityManager.refresh(saved);
             LOG.info("[START] success id={} status={}", saved.getId(), saved.getStatus());
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -351,19 +343,20 @@ public class PatientEncounterService {
                         "id.notfound"
                 ));
 
-        if (encounter.getStatus() != EncounterStatus.NEW || Boolean.TRUE.equals(encounter.getIsObserved())) {
+        // Cancel allowed when status is NEW OR isObserved is false
+        if (encounter.getStatus() != EncounterStatus.NEW && Boolean.TRUE.equals(encounter.getIsObserved())) {
             throw new BadRequestAlertException(
-                    "Cancel is allowed only when status is NEW and isObserved is false.",
+                    "Cancel is allowed only when status is NEW OR isObserved is false.",
                     "patientEncounter",
                     "cancel.notAllowed.rule"
             );
         }
 
-        encounter.setStatus(EncounterStatus.CANCELED);
+        // Use CANCELLED (double-L) to match DB + constraint
+        encounter.setStatus(EncounterStatus.CANCELLED);
 
         try {
             PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
-            entityManager.refresh(saved);
             LOG.info("[CANCEL] success id={} status={}", saved.getId(), saved.getStatus());
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -393,8 +386,6 @@ public class PatientEncounterService {
         encounter.setStatus(EncounterStatus.DISCHARGED);
 
         PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
-        entityManager.refresh(saved);
-
         LOG.info("[DISCHARGE] success id={} status={}", saved.getId(), saved.getStatus());
         return saved;
     }
@@ -420,15 +411,12 @@ public class PatientEncounterService {
         encounter.setStatus(EncounterStatus.CLOSED);
 
         PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
-        entityManager.refresh(saved);
-
         LOG.info("[COMPLETE] success id={} status={}", saved.getId(), saved.getStatus());
         return saved;
     }
 
     @Transactional(readOnly = true)
     public long countTodayEncountersByFacility(Long facilityId) {
-
         LocalDate todayDate = LocalDate.now();
 
         LOG.debug("[COUNT_TODAY_FACILITY_ENCOUNTERS] facilityId={} todayDate={}",
@@ -457,6 +445,7 @@ public class PatientEncounterService {
 
         return total;
     }
+
     @Transactional(readOnly = true)
     public long countTodayDepartmentActiveCases(Long departmentId) {
         LocalDate today = LocalDate.now();
@@ -504,7 +493,7 @@ public class PatientEncounterService {
                 .countByDepartmentIdAndEncounterDateAndStatus(
                         departmentId,
                         today,
-                        EncounterStatus.CANCELED
+                        EncounterStatus.CANCELLED
                 );
 
         LOG.debug("[DASHBOARD] COUNT_CANCELLED_RESULT departmentId={} date={} total={}",
@@ -563,9 +552,9 @@ public class PatientEncounterService {
             );
         }
 
-        if (messageLower.contains("ck_patient_encounters_cancel_only_when_new_not_observed")) {
+        if (messageLower.contains("ck_patient_encounters_cancel_only_when_new_or_not_observed")) {
             return new BadRequestAlertException(
-                    "Cancel is allowed only when status is NEW and isObserved is false.",
+                    "Cancel is allowed only when status is NEW OR isObserved is false.",
                     "patientEncounter",
                     "cancel.notAllowed.dbRule"
             );
@@ -573,15 +562,3 @@ public class PatientEncounterService {
 
         if (messageLower.contains("uq_patient_one_ongoing_encounter")) {
             return new BadRequestAlertException(
-                    "Patient already has an ONGOING encounter. Starting another one is not allowed.",
-                    "patientEncounter",
-                    "patient.hasOngoing.dbRule"
-            );
-        }
-
-        return new BadRequestAlertException(
-                "Database constraint violated while saving patient encounter.",
-                "patientEncounter",
-                "db.constraint"
-        );
-    }}
