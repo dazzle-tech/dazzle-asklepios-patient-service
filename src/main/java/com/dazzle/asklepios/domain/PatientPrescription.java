@@ -53,7 +53,7 @@ public class PatientPrescription extends AbstractAuditingEntity<Long> implements
     private LocalDate prescriptionDate;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "urgency_level", length = 50)
+    @Column(name = "urgency_level", length = 50, nullable = false)
     private PrescriptionUrgencyLevel urgencyLevel;
 
     @Enumerated(EnumType.STRING)

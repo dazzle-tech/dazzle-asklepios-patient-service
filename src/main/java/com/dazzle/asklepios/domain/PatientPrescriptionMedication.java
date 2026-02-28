@@ -71,8 +71,8 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
     @Column(name = "duration_type", length = 50)
     private String durationType;
 
-    @Column(name = "chronic_medication")
-    private Boolean chronicMedication;
+    @Column(name = "chronic_medication", nullable = false)
+    private Boolean chronicMedication = false;
 
     @Column(name = "maximum_dose")
     private Long maximumDose;
@@ -89,7 +89,7 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
     @Column(name = "indication_use", columnDefinition = "text")
     private String indicationUse;
 
-    @Column(name = "indication_icd")
+    @Column(name = "indication_icd", nullable = false)
     private Long indicationIcd;
 
     @Column(name = "parameters_to_monitor", columnDefinition = "text")
@@ -111,7 +111,7 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
     private String extraDocumentation;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", length = 50)
+    @Column(name = "status", length = 50, nullable = false)
     private PrescriptionStatus status;
 
 }

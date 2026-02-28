@@ -6,6 +6,8 @@ import com.dazzle.asklepios.service.dto.patientPrescription.PrescriptionMedicati
 import com.dazzle.asklepios.service.dto.patientPrescription.PrescriptionMedicationUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpHeaders;
@@ -28,14 +30,17 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PatientPrescriptionMedicationController {
 
-    private final PatientPrescriptionMedicationService service;
+    private static final Logger LOG =
+            LoggerFactory.getLogger(PatientPrescriptionMedicationController.class);
+    private final PatientPrescriptionMedicationService patientPrescriptionMedicationService;
 
     @GetMapping("/patient-prescription-medications")
     public ResponseEntity<List<PatientPrescriptionMedication>> list(
             @RequestParam Long prescriptionHeaderId,
             Pageable pageable
     ) {
-        Page<PatientPrescriptionMedication> page = service.list(prescriptionHeaderId, pageable);
+        LOG.debug("Received request to list all prescription medications");
+        Page<PatientPrescriptionMedication> page = patientPrescriptionMedicationService.list(prescriptionHeaderId, pageable);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
@@ -45,22 +50,33 @@ public class PatientPrescriptionMedicationController {
 
     @GetMapping("/patient-prescription-medications/{id}")
     public ResponseEntity<PatientPrescriptionMedication> get(@PathVariable Long id) {
-        return ResponseEntity.ok(service.get(id));
+        LOG.debug("Received request to get prescription medication with id: {}", id);
+        return ResponseEntity.ok(patientPrescriptionMedicationService.get(id));
     }
 
     @PostMapping("/patient-prescription-medications")
-    public ResponseEntity<PatientPrescriptionMedication> create(@RequestBody PrescriptionMedicationCreateDTO vm) {
-        return ResponseEntity.ok(service.create(vm));
+    public ResponseEntity<PatientPrescriptionMedication> create(@RequestBody PrescriptionMedicationCreateDTO prescriptionMedicationCreateDTO) {
+        LOG.debug("Received request to create a prescription medication");
+        return ResponseEntity.ok(patientPrescriptionMedicationService.create(prescriptionMedicationCreateDTO));
     }
 
     @PutMapping("/patient-prescription-medications/{id}")
-    public ResponseEntity<PatientPrescriptionMedication> update(@PathVariable Long id, @RequestBody PrescriptionMedicationUpdateDTO vm) {
-        return ResponseEntity.ok(service.update(id, vm));
+    public ResponseEntity<PatientPrescriptionMedication> update(@PathVariable Long id, @RequestBody PrescriptionMedicationUpdateDTO prescriptionMedicationUpdateDTO) {
+        LOG.debug("Received request to update a prescription medication with id: {}", id);
+        return ResponseEntity.ok(patientPrescriptionMedicationService.update(id, prescriptionMedicationUpdateDTO));
     }
 
     @DeleteMapping("/patient-prescription-medications/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-        service.cancel(id);
+        LOG.debug("Received request to delete a prescription medication with id: {}", id);
+        patientPrescriptionMedicationService.cancel(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/patient-prescription-medications/{patientId}/chronic-medications/raw")
+    public ResponseEntity<List<PatientPrescriptionMedication>> getAllChronicRaw(@PathVariable Long patientId) {
+        LOG.debug("getAllChronicRaw prescription for patientId ={}",patientId);
+
+        return ResponseEntity.ok(patientPrescriptionMedicationService.listAllChronicForPatient(patientId));
     }
 }

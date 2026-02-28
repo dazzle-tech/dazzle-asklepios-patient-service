@@ -8,6 +8,8 @@ import com.dazzle.asklepios.service.dto.patientPrescription.PatientPrescriptionC
 import com.dazzle.asklepios.service.dto.patientPrescription.PatientPrescriptionUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpHeaders;
@@ -29,14 +31,18 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PatientPrescriptionController {
 
-    private final PatientPrescriptionService service;
+    private static final Logger LOG =
+            LoggerFactory.getLogger(PatientPrescriptionController.class);
+    private final PatientPrescriptionService patientPrescriptionService;
 
 
     @PostMapping("/patient-prescriptions/create-or-get")
     public ResponseEntity<PatientPrescription> createOrGetByEncounter(
             @RequestBody PatientPrescriptionCreateDto patientPrescriptionCreateDto
     ) {
-        return ResponseEntity.ok(service.createOrGetByEncounter(patientPrescriptionCreateDto));
+        LOG.debug("createOrGet prescription for patientPrescriptionCreateDto ={}",patientPrescriptionCreateDto);
+
+        return ResponseEntity.ok(patientPrescriptionService.createOrGetByEncounter(patientPrescriptionCreateDto));
     }
 
     @GetMapping("/patient-prescriptions")
@@ -49,8 +55,9 @@ public class PatientPrescriptionController {
             @RequestParam(required = false, defaultValue = "false") boolean includeCanceled,
             Pageable pageable
     ) {
+        LOG.debug("list prescription for patientId={}",patientId);
         Page<PatientPrescription> page =
-                service.list(patientId, encounterId, status, urgencyLevel, prescriptionNum, includeCanceled, pageable);
+                patientPrescriptionService.list(patientId, encounterId, status, urgencyLevel, prescriptionNum, includeCanceled, pageable);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
@@ -62,17 +69,22 @@ public class PatientPrescriptionController {
 
     @GetMapping("/patient-prescriptions/{id}")
     public ResponseEntity<PatientPrescription> get(@PathVariable Long id) {
-        return ResponseEntity.ok(service.getPrescription(id));
+        LOG.debug("get prescription for patientId={}",id);
+        return ResponseEntity.ok(patientPrescriptionService.getPrescription(id));
     }
 
     @PostMapping("/patient-prescriptions")
     public ResponseEntity<PatientPrescription> create(@RequestBody PatientPrescriptionCreateDto patientPrescriptionCreateDto) {
-        return ResponseEntity.ok(service.create(patientPrescriptionCreateDto));
+        LOG.debug("create prescription for patientPrescriptionCreateDto ={}",patientPrescriptionCreateDto);
+
+        return ResponseEntity.ok(patientPrescriptionService.create(patientPrescriptionCreateDto));
     }
 
     @PutMapping("/patient-prescriptions/{id}")
     public ResponseEntity<PatientPrescription> update(@PathVariable Long id, @RequestBody PatientPrescriptionUpdateDTO patientPrescriptionUpdateDTO) {
-        return ResponseEntity.ok(service.update(id, patientPrescriptionUpdateDTO));
+        LOG.debug("update prescription for id ={}",id);
+
+        return ResponseEntity.ok(patientPrescriptionService.update(id, patientPrescriptionUpdateDTO));
     }
 
     @PostMapping("/patient-prescriptions/{id}/submit")
@@ -80,7 +92,9 @@ public class PatientPrescriptionController {
             @PathVariable Long id,
             @RequestParam String lastModifiedBy
     ) {
-        return ResponseEntity.ok(service.submit(id, lastModifiedBy));
+        LOG.debug("submit prescription for id ={}",id);
+
+        return ResponseEntity.ok(patientPrescriptionService.submit(id, lastModifiedBy));
     }
 
     @PostMapping("/patient-prescriptions/{id}/cancel")
@@ -88,6 +102,7 @@ public class PatientPrescriptionController {
             @PathVariable Long id,
             @RequestParam String lastModifiedBy
     ) {
-        return ResponseEntity.ok(service.cancel(id, lastModifiedBy));
+        LOG.debug("cancel prescription for id ={}",id);
+        return ResponseEntity.ok(patientPrescriptionService.cancel(id, lastModifiedBy));
     }
 }

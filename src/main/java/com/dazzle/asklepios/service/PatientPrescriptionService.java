@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientPrescription;
+import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionUrgencyLevel;
 import com.dazzle.asklepios.repository.PatientPrescriptionMedicationRepository;
@@ -26,14 +27,15 @@ import java.time.LocalDate;
 @Transactional
 public class PatientPrescriptionService {
 
-    private final PatientPrescriptionRepository repo;
+    private final PatientPrescriptionRepository prescriptionRepository;
+    private final PatientPrescriptionMedicationRepository prescriptionMedicationRepository;
 
     private static final org.slf4j.Logger LOG = LoggerFactory.getLogger(PatientPrescriptionService.class);
-    private final PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository;
     private final PatientRepository patientRepository;
     private final PatientPrescriptionRepository patientPrescriptionRepository;
 
     public PatientPrescription create(PatientPrescriptionCreateDto prescriptionCreateDto) {
+        LOG.debug("create a prescriptionCreateDto={}",prescriptionCreateDto);
 
         Patient patient = getPatient(prescriptionCreateDto.patientId);
 
@@ -49,11 +51,13 @@ public class PatientPrescriptionService {
                 .toDepartmentId(prescriptionCreateDto.toDepartmentId)
                 .build();
 
-        return toDto(repo.save(entity));
+        return toDto(prescriptionRepository.save(entity));
     }
 
     public PatientPrescription update(Long id, PatientPrescriptionUpdateDTO patientPrescriptionUpdateDTO) {
-        PatientPrescription entity = repo.findById(id)
+        LOG.debug("update a PrescriptionMedicationCreateDTO={}",patientPrescriptionUpdateDTO);
+
+        PatientPrescription entity = prescriptionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
 
         if (patientPrescriptionUpdateDTO.prescriptionDate != null) entity.setPrescriptionDate(patientPrescriptionUpdateDTO.prescriptionDate);
@@ -64,7 +68,7 @@ public class PatientPrescriptionService {
         entity.setLastModifiedBy(patientPrescriptionUpdateDTO.lastModifiedBy);
         entity.setLastModifiedDate(Instant.now());
 
-        return toDto(repo.save(entity));
+        return toDto(prescriptionRepository.save(entity));
     }
 
     /**
@@ -98,7 +102,9 @@ public class PatientPrescriptionService {
 
     @Transactional(readOnly = true)
     public PatientPrescription getPrescription(Long id) {
-        return repo.findById(id)
+        LOG.debug("get a Prescription for id ={}",id);
+
+        return prescriptionRepository.findById(id)
                 .map(this::toDto)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
     }
@@ -112,6 +118,7 @@ public class PatientPrescriptionService {
             boolean includeCanceled,
             Pageable pageable
     ) {
+
         if (patientId != null && encounterId != null) {
 
             if (status != null) {
@@ -132,25 +139,38 @@ public class PatientPrescriptionService {
 
 
     public PatientPrescription submit(Long id, String lastModifiedBy) {
-        PatientPrescription entity = repo.findById(id)
+        LOG.debug("submit prescription for id ={}",id);
+
+        PatientPrescription entity = prescriptionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
 
         entity.setStatus(PrescriptionStatus.SUBMITTED);
         entity.setLastModifiedBy(lastModifiedBy);
         entity.setLastModifiedDate(Instant.now());
 
-        return toDto(repo.save(entity));
+        if (entity.getMedications() != null) {
+            for (PatientPrescriptionMedication med : entity.getMedications()) {
+                med.setStatus(PrescriptionStatus.SUBMITTED);
+                med.setLastModifiedBy(lastModifiedBy);
+                med.setLastModifiedDate(Instant.now());
+                prescriptionMedicationRepository.save(med);
+            }
+        }
+
+        return toDto(prescriptionRepository.save(entity));
     }
 
     public PatientPrescription cancel(Long id, String lastModifiedBy) {
-        PatientPrescription entity = repo.findById(id)
+
+        LOG.debug("cancel prescription for id ={}",id);
+        PatientPrescription entity = prescriptionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
 
         entity.setStatus(PrescriptionStatus.CANCELLED);
         entity.setLastModifiedBy(lastModifiedBy);
         entity.setLastModifiedDate(Instant.now());
 
-        return toDto(repo.save(entity));
+        return toDto(prescriptionRepository.save(entity));
     }
 
     private PatientPrescription toDto(PatientPrescription e) {
