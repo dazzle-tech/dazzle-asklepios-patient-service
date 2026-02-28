@@ -3,7 +3,7 @@ package com.dazzle.asklepios.domain.enumeration;
 public enum EncounterStatus {
     NEW,
     ONGOING,
-    CANCELED,
+    CANCELLED,
     CLOSED,
     DISCHARGED,
     IN_OPERATION,
@@ -12,5 +12,6 @@ public enum EncounterStatus {
     TRIAGE_STARTED,
     SENT_TO_ER,
     WAITING_TRIAGE,
-    WAITING_LIST
+    WAITING_LIST,
+    PENDING_PAYMENT
 }
