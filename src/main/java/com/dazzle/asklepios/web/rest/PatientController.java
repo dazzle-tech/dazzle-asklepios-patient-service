@@ -3,6 +3,7 @@ package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.service.PatientService;
 import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
+import com.dazzle.asklepios.service.dto.patient.PatientDuplicationLookupDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
@@ -376,4 +377,26 @@ public class PatientController {
 
         return ResponseEntity.ok(body);
     }
+
+
+    @PostMapping("/duplication-candidates")
+    public ResponseEntity<List<PatientBasicInformationResponseVM>> getDuplicationCandidates(
+            @RequestBody PatientDuplicationLookupDTO duplicationLookupDTO,
+            @ParameterObject Pageable pageable
+    ) {
+        Page<Patient> page = patientService.findDuplicationCandidates(duplicationLookupDTO, pageable);
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        List<PatientBasicInformationResponseVM> body = page.getContent().stream()
+                .map(PatientBasicInformationResponseVM::ofEntity)
+                .toList();
+
+        return new ResponseEntity<>(body, headers, HttpStatus.OK);
+    }
 }
+
