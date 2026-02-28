@@ -117,6 +117,7 @@ public class PatientAllergiesService {
                     "Onset Date cannot be in the future"
             );
         }
+
         if (patientAllergyCreateDto.byPatient() && patientAllergyCreateDto.sourceOfInformation() != null) {
             LOG.debug("The source of information is not null : {}", patientAllergyCreateDto);
             throw new BadRequestAlertException(
@@ -209,6 +210,7 @@ public class PatientAllergiesService {
         LOG.debug("Request to cancel PatientAllergy: {}", id);
         String login = SecurityUtils.getCurrentUserLogin()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated."));
+
 
         PatientAllergies entity = patientAllergiesRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
@@ -310,6 +312,7 @@ public class PatientAllergiesService {
             }
             if (patientAllergiesUpdateDTO.allergenId() != null) {
                 LOG.debug("The updated allergen id is not null : {}", patientAllergiesUpdateDTO);
+
                 throw new BadRequestAlertException(
                         "allergenMustBeNull",
                         "patientAllergies",
@@ -319,6 +322,7 @@ public class PatientAllergiesService {
         } else {
             if (patientAllergiesUpdateDTO.allergenId() == null) {
                 LOG.debug("The updated allergen id is null : {}", patientAllergiesUpdateDTO);
+
                 throw new BadRequestAlertException(
                         "allergenRequired",
                         "patientAllergies",
@@ -327,6 +331,7 @@ public class PatientAllergiesService {
             }
             if (patientAllergiesUpdateDTO.medicationClassId() != null) {
                 LOG.debug("The updated medication class id is not null : {}", patientAllergiesUpdateDTO);
+
                 throw new BadRequestAlertException(
                         "medicationClassMustBeNull",
                         "patientAllergies",
@@ -335,6 +340,7 @@ public class PatientAllergiesService {
             }
             if (patientAllergiesUpdateDTO.activeIngredients() != null && !patientAllergiesUpdateDTO.activeIngredients().isEmpty()) {
                 LOG.debug("The updated active ingredients list is not empty : {}", patientAllergiesUpdateDTO);
+
                 throw new BadRequestAlertException(
                         "activeIngredientsMustBeEmpty",
                         "patientAllergies",
@@ -344,6 +350,7 @@ public class PatientAllergiesService {
         }
         if (patientAllergiesUpdateDTO.onsetDateUndefined() && patientAllergiesUpdateDTO.onsetDate() != null) {
             LOG.debug("The updated onset date is not null : {}", patientAllergiesUpdateDTO);
+
             throw new BadRequestAlertException(
                     "onsetDateMustBeNull",
                     "patientAllergies",
@@ -353,6 +360,7 @@ public class PatientAllergiesService {
 
         if (!patientAllergiesUpdateDTO.onsetDateUndefined() && patientAllergiesUpdateDTO.onsetDate() == null) {
             LOG.debug("The updated onset date is null : {}", patientAllergiesUpdateDTO);
+
             throw new BadRequestAlertException(
                     "onsetDateRequired",
                     "patientAllergies",
@@ -373,6 +381,7 @@ public class PatientAllergiesService {
         }
         if (patientAllergiesUpdateDTO.byPatient() && patientAllergiesUpdateDTO.sourceOfInformation() != null) {
             LOG.debug("The updated source of information is not null : {}", patientAllergiesUpdateDTO);
+
             throw new BadRequestAlertException(
                     "sourceMustBeNull",
                     "patientAllergies",
@@ -381,12 +390,14 @@ public class PatientAllergiesService {
         }
         if (!patientAllergiesUpdateDTO.byPatient() && patientAllergiesUpdateDTO.sourceOfInformation() == null) {
             LOG.debug("The updated source of information is null : {}", patientAllergiesUpdateDTO);
+
             throw new BadRequestAlertException(
                     "sourceRequired",
                     "patientAllergies",
                     "source of Information is required"
             );
         }
+
 
         Instant todayStart = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.DAYS);
         if (entity.getCreatedDate().isBefore(todayStart)) {
@@ -419,6 +430,7 @@ public class PatientAllergiesService {
             List<Long> newIds = patientAllergiesUpdateDTO.activeIngredients() == null
                     ? List.of()
                     : new ArrayList<>(patientAllergiesUpdateDTO.activeIngredients());
+
 
             List<PatientAllergiesActiveIngredient> current =
                     patientAllergiesActiveIngredientRepository.findByPatientAllergy(entity);

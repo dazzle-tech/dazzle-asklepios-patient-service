@@ -8,6 +8,7 @@ import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientDuplicationLookupDTO;
+
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -39,13 +40,12 @@ public class PatientService {
 
     private final PatientRepository patientRepository;
     private final PatientDocumentRepository patientDocumentRepository;
-    private final DuplicationCandidateRepository duplicationCandidateRepository;
-
+   private final DuplicationCandidateRepository duplicationCandidateRepository;
 
     public PatientService(
             PatientRepository patientRepository,
-            PatientDocumentRepository patientDocumentRepository, DuplicationCandidateRepository duplicationCandidateRepository
 
+            PatientDocumentRepository patientDocumentRepository, DuplicationCandidateRepository duplicationCandidateRepository
     ) {
         this.patientRepository = patientRepository;
         this.patientDocumentRepository = patientDocumentRepository;
@@ -507,4 +507,5 @@ public class PatientService {
         Specification<Patient> spec = buildDuplicationSpec(duplicationCandidate.getFields(), duplicationLookupDTO);
         return patientRepository.findAll(spec, pageable);
     }
+
 }

@@ -12,6 +12,7 @@ import java.util.Optional;
 public interface PatientRepository  extends JpaRepository<Patient, Long>,
         JpaSpecificationExecutor<Patient> {
 
+
     Page<Patient> findByMedicalRecordNumberContainingIgnoreCase(String medicalRecordNumber, Pageable pageable);
 
     Page<Patient> findByArchivingNumberContainingIgnoreCase(String archivingNumber, Pageable pageable);

@@ -14,4 +14,5 @@ public enum EncounterStatus {
     WAITING_TRIAGE,
     WAITING_LIST,
     PENDING_PAYMENT
+
 }
