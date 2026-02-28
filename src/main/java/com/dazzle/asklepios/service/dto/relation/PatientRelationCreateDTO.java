@@ -19,7 +19,6 @@ public record PatientRelationCreateDTO(
                 .relativePatient(Patient.builder().id(relativePatientId).build())
                 .relationType(relationType)
                 .categoryType(categoryType)
-                .isActive(true)
                 .build();
     }
 }
