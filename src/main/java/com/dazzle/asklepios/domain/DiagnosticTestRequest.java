@@ -50,6 +50,8 @@ public class DiagnosticTestRequest extends AbstractAuditingEntity implements Ser
     @NotNull
     @Column(name = "indication", columnDefinition = "text")
     private String indication;
+    @Column(name = "diagnostic_test_id")
+    private Long diagnosticTestId;
 
     @Column(name = "rejected_date")
     private Instant rejectedDate;

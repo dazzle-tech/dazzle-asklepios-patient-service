@@ -110,6 +110,38 @@ public class DiagnosticTestRequestService {
         return saved;
     }
 
+    public DiagnosticTestRequest setDiagnosticTest(Long requestId, Long diagnosticTestId) {
+        LOG.debug("[DiagnosticTestRequestService] SET_DIAGNOSTIC_TEST - start. requestId={} diagnosticTestId={}",
+                requestId, diagnosticTestId);
+
+        DiagnosticTestRequest request = getDiagnosticTestRequestById(requestId);
+
+        if (request.getStatus() == DiagnosticTestRequestStatus.REJECTED) {
+            throw new BadRequestAlertException(
+                    "invalid_transition",
+                    "diagnostic_test_requests",
+                    "Cannot link a REJECTED request"
+            );
+        }
+
+        if (request.getStatus() == DiagnosticTestRequestStatus.APPROVED && request.getDiagnosticTestId() != null) {
+            throw new BadRequestAlertException(
+                    "locked",
+                    "diagnostic_test_requests",
+                    "Cannot modify diagnostic test after approval"
+            );
+        }
+
+
+        request.setDiagnosticTestId(diagnosticTestId);
+
+        DiagnosticTestRequest saved = repository.save(request);
+        LOG.debug("[DiagnosticTestRequestService] SET_DIAGNOSTIC_TEST - done. id={} status={} diagnosticTestId={}",
+                saved.getId(), saved.getStatus(), saved.getDiagnosticTestId());
+        return saved;
+    }
+
+
     public void delete(Long id, String username) {
         LOG.debug("[DiagnosticTestRequestService] DELETE - start. id={} username={}", id, username);
         DiagnosticTestRequest request = getDiagnosticTestRequestById(id);
