@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.domain.enumeration;
 
 public enum DiagnosticStatus {
+
     NEW,
     ACCEPTED,
     REJECTED,
@@ -15,7 +16,6 @@ public enum DiagnosticStatus {
     RESULT_REJECTED,
     PATIENT_ARRIVED,
     CANCELLED,
-    REVIEWED,
-    PARTIAL,
     SUBMITTED
 }
+
