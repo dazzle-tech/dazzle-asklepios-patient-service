@@ -27,6 +27,7 @@ ext {
     if (project.hasProperty("e2e")) {
         springProfiles += ",e2e"
     }
+    springCloudVersion = "2024.0.1"
 }
 
 repositories {
@@ -36,7 +37,11 @@ repositories {
 
 apply plugin: 'io.spring.dependency-management'
 
-
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
+}
 if (project.hasProperty("prod")) {
     apply from: "gradle/profile_prod.gradle"
 } else {
@@ -114,6 +119,7 @@ configurations {
 dependencies {
     // --- AWS SDK v2 for DigitalOcean Spaces ---
     implementation platform("software.amazon.awssdk:bom:2.25.40")
+    implementation "org.springframework.cloud:spring-cloud-starter-openfeign"
     implementation "software.amazon.awssdk:s3"
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
