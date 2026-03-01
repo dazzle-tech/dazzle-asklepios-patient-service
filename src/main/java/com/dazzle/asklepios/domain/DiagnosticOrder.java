@@ -56,6 +56,10 @@ public class DiagnosticOrder extends AbstractAuditingEntity implements Serializa
     @Column(name = "encounter_id")
     private Long encounterId;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "encounter_id", nullable = false , insertable = false, updatable = false)
+    private PatientEncounter encounter;
+
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 50)
