@@ -14,7 +14,8 @@ management:
   tracing:
     sampling:
       probability: 1.0 # report 100% of traces
-
+service:
+  asklepios-setup-service-url: http://asklepios-api-setup-service:8082
 spring:
   devtools:
     restart:
