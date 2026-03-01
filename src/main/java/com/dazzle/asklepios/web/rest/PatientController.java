@@ -3,10 +3,12 @@ package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.service.PatientService;
 import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
+import com.dazzle.asklepios.service.dto.patient.PatientDuplicationLookupDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.vm.patient.PatientBasicInformationResponseVM;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,7 +37,8 @@ import java.util.List;
 @RequestMapping("/api/patient")
 public class PatientController {
 
-    private static final Logger LOG = LoggerFactory.getLogger(PatientController.class);
+    private static final Logger LOG =
+            LoggerFactory.getLogger(PatientController.class);
 
     private final PatientService patientService;
 
@@ -43,12 +46,19 @@ public class PatientController {
         this.patientService = patientService;
     }
 
+
     @PostMapping
-    public ResponseEntity<Patient> createPatient(@Valid @RequestBody PatientCreateDTO patientDTO) {
+    public ResponseEntity<Patient> createPatient(
+            @Valid @RequestBody PatientCreateDTO patientDTO
+    ) {
         LOG.debug("REST create Patient payload={}", patientDTO);
 
         if (patientDTO == null) {
-            throw new BadRequestAlertException("Patient payload is required", "patient", "payload.required");
+            throw new BadRequestAlertException(
+                    "Patient payload is required",
+                    "patient",
+                    "payload.required"
+            );
         }
 
         Patient created = patientService.create(patientDTO);
@@ -57,6 +67,7 @@ public class PatientController {
                 .created(URI.create("/api/patient/" + created.getId()))
                 .body(created);
     }
+
 
     @PutMapping("/{id}")
     public ResponseEntity<Patient> updatePatient(
@@ -86,12 +97,12 @@ public class PatientController {
         return ResponseEntity.ok(updatedPatient);
     }
 
-
     @PostMapping("/unknown")
     public ResponseEntity<Patient> createUnknownPatient() {
         LOG.debug("REST create UNKNOWN Patient (default)");
 
-        UnknownPatientCreateDTO dto = UnknownPatientCreateDTO.defaultUnknown();
+        UnknownPatientCreateDTO dto =
+                UnknownPatientCreateDTO.defaultUnknown();
 
         Patient created = patientService.createUnknown(dto);
 
@@ -105,15 +116,29 @@ public class PatientController {
             @PathVariable String medicalRecordNumber,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST list Patients by medicalRecordNumber='{}' pageable={}", medicalRecordNumber, pageable);
-
-        Page<Patient> page = patientService.findByMedicalRecordNumber(medicalRecordNumber, pageable);
-
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(), page
+        LOG.debug(
+                "REST list Patients by medicalRecordNumber='{}' pageable={}",
+                medicalRecordNumber,
+                pageable
         );
 
-        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+        Page<Patient> page =
+                patientService.findByMedicalRecordNumber(
+                        medicalRecordNumber,
+                        pageable
+                );
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        return new ResponseEntity<>(
+                page.getContent(),
+                headers,
+                HttpStatus.OK
+        );
     }
 
     @GetMapping("/by-archiving-number/{archivingNumber}")
@@ -121,15 +146,29 @@ public class PatientController {
             @PathVariable String archivingNumber,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST list Patients by archivingNumber='{}' pageable={}", archivingNumber, pageable);
-
-        Page<Patient> page = patientService.findByArchivingNumber(archivingNumber, pageable);
-
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(), page
+        LOG.debug(
+                "REST list Patients by archivingNumber='{}' pageable={}",
+                archivingNumber,
+                pageable
         );
 
-        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+        Page<Patient> page =
+                patientService.findByArchivingNumber(
+                        archivingNumber,
+                        pageable
+                );
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        return new ResponseEntity<>(
+                page.getContent(),
+                headers,
+                HttpStatus.OK
+        );
     }
 
     @GetMapping("/by-primary-phone/{phone}")
@@ -137,31 +176,56 @@ public class PatientController {
             @PathVariable("phone") String phone,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST list Patients by primary phone='{}' pageable={}", phone, pageable);
-
-        Page<Patient> page = patientService.findByPrimaryPhone(phone, pageable);
-
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(), page
+        LOG.debug(
+                "REST list Patients by primary phone='{}' pageable={}",
+                phone,
+                pageable
         );
 
-        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+        Page<Patient> page =
+                patientService.findByPrimaryPhone(phone, pageable);
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        return new ResponseEntity<>(
+                page.getContent(),
+                headers,
+                HttpStatus.OK
+        );
     }
+
 
     @GetMapping("/by-date-of-birth/{date}")
     public ResponseEntity<List<Patient>> getByDateOfBirth(
-            @PathVariable("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateOfBirth,
+            @PathVariable("date")
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate dateOfBirth,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST list Patients by dateOfBirth='{}' pageable={}", dateOfBirth, pageable);
-
-        Page<Patient> page = patientService.findByDateOfBirth(dateOfBirth, pageable);
-
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(), page
+        LOG.debug(
+                "REST list Patients by dateOfBirth='{}' pageable={}",
+                dateOfBirth,
+                pageable
         );
 
-        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+        Page<Patient> page =
+                patientService.findByDateOfBirth(dateOfBirth, pageable);
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        return new ResponseEntity<>(
+                page.getContent(),
+                headers,
+                HttpStatus.OK
+        );
     }
 
     @GetMapping("/by-full-name/{keyword}")
@@ -169,15 +233,26 @@ public class PatientController {
             @PathVariable("keyword") String keyword,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST list Patients by full name keyword='{}' pageable={}", keyword, pageable);
-
-        Page<Patient> page = patientService.findByFullName(keyword, pageable);
-
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(), page
+        LOG.debug(
+                "REST list Patients by full name keyword='{}' pageable={}",
+                keyword,
+                pageable
         );
 
-        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+        Page<Patient> page =
+                patientService.findByFullName(keyword, pageable);
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        return new ResponseEntity<>(
+                page.getContent(),
+                headers,
+                HttpStatus.OK
+        );
     }
 
     @GetMapping("/by-document-number")
@@ -185,19 +260,37 @@ public class PatientController {
             @RequestParam("number") String numberPart,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST search Patients by primary document number={} pageable={}", numberPart, pageable);
-
-        if (numberPart == null || numberPart.isBlank()) {
-            throw new BadRequestAlertException("Document number fragment is required", "patient", "number.required");
-        }
-
-        Page<Patient> page = patientService.findByPrimaryDocumentNumber(numberPart, pageable);
-
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(), page
+        LOG.debug(
+                "REST search Patients by primary document number={} pageable={}",
+                numberPart,
+                pageable
         );
 
-        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+        if (numberPart == null || numberPart.isBlank()) {
+            throw new BadRequestAlertException(
+                    "Document number fragment is required",
+                    "patient",
+                    "number.required"
+            );
+        }
+
+        Page<Patient> page =
+                patientService.findByPrimaryDocumentNumber(
+                        numberPart,
+                        pageable
+                );
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        return new ResponseEntity<>(
+                page.getContent(),
+                headers,
+                HttpStatus.OK
+        );
     }
 
     @GetMapping("/by-any-document-number")
@@ -205,29 +298,106 @@ public class PatientController {
             @RequestParam("number") String numberPart,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST search Patients by ANY document number={} pageable={}", numberPart, pageable);
-
-        if (numberPart == null || numberPart.isBlank()) {
-            throw new BadRequestAlertException("Document number fragment is required", "patient", "number.required");
-        }
-
-        Page<Patient> page = patientService.findByAnyDocumentNumber(numberPart, pageable);
-
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(), page
+        LOG.debug(
+                "REST search Patients by ANY document number={} pageable={}",
+                numberPart,
+                pageable
         );
 
-        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+        if (numberPart == null || numberPart.isBlank()) {
+            throw new BadRequestAlertException(
+                    "Document number fragment is required",
+                    "patient",
+                    "number.required"
+            );
+        }
+
+        Page<Patient> page =
+                patientService.findByAnyDocumentNumber(
+                        numberPart,
+                        pageable
+                );
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        return new ResponseEntity<>(
+                page.getContent(),
+                headers,
+                HttpStatus.OK
+        );
     }
 
     @GetMapping("/unknown")
-    public ResponseEntity<List<Patient>> getUnknownPatients(@ParameterObject Pageable pageable) {
-        Page<Patient> page = patientService.findUnknownPatients(pageable);
+    public ResponseEntity<List<Patient>> getUnknownPatients(
+            @ParameterObject Pageable pageable
+    ) {
+        Page<Patient> page =
+                patientService.findUnknownPatients(pageable);
 
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(), page
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        return new ResponseEntity<>(
+                page.getContent(),
+                headers,
+                HttpStatus.OK
+        );
+    }
+
+    @PostMapping("/bulk/basic-info")
+    public ResponseEntity<List<PatientBasicInformationResponseVM>> getBulkPatientBasicInfo(
+            @RequestBody List<Long> ids
+    ) {
+        LOG.debug(
+                "REST bulk Patient BASIC INFO idsCount={} ids={}",
+                ids == null ? 0 : ids.size(),
+                ids
         );
 
-        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+        if (ids == null || ids.isEmpty()) {
+            return ResponseEntity.ok(List.of());
+        }
+
+        List<PatientBasicInformationResponseVM> body =
+                patientService.findByIds(ids).stream()
+                        .map(PatientBasicInformationResponseVM::ofEntity)
+                        .toList();
+
+        LOG.debug(
+                "REST bulk Patient BASIC INFO responseCount={}",
+                body.size()
+        );
+
+        return ResponseEntity.ok(body);
+    }
+
+
+    @PostMapping("/duplication-candidates")
+    public ResponseEntity<List<PatientBasicInformationResponseVM>> getDuplicationCandidates(
+            @RequestBody PatientDuplicationLookupDTO duplicationLookupDTO,
+            @ParameterObject Pageable pageable
+    ) {
+        Page<Patient> page = patientService.findDuplicationCandidates(duplicationLookupDTO, pageable);
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        List<PatientBasicInformationResponseVM> body = page.getContent().stream()
+                .map(PatientBasicInformationResponseVM::ofEntity)
+                .toList();
+
+        return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
 }
+
+
