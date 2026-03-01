@@ -11,4 +11,5 @@ public record PatientPaymentServiceItemDTO(
         @NotNull Long serviceId,
         @NotNull BigDecimal price,
         @NotNull Boolean isExempted
+
 ) implements Serializable { }

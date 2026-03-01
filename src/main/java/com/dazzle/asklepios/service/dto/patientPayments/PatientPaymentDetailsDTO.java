@@ -14,7 +14,6 @@ public record PatientPaymentDetailsDTO(
         BigDecimal amountPaid,
         BigDecimal remaining,
         BigDecimal refunds,
-        // NEW
         BigDecimal paidFromAmount,
         BigDecimal paidFromBalance,
         List<PatientPaymentServices> services

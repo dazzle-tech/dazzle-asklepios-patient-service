@@ -7,4 +7,5 @@ public record PatientLedgerSummaryDTO(
         Long patientId,
         BigDecimal totalDebt,
         BigDecimal walletBalance
+
 ) {}

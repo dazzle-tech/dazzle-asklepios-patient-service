@@ -26,4 +26,5 @@ public interface PatientPaymentAllocationRepository
         where allocation.chargeId = :chargeId
     """)
     BigDecimal sumAllocatedForCharge(Long chargeId);
+
 }

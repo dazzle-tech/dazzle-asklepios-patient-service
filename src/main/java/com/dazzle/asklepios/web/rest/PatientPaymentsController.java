@@ -31,6 +31,7 @@ public class PatientPaymentsController {
         this.patientPaymentsService = patientPaymentsService;
     }
 
+
     @PostMapping("/payment")
     public ResponseEntity<PatientPaymentDetailsDTO> create(
             @Valid @RequestBody @NotNull PatientPaymentCreateDTO dto

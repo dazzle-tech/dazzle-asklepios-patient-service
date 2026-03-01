@@ -48,6 +48,7 @@ import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 @Transactional
 public class PatientPaymentsService {
 
+
     private static final Logger LOG = LoggerFactory.getLogger(PatientPaymentsService.class);
 
     private static final BigDecimal ZERO_AMOUNT = BigDecimal.ZERO;
