@@ -73,7 +73,7 @@ public class AppointmentController {
 
 
                 if (appointment.getPatientKey() != null) {
-                    Map<String, Object> patient = appointmentService.getPatient(appointment.getPatientKey());
+                    Map<String, Object> patient = appointmentService.getPatient(Long.parseLong(appointment.getPatientKey()));
                     if (patient != null) {
                         appointmentMap.put("patient", patient);
                     }

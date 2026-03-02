@@ -5,6 +5,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Optional;
+
 public interface PatientDocumentRepository extends JpaRepository<PatientDocument, Long> {
 
     Page<PatientDocument> findByPatientId(Long patientId, Pageable pageable);
@@ -16,4 +18,6 @@ public interface PatientDocumentRepository extends JpaRepository<PatientDocument
 
     Page<PatientDocument> findByNumberContainingIgnoreCase(String numberPart, Pageable pageable);
 
+    Optional<PatientDocument> findFirstByPatient_IdAndIsPrimaryTrue(Long patientId);
+    Optional<PatientDocument> findFirstByPatient_IdOrderByIdAsc(Long patientId);
 }
