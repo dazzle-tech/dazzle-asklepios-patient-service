@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service.dto.patient;
 
 import com.dazzle.asklepios.domain.enumeration.Gender;
 import com.dazzle.asklepios.domain.enumeration.PreferredWayOfContact;
+import com.dazzle.asklepios.domain.enumeration.SecurityLevel;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotEmpty;
@@ -78,7 +79,8 @@ public record PatientUpdateDTO(
         Boolean isVerified,
 
         @NotNull
-        Boolean isCompletedPatient
+        Boolean isCompletedPatient,
+        SecurityLevel securityAccessLevel
 
 ) implements Serializable {
 

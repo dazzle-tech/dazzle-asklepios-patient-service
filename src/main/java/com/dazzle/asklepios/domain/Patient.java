@@ -2,6 +2,7 @@ package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.Gender;
 import com.dazzle.asklepios.domain.enumeration.PreferredWayOfContact;
+import com.dazzle.asklepios.domain.enumeration.SecurityLevel;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -156,6 +157,10 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
 
     @Column(name = "is_completed_patient", nullable = false)
     private Boolean isCompletedPatient;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name="security_access_level")
+    private SecurityLevel securityAccessLevel;
 
     @AssertTrue(message = "When patient is not unknown, firstName, lastName, sexAtBirth, dateOfBirth, primaryMobileNumber and email are required")
     public boolean isValidWhenNotUnknown() {
