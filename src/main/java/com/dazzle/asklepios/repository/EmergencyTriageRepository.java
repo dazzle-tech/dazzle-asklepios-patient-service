@@ -8,5 +8,5 @@ import java.util.Optional;
 
 @Repository
 public interface EmergencyTriageRepository extends JpaRepository<EmergencyTriage, Long> {
-    Optional<EmergencyTriage> findTopByEncounterIdOrderByCreatedDateDesc(Long encounterId);
+    Optional<EmergencyTriage> findTopByEncounter_IdOrderByCreatedDateDesc(Long encounterId);
 }

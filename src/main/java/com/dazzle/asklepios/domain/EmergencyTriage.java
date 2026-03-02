@@ -14,6 +14,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -41,8 +42,9 @@ public class EmergencyTriage extends AbstractAuditingEntity<Long> implements Ser
     @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
-    @Column(name = "encounter_id", nullable = false)
-    private Long encounterId;
+    @ManyToOne
+    @JoinColumn(name = "encounter_id", nullable = false)
+    private PatientEncounter encounter;
 
     @Column(name = "emergency_level", length = 50)
     @Enumerated(EnumType.STRING)

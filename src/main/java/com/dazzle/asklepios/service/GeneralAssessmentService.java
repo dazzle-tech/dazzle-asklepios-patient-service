@@ -2,7 +2,9 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.GeneralAssessment;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.repository.GeneralAssessmentRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.generalAssessment.GeneralAssessmentCreateDTO;
 import com.dazzle.asklepios.service.dto.generalAssessment.GeneralAssessmentUpdateDTO;
@@ -21,10 +23,12 @@ public class GeneralAssessmentService {
 
     private final GeneralAssessmentRepository generalAssessmentRepository;
     private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
 
-    public GeneralAssessmentService(GeneralAssessmentRepository generalAssessmentRepository, PatientRepository patientRepository) {
+    public GeneralAssessmentService(GeneralAssessmentRepository generalAssessmentRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository) {
         this.generalAssessmentRepository = generalAssessmentRepository;
         this.patientRepository = patientRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
     }
 
     public GeneralAssessment create(GeneralAssessmentCreateDTO generalAssessmentCreateDTO) {
@@ -48,7 +52,7 @@ public class GeneralAssessmentService {
     public GeneralAssessment getLatestByEncounterId(Long encounterId) {
         LOG.debug("get latest general assessment by encounterId={}", encounterId);
         return generalAssessmentRepository
-                .findTopByEncounterIdOrderByCreatedDateDesc(encounterId)
+                .findTopByEncounter_IdOrderByCreatedDateDesc(encounterId)
                 .orElseThrow(() -> new NotFoundAlertException(
                         "GeneralAssessment not found for encounter: " + encounterId,
                         ENTITY_NAME,
@@ -60,7 +64,7 @@ public class GeneralAssessmentService {
     public GeneralAssessment getLatestTriageByEncounterId(Long encounterId) {
         LOG.debug("get latest triage general assessment by encounterId={}", encounterId);
         return generalAssessmentRepository
-                .findTopByEncounterIdAndIsTriageTrueOrderByCreatedDateDesc(encounterId)
+                .findTopByEncounter_IdAndIsTriageTrueOrderByCreatedDateDesc(encounterId)
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Triage GeneralAssessment not found for encounter: " + encounterId,
                         ENTITY_NAME,
@@ -79,10 +83,11 @@ public class GeneralAssessmentService {
 
     private GeneralAssessment toEntityForCreate(GeneralAssessmentCreateDTO generalAssessmentCreateDTO) {
         Patient patient = getPatient(generalAssessmentCreateDTO.patientId());
+        PatientEncounter encounter = getEncounter(generalAssessmentCreateDTO.encounterId());
 
         return GeneralAssessment.builder()
                 .patient(patient)
-                .encounterId(generalAssessmentCreateDTO.encounterId())
+                .encounter(encounter)
                 .positionStatus(generalAssessmentCreateDTO.positionStatus())
                 .bodyMovements(generalAssessmentCreateDTO.bodyMovements())
                 .levelOfConsciousness(generalAssessmentCreateDTO.levelOfConsciousness())
@@ -125,5 +130,8 @@ public class GeneralAssessmentService {
         return patientRepository
                 .findById(id)
                 .orElseThrow(() -> new NotFoundAlertException("Patient not found: " + id, "Patient", "notfound"));
+    }
+    private PatientEncounter getEncounter(Long id) {
+        return patientEncounterRepository.findById(id).orElseThrow(() -> new NotFoundAlertException("Patient Encounter not found: " + id, "PatientEncounter", "notfound"));
     }
 }

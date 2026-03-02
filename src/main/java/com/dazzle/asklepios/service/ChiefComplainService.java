@@ -2,7 +2,9 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.ChiefComplain;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.repository.ChiefComplainRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.chiefComplain.ChiefComplainCreateDTO;
 import com.dazzle.asklepios.service.dto.chiefComplain.ChiefComplainUpdateDTO;
@@ -21,10 +23,12 @@ public class ChiefComplainService {
 
     private final ChiefComplainRepository chiefComplainRepository;
     private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
 
-    public ChiefComplainService(ChiefComplainRepository chiefComplainRepository, PatientRepository patientRepository) {
+    public ChiefComplainService(ChiefComplainRepository chiefComplainRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository) {
         this.chiefComplainRepository = chiefComplainRepository;
         this.patientRepository = patientRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
     }
 
     public ChiefComplain create(ChiefComplainCreateDTO dto) {
@@ -52,13 +56,13 @@ public class ChiefComplainService {
     public ChiefComplain getOneByEncounterId(Long encounterId) {
         LOG.debug("get latest chief complain by encounterId={}", encounterId);
 
-        return chiefComplainRepository.findTopByEncounterIdOrderByCreatedDateDesc(encounterId).orElseThrow(() -> new NotFoundAlertException("ChiefComplain not found for encounter: " + encounterId, ENTITY_NAME, "notfound"));
+        return chiefComplainRepository.findTopByEncounter_IdOrderByCreatedDateDesc(encounterId).orElseThrow(() -> new NotFoundAlertException("ChiefComplain not found for encounter: " + encounterId, ENTITY_NAME, "notfound"));
     }
 
     @Transactional(readOnly = true)
     public ChiefComplain getLatestTriageByEncounterId(Long encounterId) {
         LOG.debug("get latest triage ChiefComplain by encounterId={}", encounterId);
-        return chiefComplainRepository.findTopByEncounterIdAndIsTriageTrueOrderByCreatedDateDesc(encounterId).orElseThrow(() -> new NotFoundAlertException("Triage ChiefComplain not found for encounter: " + encounterId, ENTITY_NAME, "notfound"));
+        return chiefComplainRepository.findTopByEncounter_IdAndIsTriageTrueOrderByCreatedDateDesc(encounterId).orElseThrow(() -> new NotFoundAlertException("Triage ChiefComplain not found for encounter: " + encounterId, ENTITY_NAME, "notfound"));
     }
 
     private ChiefComplain getRequired(Long id) {
@@ -67,8 +71,9 @@ public class ChiefComplainService {
 
     private ChiefComplain toEntityForCreate(ChiefComplainCreateDTO dto) {
         Patient patient = getPatient(dto.patientId());
+        PatientEncounter encounter=getEncounter(dto.encounterId());
 
-        return ChiefComplain.builder().patient(patient).encounterId(dto.encounterId()).chiefComplaint(dto.chiefComplaint()).provocation(dto.provocation()).palliation(dto.palliation()).quality(dto.quality()).region(dto.region()).severity(dto.severity()).onsetDateTime(dto.onsetDateTime()).caseUnderstanding(dto.caseUnderstanding()).patientCondition(dto.patientCondition()).isTriage(dto.isTriage()).build();
+        return ChiefComplain.builder().patient(patient).encounter(encounter).chiefComplaint(dto.chiefComplaint()).provocation(dto.provocation()).palliation(dto.palliation()).quality(dto.quality()).region(dto.region()).severity(dto.severity()).onsetDateTime(dto.onsetDateTime()).caseUnderstanding(dto.caseUnderstanding()).patientCondition(dto.patientCondition()).isTriage(dto.isTriage()).build();
     }
 
     private void applyUpdate(ChiefComplain entity, ChiefComplainUpdateDTO dto) {
@@ -86,5 +91,8 @@ public class ChiefComplainService {
 
     private Patient getPatient(Long id) {
         return patientRepository.findById(id).orElseThrow(() -> new NotFoundAlertException("Patient not found: " + id, "Patient", "notfound"));
+    }
+    private PatientEncounter getEncounter(Long id) {
+        return patientEncounterRepository.findById(id).orElseThrow(() -> new NotFoundAlertException("Patient Encounter not found: " + id, "PatientEncounter", "notfound"));
     }
 }
