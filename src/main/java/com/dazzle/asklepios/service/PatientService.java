@@ -8,7 +8,6 @@ import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientDuplicationLookupDTO;
-
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -40,7 +39,7 @@ public class PatientService {
 
     private final PatientRepository patientRepository;
     private final PatientDocumentRepository patientDocumentRepository;
-   private final DuplicationCandidateRepository duplicationCandidateRepository;
+    private final DuplicationCandidateRepository duplicationCandidateRepository;
 
     public PatientService(
             PatientRepository patientRepository,
@@ -105,6 +104,7 @@ public class PatientService {
                 .isUnknown(false)
                 .isVerified(verified)
                 .isCompletedPatient(completed)
+                .securityAccessLevel(dto.securityAccessLevel())
                 .build();
 
         try {
@@ -216,7 +216,7 @@ public class PatientService {
         existing.setIsUnknown(Boolean.TRUE.equals(dto.isUnknown()));
         existing.setIsVerified(Boolean.TRUE.equals(dto.isVerified()));
         existing.setIsCompletedPatient(Boolean.TRUE.equals(dto.isCompletedPatient()));
-
+        existing.setSecurityAccessLevel(dto.securityAccessLevel());
 
         existing.setLastModifiedDate(Instant.now());
 
