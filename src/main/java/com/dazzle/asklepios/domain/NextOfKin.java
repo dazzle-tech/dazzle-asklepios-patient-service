@@ -46,24 +46,24 @@ public class NextOfKin extends AbstractAuditingEntity<Long> implements Serializa
     @JoinColumn(name = "patient_id", nullable = false, foreignKey = @ForeignKey(name = "fk_next_of_kin_patient"))
     private Patient patient;
 
-    @NotEmpty
+    @NotEmpty(message = "Name can not be Empty")
     @Column(name = "name", nullable = false, length = 150)
     private String name;
 
-    @NotNull
+    @NotNull(message = "Relationship can not be Empty")
     @Column(name = "relationship", nullable = false, length = 100)
     private RelationType relationship;
 
-    @NotEmpty
+    @NotEmpty(message = "Address can not be Empty")
     @Column(name = "address", nullable = false, length = 255)
     private String address;
 
-    @NotEmpty
+    @NotEmpty(message = "Email can not be Empty")
     @Email
     @Column(name = "email", nullable = false, length = 150)
     private String email;
 
-    @NotEmpty
+    @NotEmpty(message = "Name can not be Empty")
     @Column(name = "mobile_number", nullable = false, length = 50)
     private String mobileNumber;
 
