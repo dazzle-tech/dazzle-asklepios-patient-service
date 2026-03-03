@@ -54,24 +54,18 @@ public class NextOfKinService {
         return nextOfKinRepository.save(nextOfKin);
     }
 
-    public NextOfKin update(NextOfKinUpdateDTO dto) {
+    public NextOfKin update(Long id,NextOfKinUpdateDTO dto) {
         LOG.debug("Request to update NextOfKin : {}", dto);
 
-        NextOfKin existing = nextOfKinRepository.findById(dto.id())
+        NextOfKin existing = nextOfKinRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "NextOfKin not found with id " + dto.id(),
+                        "NextOfKin not found with id " + id,
                         "nextOfKin",
                         "notfound"
                 ));
 
-        Patient patient = patientRepository.findById(dto.patientId())
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "Patient not found with id " + dto.patientId(),
-                        "patient",
-                        "notfound"
-                ));
 
-        existing.setPatient(patient);
+
         existing.setName(dto.name());
         existing.setRelationship(dto.relationship());
         existing.setAddress(dto.address());
