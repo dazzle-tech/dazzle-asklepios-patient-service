@@ -58,7 +58,7 @@ public class NextOfKinController {
     ) {
         LOG.debug("REST update NextOfKin id={} payload={}", id, dto);
 
-        NextOfKin updated = nextOfKinService.update(dto);
+        NextOfKin updated = nextOfKinService.update(id,dto);
         return ResponseEntity.ok(updated);
     }
 
