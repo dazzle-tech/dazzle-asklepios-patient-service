@@ -61,6 +61,7 @@ public class PatientEncounterService {
                 .facilityId(createDTO.facilityId())
                 .departmentId(createDTO.departmentId())
                 .practitionerId(createDTO.practitionerId())
+                .appointmentId(createDTO.appointmentId())
                 .encounterType(createDTO.encounterType())
                 .encounterReason(createDTO.encounterReason())
                 .followUpEncounter(createDTO.followUpEncounterId() == null ? null :
@@ -517,6 +518,15 @@ public class PatientEncounterService {
 
         return patientEncounterRepository
                 .findByPatientIdOrderByCreatedDateDesc(patientId, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public  PatientEncounter getEncountersByAppointmentId(
+            String appointmentId
+    ) {
+        LOG.debug("[GET_BY_APPOINTMENT_ID] appointmentId={} ", appointmentId);
+
+        return patientEncounterRepository.findByAppointmentId(appointmentId);
     }
 
     private RuntimeException handleConstraintViolation(Exception exception) {

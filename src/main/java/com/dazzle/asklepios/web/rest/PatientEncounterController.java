@@ -290,4 +290,17 @@ public class PatientEncounterController {
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
+
+    @GetMapping("/encounter/appointment/{appointmentId}")
+    public ResponseEntity<PatientEncounter> getEncountersByAppointment(
+            @PathVariable @NotNull String appointmentId
+    ) {
+
+        LOG.debug("REST get EncounterAppointment by appointmentId={} ", appointmentId);
+
+        PatientEncounter encounterAppointment = patientEncounterService.getEncountersByAppointmentId(appointmentId);
+
+        return ResponseEntity.ok(encounterAppointment);
+    }
+
 }

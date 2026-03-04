@@ -10,7 +10,6 @@ import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.criteria.Predicate;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,13 +30,11 @@ public class AppointmentService {
 
     private final AppointmentRepository appointmentRepository;
     private final PatientRepository patientRepository;
-    private final JdbcTemplate jdbcTemplate;
     private final PatientDocumentRepository patientDocumentRepository;
 
-    public AppointmentService(AppointmentRepository appointmentRepository, PatientRepository patientRepository, JdbcTemplate jdbcTemplate, PatientDocumentRepository patientDocumentRepository) {
+    public AppointmentService(AppointmentRepository appointmentRepository, PatientRepository patientRepository, PatientDocumentRepository patientDocumentRepository) {
         this.appointmentRepository = appointmentRepository;
         this.patientRepository = patientRepository;
-        this.jdbcTemplate = jdbcTemplate;
         this.patientDocumentRepository = patientDocumentRepository;
     }
 

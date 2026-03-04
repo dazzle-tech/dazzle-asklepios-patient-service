@@ -26,6 +26,8 @@ public record PatientEncounterCreateDTO(
 
         Long practitionerId,
 
+        String appointmentId,
+
         @NotNull
         EncounterType encounterType,
 

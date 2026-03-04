@@ -50,4 +50,8 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
             Long patientId,
             Pageable pageable
     );
+
+    PatientEncounter findByAppointmentId(
+            String appointmentId
+    );
 }

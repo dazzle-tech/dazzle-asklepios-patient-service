@@ -57,6 +57,9 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "practitioner_id")
     private Long practitionerId;
 
+    @Column(name = "appointment_id")
+    private String appointmentId;
+
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "encounter_type", nullable = false, length = 50)
