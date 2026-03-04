@@ -39,7 +39,8 @@ public class EmergencyTriageController {
      * <p>If a record already exists for the encounter, returns it (does not create a new one).</p>
      */
     @PostMapping("/emergency-triage")
-    public ResponseEntity<EmergencyTriage> createOrGet(@Valid @RequestBody EmergencyTriageCreateDTO dto) { LOG.debug("REST createOrGet EmergencyTriage payload={}", dto);
+    public ResponseEntity<EmergencyTriage> createOrGet(@Valid @RequestBody EmergencyTriageCreateDTO dto) {
+        LOG.debug("REST createOrGet EmergencyTriage payload={}", dto);
         EmergencyTriage triage = emergencyTriageService.createOrGetByEncounter(dto);
         return ResponseEntity.ok(triage);
     }

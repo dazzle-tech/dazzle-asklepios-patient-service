@@ -15,7 +15,7 @@ public record EmergencyTriageCreateDTO(
     public static EmergencyTriageCreateDTO ofEntity(EmergencyTriage entity) {
         return new EmergencyTriageCreateDTO(
                 entity.getPatient() != null ? entity.getPatient().getId() : null,
-                entity.getEncounterId()
+                entity.getEncounter() != null ? entity.getEncounter().getId() : null
         );
     }
 }

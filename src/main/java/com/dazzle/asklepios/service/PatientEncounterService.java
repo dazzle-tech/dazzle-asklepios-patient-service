@@ -406,7 +406,7 @@ public class PatientEncounterService {
                         "id.notfound"
                 ));
 
-        if (encounter.getStatus() != EncounterStatus.ONGOING) {
+        if (encounter.getStatus() != EncounterStatus.ONGOING && encounter.getStatus() != EncounterStatus.TRIAGE_STARTED) {
             throw new BadRequestAlertException(
                     "Complete allowed only when status is ONGOING.",
                     "patientEncounter",

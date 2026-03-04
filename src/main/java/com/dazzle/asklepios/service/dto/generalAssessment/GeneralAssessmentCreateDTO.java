@@ -28,7 +28,7 @@ public record GeneralAssessmentCreateDTO(
     public static GeneralAssessmentCreateDTO ofEntity(GeneralAssessment entity) {
         return new GeneralAssessmentCreateDTO(
                 entity.getPatient() != null ? entity.getPatient().getId() : null,
-                entity.getEncounterId(),
+                entity.getEncounter() != null ? entity.getEncounter().getId() : null,
                 entity.getPositionStatus(),
                 entity.getBodyMovements(),
                 entity.getLevelOfConsciousness(),
