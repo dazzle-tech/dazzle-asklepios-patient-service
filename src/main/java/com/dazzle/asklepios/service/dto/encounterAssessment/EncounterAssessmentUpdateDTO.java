@@ -16,9 +16,6 @@ public record EncounterAssessmentUpdateDTO(
         Long patientId,
 
         @NotNull
-        Long userId,
-
-        @NotNull
         Long encounterId,
 
         @NotBlank

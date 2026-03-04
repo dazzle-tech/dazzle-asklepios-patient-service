@@ -6,9 +6,6 @@ import java.io.Serializable;
 public record EncounterVaccinationReviewDTO(
 
         @NotNull
-        Long id,
-
-        @NotNull
-        Long reviewedById
+        Long id
 
 ) implements Serializable {}

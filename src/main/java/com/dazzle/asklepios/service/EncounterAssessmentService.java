@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.repository.EncounterAssessmentRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.encounterAssessment.EncounterAssessmentCreateDTO;
 import com.dazzle.asklepios.service.dto.encounterAssessment.EncounterAssessmentUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -49,7 +50,6 @@ public class EncounterAssessmentService {
 
         EncounterAssessment entity = EncounterAssessment.builder()
                 .patient(patient)
-                .userId(createRequest.userId())
                 .encounterId(createRequest.encounterId())
                 .assessment(createRequest.assessment())
                 .build();
@@ -85,7 +85,6 @@ public class EncounterAssessmentService {
                 ));
 
         existing.setPatient(patient);
-        existing.setUserId(updateRequest.userId());
         existing.setEncounterId(updateRequest.encounterId());
         existing.setAssessment(updateRequest.assessment());
         existing.setLastModifiedDate(Instant.now());
@@ -104,13 +103,21 @@ public class EncounterAssessmentService {
     }
 
     @Transactional(readOnly = true)
-    public EncounterAssessment findLatestByEncounterIdAndUserId(Long encounterId, Long userId) {
-        LOG.debug("[FIND LATEST] encounterId={} userId={}", encounterId, userId);
+    public EncounterAssessment findLatestByEncounterId(Long encounterId) {
+
+        String currentUser = SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "Current user not found",
+                        "encounterAssessment",
+                        "user.notfound"
+                ));
+
+        LOG.debug("[FIND LATEST] encounterId={} createdBy={}", encounterId, currentUser);
 
         return encounterAssessmentRepository
-                .findTopByEncounterIdAndUserIdOrderByCreatedDateDesc(encounterId, userId)
+                .findTopByEncounterIdAndCreatedByOrderByCreatedDateDesc(encounterId, currentUser)
                 .orElseThrow(() -> new NotFoundAlertException(
-                        "No encounter assessment found for encounterId=" + encounterId + " and userId=" + userId,
+                        "No encounter assessment found for encounterId=" + encounterId,
                         "encounterAssessment",
                         "notfound"
                 ));
@@ -124,7 +131,7 @@ public class EncounterAssessmentService {
 
         String lower = (message != null ? message.toLowerCase() : "");
 
-        if (lower.contains("uk_enc_assessment_enc_patient_user")) {
+        if (lower.contains("uk_enc_assessment_enc_patient")) {
             throw new BadRequestAlertException(
                     "Assessment already exists for this patient, encounter, and user.",
                     "encounterAssessment",

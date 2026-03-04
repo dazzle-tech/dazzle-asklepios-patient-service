@@ -10,9 +10,6 @@ public record EncounterVaccinationCancelDTO(
         Long id,
 
         @NotBlank
-        String cancellationReason,
-
-        @NotNull
-        Long cancelledById
+        String cancellationReason
 
 ) implements Serializable {}
