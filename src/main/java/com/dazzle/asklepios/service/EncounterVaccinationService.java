@@ -6,6 +6,7 @@ import com.dazzle.asklepios.domain.enumeration.EncounterVaccinationStatus;
 import com.dazzle.asklepios.repository.EncounterVaccinationRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.projection.EncounterVaccinationProjections;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.encounterVaccination.EncounterVaccinationCancelDTO;
 import com.dazzle.asklepios.service.dto.encounterVaccination.EncounterVaccinationCreateDTO;
 import com.dazzle.asklepios.service.dto.encounterVaccination.EncounterVaccinationReviewDTO;
@@ -168,9 +169,17 @@ public class EncounterVaccinationService {
     }
 
     public EncounterVaccination cancel(EncounterVaccinationCancelDTO cancelRequest) {
+
+        String currentUser = SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "Current user not found",
+                        "encounterVaccination",
+                        "user.notfound"
+                ));
+
         LOG.info(
-                "[CANCEL] EncounterVaccination id={} cancelledById={} reason={}",
-                cancelRequest.id(), cancelRequest.cancelledById(), cancelRequest.cancellationReason()
+                "[CANCEL] EncounterVaccination id={} cancelledBy={} reason={}",
+                cancelRequest.id(), currentUser, cancelRequest.cancellationReason()
         );
 
         EncounterVaccination encounterVaccination = encounterVaccinationRepository.findById(cancelRequest.id())
@@ -186,26 +195,33 @@ public class EncounterVaccinationService {
         encounterVaccination.setStatus(EncounterVaccinationStatus.CANCELLED);
         encounterVaccination.setCancellationReason(cancelRequest.cancellationReason());
         encounterVaccination.setCancelledAt(Instant.now());
-        encounterVaccination.setCancelledById(cancelRequest.cancelledById());
+        encounterVaccination.setCancelledBy(currentUser);
 
         try {
             EncounterVaccination savedEncounterVaccination = encounterVaccinationRepository.saveAndFlush(encounterVaccination);
-            LOG.info("[CANCEL] EncounterVaccination success id={} cancelledById={}",
-                    cancelRequest.id(), cancelRequest.cancelledById());
+            LOG.info("[CANCEL] EncounterVaccination success id={} cancelledBy={}",
+                    cancelRequest.id(), currentUser);
             return savedEncounterVaccination;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
-            LOG.warn("[CANCEL] EncounterVaccination failed (constraint) id={} cancelledById={}",
-                    cancelRequest.id(), cancelRequest.cancelledById(), ex);
+            LOG.warn("[CANCEL] EncounterVaccination failed (constraint) id={} cancelledBy={}",
+                    cancelRequest.id(), currentUser, ex);
             throw handleConstraintViolation(ex);
         } catch (RuntimeException ex) {
             LOG.error("[CANCEL] EncounterVaccination failed (unexpected) id={}", cancelRequest.id(), ex);
             throw ex;
         }
     }
-
     public EncounterVaccination review(EncounterVaccinationReviewDTO reviewRequest) {
-        LOG.info("[REVIEW] EncounterVaccination id={} reviewedById={}",
-                reviewRequest.id(), reviewRequest.reviewedById());
+
+        String currentUser = SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "Current user not found",
+                        "encounterVaccination",
+                        "user.notfound"
+                ));
+
+        LOG.info("[REVIEW] EncounterVaccination id={} reviewedBy={}",
+                reviewRequest.id(), currentUser);
 
         EncounterVaccination encounterVaccination = encounterVaccinationRepository.findById(reviewRequest.id())
                 .orElseThrow(() -> {
@@ -218,24 +234,23 @@ public class EncounterVaccinationService {
                 });
 
         encounterVaccination.setStatus(EncounterVaccinationStatus.REVIEW);
-        encounterVaccination.setReviewedById(reviewRequest.reviewedById());
+        encounterVaccination.setReviewedById(currentUser);
         encounterVaccination.setReviewedAt(Instant.now());
 
         try {
             EncounterVaccination savedEncounterVaccination = encounterVaccinationRepository.saveAndFlush(encounterVaccination);
-            LOG.info("[REVIEW] EncounterVaccination success id={} reviewedById={}",
-                    reviewRequest.id(), reviewRequest.reviewedById());
+            LOG.info("[REVIEW] EncounterVaccination success id={} reviewedBy={}",
+                    reviewRequest.id(), currentUser);
             return savedEncounterVaccination;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
-            LOG.warn("[REVIEW] EncounterVaccination failed (constraint) id={} reviewedById={}",
-                    reviewRequest.id(), reviewRequest.reviewedById(), ex);
+            LOG.warn("[REVIEW] EncounterVaccination failed (constraint) id={} reviewedBy={}",
+                    reviewRequest.id(), currentUser, ex);
             throw handleConstraintViolation(ex);
         } catch (RuntimeException ex) {
             LOG.error("[REVIEW] EncounterVaccination failed (unexpected) id={}", reviewRequest.id(), ex);
             throw ex;
         }
     }
-
     @Transactional(readOnly = true)
     public Page<EncounterVaccination> findEncounterVaccinationsActive(Long encounterId, Pageable pageable) {
         LOG.debug("[FIND_ACTIVE_BY_ENCOUNTER] encounterId={} pageable={}", encounterId, pageable);

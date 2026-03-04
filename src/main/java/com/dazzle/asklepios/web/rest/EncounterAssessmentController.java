@@ -83,10 +83,9 @@ public class EncounterAssessmentController {
 
     @GetMapping("/encounter-assessments/latest")
     public ResponseEntity<EncounterAssessment> getLatest(
-            @RequestParam("encounterId") Long encounterId,
-            @RequestParam("userId") Long userId
+            @RequestParam("encounterId") Long encounterId
     ) {
-        LOG.debug("REST get latest EncounterAssessment encounterId={} userId={}", encounterId, userId);
+        LOG.debug("REST get latest EncounterAssessment encounterId={}", encounterId);
 
         if (encounterId == null) {
             throw new BadRequestAlertException(
@@ -96,18 +95,9 @@ public class EncounterAssessmentController {
             );
         }
 
-        if (userId == null) {
-            throw new BadRequestAlertException(
-                    "userId is required",
-                    "encounterAssessment",
-                    "userId.required"
-            );
-        }
-
         EncounterAssessment latest =
-                encounterAssessmentService.findLatestByEncounterIdAndUserId(encounterId, userId);
+                encounterAssessmentService.findLatestByEncounterId(encounterId);
 
         return ResponseEntity.ok(latest);
     }
-
 }

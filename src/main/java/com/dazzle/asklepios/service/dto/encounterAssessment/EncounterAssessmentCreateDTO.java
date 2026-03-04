@@ -13,9 +13,6 @@ public record EncounterAssessmentCreateDTO(
         Long patientId,
 
         @NotNull
-        Long userId,
-
-        @NotNull
         Long encounterId,
 
         @NotBlank

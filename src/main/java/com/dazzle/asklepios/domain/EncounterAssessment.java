@@ -38,10 +38,6 @@ public class EncounterAssessment extends AbstractAuditingEntity<Long> implements
     private Patient patient;
 
     @NotNull
-    @Column(name = "user_id", nullable = false)
-    private Long userId;
-
-    @NotNull
     @Column(name = "encounter_id")
     private Long encounterId;
 
