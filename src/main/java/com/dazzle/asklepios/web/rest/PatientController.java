@@ -398,6 +398,14 @@ public class PatientController {
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<Patient> getById(@PathVariable("id") Long id) {
+        LOG.debug("REST list Patients by id ='{}'", id);
+
+        Patient patient = patientService.findById(id);
+        return ResponseEntity.ok(patient);
+    }
 }
 
 
