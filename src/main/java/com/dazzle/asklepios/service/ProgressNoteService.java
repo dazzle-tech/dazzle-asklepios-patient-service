@@ -1,8 +1,10 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.ProgressNote;
 import com.dazzle.asklepios.domain.ProgressNoteLog;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.ProgressNoteLogRepository;
 import com.dazzle.asklepios.repository.ProgressNoteRepository;
@@ -35,15 +37,20 @@ public class ProgressNoteService {
     private final ProgressNoteRepository repository;
     private final PatientRepository patientRepository;
     private final ProgressNoteLogRepository logRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
 
     public ProgressNoteService(
             ProgressNoteRepository repository,
             PatientRepository patientRepository,
-            ProgressNoteLogRepository logRepository
+
+            ProgressNoteLogRepository logRepository,
+            PatientEncounterRepository patientEncounterRepository
+
     ) {
         this.repository = repository;
         this.patientRepository = patientRepository;
         this.logRepository = logRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
     }
 
     private String currentUsername() {
@@ -70,10 +77,17 @@ public class ProgressNoteService {
                                 "patient.notfound"
                         )
                 );
-
+        PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
+                .orElseThrow(() ->
+                        new NotFoundAlertException(
+                                "Encounter not found with id " + dto.encounterId(),
+                                "progressNote",
+                                "encounter.notfound"
+                        )
+                );
         ProgressNote entity = ProgressNote.builder()
                 .patient(patient)
-                .encounterId(dto.encounterId())
+                .encounter(encounter)
                 .noteText(dto.noteText())
                 .build();
 

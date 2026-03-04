@@ -38,8 +38,9 @@ public class ProgressNote extends AbstractAuditingEntity<Long> implements Serial
     private Patient patient;
 
     @NotNull
-    @Column(name = "encounter_id", nullable = false)
-    private Long encounterId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "encounter_id", nullable = false)
+    private PatientEncounter encounter;
 
     @NotBlank
     @Column(name = "note_text", nullable = false)

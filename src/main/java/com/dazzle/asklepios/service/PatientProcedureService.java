@@ -1,8 +1,10 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientProcedure;
 import com.dazzle.asklepios.domain.enumeration.ProcStatus;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientProcedureRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
@@ -33,6 +35,7 @@ public class PatientProcedureService {
 
     private final PatientProcedureRepository procedureRepository;
     private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
 
     private String currentUsername() {
         String username = SecurityUtils.getCurrentUserLogin().orElse(null);
@@ -61,10 +64,19 @@ public class PatientProcedureService {
                     );
                 });
 
+        PatientEncounter encounter = patientEncounterRepository.findById(procedureCreateDTO.encounterId())
+                .orElseThrow(() ->
+                        new NotFoundAlertException(
+                                "Encounter not found with id " + procedureCreateDTO.encounterId(),
+                                "procedure",
+                                "encounter.notfound"
+                        )
+                );
+
         PatientProcedure procedureEntity = PatientProcedure.builder()
                 .procedureId(procedureCreateDTO.procedureId())
                 .patient(patient)
-                .encounterId(procedureCreateDTO.encounterId())
+                .encounter(encounter)
                 .fromFacilityId(procedureCreateDTO.fromFacilityId())
                 .toFacilityId(procedureCreateDTO.toFacilityId())
                 .fromDepartmentId(procedureCreateDTO.fromDepartmentId())

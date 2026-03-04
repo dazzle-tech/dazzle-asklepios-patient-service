@@ -2,10 +2,12 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Consultation;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.ConsultationStatus;
 import com.dazzle.asklepios.domain.enumeration.DestinationType;
 import com.dazzle.asklepios.domain.enumeration.ConsultationLevel;
 import com.dazzle.asklepios.repository.ConsultationRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.consultation.ConsultationCreateDTO;
@@ -37,13 +39,16 @@ public class ConsultationService {
 
     private final ConsultationRepository consultationRepository;
     private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
 
     public ConsultationService(
             ConsultationRepository consultationRepository,
-            PatientRepository patientRepository
+            PatientRepository patientRepository,
+            PatientEncounterRepository patientEncounterRepository
     ) {
         this.consultationRepository = consultationRepository;
         this.patientRepository = patientRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
     }
 
     private String currentUsername() {
@@ -70,12 +75,22 @@ public class ConsultationService {
                                 "patient.notfound"
                         )
                 );
+        PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
+                .orElseThrow(() ->
+                        new NotFoundAlertException(
+                                "Encounter not found with id " + dto.encounterId(),
+                                "consultation",
+                                "encounter.notfound"
+                        )
+                );
+
+
 
         LOG.debug("[CREATE] Patient found with id={}", patient.getId());
 
         Consultation entity = Consultation.builder()
                 .patient(patient)
-                .encounterId(dto.encounterId())
+                .encounter(encounter)
                 .fromFacilityId(dto.fromFacilityId())
                 .toFacilityId(dto.toFacilityId())
                 .fromDepartmentId(dto.fromDepartmentId())

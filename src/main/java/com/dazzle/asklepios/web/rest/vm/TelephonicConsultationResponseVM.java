@@ -34,7 +34,7 @@ public record TelephonicConsultationResponseVM(
         return new TelephonicConsultationResponseVM(
                 entity.getId(),
                 entity.getPatient() != null ? entity.getPatient().getId() : null,
-                entity.getEncounterId(),
+                entity.getEncounter() != null ? entity.getEncounter().getId() : null,
                 entity.getPractitionerId(),
                 entity.getDateOfCall(),
                 entity.getConsultationContent(),

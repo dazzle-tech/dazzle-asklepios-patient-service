@@ -32,7 +32,8 @@ import java.time.Instant;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Consultation extends AbstractAuditingEntity<Long> implements Serializable {
+public class
+Consultation extends AbstractAuditingEntity<Long> implements Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -43,8 +44,9 @@ public class Consultation extends AbstractAuditingEntity<Long> implements Serial
     @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
-    @Column(name = "encounter_id", nullable = false)
-    private Long encounterId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "encounter_id", nullable = false)
+    private PatientEncounter encounter;
 
     @NotNull
     @Column(name = "from_facility_id", nullable = false)
