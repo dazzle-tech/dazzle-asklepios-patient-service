@@ -7,7 +7,6 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 import java.io.Serializable;
-import java.time.Instant;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record ConsultationCreateDTO(
@@ -53,14 +52,7 @@ public record ConsultationCreateDTO(
         Long approvalNumber,
 
         @NotNull
-        ConsultationStatus status,
-
-        Instant responseDate,
-        Long responseBy,
-        String responseText,
-        Instant rejectedDate,
-        Long rejectedBy,
-        String rejectReason
+        ConsultationStatus status
 
 ) implements Serializable {
 }

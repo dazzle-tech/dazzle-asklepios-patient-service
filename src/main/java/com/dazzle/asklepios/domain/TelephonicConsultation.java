@@ -21,9 +21,9 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
 import java.io.Serializable;
 import java.time.Instant;
-import java.util.Date;
 
 @Entity
 @Table(name = "telephonic_consultation")
@@ -78,6 +78,6 @@ public class TelephonicConsultation extends AbstractAuditingEntity<Long> impleme
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
 
-    @Column(name = "cancelled_by_id")
-    private Long cancelledBy;
+    @Column(name = "cancelled_by", length = 50)
+    private String cancelledBy;
 }

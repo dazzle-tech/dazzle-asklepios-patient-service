@@ -23,7 +23,7 @@ public record TelephonicConsultationResponseVM(
 
         String cancellationReason,
         Instant cancelledAt,
-        Long cancelledBy,
+        String cancelledBy,
 
         Instant createdDate,
         String createdBy

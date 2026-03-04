@@ -7,7 +7,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotBlank;
@@ -46,8 +45,8 @@ public class ProgressNote extends AbstractAuditingEntity<Long> implements Serial
     @Column(name = "note_text", nullable = false)
     private String noteText;
 
-    @Column(name = "cancelled_by")
-    private Long cancelledBy;
+    @Column(name = "cancelled_by", length = 50)
+    private String cancelledBy;
 
     @Column(name = "cancelled_date")
     private Instant cancelledDate;

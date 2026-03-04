@@ -106,8 +106,8 @@ public class Consultation extends AbstractAuditingEntity<Long> implements Serial
     @Column(name = "response_date")
     private Instant responseDate;
 
-    @Column(name = "response_by")
-    private Long responseBy;
+    @Column(name = "response_by", length = 50)
+    private String responseBy;
 
     @Column(name = "response_text")
     private String responseText;
@@ -115,8 +115,8 @@ public class Consultation extends AbstractAuditingEntity<Long> implements Serial
     @Column(name = "rejected_date")
     private Instant rejectedDate;
 
-    @Column(name = "rejected_by")
-    private Long rejectedBy;
+    @Column(name = "rejected_by", length = 50)
+    private String rejectedBy;
 
     @Column(name = "reject_reason", length = 255)
     private String rejectReason;
@@ -127,14 +127,13 @@ public class Consultation extends AbstractAuditingEntity<Long> implements Serial
     @Column(name = "cancelled_date")
     private Instant cancelledDate;
 
-    @Column(name = "cancelled_by")
-    private Long cancelledBy;
+    @Column(name = "cancelled_by", length = 50)
+    private String cancelledBy;
 
     @Column(name = "confirmed_date")
     private Instant confirmedDate;
 
-    @Column(name = "confirmed_by")
-    private Long confirmedBy;
-
+    @Column(name = "confirmed_by", length = 50)
+    private String confirmedBy;
 
 }
