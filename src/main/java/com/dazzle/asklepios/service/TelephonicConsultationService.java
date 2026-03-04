@@ -1,8 +1,10 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.TelephonicConsultation;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.TelephonicConsultationRepository;
 import com.dazzle.asklepios.service.dto.telephonicconsultation.TelephonicConsultationCreateDTO;
@@ -33,16 +35,19 @@ public class TelephonicConsultationService {
 
     private final TelephonicConsultationRepository repository;
     private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
 
     @PersistenceContext
     private EntityManager entityManager;
 
     public TelephonicConsultationService(
             TelephonicConsultationRepository repository,
-            PatientRepository patientRepository
+            PatientRepository patientRepository,
+            PatientEncounterRepository patientEncounterRepository
     ) {
         this.repository = repository;
         this.patientRepository = patientRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
     }
 
     public TelephonicConsultation create(TelephonicConsultationCreateDTO dto) {
@@ -56,10 +61,17 @@ public class TelephonicConsultationService {
                                 "patient.notfound"
                         )
                 );
-
+        PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
+                .orElseThrow(() ->
+                        new NotFoundAlertException(
+                                "Encounter not found with id " + dto.encounterId(),
+                                "telephonicConsultation",
+                                "encounter.notfound"
+                        )
+                );
         TelephonicConsultation entity = TelephonicConsultation.builder()
                 .patient(patient)
-                .encounterId(dto.encounterId())
+                .encounter(encounter)
                 .practitionerId(dto.practitionerId())
                 .dateOfCall(dto.dateOfCall())
                 .consultationContent(dto.consultationContent())

@@ -42,8 +42,9 @@ public class TelephonicConsultation extends AbstractAuditingEntity<Long> impleme
     @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
-    @Column(name = "encounter_id", nullable = false)
-    private Long encounterId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "encounter_id", nullable = false)
+    private PatientEncounter encounter;
 
     @Column(name = "practitioner_id", nullable = false)
     private Long practitionerId;
