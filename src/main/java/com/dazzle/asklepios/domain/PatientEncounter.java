@@ -57,6 +57,7 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "practitioner_id")
     private Long practitionerId;
 
+    //TODO: this column to be deleted when the change appointment
     @Column(name = "appointment_id")
     private String appointmentId;
 
