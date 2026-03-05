@@ -57,6 +57,10 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "practitioner_id")
     private Long practitionerId;
 
+    //TODO: this column to be deleted when the change appointment
+    @Column(name = "appointment_id")
+    private String appointmentId;
+
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "encounter_type", nullable = false, length = 50)
@@ -88,7 +92,7 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "department_daily_sequence_number", insertable = false, updatable = false)
     private Integer departmentDailySequenceNumber;
 
-    @Column(name = "encounter_date", insertable = false, updatable = false)
+    @Column(name = "encounter_date", updatable = false)
     private LocalDate encounterDate;
 
     @NotNull

@@ -1,11 +1,14 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.ProgressNote;
 import com.dazzle.asklepios.domain.ProgressNoteLog;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.ProgressNoteLogRepository;
 import com.dazzle.asklepios.repository.ProgressNoteRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.progressNotes.ProgressNoteCreateDTO;
 import com.dazzle.asklepios.service.dto.progressNotes.ProgressNoteUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -34,17 +37,33 @@ public class ProgressNoteService {
     private final ProgressNoteRepository repository;
     private final PatientRepository patientRepository;
     private final ProgressNoteLogRepository logRepository;
-
+    private final PatientEncounterRepository patientEncounterRepository;
 
     public ProgressNoteService(
             ProgressNoteRepository repository,
             PatientRepository patientRepository,
-            ProgressNoteLogRepository logRepository
+
+            ProgressNoteLogRepository logRepository,
+            PatientEncounterRepository patientEncounterRepository
 
     ) {
         this.repository = repository;
         this.patientRepository = patientRepository;
         this.logRepository = logRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
+    }
+
+    private String currentUsername() {
+        String username = SecurityUtils.getCurrentUserLogin().orElse(null);
+        if (username == null) {
+            LOG.warn("[ProgressNoteService] AUTH - unauthenticated request");
+            throw new BadRequestAlertException(
+                    "unauthenticated",
+                    "progressNote",
+                    "No authenticated user"
+            );
+        }
+        return username;
     }
 
     public ProgressNote create(ProgressNoteCreateDTO dto) {
@@ -58,16 +77,22 @@ public class ProgressNoteService {
                                 "patient.notfound"
                         )
                 );
-
+        PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
+                .orElseThrow(() ->
+                        new NotFoundAlertException(
+                                "Encounter not found with id " + dto.encounterId(),
+                                "progressNote",
+                                "encounter.notfound"
+                        )
+                );
         ProgressNote entity = ProgressNote.builder()
                 .patient(patient)
-                .encounterId(dto.encounterId())
+                .encounter(encounter)
                 .noteText(dto.noteText())
                 .build();
 
         try {
             return repository.saveAndFlush(entity);
-
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
             throw new BadRequestAlertException(
@@ -84,7 +109,6 @@ public class ProgressNoteService {
 
         try {
             return repository.saveAndFlush(existing);
-
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
             throw new BadRequestAlertException(
@@ -95,16 +119,17 @@ public class ProgressNoteService {
         }
     }
 
-    public ProgressNote cancel(Long id, String reason, Long cancelledBy) {
+    public ProgressNote cancel(Long id, String reason) {
         ProgressNote existing = findById(id);
 
         existing.setCancelledDate(Instant.now());
-        existing.setCancelledBy(cancelledBy);
+        existing.setCancelledBy(currentUsername());
         existing.setCancellationReason(reason);
+
+        LOG.debug("[CANCEL] ProgressNote id={} cancelledBy={}", id, existing.getCancelledBy());
 
         try {
             return repository.saveAndFlush(existing);
-
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
             throw new BadRequestAlertException(
@@ -116,27 +141,14 @@ public class ProgressNoteService {
     }
 
     @Transactional(readOnly = true)
-    public Page<ProgressNote> findByEncounterNotCancelled(
-            Long encounterId,
-            Pageable pageable
-    ) {
-        return repository.findByEncounterIdAndCancelledDateIsNull(
-                encounterId,
-                pageable
-        );
+    public Page<ProgressNote> findByEncounterNotCancelled(Long encounterId, Pageable pageable) {
+        return repository.findByEncounterIdAndCancelledDateIsNull(encounterId, pageable);
     }
 
     @Transactional(readOnly = true)
-    public Page<ProgressNote> findByEncounterAll(
-            Long encounterId,
-            Pageable pageable
-    ) {
-        return repository.findByEncounterId(
-                encounterId,
-                pageable
-        );
+    public Page<ProgressNote> findByEncounterAll(Long encounterId, Pageable pageable) {
+        return repository.findByEncounterId(encounterId, pageable);
     }
-
 
     @Transactional(readOnly = true)
     public ProgressNote findById(Long id) {
@@ -153,15 +165,12 @@ public class ProgressNoteService {
     @Transactional(readOnly = true)
     public List<ProgressNoteLog> findLogsByProgressNoteId(Long progressNoteId) {
         findById(progressNoteId);
-
-        return logRepository
-                .findByProgressNoteIdOrderByCreatedDateDesc(progressNoteId);
+        return logRepository.findByProgressNoteIdOrderByCreatedDateDesc(progressNoteId);
     }
 
     private void handleConstraintsOnCreateOrUpdate(RuntimeException exception) {
         Throwable root = getRootCause(exception);
         String message = (root != null ? root.getMessage() : exception.getMessage());
-
         LOG.error("DB ROOT CAUSE: {}", message, exception);
 
         String lower = (message != null ? message.toLowerCase() : "");
@@ -174,7 +183,6 @@ public class ProgressNoteService {
                     "cancellationReason.required"
             );
         }
-
         if (lower.contains("fk_progress_notes_patient")
                 || (lower.contains("foreign key") && lower.contains("patient"))) {
             throw new BadRequestAlertException(
@@ -183,7 +191,6 @@ public class ProgressNoteService {
                     "patient.invalid"
             );
         }
-
         if (lower.contains("note_text") && (lower.contains("null value") || lower.contains("not-null"))) {
             throw new BadRequestAlertException(
                     "noteText is required.",
@@ -191,7 +198,6 @@ public class ProgressNoteService {
                     "noteText.required"
             );
         }
-
         if (lower.contains("encounter_id") && (lower.contains("null value") || lower.contains("not-null"))) {
             throw new BadRequestAlertException(
                     "encounterId is required.",

@@ -289,5 +289,24 @@ public class PatientEncounterController {
 
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
+    @GetMapping("/encounter/{id}")
+    public ResponseEntity<PatientEncounter> getEncounterById(
+            @PathVariable("id") @NotNull Long encounterId
+    ) {
+        LOG.debug("REST get PatientEncounter by id={}", encounterId);
 
-}
+        PatientEncounter encounter = patientEncounterService.getById(encounterId);
+
+        return ResponseEntity.ok(encounter);
+    }
+    @GetMapping("/encounter/appointment/{appointmentId}")
+    public ResponseEntity<PatientEncounter> getEncountersByAppointment(
+            @PathVariable @NotNull String appointmentId
+    ) {
+
+        LOG.debug("REST get EncounterAppointment by appointmentId={} ", appointmentId);
+
+        PatientEncounter encounterAppointment = patientEncounterService.getEncountersByAppointmentId(appointmentId);
+
+        return ResponseEntity.ok(encounterAppointment);
+    }}

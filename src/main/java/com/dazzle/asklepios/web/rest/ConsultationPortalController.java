@@ -4,7 +4,6 @@ import com.dazzle.asklepios.domain.Consultation;
 import com.dazzle.asklepios.domain.enumeration.ConsultationStatus;
 import com.dazzle.asklepios.service.ConsultationPortalService;
 import com.dazzle.asklepios.service.ConsultationService;
-import com.dazzle.asklepios.service.dto.consultation.ConsultationConfirmDTO;
 import com.dazzle.asklepios.service.dto.consultation.ConsultationRejectDTO;
 import com.dazzle.asklepios.service.dto.consultation.ConsultationResponseDTO;
 import com.dazzle.asklepios.service.dto.consultation.ConsultationSubmitRequestDTO;
@@ -53,15 +52,10 @@ public class ConsultationPortalController {
         this.consultationService = consultationService;
         LOG.debug(
                 "ConsultationPortalController initialized consultationPortalService={} consultationService={}",
-                consultationPortalService,
-                consultationService
+                consultationPortalService, consultationService
         );
     }
 
-    /**
-     * Controller for: listPractitionerAndDepartmentConsultations
-     * GET /api/patient/consultation-portal/search
-     */
     @GetMapping("/consultation-portal/search")
     public ResponseEntity<List<Consultation>> searchConsultations(
             @RequestParam @NotNull Instant fromDate,
@@ -80,108 +74,57 @@ public class ConsultationPortalController {
 
         if (fromDate.isAfter(toDate)) {
             throw new BadRequestAlertException(
-                    "fromDate must be before or equal to toDate",
-                    "consultation",
-                    "date.invalid.range"
-            );
+                    "fromDate must be before or equal to toDate", "consultation", "date.invalid.range");
         }
 
         if (practitionerId == null && toDepartmentId == null) {
             throw new BadRequestAlertException(
                     "Either practitionerId or toDepartmentId must be provided",
-                    "consultation",
-                    "search.filter.required"
-            );
+                    "consultation", "search.filter.required");
         }
 
-        if (practitionerId == null) {
+        if (practitionerId == null)
             LOG.debug("REST SEARCH Consultations - practitionerId is null, will fetch department consultations only");
-        }
 
-        if (toDepartmentId == null) {
+        if (toDepartmentId == null)
             LOG.debug("REST SEARCH Consultations - toDepartmentId is null, will fetch practitioner consultations only");
-        }
 
-        Page<Consultation> page =
-                consultationPortalService.listPractitionerAndDepartmentConsultations(
-                        fromDate,
-                        toDate,
-                        fromFacilityId,
-                        practitionerId,
-                        toDepartmentId,
-                        fromDepartmentIds,
-                        pageable,
-                        showRejected
-                );
+        Page<Consultation> page = consultationPortalService.listPractitionerAndDepartmentConsultations(
+                fromDate, toDate, fromFacilityId, practitionerId,
+                toDepartmentId, fromDepartmentIds, pageable, showRejected
+        );
 
-        HttpHeaders headers =
-                PaginationUtil.generatePaginationHttpHeaders(
-                        ServletUriComponentsBuilder.fromCurrentRequest(),
-                        page
-                );
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), page);
 
         LOG.info("REST SEARCH Consultations - Retrieved {} consultations", page.getContent().size());
-
-        return new ResponseEntity<>(
-                page.getContent(),
-                headers,
-                HttpStatus.OK
-        );
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
-    /**
-     * Controller for: confirmConsultation
-     * PUT /api/patient/consultation/{id}/confirm
-     */
     @PutMapping("/consultation/{id}/confirm")
-    public ResponseEntity<Consultation> confirmConsultation(
-            @PathVariable Long id,
-            @Valid @RequestBody ConsultationConfirmDTO consultationConfirmDTO
-    ) {
-        LOG.debug("REST confirm Consultation payload id={} dto={}", id, consultationConfirmDTO);
+    public ResponseEntity<Consultation> confirmConsultation(@PathVariable Long id) {
+        LOG.debug("REST confirm Consultation id={}", id);
 
-        // Validation
         if (id == null) {
             LOG.warn("REST confirm Consultation - id is missing");
             throw new BadRequestAlertException(
-                    "Consultation id is required",
-                    "consultation",
-                    "id.required"
-            );
-        }
-
-        if (consultationConfirmDTO == null) {
-            LOG.warn("REST confirm Consultation - request body is missing id={}", id);
-            throw new BadRequestAlertException(
-                    "Request body is required",
-                    "consultation",
-                    "body.required"
-            );
+                    "Consultation id is required", "consultation", "id.required");
         }
 
         Consultation existing = consultationService.findById(id);
 
         if (existing.getStatus() != ConsultationStatus.REQUESTED) {
-            LOG.warn("REST confirm Consultation - Not allowed for status={} id={}",
-                    existing.getStatus(), id);
-
+            LOG.warn("REST confirm Consultation - Not allowed for status={} id={}", existing.getStatus(), id);
             throw new BadRequestAlertException(
                     "Consultation can be confirmed only when status is REQUESTED",
-                    "consultation",
-                    "confirm.only.requested"
-            );
+                    "consultation", "confirm.only.requested");
         }
 
-        Consultation confirmed = consultationPortalService.confirmConsultation(id, consultationConfirmDTO);
+        Consultation confirmed = consultationPortalService.confirmConsultation(id);
         LOG.info("REST confirm Consultation - Successfully confirmed consultation id={}", confirmed.getId());
-
         return ResponseEntity.ok(confirmed);
     }
 
-    /**
-     * Controller for: rejectConsultation
-     * PUT /api/patient/consultation/{id}/reject
-     */
     @PutMapping("/consultation/{id}/reject")
     public ResponseEntity<Consultation> rejectConsultation(
             @PathVariable @NotNull Long id,
@@ -189,40 +132,26 @@ public class ConsultationPortalController {
     ) {
         LOG.debug("REST reject Consultation payload id={} dto={}", id, consultationRejectDTO);
 
-
-
         if (consultationRejectDTO == null) {
             LOG.warn("REST reject Consultation - request body is missing id={}", id);
             throw new BadRequestAlertException(
-                    "Request body is required",
-                    "consultation",
-                    "body.required"
-            );
+                    "Request body is required", "consultation", "body.required");
         }
 
         Consultation existing = consultationService.findById(id);
 
         if (existing.getStatus() != ConsultationStatus.REQUESTED) {
-            LOG.warn("REST reject Consultation - Not allowed for status={} id={}",
-                    existing.getStatus(), id);
-
+            LOG.warn("REST reject Consultation - Not allowed for status={} id={}", existing.getStatus(), id);
             throw new BadRequestAlertException(
                     "Consultation can be rejected only when status is REQUESTED",
-                    "consultation",
-                    "reject.only.requested"
-            );
+                    "consultation", "reject.only.requested");
         }
 
         Consultation rejected = consultationPortalService.rejectConsultation(id, consultationRejectDTO);
         LOG.info("REST reject Consultation - Successfully rejected consultation id={}", rejected.getId());
-
         return ResponseEntity.ok(rejected);
     }
 
-    /**
-     * Controller for: submitConsultationResponse
-     * PUT /api/patient/consultation/{id}/response
-     */
     @PutMapping("/consultation/{id}/response")
     public ResponseEntity<Consultation> submitConsultationResponse(
             @PathVariable Long id,
@@ -230,77 +159,53 @@ public class ConsultationPortalController {
     ) {
         LOG.debug("REST submit Consultation response payload id={} dto={}", id, dto);
 
-        // Validation
         if (id == null) {
             LOG.warn("REST submit Consultation response - id is missing");
             throw new BadRequestAlertException(
-                    "Consultation id is required",
-                    "consultation",
-                    "id.required"
-            );
+                    "Consultation id is required", "consultation", "id.required");
         }
 
         if (dto == null) {
             LOG.warn("REST submit Consultation response - request body is missing id={}", id);
             throw new BadRequestAlertException(
-                    "Request body is required",
-                    "consultation",
-                    "body.required"
-            );
+                    "Request body is required", "consultation", "body.required");
         }
 
         Consultation existing = consultationService.findById(id);
 
         if (existing.getStatus() != ConsultationStatus.CONFIRMED) {
-            LOG.warn("REST submit Consultation response - Not allowed for status={} id={}",
-                    existing.getStatus(), id);
-
+            LOG.warn("REST submit Consultation response - Not allowed for status={} id={}", existing.getStatus(), id);
             throw new BadRequestAlertException(
                     "Consultation response can be submitted only when status is CONFIRMED",
-                    "consultation",
-                    "response.only.confirmed"
-            );
+                    "consultation", "response.only.confirmed");
         }
 
         Consultation updated = consultationPortalService.submitConsultationResponse(id, dto);
         LOG.info("REST submit Consultation response - Successfully added response to consultation id={}", updated.getId());
-
         return ResponseEntity.ok(updated);
     }
 
-    /**
-     * Controller for: submitConsultations
-     * PUT /api/patient/consultation/submit
-     */
     @PutMapping("/consultation/submit")
     public ResponseEntity<ConsultationSubmitResultDTO> submitConsultations(
             @Valid @RequestBody ConsultationSubmitRequestDTO dto
     ) {
         LOG.debug("REST submit consultations payload={}", dto);
 
-        // Validation
         if (dto == null) {
             LOG.warn("REST submit consultations - request body is missing");
             throw new BadRequestAlertException(
-                    "Request body is required",
-                    "consultation",
-                    "body.required"
-            );
+                    "Request body is required", "consultation", "body.required");
         }
 
         if (dto.consultationIds() == null || dto.consultationIds().isEmpty()) {
             LOG.warn("REST submit consultations - consultationIds is empty");
             throw new BadRequestAlertException(
-                    "At least one consultation id is required",
-                    "consultation",
-                    "ids.required"
-            );
+                    "At least one consultation id is required", "consultation", "ids.required");
         }
 
         ConsultationSubmitResultDTO result = consultationPortalService.submitConsultations(dto);
         LOG.info("REST submit consultations - Successfully submitted {} consultations with {} errors",
                 result.submittedCount(), result.errors().size());
-
         return ResponseEntity.ok(result);
     }
 }

@@ -1,3 +1,4 @@
+//TODO: this file to be deleted when the change appointment
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.Appointment;
@@ -73,7 +74,7 @@ public class AppointmentController {
 
 
                 if (appointment.getPatientKey() != null) {
-                    Map<String, Object> patient = appointmentService.getPatient(appointment.getPatientKey());
+                    Map<String, Object> patient = appointmentService.getPatient(Long.parseLong(appointment.getPatientKey()));
                     if (patient != null) {
                         appointmentMap.put("patient", patient);
                     }

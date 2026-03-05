@@ -27,9 +27,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
-import java.time.Instant;
 
 import java.net.URI;
+import java.time.Instant;
 import java.util.List;
 
 @Validated
@@ -46,7 +46,6 @@ public class TelephonicConsultationController {
         this.service = service;
     }
 
-
     @PostMapping
     public ResponseEntity<TelephonicConsultationResponseVM> create(
             @Valid @RequestBody TelephonicConsultationCreateDTO dto
@@ -55,19 +54,14 @@ public class TelephonicConsultationController {
 
         if (dto == null || dto.patientId() == null) {
             throw new BadRequestAlertException(
-                    "Patient id is required",
-                    "telephonicConsultation",
-                    "patient.required"
-            );
+                    "Patient id is required", "telephonicConsultation", "patient.required");
         }
 
         TelephonicConsultation created = service.create(dto);
-
         return ResponseEntity
                 .created(URI.create("/api/patient/telephonic-consultation/" + created.getId()))
                 .body(TelephonicConsultationResponseVM.ofEntity(created));
     }
-
 
     @PutMapping("/{id}")
     public ResponseEntity<TelephonicConsultationResponseVM> update(
@@ -78,44 +72,32 @@ public class TelephonicConsultationController {
 
         if (dto == null || dto.id() == null || !dto.id().equals(id)) {
             throw new BadRequestAlertException(
-                    "Path id does not match payload id",
-                    "telephonicConsultation",
-                    "id.mismatch"
-            );
+                    "Path id does not match payload id", "telephonicConsultation", "id.mismatch");
         }
 
         TelephonicConsultation updated = service.update(id, dto);
         return ResponseEntity.ok(TelephonicConsultationResponseVM.ofEntity(updated));
     }
 
-
     @GetMapping("/not-cancelled/by-encounter/{encounterId}")
     public ResponseEntity<List<TelephonicConsultationResponseVM>> findNotCancelledByEncounter(
             @PathVariable Long encounterId,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug(
-                "REST find NOT_CANCELLED telephonic consultations encounterId={} pageable={}",
-                encounterId, pageable
-        );
+        LOG.debug("REST find NOT_CANCELLED telephonic consultations encounterId={} pageable={}",
+                encounterId, pageable);
 
-        Page<TelephonicConsultation> page =
-                service.findNotCancelled(encounterId, pageable);
+        Page<TelephonicConsultation> page = service.findNotCancelled(encounterId, pageable);
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), page);
 
-        HttpHeaders headers =
-                PaginationUtil.generatePaginationHttpHeaders(
-                        ServletUriComponentsBuilder.fromCurrentRequest(), page
-                );
-
-        List<TelephonicConsultationResponseVM> body =
-                page.getContent()
-                        .stream()
-                        .map(TelephonicConsultationResponseVM::ofEntity)
-                        .toList();
+        List<TelephonicConsultationResponseVM> body = page.getContent()
+                .stream()
+                .map(TelephonicConsultationResponseVM::ofEntity)
+                .toList();
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
-
 
     @GetMapping("/by-encounter/{encounterId}")
     public ResponseEntity<List<TelephonicConsultationResponseVM>> findByEncounter(
@@ -125,72 +107,50 @@ public class TelephonicConsultationController {
             @RequestParam(defaultValue = "false") boolean includeCancelled,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug(
-                "REST find telephonic consultations encounterId={} fromDate={} toDate={} includeCancelled={}",
-                encounterId, fromDate, toDate, includeCancelled
-        );
+        LOG.debug("REST find telephonic consultations encounterId={} fromDate={} toDate={} includeCancelled={}",
+                encounterId, fromDate, toDate, includeCancelled);
 
         Page<TelephonicConsultation> page;
-
         boolean hasFrom = fromDate != null;
         boolean hasTo = toDate != null;
 
         if (hasFrom && hasTo && includeCancelled) {
-            page = service.findByEncounterWithDateRange(
-                    encounterId, fromDate, toDate, pageable
-            );
+            page = service.findByEncounterWithDateRange(encounterId, fromDate, toDate, pageable);
         } else if (hasFrom && hasTo) {
-            page = service.findByEncounterWithDateRangeNotCancelled(
-                    encounterId, fromDate, toDate, pageable
-            );
+            page = service.findByEncounterWithDateRangeNotCancelled(encounterId, fromDate, toDate, pageable);
         } else if (hasFrom && includeCancelled) {
-            page = service.findByEncounterFromDate(
-                    encounterId, fromDate, pageable
-            );
+            page = service.findByEncounterFromDate(encounterId, fromDate, pageable);
         } else if (hasFrom) {
-            page = service.findByEncounterFromDateNotCancelled(
-                    encounterId, fromDate, pageable
-            );
+            page = service.findByEncounterFromDateNotCancelled(encounterId, fromDate, pageable);
         } else if (hasTo && includeCancelled) {
-            page = service.findByEncounterToDate(
-                    encounterId, toDate, pageable
-            );
+            page = service.findByEncounterToDate(encounterId, toDate, pageable);
         } else if (hasTo) {
-            page = service.findByEncounterToDateNotCancelled(
-                    encounterId, toDate, pageable
-            );
+            page = service.findByEncounterToDateNotCancelled(encounterId, toDate, pageable);
         } else if (includeCancelled) {
             page = service.findByEncounter(encounterId, pageable);
         } else {
             page = service.findByEncounterNotCancelled(encounterId, pageable);
         }
 
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), page);
 
-        HttpHeaders headers =
-                PaginationUtil.generatePaginationHttpHeaders(
-                        ServletUriComponentsBuilder.fromCurrentRequest(), page
-                );
-
-        List<TelephonicConsultationResponseVM> body =
-                page.getContent()
-                        .stream()
-                        .map(TelephonicConsultationResponseVM::ofEntity)
-                        .toList();
+        List<TelephonicConsultationResponseVM> body = page.getContent()
+                .stream()
+                .map(TelephonicConsultationResponseVM::ofEntity)
+                .toList();
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
-
 
     @PutMapping("/{id}/cancel")
     public ResponseEntity<TelephonicConsultationResponseVM> cancel(
             @PathVariable Long id,
             @Valid @RequestBody TelephonicConsultationCancelDTO dto
     ) {
-        TelephonicConsultation cancelled =
-                service.cancel(id, dto.reason(), dto.cancelledBy());
+        LOG.debug("REST cancel TelephonicConsultation id={} reason={}", id, dto.reason());
 
+        TelephonicConsultation cancelled = service.cancel(id, dto.reason());
         return ResponseEntity.ok(TelephonicConsultationResponseVM.ofEntity(cancelled));
     }
-
-
 }

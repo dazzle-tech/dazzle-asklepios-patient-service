@@ -150,8 +150,8 @@ public class EncounterVaccinationController {
             @Valid @RequestBody EncounterVaccinationCancelDTO cancelRequest
     ) {
         LOG.debug(
-                "REST cancel EncounterVaccination id={} reason={} cancelledById={}",
-                cancelRequest.id(), cancelRequest.cancellationReason(), cancelRequest.cancelledById()
+                "REST cancel EncounterVaccination id={} reason={}",
+                cancelRequest.id(), cancelRequest.cancellationReason()
         );
 
         if (cancelRequest.id() == null) {
@@ -159,9 +159,6 @@ public class EncounterVaccinationController {
             throw new BadRequestAlertException("EncounterVaccination id is required", "encounterVaccination", "id.required");
         }
 
-        if (cancelRequest.cancelledById() == null) {
-            throw new BadRequestAlertException("CancelledBy is required", "encounterVaccination", "cancelledBy.required");
-        }
 
         EncounterVaccination existing = encounterVaccinationService.getById(cancelRequest.id());
 
@@ -185,8 +182,8 @@ public class EncounterVaccinationController {
             @Valid @RequestBody EncounterVaccinationReviewDTO reviewRequest
     ) {
         LOG.debug(
-                "REST review EncounterVaccination id={} reviewedById={}",
-                reviewRequest.id(), reviewRequest.reviewedById()
+                "REST review EncounterVaccination id={}",
+                reviewRequest.id()
         );
 
         if (reviewRequest.id() == null) {
@@ -194,9 +191,6 @@ public class EncounterVaccinationController {
             throw new BadRequestAlertException("EncounterVaccination id is required", "encounterVaccination", "id.required");
         }
 
-        if (reviewRequest.reviewedById() == null) {
-            throw new BadRequestAlertException("ReviewedBy is required", "encounterVaccination", "reviewedBy.required");
-        }
 
         EncounterVaccination existing = encounterVaccinationService.getById(reviewRequest.id());
 

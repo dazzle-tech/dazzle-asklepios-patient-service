@@ -7,5 +7,4 @@ import java.util.Optional;
 
 public interface EncounterAssessmentRepository extends JpaRepository<EncounterAssessment, Long> {
 
-    Optional<EncounterAssessment> findTopByEncounterIdAndUserIdOrderByCreatedDateDesc(Long encounterId, Long userId);
-}
+    Optional<EncounterAssessment> findTopByEncounterIdAndCreatedByOrderByCreatedDateDesc(Long encounterId, String createdBy);}

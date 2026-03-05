@@ -61,6 +61,7 @@ public class PatientEncounterService {
                 .facilityId(createDTO.facilityId())
                 .departmentId(createDTO.departmentId())
                 .practitionerId(createDTO.practitionerId())
+                .appointmentId(createDTO.appointmentId())
                 .encounterType(createDTO.encounterType())
                 .encounterReason(createDTO.encounterReason())
                 .followUpEncounter(createDTO.followUpEncounterId() == null ? null :
@@ -80,6 +81,7 @@ public class PatientEncounterService {
                 .isObserved(createDTO.isObserved())
                 .hasPrescription(createDTO.hasPrescription())
                 .status(EncounterStatus.PENDING_PAYMENT)
+                .encounterDate(createDTO.encounterDate())
                 .build();
 
         try {
@@ -518,8 +520,27 @@ public class PatientEncounterService {
         return patientEncounterRepository
                 .findByPatientIdOrderByCreatedDateDesc(patientId, pageable);
     }
+    @Transactional(readOnly = true)
+    public PatientEncounter getById(Long encounterId) {
+        LOG.debug("[GET_BY_ID] encounterId={}", encounterId);
+                return patientEncounterRepository.findById(encounterId)
+                .orElseThrow(() -> {
+                    LOG.warn("[GET_BY_ID] PatientEncounter not found id={}", encounterId);
+                    return new NotFoundAlertException(
+                            "PatientEncounter not found with id " + encounterId,
+                            "patientEncounter",
+                            "id.notfound"
+                    );
+                });
+    }
+    @Transactional(readOnly = true)
+    public  PatientEncounter getEncountersByAppointmentId(
+            String appointmentId
+    ) {
+        LOG.debug("[GET_BY_APPOINTMENT_ID] appointmentId={} ", appointmentId);
 
-    private RuntimeException handleConstraintViolation(Exception exception) {
+        return patientEncounterRepository.findByAppointmentId(appointmentId);
+    }    private RuntimeException handleConstraintViolation(Exception exception) {
         Throwable root = getRootCause(exception);
         String message = root != null ? root.getMessage() : exception.getMessage();
         String messageLower = message != null ? message.toLowerCase() : "";
