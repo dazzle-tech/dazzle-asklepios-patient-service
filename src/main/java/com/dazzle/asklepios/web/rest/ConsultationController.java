@@ -32,7 +32,6 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import java.net.URI;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 
 @Validated
 @RestController
@@ -48,33 +47,24 @@ public class ConsultationController {
         this.service = service;
     }
 
-
     @PostMapping("consultation")
-    public ResponseEntity<Consultation> create(
-            @Valid @RequestBody ConsultationCreateDTO dto
-    ) {
+    public ResponseEntity<Consultation> create(@Valid @RequestBody ConsultationCreateDTO dto) {
         LOG.debug("REST create Consultation payload={}", dto);
 
         if (dto == null || dto.patientId() == null) {
             LOG.warn("REST create Consultation - Patient id is missing");
             throw new BadRequestAlertException(
-                    "Patient id is required",
-                    "consultation",
-                    "patient.required"
-            );
+                    "Patient id is required", "consultation", "patient.required");
         }
 
         DestinationType destinationType = dto.destinationType();
-
 
         if (destinationType == DestinationType.DEPARTMENT) {
             if (dto.toDepartmentId() == null) {
                 LOG.warn("REST create Consultation - toDepartmentId is missing for DEPARTMENT destination");
                 throw new BadRequestAlertException(
                         "toDepartmentId is required when destinationType = DEPARTMENT",
-                        "consultation",
-                        "department.required"
-                );
+                        "consultation", "department.required");
             }
         }
 
@@ -82,13 +72,10 @@ public class ConsultationController {
             if (dto.consultantSpeciality() == null
                     || dto.consultantSpeciality().isBlank()
                     || dto.practitionerId() == null) {
-
                 LOG.warn("REST create Consultation - Missing consultant details for CONSULTANT destination");
                 throw new BadRequestAlertException(
                         "consultantSpeciality and practitionerId are required when destinationType = CONSULTANT",
-                        "consultation",
-                        "consultant.required"
-                );
+                        "consultation", "consultant.required");
             }
         }
 
@@ -100,21 +87,17 @@ public class ConsultationController {
                 .body(created);
     }
 
-
     @PutMapping("/consultation/{id}")
     public ResponseEntity<Consultation> update(
             @PathVariable Long id,
-            @Valid @RequestBody ConsultationUpdateDTO dto
-    ) {
+            @Valid @RequestBody ConsultationUpdateDTO dto) {
         LOG.debug("REST update Consultation id={} payload={}", id, dto);
 
         if (dto == null || dto.id() == null || !dto.id().equals(id)) {
-            LOG.warn("REST update Consultation - Path id={} does not match payload id={}", id, dto != null ? dto.id() : null);
+            LOG.warn("REST update Consultation - Path id={} does not match payload id={}",
+                    id, dto != null ? dto.id() : null);
             throw new BadRequestAlertException(
-                    "Path id does not match payload id",
-                    "consultation",
-                    "id.mismatch"
-            );
+                    "Path id does not match payload id", "consultation", "id.mismatch");
         }
 
         Consultation existing = service.findById(id);
@@ -122,10 +105,7 @@ public class ConsultationController {
         if (existing.getStatus() == ConsultationStatus.CANCELLED) {
             LOG.warn("REST update Consultation - Attempt to update cancelled consultation id={}", id);
             throw new BadRequestAlertException(
-                    "Cancelled consultation cannot be updated",
-                    "consultation",
-                    "already.cancelled"
-            );
+                    "Cancelled consultation cannot be updated", "consultation", "already.cancelled");
         }
 
         DestinationType destinationType = dto.destinationType();
@@ -135,9 +115,7 @@ public class ConsultationController {
                 LOG.warn("REST update Consultation - toDepartmentId is missing for DEPARTMENT destination");
                 throw new BadRequestAlertException(
                         "toDepartmentId is required when destinationType = DEPARTMENT",
-                        "consultation",
-                        "department.required"
-                );
+                        "consultation", "department.required");
             }
         }
 
@@ -145,13 +123,10 @@ public class ConsultationController {
             if (dto.consultantSpeciality() == null
                     || dto.consultantSpeciality().isBlank()
                     || dto.practitionerId() == null) {
-
                 LOG.warn("REST update Consultation - Missing consultant details for CONSULTANT destination");
                 throw new BadRequestAlertException(
                         "consultantSpeciality and practitionerId are required when destinationType = CONSULTANT",
-                        "consultation",
-                        "consultant.required"
-                );
+                        "consultation", "consultant.required");
             }
         }
 
@@ -160,57 +135,36 @@ public class ConsultationController {
         return ResponseEntity.ok(updated);
     }
 
-
     @PutMapping("/consultation/{id}/cancel")
     public ResponseEntity<Consultation> cancel(
             @PathVariable Long id,
-            @Valid @RequestBody ConsultationCancelDTO dto
-    ) {
-        LOG.debug("REST cancel Consultation id={} reason={} cancelledBy={}",
-                id, dto.cancellationReason(), dto.cancelledBy());
+            @Valid @RequestBody ConsultationCancelDTO dto) {
+        LOG.debug("REST cancel Consultation id={} reason={}", id, dto.cancellationReason());
 
         Consultation existing = service.findById(id);
 
         if (existing.getStatus() == ConsultationStatus.CANCELLED) {
             throw new BadRequestAlertException(
-                    "Consultation already cancelled",
-                    "consultation",
-                    "already.cancelled"
-            );
+                    "Consultation already cancelled", "consultation", "already.cancelled");
         }
 
         if (existing.getStatus() == ConsultationStatus.READY) {
             throw new BadRequestAlertException(
-                    "Completed consultation cannot be cancelled",
-                    "consultation",
-                    "already.completed"
-            );
+                    "Completed consultation cannot be cancelled", "consultation", "already.completed");
         }
 
-        Consultation cancelled =
-                service.cancel(id, dto.cancellationReason(), dto.cancelledBy());
-
+        Consultation cancelled = service.cancel(id, dto.cancellationReason());
         return ResponseEntity.ok(cancelled);
     }
 
     @GetMapping("/consultation/not-cancelled/by-encounter/{encounterId}")
     public ResponseEntity<List<Consultation>> findNotCancelledByEncounter(
             @PathVariable Long encounterId,
-            @ParameterObject Pageable pageable
-    ) {
-        LOG.debug(
-                "REST find NOT_CANCELLED consultations encounterId={} pageable={}",
-                encounterId, pageable
-        );
-
-        Page<Consultation> page =
-                service.findNotCancelled(encounterId, pageable);
-
-        HttpHeaders headers =
-                PaginationUtil.generatePaginationHttpHeaders(
-                        ServletUriComponentsBuilder.fromCurrentRequest(), page
-                );
-
+            @ParameterObject Pageable pageable) {
+        LOG.debug("REST find NOT_CANCELLED consultations encounterId={} pageable={}", encounterId, pageable);
+        Page<Consultation> page = service.findNotCancelled(encounterId, pageable);
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), page);
         LOG.debug("REST find NOT_CANCELLED consultations - Returning {} results", page.getContent().size());
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
@@ -218,31 +172,20 @@ public class ConsultationController {
     @GetMapping("/consultation/by-encounter/{encounterId}")
     public ResponseEntity<List<Consultation>> findByEncounter(
             @PathVariable Long encounterId,
-            @ParameterObject Pageable pageable
-    ) {
+            @ParameterObject Pageable pageable) {
         Page<Consultation> page = service.findByEncounter(encounterId, pageable);
-
-        HttpHeaders headers =
-                PaginationUtil.generatePaginationHttpHeaders(
-                        ServletUriComponentsBuilder.fromCurrentRequest(), page
-                );
-
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), page);
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
     @GetMapping("/consultation/by-encounter/{encounterId}/not-cancelled")
     public ResponseEntity<List<Consultation>> findByEncounterNotCancelled(
             @PathVariable Long encounterId,
-            @ParameterObject Pageable pageable
-    ) {
-        Page<Consultation> page =
-                service.findByEncounterNotCancelled(encounterId, pageable);
-
-        HttpHeaders headers =
-                PaginationUtil.generatePaginationHttpHeaders(
-                        ServletUriComponentsBuilder.fromCurrentRequest(), page
-                );
-
+            @ParameterObject Pageable pageable) {
+        Page<Consultation> page = service.findByEncounterNotCancelled(encounterId, pageable);
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), page);
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
@@ -251,16 +194,10 @@ public class ConsultationController {
             @PathVariable Long encounterId,
             @RequestParam Instant fromDate,
             @RequestParam Instant toDate,
-            @ParameterObject Pageable pageable
-    ) {
-        Page<Consultation> page =
-                service.findByEncounterWithDateRange(encounterId, fromDate, toDate, pageable);
-
-        HttpHeaders headers =
-                PaginationUtil.generatePaginationHttpHeaders(
-                        ServletUriComponentsBuilder.fromCurrentRequest(), page
-                );
-
+            @ParameterObject Pageable pageable) {
+        Page<Consultation> page = service.findByEncounterWithDateRange(encounterId, fromDate, toDate, pageable);
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), page);
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
@@ -269,60 +206,37 @@ public class ConsultationController {
             @PathVariable Long encounterId,
             @RequestParam Instant fromDate,
             @RequestParam Instant toDate,
-            @ParameterObject Pageable pageable
-    ) {
-        Page<Consultation> page =
-                service.findByEncounterWithDateRangeNotCancelled(encounterId, fromDate, toDate, pageable);
-
-        HttpHeaders headers =
-                PaginationUtil.generatePaginationHttpHeaders(
-                        ServletUriComponentsBuilder.fromCurrentRequest(), page
-                );
-
+            @ParameterObject Pageable pageable) {
+        Page<Consultation> page = service.findByEncounterWithDateRangeNotCancelled(
+                encounterId, fromDate, toDate, pageable);
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), page);
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
-
     @GetMapping("/consultation/destination/department-ids/{encounterId}")
-    public ResponseEntity<List<Long>> getConsultationDepartmentIds(
-            @PathVariable Long encounterId
-    ) {
+    public ResponseEntity<List<Long>> getConsultationDepartmentIds(@PathVariable Long encounterId) {
         LOG.debug("REST get departmentIds encounterId={}", encounterId);
-
         if (encounterId == null) {
             LOG.warn("REST get departmentIds - Encounter id is null");
             throw new BadRequestAlertException(
-                    "Encounter id is required",
-                    "consultation",
-                    "encounter.required"
-            );
+                    "Encounter id is required", "consultation", "encounter.required");
         }
-
         List<Long> departmentIds = service.getConsultationDepartmentIdsByEncounterId(encounterId);
         LOG.debug("REST get departmentIds - Returning {} department IDs", departmentIds.size());
-
         return ResponseEntity.ok(departmentIds);
     }
 
     @GetMapping("/consultation/destination/practitioner-ids/{encounterId}")
-    public ResponseEntity<List<Long>> getConsultationPractitionerIds(
-            @PathVariable Long encounterId
-    ) {
+    public ResponseEntity<List<Long>> getConsultationPractitionerIds(@PathVariable Long encounterId) {
         LOG.debug("REST get practitionerIds encounterId={}", encounterId);
-
         if (encounterId == null) {
             LOG.warn("REST get practitionerIds - Encounter id is null");
             throw new BadRequestAlertException(
-                    "Encounter id is required",
-                    "consultation",
-                    "encounter.required"
-            );
+                    "Encounter id is required", "consultation", "encounter.required");
         }
-
         List<Long> practitionerIds = service.getConsultationPractitionerIdsByEncounterId(encounterId);
         LOG.debug("REST get practitionerIds - Returning {} practitioner IDs", practitionerIds.size());
-
         return ResponseEntity.ok(practitionerIds);
     }
-
 }

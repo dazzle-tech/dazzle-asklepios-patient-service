@@ -75,14 +75,14 @@ public class EncounterVaccination extends AbstractAuditingEntity<Long> implement
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
 
-    @Column(name = "cancelled_by_id")
-    private Long cancelledById;
+    @Column(name = "cancelled_by")
+    private String cancelledBy;
 
     @Column(name = "reviewed_at")
     private Instant reviewedAt;
 
-    @Column(name = "reviewed_by_id")
-    private Long reviewedById;
+    @Column(name = "reviewed_by")
+    private String reviewedById;
 
     @Column(name = "administered_location")
     private String administeredLocation;

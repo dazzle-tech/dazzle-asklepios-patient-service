@@ -13,8 +13,10 @@ public record ConsultationUpdateDTO(
 
         @NotBlank
         DestinationType destinationType,
+
         @NotNull
         Long toFacilityId,
+
         Long toDepartmentId,
 
         String consultantSpeciality,
@@ -22,14 +24,15 @@ public record ConsultationUpdateDTO(
 
         @NotBlank
         String consultationMethod,
+
         @NotBlank
         String consultationType,
+
         @NotNull
         String consultationLevel,
 
         @NotBlank
         String consultationContent,
-
 
         String notes,
         String extraDocument,

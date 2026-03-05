@@ -400,9 +400,8 @@ public class PatientController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Patient> getById(@PathVariable("id") Long id) {
-        LOG.debug("REST list Patients by id ='{}'", id);
-
+    public ResponseEntity<Patient> getPatientById(@PathVariable Long id) {
+        LOG.debug("REST get Patient by id={}", id);
         Patient patient = patientService.findById(id);
         return ResponseEntity.ok(patient);
     }

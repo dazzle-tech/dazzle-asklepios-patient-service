@@ -3,20 +3,20 @@ package com.dazzle.asklepios.domain;
 import com.dazzle.asklepios.domain.enumeration.Priority;
 import com.dazzle.asklepios.domain.enumeration.ProcedureLevel;
 import com.dazzle.asklepios.domain.enumeration.ProcStatus;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
-import jakarta.validation.constraints.FutureOrPresent;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.FutureOrPresent;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -48,8 +48,9 @@ public class PatientProcedure extends AbstractAuditingEntity<Long> implements Se
     private Patient patient;
 
     @NotNull
-    @Column(name = "encounter_id", nullable = false)
-    private Long encounterId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "encounter_id", nullable = false)
+    private PatientEncounter encounter;
 
     @NotNull
     @Column(name = "from_facility_id", nullable = false)
@@ -66,7 +67,7 @@ public class PatientProcedure extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "to_department_id")
     private Long toDepartmentId;
 
-    @Column(name = "indication_id", nullable = true)
+    @Column(name = "indication_id")
     private Long indicationId;
 
     @Enumerated(EnumType.STRING)
@@ -102,8 +103,8 @@ public class PatientProcedure extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "cancelled_date")
     private Instant cancelledDate;
 
-    @Column(name = "cancelled_by")
-    private Long cancelledBy;
+    @Column(name = "cancelled_by", length = 50)
+    private String cancelledBy;
 
     @Column(name = "cancellation_reason")
     private String cancellationReason;

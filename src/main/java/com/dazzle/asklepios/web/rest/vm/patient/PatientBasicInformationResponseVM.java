@@ -12,7 +12,7 @@ import java.util.Date;
 @Setter
 @Builder
 public class PatientBasicInformationResponseVM {
-
+    private Long id;
     private String firstName;
     private String lastName;
     private String medicalRecordNumber;
@@ -25,6 +25,7 @@ public class PatientBasicInformationResponseVM {
         }
 
         return PatientBasicInformationResponseVM.builder()
+                .id(patient.getId())
                 .medicalRecordNumber(patient.getMedicalRecordNumber())
                 .firstName(patient.getFirstName())
                 .lastName(patient.getLastName())

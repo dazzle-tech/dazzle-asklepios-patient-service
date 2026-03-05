@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service.dto.telephonicconsultation;
 
+import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
@@ -26,7 +27,9 @@ public record TelephonicConsultationCreateDTO(
 
         String notes,
 
-        String extraDocumentation
+        String extraDocumentation,
+
+        DiagnosticStatus status
 
 ) implements Serializable {
 }

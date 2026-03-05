@@ -9,6 +9,8 @@ import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.ProgressNoteLogVM;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,14 +23,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
 import java.util.List;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @RestController
 @RequestMapping("/api/patient")
@@ -88,7 +87,7 @@ public class ProgressNoteController {
                     "already.cancelled"
             );
         }
-        ProgressNote cancelled = service.cancel(id, dto.cancellationReason(), dto.cancelledBy());
+        ProgressNote cancelled = service.cancel(id, dto.cancellationReason());
         LOG.info("REST cancel ProgressNote - cancelled id={}", cancelled.getId());
         return ResponseEntity.ok(cancelled);
     }
@@ -98,14 +97,13 @@ public class ProgressNoteController {
             @PathVariable Long encounterId,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST list ProgressNote by encounter (not cancelled) encounterId={} pageable={}", encounterId, pageable);
-        Page<ProgressNote> page =
-                service.findByEncounterNotCancelled(encounterId, pageable);
-        LOG.info("REST list ProgressNote by encounter (not cancelled) - returned {} items", page.getContent().size());
-        HttpHeaders headers =
-                PaginationUtil.generatePaginationHttpHeaders(
-                        ServletUriComponentsBuilder.fromCurrentRequest(), page
-                );
+        LOG.debug("REST list ProgressNote by encounter (not cancelled) encounterId={} pageable={}",
+                encounterId, pageable);
+        Page<ProgressNote> page = service.findByEncounterNotCancelled(encounterId, pageable);
+        LOG.info("REST list ProgressNote by encounter (not cancelled) - returned {} items",
+                page.getContent().size());
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), page);
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
@@ -114,35 +112,31 @@ public class ProgressNoteController {
             @PathVariable Long encounterId,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST list ProgressNote by encounter (all) encounterId={} pageable={}", encounterId, pageable);
-        Page<ProgressNote> page =
-                service.findByEncounterAll(encounterId, pageable);
-        LOG.info("REST list ProgressNote by encounter (all) - returned {} items", page.getContent().size());
-        HttpHeaders headers =
-                PaginationUtil.generatePaginationHttpHeaders(
-                        ServletUriComponentsBuilder.fromCurrentRequest(), page
-                );
+        LOG.debug("REST list ProgressNote by encounter (all) encounterId={} pageable={}",
+                encounterId, pageable);
+        Page<ProgressNote> page = service.findByEncounterAll(encounterId, pageable);
+        LOG.info("REST list ProgressNote by encounter (all) - returned {} items",
+                page.getContent().size());
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), page);
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
     @GetMapping("/progress-notes/{id}/logs")
-    public ResponseEntity<List<ProgressNoteLogVM>> findLogs(
-            @PathVariable Long id
-    ) {
+    public ResponseEntity<List<ProgressNoteLogVM>> findLogs(@PathVariable Long id) {
         LOG.debug("REST get ProgressNote logs id={}", id);
-        List<ProgressNoteLogVM> result =
-                service.findLogsByProgressNoteId(id)
-                        .stream()
-                        .map(log -> new ProgressNoteLogVM(
-                                log.getId(),
-                                log.getAction(),
-                                log.getCreatedBy(),
-                                log.getCreatedDate(),
-                                log.getLastModifiedBy(),
-                                log.getLastModifiedDate(),
-                                log.getPayload()
-                        ))
-                        .toList();
+        List<ProgressNoteLogVM> result = service.findLogsByProgressNoteId(id)
+                .stream()
+                .map(log -> new ProgressNoteLogVM(
+                        log.getId(),
+                        log.getAction(),
+                        log.getCreatedBy(),
+                        log.getCreatedDate(),
+                        log.getLastModifiedBy(),
+                        log.getLastModifiedDate(),
+                        log.getPayload()
+                ))
+                .toList();
         LOG.info("REST get ProgressNote logs - returned {} logs", result.size());
         return ResponseEntity.ok(result);
     }
