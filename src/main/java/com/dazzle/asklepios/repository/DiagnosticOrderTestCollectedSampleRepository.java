@@ -13,5 +13,6 @@ public interface DiagnosticOrderTestCollectedSampleRepository
     Page<DiagnosticOrderTestCollectedSample> findByOrderTestId(Long orderTestId, Pageable pageable);
 
     Page<DiagnosticOrderTestCollectedSample> findByOrderId(Long orderId, Pageable pageable);
-
+    Optional<DiagnosticOrderTestCollectedSample>
+    findTopByOrderTestIdOrderByCreatedDateDescIdDesc(Long orderTestId);
 }

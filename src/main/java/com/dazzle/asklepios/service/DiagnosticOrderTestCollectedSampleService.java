@@ -1,10 +1,16 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.DiagnosticOrderTestCollectedSample;
+import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestCollectedSampleRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
+import com.dazzle.asklepios.repository.DiagnosticTestRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.collectedsamples.DiagnosticOrderTestCollectedSampleBulkDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.collectedsamples.DiagnosticOrderTestCollectedSampleBulkSameDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.collectedsamples.DiagnosticOrderTestCollectedSampleDTO;
+import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.collectedsamples.DiagnosticOrderTestSampleLabelDTO;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -20,13 +26,22 @@ public class DiagnosticOrderTestCollectedSampleService {
 
     private final DiagnosticOrderTestCollectedSampleRepository repository;
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
-
+    private final DiagnosticOrderTestRepository orderTestRepository;
+    private final DiagnosticOrderTestCollectedSampleRepository sampleRepository;
+    private final DiagnosticOrderRepository orderRepository;
+    private final PatientRepository patientRepository;
+    private final DiagnosticTestRepository diagnosticTestRepository;
     public DiagnosticOrderTestCollectedSampleService(
             DiagnosticOrderTestCollectedSampleRepository repository,
-            DiagnosticOrderTestStatusService diagnosticOrderTestStatusService
+            DiagnosticOrderTestStatusService diagnosticOrderTestStatusService, DiagnosticOrderTestRepository orderTestRepository, DiagnosticOrderTestCollectedSampleRepository sampleRepository, DiagnosticOrderRepository orderRepository, PatientRepository patientRepository, DiagnosticTestRepository diagnosticTestRepository
     ) {
         this.repository = repository;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
+        this.orderTestRepository = orderTestRepository;
+        this.sampleRepository = sampleRepository;
+        this.orderRepository = orderRepository;
+        this.patientRepository = patientRepository;
+        this.diagnosticTestRepository = diagnosticTestRepository;
     }
 
     public DiagnosticOrderTestCollectedSample create(DiagnosticOrderTestCollectedSampleDTO dto) {
@@ -83,5 +98,68 @@ public class DiagnosticOrderTestCollectedSampleService {
         LOG.debug("[CollectedSampleService] DELETE - start. id={}", id);
         repository.deleteById(id);
         LOG.debug("[CollectedSampleService] DELETE - done. id={}", id);
+    }
+
+   //TODO move this logic to analytic service
+    public DiagnosticOrderTestSampleLabelDTO getSampleLabel(Long orderTestId) {
+
+        var orderTest = orderTestRepository.findById(orderTestId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_order_tests",
+                        "DiagnosticOrderTest not found with id " + orderTestId
+                ));
+
+        var lastSample = sampleRepository
+                .findTopByOrderTestIdOrderByCreatedDateDescIdDesc(orderTestId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "no_sample",
+                        "diagnostic_order_test_collected_samples",
+                        "No collected sample found for orderTestId " + orderTestId
+                ));
+
+        var orderId = orderTest.getOrderId();
+        if (orderId == null) {
+            throw new BadRequestAlertException(
+                    "invalid_order",
+                    "diagnostic_order_tests",
+                    "OrderId is null for orderTestId " + orderTestId
+            );
+        }
+
+        var order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_orders",
+                        "Order not found with id " + orderId
+                ));
+
+        var patientId = order.getPatientId();
+        var patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "patients",
+                        "Patient not found with id " + patientId
+                ));
+
+        var test = diagnosticTestRepository.findById(orderTest.getTestId())
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_tests",
+                        "Diagnostic test not found with id " + orderTest.getTestId()
+                ));
+
+        String patientName = (patient.getFirstName() + " " + patient.getLastName()).trim();
+        String mrn = patient.getMedicalRecordNumber();
+
+        return new DiagnosticOrderTestSampleLabelDTO(
+                orderTestId,
+                patientName,
+                mrn,
+                test.getName(),
+                lastSample.getCollectedAt(),
+                lastSample.getQuantity(),
+                lastSample.getUnit()
+        );
     }
 }
