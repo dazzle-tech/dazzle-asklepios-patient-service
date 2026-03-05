@@ -1,11 +1,15 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Appointment;
+import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientDocument;
 import com.dazzle.asklepios.repository.AppointmentRepository;
+import com.dazzle.asklepios.repository.PatientDocumentRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.criteria.Predicate;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,6 +18,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -24,11 +29,13 @@ import java.util.stream.Collectors;
 public class AppointmentService {
 
     private final AppointmentRepository appointmentRepository;
-    private final JdbcTemplate jdbcTemplate;
+    private final PatientRepository patientRepository;
+    private final PatientDocumentRepository patientDocumentRepository;
 
-    public AppointmentService(AppointmentRepository appointmentRepository, JdbcTemplate jdbcTemplate) {
+    public AppointmentService(AppointmentRepository appointmentRepository, PatientRepository patientRepository, PatientDocumentRepository patientDocumentRepository) {
         this.appointmentRepository = appointmentRepository;
-        this.jdbcTemplate = jdbcTemplate;
+        this.patientRepository = patientRepository;
+        this.patientDocumentRepository = patientDocumentRepository;
     }
 
     public List<Appointment> getAppointments(String resourceType, String facilityId, List<String> resources) {
@@ -72,47 +79,69 @@ public class AppointmentService {
         return appointmentRepository.findAll(spec);
     }
 
-    public Map<String, Object> getPatient(String patientKey) {
-        if (patientKey == null || patientKey.isEmpty()) {
-            return null;
-        }
+    public Map<String, Object> getPatient(Long id) {
+        Patient patient = patientRepository.findById(id)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found: " + id,
+                        "Patient",
+                        "notfound"
+                ));
 
-        try {
-            String query =
-                    "SELECT " +
-                            "key, dob," +
-                            "first_name, second_name, third_name, last_name, full_name, " +
-                            "document_type_lkey, document_no, phone_number, mobile_number, email" +
-                            ", gender_lkey, patient_mrn " +
-                            "FROM public.ap_patient WHERE key = ?";
+        Map<String, Object> out = new HashMap<>();
 
-            List<Map<String, Object>> result = jdbcTemplate.queryForList(query, patientKey);
-            if (result.isEmpty()) {
-                return null;
-            }
+        out.put("key", patient.getId() != null ? String.valueOf(patient.getId()) : null);
+        out.put("dob", patient.getDateOfBirth());
 
-            Map<String, Object> patient = result.get(0);
+        out.put("first_name", patient.getFirstName());
+        out.put("second_name", patient.getSecondName());
+        out.put("third_name", patient.getThirdName());
+        out.put("last_name", patient.getLastName());
 
-            if (patient.get("full_name") == null || ((String) patient.get("full_name")).isEmpty()) {
-                String firstName = (String) patient.get("first_name");
-                String lastName = (String) patient.get("last_name");
-                if (firstName != null || lastName != null) {
-                    patient.put(
-                            "full_name",
-                            ((firstName != null ? firstName : "") + " " +
-                                    (lastName != null ? lastName : "")).trim()
-                    );
-                }
-            }
+        String fullName = buildFullName(
+                patient.getFirstName(),
+                patient.getSecondName(),
+                patient.getThirdName(),
+                patient.getLastName()
+        );
+        out.put("full_name", fullName);
 
-            return patient;
+        fillLegacyDocumentFields(out, patient.getId());
 
-        } catch (Exception e) {
-            log.error("Failed to query patient", e);
-            return null;
-        }
+        out.put("phone_number", patient.getHomePhone());
+        out.put("mobile_number", patient.getPrimaryMobileNumber());
+        out.put("email", patient.getEmail());
+
+        out.put("gender_lkey", patient.getSexAtBirth() != null ? patient.getSexAtBirth().name() : null);
+        out.put("patient_mrn", patient.getMedicalRecordNumber());
+
+        return out;
     }
 
+    private String buildFullName(String first, String second, String third, String last) {
+        StringBuilder sb = new StringBuilder();
+        if (first != null && !first.isBlank()) sb.append(first.trim());
+        if (second != null && !second.isBlank()) sb.append(sb.length() > 0 ? " " : "").append(second.trim());
+        if (third != null && !third.isBlank()) sb.append(sb.length() > 0 ? " " : "").append(third.trim());
+        if (last != null && !last.isBlank()) sb.append(sb.length() > 0 ? " " : "").append(last.trim());
+        return sb.toString().trim();
+    }
+
+    private void fillLegacyDocumentFields(Map<String, Object> out, Long patientId) {
+        out.put("document_type_lkey", null);
+        out.put("document_no", null);
+
+        if (patientId == null) return;
+
+        PatientDocument doc = patientDocumentRepository
+                .findFirstByPatient_IdAndIsPrimaryTrue(patientId)
+                .orElseGet(() -> patientDocumentRepository.findFirstByPatient_IdOrderByIdAsc(patientId).orElse(null));
+
+        if (doc == null) return;
+
+        out.put("document_no", doc.getNumber());
+
+        out.put("document_type_lkey", doc.getType() != null ? doc.getType().name() : null);
+    }
 
     @Transactional
     public Appointment saveAppointment(Appointment appointment, String facilityId) {
@@ -170,5 +199,6 @@ public class AppointmentService {
             return false;
         }
     }
+
 }
 

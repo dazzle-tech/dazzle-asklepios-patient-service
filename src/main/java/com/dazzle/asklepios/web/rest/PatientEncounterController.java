@@ -299,4 +299,14 @@ public class PatientEncounterController {
 
         return ResponseEntity.ok(encounter);
     }
-}
+    @GetMapping("/encounter/appointment/{appointmentId}")
+    public ResponseEntity<PatientEncounter> getEncountersByAppointment(
+            @PathVariable @NotNull String appointmentId
+    ) {
+
+        LOG.debug("REST get EncounterAppointment by appointmentId={} ", appointmentId);
+
+        PatientEncounter encounterAppointment = patientEncounterService.getEncountersByAppointmentId(appointmentId);
+
+        return ResponseEntity.ok(encounterAppointment);
+    }}
