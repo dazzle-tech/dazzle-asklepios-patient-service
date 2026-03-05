@@ -33,8 +33,9 @@ public class GeneralAssessment extends AbstractAuditingEntity<Long> implements S
     @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
-    @Column(name = "encounter_id", nullable = false)
-    private Long encounterId;
+    @ManyToOne
+    @JoinColumn(name = "encounter_id", nullable = false)
+    private PatientEncounter encounter;
 
     @Column(name = "position_status", length = 50, nullable = false)
     private String positionStatus;

@@ -9,8 +9,8 @@ import java.util.Optional;
 @Repository
 public interface GeneralAssessmentRepository extends JpaRepository<GeneralAssessment, Long> {
 
-    Optional<GeneralAssessment> findTopByEncounterIdOrderByCreatedDateDesc(Long encounterId);
+    Optional<GeneralAssessment> findTopByEncounter_IdOrderByCreatedDateDesc(Long encounterId);
 
 
-    Optional<GeneralAssessment> findTopByEncounterIdAndIsTriageTrueOrderByCreatedDateDesc(Long encounterId);
+    Optional<GeneralAssessment> findTopByEncounter_IdAndIsTriageTrueOrderByCreatedDateDesc(Long encounterId);
 }

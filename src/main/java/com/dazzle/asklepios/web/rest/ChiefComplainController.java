@@ -50,7 +50,7 @@ public class ChiefComplainController {
     public ResponseEntity<ChiefComplain> create(@Valid @RequestBody ChiefComplainCreateDTO dto) {
         LOG.debug("REST create ChiefComplain payload={}", dto);
 
-        Optional<ChiefComplain> existing = chiefComplainRepository.findTopByEncounterIdAndIsTriageOrderByCreatedDateDesc(dto.encounterId(), dto.isTriage());
+        Optional<ChiefComplain> existing = chiefComplainRepository.findTopByEncounter_IdAndIsTriageOrderByCreatedDateDesc(dto.encounterId(), dto.isTriage());
 
         if (existing.isPresent()) {
             ChiefComplain current = existing.get();

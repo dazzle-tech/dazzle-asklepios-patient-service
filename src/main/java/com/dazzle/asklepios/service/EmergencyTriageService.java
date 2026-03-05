@@ -2,11 +2,13 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.EmergencyTriage;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.AVPUScale;
 import com.dazzle.asklepios.domain.enumeration.EmergencyLevel;
 import com.dazzle.asklepios.domain.enumeration.PainLevel;
 import com.dazzle.asklepios.domain.enumeration.YesNoQuestion;
 import com.dazzle.asklepios.repository.EmergencyTriageRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.emergencyTriage.EmergencyTriageCreateDTO;
 import com.dazzle.asklepios.service.dto.emergencyTriage.EmergencyTriageDestinationUpdateDTO;
@@ -19,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Optional;
 
 @Service
 @Transactional
@@ -29,10 +32,12 @@ public class EmergencyTriageService {
 
     private final EmergencyTriageRepository emergencyTriageRepository;
     private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
 
-    public EmergencyTriageService(EmergencyTriageRepository emergencyTriageRepository, PatientRepository patientRepository) {
+    public EmergencyTriageService(EmergencyTriageRepository emergencyTriageRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository) {
         this.emergencyTriageRepository = emergencyTriageRepository;
         this.patientRepository = patientRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
     }
 
     /**
@@ -44,13 +49,14 @@ public class EmergencyTriageService {
         LOG.debug("createOrGetByEncounter EmergencyTriage payload={}", dto);
 
         return emergencyTriageRepository
-                .findTopByEncounterIdOrderByCreatedDateDesc(dto.encounterId())
+                .findTopByEncounter_IdOrderByCreatedDateDesc(dto.encounterId())
                 .orElseGet(() -> {
                     Patient patient = getPatient(dto.patientId());
+                    PatientEncounter encounter = getEncounter(dto.encounterId());
 
                     EmergencyTriage entity = EmergencyTriage.builder()
                             .patient(patient)
-                            .encounterId(dto.encounterId())
+                            .encounter(encounter)
                             .build();
 
                     EmergencyTriage saved = emergencyTriageRepository.save(entity);
@@ -60,15 +66,9 @@ public class EmergencyTriageService {
     }
 
     @Transactional(readOnly = true)
-    public EmergencyTriage getLatestByEncounterId(Long encounterId) {
+    public Optional<EmergencyTriage> getLatestByEncounterId(Long encounterId) {
         LOG.debug("get latest EmergencyTriage by encounterId={}", encounterId);
-        return emergencyTriageRepository
-                .findTopByEncounterIdOrderByCreatedDateDesc(encounterId)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "EmergencyTriage not found for encounter: " + encounterId,
-                        ENTITY_NAME,
-                        "notfound"
-                ));
+        return emergencyTriageRepository.findTopByEncounter_IdOrderByCreatedDateDesc(encounterId);
     }
 
     /**
@@ -224,5 +224,8 @@ public class EmergencyTriageService {
         return patientRepository
                 .findById(id)
                 .orElseThrow(() -> new NotFoundAlertException("Patient not found: " + id, "Patient", "notfound"));
+    }
+    private PatientEncounter getEncounter(Long id) {
+        return patientEncounterRepository.findById(id).orElseThrow(() -> new NotFoundAlertException("Patient Encounter not found: " + id, "PatientEncounter", "notfound"));
     }
 }

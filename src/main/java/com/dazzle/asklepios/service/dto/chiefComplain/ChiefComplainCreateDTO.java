@@ -28,7 +28,7 @@ public record ChiefComplainCreateDTO(
     public static ChiefComplainCreateDTO ofEntity(ChiefComplain entity) {
         return new ChiefComplainCreateDTO(
                 entity.getPatient() != null ? entity.getPatient().getId() : null,
-                entity.getEncounterId(),
+                entity.getEncounter()!=null?entity.getEncounter().getId():null,
                 entity.getChiefComplaint(),
                 entity.getProvocation(),
                 entity.getPalliation(),
