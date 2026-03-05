@@ -101,65 +101,76 @@ public class DiagnosticOrderTestCollectedSampleService {
     }
 
    //TODO move this logic to analytic service
-    public DiagnosticOrderTestSampleLabelDTO getSampleLabel(Long orderTestId) {
+   public DiagnosticOrderTestSampleLabelDTO getSampleLabel(Long orderTestId) {
 
-        var orderTest = orderTestRepository.findById(orderTestId)
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
-                        "diagnostic_order_tests",
-                        "DiagnosticOrderTest not found with id " + orderTestId
-                ));
+       LOG.debug("[SampleLabelService] GET_SAMPLE_LABEL - start. orderTestId={}", orderTestId);
 
-        var lastSample = sampleRepository
-                .findTopByOrderTestIdOrderByCreatedDateDescIdDesc(orderTestId)
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "no_sample",
-                        "diagnostic_order_test_collected_samples",
-                        "No collected sample found for orderTestId " + orderTestId
-                ));
+       var orderTest = orderTestRepository.findById(orderTestId)
+               .orElseThrow(() -> new BadRequestAlertException(
+                       "notfound",
+                       "diagnostic_order_tests",
+                       "DiagnosticOrderTest not found with id " + orderTestId
+               ));
 
-        var orderId = orderTest.getOrderId();
-        if (orderId == null) {
-            throw new BadRequestAlertException(
-                    "invalid_order",
-                    "diagnostic_order_tests",
-                    "OrderId is null for orderTestId " + orderTestId
-            );
-        }
+       var lastSample = sampleRepository
+               .findTopByOrderTestIdOrderByCreatedDateDescIdDesc(orderTestId)
+               .orElseThrow(() -> new BadRequestAlertException(
+                       "no_sample",
+                       "diagnostic_order_test_collected_samples",
+                       "No collected sample found for orderTestId " + orderTestId
+               ));
 
-        var order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
-                        "diagnostic_orders",
-                        "Order not found with id " + orderId
-                ));
+       Long orderId = orderTest.getOrderId();
+       if (orderId == null) {
+           throw new BadRequestAlertException(
+                   "invalid_order",
+                   "diagnostic_order_tests",
+                   "OrderId is null for orderTestId " + orderTestId
+           );
+       }
 
-        var patientId = order.getPatientId();
-        var patient = patientRepository.findById(patientId)
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
-                        "patients",
-                        "Patient not found with id " + patientId
-                ));
+       var order = orderRepository.findById(orderId)
+               .orElseThrow(() -> new BadRequestAlertException(
+                       "notfound",
+                       "diagnostic_orders",
+                       "Order not found with id " + orderId
+               ));
 
-        var test = diagnosticTestRepository.findById(orderTest.getTestId())
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
-                        "diagnostic_tests",
-                        "Diagnostic test not found with id " + orderTest.getTestId()
-                ));
+       var patient = patientRepository.findById(order.getPatientId())
+               .orElseThrow(() -> new BadRequestAlertException(
+                       "notfound",
+                       "patients",
+                       "Patient not found with id " + order.getPatientId()
+               ));
 
-        String patientName = (patient.getFirstName() + " " + patient.getLastName()).trim();
-        String mrn = patient.getMedicalRecordNumber();
+       var test = diagnosticTestRepository.findById(orderTest.getTestId())
+               .orElseThrow(() -> new BadRequestAlertException(
+                       "notfound",
+                       "diagnostic_tests",
+                       "Diagnostic test not found with id " + orderTest.getTestId()
+               ));
 
-        return new DiagnosticOrderTestSampleLabelDTO(
-                orderTestId,
-                patientName,
-                mrn,
-                test.getName(),
-                lastSample.getCollectedAt(),
-                lastSample.getQuantity(),
-                lastSample.getUnit()
-        );
-    }
+       String patientName = (patient.getFirstName() + " " + patient.getLastName()).trim();
+       String mrn = patient.getMedicalRecordNumber();
+
+       String facilityName = "Asklepios Medical Center";
+
+       LOG.debug(
+               "[SampleLabelService] GET_SAMPLE_LABEL - data prepared. orderTestId={} patient={} test={}",
+               orderTestId,
+               patientName,
+               test.getName()
+       );
+
+       return new DiagnosticOrderTestSampleLabelDTO(
+               orderTestId,
+               patientName,
+               facilityName,
+               mrn,
+               test.getName(),
+               lastSample.getCollectedAt(),
+               lastSample.getQuantity(),
+               lastSample.getUnit()
+       );
+   }
 }

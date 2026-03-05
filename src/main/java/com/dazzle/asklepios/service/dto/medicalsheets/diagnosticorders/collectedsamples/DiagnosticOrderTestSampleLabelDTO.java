@@ -6,6 +6,7 @@ import java.time.Instant;
 public record DiagnosticOrderTestSampleLabelDTO(
         Long orderTestId,
         String patientName,
+        String facilityName,
         String mrn,
         String testName,
         Instant sampleDateTime,
