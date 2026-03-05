@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Optional;
 
 @Service
 @Transactional
@@ -65,15 +66,9 @@ public class EmergencyTriageService {
     }
 
     @Transactional(readOnly = true)
-    public EmergencyTriage getLatestByEncounterId(Long encounterId) {
+    public Optional<EmergencyTriage> getLatestByEncounterId(Long encounterId) {
         LOG.debug("get latest EmergencyTriage by encounterId={}", encounterId);
-        return emergencyTriageRepository
-                .findTopByEncounter_IdOrderByCreatedDateDesc(encounterId)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "EmergencyTriage not found for encounter: " + encounterId,
-                        ENTITY_NAME,
-                        "notfound"
-                ));
+        return emergencyTriageRepository.findTopByEncounter_IdOrderByCreatedDateDesc(encounterId);
     }
 
     /**

@@ -22,6 +22,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -198,7 +199,8 @@ public class PatientEncounterService {
                 filter.hasPrescription(), filter.hasOrder(), filter.isObserved());
 
         Specification<PatientEncounter> encounterFilterSpec = (root, query, cb) -> {
-
+            root.fetch("patient", JoinType.LEFT);
+            query.distinct(true);
             List<Predicate> predicates = new ArrayList<>();
 
             predicates.add(cb.equal(root.get("departmentId"), filter.departmentId()));
@@ -276,7 +278,6 @@ public class PatientEncounterService {
         };
 
         Page<PatientEncounter> result = patientEncounterRepository.findAll(encounterFilterSpec, pageable);
-
         LOG.debug("[FILTER] PatientEncounters result totalElements={} totalPages={} pageNumber={} pageSize={}",
                 result.getTotalElements(), result.getTotalPages(), result.getNumber(), result.getSize());
 

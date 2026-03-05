@@ -20,6 +20,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Optional;
+
 @RestController
 @RequestMapping("/api/patient")
 public class EmergencyTriageController {
@@ -49,7 +51,7 @@ public class EmergencyTriageController {
      * {@code GET /emergency-triage/encounter/{encounterId}/latest} : Get latest triage for encounter.
      */
     @GetMapping("/emergency-triage/encounter/{encounterId}/latest")
-    public ResponseEntity<EmergencyTriage> getLatestByEncounter(@PathVariable Long encounterId) {
+    public ResponseEntity<Optional<EmergencyTriage>> getLatestByEncounter(@PathVariable Long encounterId) {
         LOG.debug("REST get latest EmergencyTriage by encounterId={}", encounterId);
         return ResponseEntity.ok(emergencyTriageService.getLatestByEncounterId(encounterId));
     }
