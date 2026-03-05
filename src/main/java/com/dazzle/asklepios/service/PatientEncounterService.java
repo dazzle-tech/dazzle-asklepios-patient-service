@@ -81,6 +81,7 @@ public class PatientEncounterService {
                 .isObserved(createDTO.isObserved())
                 .hasPrescription(createDTO.hasPrescription())
                 .status(EncounterStatus.PENDING_PAYMENT)
+                .encounterDate(createDTO.encounterDate())
                 .build();
 
         try {
