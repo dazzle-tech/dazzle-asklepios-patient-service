@@ -161,6 +161,15 @@ public class PatientProcedureService {
     }
 
     @Transactional(readOnly = true)
+    public Page<PatientProcedure> findByPatient(
+            Long patientId, boolean includeCancelled, Pageable pageable) {
+        return includeCancelled
+                ? procedureRepository.findByPatientId(patientId, pageable)
+                : procedureRepository.findByPatientIdAndStatusNot(
+                patientId, ProcStatus.CANCELLED, pageable);
+    }
+
+    @Transactional(readOnly = true)
     public PatientProcedure findById(Long id) {
         LOG.info("[GET] PatientProcedure id={}", id);
         PatientProcedure procedure = procedureRepository.findById(id)
