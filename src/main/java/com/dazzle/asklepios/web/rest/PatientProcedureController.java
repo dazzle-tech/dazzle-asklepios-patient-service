@@ -121,4 +121,20 @@ public class PatientProcedureController {
 
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
+
+    @GetMapping("/procedure/by-patient/{patientId}")
+    public ResponseEntity<List<PatientProcedure>> findByPatient(
+            @PathVariable Long patientId,
+            @RequestParam(defaultValue = "false") boolean includeCancelled,
+            @ParameterObject Pageable pageable
+    ) {
+        LOG.info("REST FIND PatientProcedure by patientId={} includeCancelled={} pageable={}",
+                patientId, includeCancelled, pageable);
+
+        Page<PatientProcedure> page = service.findByPatient(patientId, includeCancelled, pageable);
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), page);
+
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+    }
 }

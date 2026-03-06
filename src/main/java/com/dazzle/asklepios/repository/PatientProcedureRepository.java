@@ -21,4 +21,15 @@ public interface PatientProcedureRepository
             ProcStatus status,
             Pageable pageable
     );
+
+    Page<PatientProcedure> findByPatientId(
+            Long patientId,
+            Pageable pageable
+    );
+
+    Page<PatientProcedure> findByPatientIdAndStatusNot(
+            Long patientId,
+            ProcStatus status,
+            Pageable pageable
+    );
 }
