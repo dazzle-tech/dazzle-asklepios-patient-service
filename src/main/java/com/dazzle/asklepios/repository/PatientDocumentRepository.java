@@ -20,4 +20,6 @@ public interface PatientDocumentRepository extends JpaRepository<PatientDocument
 
     Optional<PatientDocument> findFirstByPatient_IdAndIsPrimaryTrue(Long patientId);
     Optional<PatientDocument> findFirstByPatient_IdOrderByIdAsc(Long patientId);
+    Optional<PatientDocument> findByPatientIdAndIsPrimaryTrue(Long patientId);
+
 }
