@@ -9,6 +9,7 @@ import com.dazzle.asklepios.service.dto.patientDocuments.PatientNoDocumentCreate
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
@@ -139,6 +140,15 @@ public class PatientDocumentController {
         );
 
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+    }
+
+    @GetMapping("/documents/patient/{patientId}/primary")
+    public ResponseEntity<PatientDocument> getPrimaryDocumentByPatient(
+            @PathVariable @NotNull Long patientId
+    ) {
+        LOG.debug("REST get primary PatientDocument by patientId={}", patientId);
+        PatientDocument document = patientDocumentService.getPrimaryDocumentByPatientId(patientId);
+        return ResponseEntity.ok(document);
     }
 
     @DeleteMapping("/documents/{id}")
