@@ -107,6 +107,17 @@ public class PatientEncounterController {
         return ResponseEntity.ok(updatedPatientEncounter);
     }
 
+    @GetMapping("/encounter/{id}/previous-encounter-completed")
+    public ResponseEntity<PatientEncounter> getPreviousClosedEncounter(
+            @PathVariable("id") @NotNull Long encounterId
+    ) {
+        LOG.debug("REST get previous CLOSED PatientEncounter for encounterId={}", encounterId);
+
+        return patientEncounterService.getPreviousClosedEncounter(encounterId)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
     @GetMapping("/encounter/facility/{facilityId}/count/today")
     public ResponseEntity<Long> countTodayEncountersByFacility(
             @PathVariable @NotNull Long facilityId

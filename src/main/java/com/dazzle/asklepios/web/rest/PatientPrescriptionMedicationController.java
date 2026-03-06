@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.web.rest;
 
+import com.dazzle.asklepios.domain.PatientDiagnosis;
 import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.service.PatientPrescriptionMedicationService;
 import com.dazzle.asklepios.service.dto.patientPrescription.PrescriptionMedicationCreateDTO;
@@ -11,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -74,9 +76,17 @@ public class PatientPrescriptionMedicationController {
     }
 
     @GetMapping("/patient-prescription-medications/{patientId}/chronic-medications/raw")
-    public ResponseEntity<List<PatientPrescriptionMedication>> getAllChronicRaw(@PathVariable Long patientId) {
+    public ResponseEntity<List<PatientPrescriptionMedication>> getAllChronicRaw(@PathVariable Long patientId, Pageable pageable) {
         LOG.debug("getAllChronicRaw prescription for patientId ={}",patientId);
 
-        return ResponseEntity.ok(patientPrescriptionMedicationService.listAllChronicForPatient(patientId));
+
+        Page<PatientPrescriptionMedication> page = patientPrescriptionMedicationService.listAllChronicForPatient(patientId,pageable);
+
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                page
+        );
+
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 }

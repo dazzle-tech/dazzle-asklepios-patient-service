@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface PatientEncounterRepository extends JpaRepository<PatientEncounter, Long> , JpaSpecificationExecutor<PatientEncounter> {
@@ -54,4 +55,11 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
     PatientEncounter findByAppointmentId(
             String appointmentId
     );
+
+    Optional<PatientEncounter> findFirstByPatientIdAndStatusAndEncounterDateBeforeOrderByEncounterDateDesc(
+            Long patientId,
+            EncounterStatus status,
+            LocalDate encounterDate
+    );
+
 }
