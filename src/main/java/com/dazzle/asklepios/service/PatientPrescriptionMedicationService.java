@@ -115,13 +115,10 @@ public class PatientPrescriptionMedicationService {
     }
 
 
-    public List<PatientPrescriptionMedication> listAllChronicForPatient(Long patientId) {
+    public Page<PatientPrescriptionMedication> listAllChronicForPatient(Long patientId,  Pageable pageable) {
         LOG.debug("Fetching all listChronicForPatient for patientId={} ", patientId);
 
-        List<PatientPrescriptionMedication> list =
-                patientPrescriptionMedicationRepository.findByChronicMedicationTrueAndPrescriptionHeader_Patient_IdOrderByCreatedDateDesc(patientId);
-
-        return list.stream().map(this::toDto).toList();
+        return patientPrescriptionMedicationRepository.findByChronicMedicationTrueAndPrescriptionHeader_Patient_IdOrderByCreatedDateDesc(patientId, pageable);
     }
 
     @Transactional(readOnly = true)

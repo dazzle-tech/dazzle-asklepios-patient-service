@@ -7,6 +7,7 @@ import com.dazzle.asklepios.service.dto.patientDiagnosis.PatientDiagnosisUpdateD
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
@@ -87,6 +88,17 @@ public class PatientDiagnosisController {
         PatientDiagnosis updated = patientDiagnosisService.update(id, updateRequest);
 
         return ResponseEntity.ok(updated);
+    }
+
+    @GetMapping("/patient-diagnoses/by-encounter/{encounterId}")
+    public ResponseEntity<List<PatientDiagnosis>> getByEncounterId(
+            @PathVariable @NotNull Long encounterId
+    ) {
+        LOG.debug("REST get PatientDiagnosis by encounterId={}", encounterId);
+
+        List<PatientDiagnosis> diagnoses = patientDiagnosisService.getByEncounterId(encounterId);
+
+        return ResponseEntity.ok(diagnoses);
     }
 
     @GetMapping("/patient-diagnoses/latest")
