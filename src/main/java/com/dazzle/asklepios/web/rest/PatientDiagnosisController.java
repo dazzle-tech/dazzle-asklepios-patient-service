@@ -30,7 +30,8 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/patient")
-public class PatientDiagnosisController {
+public class
+PatientDiagnosisController {
 
     private static final Logger LOG = LoggerFactory.getLogger(PatientDiagnosisController.class);
 
@@ -134,4 +135,13 @@ public class PatientDiagnosisController {
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
+    @GetMapping("/patient-diagnosis/exists/{encounterId}")
+    public ResponseEntity<Boolean> existsByEncounterId(@PathVariable Long encounterId) {
+
+        LOG.debug("REST request to check if PatientDiagnosis exists for encounterId={}", encounterId);
+
+        boolean exists = patientDiagnosisService.existsByEncounterId(encounterId);
+
+        return ResponseEntity.ok(exists);
+    }
 }
