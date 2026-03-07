@@ -30,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -601,5 +602,22 @@ public class PatientEncounterService {
                 "patientEncounter",
                 "db.constraint"
         );
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<PatientEncounter> getPreviousClosedEncounter(Long encounterId) {
+        PatientEncounter currentEncounter = patientEncounterRepository.findById(encounterId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "PatientEncounter not found with id " + encounterId,
+                        "patientEncounter",
+                        "id.notfound"
+                ));
+
+        return patientEncounterRepository
+                .findFirstByPatientIdAndStatusAndEncounterDateBeforeOrderByEncounterDateDesc(
+                        currentEncounter.getPatient().getId(),
+                        EncounterStatus.CLOSED,
+                        currentEncounter.getEncounterDate()
+                );
     }
 }

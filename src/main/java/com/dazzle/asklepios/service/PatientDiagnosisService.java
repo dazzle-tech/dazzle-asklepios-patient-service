@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -125,6 +126,13 @@ public class PatientDiagnosisService {
     public Page<PatientDiagnosis> findByPatientId(Long patientId, Pageable pageable) {
         LOG.debug("[FIND PAGE] patientId={} pageable={}", patientId, pageable);
         return patientDiagnosisRepository.findByPatientIdOrderByCreatedDateDesc(patientId, pageable);
+    }
+
+
+    @Transactional(readOnly = true)
+    public List<PatientDiagnosis> getByEncounterId(Long encounterId) {
+        LOG.debug("[GET_DIAGNOSIS_BY_ENCOUNTER] encounterId={}", encounterId);
+        return patientDiagnosisRepository.findByEncounterId(encounterId);
     }
 
     private void handleConstraintsOnCreateOrUpdate(RuntimeException exception) {
