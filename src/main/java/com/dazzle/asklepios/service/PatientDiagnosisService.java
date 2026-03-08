@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDiagnosis;
+import com.dazzle.asklepios.domain.enumeration.DiagnosisType;
 import com.dazzle.asklepios.repository.PatientDiagnosisRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.patientDiagnosis.PatientDiagnosisCreateDTO;
@@ -125,7 +126,7 @@ public class PatientDiagnosisService {
     @Transactional(readOnly = true)
     public Page<PatientDiagnosis> findByPatientId(Long patientId, Pageable pageable) {
         LOG.debug("[FIND PAGE] patientId={} pageable={}", patientId, pageable);
-        return patientDiagnosisRepository.findByPatientIdOrderByCreatedDateDesc(patientId, pageable);
+        return patientDiagnosisRepository.findByPatient_IdOrderByCreatedDateDesc(patientId, pageable);
     }
 
 
@@ -133,6 +134,32 @@ public class PatientDiagnosisService {
     public List<PatientDiagnosis> getByEncounterId(Long encounterId) {
         LOG.debug("[GET_DIAGNOSIS_BY_ENCOUNTER] encounterId={}", encounterId);
         return patientDiagnosisRepository.findByEncounterId(encounterId);
+    }
+    @Transactional(readOnly = true)
+    public PatientDiagnosis getPrimaryDiagnosisByEncounterId(Long encounterId) {
+        LOG.debug("[GET_PRIMARY_DIAGNOSIS_BY_ENCOUNTER] encounterId={}", encounterId);
+
+        return patientDiagnosisRepository
+                .findByEncounterIdAndType(encounterId, DiagnosisType.PRIMARY)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Primary diagnosis not found for encounterId=" + encounterId,
+                        "patientDiagnosis",
+                        "notfound"
+                ));
+    }
+    public void hardDelete(Long id) {
+        LOG.warn("[HARD_DELETE] Request to permanently delete PatientDiagnosis id={}", id);
+
+        PatientDiagnosis entity = patientDiagnosisRepository.findById(id)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "PatientDiagnosis not found with id " + id,
+                        "patientDiagnosis",
+                        "notfound"
+                ));
+
+        patientDiagnosisRepository.delete(entity);
+
+        LOG.info("[HARD_DELETE] PatientDiagnosis deleted permanently id={}", id);
     }
 
     private void handleConstraintsOnCreateOrUpdate(RuntimeException exception) {
@@ -164,6 +191,14 @@ public class PatientDiagnosisService {
                     "This diagnosis already exists for the same patient and encounter with the same attributes.",
                     "patientDiagnosis",
                     "duplicate"
+            );
+        }
+
+        if (lower.contains("ux_patient_diagnosis_primary_per_encounter")) {
+            throw new BadRequestAlertException(
+                    "Only one PRIMARY diagnosis is allowed per encounter.",
+                    "patientDiagnosis",
+                    "primary.already.exists"
             );
         }
 

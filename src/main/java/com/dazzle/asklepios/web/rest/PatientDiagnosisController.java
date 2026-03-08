@@ -16,6 +16,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -102,6 +103,18 @@ PatientDiagnosisController {
         return ResponseEntity.ok(diagnoses);
     }
 
+    @GetMapping("/patient-diagnoses/by-encounter/{encounterId}/primary")
+    public ResponseEntity<PatientDiagnosis> getPrimaryByEncounterId(
+            @PathVariable @NotNull Long encounterId
+    ) {
+        LOG.debug("REST get primary PatientDiagnosis by encounterId={}", encounterId);
+
+        PatientDiagnosis primaryDiagnosis =
+                patientDiagnosisService.getPrimaryDiagnosisByEncounterId(encounterId);
+
+        return ResponseEntity.ok(primaryDiagnosis);
+    }
+
     @GetMapping("/patient-diagnoses/latest")
     public ResponseEntity<PatientDiagnosis> getLatest(
             @RequestParam("encounterId") Long encounterId
@@ -147,6 +160,23 @@ PatientDiagnosisController {
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
+    @DeleteMapping("/patient-diagnoses/{id}/hard")
+    public ResponseEntity<Void> hardDelete(@PathVariable Long id) {
+        LOG.debug("REST hard delete PatientDiagnosis id={}", id);
+
+        if (id == null) {
+            throw new BadRequestAlertException(
+                    "id is required",
+                    "patientDiagnosis",
+                    "id.required"
+            );
+        }
+
+        patientDiagnosisService.hardDelete(id);
+
+        return ResponseEntity.noContent().build();
+    }
+}
     @GetMapping("/patient-diagnosis/exists/{encounterId}")
     public ResponseEntity<Boolean> existsByEncounterId(@PathVariable Long encounterId) {
 
