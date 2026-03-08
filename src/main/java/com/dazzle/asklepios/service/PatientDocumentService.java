@@ -115,15 +115,10 @@ public class PatientDocumentService {
     }
 
     @Transactional(readOnly = true)
-    public PatientDocument getPrimaryDocumentByPatientId(Long patientId) {
+    public Optional<PatientDocument> getPrimaryDocumentByPatientId(Long patientId) {
         LOG.debug("[FIND PRIMARY DOCUMENT BY PATIENT] patientId={}", patientId);
 
-        return patientDocumentRepository.findByPatientIdAndIsPrimaryTrue(patientId)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Primary document not found for patient id " + patientId,
-                        "patientDocument",
-                        "notfound"
-                ));
+        return patientDocumentRepository.findByPatientIdAndIsPrimaryTrue(patientId);
     }
 
     @Transactional(readOnly = true)
