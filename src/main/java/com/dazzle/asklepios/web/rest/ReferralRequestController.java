@@ -43,30 +43,30 @@ public class ReferralRequestController {
         this.referralRequestService = referralRequestService;
     }
 
-    @PostMapping("/referral-request")
-    public ResponseEntity<ReferralRequest> createReferralRequest(
-            @Valid @RequestBody @NotNull ReferralRequestCreateDTO dto
-    ) {
-        LOG.debug("REST create ReferralRequest payload={}", dto);
+   @PostMapping("/referral-request")
+public ResponseEntity<ReferralRequest> createReferralRequest(
+        @Valid @RequestBody @NotNull ReferralRequestCreateDTO createDto
+) {
+    LOG.debug("REST create ReferralRequest payload={}", createDto);
 
-        ReferralRequest created = referralRequestService.createReferralRequest(dto);
+    ReferralRequest created = referralRequestService.createReferralRequest(createDto);
 
-        return ResponseEntity
-                .created(URI.create("/api/patient/referral-request/" + created.getId()))
-                .body(created);
-    }
+    return ResponseEntity
+            .created(URI.create("/api/patient/referral-request/" + created.getId()))
+            .body(created);
+}
 
-    @PutMapping("/referral-request/{id}")
-    public ResponseEntity<ReferralRequest> updateReferralRequest(
-            @PathVariable @NotNull Long id,
-            @Valid @RequestBody @NotNull ReferralRequestUpdateDTO dto
-    ) {
-        LOG.debug("REST update ReferralRequest id={} payload={}", id, dto);
+  @PutMapping("/referral-request/{id}")
+public ResponseEntity<ReferralRequest> updateReferralRequest(
+        @PathVariable @NotNull Long id,
+        @Valid @RequestBody @NotNull ReferralRequestUpdateDTO updateDto
+) {
+    LOG.debug("REST update ReferralRequest id={} payload={}", id, updateDto);
 
-        return referralRequestService.updateReferralRequest(id, dto)
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
-    }
+    return referralRequestService.updateReferralRequest(id, updateDto)
+            .map(ResponseEntity::ok)
+            .orElseGet(() -> ResponseEntity.notFound().build());
+}
 
     @GetMapping("/referral-request/by-encounter/{encounterId}")
     public ResponseEntity<List<ReferralRequest>> getReferralRequestsByEncounter(
