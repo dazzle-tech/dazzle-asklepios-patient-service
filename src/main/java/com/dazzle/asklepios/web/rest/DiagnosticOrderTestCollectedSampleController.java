@@ -7,6 +7,7 @@ import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.service.DiagnosticOrderTestCollectedSampleService;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.collectedsamples.DiagnosticOrderTestCollectedSampleBulkSameDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.collectedsamples.DiagnosticOrderTestCollectedSampleDTO;
+import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.collectedsamples.DiagnosticOrderTestSampleLabelDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.validation.Valid;
@@ -166,5 +167,22 @@ public class DiagnosticOrderTestCollectedSampleController {
         List<DiagnosticOrderTestCollectedSample> saved = service.bulkCreateWithSameDetails(dto);
         LOG.debug("[CollectedSample] BULK_CREATE_SAME - created successfully. savedCount={}", saved.size());
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+    }
+
+    @GetMapping("/diagnostic-order-test-collected-samples/sample-label/{orderTestId}")
+    public ResponseEntity<DiagnosticOrderTestSampleLabelDTO> getSampleLabel(@PathVariable Long orderTestId) {
+
+        LOG.debug("[SampleLabel] GET_SAMPLE_LABEL - request received. orderTestId={}", orderTestId);
+
+        DiagnosticOrderTestSampleLabelDTO result = service.getSampleLabel(orderTestId);
+
+        LOG.debug(
+                "[SampleLabel] GET_SAMPLE_LABEL - response ready. orderTestId={} patientName={} testName={}",
+                orderTestId,
+                result.patientName(),
+                result.testName()
+        );
+
+        return ResponseEntity.ok(result);
     }
 }

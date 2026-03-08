@@ -17,6 +17,7 @@ public interface PatientDiagnosisRepository extends JpaRepository<PatientDiagnos
             Long patientId,
             Pageable pageable
     );
+    boolean existsByEncounterId(Long encounterId);
 
     List<PatientDiagnosis> findByEncounterId(Long encounterId);
 

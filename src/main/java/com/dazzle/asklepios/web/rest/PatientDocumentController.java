@@ -25,6 +25,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/patient")
@@ -143,11 +144,11 @@ public class PatientDocumentController {
     }
 
     @GetMapping("/documents/patient/{patientId}/primary")
-    public ResponseEntity<PatientDocument> getPrimaryDocumentByPatient(
+    public ResponseEntity<Optional<PatientDocument>> getPrimaryDocumentByPatient(
             @PathVariable @NotNull Long patientId
     ) {
         LOG.debug("REST get primary PatientDocument by patientId={}", patientId);
-        PatientDocument document = patientDocumentService.getPrimaryDocumentByPatientId(patientId);
+        Optional<PatientDocument> document = patientDocumentService.getPrimaryDocumentByPatientId(patientId);
         return ResponseEntity.ok(document);
     }
 

@@ -91,26 +91,29 @@ public class BodyMeasurementsService {
         });
     }
 
-    @Transactional(readOnly = true)
-    public Page<BodyMeasurements> findBodyMeasurementsByPatientBetweenDates(
-            Long patientId,
-            Instant from,
-            Instant to,
-            Pageable pageable
-    ) {
-        LOG.debug("[FIND_BODY_MEASUREMENTS_PAGE] patientId={} from={} to={} pageable={}", patientId, from, to, pageable);
+@Transactional(readOnly = true)
+public Page<BodyMeasurements> findBodyMeasurementsByPatientBetweenDates(
+        Long patientId,
+        Instant from,
+        Instant to,
+        Pageable pageable
+) {
 
-        patientRepository.findById(patientId)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient not found with id " + patientId,
-                        "bodyMeasurements",
-                        "patient.notfound"
-                ));
-        
+    patientRepository.findById(patientId)
+            .orElseThrow(() -> new NotFoundAlertException(
+                    "Patient not found with id " + patientId,
+                    "bodyMeasurements",
+                    "patient.notfound"
+            ));
+
+    if (from != null && to != null) {
         return bodyMeasurementsRepository
                 .findByPatientIdAndIsActiveTrueAndCreatedDateBetween(patientId, from, to, pageable);
     }
 
+    return bodyMeasurementsRepository
+            .findByPatientIdAndIsActiveTrue(patientId, pageable);
+}
     @Transactional(readOnly = true)
     public List<BodyMeasurements> findBodyMeasurementsListByPatientBetweenDates(
             Long patientId,

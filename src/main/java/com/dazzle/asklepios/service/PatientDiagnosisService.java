@@ -216,5 +216,10 @@ public class PatientDiagnosisService {
                 "db.constraint"
         );
     }
+    @Transactional(readOnly = true)
+    public boolean existsByEncounterId(Long encounterId) {
+        LOG.debug("[EXISTS CHECK] encounterId={}", encounterId);
 
+        return patientDiagnosisRepository.existsByEncounterId(encounterId);
+    }
 }

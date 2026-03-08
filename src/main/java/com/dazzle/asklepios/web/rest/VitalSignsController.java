@@ -120,46 +120,46 @@ public class VitalSignsController {
                 .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
-    @GetMapping("/vital-signs/patient/{patientId}/between-dates")
-    @Transactional(readOnly = true)
-    public ResponseEntity<List<VitalSignsResponseVM>> findByPatientBetweenDates(
-            @PathVariable @NotNull Long patientId,
-            @RequestParam @NotNull Instant from,
-            @RequestParam @NotNull Instant to,
-            @ParameterObject Pageable pageable
-    ) {
-        LOG.debug("[REST][FIND BETWEEN DATES] patientId={} from={} to={}", patientId, from, to);
 
-        if (from.isAfter(to)) {
-            throw new BadRequestAlertException(
-                    "`from` must be before or equal to `to`",
-                    ENTITY_NAME,
-                    "date.range.invalid"
-            );
-        }
+@GetMapping("/vital-signs/patient/{patientId}/between-dates")
+@Transactional(readOnly = true)
+public ResponseEntity<List<VitalSignsResponseVM>> findByPatientBetweenDates(
+        @PathVariable Long patientId,
+        @RequestParam(required = false) Instant from,
+        @RequestParam(required = false) Instant to,
+        @ParameterObject Pageable pageable
+) {
+    LOG.debug("[REST][FIND BETWEEN DATES] patientId={} from={} to={}", patientId, from, to);
 
-        Page<VitalSignsResponseVM> page =
-                vitalSignsService
-                        .findVitalSignsByPatientIdBetweenDates(patientId, from, to, pageable)
-                        .map(vitalSigns -> VitalSignsResponseVM.builder()
-                                .temperature(vitalSigns.getTemperature())
-                                .pulseRate(vitalSigns.getHeartRate())
-                                .respiratoryRate(vitalSigns.getRespiratoryRate())
-                                .bloodPressureSystolic(vitalSigns.getBloodPressureSystolic())
-                                .bloodPressureDiastolic(vitalSigns.getBloodPressureDiastolic())
-                                .oxygenSaturation(vitalSigns.getOxygenSaturation())
-                                .createdAt(vitalSigns.getCreatedDate())
-                                .build()
-                        );
-
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(),
-                page
+    if (from != null && to != null && from.isAfter(to)) {
+        throw new BadRequestAlertException(
+                "`from` must be before or equal to `to`",
+                ENTITY_NAME,
+                "date.range.invalid"
         );
-
-        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
+    Page<VitalSignsResponseVM> page =
+            vitalSignsService
+                    .findVitalSignsByPatientIdBetweenDates(patientId, from, to, pageable)
+                    .map(vitalSigns -> VitalSignsResponseVM.builder()
+                            .temperature(vitalSigns.getTemperature())
+                            .pulseRate(vitalSigns.getHeartRate())
+                            .respiratoryRate(vitalSigns.getRespiratoryRate())
+                            .bloodPressureSystolic(vitalSigns.getBloodPressureSystolic())
+                            .bloodPressureDiastolic(vitalSigns.getBloodPressureDiastolic())
+                            .oxygenSaturation(vitalSigns.getOxygenSaturation())
+                            .createdAt(vitalSigns.getCreatedDate())
+                            .build()
+                    );
+
+    HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+            ServletUriComponentsBuilder.fromCurrentRequest(),
+            page
+    );
+
+    return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+}
     @GetMapping("/vital-signs/patient/{patientId}/respiratory-rate/list")
     @Transactional(readOnly = true)
     public ResponseEntity<List<RespiratoryRateResponseVM>> findRespiratoryRateBetweenDatesList(

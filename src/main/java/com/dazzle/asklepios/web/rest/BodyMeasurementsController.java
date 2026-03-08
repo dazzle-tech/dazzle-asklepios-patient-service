@@ -119,40 +119,41 @@ public class BodyMeasurementsController {
                 .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
-    @GetMapping("/body-measurements/patient/{patientId}")
-    @Transactional(readOnly = true)
-    public ResponseEntity<List<BodyMeasurementsResponseVM>> findBodyMeasurementsVmBetweenDates(
-            @PathVariable @NotNull Long patientId,
-            @RequestParam @NotNull Instant from,
-            @RequestParam @NotNull Instant to,
-            @ParameterObject Pageable pageable
-    ) {
-        if (from.isAfter(to)) {
-            throw new BadRequestAlertException(
-                    "`from` must be before or equal to `to`",
-                    ENTITY_NAME,
-                    "date.range.invalid"
-            );
-        }
 
-        Page<BodyMeasurementsResponseVM> result =
-                bodyMeasurementsService
-                        .findBodyMeasurementsByPatientBetweenDates(patientId, from, to, pageable)
-                        .map(bodyMeasurements -> BodyMeasurementsResponseVM.builder()
-                                .weight(bodyMeasurements.getWeight())
-                                .height(bodyMeasurements.getHeight())
-                                .createdAt(bodyMeasurements.getCreatedDate())
-                                .build()
-                        );
+@GetMapping("/body-measurements/patient/{patientId}")
+@Transactional(readOnly = true)
+public ResponseEntity<List<BodyMeasurementsResponseVM>> findBodyMeasurementsVmBetweenDates(
+        @PathVariable Long patientId,
+        @RequestParam(required = false) Instant from,
+        @RequestParam(required = false) Instant to,
+        @ParameterObject Pageable pageable
+) {
 
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(),
-                result
+    if (from != null && to != null && from.isAfter(to)) {
+        throw new BadRequestAlertException(
+                "`from` must be before or equal to `to`",
+                ENTITY_NAME,
+                "date.range.invalid"
         );
-
-        return new ResponseEntity<>(result.getContent(), headers, HttpStatus.OK);
     }
 
+    Page<BodyMeasurementsResponseVM> result =
+            bodyMeasurementsService
+                    .findBodyMeasurementsByPatientBetweenDates(patientId, from, to, pageable)
+                    .map(bodyMeasurements -> BodyMeasurementsResponseVM.builder()
+                            .weight(bodyMeasurements.getWeight())
+                            .height(bodyMeasurements.getHeight())
+                            .createdAt(bodyMeasurements.getCreatedDate())
+                            .build()
+                    );
+
+    HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+            ServletUriComponentsBuilder.fromCurrentRequest(),
+            result
+    );
+
+    return new ResponseEntity<>(result.getContent(), headers, HttpStatus.OK);
+}
     @GetMapping("/body-measurements/patient/{patientId}/weight/list")
     @Transactional(readOnly = true)
     public ResponseEntity<List<WeightResponseVM>> findWeightBetweenDatesList(
