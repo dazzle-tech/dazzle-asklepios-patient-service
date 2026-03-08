@@ -15,6 +15,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -40,17 +41,20 @@ public class ReferralRequest extends AbstractAuditingEntity<Long> implements Ser
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "encounter_id")
+    @NotNull
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "encounter_id", nullable = false)
     private PatientEncounter encounter;
 
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "referral_type", nullable = false, length = 20)
+    @Builder.Default
     private ReferralType referralType = ReferralType.INTERNAL;
 
     @NotNull
@@ -69,7 +73,7 @@ public class ReferralRequest extends AbstractAuditingEntity<Long> implements Ser
     @Column(name = "to_department_id", nullable = false)
     private Long toDepartmentId;
 
-    @NotNull
+    @NotBlank
     @Column(name = "referral_reason", nullable = false, length = 1000)
     private String referralReason;
 
@@ -102,8 +106,9 @@ public class ReferralRequest extends AbstractAuditingEntity<Long> implements Ser
     @AssertTrue(message = "Reject reason is required when status is REJECTED")
     public boolean isRejectReasonValid() {
         return status != ReferralStatus.REJECTED
-                || (rejectReason != null && !rejectReason.trim().isEmpty());
+                || (rejectReason != null && !rejectReason.isBlank());
     }
+
     @AssertTrue(message = "Accepted fields are required when status is ACCEPTED")
     public boolean isAcceptedFieldsValid() {
         return status != ReferralStatus.ACCEPTED
