@@ -176,7 +176,7 @@ PatientDiagnosisController {
 
         return ResponseEntity.noContent().build();
     }
-}
+
     @GetMapping("/patient-diagnosis/exists/{encounterId}")
     public ResponseEntity<Boolean> existsByEncounterId(@PathVariable Long encounterId) {
 
