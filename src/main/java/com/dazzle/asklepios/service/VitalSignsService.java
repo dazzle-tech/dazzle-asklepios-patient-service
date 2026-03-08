@@ -175,29 +175,6 @@ public class VitalSignsService {
                 ));
     }
 
-
-//    @Transactional(readOnly = true)
-//    public Page<VitalSigns> findVitalSignsByPatientIdBetweenDates(
-//            Long patientId,
-//            Instant from,
-//            Instant to,
-//            Pageable pageable
-//    ) {
-//        LOG.debug(
-//                "[FIND_BY_PATIENT_BETWEEN_DATES] patientId={} from={} to={} pageable={}",
-//                patientId, from, to, pageable
-//        );
-//
-//        patientRepository.findById(patientId)
-//                .orElseThrow(() -> new NotFoundAlertException(
-//                        "Patient not found with id " + patientId,
-//                        "vitalSigns",
-//                        "patient.notfound"
-//                ));
-//
-//        return vitalSignsRepository
-//                .findByPatientIdAndIsActiveTrueAndCreatedDateBetween(patientId, from, to, pageable);
-//    }
 @Transactional(readOnly = true)
 public Page<VitalSigns> findVitalSignsByPatientIdBetweenDates(
         Long patientId,
