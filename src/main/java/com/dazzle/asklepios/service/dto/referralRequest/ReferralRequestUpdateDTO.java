@@ -12,7 +12,7 @@ public record ReferralRequestUpdateDTO(
         @NotNull Long id,
 
         @NotNull Long patientId,
-        Long encounterId,
+        @NotNull Long encounterId,
 
         @NotNull ReferralType referralType,
 
