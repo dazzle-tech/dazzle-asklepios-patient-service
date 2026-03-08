@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.PatientDiagnosis;
+import com.dazzle.asklepios.domain.enumeration.DiagnosisType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,10 +13,12 @@ public interface PatientDiagnosisRepository extends JpaRepository<PatientDiagnos
 
     Optional<PatientDiagnosis> findTopByEncounterIdOrderByCreatedDateDesc(Long encounterId);
 
-    Page<PatientDiagnosis> findByPatientIdOrderByCreatedDateDesc(
+    Page<PatientDiagnosis> findByPatient_IdOrderByCreatedDateDesc(
             Long patientId,
             Pageable pageable
     );
 
     List<PatientDiagnosis> findByEncounterId(Long encounterId);
+
+    Optional<PatientDiagnosis> findByEncounterIdAndType(Long encounterId, DiagnosisType type);
 }
