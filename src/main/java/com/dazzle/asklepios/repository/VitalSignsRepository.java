@@ -42,5 +42,9 @@ public interface VitalSignsRepository extends JpaRepository<VitalSigns, Long> {
             Instant dayEnd
     );
 
+    Page<VitalSigns> findByPatientIdAndIsActiveTrue(
+            Long patientId,
+            Pageable pageable
+    );
 
 }
