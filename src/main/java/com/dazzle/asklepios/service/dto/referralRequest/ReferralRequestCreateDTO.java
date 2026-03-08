@@ -11,7 +11,7 @@ import java.io.Serializable;
 public record ReferralRequestCreateDTO(
 
         @NotNull Long patientId,
-        Long encounterId,
+        @NotNull Long encounterId,
 
         @NotNull ReferralType referralType,
 
