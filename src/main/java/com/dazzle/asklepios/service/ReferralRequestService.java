@@ -24,7 +24,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -39,104 +38,79 @@ public class ReferralRequestService {
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
 
-    public ReferralRequest create(ReferralRequestCreateDTO dto) {
-        LOG.info("[CREATE] ReferralRequest payload={}", dto);
+    public ReferralRequest createReferralRequest(ReferralRequestCreateDTO createDto) {
+        LOG.info("[CREATE] ReferralRequest payload={}", createDto);
 
-        Patient patient = patientRepository.findById(dto.patientId())
+        Patient patient = patientRepository.findById(createDto.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient not found with id " + dto.patientId(),
+                        "Patient not found with id " + createDto.patientId(),
                         "referralRequest",
                         "patient.notfound"
                 ));
 
-        PatientEncounter encounter = Optional.ofNullable(dto.encounterId())
-                .map(encounterId -> {
-                    LOG.debug("[CREATE] Resolving encounter id={}", encounterId);
-                    return patientEncounterRepository.findById(encounterId)
-                            .orElseThrow(() -> new NotFoundAlertException(
-                                    "PatientEncounter not found with id " + encounterId,
-                                    "referralRequest",
-                                    "encounter.notfound"
-                            ));
-                })
-                .orElse(null);
+        PatientEncounter encounter = findEncounterByIdOrThrow(createDto.encounterId(), "CREATE");
 
-        ReferralRequest entity = ReferralRequest.builder()
+        ReferralRequest referralRequest = ReferralRequest.builder()
                 .patient(patient)
                 .encounter(encounter)
-                .referralType(dto.referralType() != null ? dto.referralType() : ReferralType.INTERNAL)
-                .fromFacilityId(dto.fromFacilityId())
-                .toFacilityId(dto.toFacilityId())
-                .fromDepartmentId(dto.fromDepartmentId())
-                .toDepartmentId(dto.toDepartmentId())
-                .referralReason(dto.referralReason())
-                .priority(dto.priority())
+                .referralType(createDto.referralType() != null ? createDto.referralType() : ReferralType.INTERNAL)
+                .fromFacilityId(createDto.fromFacilityId())
+                .toFacilityId(createDto.toFacilityId())
+                .fromDepartmentId(createDto.fromDepartmentId())
+                .toDepartmentId(createDto.toDepartmentId())
+                .referralReason(createDto.referralReason())
+                .priority(createDto.priority())
                 .status(ReferralStatus.REQUESTED)
                 .build();
 
         try {
-            ReferralRequest saved = referralRequestRepository.saveAndFlush(entity);
-            LOG.info("[CREATE] Successfully created ReferralRequest id={}", saved.getId());
-            return saved;
+            ReferralRequest savedReferralRequest = referralRequestRepository.saveAndFlush(referralRequest);
+            LOG.info("[CREATE] Successfully created ReferralRequest id={}", savedReferralRequest.getId());
+            return savedReferralRequest;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
         }
     }
 
-    public Optional<ReferralRequest> update(Long id, ReferralRequestUpdateDTO dto) {
-        Long targetId = id != null ? id : dto.id();
-        LOG.info("[UPDATE] ReferralRequest id={} payload={}", targetId, dto);
+    public java.util.Optional<ReferralRequest> updateReferralRequest(Long referralRequestId, ReferralRequestUpdateDTO updateDto) {
+        Long targetReferralRequestId = referralRequestId != null ? referralRequestId : updateDto.id();
+        LOG.info("[UPDATE] ReferralRequest id={} payload={}", targetReferralRequestId, updateDto);
 
-        return referralRequestRepository.findById(targetId).map(entity -> {
+        return referralRequestRepository.findById(targetReferralRequestId).map(existingReferralRequest -> {
 
-            Patient patient = patientRepository.findById(dto.patientId())
+            Patient patient = patientRepository.findById(updateDto.patientId())
                     .orElseThrow(() -> new NotFoundAlertException(
-                            "Patient not found with id " + dto.patientId(),
+                            "Patient not found with id " + updateDto.patientId(),
                             "referralRequest",
                             "patient.notfound"
                     ));
 
-            PatientEncounter encounter = Optional.ofNullable(dto.encounterId())
-                    .map(encounterId -> {
-                        LOG.debug("[UPDATE] Resolving encounter id={}", encounterId);
-                        return patientEncounterRepository.findById(encounterId)
-                                .orElseThrow(() -> new NotFoundAlertException(
-                                        "PatientEncounter not found with id " + encounterId,
-                                        "referralRequest",
-                                        "encounter.notfound"
-                                ));
-                    })
-                    .orElse(null);
+            PatientEncounter encounter = findEncounterByIdOrThrow(updateDto.encounterId(), "UPDATE");
 
-            entity.setPatient(patient);
-            entity.setEncounter(encounter);
-            entity.setReferralType(dto.referralType());
-            entity.setFromFacilityId(dto.fromFacilityId());
-            entity.setToFacilityId(dto.toFacilityId());
-            entity.setFromDepartmentId(dto.fromDepartmentId());
-            entity.setToDepartmentId(dto.toDepartmentId());
-            entity.setReferralReason(dto.referralReason());
-            entity.setPriority(dto.priority());
+            existingReferralRequest.setPatient(patient);
+            existingReferralRequest.setEncounter(encounter);
+            existingReferralRequest.setReferralType(updateDto.referralType());
+            existingReferralRequest.setFromFacilityId(updateDto.fromFacilityId());
+            existingReferralRequest.setToFacilityId(updateDto.toFacilityId());
+            existingReferralRequest.setFromDepartmentId(updateDto.fromDepartmentId());
+            existingReferralRequest.setToDepartmentId(updateDto.toDepartmentId());
+            existingReferralRequest.setReferralReason(updateDto.referralReason());
+            existingReferralRequest.setPriority(updateDto.priority());
 
             try {
-                ReferralRequest updated = referralRequestRepository.saveAndFlush(entity);
-                LOG.info("[UPDATE] Successfully updated ReferralRequest id={}", updated.getId());
-                return updated;
+                ReferralRequest updatedReferralRequest = referralRequestRepository.saveAndFlush(existingReferralRequest);
+                LOG.info("[UPDATE] Successfully updated ReferralRequest id={}", updatedReferralRequest.getId());
+                return updatedReferralRequest;
             } catch (DataIntegrityViolationException | JpaSystemException ex) {
                 throw handleConstraintViolation(ex);
             }
         });
     }
 
-    public ReferralRequest accept(Long referralRequestId) {
-        String currentUser = SecurityUtils.getCurrentUserLogin()
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "Current user not found",
-                        "referralRequest",
-                        "user.notfound"
-                ));
+    public ReferralRequest acceptReferralRequest(Long referralRequestId) {
+        String currentUsername = getCurrentUsername();
 
-        LOG.info("[ACCEPT] ReferralRequest id={} acceptedBy={}", referralRequestId, currentUser);
+        LOG.info("[ACCEPT] ReferralRequest id={} acceptedBy={}", referralRequestId, currentUsername);
 
         ReferralRequest referralRequest = referralRequestRepository.findById(referralRequestId)
                 .orElseThrow(() -> {
@@ -150,15 +124,15 @@ public class ReferralRequestService {
 
         referralRequest.setStatus(ReferralStatus.ACCEPTED);
         referralRequest.setAcceptedDate(Instant.now());
-        referralRequest.setAcceptedBy(currentUser);
+        referralRequest.setAcceptedBy(currentUsername);
 
         try {
             ReferralRequest savedReferralRequest = referralRequestRepository.saveAndFlush(referralRequest);
-            LOG.info("[ACCEPT] ReferralRequest success id={} acceptedBy={}", referralRequestId, currentUser);
+            LOG.info("[ACCEPT] ReferralRequest success id={} acceptedBy={}", referralRequestId, currentUsername);
             return savedReferralRequest;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             LOG.warn("[ACCEPT] ReferralRequest failed (constraint) id={} acceptedBy={}",
-                    referralRequestId, currentUser, ex);
+                    referralRequestId, currentUsername, ex);
             throw handleConstraintViolation(ex);
         } catch (RuntimeException ex) {
             LOG.error("[ACCEPT] ReferralRequest failed (unexpected) id={}", referralRequestId, ex);
@@ -166,16 +140,11 @@ public class ReferralRequestService {
         }
     }
 
-    public ReferralRequest reject(Long referralRequestId, String rejectReason) {
-        String currentUser = SecurityUtils.getCurrentUserLogin()
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "Current user not found",
-                        "referralRequest",
-                        "user.notfound"
-                ));
+    public ReferralRequest rejectReferralRequest(Long referralRequestId, String rejectReason) {
+        String currentUsername = getCurrentUsername();
 
         LOG.info("[REJECT] ReferralRequest id={} rejectedBy={} reason={}",
-                referralRequestId, currentUser, rejectReason);
+                referralRequestId, currentUsername, rejectReason);
 
         ReferralRequest referralRequest = referralRequestRepository.findById(referralRequestId)
                 .orElseThrow(() -> {
@@ -190,15 +159,15 @@ public class ReferralRequestService {
         referralRequest.setStatus(ReferralStatus.REJECTED);
         referralRequest.setRejectReason(rejectReason);
         referralRequest.setRejectedDate(Instant.now());
-        referralRequest.setRejectedBy(currentUser);
+        referralRequest.setRejectedBy(currentUsername);
 
         try {
             ReferralRequest savedReferralRequest = referralRequestRepository.saveAndFlush(referralRequest);
-            LOG.info("[REJECT] ReferralRequest success id={} rejectedBy={}", referralRequestId, currentUser);
+            LOG.info("[REJECT] ReferralRequest success id={} rejectedBy={}", referralRequestId, currentUsername);
             return savedReferralRequest;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             LOG.warn("[REJECT] ReferralRequest failed (constraint) id={} rejectedBy={}",
-                    referralRequestId, currentUser, ex);
+                    referralRequestId, currentUsername, ex);
             throw handleConstraintViolation(ex);
         } catch (RuntimeException ex) {
             LOG.error("[REJECT] ReferralRequest failed (unexpected) id={}", referralRequestId, ex);
@@ -207,26 +176,56 @@ public class ReferralRequestService {
     }
 
     @Transactional(readOnly = true)
-    public Page<ReferralRequest> getByEncounter(Long encounterId, Pageable pageable) {
+    public Page<ReferralRequest> getReferralRequestsByEncounter(Long encounterId, Pageable pageable) {
         LOG.debug("[LIST] ReferralRequests by encounterId={} pageable={}", encounterId, pageable);
 
-        Page<ReferralRequest> page = referralRequestRepository.findByEncounter_Id(encounterId, pageable);
+        Page<ReferralRequest> referralRequestPage =
+                referralRequestRepository.findByEncounter_Id(encounterId, pageable);
 
         LOG.debug("[LIST] ReferralRequests by encounterId={} result size={} total={}",
-                encounterId, page.getNumberOfElements(), page.getTotalElements());
+                encounterId,
+                referralRequestPage.getNumberOfElements(),
+                referralRequestPage.getTotalElements());
 
-        return page;
+        return referralRequestPage;
     }
 
     @Transactional(readOnly = true)
-    public Page<ReferralRequest> getByToFacilityAndCreatedDateRange(
+    public Page<ReferralRequest> getReferralRequestsByToFacilityAndCreatedDateRange(
             Long toFacilityId,
-            Instant from,
-            Instant to,
+            Instant fromDateTime,
+            Instant toDateTime,
             Pageable pageable
     ) {
-        LOG.debug("[LIST] ReferralRequests by toFacilityId={} from={} to={}", toFacilityId, from, to);
-        return referralRequestRepository.findByToFacilityIdAndCreatedDateBetween(toFacilityId, from, to, pageable);
+        LOG.debug("[LIST] ReferralRequests by toFacilityId={} from={} to={}",
+                toFacilityId, fromDateTime, toDateTime);
+
+        return referralRequestRepository.findByToFacilityIdAndCreatedDateBetween(
+                toFacilityId,
+                fromDateTime,
+                toDateTime,
+                pageable
+        );
+    }
+
+    private String getCurrentUsername() {
+        return SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "Current user not found",
+                        "referralRequest",
+                        "user.notfound"
+                ));
+    }
+
+    private PatientEncounter findEncounterByIdOrThrow(Long encounterId, String operationName) {
+        LOG.debug("[{}] Resolving encounter id={}", operationName, encounterId);
+
+        return patientEncounterRepository.findById(encounterId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "PatientEncounter not found with id " + encounterId,
+                        "referralRequest",
+                        "encounter.notfound"
+                ));
     }
 
     private RuntimeException handleConstraintViolation(Exception exception) {
@@ -268,7 +267,8 @@ public class ReferralRequestService {
             );
         }
 
-        if (messageLower.contains("fk_referral_request_encounter")) {
+        if (messageLower.contains("fk_referral_encounter")
+                || messageLower.contains("fk_referral_request_encounter")) {
             return new BadRequestAlertException(
                     "Invalid encounter id.",
                     "referralRequest",
