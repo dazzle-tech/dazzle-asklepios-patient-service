@@ -132,6 +132,7 @@ public interface ConsultationRepository
             Pageable pageable
     );
 
+    Page<Consultation> findByPatientId(Long patientId, Pageable pageable);
 
 
 }

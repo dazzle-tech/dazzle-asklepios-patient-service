@@ -153,4 +153,20 @@ public class TelephonicConsultationController {
         TelephonicConsultation cancelled = service.cancel(id, dto.reason());
         return ResponseEntity.ok(TelephonicConsultationResponseVM.ofEntity(cancelled));
     }
+
+    @GetMapping("/by-patient/{patientId}")
+    public ResponseEntity<List<TelephonicConsultationResponseVM>> findByPatient(
+            @PathVariable Long patientId,
+            @ParameterObject Pageable pageable
+    ) {
+        LOG.debug("REST find telephonic consultations by patientId={} pageable={}", patientId, pageable);
+        Page<TelephonicConsultation> page = service.findByPatient(patientId, pageable);
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), page);
+        List<TelephonicConsultationResponseVM> body = page.getContent()
+                .stream()
+                .map(TelephonicConsultationResponseVM::ofEntity)
+                .toList();
+        return new ResponseEntity<>(body, headers, HttpStatus.OK);
+    }
 }

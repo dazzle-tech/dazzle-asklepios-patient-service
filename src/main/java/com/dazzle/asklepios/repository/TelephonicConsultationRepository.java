@@ -64,4 +64,5 @@ public interface TelephonicConsultationRepository
             Pageable pageable
     );
 
+    Page<TelephonicConsultation> findByPatientId(Long patientId, Pageable pageable);
 }

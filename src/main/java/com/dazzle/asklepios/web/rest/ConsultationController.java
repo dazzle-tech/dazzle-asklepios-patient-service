@@ -239,4 +239,15 @@ public class ConsultationController {
         LOG.debug("REST get practitionerIds - Returning {} practitioner IDs", practitionerIds.size());
         return ResponseEntity.ok(practitionerIds);
     }
+
+    @GetMapping("/consultation/by-patient/{patientId}")
+    public ResponseEntity<List<Consultation>> findByPatient(
+            @PathVariable Long patientId,
+            @ParameterObject Pageable pageable) {
+        LOG.debug("REST find consultations by patientId={} pageable={}", patientId, pageable);
+        Page<Consultation> page = service.findByPatient(patientId, pageable);
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), page);
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+    }
 }
