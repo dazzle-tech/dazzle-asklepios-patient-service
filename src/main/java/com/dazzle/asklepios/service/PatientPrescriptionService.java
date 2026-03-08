@@ -1,10 +1,12 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientPrescription;
 import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionUrgencyLevel;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientPrescriptionMedicationRepository;
 import com.dazzle.asklepios.repository.PatientPrescriptionRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -33,6 +35,8 @@ public class PatientPrescriptionService {
     private static final org.slf4j.Logger LOG = LoggerFactory.getLogger(PatientPrescriptionService.class);
     private final PatientRepository patientRepository;
     private final PatientPrescriptionRepository patientPrescriptionRepository;
+    private final PatientEncounterService patientEncounterService;
+    private final PatientEncounterRepository patientEncounterRepository;
 
     public PatientPrescription create(PatientPrescriptionCreateDto prescriptionCreateDto) {
         LOG.debug("create a prescriptionCreateDto={}",prescriptionCreateDto);
@@ -79,7 +83,12 @@ public class PatientPrescriptionService {
     public PatientPrescription createOrGetByEncounter(PatientPrescriptionCreateDto patientPrescriptionCreateDto) {
         LOG.debug("createOrGetByEncounter Patient Prescription payload={}", patientPrescriptionCreateDto);
 
-        return patientPrescriptionRepository
+        if(patientPrescriptionCreateDto.getEncounterId() != null) {
+            PatientEncounter encounter = patientEncounterService.getById(patientPrescriptionCreateDto.getEncounterId());
+            encounter.setHasPrescription(true);
+            patientEncounterRepository.save(encounter);
+        }
+         return patientPrescriptionRepository
                 .findTopByEncounterIdAndStatusOrderByCreatedDateDesc(patientPrescriptionCreateDto.getEncounterId(), PrescriptionStatus.DRAFT)
                 .orElseGet(() -> {
                     Patient patient = getPatient(patientPrescriptionCreateDto.getPatientId());
