@@ -304,6 +304,14 @@ public class ConsultationService {
         return consultation;
     }
 
+    @Transactional(readOnly = true)
+    public Page<Consultation> findByPatient(Long patientId, Pageable pageable) {
+        LOG.debug("[FIND_BY_PATIENT] patientId={} pageable={}", patientId, pageable);
+        Page<Consultation> result = consultationRepository.findByPatientId(patientId, pageable);
+        LOG.debug("[FIND_BY_PATIENT] Found {} consultations", result.getTotalElements());
+        return result;
+    }
+
     private void handleConstraintsOnCreateOrUpdate(RuntimeException exception) {
         Throwable root = getRootCause(exception);
         String message = (root != null ? root.getMessage() : exception.getMessage());
@@ -314,4 +322,5 @@ public class ConsultationService {
                 "db.constraint"
         );
     }
+    
 }
