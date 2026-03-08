@@ -37,4 +37,8 @@ public interface BodyMeasurementsRepository extends JpaRepository<BodyMeasuremen
             Instant dayEnd
     );
 
+    Page<BodyMeasurements> findByPatientIdAndIsActiveTrue(
+            Long patientId,
+            Pageable pageable
+    );
 }
