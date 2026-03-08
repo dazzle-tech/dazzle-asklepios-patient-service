@@ -44,38 +44,38 @@ public class ReferralRequestController {
     }
 
     @PostMapping("/referral-request")
-    public ResponseEntity<ReferralRequest> create(
+    public ResponseEntity<ReferralRequest> createReferralRequest(
             @Valid @RequestBody @NotNull ReferralRequestCreateDTO dto
     ) {
         LOG.debug("REST create ReferralRequest payload={}", dto);
 
-        ReferralRequest created = referralRequestService.create(dto);
+        ReferralRequest created = referralRequestService.createReferralRequest(dto);
 
         return ResponseEntity
-                .created(URI.create("/api/setup/referral-request/" + created.getId()))
+                .created(URI.create("/api/patient/referral-request/" + created.getId()))
                 .body(created);
     }
 
     @PutMapping("/referral-request/{id}")
-    public ResponseEntity<ReferralRequest> update(
+    public ResponseEntity<ReferralRequest> updateReferralRequest(
             @PathVariable @NotNull Long id,
             @Valid @RequestBody @NotNull ReferralRequestUpdateDTO dto
     ) {
         LOG.debug("REST update ReferralRequest id={} payload={}", id, dto);
 
-        return referralRequestService.update(id, dto)
+        return referralRequestService.updateReferralRequest(id, dto)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @GetMapping("/referral-request/by-encounter/{encounterId}")
-    public ResponseEntity<List<ReferralRequest>> getByEncounter(
+    public ResponseEntity<List<ReferralRequest>> getReferralRequestsByEncounter(
             @PathVariable @NotNull Long encounterId,
             @ParameterObject Pageable pageable
     ) {
         LOG.debug("REST get ReferralRequests by encounterId={} pageable={}", encounterId, pageable);
 
-        Page<ReferralRequest> page = referralRequestService.getByEncounter(encounterId, pageable);
+        Page<ReferralRequest> page = referralRequestService.getReferralRequestsByEncounter(encounterId, pageable);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
@@ -83,30 +83,32 @@ public class ReferralRequestController {
 
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
+
     @PutMapping("/referral-request/{id}/accept")
-    public ResponseEntity<ReferralRequest> accept(@PathVariable @NotNull Long id) {
+    public ResponseEntity<ReferralRequest> acceptReferralRequest(@PathVariable @NotNull Long id) {
 
         LOG.debug("REST accept ReferralRequest id={}", id);
 
-        ReferralRequest accepted = referralRequestService.accept(id);
+        ReferralRequest accepted = referralRequestService.acceptReferralRequest(id);
 
         return ResponseEntity.ok(accepted);
     }
 
     @PutMapping("/referral-request/{id}/reject")
-    public ResponseEntity<ReferralRequest> reject(
+    public ResponseEntity<ReferralRequest> rejectReferralRequest(
             @PathVariable @NotNull Long id,
             @RequestParam("reason") @NotBlank String reason
     ) {
 
         LOG.debug("REST reject ReferralRequest id={} reason={}", id, reason);
 
-        ReferralRequest rejected = referralRequestService.reject(id, reason);
+        ReferralRequest rejected = referralRequestService.rejectReferralRequest(id, reason);
 
         return ResponseEntity.ok(rejected);
     }
+
     @GetMapping("/referral-request/by-to-facility/{toFacilityId}/created-between")
-    public ResponseEntity<List<ReferralRequest>> getByToFacilityCreatedBetween(
+    public ResponseEntity<List<ReferralRequest>> getReferralRequestsByToFacilityCreatedBetween(
             @PathVariable @NotNull Long toFacilityId,
             @RequestParam("from") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam("to") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
@@ -115,7 +117,7 @@ public class ReferralRequestController {
         LOG.debug("REST list ReferralRequests by toFacilityId={} from={} to={} pageable={}",
                 toFacilityId, from, to, pageable);
 
-        Page<ReferralRequest> page = referralRequestService.getByToFacilityAndCreatedDateRange(
+        Page<ReferralRequest> page = referralRequestService.getReferralRequestsByToFacilityAndCreatedDateRange(
                 toFacilityId, from, to, pageable
         );
 
