@@ -1,10 +1,13 @@
 package com.dazzle.asklepios.web.rest;
 
+import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientRelation;
+import com.dazzle.asklepios.domain.enumeration.FamilyMemberCategory;
 import com.dazzle.asklepios.service.PatientRelationService;
 import com.dazzle.asklepios.service.dto.relation.PatientRelationCreateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
@@ -20,6 +23,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
@@ -92,6 +96,30 @@ public class PatientRelationController {
         );
 
         List<PatientRelation> body = page.getContent();
+
+        return new ResponseEntity<>(body, headers, HttpStatus.OK);
+    }
+
+    @GetMapping("/patient-relations/relatives")
+    public ResponseEntity<List<Patient>> getRelativePatientsByCategory(
+            @RequestParam @NotNull Long patientId,
+            @RequestParam @NotNull FamilyMemberCategory categoryType,
+            @ParameterObject Pageable pageable
+    ) {
+        LOG.debug("REST get relative patients by patientId={} categoryType={} page={}", patientId, categoryType, pageable);
+
+        Page<Patient> page = service.findRelativePatientsByPatientIdAndCategoryType(
+                patientId,
+                categoryType,
+                pageable
+        );
+
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                page
+        );
+
+        List<Patient> body = page.getContent();
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
