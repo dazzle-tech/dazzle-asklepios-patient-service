@@ -337,9 +337,8 @@ public class PatientService {
     @Transactional(readOnly = true)
     public Page<Patient> findByAnyDocumentNumber(String numberPart, Pageable pageable) {
         LOG.debug("[FIND BY ANY DOCUMENT] numberPart='{}' pageable={}", numberPart, pageable);
-        Page<PatientDocument> docsPage =
-                patientDocumentRepository.findByNumberContainingIgnoreCase(numberPart, pageable);
-        return docsPage.map(PatientDocument::getPatient);
+        return patientRepository
+                .findDistinctByPatientDocuments_NumberContainingIgnoreCase(numberPart, pageable);
     }
 
     private void handleConstraintsOnCreateOrUpdate(RuntimeException exception) {

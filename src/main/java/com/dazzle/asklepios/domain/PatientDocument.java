@@ -40,7 +40,7 @@ public class PatientDocument extends AbstractAuditingEntity<Long> implements Ser
     private Long id;
 
     @NotNull
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
