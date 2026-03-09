@@ -42,7 +42,7 @@ import java.util.Comparator;
 import java.util.List;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
-
+import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentFormDTO;
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -68,6 +68,49 @@ public class PatientPaymentsService {
 
     private static BigDecimal nonNullAmount(BigDecimal value) {
         return value == null ? ZERO_AMOUNT : value;
+    }
+
+    private PatientPaymentFormDTO toFormDTO(PatientPayments payment, List<PatientPaymentServices> services) {
+
+        return new PatientPaymentFormDTO(
+                payment.getId(),
+                payment.getPatient() != null ? payment.getPatient().getId() : null,
+                payment.getEncounter() != null ? payment.getEncounter().getId() : null,
+                payment.getPlan() != null ? payment.getPlan().getId() : null,
+
+                payment.getPaymentTypes(),
+                payment.getPaymentMethods(),
+
+                payment.getAmount(),
+                payment.getCurrency(),
+                payment.getFacilityDefaultCurrency(),
+                null,
+                payment.getAmountInFacilityCurrency(),
+
+                nonNullAmount(payment.getDueAmount()),
+                nonNullAmount(payment.getPatientBalance()),
+                nonNullAmount(payment.getRemaining()),
+                nonNullAmount(payment.getRefunds()),
+                nonNullAmount(payment.getPaidFromAmount()),
+                nonNullAmount(payment.getPaidFromBalance()),
+
+                payment.getAddToFreeBalance(),
+                payment.getUseBalanceToSettleDebts(),
+
+                payment.getCardNumber(),
+                payment.getCardHolderName(),
+                payment.getCardValidUntil(),
+
+                payment.getChequeNumber(),
+                payment.getChequeBankName(),
+                payment.getChequeDueDate(),
+
+                payment.getTransferNumber(),
+                payment.getTransferBankName(),
+                payment.getTransferDate(),
+
+                services
+        );
     }
 
     private BigDecimal getPaidAmountInFacilityCurrency(PatientPayments payment) {
@@ -114,7 +157,6 @@ public class PatientPaymentsService {
             try {
                 return walletRepository.saveAndFlush(newWallet);
             } catch (DataIntegrityViolationException conflict) {
-                // wallet created by another transaction before commit (rare with advisory lock)
                 LOG.warn("[WALLET] create conflict patientId={} - reloading", patientId);
                 return walletRepository.findByPatientId(patientId)
                         .orElseThrow(() -> new IllegalStateException("Wallet row is missing after conflict for patient " + patientId));
@@ -151,7 +193,6 @@ public class PatientPaymentsService {
             LOG.debug("[CHARGE] created for encounterId={} patientId={} due={}",
                     encounterId, payment.getPatient().getId(), nonNullAmount(dueAmount));
         } catch (DataIntegrityViolationException conflict) {
-            // charge created by another tx before commit (rare with advisory lock)
             LOG.warn("[CHARGE] create conflict encounterId={} - reloading", encounterId);
         }
 
@@ -202,7 +243,6 @@ public class PatientPaymentsService {
         BigDecimal recomputedRemainingForCurrentCharge =
                 nonNullAmount(computedDueAmount).subtract(allocatedToCurrentCharge);
 
-        // if due decreased below allocated => move overpayment to wallet
         if (recomputedRemainingForCurrentCharge.signum() < 0) {
             BigDecimal overPaid = recomputedRemainingForCurrentCharge.abs();
             walletBalance = walletBalance.add(overPaid);
@@ -223,9 +263,8 @@ public class PatientPaymentsService {
         List<PatientCharge> openCharges = chargeRepository
                 .findByPatientIdAndRemainingGreaterThanOrderByCreatedDateAscIdAsc(patientId, ZERO_AMOUNT);
 
-        // Make sure current encounter is allocated first
         openCharges.sort(Comparator
-                .comparing((PatientCharge charge) -> !charge.getEncounterId().equals(encounterId)) // false first
+                .comparing((PatientCharge charge) -> !charge.getEncounterId().equals(encounterId))
                 .thenComparing(PatientCharge::getCreatedDate)
                 .thenComparing(PatientCharge::getId));
 
@@ -241,17 +280,11 @@ public class PatientPaymentsService {
 
         // 5) Allocate from payment amount to charges
         for (PatientCharge openCharge : openCharges) {
-            if (remainingPaymentAmount.signum() <= 0) {
-                break;
-            }
-            if (nonNullAmount(openCharge.getRemaining()).signum() <= 0) {
-                continue;
-            }
+            if (remainingPaymentAmount.signum() <= 0) break;
+            if (nonNullAmount(openCharge.getRemaining()).signum() <= 0) continue;
 
             BigDecimal amountToPayThisCharge = remainingPaymentAmount.min(openCharge.getRemaining());
-
             remainingPaymentAmount = remainingPaymentAmount.subtract(amountToPayThisCharge);
-
             openCharge.setRemaining(openCharge.getRemaining().subtract(amountToPayThisCharge));
             openCharge.setLastModifiedDate(Instant.now());
 
@@ -293,17 +326,11 @@ public class PatientPaymentsService {
         boolean useBalanceToSettleDebts = Boolean.TRUE.equals(payment.getUseBalanceToSettleDebts());
         if (useBalanceToSettleDebts && walletBalance.signum() > 0) {
             for (PatientCharge openCharge : openCharges) {
-                if (walletBalance.signum() <= 0) {
-                    break;
-                }
-                if (nonNullAmount(openCharge.getRemaining()).signum() <= 0) {
-                    continue;
-                }
+                if (walletBalance.signum() <= 0) break;
+                if (nonNullAmount(openCharge.getRemaining()).signum() <= 0) continue;
 
                 BigDecimal amountToPayThisCharge = walletBalance.min(openCharge.getRemaining());
-
                 walletBalance = walletBalance.subtract(amountToPayThisCharge);
-
                 openCharge.setRemaining(openCharge.getRemaining().subtract(amountToPayThisCharge));
                 openCharge.setLastModifiedDate(Instant.now());
 
@@ -384,8 +411,6 @@ public class PatientPaymentsService {
         PatientPayments refreshed = entityManager.find(PatientPayments.class, saved.getId());
         List<PatientPaymentServices> refreshedServices = serviceRepository.findByPayment_Id(refreshed.getId());
 
-
-
         BigDecimal amountPaid = refreshed.getAmountInFacilityCurrency() != null
                 ? refreshed.getAmountInFacilityCurrency()
                 : (refreshed.getAmount() != null ? refreshed.getAmount() : ZERO_AMOUNT);
@@ -399,7 +424,6 @@ public class PatientPaymentsService {
                 amountPaid,
                 nonNullAmount(refreshed.getRemaining()),
                 nonNullAmount(refreshed.getRefunds()),
-                // NEW
                 nonNullAmount(refreshed.getPaidFromAmount()),
                 nonNullAmount(refreshed.getPaidFromBalance()),
                 refreshedServices
@@ -517,7 +541,6 @@ public class PatientPaymentsService {
 
     @Transactional(readOnly = true)
     public BigDecimal getPatientBalance(Long patientId) {
-
         LOG.debug("[GET_BALANCE] start patientId={}", patientId);
 
         if (patientId == null) {
@@ -540,7 +563,6 @@ public class PatientPaymentsService {
 
     @Transactional(readOnly = true)
     public PatientLedgerSummaryDTO getPatientLedgerSummary(Long patientId) {
-
         LOG.debug("[LEDGER_SUMMARY] start patientId={}", patientId);
 
         if (patientId == null) {
@@ -569,6 +591,33 @@ public class PatientPaymentsService {
                 walletBalance
         );
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // GET Payment by Encounter ID
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public PatientPaymentFormDTO getPaymentByEncounter(Long encounterId) {
+
+        LOG.debug("[GET_BY_ENCOUNTER] encounterId={}", encounterId);
+
+        PatientPayments payment = paymentRepository.findByEncounter_Id(encounterId)
+                .orElseThrow(() -> {
+                    LOG.warn("[GET_BY_ENCOUNTER] Payment not found for encounterId={}", encounterId);
+                    return new NotFoundAlertException(
+                            "Payment not found for encounter " + encounterId,
+                            "patientPayments",
+                            "payment.notfound"
+                    );
+                });
+
+        List<PatientPaymentServices> services =
+                serviceRepository.findByPayment_Id(payment.getId());
+
+        return toFormDTO(payment, services);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     private PatientInsurance resolvePlan(PatientPaymentCreateDTO dto) {
         PatientInsurance plan = null;
@@ -620,7 +669,6 @@ public class PatientPaymentsService {
                     "plan.required.byPaymentMethod"
             );
         }
-
         if (messageLower.contains("ck_patient_payments_card_details_required")) {
             return new BadRequestAlertException(
                     "Card details are required when payment method is CREDIT_DEBIT_CARD.",
@@ -628,7 +676,6 @@ public class PatientPaymentsService {
                     "card.details.required"
             );
         }
-
         if (messageLower.contains("ck_patient_payments_cheque_details_required")) {
             return new BadRequestAlertException(
                     "Cheque details are required when payment method is CHEQUE.",
@@ -636,7 +683,6 @@ public class PatientPaymentsService {
                     "cheque.details.required"
             );
         }
-
         if (messageLower.contains("ck_patient_payments_transfer_details_required")) {
             return new BadRequestAlertException(
                     "Transfer details are required when payment method is BANK_TRANSFER.",
@@ -644,7 +690,6 @@ public class PatientPaymentsService {
                     "transfer.details.required"
             );
         }
-
         if (messageLower.contains("fk_patient_payments_encounter")) {
             return new BadRequestAlertException(
                     "Invalid encounter reference.",
@@ -652,7 +697,6 @@ public class PatientPaymentsService {
                     "encounter.fk.invalid"
             );
         }
-
         if (messageLower.contains("fk_patient_payments_patient")) {
             return new BadRequestAlertException(
                     "Invalid patient reference.",
