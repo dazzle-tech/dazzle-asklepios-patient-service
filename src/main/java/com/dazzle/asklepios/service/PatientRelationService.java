@@ -3,6 +3,7 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientRelation;
 import com.dazzle.asklepios.domain.RelationsMatrix;
+import com.dazzle.asklepios.domain.enumeration.FamilyMemberCategory;
 import com.dazzle.asklepios.domain.enumeration.Gender;
 import com.dazzle.asklepios.domain.enumeration.RelationType;
 import com.dazzle.asklepios.repository.PatientRelationRepository;
@@ -244,6 +245,17 @@ public class PatientRelationService {
         return relationRepository.findById(id);
     }
 
+    public Page<Patient> findRelativePatientsByPatientIdAndCategoryType(
+            Long patientId,
+            FamilyMemberCategory categoryType,
+            Pageable pageable
+    ) {
+        LOG.debug("Find relative patients by patientId={} categoryType={} page={}", patientId, categoryType, pageable);
+
+        return relationRepository
+                .findByPatient_IdAndCategoryType(patientId, categoryType, pageable)
+                .map(PatientRelation::getRelativePatient);
+    }
     // --------------------------------------------------
     // DELETE both sides
     // --------------------------------------------------
