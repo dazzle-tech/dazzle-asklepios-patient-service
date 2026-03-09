@@ -614,7 +614,7 @@ public class PatientEncounterService {
                 ));
 
         return patientEncounterRepository
-                .findFirstByPatientIdAndStatusAndEncounterDateBeforeOrderByEncounterDateDesc(
+                .findFirstByPatientIdAndStatusAndEncounterDateLessThanEqualOrderByEncounterDateDesc(
                         currentEncounter.getPatient().getId(),
                         EncounterStatus.CLOSED,
                         currentEncounter.getEncounterDate()

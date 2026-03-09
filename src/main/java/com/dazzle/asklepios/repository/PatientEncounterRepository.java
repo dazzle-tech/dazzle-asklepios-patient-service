@@ -56,7 +56,7 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
             String appointmentId
     );
 
-    Optional<PatientEncounter> findFirstByPatientIdAndStatusAndEncounterDateBeforeOrderByEncounterDateDesc(
+    Optional<PatientEncounter> findFirstByPatientIdAndStatusAndEncounterDateLessThanEqualOrderByEncounterDateDesc(
             Long patientId,
             EncounterStatus status,
             LocalDate encounterDate
