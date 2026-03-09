@@ -556,70 +556,103 @@ public class DiagnosticOrderTestReportService {
     ) {
         LOG.debug("[DiagnosticOrderTestReportService] FILTER_REPORTS - start. id={} orderIdIn={} orderTestId={} severity={} approvedBy={} rejectedBy={} reviewBy={} reviewed={} pageable={}",
                 id, orderIdIn, orderTestId, severity, approvedBy, rejectedBy, reviewBy, reviewed, pageable);
+
         Specification<DiagnosticOrderTestReport> spec = (reportRoot, criteriaQuery, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
 
             if (reviewed != null) {
-                predicates.add(reviewed ? criteriaBuilder.isNotNull(reportRoot.get("reviewDate")) : criteriaBuilder.isNull(reportRoot.get("reviewDate")));
+                predicates.add(
+                        reviewed
+                                ? criteriaBuilder.isNotNull(reportRoot.get("reviewDate"))
+                                : criteriaBuilder.isNull(reportRoot.get("reviewDate"))
+                );
             }
 
-            if (id != null) predicates.add(criteriaBuilder.equal(reportRoot.get("id"), id));
-
-            if (orderIdIn != null && !orderIdIn.isEmpty()) {
-                predicates.add(reportRoot.get("orderId").in(orderIdIn));
+            if (id != null) {
+                predicates.add(criteriaBuilder.equal(reportRoot.get("id"), id));
             }
 
-            if (orderTestId != null) predicates.add(criteriaBuilder.equal(reportRoot.get("orderTestId"), orderTestId));
+            if (orderTestId != null) {
+                predicates.add(criteriaBuilder.equal(reportRoot.get("orderTestId"), orderTestId));
+            }
 
-            if (severity != null && !severity.isBlank())
+            if (severity != null && !severity.isBlank()) {
                 predicates.add(criteriaBuilder.equal(reportRoot.get("severity"), severity));
+            }
 
-            if (approvedBy != null && !approvedBy.isBlank())
+            if (approvedBy != null && !approvedBy.isBlank()) {
                 predicates.add(criteriaBuilder.equal(reportRoot.get("approvedBy"), approvedBy));
-            if (rejectedBy != null && !rejectedBy.isBlank())
+            }
+
+            if (rejectedBy != null && !rejectedBy.isBlank()) {
                 predicates.add(criteriaBuilder.equal(reportRoot.get("rejectedBy"), rejectedBy));
-            if (reviewBy != null && !reviewBy.isBlank())
+            }
+
+            if (reviewBy != null && !reviewBy.isBlank()) {
                 predicates.add(criteriaBuilder.equal(reportRoot.get("reviewBy"), reviewBy));
+            }
 
-            if (approvedDateFrom != null)
+            if (approvedDateFrom != null) {
                 predicates.add(criteriaBuilder.greaterThanOrEqualTo(reportRoot.get("approvedDate"), approvedDateFrom));
-            if (approvedDateTo != null)
+            }
+
+            if (approvedDateTo != null) {
                 predicates.add(criteriaBuilder.lessThanOrEqualTo(reportRoot.get("approvedDate"), approvedDateTo));
+            }
 
-            if (rejectedDateFrom != null)
+            if (rejectedDateFrom != null) {
                 predicates.add(criteriaBuilder.greaterThanOrEqualTo(reportRoot.get("rejectedDate"), rejectedDateFrom));
-            if (rejectedDateTo != null)
+            }
+
+            if (rejectedDateTo != null) {
                 predicates.add(criteriaBuilder.lessThanOrEqualTo(reportRoot.get("rejectedDate"), rejectedDateTo));
+            }
 
-            if (reviewDateFrom != null)
+            if (reviewDateFrom != null) {
                 predicates.add(criteriaBuilder.greaterThanOrEqualTo(reportRoot.get("reviewDate"), reviewDateFrom));
-            if (reviewDateTo != null)
+            }
+
+            if (reviewDateTo != null) {
                 predicates.add(criteriaBuilder.lessThanOrEqualTo(reportRoot.get("reviewDate"), reviewDateTo));
+            }
 
-            if (processingStatusIn != null && !processingStatusIn.isEmpty())
+            if (processingStatusIn != null && !processingStatusIn.isEmpty()) {
                 predicates.add(reportRoot.get("processingStatus").in(processingStatusIn));
-            if (processingStatusNotIn != null && !processingStatusNotIn.isEmpty())
+            }
+
+            if (processingStatusNotIn != null && !processingStatusNotIn.isEmpty()) {
                 predicates.add(criteriaBuilder.not(reportRoot.get("processingStatus").in(processingStatusNotIn)));
+            }
 
-            if (imageStatusIn != null && !imageStatusIn.isEmpty())
+            if (imageStatusIn != null && !imageStatusIn.isEmpty()) {
                 predicates.add(reportRoot.get("imageStatus").in(imageStatusIn));
-            if (imageStatusNotIn != null && !imageStatusNotIn.isEmpty())
+            }
+
+            if (imageStatusNotIn != null && !imageStatusNotIn.isEmpty()) {
                 predicates.add(criteriaBuilder.not(reportRoot.get("imageStatus").in(imageStatusNotIn)));
+            }
 
-            if (createdDateFrom != null)
+            if (createdDateFrom != null) {
                 predicates.add(criteriaBuilder.greaterThanOrEqualTo(reportRoot.get("createdDate"), createdDateFrom));
-            if (createdDateTo != null)
+            }
+
+            if (createdDateTo != null) {
                 predicates.add(criteriaBuilder.lessThanOrEqualTo(reportRoot.get("createdDate"), createdDateTo));
+            }
 
-            if (lastModifiedDateFrom != null)
+            if (lastModifiedDateFrom != null) {
                 predicates.add(criteriaBuilder.greaterThanOrEqualTo(reportRoot.get("lastModifiedDate"), lastModifiedDateFrom));
-            if (lastModifiedDateTo != null)
+            }
+
+            if (lastModifiedDateTo != null) {
                 predicates.add(criteriaBuilder.lessThanOrEqualTo(reportRoot.get("lastModifiedDate"), lastModifiedDateTo));
+            }
 
-            boolean needOrderFilter = (fromDepartmentIn != null && !fromDepartmentIn.isEmpty());
-            boolean needPatientFilter = (patientName != null && !patientName.isBlank()) || (mrn != null && !mrn.isBlank());
-            boolean needOrderIdFilter = (orderIdIn != null && !orderIdIn.isEmpty());
-
+            boolean needOrderFilter = fromDepartmentIn != null && !fromDepartmentIn.isEmpty();
+            boolean needPatientFilter =
+                    (patientName != null && !patientName.isBlank()) ||
+                            (mrn != null && !mrn.isBlank());
+            boolean needOrderIdFilter = orderIdIn != null && !orderIdIn.isEmpty();
             boolean needSubquery = needOrderFilter || needPatientFilter || needOrderIdFilter;
 
             if (needSubquery) {
@@ -630,23 +663,33 @@ public class DiagnosticOrderTestReportService {
 
                 List<Predicate> subPredicates = new ArrayList<>();
 
-                subPredicates.add(criteriaBuilder.equal(testRoot.get("id"), reportRoot.get("orderTestId")));
+                // ربط التقرير مع orderTest
+                subPredicates.add(criteriaBuilder.equal(
+                        testRoot.get("id"),
+                        reportRoot.get("orderTestId")
+                ));
 
-                subPredicates.add(criteriaBuilder.equal(orderRoot.get("id"), testRoot.get("orderId")));
+                // ربط orderTest مع order
+                subPredicates.add(criteriaBuilder.equal(
+                        orderRoot.get("id"),
+                        testRoot.get("orderId")
+                ));
 
                 if (needOrderIdFilter) {
                     subPredicates.add(orderRoot.get("id").in(orderIdIn));
                 }
 
-                // fromDepartmentIn filter
                 if (needOrderFilter) {
                     subPredicates.add(orderRoot.get("fromDepartmentId").in(fromDepartmentIn));
                 }
 
-                // patient filters
                 if (needPatientFilter) {
                     var patientRoot = subquery.from(Patient.class);
-                    subPredicates.add(criteriaBuilder.equal(patientRoot.get("id"), orderRoot.get("patientId")));
+
+                    subPredicates.add(criteriaBuilder.equal(
+                            patientRoot.get("id"),
+                            orderRoot.get("patientId")
+                    ));
 
                     if (mrn != null && !mrn.isBlank()) {
                         subPredicates.add(criteriaBuilder.like(
@@ -666,12 +709,11 @@ public class DiagnosticOrderTestReportService {
                     }
                 }
 
-                subquery.select(orderRoot.get("id"))
+                subquery.select(testRoot.get("id"))
                         .where(subPredicates.toArray(new Predicate[0]));
 
                 predicates.add(criteriaBuilder.exists(subquery));
             }
-
 
             return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
         };
@@ -683,15 +725,14 @@ public class DiagnosticOrderTestReportService {
                 .map(DiagnosticOrderTestReport::getId)
                 .toList();
 
-
         Set<Long> reportIdsWithNotes = reportIds.isEmpty()
                 ? Collections.emptySet()
                 : new HashSet<>(diagnosticOrderTestReportCommentsRepository
                 .findDistinctReportIdByReportIdIn(reportIds));
+
         return page.map(report -> {
             boolean hasNote = reportIdsWithNotes.contains(report.getId());
             return DiagnosticOrderTestReportResponseVM.ofEntityWithNote(report, hasNote);
         });
-
     }
 }
