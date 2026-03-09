@@ -4,7 +4,9 @@ import com.dazzle.asklepios.service.PatientPaymentsService;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientLedgerSummaryDTO;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentCreateDTO;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentDetailsDTO;
+import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentFormDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
@@ -99,5 +101,28 @@ public class PatientPaymentsController {
                 summary.patientId(), summary.totalDebt(), summary.walletBalance());
 
         return ResponseEntity.ok(summary);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // GET Payment by Encounter ID
+    // GET /api/patient/encounter/{encounterId}/payment
+    // Returns 200 + payment data if found, 204 if no payment yet (normal for new encounters)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @GetMapping("/encounter/{encounterId}/payment")
+    public ResponseEntity<PatientPaymentFormDTO> getPaymentByEncounter(
+            @PathVariable @NotNull Long encounterId
+    ) {
+        LOG.debug("REST get payment by encounterId={}", encounterId);
+
+        try {
+            PatientPaymentFormDTO result =
+                    patientPaymentsService.getPaymentByEncounter(encounterId);
+
+            return ResponseEntity.ok(result);
+
+        } catch (NotFoundAlertException e) {
+            return ResponseEntity.noContent().build();
+        }
     }
 }

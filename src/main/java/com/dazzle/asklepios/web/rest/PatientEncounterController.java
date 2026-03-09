@@ -122,11 +122,9 @@ public class PatientEncounterController {
     public ResponseEntity<Long> countTodayEncountersByFacility(
             @PathVariable @NotNull Long facilityId
     ) {
-
         LOG.debug("REST count TODAY PatientEncounters facilityId={}", facilityId);
 
-        long totalEncounters =
-                patientEncounterService.countTodayEncountersByFacility(facilityId);
+        long totalEncounters = patientEncounterService.countTodayEncountersByFacility(facilityId);
 
         return ResponseEntity.ok(totalEncounters);
     }
@@ -158,11 +156,9 @@ public class PatientEncounterController {
     public ResponseEntity<Long> countTodayDepartmentTotalPatients(
             @PathVariable @NotNull Long departmentId
     ) {
-
         LOG.debug("REST count TODAY TOTAL_PATIENTS departmentId={}", departmentId);
 
-        long total = patientEncounterService
-                .countTodayDepartmentTotalPatients(departmentId);
+        long total = patientEncounterService.countTodayDepartmentTotalPatients(departmentId);
 
         return ResponseEntity.ok(total);
     }
@@ -171,11 +167,9 @@ public class PatientEncounterController {
     public ResponseEntity<Long> countTodayDepartmentActiveCases(
             @PathVariable @NotNull Long departmentId
     ) {
-
         LOG.debug("REST count TODAY ACTIVE_CASES departmentId={}", departmentId);
 
-        long active = patientEncounterService
-                .countTodayDepartmentActiveCases(departmentId);
+        long active = patientEncounterService.countTodayDepartmentActiveCases(departmentId);
 
         return ResponseEntity.ok(active);
     }
@@ -184,11 +178,9 @@ public class PatientEncounterController {
     public ResponseEntity<Long> countTodayDepartmentCompleted(
             @PathVariable @NotNull Long departmentId
     ) {
-
         LOG.debug("REST count TODAY COMPLETED departmentId={}", departmentId);
 
-        long completed = patientEncounterService
-                .countTodayDepartmentCompleted(departmentId);
+        long completed = patientEncounterService.countTodayDepartmentCompleted(departmentId);
 
         return ResponseEntity.ok(completed);
     }
@@ -197,11 +189,9 @@ public class PatientEncounterController {
     public ResponseEntity<Long> countTodayDepartmentCancelled(
             @PathVariable @NotNull Long departmentId
     ) {
-
         LOG.debug("REST count TODAY CANCELLED departmentId={}", departmentId);
 
-        long cancelled = patientEncounterService
-                .countTodayDepartmentCancelled(departmentId);
+        long cancelled = patientEncounterService.countTodayDepartmentCancelled(departmentId);
 
         return ResponseEntity.ok(cancelled);
     }
@@ -227,7 +217,6 @@ public class PatientEncounterController {
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
-
     @PostMapping("/encounter/{id}/start")
     public ResponseEntity<PatientEncounter> startEncounter(
             @PathVariable("id") @NotNull Long encounterId
@@ -241,7 +230,6 @@ public class PatientEncounterController {
     public ResponseEntity<PatientEncounter> cancelEncounter(
             @PathVariable("id") @NotNull Long encounterId
     ) {
-
         LOG.debug("REST cancel PatientEncounter id={}", encounterId);
 
         PatientEncounter cancelled = patientEncounterService.cancelEncounter(encounterId);
@@ -252,19 +240,9 @@ public class PatientEncounterController {
     public ResponseEntity<PatientEncounter> dischargeEncounter(
             @PathVariable("id") @NotNull Long encounterId
     ) {
-
         LOG.debug("REST discharge PatientEncounter id={}", encounterId);
 
-        PatientEncounter encounter =
-                patientEncounterService.getEncountersByPatientId(encounterId, Pageable.unpaged())
-                        .stream()
-                        .findFirst()
-                        .orElse(null);
-
-        PatientEncounter existing =
-                patientEncounterService.dischargeEncounter(encounterId);
-
-
+        PatientEncounter existing = patientEncounterService.dischargeEncounter(encounterId);
         return ResponseEntity.ok(existing);
     }
 
@@ -272,12 +250,9 @@ public class PatientEncounterController {
     public ResponseEntity<PatientEncounter> completeEncounter(
             @PathVariable("id") @NotNull Long encounterId
     ) {
-
         LOG.debug("REST complete PatientEncounter id={}", encounterId);
 
-        PatientEncounter existing =
-                patientEncounterService.completeEncounter(encounterId);
-
+        PatientEncounter existing = patientEncounterService.completeEncounter(encounterId);
         return ResponseEntity.ok(existing);
     }
 
@@ -286,7 +261,6 @@ public class PatientEncounterController {
             @PathVariable @NotNull Long patientId,
             @ParameterObject Pageable pageable
     ) {
-
         LOG.debug("REST get PatientEncounters by patientId={} pageable={}", patientId, pageable);
 
         Page<PatientEncounter> page =
@@ -300,6 +274,7 @@ public class PatientEncounterController {
 
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
+
     @GetMapping("/encounter/{id}")
     public ResponseEntity<PatientEncounter> getEncounterById(
             @PathVariable("id") @NotNull Long encounterId
@@ -307,17 +282,16 @@ public class PatientEncounterController {
         LOG.debug("REST get PatientEncounter by id={}", encounterId);
 
         PatientEncounter encounter = patientEncounterService.getById(encounterId);
-
         return ResponseEntity.ok(encounter);
     }
+
     @GetMapping("/encounter/appointment/{appointmentId}")
     public ResponseEntity<PatientEncounter> getEncountersByAppointment(
             @PathVariable @NotNull String appointmentId
     ) {
-
-        LOG.debug("REST get EncounterAppointment by appointmentId={} ", appointmentId);
+        LOG.debug("REST get EncounterAppointment by appointmentId={}", appointmentId);
 
         PatientEncounter encounterAppointment = patientEncounterService.getEncountersByAppointmentId(appointmentId);
-
         return ResponseEntity.ok(encounterAppointment);
-    }}
+    }
+}
