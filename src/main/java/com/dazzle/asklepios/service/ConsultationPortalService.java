@@ -20,9 +20,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.stream.Stream;
+import java.util.Map;
 
 @Service
 @Transactional
@@ -72,25 +74,55 @@ public class ConsultationPortalService {
         List<ConsultationStatus> excludedStatuses = resolveExcludedStatusesForMergedSearch(showRejected);
         LOG.debug("[SEARCH_MERGED] excludedStatuses={}", excludedStatuses);
 
-        Page<Consultation> practitionerPage = fetchPractitionerConsultations(
-                fromDate, toDate, fromFacilityId, practitionerId,
-                fromDepartmentIds, excludedStatuses, pageable, hasFromDepartments
+        List<Consultation> merged = new ArrayList<>();
+
+        if (practitionerId != null) {
+            Page<Consultation> practitionerPage = fetchPractitionerConsultations(
+                    fromDate,
+                    toDate,
+                    fromFacilityId,
+                    practitionerId,
+                    fromDepartmentIds,
+                    excludedStatuses,
+                    Pageable.unpaged(),
+                    hasFromDepartments
+            );
+
+            LOG.debug("[SEARCH_MERGED] fetched practitionerCount={}", practitionerPage.getContent().size());
+            merged.addAll(practitionerPage.getContent());
+        } else {
+            LOG.debug("[SEARCH_MERGED] practitionerId is null, skipping practitioner consultations query");
+        }
+
+        if (toDepartmentId != null) {
+            Page<Consultation> departmentPage = fetchDepartmentConsultations(
+                    fromDate,
+                    toDate,
+                    fromFacilityId,
+                    toDepartmentId,
+                    fromDepartmentIds,
+                    excludedStatuses,
+                    Pageable.unpaged(),
+                    hasFromDepartments
+            );
+
+            LOG.debug("[SEARCH_MERGED] fetched departmentCount={}", departmentPage.getContent().size());
+            merged.addAll(departmentPage.getContent());
+        } else {
+            LOG.debug("[SEARCH_MERGED] toDepartmentId is null, skipping department consultations query");
+        }
+
+        List<Consultation> mergedDistinctSorted = mergeDeduplicateAndSortConsultations(merged);
+        LOG.debug("[SEARCH_MERGED] mergedDistinctCount={}", mergedDistinctSorted.size());
+
+        Page<Consultation> result = paginateConsultations(mergedDistinctSorted, pageable);
+        LOG.debug(
+                "[SEARCH_MERGED] end pageNumber={} pageSize={} returnedElements={} totalElements={}",
+                result.getNumber(),
+                result.getSize(),
+                result.getNumberOfElements(),
+                result.getTotalElements()
         );
-
-        Page<Consultation> departmentPage = fetchDepartmentConsultations(
-                fromDate, toDate, fromFacilityId, toDepartmentId,
-                fromDepartmentIds, excludedStatuses, pageable, hasFromDepartments
-        );
-
-        LOG.debug("[SEARCH_MERGED] fetched practitionerCount={} departmentCount={}",
-                practitionerPage.getContent().size(), departmentPage.getContent().size());
-
-        List<Consultation> mergedDistinct = mergeAndSortConsultations(practitionerPage, departmentPage);
-        LOG.debug("[SEARCH_MERGED] mergedDistinctCount={}", mergedDistinct.size());
-
-        Page<Consultation> result = new PageImpl<>(mergedDistinct, pageable, mergedDistinct.size());
-        LOG.debug("[SEARCH_MERGED] end pageSize={} totalElements={}",
-                result.getSize(), result.getTotalElements());
 
         return result;
     }
@@ -115,8 +147,15 @@ public class ConsultationPortalService {
             List<Long> fromDepartmentIds, List<ConsultationStatus> excludedStatuses,
             Pageable pageable, boolean hasDepartments
     ) {
-        LOG.debug("[SEARCH_MERGED] fetching practitioner consultations practitionerId={} hasDepartments={} excludedStatuses={} fromFacilityId={} fromDate={} toDate={}",
-                practitionerId, hasDepartments, excludedStatuses, fromFacilityId, fromDate, toDate);
+        if (practitionerId == null) {
+            LOG.debug("[SEARCH_MERGED] practitionerId is null -> returning empty practitioner page");
+            return Page.empty(pageable);
+        }
+
+        LOG.debug(
+                "[SEARCH_MERGED] fetching practitioner consultations practitionerId={} hasDepartments={} excludedStatuses={} fromFacilityId={} fromDate={} toDate={}",
+                practitionerId, hasDepartments, excludedStatuses, fromFacilityId, fromDate, toDate
+        );
 
         Page<Consultation> page = hasDepartments
                 ? fetchPractitionerConsultationsWithFromDepartments(
@@ -132,8 +171,10 @@ public class ConsultationPortalService {
             Instant fromDate, Instant toDate, Long fromFacilityId, Long practitionerId,
             List<Long> fromDepartmentIds, List<ConsultationStatus> excludedStatuses, Pageable pageable
     ) {
-        LOG.debug("[SEARCH_MERGED] practitioner query WITH fromDepartmentIds practitionerId={} fromDepartmentIds={}",
-                practitionerId, fromDepartmentIds);
+        LOG.debug(
+                "[SEARCH_MERGED] practitioner query WITH fromDepartmentIds practitionerId={} fromDepartmentIds={}",
+                practitionerId, fromDepartmentIds
+        );
         return consultationRepository
                 .findByCreatedDateBetweenAndFromFacilityIdAndPractitionerIdAndFromDepartmentIdInAndStatusNotIn(
                         fromDate, toDate, fromFacilityId, practitionerId, fromDepartmentIds, excludedStatuses, pageable);
@@ -154,8 +195,15 @@ public class ConsultationPortalService {
             List<Long> fromDepartmentIds, List<ConsultationStatus> excludedStatuses,
             Pageable pageable, boolean hasDepartments
     ) {
-        LOG.debug("[SEARCH_MERGED] fetching department consultations toDepartmentId={} hasDepartments={} excludedStatuses={} fromFacilityId={} fromDate={} toDate={}",
-                toDepartmentId, hasDepartments, excludedStatuses, fromFacilityId, fromDate, toDate);
+        if (toDepartmentId == null) {
+            LOG.debug("[SEARCH_MERGED] toDepartmentId is null -> returning empty department page");
+            return Page.empty(pageable);
+        }
+
+        LOG.debug(
+                "[SEARCH_MERGED] fetching department consultations toDepartmentId={} hasDepartments={} excludedStatuses={} fromFacilityId={} fromDate={} toDate={}",
+                toDepartmentId, hasDepartments, excludedStatuses, fromFacilityId, fromDate, toDate
+        );
 
         Page<Consultation> page = hasDepartments
                 ? fetchDepartmentConsultationsWithFromDepartments(
@@ -171,8 +219,10 @@ public class ConsultationPortalService {
             Instant fromDate, Instant toDate, Long fromFacilityId, Long toDepartmentId,
             List<Long> fromDepartmentIds, List<ConsultationStatus> excludedStatuses, Pageable pageable
     ) {
-        LOG.debug("[SEARCH_MERGED] department query WITH fromDepartmentIds toDepartmentId={} fromDepartmentIds={}",
-                toDepartmentId, fromDepartmentIds);
+        LOG.debug(
+                "[SEARCH_MERGED] department query WITH fromDepartmentIds toDepartmentId={} fromDepartmentIds={}",
+                toDepartmentId, fromDepartmentIds
+        );
         return consultationRepository
                 .findByCreatedDateBetweenAndFromFacilityIdAndToDepartmentIdAndFromDepartmentIdInAndStatusNotIn(
                         fromDate, toDate, fromFacilityId, toDepartmentId, fromDepartmentIds, excludedStatuses, pageable);
@@ -188,17 +238,32 @@ public class ConsultationPortalService {
                         fromDate, toDate, fromFacilityId, toDepartmentId, excludedStatuses, pageable);
     }
 
-    private List<Consultation> mergeAndSortConsultations(
-            Page<Consultation> practitionerPage,
-            Page<Consultation> departmentPage
-    ) {
-        LOG.debug("[SEARCH_MERGED] merging results practitionerCount={} departmentCount={}",
-                practitionerPage.getContent().size(), departmentPage.getContent().size());
+    private List<Consultation> mergeDeduplicateAndSortConsultations(List<Consultation> consultations) {
+        LOG.debug("[SEARCH_MERGED] merging raw results count={}", consultations.size());
 
-        return Stream.concat(
-                        practitionerPage.getContent().stream(),
-                        departmentPage.getContent().stream()
-                )
+        Map<Long, Consultation> distinctById = new LinkedHashMap<>();
+
+        for (Consultation consultation : consultations) {
+            if (consultation == null) {
+                continue;
+            }
+
+            Long id = consultation.getId();
+            if (id == null) {
+                LOG.warn("[SEARCH_MERGED] consultation without id found, skipping");
+                continue;
+            }
+
+            if (distinctById.containsKey(id)) {
+                LOG.debug("[SEARCH_MERGED] duplicate consultation found id={}, keeping first occurrence", id);
+                continue;
+            }
+
+            distinctById.put(id, consultation);
+        }
+
+        List<Consultation> result = distinctById.values()
+                .stream()
                 .sorted(
                         Comparator
                                 .comparing((Consultation c) ->
@@ -207,11 +272,34 @@ public class ConsultationPortalService {
                                         Consultation::getCreatedDate,
                                         Comparator.nullsLast(Comparator.reverseOrder())
                                 )
+                                .thenComparing(
+                                        Consultation::getId,
+                                        Comparator.nullsLast(Long::compareTo)
+                                )
                 )
                 .peek(c -> LOG.trace(
                         "[SEARCH_MERGED] sorted consultation id={} level={} createdDate={}",
                         c.getId(), c.getConsultationLevel(), c.getCreatedDate()))
                 .toList();
+
+        LOG.debug("[SEARCH_MERGED] deduplicated result count={}", result.size());
+        return result;
+    }
+
+    private Page<Consultation> paginateConsultations(List<Consultation> consultations, Pageable pageable) {
+        if (pageable == null || pageable.isUnpaged()) {
+            return new PageImpl<>(consultations);
+        }
+
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), consultations.size());
+
+        if (start >= consultations.size()) {
+            return new PageImpl<>(List.of(), pageable, consultations.size());
+        }
+
+        List<Consultation> pageContent = consultations.subList(start, end);
+        return new PageImpl<>(pageContent, pageable, consultations.size());
     }
 
     @Transactional
