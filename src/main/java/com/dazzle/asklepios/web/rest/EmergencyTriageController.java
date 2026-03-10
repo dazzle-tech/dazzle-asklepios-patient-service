@@ -18,8 +18,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Optional;
 
 @RestController
@@ -106,5 +108,14 @@ public class EmergencyTriageController {
         LOG.debug("REST hard delete EmergencyTriage id={}", id);
         emergencyTriageService.hardDelete(id);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * {@code GET /emergency-triage/bulk} : Get emergency triage records by ids.
+     */
+    @GetMapping("/emergency-triage/bulk")
+    public ResponseEntity<List<EmergencyTriage>> getBulkByIds(@RequestParam List<Long> ids) {
+        LOG.debug("REST get EmergencyTriage bulk by ids={}", ids);
+        return ResponseEntity.ok(emergencyTriageService.getAllByIds(ids));
     }
 }
