@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -227,5 +228,9 @@ public class EmergencyTriageService {
     }
     private PatientEncounter getEncounter(Long id) {
         return patientEncounterRepository.findById(id).orElseThrow(() -> new NotFoundAlertException("Patient Encounter not found: " + id, "PatientEncounter", "notfound"));
+    }
+
+    public List<EmergencyTriage> getAllByIds(List<Long> ids) {
+        return emergencyTriageRepository.findAllById(ids);
     }
 }
