@@ -55,6 +55,7 @@ public class PatientPrescriptionMedicationService {
                 .indicationUse(prescriptionMedicationCreateDTO.indicationUse)
                 .indicationIcd(prescriptionMedicationCreateDTO.indicationIcd)
                 .parametersToMonitor(prescriptionMedicationCreateDTO.parametersToMonitor)
+                .administrationInstructions(prescriptionMedicationCreateDTO.administrationInstructions)
                 .numberOfRefills(prescriptionMedicationCreateDTO.numberOfRefills)
                 .refillValue(prescriptionMedicationCreateDTO.refillValue)
                 .refillUnit(prescriptionMedicationCreateDTO.refillUnit)
@@ -80,7 +81,6 @@ public class PatientPrescriptionMedicationService {
         if (prescriptionMedicationUpdateDTO.doesUnit != null) entity.setDoesUnit(prescriptionMedicationUpdateDTO.doesUnit);
 
         if (prescriptionMedicationUpdateDTO.rout != null) {
-            validateRoa(prescriptionMedicationUpdateDTO.rout);
             entity.setRout(prescriptionMedicationUpdateDTO.rout);
         }
         if (prescriptionMedicationUpdateDTO.frequency != null) entity.setFrequency(prescriptionMedicationUpdateDTO.frequency);
@@ -103,7 +103,7 @@ public class PatientPrescriptionMedicationService {
         if (prescriptionMedicationUpdateDTO.indicationUse != null) entity.setIndicationUse(prescriptionMedicationUpdateDTO.indicationUse);
         if (prescriptionMedicationUpdateDTO.indicationIcd != null) entity.setIndicationIcd(prescriptionMedicationUpdateDTO.indicationIcd);
         if (prescriptionMedicationUpdateDTO.parametersToMonitor != null) entity.setParametersToMonitor(prescriptionMedicationUpdateDTO.parametersToMonitor);
-
+        if (prescriptionMedicationUpdateDTO.administrationInstructions != null) entity.setParametersToMonitor(prescriptionMedicationUpdateDTO.administrationInstructions);
         if (prescriptionMedicationUpdateDTO.numberOfRefills != null) entity.setNumberOfRefills(prescriptionMedicationUpdateDTO.numberOfRefills);
         if (prescriptionMedicationUpdateDTO.refillValue != null) entity.setRefillValue(prescriptionMedicationUpdateDTO.refillValue);
         if (prescriptionMedicationUpdateDTO.refillUnit != null) entity.setRefillUnit(prescriptionMedicationUpdateDTO.refillUnit);
@@ -152,16 +152,6 @@ public class PatientPrescriptionMedicationService {
         if (Boolean.TRUE.equals(chronic) && duration != null) {
             throw new BadRequestAlertException(
                     "Cannot set chronic medication and duration together.",
-                    "patientPrescriptionMedication",
-                    "validate"
-            );
-        }
-    }
-
-    private void validateRoa(String roa) {
-        if (roa == null || roa.isBlank()) {
-            throw new BadRequestAlertException(
-                    "ROA (rout) is required.",
                     "patientPrescriptionMedication",
                     "validate"
             );

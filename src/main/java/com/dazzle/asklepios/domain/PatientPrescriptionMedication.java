@@ -92,6 +92,9 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
     @Column(name = "indication_icd", nullable = false)
     private Long indicationIcd;
 
+    @Column(name = "administration_instructions")
+    private String administrationInstructions;
+
     @Column(name = "parameters_to_monitor", columnDefinition = "text")
     private String parametersToMonitor;
 
