@@ -67,7 +67,7 @@ public class PatientRelationService {
                     "Duplicate relation is not allowed for the same patient2."
             );
         }
-        if (requestedRelationType == RelationType.MOTH || requestedRelationType == RelationType.FATH) {
+        if (requestedRelationType == RelationType.MOTHER || requestedRelationType == RelationType.FATHER) {
             boolean parentExists = relationRepository
                     .existsByPatient_IdAndRelationType(sourcePatientId, requestedRelationType);
 
@@ -175,7 +175,7 @@ public class PatientRelationService {
 
            Long newSourcePatientId = newSourcePatient.getId();
 
-           if (newRelationType == RelationType.MOTH || newRelationType == RelationType.FATH) {
+           if (newRelationType == RelationType.MOTHER || newRelationType == RelationType.FATHER) {
 
                boolean parentExists = relationRepository
                        .existsByPatient_IdAndRelationType(newSourcePatientId, newRelationType);
