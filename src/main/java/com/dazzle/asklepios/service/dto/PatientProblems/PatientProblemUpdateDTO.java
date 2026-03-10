@@ -25,6 +25,7 @@ public record PatientProblemUpdateDTO(
 
         @NotNull
         EncounterVaccinationStatus status,
+        @NotNull
         String type,
         Date dateOfResolution,
 

@@ -143,6 +143,17 @@ public class PatientProblemService {
 
         String lower = (message != null ? message.toLowerCase() : "");
 
+        if (lower.contains("ck_patient_problems_type_required")
+                || (lower.contains("check constraint") && lower.contains("type"))
+                || (lower.contains("not-null") && lower.contains("type"))
+                || (lower.contains("null value") && lower.contains("type"))) {
+            throw new BadRequestAlertException(
+                    "Type is required.",
+                    "patientProblem",
+                    "type.required"
+            );
+        }
+
         if (lower.contains("ck_patient_problems_source_required")
                 || (lower.contains("check constraint") && lower.contains("source"))) {
             throw new BadRequestAlertException(
