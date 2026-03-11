@@ -113,9 +113,9 @@ public class EmergencyTriageController {
     /**
      * {@code GET /emergency-triage/bulk} : Get emergency triage records by ids.
      */
-    @GetMapping("/emergency-triage/bulk")
-    public ResponseEntity<List<EmergencyTriage>> getBulkByIds(@RequestParam List<Long> ids) {
-        LOG.debug("REST get EmergencyTriage bulk by ids={}", ids);
-        return ResponseEntity.ok(emergencyTriageService.getAllByIds(ids));
+    @GetMapping("/emergency-triage/bulk-byEncounter")
+    public ResponseEntity<List<EmergencyTriage>> getBulkByEncounterIds(@RequestParam List<Long> encounterIds) {
+        LOG.debug("REST get EmergencyTriage bulk by encounterIds={}", encounterIds);
+        return ResponseEntity.ok(emergencyTriageService.getAllByEncounterIds(encounterIds));
     }
 }
