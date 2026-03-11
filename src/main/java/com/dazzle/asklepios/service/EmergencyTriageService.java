@@ -230,7 +230,6 @@ public class EmergencyTriageService {
         return patientEncounterRepository.findById(id).orElseThrow(() -> new NotFoundAlertException("Patient Encounter not found: " + id, "PatientEncounter", "notfound"));
     }
 
-    public List<EmergencyTriage> getAllByIds(List<Long> ids) {
-        return emergencyTriageRepository.findAllById(ids);
-    }
+    public List<EmergencyTriage> getAllByEncounterIds(List<Long> ids) {
+        return emergencyTriageRepository.findAllByEncounterIdIn(ids);    }
 }
