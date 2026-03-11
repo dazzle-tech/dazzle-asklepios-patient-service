@@ -332,23 +332,22 @@ public class PatientController {
     }
 
     @GetMapping("/unknown")
-    public ResponseEntity<List<Patient>> getUnknownPatients(
+    public ResponseEntity<Page<Patient>> getUnknownPatients(
             @ParameterObject Pageable pageable
     ) {
-        Page<Patient> page =
-                patientService.findUnknownPatients(pageable);
+        LOG.info("REST request to get unknown patients - page: {}, size: {}, sort: {}",
+                pageable.getPageNumber(),
+                pageable.getPageSize(),
+                pageable.getSort());
 
-        HttpHeaders headers =
-                PaginationUtil.generatePaginationHttpHeaders(
-                        ServletUriComponentsBuilder.fromCurrentRequest(),
-                        page
-                );
+        Page<Patient> page = patientService.findUnknownPatients(pageable);
 
-        return new ResponseEntity<>(
-                page.getContent(),
-                headers,
-                HttpStatus.OK
-        );
+        LOG.info("REST request result for unknown patients - returned elements: {}, total elements: {}, total pages: {}",
+                page.getNumberOfElements(),
+                page.getTotalElements(),
+                page.getTotalPages());
+
+        return ResponseEntity.ok(page);
     }
 
     @PostMapping("/bulk/basic-info")
@@ -405,7 +404,6 @@ public class PatientController {
         Patient patient = patientService.findById(id);
         return ResponseEntity.ok(patient);
     }
-
     @GetMapping("/by-ids")
     public ResponseEntity<List<Patient>> getPatientsByIds(@RequestParam List<Long> ids) {
         LOG.debug("REST get Patients by ids={}", ids);
