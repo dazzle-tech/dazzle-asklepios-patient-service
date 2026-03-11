@@ -404,6 +404,12 @@ public class PatientController {
         Patient patient = patientService.findById(id);
         return ResponseEntity.ok(patient);
     }
+    @GetMapping("/by-ids")
+    public ResponseEntity<List<Patient>> getPatientsByIds(@RequestParam List<Long> ids) {
+        LOG.debug("REST get Patients by ids={}", ids);
+        List<Patient> patients = patientService.findByIds(ids);
+        return ResponseEntity.ok(patients);
+    }
 }
 
 
