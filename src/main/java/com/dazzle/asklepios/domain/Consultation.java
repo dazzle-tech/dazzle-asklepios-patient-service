@@ -138,4 +138,10 @@ Consultation extends AbstractAuditingEntity<Long> implements Serializable {
     @Column(name = "confirmed_by", length = 50)
     private String confirmedBy;
 
+    @Column(name = "submitted_by")
+    private String submittedBy;
+
+    @Column(name = "submitted_date")
+    private Instant submittedDate;
+
 }
