@@ -362,6 +362,7 @@ public class ConsultationPortalService {
     @Transactional
     public ConsultationSubmitResultDTO submitConsultations(ConsultationSubmitRequestDTO consultationSubmitRequestDTO) {
         LOG.info("[SUBMIT] consultationIds={}", consultationSubmitRequestDTO.consultationIds());
+        String username = currentUsername();
 
         List<Long> consultationIds = consultationSubmitRequestDTO.consultationIds();
         List<Consultation> consultations = consultationRepository.findAllById(consultationIds);
@@ -385,7 +386,10 @@ public class ConsultationPortalService {
                         && c.getStatus() == ConsultationStatus.READY)
                 .toList();
 
-        consultationsToSubmit.forEach(c -> c.setStatus(ConsultationStatus.SUBMITTED));
+        consultationsToSubmit.forEach(c -> {c.setStatus(ConsultationStatus.SUBMITTED);
+        c.setSubmittedBy(username);
+        c.setSubmittedDate(Instant.now());
+        });
         consultationRepository.saveAll(consultationsToSubmit);
 
         LOG.info("[SUBMIT] submittedCount={} errorsCount={}", consultationsToSubmit.size(), errors.size());
