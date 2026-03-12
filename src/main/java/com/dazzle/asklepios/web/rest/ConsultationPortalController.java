@@ -173,10 +173,10 @@ public class ConsultationPortalController {
 
         Consultation existing = consultationService.findById(id);
 
-        if (existing.getStatus() != ConsultationStatus.CONFIRMED) {
+        if (existing.getStatus() != ConsultationStatus.CONFIRMED && existing.getStatus()!= ConsultationStatus.READY) {
             LOG.warn("REST submit Consultation response - Not allowed for status={} id={}", existing.getStatus(), id);
             throw new BadRequestAlertException(
-                    "Consultation response can be submitted only when status is CONFIRMED",
+                    "Consultation response can be submitted only when status is CONFIRMED or ready",
                     "consultation", "response.only.confirmed");
         }
 
