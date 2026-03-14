@@ -193,4 +193,16 @@ public Page<BodyMeasurements> findBodyMeasurementsByPatientBetweenDates(
                 "db.constraint"
         );
     }
+
+    @Transactional(readOnly = true)
+    public Optional<BodyMeasurements> findLatestHeightByPatientId(Long patientId) {
+        return bodyMeasurementsRepository
+                .findFirstByPatientIdAndHeightIsNotNullOrderByCreatedDateDesc(patientId);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<BodyMeasurements> findLatestWeightByPatientId(Long patientId) {
+        return bodyMeasurementsRepository
+                .findFirstByPatientIdAndWeightIsNotNullOrderByCreatedDateDesc(patientId);
+    }
 }
