@@ -109,7 +109,6 @@ public class DiagnosticOrderTestResultStatusService {
         return saved;
     }
 
-
     /**
      * Rejects a result.
      *
@@ -140,6 +139,25 @@ public class DiagnosticOrderTestResultStatusService {
         return saved;
     }
 
+    /**
+     * Bulk reject results.
+     *
+     * <p>Applies the same workflow as {@link #reject(RejectResultDTO)} for each result id.</p>
+     *
+     * @param resultIds list of result ids
+     * @param rejectedBy current username
+     * @param rejectedReason rejection reason
+     */
+    public void bulkReject(List<Long> resultIds, String rejectedBy, String rejectedReason) {
+        LOG.debug("[ResultBulkReject] start count={} ids={} rejectedBy={} reason={}",
+                resultIds.size(), resultIds, rejectedBy, rejectedReason);
+
+        for (Long id : resultIds) {
+            reject(new RejectResultDTO(id, rejectedBy, rejectedReason));
+        }
+
+        LOG.debug("[ResultBulkReject] done count={}", resultIds.size());
+    }
 
     /**
      * Toggles review state for a result.
@@ -250,11 +268,13 @@ public class DiagnosticOrderTestResultStatusService {
             return orderTest;
         }
 
+        DiagnosticStatus oldStatus = orderTest.getProcessingStatus();
+
         orderTest.setProcessingStatus(newProcessingStatus);
         DiagnosticOrderTest savedOrderTest = diagnosticOrderTestRepository.save(orderTest);
 
         LOG.info("[TestRecompute] updated orderTestId={} testId={} oldStatus={} newStatus={} orderId={}",
-                orderTestId, savedOrderTest.getTestId(), orderTest.getProcessingStatus(), savedOrderTest.getProcessingStatus(), savedOrderTest.getOrderId());
+                orderTestId, savedOrderTest.getTestId(), oldStatus, savedOrderTest.getProcessingStatus(), savedOrderTest.getOrderId());
 
         diagnosticOrderStatusService.recomputeLabRadStatuses(savedOrderTest.getOrderId());
 
@@ -275,7 +295,7 @@ public class DiagnosticOrderTestResultStatusService {
     private void ensureTransition(DiagnosticStatus fromStatus, DiagnosticStatus toStatus) {
 
         if (toStatus == DiagnosticStatus.RESULT_APPROVED) {
-            if (fromStatus != DiagnosticStatus.RESULT_READY  ) throw invalid(fromStatus, toStatus);
+            if (fromStatus != DiagnosticStatus.RESULT_READY) throw invalid(fromStatus, toStatus);
             return;
         }
 
