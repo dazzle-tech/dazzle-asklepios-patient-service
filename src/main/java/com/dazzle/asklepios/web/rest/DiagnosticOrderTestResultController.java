@@ -8,6 +8,8 @@ import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.DiagnosticOrderTestResultService;
 import com.dazzle.asklepios.service.DiagnosticOrderTestResultStatusService;
+import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.BulkIdsDTO;
+import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.BulkRejectDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultCreateDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultRejectDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultUpdateDTO;
@@ -491,5 +493,19 @@ public class DiagnosticOrderTestResultController {
         return ResponseEntity.ok(body);
     }
 
+    @PostMapping("/diagnostic-order-tests-results/bulk-approve")
+    public ResponseEntity<Void> bulkApprove(@Valid @RequestBody BulkIdsDTO dto) {
+        LOG.debug("REST bulk-approve DiagnosticOrderTestResult count={} ids={}",
+                dto.ids().size(), dto.ids());
+        service.bulkApproveResults(dto.ids(), currentUsername());
+        return ResponseEntity.ok().build();
+    }
 
+    @PostMapping("/diagnostic-order-tests-results/bulk-reject")
+    public ResponseEntity<Void> bulkReject(@Valid @RequestBody BulkRejectDTO dto) {
+        LOG.debug("REST bulk-reject DiagnosticOrderTestResult count={} ids={} reason={}",
+                dto.ids().size(), dto.ids(), dto.rejectedReason());
+        statusService.bulkReject(dto.ids(), currentUsername(), dto.rejectedReason());
+        return ResponseEntity.ok().build();
+    }
 }
