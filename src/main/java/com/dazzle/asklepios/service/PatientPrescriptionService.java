@@ -129,23 +129,39 @@ public class PatientPrescriptionService {
     ) {
 
         if (patientId != null && encounterId != null) {
-
             if (status != null) {
-                return patientPrescriptionRepository.findByPatientIdAndEncounterIdAndStatus(patientId, encounterId, status, pageable);
+                return patientPrescriptionRepository
+                        .findByPatientIdAndEncounterIdAndStatus(patientId, encounterId, status, pageable);
             }
 
             if (!includeCanceled) {
-                return patientPrescriptionRepository.findByPatientIdAndEncounterIdAndStatusNot(
-                        patientId, encounterId, PrescriptionStatus.CANCELLED, pageable
-                );
+                return patientPrescriptionRepository
+                        .findByPatientIdAndEncounterIdAndStatusNot(
+                                patientId, encounterId, PrescriptionStatus.CANCELLED, pageable
+                        );
             }
 
-            return patientPrescriptionRepository.findByPatientIdAndEncounterId(patientId, encounterId, pageable);
+            return patientPrescriptionRepository
+                    .findByPatientIdAndEncounterId(patientId, encounterId, pageable);
         }
 
-        return patientPrescriptionRepository.findAll(pageable).map(this::toDto);
-    }
+        if (patientId != null) {
+            if (status != null) {
+                return patientPrescriptionRepository
+                        .findByPatientIdAndStatus(patientId, status, pageable);
+            }
 
+            if (!includeCanceled) {
+                return patientPrescriptionRepository
+                        .findByPatientIdAndStatusNot(patientId, PrescriptionStatus.CANCELLED, pageable);
+            }
+
+            return patientPrescriptionRepository
+                    .findByPatientId(patientId, pageable);
+        }
+
+        return patientPrescriptionRepository.findAll(pageable);
+    }
 
     public PatientPrescription submit(Long id, String lastModifiedBy) {
         LOG.debug("submit prescription for id ={}",id);

@@ -41,4 +41,9 @@ public interface BodyMeasurementsRepository extends JpaRepository<BodyMeasuremen
             Long patientId,
             Pageable pageable
     );
+
+
+    Optional<BodyMeasurements> findFirstByPatientIdAndHeightIsNotNullOrderByCreatedDateDesc(Long patientId);
+
+    Optional<BodyMeasurements> findFirstByPatientIdAndWeightIsNotNullOrderByCreatedDateDesc(Long patientId);
 }
