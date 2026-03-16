@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @Transactional
@@ -129,6 +130,32 @@ public class PatientAdministrativeWarningsService {
                 patientId, searchString,
                 patientId, searchString
         );
+    }
+
+    /**
+     * Get all warnings filtered by warningType (optional).
+     * If types is null/empty (or all blank), returns all warnings.
+     */
+    @Transactional(readOnly = true)
+    public List<PatientAdministrativeWarnings> getByTypes(List<String> types) {
+        LOG.debug("getByTypes PatientAdministrativeWarnings types={}", types);
+
+        if (types == null || types.isEmpty()) {
+            return patientAdministrativeWarningsRepository.findByResolvedFalse();
+        }
+
+        List<String> cleanedTypes = types.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .toList();
+
+        if (cleanedTypes.isEmpty()) {
+            return patientAdministrativeWarningsRepository.findByResolvedFalse();
+        }
+
+        return patientAdministrativeWarningsRepository.findByWarningTypeInAndResolvedFalse(cleanedTypes);
     }
 
     /**
