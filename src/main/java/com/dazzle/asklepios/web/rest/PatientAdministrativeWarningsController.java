@@ -121,6 +121,27 @@ public class PatientAdministrativeWarningsController {
     }
 
     /**
+     * {@code GET /patient-administrative-warnings} :
+     * Get all warnings filtered by warningType (optional).
+     *
+     * If {@code types} is null/empty, returns all warnings.
+     *
+     * @param types warning types to filter by (repeatable or comma-separated).
+     * @return {@link ResponseEntity} with status {@code 200 (OK)} and list of warnings.
+     */
+    @GetMapping("/patient-administrative-warnings")
+    public ResponseEntity<List<PatientAdministrativeWarningsResponseVM>> getAllByTypes(
+            @RequestParam(name = "types", required = false) List<String> types
+    ) {
+        LOG.debug("REST list PatientAdministrativeWarnings by types={}", types);
+        List<PatientAdministrativeWarnings> list = patientAdministrativeWarningsService.getByTypes(types);
+        List<PatientAdministrativeWarningsResponseVM> body = list.stream()
+                .map(PatientAdministrativeWarningsResponseVM::ofEntity)
+                .toList();
+        return new ResponseEntity<>(body, HttpStatus.OK);
+    }
+
+    /**
      * {@code GET /patient-administrative-warnings/patient/{patientId}/search} :
      * Get warnings for a patient filtered by warningType OR description (contains, ignore case).
      *
