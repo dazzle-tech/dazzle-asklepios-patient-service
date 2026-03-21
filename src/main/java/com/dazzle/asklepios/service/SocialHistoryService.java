@@ -1,0 +1,198 @@
+package com.dazzle.asklepios.service;
+
+import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.SocialHistory;
+import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.repository.SocialHistoryRepository;
+import com.dazzle.asklepios.service.dto.socialHistory.SocialHistoryCreateDTO;
+import com.dazzle.asklepios.service.dto.socialHistory.SocialHistoryUpdateDTO;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.orm.jpa.JpaSystemException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
+
+@Service
+@RequiredArgsConstructor
+@Transactional
+public class SocialHistoryService {
+
+    private static final Logger LOG = LoggerFactory.getLogger(SocialHistoryService.class);
+
+    private final SocialHistoryRepository socialHistoryRepository;
+    private final PatientRepository patientRepository;
+
+    private Patient getPatientOrThrow(Long patientId) {
+        return patientRepository.findById(patientId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found with id " + patientId,
+                        "socialHistory",
+                        "patient.notfound"
+                ));
+    }
+
+    public SocialHistory create(SocialHistoryCreateDTO socialHistoryCreateDTO) {
+        LOG.info("[CREATE] SocialHistory dto={}", socialHistoryCreateDTO);
+
+        Patient patient = getPatientOrThrow(socialHistoryCreateDTO.patientId());
+
+        SocialHistory socialHistory = SocialHistory.builder()
+                .patient(patient)
+                .isCurrentSmoker(Boolean.TRUE.equals(socialHistoryCreateDTO.isCurrentSmoker()))
+                .smokeStartDate(socialHistoryCreateDTO.smokeStartDate())
+                .cigaretteAmount(socialHistoryCreateDTO.cigaretteAmount())
+                .cigaretteType(socialHistoryCreateDTO.cigaretteType())
+                .isPreviousSmoker(Boolean.TRUE.equals(socialHistoryCreateDTO.isPreviousSmoker()))
+                .smokeQuitDate(socialHistoryCreateDTO.smokeQuitDate())
+                .exposureToSecondHandSmoke(Boolean.TRUE.equals(socialHistoryCreateDTO.exposureToSecondHandSmoke()))
+                .alcoholConsumption(Boolean.TRUE.equals(socialHistoryCreateDTO.alcoholConsumption()))
+                .typeOfAlcohol(socialHistoryCreateDTO.typeOfAlcohol())
+                .alcoholSinceWhen(socialHistoryCreateDTO.alcoholSinceWhen())
+                .substanceUse(Boolean.TRUE.equals(socialHistoryCreateDTO.substanceUse()))
+                .route(socialHistoryCreateDTO.route())
+                .frequency(socialHistoryCreateDTO.frequency())
+                .physicalLimitation(socialHistoryCreateDTO.physicalLimitation())
+                .diagnosedEatingDisorders(socialHistoryCreateDTO.diagnosedEatingDisorders())
+                .build();
+
+        try {
+            SocialHistory saved = socialHistoryRepository.saveAndFlush(socialHistory);
+            LOG.info("[CREATE] SocialHistory created id={}", saved.getId());
+            return saved;
+
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            handleConstraints(ex);
+            throw new BadRequestAlertException(
+                    "Database constraint violated while creating social history.",
+                    "socialHistory",
+                    "db.constraint"
+            );
+        }
+    }
+
+    public SocialHistory update(SocialHistoryUpdateDTO socialHistoryUpdateDTO) {
+        LOG.info("[UPDATE] SocialHistory dto={}", socialHistoryUpdateDTO);
+
+        SocialHistory socialHistory = socialHistoryRepository.findById(socialHistoryUpdateDTO.id())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Social history not found with id " + socialHistoryUpdateDTO.id(),
+                        "socialHistory",
+                        "notfound"
+                ));
+
+        Patient patient = getPatientOrThrow(socialHistoryUpdateDTO.patientId());
+
+        socialHistory.setPatient(patient);
+        socialHistory.setIsCurrentSmoker(Boolean.TRUE.equals(socialHistoryUpdateDTO.isCurrentSmoker()));
+        socialHistory.setIsPreviousSmoker(Boolean.TRUE.equals(socialHistoryUpdateDTO.isPreviousSmoker()));
+        socialHistory.setExposureToSecondHandSmoke(Boolean.TRUE.equals(socialHistoryUpdateDTO.exposureToSecondHandSmoke()));
+        socialHistory.setAlcoholConsumption(Boolean.TRUE.equals(socialHistoryUpdateDTO.alcoholConsumption()));
+        socialHistory.setSubstanceUse(Boolean.TRUE.equals(socialHistoryUpdateDTO.substanceUse()));
+
+        socialHistory.setSmokeStartDate(socialHistoryUpdateDTO.smokeStartDate());
+        socialHistory.setCigaretteAmount(socialHistoryUpdateDTO.cigaretteAmount());
+        socialHistory.setCigaretteType(socialHistoryUpdateDTO.cigaretteType());
+        socialHistory.setSmokeQuitDate(socialHistoryUpdateDTO.smokeQuitDate());
+        socialHistory.setAlcoholSinceWhen(socialHistoryUpdateDTO.alcoholSinceWhen());
+        socialHistory.setTypeOfAlcohol(socialHistoryUpdateDTO.typeOfAlcohol());
+        socialHistory.setRoute(socialHistoryUpdateDTO.route());
+        socialHistory.setFrequency(socialHistoryUpdateDTO.frequency());
+        socialHistory.setPhysicalLimitation(socialHistoryUpdateDTO.physicalLimitation());
+        socialHistory.setDiagnosedEatingDisorders(socialHistoryUpdateDTO.diagnosedEatingDisorders());
+
+        try {
+            SocialHistory updated = socialHistoryRepository.saveAndFlush(socialHistory);
+            LOG.info("[UPDATE] SocialHistory updated id={}", updated.getId());
+            return updated;
+
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            handleConstraints(ex);
+            throw new BadRequestAlertException(
+                    "Database constraint violated while updating social history.",
+                    "socialHistory",
+                    "db.constraint"
+            );
+        }
+    }
+
+    public void delete(Long id) {
+        LOG.info("[DELETE] SocialHistory id={}", id);
+
+        SocialHistory socialHistory = socialHistoryRepository.findById(id)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Social history not found with id " + id,
+                        "socialHistory",
+                        "notfound"
+                ));
+
+        socialHistoryRepository.delete(socialHistory);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<SocialHistory> findByPatientId(Long patientId, Pageable pageable) {
+        LOG.debug("[LIST] SocialHistory patientId={} pageable={}", patientId, pageable);
+        return socialHistoryRepository.findAllByPatientId(patientId, pageable);
+    }
+
+    private void handleConstraints(RuntimeException exception) {
+        Throwable root = getRootCause(exception);
+        String message = (root != null ? root.getMessage() : exception.getMessage());
+        String lower = message != null ? message.toLowerCase() : "";
+
+        LOG.error("DB ROOT CAUSE: {}", message, exception);
+
+        if (lower.contains("ux_social_history_patient")) {
+            throw new BadRequestAlertException(
+                    "Social history already exists for this patient.",
+                    "socialHistory",
+                    "duplicate"
+            );
+        }
+
+        if (lower.contains("ck_social_history_current_smoker_required")) {
+            throw new BadRequestAlertException(
+                    "Start date and cigarette amount are required for current smoker.",
+                    "socialHistory",
+                    "current.smoker.required"
+            );
+        }
+
+        if (lower.contains("ck_social_history_previous_smoker_required")) {
+            throw new BadRequestAlertException(
+                    "Quit date is required for previous smoker.",
+                    "socialHistory",
+                    "previous.smoker.required"
+            );
+        }
+
+        if (lower.contains("ck_social_history_smoker_xor")) {
+            throw new BadRequestAlertException(
+                    "Patient cannot be current smoker and previous smoker at the same time.",
+                    "socialHistory",
+                    "smoker.conflict"
+            );
+        }
+
+        if (lower.contains("ck_social_history_alcohol_since_when_required")) {
+            throw new BadRequestAlertException(
+                    "Alcohol since-when date is required when alcohol consumption is enabled.",
+                    "socialHistory",
+                    "alcohol.since.required"
+            );
+        }
+
+        throw new BadRequestAlertException(
+                "Database constraint violated while saving social history.",
+                "socialHistory",
+                "db.constraint"
+        );
+    }
+}
