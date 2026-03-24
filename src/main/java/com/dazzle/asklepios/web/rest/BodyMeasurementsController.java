@@ -211,4 +211,34 @@ public ResponseEntity<List<BodyMeasurementsResponseVM>> findBodyMeasurementsVmBe
 
         return ResponseEntity.ok(result);
     }
+
+    @GetMapping("/body-measurements/latest-height/patient/{patientId}")
+    @Transactional(readOnly = true)
+    public ResponseEntity<HeightResponseVM> findLatestHeightByPatientId(
+            @PathVariable @NotNull Long patientId
+    ) {
+        return bodyMeasurementsService.findLatestHeightByPatientId(patientId)
+                .map(bodyMeasurements -> ResponseEntity.ok(
+                        HeightResponseVM.builder()
+                                .height(bodyMeasurements.getHeight())
+                                .createdAt(bodyMeasurements.getCreatedDate())
+                                .build()
+                ))
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    @GetMapping("/body-measurements/latest-weight/patient/{patientId}")
+    @Transactional(readOnly = true)
+    public ResponseEntity<WeightResponseVM> findLatestWeightByPatientId(
+            @PathVariable @NotNull Long patientId
+    ) {
+        return bodyMeasurementsService.findLatestWeightByPatientId(patientId)
+                .map(bodyMeasurements -> ResponseEntity.ok(
+                        WeightResponseVM.builder()
+                                .weight(bodyMeasurements.getWeight())
+                                .createdAt(bodyMeasurements.getCreatedDate())
+                                .build()
+                ))
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
 }

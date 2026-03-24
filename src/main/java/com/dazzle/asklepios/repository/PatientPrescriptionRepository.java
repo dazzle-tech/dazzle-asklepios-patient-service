@@ -23,5 +23,17 @@ public interface PatientPrescriptionRepository extends JpaRepository<PatientPres
             Long encounterId,
             PrescriptionStatus status
     );
+    Page<PatientPrescription> findByPatientId(Long patientId, Pageable pageable);
 
+    Page<PatientPrescription> findByPatientIdAndStatus(
+            Long patientId,
+            PrescriptionStatus status,
+            Pageable pageable
+    );
+
+    Page<PatientPrescription> findByPatientIdAndStatusNot(
+            Long patientId,
+            PrescriptionStatus status,
+            Pageable pageable
+    );
 }

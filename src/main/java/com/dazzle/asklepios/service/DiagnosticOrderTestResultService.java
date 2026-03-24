@@ -54,7 +54,8 @@ public class DiagnosticOrderTestResultService {
             DiagnosticOrderRepository orderRepository,
             LabResultLogRepository labResultLogRepository,
             SetupServiceClient setupServiceClient,
-            NormalRangeMatcherService normalRangeMatcherService, DiagnosticOrderTestResultTechnicianNoteRepository diagnosticOrderTestResultTechnicianNoteRepository
+            NormalRangeMatcherService normalRangeMatcherService,
+            DiagnosticOrderTestResultTechnicianNoteRepository diagnosticOrderTestResultTechnicianNoteRepository
     ) {
         this.diagnosticOrderTestResultRepository = repository;
         this.orderTestResultStatusService = statusService;
@@ -63,7 +64,6 @@ public class DiagnosticOrderTestResultService {
         this.labResultLogRepository = labResultLogRepository;
         this.setupServiceClient = setupServiceClient;
         this.normalRangeMatcherService = normalRangeMatcherService;
-
         this.diagnosticOrderTestResultTechnicianNoteRepository = diagnosticOrderTestResultTechnicianNoteRepository;
     }
 
@@ -103,11 +103,6 @@ public class DiagnosticOrderTestResultService {
         return saved;
     }
 
-
-    // =========================================================
-    // UPDATE WITH VALIDATION
-    // =========================================================
-
     public DiagnosticOrderTestResult updateWithValidation(
             Long id,
             DiagnosticOrderTestResultUpdateDTO testResultUpdateDTO
@@ -130,10 +125,9 @@ public class DiagnosticOrderTestResultService {
         return diagnosticOrderTestResultRepository.save(testResult);
     }
 
-    // =========================================================
-    // APPROVE WITH FULL BUSINESS LOGIC
-    // =========================================================
-
+    /**
+     * Approve a single result using full business logic.
+     */
     public DiagnosticOrderTestResult approveResult(Long resultId, String approvedBy) {
 
         DiagnosticOrderTestResult result = diagnosticOrderTestResultRepository.findById(resultId)
@@ -184,9 +178,22 @@ public class DiagnosticOrderTestResultService {
         );
     }
 
-    // =========================================================
-    // FILTER WITH VIEW
-    // =========================================================
+    /**
+     * Bulk approve results using the same business logic as single approve.
+     *
+     * @param resultIds list of result ids
+     * @param approvedBy current username
+     */
+    public void bulkApproveResults(List<Long> resultIds, String approvedBy) {
+        LOG.debug("[DiagnosticOrderTestResultService] BULK_APPROVE - start count={} ids={} approvedBy={}",
+                resultIds.size(), resultIds, approvedBy);
+
+        for (Long id : resultIds) {
+            approveResult(id, approvedBy);
+        }
+
+        LOG.debug("[DiagnosticOrderTestResultService] BULK_APPROVE - done count={}", resultIds.size());
+    }
 
     @Transactional(readOnly = true)
     public Page<DiagnosticOrderTestResultResponseVM> resultFilter(
@@ -244,10 +251,6 @@ public class DiagnosticOrderTestResultService {
         });
     }
 
-    // =========================================================
-    // INTERNAL UTILITIES
-    // =========================================================
-
     private Long resolvePatientId(Long orderTestId) {
 
         return orderTestRepository.findById(orderTestId)
@@ -267,10 +270,8 @@ public class DiagnosticOrderTestResultService {
         if (bestNormalRangeMatch.resultLov() != null && !bestNormalRangeMatch.resultLov().isBlank())
             return bestNormalRangeMatch.resultLov();
 
-
         if (bestNormalRangeMatch.lovKeys() != null && !bestNormalRangeMatch.lovKeys().isEmpty()) {
             return String.join(", ", bestNormalRangeMatch.lovKeys());
-
         }
 
         Double from = bestNormalRangeMatch.rangeFrom();
@@ -287,10 +288,6 @@ public class DiagnosticOrderTestResultService {
 
         return " ";
     }
-
-    // =========================================================
-    // INTERNAL ENDPOINT HELPERS
-    // =========================================================
 
     @Transactional(readOnly = true)
     public List<Long> findFilledProfileTestIds(

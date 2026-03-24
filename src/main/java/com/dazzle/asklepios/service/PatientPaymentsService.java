@@ -9,6 +9,7 @@ import com.dazzle.asklepios.domain.PatientPaymentServices;
 import com.dazzle.asklepios.domain.PatientPayments;
 import com.dazzle.asklepios.domain.PatientWallet;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
+import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.PaymentTypes;
 
 import com.dazzle.asklepios.repository.PatientChargeRepository;
@@ -526,7 +527,12 @@ public class PatientPaymentsService {
             LOG.info("[CREATE] PatientPayments saved paymentId={} patientId={} encounterId={} servicesCount={} dueAmount={}",
                     saved.getId(), dto.patientId(), dto.encounterId(), serviceRows.size(), dueAmount);
 
-            encounter.setStatus(EncounterStatus.NEW);
+            if(encounter.getEncounterType().equals(EncounterType.EMERGENCY)){
+                encounter.setStatus(EncounterStatus.WAITING_TRIAGE);
+
+            }else {
+                encounter.setStatus(EncounterStatus.NEW);
+            }
             encounterRepository.saveAndFlush(encounter);
 
             return finalizeAndReturnDetails(saved);

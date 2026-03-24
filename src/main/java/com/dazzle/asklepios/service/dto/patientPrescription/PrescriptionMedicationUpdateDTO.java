@@ -30,7 +30,7 @@ public class PrescriptionMedicationUpdateDTO {
     public String indicationUse;
     public Long indicationIcd;
     public String parametersToMonitor;
-
+    public String administrationInstructions;
     public Long numberOfRefills;
     public Integer refillValue;
     public String refillUnit;
