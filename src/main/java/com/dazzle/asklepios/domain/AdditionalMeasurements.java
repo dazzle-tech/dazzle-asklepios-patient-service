@@ -13,12 +13,13 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
-import java.io.Serializable;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
+import java.io.Serializable;
 
 @Entity
 @Getter
@@ -47,33 +48,50 @@ public class AdditionalMeasurements extends AbstractAuditingEntity<Long> impleme
     @Column(name = "age_group", nullable = false, length = 20)
     private AgeGroupType ageGroup;
 
+    // ─── INFANT / NEONATE fields ─────────────────────────────────────────────
+
     @Column(name = "hearing_test", columnDefinition = "text")
     private String hearingTest;
 
+    // ✅ FIX: @Builder.Default is required — Lombok's @Builder ignores field-level
+    //         default values, so without this annotation the Builder sets every
+    //         Boolean field to null, which violates the NOT NULL DB constraint.
+
+    @Builder.Default
     @Column(name = "dehydration", nullable = false)
     private Boolean dehydration = false;
 
+    @Builder.Default
     @Column(name = "nasal_flaring", nullable = false)
     private Boolean nasalFlaring = false;
 
+    @Builder.Default
     @Column(name = "response_to_light", nullable = false)
     private Boolean responseToLight = false;
 
+    @Builder.Default
     @Column(name = "pupil_response", nullable = false)
     private Boolean pupilResponse = false;
 
+    @Builder.Default
     @Column(name = "ability_to_follow_target", nullable = false)
     private Boolean abilityToFollowTarget = false;
 
+    @Builder.Default
     @Column(name = "color_testing", nullable = false)
     private Boolean colorTesting = false;
 
+    // ─── GERIATRIC fields ────────────────────────────────────────────────────
+
+    @Builder.Default
     @Column(name = "fall_risk", nullable = false)
     private Boolean fallRisk = false;
 
+    @Builder.Default
     @Column(name = "vision_problems_affecting_function", nullable = false)
     private Boolean visionProblemsAffectingFunction = false;
 
+    @Builder.Default
     @Column(name = "hearing_problems_affecting_function", nullable = false)
     private Boolean hearingProblemsAffectingFunction = false;
 
@@ -83,6 +101,9 @@ public class AdditionalMeasurements extends AbstractAuditingEntity<Long> impleme
     @Column(name = "action_to_take", columnDefinition = "text")
     private String actionToTake;
 
+    // ─── Common ──────────────────────────────────────────────────────────────
+
+    @Builder.Default
     @NotNull
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;

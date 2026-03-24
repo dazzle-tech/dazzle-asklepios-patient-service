@@ -7,5 +7,6 @@ public enum AgeGroupType {
     ADOLESCENTS,
     GERIATRIC,
     NEONATES,
-    TODDLER;
+    TODDLER,
+    NEONATE
 }

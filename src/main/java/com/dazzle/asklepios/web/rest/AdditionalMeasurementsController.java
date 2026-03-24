@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/patient")
@@ -33,6 +34,12 @@ public class AdditionalMeasurementsController {
     private static final Logger LOG = LoggerFactory.getLogger(AdditionalMeasurementsController.class);
 
     private static final String ENTITY_NAME = "additionalMeasurements";
+
+    // ✅ FIX: Accept both INFANT and NEONATE for the infant endpoint
+    private static final Set<AgeGroupType> INFANT_AGE_GROUPS = Set.of(
+            AgeGroupType.INFANT,
+            AgeGroupType.NEONATE
+    );
 
     private final AdditionalMeasurementsService additionalMeasurementsService;
 
@@ -54,8 +61,13 @@ public class AdditionalMeasurementsController {
         if (dto.ageGroup() == null) {
             throw new BadRequestAlertException("Age group is required", ENTITY_NAME, "ageGroup.required");
         }
-        if (dto.ageGroup() != AgeGroupType.INFANT) {
-            throw new BadRequestAlertException("Age group must be INFANT/NEONATE for this endpoint", ENTITY_NAME, "ageGroup.invalid");
+        // ✅ FIX: was (dto.ageGroup() != AgeGroupType.INFANT) — rejected NEONATE
+        if (!INFANT_AGE_GROUPS.contains(dto.ageGroup())) {
+            throw new BadRequestAlertException(
+                    "Age group must be INFANT or NEONATE for this endpoint",
+                    ENTITY_NAME,
+                    "ageGroup.invalid"
+            );
         }
 
         AdditionalMeasurements saved = additionalMeasurementsService.createInfant(dto);
@@ -87,8 +99,13 @@ public class AdditionalMeasurementsController {
         if (dto.ageGroup() == null) {
             throw new BadRequestAlertException("Age group is required", ENTITY_NAME, "ageGroup.required");
         }
-        if (dto.ageGroup() != AgeGroupType.INFANT) {
-            throw new BadRequestAlertException("Age group must be INFANT/NEONATE for this endpoint", ENTITY_NAME, "ageGroup.invalid");
+        // ✅ FIX: was (dto.ageGroup() != AgeGroupType.INFANT) — rejected NEONATE
+        if (!INFANT_AGE_GROUPS.contains(dto.ageGroup())) {
+            throw new BadRequestAlertException(
+                    "Age group must be INFANT or NEONATE for this endpoint",
+                    ENTITY_NAME,
+                    "ageGroup.invalid"
+            );
         }
 
         return additionalMeasurementsService.updateInfant(id, dto)
@@ -119,7 +136,11 @@ public class AdditionalMeasurementsController {
             throw new BadRequestAlertException("Age group is required", ENTITY_NAME, "ageGroup.required");
         }
         if (dto.ageGroup() != AgeGroupType.GERIATRIC) {
-            throw new BadRequestAlertException("Age group must be GERIATRIC for this endpoint", ENTITY_NAME, "ageGroup.invalid");
+            throw new BadRequestAlertException(
+                    "Age group must be GERIATRIC for this endpoint",
+                    ENTITY_NAME,
+                    "ageGroup.invalid"
+            );
         }
 
         AdditionalMeasurements saved = additionalMeasurementsService.createGeriatric(dto);
@@ -152,7 +173,11 @@ public class AdditionalMeasurementsController {
             throw new BadRequestAlertException("Age group is required", ENTITY_NAME, "ageGroup.required");
         }
         if (dto.ageGroup() != AgeGroupType.GERIATRIC) {
-            throw new BadRequestAlertException("Age group must be GERIATRIC for this endpoint", ENTITY_NAME, "ageGroup.invalid");
+            throw new BadRequestAlertException(
+                    "Age group must be GERIATRIC for this endpoint",
+                    ENTITY_NAME,
+                    "ageGroup.invalid"
+            );
         }
 
         return additionalMeasurementsService.updateGeriatric(id, dto)
@@ -166,7 +191,9 @@ public class AdditionalMeasurementsController {
 
     @GetMapping("/additional-measurements/latest/encounter/{encounterId}")
     @Transactional(readOnly = true)
-    public ResponseEntity<AdditionalMeasurements> findLatestByEncounterId(@PathVariable Long encounterId) {
+    public ResponseEntity<AdditionalMeasurements> findLatestByEncounterId(
+            @PathVariable Long encounterId
+    ) {
         if (encounterId == null) {
             throw new BadRequestAlertException("Encounter id is required", ENTITY_NAME, "encounter.required");
         }
