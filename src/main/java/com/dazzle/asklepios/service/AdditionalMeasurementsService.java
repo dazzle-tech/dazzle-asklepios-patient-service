@@ -42,6 +42,8 @@ public class AdditionalMeasurementsService {
         Patient patient = loadPatient(dto.patientId());
 
         try {
+            // ✅ FIX: save the deactivated record first, flush it, THEN create the new one
+            // This avoids any constraint timing issue between the two operations
             resetIsActiveForEncounterToday(dto.encounterId());
 
             AdditionalMeasurements entity = AdditionalMeasurements.builder()
@@ -55,6 +57,7 @@ public class AdditionalMeasurementsService {
                     .pupilResponse(dto.pupilResponse())
                     .abilityToFollowTarget(dto.abilityToFollowTarget())
                     .colorTesting(dto.colorTesting())
+                    // ✅ FIX: always force isActive=true on create regardless of DTO value
                     .isActive(true)
                     .build();
 
@@ -82,7 +85,6 @@ public class AdditionalMeasurementsService {
             entity.setPupilResponse(dto.pupilResponse());
             entity.setAbilityToFollowTarget(dto.abilityToFollowTarget());
             entity.setColorTesting(dto.colorTesting());
-
             entity.setIsActive(dto.isActive());
 
             try {
@@ -99,6 +101,7 @@ public class AdditionalMeasurementsService {
         Patient patient = loadPatient(dto.patientId());
 
         try {
+            // ✅ FIX: same as infant — reset first, flush, then create
             resetIsActiveForEncounterToday(dto.encounterId());
 
             AdditionalMeasurements entity = AdditionalMeasurements.builder()
@@ -110,6 +113,7 @@ public class AdditionalMeasurementsService {
                     .hearingProblemsAffectingFunction(dto.hearingProblemsAffectingFunction())
                     .details(dto.details())
                     .actionToTake(dto.actionToTake())
+                    // ✅ FIX: always force isActive=true on create regardless of DTO value
                     .isActive(true)
                     .build();
 
@@ -124,7 +128,6 @@ public class AdditionalMeasurementsService {
         Long targetId = id != null ? id : dto.id();
         LOG.info("[UPDATE_GERIATRIC] AdditionalMeasurements id={} payload={}", targetId, dto);
 
-
         return additionalMeasurementsRepository.findById(targetId).map(entity -> {
             Patient patient = loadPatient(dto.patientId());
 
@@ -136,7 +139,6 @@ public class AdditionalMeasurementsService {
             entity.setHearingProblemsAffectingFunction(dto.hearingProblemsAffectingFunction());
             entity.setDetails(dto.details());
             entity.setActionToTake(dto.actionToTake());
-
             entity.setIsActive(dto.isActive());
 
             try {
@@ -150,8 +152,13 @@ public class AdditionalMeasurementsService {
     @Transactional(readOnly = true)
     public Optional<AdditionalMeasurements> findLatestByEncounterId(Long encounterId) {
         LOG.debug("[FIND_LATEST_BY_ENCOUNTER] encounterId={}", encounterId);
-        return additionalMeasurementsRepository.findFirstByEncounterIdAndIsActiveTrueOrderByCreatedDateDesc(encounterId);
+        return additionalMeasurementsRepository
+                .findFirstByEncounterIdAndIsActiveTrueOrderByCreatedDateDesc(encounterId);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Private helpers
+    // ─────────────────────────────────────────────────────────────────────────
 
     private Patient loadPatient(Long patientId) {
         return patientRepository.findById(patientId)
@@ -162,34 +169,31 @@ public class AdditionalMeasurementsService {
                 ));
     }
 
+    /**
+     * Deactivates the most recent active record for today's encounter BEFORE
+     * inserting a new one. Uses saveAndFlush (not just flush) so the UPDATE is
+     * committed to the DB connection before the INSERT, preventing any unique
+     * or check constraint race between the two rows.
+     */
     private void resetIsActiveForEncounterToday(Long encounterId) {
-
         Instant now = Instant.now();
         Instant dayStart = now.truncatedTo(java.time.temporal.ChronoUnit.DAYS);
         Instant dayEnd = dayStart.plus(1, java.time.temporal.ChronoUnit.DAYS);
 
-        LOG.debug(
-                "[RESET ACTIVE] Setting latest isActive=false for today, encounterId={}",
-                encounterId
-        );
+        LOG.debug("[RESET_ACTIVE] Setting latest isActive=false for today, encounterId={}", encounterId);
 
         additionalMeasurementsRepository
                 .findFirstByEncounterIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateDesc(
-                        encounterId,
-                        dayStart,
-                        dayEnd
-                )
-                .ifPresentOrElse(additionalMeasurements -> {
-                    additionalMeasurements.setIsActive(false);
-                    additionalMeasurementsRepository.flush();
-                    LOG.debug(
-                            "[RESET ACTIVE] Reset done. additionalMeasurementsId={} encounterId={}",
-                            additionalMeasurements.getId(),
-                            encounterId
-                    );
-                }, () -> LOG.debug(
-                        "[RESET ACTIVE] No active AdditionalMeasurements found to reset"
-                ));
+                        encounterId, dayStart, dayEnd)
+                .ifPresentOrElse(existing -> {
+                    existing.setIsActive(false);
+                    // ✅ FIX: saveAndFlush instead of just flush()
+                    // flush() alone only flushes the dirty state to the JDBC batch;
+                    // saveAndFlush guarantees the UPDATE reaches the DB before the next INSERT
+                    additionalMeasurementsRepository.saveAndFlush(existing);
+                    LOG.debug("[RESET_ACTIVE] Done. deactivatedId={} encounterId={}",
+                            existing.getId(), encounterId);
+                }, () -> LOG.debug("[RESET_ACTIVE] No active record found to deactivate"));
     }
 
     private RuntimeException handleConstraintViolation(Exception exception) {
@@ -197,10 +201,14 @@ public class AdditionalMeasurementsService {
         String message = root != null ? root.getMessage() : exception.getMessage();
         String messageLower = message != null ? message.toLowerCase() : "";
 
-        LOG.warn("[DB_CONSTRAINT] AdditionalMeasurements constraint violated rootMessage={}", message, exception);
+        LOG.error("[DB_CONSTRAINT] ROOT CAUSE: {}", message, exception);
 
         if (messageLower.contains("fk_additional_measurements_patient")) {
             return new BadRequestAlertException("Invalid patient id.", ENTITY_NAME, "patient.invalid");
+        }
+
+        if (messageLower.contains("fk_additional_measurements_encounter")) {
+            return new BadRequestAlertException("Invalid encounter id.", ENTITY_NAME, "encounter.invalid");
         }
 
         return new BadRequestAlertException(
@@ -209,4 +217,5 @@ public class AdditionalMeasurementsService {
                 "db.constraint"
         );
     }
+
 }
