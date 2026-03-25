@@ -68,8 +68,7 @@ public class NormalRangeMatcherService {
 
     private Optional<NormalRangeMatchDTO> getBestNormalRangeMatchForPatient(List<NormalRangeMatchDTO> candidates, Patient patient) {
         String patientGender = toGenderString(patient.getSexAtBirth());
-        LocalDate patientDateOfBirth = toLocalDate(patient.getDateOfBirth());
-
+        LocalDate patientDateOfBirth = patient.getDateOfBirth();
         return candidates.stream()
                 .filter(normalRange -> matchesGender(normalRange, patientGender))
                 .filter(normalRange -> matchesAge(normalRange, patientDateOfBirth))

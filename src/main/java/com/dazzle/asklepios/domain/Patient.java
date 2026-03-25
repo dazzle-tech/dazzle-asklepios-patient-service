@@ -25,7 +25,7 @@ import org.hibernate.annotations.Generated;
 import org.hibernate.annotations.GenerationTime;
 
 import java.io.Serializable;
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.Set;
 
 @Entity
@@ -67,8 +67,7 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
 
     @PastOrPresent
     @Column(name = "date_of_birth")
-    private Date dateOfBirth;
-
+    private LocalDate dateOfBirth;
     @Column(name = "patient_classes", length = 50)
     private String patientClasses;
 
