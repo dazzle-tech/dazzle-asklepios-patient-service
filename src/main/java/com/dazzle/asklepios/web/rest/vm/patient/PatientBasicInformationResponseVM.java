@@ -6,7 +6,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.util.Date;
+import java.time.LocalDate;
 
 @Getter
 @Setter
@@ -16,7 +16,7 @@ public class PatientBasicInformationResponseVM {
     private String firstName;
     private String lastName;
     private String medicalRecordNumber;
-    private Date dateOfBirth;
+    private LocalDate dateOfBirth;
     private Gender sexAtBirth;
 
     public static PatientBasicInformationResponseVM ofEntity(Patient patient) {
