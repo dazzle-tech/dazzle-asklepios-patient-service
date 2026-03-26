@@ -43,9 +43,7 @@ public class AvailabilityTemplateIntervalController {
      * @return the {@link ResponseEntity} with status {@code 201 (Created)} and body the created interval
      */
     @PostMapping("/availability-template-intervals")
-    public ResponseEntity<AvailabilityTemplateIntervalResponseVM> createInterval(
-            @Valid @RequestBody AvailabilityTemplateIntervalCreateDTO dto
-    ) {
+    public ResponseEntity<AvailabilityTemplateIntervalResponseVM> createInterval(@Valid @RequestBody AvailabilityTemplateIntervalCreateDTO dto) {
         LOG.debug("REST request to create AvailabilityTemplateInterval : {}", dto);
 
         AvailabilityTemplateIntervalResponseVM templateIntervalResponseVM = AvailabilityTemplateIntervalResponseVM.ofEntity(
@@ -65,10 +63,7 @@ public class AvailabilityTemplateIntervalController {
      * @return the {@link ResponseEntity} with status {@code 200 (OK)} and body the updated interval
      */
     @PutMapping("/availability-template-intervals/{id}")
-    public ResponseEntity<AvailabilityTemplateIntervalResponseVM> updateInterval(
-            @PathVariable Long id,
-            @Valid @RequestBody AvailabilityTemplateIntervalUpdateDTO dto
-    ) {
+    public ResponseEntity<AvailabilityTemplateIntervalResponseVM> updateInterval(@PathVariable Long id, @Valid @RequestBody AvailabilityTemplateIntervalUpdateDTO dto) {
         LOG.debug("REST request to update AvailabilityTemplateInterval id={} payload={}", id, dto);
 
         return availabilityTemplateIntervalService.update(id, dto)
@@ -104,18 +99,10 @@ public class AvailabilityTemplateIntervalController {
      * @return the {@link ResponseEntity} with status {@code 200 (OK)} and body the list of intervals
      */
     @GetMapping("/availability-template-intervals/search")
-    public ResponseEntity<List<AvailabilityTemplateIntervalResponseVM>> getByTemplateAndDayOfWeek(
-            @RequestParam Long templateId,
-            @RequestParam DayOfWeek dayOfWeek
-    ) {
-        LOG.debug(
-                "REST request to get AvailabilityTemplateIntervals by templateId={} and dayOfWeek={}",
-                templateId,
-                dayOfWeek
-        );
+    public ResponseEntity<List<AvailabilityTemplateIntervalResponseVM>> getByTemplateAndDayOfWeek(@RequestParam Long templateId, @RequestParam DayOfWeek dayOfWeek) {
+        LOG.debug("REST request to get AvailabilityTemplateIntervals by templateId={} and dayOfWeek={}", templateId, dayOfWeek);
 
-        List<AvailabilityTemplateIntervalResponseVM> result =
-                availabilityTemplateIntervalService.findByTemplateAndDayOfWeek(templateId, dayOfWeek)
+        List<AvailabilityTemplateIntervalResponseVM> result = availabilityTemplateIntervalService.findByTemplateAndDayOfWeek(templateId, dayOfWeek)
                         .stream()
                         .map(AvailabilityTemplateIntervalResponseVM::ofEntity)
                         .toList();
