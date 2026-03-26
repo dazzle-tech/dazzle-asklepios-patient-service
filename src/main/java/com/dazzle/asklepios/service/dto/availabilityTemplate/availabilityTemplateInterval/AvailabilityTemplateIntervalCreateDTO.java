@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service.dto.availabilityTemplate.availabilityTemplateInterval;
 
 import com.dazzle.asklepios.domain.enumeration.DayOfWeek;
+import com.dazzle.asklepios.domain.enumeration.SlotStrategy;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.availabilityTemplateAllowedServices.AvailabilityTemplateAllowedServiceDTO;
 import jakarta.validation.constraints.NotNull;
 
@@ -21,6 +22,9 @@ public record AvailabilityTemplateIntervalCreateDTO(
 
         @NotNull
         LocalTime endTime,
+
+        @NotNull
+        SlotStrategy slotStrategy,
 
         @NotNull
         Integer slotDurationMinutes,

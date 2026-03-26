@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.DayOfWeek;
+import com.dazzle.asklepios.domain.enumeration.SlotStrategy;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -43,6 +44,10 @@ public class AvailabilityTemplateInterval extends AbstractAuditingEntity<Long> i
 
     @Column(name = "end_time", nullable = false)
     private LocalTime endTime;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "slot_strategy", nullable = false)
+    private SlotStrategy slotStrategy;
 
     @Column(name = "slot_duration_minutes", nullable = false)
     private Integer slotDurationMinutes;
