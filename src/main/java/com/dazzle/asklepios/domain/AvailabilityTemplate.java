@@ -32,10 +32,10 @@ public class AvailabilityTemplate extends AbstractAuditingEntity<Long> implement
     private Long id;
 
     @Column(name = "facility_id", nullable = false)
-    private Long facility;
+    private Long facilityId;
 
     @Column(name = "department_id", nullable = false)
-    private Long department;
+    private Long departmentId;
 
     @Column(name = "template_name", nullable = false)
     private String templateName;
@@ -75,7 +75,7 @@ public class AvailabilityTemplate extends AbstractAuditingEntity<Long> implement
     private Integer parallelCapacityValue = 0;
 
     @Column(name = "default_service_id")
-    private Long defaultService;
+    private Long defaultServiceId;
 
     @Column(name = "number_of_resources_expected")
     private Integer numberOfResourcesExpected;
@@ -84,7 +84,7 @@ public class AvailabilityTemplate extends AbstractAuditingEntity<Long> implement
     private Boolean requirePractitioner = false;
 
     @Column(name = "default_practitioner_id")
-    private Long defaultPractitioner;
+    private Long defaultPractitionerId;
 
     @Column(name = "require_billing", nullable = false)
     private Boolean requireBilling = false;
@@ -101,6 +101,9 @@ public class AvailabilityTemplate extends AbstractAuditingEntity<Long> implement
     @Enumerated(EnumType.STRING)
     @Column(name = "financial_details", nullable = false)
     private FinancialDetails financialDetails;
+
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = true;
 
     @OneToMany(mappedBy = "template", cascade = CascadeType.ALL)
     private List<AvailabilityTemplateWorkingDay> workingDays;

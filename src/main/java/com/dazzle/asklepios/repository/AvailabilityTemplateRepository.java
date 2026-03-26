@@ -5,51 +5,39 @@ import com.dazzle.asklepios.domain.enumeration.TemplateStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public interface AvailabilityTemplateRepository extends JpaRepository<AvailabilityTemplate, Long> {
 
-    List<AvailabilityTemplate> findAllByFacility(Long facility);
+    @EntityGraph(attributePaths = {"workingDays"})
+    List<AvailabilityTemplate> findAllByFacilityIdAndTemplateType(Long facility, TemplateType templateType);
 
-    List<AvailabilityTemplate> findAllByDepartment(Long department);
+    @EntityGraph(attributePaths = {"workingDays"})
+    List<AvailabilityTemplate> findAllByFacilityIdAndTemplateName(Long facility, String templateName);
 
-    List<AvailabilityTemplate> findAllByFacilityAndDepartment(Long facility, Long department);
+    @EntityGraph(attributePaths = {"workingDays"})
+    List<AvailabilityTemplate> findAllByParentTemplate_Id(Long parentTemplateId);
 
-    List<AvailabilityTemplate> findAllByStatus(TemplateStatus status);
+    @EntityGraph(attributePaths = {"workingDays"})
+    List<AvailabilityTemplate> findAllByDepartmentId(Long department);
 
-    List<AvailabilityTemplate> findAllByTemplateType(TemplateType templateType);
+    @EntityGraph(attributePaths = {"workingDays"})
+    List<AvailabilityTemplate> findAllByFacilityIdAndStatus(Long facility, TemplateStatus status);
 
-    List<AvailabilityTemplate> findAllByFacilityAndDepartmentAndStatus(
-            Long facility,
+    @EntityGraph(attributePaths = {"workingDays"})
+    Optional<AvailabilityTemplate> findWithWorkingDaysById(Long id);
+
+    @EntityGraph(attributePaths = {"workingDays"})
+    List<AvailabilityTemplate> findAllBy();
+
+    @EntityGraph(attributePaths = {"workingDays"})
+    List<AvailabilityTemplate> findAllByFacilityIdAndDepartmentId(Long facility, Long department);
+
+    Optional<AvailabilityTemplate> findFirstByDepartmentIdAndStatusOrderByVersionNoDesc(
             Long department,
             TemplateStatus status
-    );
-
-    List<AvailabilityTemplate> findAllByFacilityAndDepartmentAndTemplateType(
-            Long facility,
-            Long department,
-            TemplateType templateType
-    );
-
-    Optional<AvailabilityTemplate> findByIdAndStatus(Long id, TemplateStatus status);
-
-    Optional<AvailabilityTemplate> findFirstByDepartmentAndStatusOrderByVersionNoDesc(
-            Long department,
-            TemplateStatus status
-    );
-
-    Optional<AvailabilityTemplate> findFirstByDepartmentAndTemplateTypeAndStatusOrderByVersionNoDesc(
-            Long department,
-            TemplateType templateType,
-            TemplateStatus status
-    );
-
-    boolean existsByFacilityAndDepartmentAndTemplateNameAndVersionNo(
-            Long facility,
-            Long department,
-            String templateName,
-            Integer versionNo
     );
 }
