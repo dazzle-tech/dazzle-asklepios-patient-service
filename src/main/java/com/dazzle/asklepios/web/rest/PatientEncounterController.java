@@ -2,12 +2,15 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
+import com.dazzle.asklepios.service.DiagnosticOrderService;
 import com.dazzle.asklepios.service.PatientEncounterService;
+import com.dazzle.asklepios.service.PatientPrescriptionService;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.vm.patientEncounter.PatientEncounterVM;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
@@ -29,6 +32,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/patient")
@@ -37,9 +41,12 @@ public class PatientEncounterController {
     private static final Logger LOG = LoggerFactory.getLogger(PatientEncounterController.class);
 
     private final PatientEncounterService patientEncounterService;
-
-    public PatientEncounterController(PatientEncounterService patientEncounterService) {
+    private final DiagnosticOrderService diagnosticOrderService;
+    private final PatientPrescriptionService patientPrescriptionService;
+    public PatientEncounterController(PatientEncounterService patientEncounterService, DiagnosticOrderService diagnosticOrderService, PatientPrescriptionService patientPrescriptionService) {
         this.patientEncounterService = patientEncounterService;
+        this.diagnosticOrderService = diagnosticOrderService;
+        this.patientPrescriptionService = patientPrescriptionService;
     }
 
     @PostMapping("/encounter")
@@ -130,7 +137,7 @@ public class PatientEncounterController {
     }
 
     @GetMapping("/encounter")
-    public ResponseEntity<List<PatientEncounter>> filterEncounters(
+    public ResponseEntity<List<PatientEncounterVM>> filterEncounters(
             @Valid @ParameterObject PatientEncounterSearchFilterDTO filter,
             @ParameterObject Pageable pageable
     ) {
@@ -142,6 +149,20 @@ public class PatientEncounterController {
         }
 
         Page<PatientEncounter> page = patientEncounterService.filterEncounters(filter, pageable);
+        List<Long> encounterIds = page.getContent().stream()
+                .map(PatientEncounter::getId)
+                .toList();
+        Set<Long> orderEncounterIds = diagnosticOrderService.findEncounterIdsWithOrders(encounterIds);
+        Set<Long> prescriptionEncounterIds = patientPrescriptionService.findEncounterIdsWithOrders(encounterIds);
+        Set<Long> observasionEncounterIds=patientEncounterService.findEncounterIdsWithObservation(encounterIds);
+        List<PatientEncounterVM> vmList = page.getContent().stream()
+                .map(encounter -> PatientEncounterVM.ofEntity(
+                        encounter,
+                        orderEncounterIds.contains(encounter.getId()),
+                        prescriptionEncounterIds.contains(encounter.getId()),
+                        observasionEncounterIds.contains(encounter.getId())
+                ))
+                .toList();
 
         HttpHeaders headers =
                 PaginationUtil.generatePaginationHttpHeaders(
@@ -149,7 +170,7 @@ public class PatientEncounterController {
                         page
                 );
 
-        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+        return new ResponseEntity<>(vmList, headers, HttpStatus.OK);
     }
 
     @GetMapping("/encounter/department/{departmentId}/count/today/total-patients")

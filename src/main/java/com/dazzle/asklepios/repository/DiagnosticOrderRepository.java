@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 
 @Repository
 public interface DiagnosticOrderRepository extends JpaRepository<DiagnosticOrder, Long>  , JpaSpecificationExecutor<DiagnosticOrder> {
@@ -35,4 +36,11 @@ public interface DiagnosticOrderRepository extends JpaRepository<DiagnosticOrder
     """)
     List<Long> findIdsByPatientIdAndCreatedDateBetween(Long patientId, Instant from, Instant to);
 
+
+    @Query("""
+        select distinct d.encounter.id
+        from DiagnosticOrder d
+        where d.encounter.id in :encounterIds
+    """)
+    Set<Long> findDistinctEncounter_IdIn(List<Long> encounterIds);
 }

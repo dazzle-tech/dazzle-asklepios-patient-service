@@ -23,7 +23,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @Transactional
@@ -366,5 +368,23 @@ public class DiagnosticOrderService {
                 order.getId(), order.getStatus(), order.getSaveDraft());
 
         return order;
+    }
+
+//    @Transactional(readOnly = true)
+//    public boolean existsByEncounterId(Long encounterId) {
+//        LOG.debug("[DiagnosticOrderService] EXISTS_BY_ENCOUNTER_ID - start. encounterId={}", encounterId);
+//
+//        boolean exists = diagnosticOrderRepository.existsByEncounter_Id(encounterId);
+//
+//        LOG.debug("[DiagnosticOrderService] EXISTS_BY_ENCOUNTER_ID - done. encounterId={} exists={}", encounterId, exists);
+//
+//        return exists;
+//    }
+
+    public Set<Long> findEncounterIdsWithOrders(List<Long> encounterIds) {
+        if (encounterIds == null || encounterIds.isEmpty()) {
+            return Collections.emptySet();
+        }
+        return diagnosticOrderRepository.findDistinctEncounter_IdIn(encounterIds);
     }
 }

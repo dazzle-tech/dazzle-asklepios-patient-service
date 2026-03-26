@@ -1,10 +1,20 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.AdditionalMeasurements;
+import com.dazzle.asklepios.domain.BodyMeasurements;
+import com.dazzle.asklepios.domain.PainAssessment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientObservationsComplaints;
+import com.dazzle.asklepios.domain.VitalSigns;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
+import com.dazzle.asklepios.repository.AdditionalMeasurementsRepository;
+import com.dazzle.asklepios.repository.BodyMeasurementsRepository;
+import com.dazzle.asklepios.repository.PainAssessmentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientObservationsComplaintsRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.repository.VitalSignsRepository;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
@@ -29,8 +39,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -44,6 +58,11 @@ public class PatientEncounterService {
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientRepository patientRepository;
     private final EntityManager entityManager;
+    private final AdditionalMeasurementsRepository additionalMeasurementsRepository;
+    private final PainAssessmentRepository painAssessmentRepository;
+    private final VitalSignsRepository vitalSignsRepository;
+    private final PatientObservationsComplaintsRepository patientObservationsComplaintsRepository;
+    private final BodyMeasurementsRepository bodyMeasurementsRepository;
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
         LOG.info("[CREATE] PatientEncounter payload={}", createDTO);
@@ -141,9 +160,6 @@ public class PatientEncounterService {
         existingPatientEncounter.setNotes(updateDTO.notes());
         existingPatientEncounter.setStatus(updateDTO.status());
         existingPatientEncounter.setChiefComplaint(updateDTO.chiefComplaint());
-        existingPatientEncounter.setHasOrder(updateDTO.hasOrder());
-        existingPatientEncounter.setIsObserved(updateDTO.isObserved());
-        existingPatientEncounter.setHasPrescription(updateDTO.hasPrescription());
 
         if (updateDTO.followUpEncounterId() != null) {
             PatientEncounter followUpEncounter = patientEncounterRepository.findById(updateDTO.followUpEncounterId())
@@ -619,5 +635,55 @@ public class PatientEncounterService {
                         EncounterStatus.CLOSED,
                         currentEncounter.getEncounterDate()
                 );
+    }
+
+    public Set<Long> findEncounterIdsWithObservation(List<Long> encounterIds) {
+        if (encounterIds == null || encounterIds.isEmpty()) {
+            return Collections.emptySet();
+        }
+
+        Set<Long> result = new HashSet<>();
+
+        // AdditionalMeasurements
+        result.addAll(
+                additionalMeasurementsRepository.findDistinctByEncounterIdIn(encounterIds)
+                        .stream()
+                        .map(AdditionalMeasurements::getEncounterId)
+                        .collect(Collectors.toSet())
+        );
+
+        // VitalSigns
+        result.addAll(
+                vitalSignsRepository.findDistinctByEncounterIdIn(encounterIds)
+                        .stream()
+                        .map(VitalSigns::getEncounterId)
+                        .collect(Collectors.toSet())
+        );
+
+        // NursingNote
+        result.addAll(
+                painAssessmentRepository.findDistinctByEncounterIdIn(encounterIds)
+                        .stream()
+                        .map(PainAssessment::getEncounterId)
+                        .collect(Collectors.toSet())
+        );
+
+        // IntakeOutput
+        result.addAll(
+                bodyMeasurementsRepository.findDistinctByEncounterIdIn(encounterIds)
+                        .stream()
+                        .map(BodyMeasurements::getEncounterId)
+                        .collect(Collectors.toSet())
+        );
+
+        // ObservationAttachment
+        result.addAll(
+                patientObservationsComplaintsRepository.findDistinctByEncounterIdIn(encounterIds)
+                        .stream()
+                        .map(PatientObservationsComplaints::getEncounterId)
+                        .collect(Collectors.toSet())
+        );
+
+        return result;
     }
 }

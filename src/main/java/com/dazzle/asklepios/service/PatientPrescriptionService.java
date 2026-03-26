@@ -23,6 +23,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -223,4 +227,26 @@ public class PatientPrescriptionService {
                 .findById(id)
                 .orElseThrow(() -> new NotFoundAlertException("Patient not found: " + id, "Patient", "notfound"));
     }
+
+
+//    @Transactional(readOnly = true)
+//    public boolean existsByEncounterId(Long encounterId) {
+//        LOG.debug("[PatientPrescriptionService] EXISTS_BY_ENCOUNTER_ID - start. encounterId={}", encounterId);
+//
+//        boolean exists = prescriptionRepository.existsByEncounter_Id(encounterId);
+//
+//        LOG.debug("[PatientPrescriptionService] EXISTS_BY_ENCOUNTER_ID - done. encounterId={} exists={}", encounterId, exists);
+//
+//        return exists;
+//    }
+public Set<Long> findEncounterIdsWithOrders(List<Long> encounterIds) {
+    if (encounterIds == null || encounterIds.isEmpty()) {
+        return Collections.emptySet();
+    }
+
+    return prescriptionRepository.findDistinctByEncounterIdIn(encounterIds)
+            .stream()
+            .map(prescription -> prescription.getEncounterId())
+            .collect(Collectors.toSet());
+}
 }
