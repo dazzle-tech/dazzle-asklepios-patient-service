@@ -1,7 +1,7 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.SetupServiceClient;
-import com.dazzle.asklepios.client.dto.NormalRangeMatchDTO;
+import com.dazzle.asklepios.client.setup.SetupServiceClient;
+import com.dazzle.asklepios.client.setup.dto.NormalRangeMatchDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;

@@ -1,13 +1,18 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.AvailabilityTemplate;
-import com.dazzle.asklepios.domain.AvailabilityTemplateWorkingDay;
+import com.dazzle.asklepios.domain.enumeration.DayOfWeek;
 import com.dazzle.asklepios.domain.enumeration.TemplateStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import com.dazzle.asklepios.repository.AvailabilityTemplateRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplateCreateDTO;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplateUpdateDTO;
+import com.dazzle.asklepios.service.dto.workingDays.WorkingDayJson;
+import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.FacilityHelper;
+import com.dazzle.asklepios.service.helper.PractitionerHelper;
+import com.dazzle.asklepios.service.helper.ServiceHelper;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,10 +21,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -29,34 +34,63 @@ public class AvailabilityTemplateService {
     private static final String ENTITY_NAME = "availabilityTemplate";
 
     private final AvailabilityTemplateRepository availabilityTemplateRepository;
+    private final FacilityHelper facilityHelper;
+    private final DepartmentHelper departmentHelper;
+    private final ServiceHelper serviceHelper;
+    private final PractitionerHelper practitionerHelper;
 
     public AvailabilityTemplateService(
-            AvailabilityTemplateRepository availabilityTemplateRepository
+            AvailabilityTemplateRepository availabilityTemplateRepository,
+            FacilityHelper facilityHelper,
+            DepartmentHelper departmentHelper,
+            ServiceHelper serviceHelper,
+            PractitionerHelper practitionerHelper
     ) {
         this.availabilityTemplateRepository = availabilityTemplateRepository;
+        this.facilityHelper = facilityHelper;
+        this.departmentHelper = departmentHelper;
+        this.serviceHelper = serviceHelper;
+        this.practitionerHelper = practitionerHelper;
     }
 
     public AvailabilityTemplate create(AvailabilityTemplateCreateDTO dto) {
         LOG.debug("create availability template {}", dto);
 
         validateCreate(dto);
+        validateReferences(
+                dto.facilityId(),
+                dto.departmentId(),
+                dto.defaultServiceId(),
+                dto.defaultPractitionerId(),
+                dto.requirePractitioner()
+        );
 
         AvailabilityTemplate entity = toEntityForCreate(dto);
         return availabilityTemplateRepository.save(entity);
     }
 
-    public AvailabilityTemplate update(AvailabilityTemplateUpdateDTO availabilityTemplateUpdateDTO) {
-        LOG.debug("update availability template {}", availabilityTemplateUpdateDTO);
-        if (!availabilityTemplateUpdateDTO.status().equals(TemplateStatus.DRAFT)) {
-            new NotFoundAlertException(
-                    "Cannot update AvailabilityTemplate will a status is it not draft",
+    public AvailabilityTemplate update(AvailabilityTemplateUpdateDTO dto) {
+        LOG.debug("update availability template {}", dto);
+
+        AvailabilityTemplate entity = getRequired(dto.id());
+
+        if (!TemplateStatus.DRAFT.equals(entity.getStatus())) {
+            throw new NotFoundAlertException(
+                    "Cannot update AvailabilityTemplate when status is not draft",
                     ENTITY_NAME,
-                    "notfound"
+                    "notdraft"
             );
         }
-        AvailabilityTemplate entity = getRequired(availabilityTemplateUpdateDTO.id());
-        applyUpdate(entity, availabilityTemplateUpdateDTO);
+
+        applyUpdate(entity, dto);
         validateEntity(entity);
+        validateReferences(
+                entity.getFacilityId(),
+                entity.getDepartmentId(),
+                entity.getDefaultServiceId(),
+                entity.getDefaultPractitionerId(),
+                entity.getRequirePractitioner()
+        );
 
         return availabilityTemplateRepository.save(entity);
     }
@@ -65,7 +99,7 @@ public class AvailabilityTemplateService {
     public AvailabilityTemplate getOne(Long id) {
         LOG.debug("get availability template by id={}", id);
         return availabilityTemplateRepository
-                .findWithWorkingDaysById(id)
+                .findById(id)
                 .orElseThrow(() ->
                         new NotFoundAlertException(
                                 "AvailabilityTemplate not found: " + id,
@@ -84,7 +118,7 @@ public class AvailabilityTemplateService {
     @Transactional(readOnly = true)
     public List<AvailabilityTemplate> getAllByFacilityAndDepartment(Long departmentId) {
         LOG.debug("get availability templates by departmentId={}", departmentId);
-        Long facilityId= getFacility();
+        Long facilityId = getFacility();
         return availabilityTemplateRepository.findAllByFacilityIdAndDepartmentId(facilityId, departmentId);
     }
 
@@ -111,27 +145,29 @@ public class AvailabilityTemplateService {
                     LOG.info("availability template id={} active status changed to {}", id, saved.getIsActive());
                     return saved;
                 });
+
         if (updated.isEmpty()) {
             LOG.debug("Toggle isActive skipped: availability template not found for id={}", id);
         }
+
         return updated;
     }
 
     public List<AvailabilityTemplate> getAllByFacilityAndTemplateType(TemplateType templateType) {
         LOG.debug("Get availability templates by templateType={}", templateType);
-        Long facilityId= getFacility();
+        Long facilityId = getFacility();
         return availabilityTemplateRepository.findAllByFacilityIdAndTemplateType(facilityId, templateType);
     }
 
-    public List<AvailabilityTemplate> getAllByFacilityAndTemplateName( String templateName) {
+    public List<AvailabilityTemplate> getAllByFacilityAndTemplateName(String templateName) {
         LOG.debug("Get availability templates by templateName={}", templateName);
-        Long facilityId= getFacility();
+        Long facilityId = getFacility();
         return availabilityTemplateRepository.findAllByFacilityIdAndTemplateName(facilityId, templateName);
     }
 
     public List<AvailabilityTemplate> getAllParentTemplateId(Long parentTemplateId) {
-        LOG.debug("Get availability templates by  parentTemplateId={}", parentTemplateId);
-        return availabilityTemplateRepository.findAllByParentTemplate_Id( parentTemplateId);
+        LOG.debug("Get availability templates by parentTemplateId={}", parentTemplateId);
+        return availabilityTemplateRepository.findAllByParentTemplate_Id(parentTemplateId);
     }
 
     public List<AvailabilityTemplate> getAllByDepartmentId(Long departmentId) {
@@ -141,7 +177,7 @@ public class AvailabilityTemplateService {
 
     public List<AvailabilityTemplate> getAllByFacilityAndStatus(TemplateStatus status) {
         LOG.debug("Get availability templates by status={}", status);
-        Long facilityId= getFacility();
+        Long facilityId = getFacility();
         return availabilityTemplateRepository.findAllByFacilityIdAndStatus(facilityId, status);
     }
 
@@ -157,15 +193,17 @@ public class AvailabilityTemplateService {
                 );
     }
 
-    private Long getFacility(){
-
+    private Long getFacility() {
         return SecurityUtils.getCurrentUserFacility()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing mandatory claim 'tenant' in JWT."));
-
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.UNAUTHORIZED,
+                                "Missing mandatory claim 'tenant' in JWT."
+                        )
+                );
     }
 
     private AvailabilityTemplate toEntityForCreate(AvailabilityTemplateCreateDTO dto) {
-
         AvailabilityTemplate entity = new AvailabilityTemplate();
         entity.setFacilityId(dto.facilityId());
         entity.setDepartmentId(dto.departmentId());
@@ -213,18 +251,8 @@ public class AvailabilityTemplateService {
         entity.setDefaultServiceId(dto.defaultServiceId());
         entity.setDefaultPractitionerId(dto.defaultPractitionerId());
 
-
-        if (dto.workingDays() != null) {
-            List<AvailabilityTemplateWorkingDay> workingDays = new ArrayList<>();
-            dto.workingDays().forEach(item -> {
-                AvailabilityTemplateWorkingDay workingDay = new AvailabilityTemplateWorkingDay();
-                workingDay.setTemplate(entity);
-                workingDay.setDayOfWeek(item.dayOfWeek());
-                workingDay.setIsWorking(item.isWorking());
-                workingDays.add(workingDay);
-            });
-            entity.setWorkingDays(workingDays);
-        }
+        validateWorkingDays(dto.workingDays());
+        entity.setWorkingDays(dto.workingDays() == null ? List.of() : dto.workingDays());
 
         return entity;
     }
@@ -236,18 +264,14 @@ public class AvailabilityTemplateService {
         if (dto.status() != null) entity.setStatus(dto.status());
         if (dto.versionNo() != null) entity.setVersionNo(dto.versionNo());
         if (dto.durationMinutes() != null) entity.setDurationMinutes(dto.durationMinutes());
-        if (dto.defaultBufferBeforeMinutes() != null)
-            entity.setDefaultBufferBeforeMinutes(dto.defaultBufferBeforeMinutes());
-        if (dto.defaultBufferAfterMinutes() != null)
-            entity.setDefaultBufferAfterMinutes(dto.defaultBufferAfterMinutes());
+        if (dto.defaultBufferBeforeMinutes() != null) entity.setDefaultBufferBeforeMinutes(dto.defaultBufferBeforeMinutes());
+        if (dto.defaultBufferAfterMinutes() != null) entity.setDefaultBufferAfterMinutes(dto.defaultBufferAfterMinutes());
         if (dto.parallelCapacityValue() != null) entity.setParallelCapacityValue(dto.parallelCapacityValue());
-        if (dto.numberOfResourcesExpected() != null)
-            entity.setNumberOfResourcesExpected(dto.numberOfResourcesExpected());
+        if (dto.numberOfResourcesExpected() != null) entity.setNumberOfResourcesExpected(dto.numberOfResourcesExpected());
         if (dto.requirePractitioner() != null) entity.setRequirePractitioner(dto.requirePractitioner());
         if (dto.requireBilling() != null) entity.setRequireBilling(dto.requireBilling());
         if (dto.requirePreAssessment() != null) entity.setRequirePreAssessment(dto.requirePreAssessment());
-        if (dto.allowPatientPortalBooking() != null)
-            entity.setAllowPatientPortalBooking(dto.allowPatientPortalBooking());
+        if (dto.allowPatientPortalBooking() != null) entity.setAllowPatientPortalBooking(dto.allowPatientPortalBooking());
         if (dto.requireConfirmation() != null) entity.setRequireConfirmation(dto.requireConfirmation());
         if (dto.financialDetails() != null) entity.setFinancialDetails(dto.financialDetails());
 
@@ -268,16 +292,8 @@ public class AvailabilityTemplateService {
         }
 
         if (dto.workingDays() != null) {
-            List<AvailabilityTemplateWorkingDay> workingDays = new ArrayList<>();
-            dto.workingDays().forEach(item -> {
-                AvailabilityTemplateWorkingDay workingDay = new AvailabilityTemplateWorkingDay();
-                workingDay.setTemplate(entity);
-                workingDay.setDayOfWeek(item.dayOfWeek());
-                workingDay.setIsWorking(item.isWorking());
-                workingDays.add(workingDay);
-            });
-            entity.getWorkingDays().clear();
-            entity.getWorkingDays().addAll(workingDays);
+            validateWorkingDays(dto.workingDays());
+            entity.setWorkingDays(dto.workingDays());
         }
     }
 
@@ -289,6 +305,8 @@ public class AvailabilityTemplateService {
                     "defaultPractitionernull"
             );
         }
+
+        validateWorkingDays(dto.workingDays());
     }
 
     private void validateEntity(AvailabilityTemplate entity) {
@@ -299,6 +317,53 @@ public class AvailabilityTemplateService {
                     "defaultPractitionernull"
             );
         }
+
+        validateWorkingDays(entity.getWorkingDays());
     }
 
+    private void validateWorkingDays(List<WorkingDayJson> workingDays) {
+        if (workingDays == null || workingDays.isEmpty()) {
+            return;
+        }
+
+        Set<DayOfWeek> uniqueDays = workingDays.stream()
+                .map(WorkingDayJson::getDayOfWeek)
+                .collect(Collectors.toSet());
+
+        if (uniqueDays.size() != workingDays.size()) {
+            throw new NotFoundAlertException(
+                    "Duplicate working day entries",
+                    ENTITY_NAME,
+                    "duplicate_day"
+            );
+        }
+    }
+
+    private void validateReferences(
+            Long facilityId,
+            Long departmentId,
+            Long serviceId,
+            Long practitionerId,
+            Boolean requirePractitioner
+    ) {
+        facilityHelper.validateFacilityExists(facilityId);
+        departmentHelper.validateDepartmentExists(departmentId);
+
+        if (serviceId != null) {
+            serviceHelper.validateServiceExists(serviceId);
+        }
+
+        if (Boolean.TRUE.equals(requirePractitioner)) {
+            if (practitionerId == null) {
+                throw new NotFoundAlertException(
+                        "Default practitioner is required when requirePractitioner is true",
+                        ENTITY_NAME,
+                        "defaultPractitionernull"
+                );
+            }
+            practitionerHelper.validatePractitionerExists(practitionerId);
+        } else if (practitionerId != null) {
+            practitionerHelper.validatePractitionerExists(practitionerId);
+        }
+    }
 }

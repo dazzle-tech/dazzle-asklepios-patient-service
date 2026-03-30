@@ -3,6 +3,7 @@ package com.dazzle.asklepios.domain;
 import com.dazzle.asklepios.domain.enumeration.FinancialDetails;
 import com.dazzle.asklepios.domain.enumeration.TemplateStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
+import com.dazzle.asklepios.service.dto.workingDays.WorkingDayJson;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -17,6 +18,8 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.io.Serializable;
 import java.util.List;
@@ -105,8 +108,9 @@ public class AvailabilityTemplate extends AbstractAuditingEntity<Long> implement
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 
-    @OneToMany(mappedBy = "template", cascade = CascadeType.ALL)
-    private List<AvailabilityTemplateWorkingDay> workingDays;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "working_days", columnDefinition = "json", nullable = false)
+    private List<WorkingDayJson> workingDays;
 
     @OneToMany(mappedBy = "template", cascade = CascadeType.ALL)
     private List<AvailabilityTemplateInterval> intervals;
