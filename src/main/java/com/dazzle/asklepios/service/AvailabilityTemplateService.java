@@ -122,20 +122,6 @@ public class AvailabilityTemplateService {
         return availabilityTemplateRepository.findAllByFacilityIdAndDepartmentId(facilityId, departmentId);
     }
 
-    @Transactional(readOnly = true)
-    public AvailabilityTemplate getLatestPublishedByDepartment(Long departmentId) {
-        LOG.debug("get latest published availability template by departmentId={}", departmentId);
-        return availabilityTemplateRepository
-                .findFirstByDepartmentIdAndStatusOrderByVersionNoDesc(departmentId, TemplateStatus.PUBLISHED)
-                .orElseThrow(() ->
-                        new NotFoundAlertException(
-                                "Published AvailabilityTemplate not found for department: " + departmentId,
-                                ENTITY_NAME,
-                                "notfound"
-                        )
-                );
-    }
-
     public Optional<AvailabilityTemplate> toggleIsActive(Long id) {
         LOG.info("Toggling isActive for active availability template id={}", id);
         Optional<AvailabilityTemplate> updated = availabilityTemplateRepository.findById(id)
