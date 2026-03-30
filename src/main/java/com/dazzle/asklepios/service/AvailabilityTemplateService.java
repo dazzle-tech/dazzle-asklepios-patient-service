@@ -195,6 +195,7 @@ public class AvailabilityTemplateService {
         entity.setDepartmentId(dto.departmentId());
         entity.setTemplateName(dto.templateName());
         entity.setTemplateType(dto.templateType());
+        entity.setResourceId(dto.resourceId());
         entity.setTemplateColor(dto.templateColor());
         entity.setStatus(dto.status());
         entity.setVersionNo(dto.versionNo());
@@ -246,6 +247,7 @@ public class AvailabilityTemplateService {
     private void applyUpdate(AvailabilityTemplate entity, AvailabilityTemplateUpdateDTO dto) {
         if (dto.templateName() != null) entity.setTemplateName(dto.templateName());
         if (dto.templateType() != null) entity.setTemplateType(dto.templateType());
+        if(dto.resourceId() != null) entity.setResourceId(dto.resourceId());
         if (dto.templateColor() != null) entity.setTemplateColor(dto.templateColor());
         if (dto.status() != null) entity.setStatus(dto.status());
         if (dto.versionNo() != null) entity.setVersionNo(dto.versionNo());

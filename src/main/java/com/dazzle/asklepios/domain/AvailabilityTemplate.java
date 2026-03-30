@@ -47,6 +47,9 @@ public class AvailabilityTemplate extends AbstractAuditingEntity<Long> implement
     @Column(name = "template_type", nullable = false)
     private TemplateType templateType;
 
+    @Column(name = "resource_id", nullable = false)
+    private Long resourceId;
+
     @Column(name = "template_color")
     private String templateColor;
 

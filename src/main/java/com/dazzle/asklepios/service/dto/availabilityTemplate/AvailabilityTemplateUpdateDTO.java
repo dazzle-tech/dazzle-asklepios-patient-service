@@ -16,6 +16,7 @@ public record AvailabilityTemplateUpdateDTO(
         @NotNull Long departmentId,
         @NotEmpty String templateName,
         @NotNull TemplateType templateType,
+        @NotNull Long resourceId,
         String templateColor,
         @NotNull TemplateStatus status,
         Integer versionNo,
