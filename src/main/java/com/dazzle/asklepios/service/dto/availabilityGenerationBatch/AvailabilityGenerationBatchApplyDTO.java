@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service.dto.availabilityGenerationBatch;
 
 import com.dazzle.asklepios.domain.enumeration.AvailabilityGenerationScope;
+import com.dazzle.asklepios.domain.enumeration.HolidayHandlingMode;
 import jakarta.validation.constraints.NotNull;
 
 import java.time.Instant;
@@ -12,6 +13,8 @@ public record AvailabilityGenerationBatchApplyDTO(
         @NotNull LocalDate endDate,
         @NotNull Boolean deferred,
         Instant deferredAt,
-        @NotNull AvailabilityGenerationScope scope
+        @NotNull AvailabilityGenerationScope scope,
+        HolidayHandlingMode holidayHandlingMode
+
 ) {
 }

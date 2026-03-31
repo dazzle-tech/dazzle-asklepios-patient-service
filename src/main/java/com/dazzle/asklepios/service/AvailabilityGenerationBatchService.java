@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.setup.dto.OrganizationHolidayDTO;
 import com.dazzle.asklepios.domain.AppointmentFromTemplate;
 import com.dazzle.asklepios.domain.AvailabilityGenerationBatch;
 import com.dazzle.asklepios.domain.AvailabilityTemplate;
@@ -8,11 +9,13 @@ import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.BatchStatus;
 import com.dazzle.asklepios.domain.enumeration.BookingMode;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
+import com.dazzle.asklepios.domain.enumeration.HolidayHandlingMode;
 import com.dazzle.asklepios.domain.enumeration.TemplateStatus;
 import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
 import com.dazzle.asklepios.repository.AvailabilityGenerationBatchRepository;
 import com.dazzle.asklepios.repository.AvailabilityTemplateRepository;
 import com.dazzle.asklepios.service.dto.availabilityGenerationBatch.AvailabilityGenerationBatchApplyDTO;
+import com.dazzle.asklepios.service.helper.OrganizationHolidayHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.availabilityGenerationBatch.ApplyAvailabilityTemplateResponseDTO;
@@ -39,6 +42,7 @@ public class AvailabilityGenerationBatchService {
     private final AvailabilityTemplateRepository availabilityTemplateRepository;
     private final AvailabilityGenerationBatchRepository availabilityGenerationBatchRepository;
     private final AppointmentFromTemplateRepository appointmentFromTemplateRepository;
+    private final OrganizationHolidayHelper organizationHolidayHelper;
 
     @Transactional(readOnly = true)
     public List<AvailabilityGenerationBatch> getListByParentTemplate(Long templateId) {
@@ -69,17 +73,23 @@ public class AvailabilityGenerationBatchService {
     }
 
     public ApplyAvailabilityTemplateResponseDTO applyTemplate(AvailabilityGenerationBatchApplyDTO request) {
-        LOG.info("[APPLY TEMPLATE] templateId={}, startDate={}, endDate={}, deferred={}, deferredAt={}",
+        LOG.info("[APPLY TEMPLATE] templateId={}, startDate={}, endDate={}, deferred={}, deferredAt={}, holidayHandlingMode={}",
                 request.templateId(),
                 request.startDate(),
                 request.endDate(),
                 request.deferred(),
-                request.deferredAt());
+                request.deferredAt(),
+                request.holidayHandlingMode());
 
 
         AvailabilityTemplate template = getTemplate(request.templateId());
-
         validateTemplateForApply(template);
+
+        List<OrganizationHolidayDTO> holidays = organizationHolidayHelper.getOrganizationHolidayByDateRange(
+                template.getFacilityId(),
+                request.startDate(),
+                request.endDate()
+        );
 
         AvailabilityGenerationBatch batch = new AvailabilityGenerationBatch();
         batch.setTemplate(template);
@@ -87,18 +97,17 @@ public class AvailabilityGenerationBatchService {
         batch.setApplyStartDateTime(toStartOfDayInstant(request.startDate()));
         batch.setApplyEndDateTime(toEndOfDayInstant(request.endDate()));
         batch.setExecutionStatus(BatchStatus.PENDING);
+        batch.setHolidayHandlingMode(request.holidayHandlingMode());
         batch = availabilityGenerationBatchRepository.save(batch);
 
         try {
-            List<AppointmentFromTemplate> generatedAppointments =
-                    generateAppointments(template, batch, request.startDate(), request.endDate(), request.deferred(), request.deferredAt());
+            List<AppointmentFromTemplate> generatedAppointments = generateAppointments(template, batch, request.startDate(), request.endDate(), request.deferred(),request.deferredAt(),request.holidayHandlingMode(),holidays);
 
             appointmentFromTemplateRepository.saveAll(generatedAppointments);
 
             int totalSlots = generatedAppointments.size();
-            int days = (int) (request.startDate().toEpochDay() - request.endDate().toEpochDay());
-            days = Math.abs(days) + 1;
-            int dailyAvg = totalSlots == 0 ? 0 : totalSlots / days;
+            int days = (int) (request.endDate().toEpochDay() - request.startDate().toEpochDay()) + 1;
+            int dailyAvg = totalSlots == 0 || days <= 0 ? 0 : totalSlots / days;
 
             batch.setTotalSlots(totalSlots);
             batch.setDailyAvg(dailyAvg);
@@ -111,7 +120,7 @@ public class AvailabilityGenerationBatchService {
                     totalSlots,
                     dailyAvg,
                     batch.getExecutionStatus(),
-                    "Template applied successfully"
+                    buildApplyMessage(request.holidayHandlingMode())
             );
         } catch (Exception ex) {
             LOG.error("[APPLY TEMPLATE FAILED] templateId={}, error={}", template.getId(), ex.getMessage(), ex);
@@ -129,12 +138,22 @@ public class AvailabilityGenerationBatchService {
             LocalDate startDate,
             LocalDate endDate,
             boolean deferred,
-            Instant deferredAt
+            Instant deferredAt,
+            HolidayHandlingMode holidayHandlingMode,
+            List<OrganizationHolidayDTO> holidays
     ) {
         List<AppointmentFromTemplate> appointments = new ArrayList<>();
 
         LocalDate current = startDate;
         while (!current.isAfter(endDate)) {
+
+            boolean holiday = isHoliday(current, holidays);
+
+            if (holiday && holidayHandlingMode == HolidayHandlingMode.EXCLUDE_HOLIDAYS) {
+                current = current.plusDays(1);
+                continue;
+            }
+
             for (AvailabilityTemplateInterval interval : template.getIntervals()) {
                 if (!matchesDay(current, interval)) {
                     continue;
@@ -146,9 +165,12 @@ public class AvailabilityGenerationBatchService {
                         current,
                         interval,
                         deferred,
-                        deferredAt
+                        deferredAt,
+                        holiday,
+                        holidayHandlingMode
                 ));
             }
+
             current = current.plusDays(1);
         }
 
@@ -161,7 +183,9 @@ public class AvailabilityGenerationBatchService {
             LocalDate date,
             AvailabilityTemplateInterval interval,
             boolean deferred,
-            Instant deferredAt
+            Instant deferredAt,
+            boolean holiday,
+            HolidayHandlingMode holidayHandlingMode
     ) {
         List<AppointmentFromTemplate> appointments = new ArrayList<>();
 
@@ -195,11 +219,13 @@ public class AvailabilityGenerationBatchService {
                 appointment.setDeferred(deferred);
                 appointment.setDeferredAt(deferredAt);
                 appointment.setPriority(EncounterPriority.NORMAL);
-                appointment.setReason("Generated from availability template: " + template.getTemplateName());
                 appointment.setCapacityIndex(i + 1);
 
-
-                //TODO: Service and  service group column will be linked when create Service Group Setup
+                if (holiday && holidayHandlingMode == HolidayHandlingMode.INCLUDE_AS_EXCEPTION) {
+                    appointment.setReason("Generated on organization holiday by user confirmation: " + template.getTemplateName());
+                } else {
+                    appointment.setReason("Generated from availability template: " + template.getTemplateName());
+                }
 
                 appointments.add(appointment);
             }
@@ -215,7 +241,6 @@ public class AvailabilityGenerationBatchService {
         return interval.getDayOfWeek().name().equalsIgnoreCase(currentDay);
     }
 
-
     private void validateTemplateForApply(AvailabilityTemplate template) {
         if (!Boolean.TRUE.equals(template.getIsActive())) {
             throw new BadRequestAlertException("Template is inactive", "availabilityTemplate", "templateinactive");
@@ -230,6 +255,13 @@ public class AvailabilityGenerationBatchService {
         }
     }
 
+    private String buildApplyMessage(HolidayHandlingMode holidayHandlingMode) {
+        if (holidayHandlingMode == HolidayHandlingMode.INCLUDE_AS_EXCEPTION) {
+            return "Template applied successfully including organization holidays as exceptions";
+        }
+        return "Template applied successfully excluding organization holidays";
+    }
+
     private Instant toStartOfDayInstant(LocalDate date) {
         return date.atStartOfDay(ZoneId.systemDefault()).toInstant();
     }
@@ -240,5 +272,18 @@ public class AvailabilityGenerationBatchService {
 
     private Instant toInstant(LocalDateTime dateTime) {
         return dateTime.atZone(ZoneId.systemDefault()).toInstant();
+    }
+
+    private boolean isHoliday(LocalDate date, List<OrganizationHolidayDTO> holidays) {
+        if (date == null || holidays == null || holidays.isEmpty()) {
+            return false;
+        }
+
+        return holidays.stream().anyMatch(holiday ->
+                holiday.startDate() != null
+                        && holiday.endDate() != null
+                        && !date.isBefore(holiday.startDate())
+                        && !date.isAfter(holiday.endDate())
+        );
     }
 }
