@@ -98,6 +98,13 @@ public class AvailabilityTemplateController {
         return ResponseEntity.noContent().build();
     }
 
+    @DeleteMapping("/availability-templates/{id}")
+    public ResponseEntity<Void> hardDelete(@PathVariable Long id) {
+        LOG.debug("REST request to hard delete AvailabilityTemplate : {}", id);
+        availabilityTemplateService.hardDelete(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/availability-templates/by-facility-and-type")
     public ResponseEntity<List<AvailabilityTemplateResponseVM>> getAllByFacilityAndTemplateType(
             @RequestParam TemplateType templateType

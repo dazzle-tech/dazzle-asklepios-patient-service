@@ -8,4 +8,6 @@ import org.springframework.stereotype.Repository;
 public interface AvailabilityTemplateAllowedServiceRepository extends JpaRepository<AvailabilityTemplateAllowedService, Long> {
 
     void deleteByInterval_Id(Long intervalId);
+    void deleteByTemplate_Id(Long templateId);
+
 }

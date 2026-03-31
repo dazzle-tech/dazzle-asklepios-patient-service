@@ -1,9 +1,13 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.AvailabilityTemplate;
+import com.dazzle.asklepios.domain.AvailabilityTemplateAllowedService;
+import com.dazzle.asklepios.domain.AvailabilityTemplateInterval;
 import com.dazzle.asklepios.domain.enumeration.DayOfWeek;
 import com.dazzle.asklepios.domain.enumeration.TemplateStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
+import com.dazzle.asklepios.repository.AvailabilityTemplateAllowedServiceRepository;
+import com.dazzle.asklepios.repository.AvailabilityTemplateIntervalRepository;
 import com.dazzle.asklepios.repository.AvailabilityTemplateRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplateCreateDTO;
@@ -13,6 +17,7 @@ import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.service.helper.ServiceHelper;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,19 +43,23 @@ public class AvailabilityTemplateService {
     private final DepartmentHelper departmentHelper;
     private final ServiceHelper serviceHelper;
     private final PractitionerHelper practitionerHelper;
+    private final AvailabilityTemplateAllowedServiceRepository availabilityTemplateAllowedServiceRepository;
+    private final AvailabilityTemplateIntervalRepository availabilityTemplateIntervalRepository;
 
     public AvailabilityTemplateService(
             AvailabilityTemplateRepository availabilityTemplateRepository,
             FacilityHelper facilityHelper,
             DepartmentHelper departmentHelper,
             ServiceHelper serviceHelper,
-            PractitionerHelper practitionerHelper
-    ) {
+            PractitionerHelper practitionerHelper,
+            AvailabilityTemplateAllowedServiceRepository availabilityTemplateAllowedServiceRepository, AvailabilityTemplateIntervalRepository availabilityTemplateIntervalRepository) {
         this.availabilityTemplateRepository = availabilityTemplateRepository;
         this.facilityHelper = facilityHelper;
         this.departmentHelper = departmentHelper;
         this.serviceHelper = serviceHelper;
         this.practitionerHelper = practitionerHelper;
+        this.availabilityTemplateAllowedServiceRepository = availabilityTemplateAllowedServiceRepository;
+        this.availabilityTemplateIntervalRepository = availabilityTemplateIntervalRepository;
     }
 
     public AvailabilityTemplate create(AvailabilityTemplateCreateDTO dto) {
@@ -93,6 +102,22 @@ public class AvailabilityTemplateService {
         );
 
         return availabilityTemplateRepository.save(entity);
+    }
+
+    public void hardDelete(Long id) {
+        LOG.debug("Request to hard delete AvailabilityTemplate id={}", id);
+
+        if (!availabilityTemplateRepository.existsById(id)) {
+            throw new BadRequestAlertException("Template not found with id " + id, "availabilityTemplate", "notfound");
+        }
+
+     List<AvailabilityTemplateInterval> Intervals = availabilityTemplateIntervalRepository.findByTemplate_Id(id);
+        for (AvailabilityTemplateInterval interval : Intervals) {
+            availabilityTemplateAllowedServiceRepository.deleteByInterval_Id(interval.getId());
+            availabilityTemplateIntervalRepository.delete(interval);
+        }
+        availabilityTemplateAllowedServiceRepository.deleteByTemplate_Id(id);
+        availabilityTemplateRepository.deleteById(id);
     }
 
     @Transactional(readOnly = true)
