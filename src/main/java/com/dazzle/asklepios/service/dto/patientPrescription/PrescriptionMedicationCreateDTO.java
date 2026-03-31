@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service.dto.patientPrescription;
 
 import com.dazzle.asklepios.domain.enumeration.PrescriptionInstructionsType;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.validation.constraints.FutureOrPresent;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
@@ -25,6 +26,7 @@ public class PrescriptionMedicationCreateDTO {
     public String durationType;
 
     public Long maximumDose;
+    @FutureOrPresent
     public LocalDate validUtil;
     public Boolean allowedSubstitute;
 
