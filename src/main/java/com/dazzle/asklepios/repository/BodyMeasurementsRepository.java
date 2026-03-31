@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.BodyMeasurements;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -46,4 +47,5 @@ public interface BodyMeasurementsRepository extends JpaRepository<BodyMeasuremen
     Optional<BodyMeasurements> findFirstByPatientIdAndHeightIsNotNullOrderByCreatedDateDesc(Long patientId);
 
     Optional<BodyMeasurements> findFirstByPatientIdAndWeightIsNotNullOrderByCreatedDateDesc(Long patientId);
+    Set<BodyMeasurements> findDistinctByEncounterIdIn(List<Long> encounterIds);
 }
