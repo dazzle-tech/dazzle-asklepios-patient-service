@@ -58,6 +58,12 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     @Column(name = "reason", length = 255)
     private String reason;
 
+    @Column(name = "service", length = 50)
+    private String service;
+
+    @Column(name = "service_group_id")
+    private Long serviceGroupId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "booking_mode", nullable = false, length = 20)
     private BookingMode bookingMode;
