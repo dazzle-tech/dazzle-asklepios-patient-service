@@ -2,6 +2,7 @@ package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.AvailabilityGenerationScope;
 import com.dazzle.asklepios.domain.enumeration.BatchStatus;
+import com.dazzle.asklepios.domain.enumeration.HolidayHandlingMode;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -33,6 +34,10 @@ public class AvailabilityGenerationBatch extends  AbstractAuditingEntity<Long> i
     @ManyToOne
     @JoinColumn(name = "template_id", nullable = false)
     private AvailabilityTemplate template;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "holiday_handling_mode", nullable = false)
+    private HolidayHandlingMode holidayHandlingMode;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "scope", nullable = false)
