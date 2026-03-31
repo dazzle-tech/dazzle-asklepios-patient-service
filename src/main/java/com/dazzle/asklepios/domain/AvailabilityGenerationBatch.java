@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.AvailabilityGenerationScope;
 import com.dazzle.asklepios.domain.enumeration.BatchStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import jakarta.persistence.Column;
@@ -34,8 +35,8 @@ public class AvailabilityGenerationBatch extends  AbstractAuditingEntity<Long> i
 
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "template_type", nullable = false)
-    private TemplateType templateType;
+    @Column(name = "scope", nullable = false)
+    private AvailabilityGenerationScope scope;
 
     @Column(name = "apply_start_date_time", nullable = false)
     private Instant applyStartDateTime;
