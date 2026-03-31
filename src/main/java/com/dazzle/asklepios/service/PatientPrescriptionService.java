@@ -229,16 +229,7 @@ public class PatientPrescriptionService {
     }
 
 
-//    @Transactional(readOnly = true)
-//    public boolean existsByEncounterId(Long encounterId) {
-//        LOG.debug("[PatientPrescriptionService] EXISTS_BY_ENCOUNTER_ID - start. encounterId={}", encounterId);
-//
-//        boolean exists = prescriptionRepository.existsByEncounter_Id(encounterId);
-//
-//        LOG.debug("[PatientPrescriptionService] EXISTS_BY_ENCOUNTER_ID - done. encounterId={} exists={}", encounterId, exists);
-//
-//        return exists;
-//    }
+
 public Set<Long> findEncounterIdsWithOrders(List<Long> encounterIds) {
     if (encounterIds == null || encounterIds.isEmpty()) {
         return Collections.emptySet();

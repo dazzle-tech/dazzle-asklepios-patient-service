@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -370,21 +371,16 @@ public class DiagnosticOrderService {
         return order;
     }
 
-//    @Transactional(readOnly = true)
-//    public boolean existsByEncounterId(Long encounterId) {
-//        LOG.debug("[DiagnosticOrderService] EXISTS_BY_ENCOUNTER_ID - start. encounterId={}", encounterId);
-//
-//        boolean exists = diagnosticOrderRepository.existsByEncounter_Id(encounterId);
-//
-//        LOG.debug("[DiagnosticOrderService] EXISTS_BY_ENCOUNTER_ID - done. encounterId={} exists={}", encounterId, exists);
-//
-//        return exists;
-//    }
+
 
     public Set<Long> findEncounterIdsWithOrders(List<Long> encounterIds) {
         if (encounterIds == null || encounterIds.isEmpty()) {
             return Collections.emptySet();
         }
-        return diagnosticOrderRepository.findDistinctEncounter_IdIn(encounterIds);
+
+        return diagnosticOrderRepository.findDistinctByEncounterIdIn(encounterIds)
+                .stream()
+                .map(prescription -> prescription.getEncounterId())
+                .collect(Collectors.toSet());
     }
 }
