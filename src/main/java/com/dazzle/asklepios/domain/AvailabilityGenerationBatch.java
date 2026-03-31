@@ -14,6 +14,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
+import software.amazon.awssdk.services.s3.endpoints.internal.Value;
 
 import java.io.Serializable;
 import java.time.Instant;
@@ -32,7 +33,6 @@ public class AvailabilityGenerationBatch extends  AbstractAuditingEntity<Long> i
     @JoinColumn(name = "template_id", nullable = false)
     private AvailabilityTemplate template;
 
-
     @Enumerated(EnumType.STRING)
     @Column(name = "template_type", nullable = false)
     private TemplateType templateType;
@@ -42,6 +42,12 @@ public class AvailabilityGenerationBatch extends  AbstractAuditingEntity<Long> i
 
     @Column(name = "apply_end_date_time", nullable = false)
     private Instant applyEndDateTime;
+
+    @Column(name = "total_slots")
+    private Integer totalSlots;
+
+    @Column(name = "daily_avg")
+    private Integer dailyAvg;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "execution_status", nullable = false)
