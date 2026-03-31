@@ -58,7 +58,7 @@ public class AvailabilityTemplate extends AbstractAuditingEntity<Long> implement
     private TemplateStatus status;
 
     @Column(name = "version_no", nullable = false)
-    private Integer versionNo;
+    private Integer versionNo = 1;
 
     @ManyToOne
     @JoinColumn(name = "copy_from_template_id")
@@ -106,7 +106,7 @@ public class AvailabilityTemplate extends AbstractAuditingEntity<Long> implement
 
     @Enumerated(EnumType.STRING)
     @Column(name = "financial_details", nullable = false)
-    private FinancialDetails financialDetails;
+    private FinancialDetails financialDetails = FinancialDetails.BOTH;
 
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
