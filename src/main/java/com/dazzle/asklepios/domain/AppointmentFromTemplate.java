@@ -39,6 +39,9 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     @JoinColumn(name = "availability_generation_batch_id")
     private AvailabilityGenerationBatch availabilityGenerationBatch;
 
+    @Column(name = "capacity_index")
+    private Integer capacityIndex;
+
     @Column(name = "start_datetime", nullable = false)
     private Instant startDatetime;
 
