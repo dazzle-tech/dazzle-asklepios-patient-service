@@ -14,7 +14,7 @@ public class FacilityHelper {
 
     public void validateFacilityExists(Long facilityId) {
         try {
-            facilityClient.getFacility(facilityId);
+            facilityClient.existsFacility(facilityId);
         } catch (feign.FeignException.NotFound ex) {
             throw new NotFoundAlertException(
                     "Facility not found: " + facilityId,

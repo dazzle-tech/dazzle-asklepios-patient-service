@@ -5,5 +5,6 @@ package com.dazzle.asklepios.client.setup.vm;
  */
 public record FacilityVM(
         Long id,
-        String name
+        String name,
+        String code
 ) {}

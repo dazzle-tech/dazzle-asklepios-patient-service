@@ -16,7 +16,7 @@ public class DepartmentHelper {
 
     public void validateDepartmentExists(Long departmentId) {
         try {
-            departmentClient.getDepartment(departmentId);
+            departmentClient.existsDepartment(departmentId);
         } catch (feign.FeignException.NotFound ex) {
             throw new NotFoundAlertException(
                     "Department not found: " + departmentId,

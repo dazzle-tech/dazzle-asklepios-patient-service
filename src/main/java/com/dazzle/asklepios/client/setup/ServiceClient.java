@@ -13,5 +13,5 @@ import org.springframework.web.bind.annotation.PathVariable;
 public interface ServiceClient {
 
     @GetMapping("/api/setup/service/{id}")
-    ServiceVM getService(@PathVariable("id") Long id);
+    ResponseEntity<Void> getService(@PathVariable("id") Long id);
 }
