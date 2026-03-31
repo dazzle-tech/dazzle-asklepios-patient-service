@@ -2,6 +2,7 @@ package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.BookingMode;
+import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -91,7 +92,7 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     private String cancelledBy;
 
     @Column(name = "priority", nullable = false, length = 50)
-    private String priority;
+    private EncounterPriority priority;
 
     @Column(name = "note")
     private String note;
