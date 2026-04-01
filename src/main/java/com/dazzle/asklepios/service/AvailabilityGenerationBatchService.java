@@ -220,6 +220,8 @@ public class AvailabilityGenerationBatchService {
                 appointment.setDeferredAt(deferredAt);
                 appointment.setPriority(EncounterPriority.NORMAL);
                 appointment.setCapacityIndex(i + 1);
+                appointment.setDefaultService(template.getDefaultServiceId());
+                appointment.setDefaultPractitioner(template.getDefaultPractitionerId());
 
                 if (holiday && holidayHandlingMode == HolidayHandlingMode.INCLUDE_AS_EXCEPTION) {
                     appointment.setReason("Generated on organization holiday by user confirmation: " + template.getTemplateName());
