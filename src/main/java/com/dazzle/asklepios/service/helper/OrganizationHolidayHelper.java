@@ -39,7 +39,7 @@ public class OrganizationHolidayHelper {
                     "dateinvalid"
             );
         }
-      return organizationHolidayClient.getActiveHolidaysInRange(fromDate, toDate, facilityId);
+      return organizationHolidayClient.getActiveHolidaysInRange(fromDate.toString(), toDate.toString(), facilityId);
     }
 
 }

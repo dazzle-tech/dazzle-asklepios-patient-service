@@ -16,6 +16,7 @@ public record OrganizationHolidayDTO(
         LocalDate startDate,
         LocalDate endDate,
         String reason,
+        Boolean isActive,
         Boolean allFacilities,
         String facilityIds,
         Boolean recurring

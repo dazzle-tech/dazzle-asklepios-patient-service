@@ -12,5 +12,5 @@ import java.util.List;
 @FeignClient(name = "setupServiceClient",url = "${service.asklepios-setup-service-url}" , configuration = SetupServiceFeignConfig.class)
 public interface OrganizationHolidayClient {
     @GetMapping("/api/setup/organization-holiday/by-date-range")
-    List<OrganizationHolidayDTO> getActiveHolidaysInRange(@RequestParam("fromDate") LocalDate fromDate, @RequestParam("toDate") LocalDate toDate, Long facilityId);
+    List<OrganizationHolidayDTO> getActiveHolidaysInRange(@RequestParam("fromDate") String fromDate, @RequestParam("toDate") String toDate,@RequestParam("facilityId") Long facilityId);
 }
