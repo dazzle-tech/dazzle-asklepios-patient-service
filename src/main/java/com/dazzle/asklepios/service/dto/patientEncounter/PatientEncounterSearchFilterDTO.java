@@ -22,9 +22,5 @@ public record PatientEncounterSearchFilterDTO(
 
         String chiefComplaint,
 
-        List<EncounterPriority> priorities,
-
-        Boolean hasPrescription,
-        Boolean hasOrder,
-        Boolean isObserved
+        List<EncounterPriority> priorities
 ) {}

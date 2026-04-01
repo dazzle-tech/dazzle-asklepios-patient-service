@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.service.PatientEncounterService;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
@@ -238,12 +239,42 @@ public class PatientEncounterController {
 
     @PostMapping("/encounter/{id}/discharge")
     public ResponseEntity<PatientEncounter> dischargeEncounter(
-            @PathVariable("id") @NotNull Long encounterId
+            @PathVariable("id") @NotNull Long encounterId,
+            @Valid @RequestBody @NotNull PatientEncounterDischargeDTO dischargeDTO
     ) {
-        LOG.debug("REST discharge PatientEncounter id={}", encounterId);
+        LOG.debug("REST discharge PatientEncounter id={} payload={}", encounterId, dischargeDTO);
 
-        PatientEncounter existing = patientEncounterService.dischargeEncounter(encounterId);
-        return ResponseEntity.ok(existing);
+        // Validation: consistency between path and body
+        if (!encounterId.equals(dischargeDTO.encounterId())) {
+            LOG.warn("[DISCHARGE] mismatch between path id={} and body id={}", encounterId, dischargeDTO.encounterId());
+            throw new BadRequestAlertException(
+                    "Encounter id mismatch between path and body.",
+                    "patientEncounter",
+                    "discharge.id.mismatch"
+            );
+        }
+
+        // Optional extra validation (before service)
+        if (dischargeDTO.dischargeType() == null) {
+            throw new BadRequestAlertException(
+                    "Discharge type is required.",
+                    "patientEncounter",
+                    "discharge.type.required"
+            );
+        }
+
+        if (dischargeDTO.dischargeAt() == null) {
+            throw new BadRequestAlertException(
+                    "Discharge date and time are required.",
+                    "patientEncounter",
+                    "discharge.at.required"
+            );
+        }
+
+        PatientEncounter discharged =
+                patientEncounterService.dischargeEncounter(dischargeDTO);
+
+        return ResponseEntity.ok(discharged);
     }
 
     @PostMapping("/encounter/{id}/complete")
@@ -293,5 +324,17 @@ public class PatientEncounterController {
 
         PatientEncounter encounterAppointment = patientEncounterService.getEncountersByAppointmentId(appointmentId);
         return ResponseEntity.ok(encounterAppointment);
+    }
+
+    @PostMapping("/encounter/{id}/move-to-new")
+    public ResponseEntity<PatientEncounter> moveWaitingListToNew(
+            @PathVariable("id") @NotNull Long encounterId
+    ) {
+        LOG.debug("REST move PatientEncounter from WAITING_LIST to NEW id={}", encounterId);
+
+        PatientEncounter updated =
+                patientEncounterService.moveFromWaitingListToNew(encounterId);
+
+        return ResponseEntity.ok(updated);
     }
 }

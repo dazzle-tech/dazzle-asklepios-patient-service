@@ -62,4 +62,5 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
             LocalDate encounterDate
     );
 
+    boolean existsByPatient_IdAndStatus(Long patientId, EncounterStatus status);
 }
