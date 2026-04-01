@@ -205,6 +205,7 @@ public class AvailabilityTemplateController {
                 entity.getRequirePreAssessment(),
                 entity.getAllowPatientPortalBooking(),
                 entity.getRequireConfirmation(),
+                entity.getIsActive(),
                 entity.getFinancialDetails(),
                 entity.getWorkingDays() == null
                         ? List.of()
