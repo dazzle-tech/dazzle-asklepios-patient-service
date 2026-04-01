@@ -6,6 +6,7 @@ import com.dazzle.asklepios.service.dto.patientDiagnosis.PatientDiagnosisCreateD
 import com.dazzle.asklepios.service.dto.patientDiagnosis.PatientDiagnosisUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.vm.PatientDiagnosis.PatientDiagnosisFlagVM;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
@@ -28,7 +29,10 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/patient")
@@ -185,5 +189,36 @@ PatientDiagnosisController {
         boolean exists = patientDiagnosisService.existsByEncounterId(encounterId);
 
         return ResponseEntity.ok(exists);
+    }
+
+    @GetMapping("/patient-diagnoses/flags/by-encounters")
+    public ResponseEntity<List<PatientDiagnosisFlagVM>> getPrimaryDiagnosisFlagsByEncounterIds(
+            @RequestParam List<Long> encounterIds
+    ) {
+        LOG.debug("REST get PRIMARY PatientDiagnosis flags by encounterIds={}", encounterIds);
+
+        if (encounterIds == null || encounterIds.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "encounterIds are required",
+                    "patientDiagnosis",
+                    "encounterIds.required"
+            );
+        }
+
+        Set<PatientDiagnosis> diagnoses =
+                patientDiagnosisService.findPrimaryByEncounterIds(encounterIds);
+
+        Set<Long> diagnosisEncounterIds = diagnoses.stream()
+                .map(PatientDiagnosis::getEncounterId)
+                .collect(Collectors.toSet());
+
+        List<PatientDiagnosisFlagVM> result = encounterIds.stream()
+                .map(id -> PatientDiagnosisFlagVM.of(
+                        id,
+                        diagnosisEncounterIds.contains(id) // hasPrimaryDiagnoses
+                ))
+                .toList();
+
+        return ResponseEntity.ok(result);
     }
 }
