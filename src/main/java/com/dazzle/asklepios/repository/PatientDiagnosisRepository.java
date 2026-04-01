@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface PatientDiagnosisRepository extends JpaRepository<PatientDiagnosis, Long> {
 
@@ -22,4 +23,9 @@ public interface PatientDiagnosisRepository extends JpaRepository<PatientDiagnos
     List<PatientDiagnosis> findByEncounterId(Long encounterId);
 
     Optional<PatientDiagnosis> findByEncounterIdAndType(Long encounterId, DiagnosisType type);
+
+    Set<PatientDiagnosis> findDistinctByEncounterIdInAndType(
+            List<Long> encounterIds,
+            DiagnosisType type
+    );
 }

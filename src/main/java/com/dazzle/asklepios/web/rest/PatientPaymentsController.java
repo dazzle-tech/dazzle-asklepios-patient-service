@@ -49,7 +49,11 @@ public class PatientPaymentsController {
         }
         if (dto.services() == null || dto.services().isEmpty()) {
             LOG.warn("[CREATE] PatientPayments rejected: services is empty payload={}", dto);
-            throw new BadRequestAlertException("services is required", "patientPayments", "services.required");
+            throw new BadRequestAlertException(
+                    "No services to pay for",
+                    "patientPayments",
+                    "no.services"
+            );
         }
 
         boolean invalidService = dto.services().stream().anyMatch(serviceItem ->

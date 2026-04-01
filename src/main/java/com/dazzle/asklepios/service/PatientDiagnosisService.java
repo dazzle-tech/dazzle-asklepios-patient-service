@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -221,5 +222,10 @@ public class PatientDiagnosisService {
         LOG.debug("[EXISTS CHECK] encounterId={}", encounterId);
 
         return patientDiagnosisRepository.existsByEncounterId(encounterId);
+    }
+
+    public Set<PatientDiagnosis> findPrimaryByEncounterIds(List<Long> encounterIds) {
+        return patientDiagnosisRepository
+                .findDistinctByEncounterIdInAndType(encounterIds, DiagnosisType.PRIMARY);
     }
 }
