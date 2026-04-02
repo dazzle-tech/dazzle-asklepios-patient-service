@@ -202,11 +202,6 @@ public class BedTransactionService {
                 });
     }
 
-    @Transactional(readOnly = true)
-    public Page<BedTransaction> getByTransactionType(BedTransactionType transactionType, Pageable pageable) {
-        LOG.debug("[GET_BY_TRANSACTION_TYPE] transactionType={} pageable={}", transactionType, pageable);
-        return bedTransactionRepository.findByTransactionType(transactionType, pageable);
-    }
 
     @Transactional(readOnly = true)
     public Page<BedTransaction> getByDepartmentAndTransactionDateRange(

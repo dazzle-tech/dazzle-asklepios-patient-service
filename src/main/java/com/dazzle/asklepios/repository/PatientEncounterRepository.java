@@ -61,6 +61,25 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
             EncounterStatus status,
             LocalDate encounterDate
     );
+    long countByDepartmentIdAndEncounterDateBetween(
+            Long departmentId,
+            LocalDate fromDate,
+            LocalDate toDate
+    );
+
+    long countByDepartmentIdAndEncounterDateBetweenAndStatus(
+            Long departmentId,
+            LocalDate fromDate,
+            LocalDate toDate,
+            EncounterStatus status
+    );
+
+    long countByDepartmentIdAndEncounterDateBetweenAndStatusIn(
+            Long departmentId,
+            LocalDate fromDate,
+            LocalDate toDate,
+            List<EncounterStatus> statuses
+    );
 
     boolean existsByPatient_IdAndStatus(Long patientId, EncounterStatus status);
 }

@@ -16,8 +16,6 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -284,18 +282,6 @@ public class EncounterAssignToBedService {
             LOG.warn("[RELEASE] EncounterAssignToBed failed (constraint) id={}", encounterAssignToBedId, exception);
             throw handleConstraintViolation(exception);
         }
-    }
-
-    @Transactional(readOnly = true)
-    public Page<EncounterAssignToBed> getAssignmentsByPatientId(Long patientId, Pageable pageable) {
-        LOG.debug("[GET_BY_PATIENT] patientId={} pageable={}", patientId, pageable);
-        return encounterAssignToBedRepository.findByPatient_Id(patientId, pageable);
-    }
-
-    @Transactional(readOnly = true)
-    public Page<EncounterAssignToBed> getAssignmentsByEncounterId(Long encounterId, Pageable pageable) {
-        LOG.debug("[GET_BY_ENCOUNTER] encounterId={} pageable={}", encounterId, pageable);
-        return encounterAssignToBedRepository.findByEncounter_Id(encounterId, pageable);
     }
 
     @Transactional(readOnly = true)

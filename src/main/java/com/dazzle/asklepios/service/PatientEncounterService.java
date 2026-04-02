@@ -355,11 +355,25 @@ public class PatientEncounterService {
                         "id.notfound"
                 ));
 
-        if (encounter.getStatus() != EncounterStatus.NEW) {
+        if (!Set.of(
+                EncounterStatus.NEW,
+                EncounterStatus.WAITING_TRIAGE,
+                EncounterStatus.PENDING_PAYMENT
+        ).contains(encounter.getStatus())) {
+
             throw new BadRequestAlertException(
-                    "Cancel is allowed only when status is NEW.",
+                    "Cancel is allowed only when status is NEW, WAITING_TRIAGE, or PENDING_PAYMENT.",
                     "patientEncounter",
                     "cancel.notAllowed.rule"
+            );
+        }
+        boolean hasObservation = !findEncounterIdsWithObservation(List.of(encounterId)).isEmpty();
+
+        if (hasObservation) {
+            throw new BadRequestAlertException(
+                    "Cannot cancel encounter with observations.",
+                    "patientEncounter",
+                    "cancel.notAllowed.hasObservation"
             );
         }
 
@@ -374,7 +388,6 @@ public class PatientEncounterService {
             throw handleConstraintViolation(ex);
         }
     }
-
     public PatientEncounter dischargeEncounter(Long encounterId) {
         LOG.info("[DISCHARGE] PatientEncounter id={}", encounterId);
 
@@ -573,9 +586,9 @@ public class PatientEncounterService {
             );
         }
 
-        if (messageLower.contains("ck_patient_encounters_cancel_only_when_new")) {
+        if (messageLower.contains("ck_patient_encounters_cancel_only_when_allowed_status")) {
             return new BadRequestAlertException(
-                    "Cancel is allowed only when status is NEW.",
+                    "Cancel is allowed only when status is NEW, WAITING_TRIAGE, or PENDING_PAYMENT.",
                     "patientEncounter",
                     "cancel.notAllowed.dbRule"
             );
@@ -642,6 +655,97 @@ public class PatientEncounterService {
                 "patientEncounter",
                 "db.constraint"
         );
+    }
+
+    @Transactional(readOnly = true)
+    public long countDepartmentEncountersByDateRange(
+            Long departmentId,
+            LocalDate fromDate,
+            LocalDate toDate
+    ) {
+        LOG.debug("[COUNT_DEPARTMENT_ENCOUNTERS] departmentId={} fromDate={} toDate={}",
+                departmentId, fromDate, toDate);
+
+        long total = patientEncounterRepository.countByDepartmentIdAndEncounterDateBetween(
+                departmentId,
+                fromDate,
+                toDate
+        );
+
+        LOG.debug("[COUNT_DEPARTMENT_ENCOUNTERS_RESULT] departmentId={} fromDate={} toDate={} total={}",
+                departmentId, fromDate, toDate, total);
+
+        return total;
+    }
+
+
+    @Transactional(readOnly = true)
+    public long countDepartmentWaitingListPatients(
+            Long departmentId,
+            LocalDate fromDate,
+            LocalDate toDate
+    ) {
+        LOG.debug("[COUNT_WAITING_LIST] departmentId={} fromDate={} toDate={}",
+                departmentId, fromDate, toDate);
+
+        long total = patientEncounterRepository.countByDepartmentIdAndEncounterDateBetweenAndStatus(
+                departmentId,
+                fromDate,
+                toDate,
+                EncounterStatus.WAITING_LIST
+        );
+
+        LOG.debug("[COUNT_WAITING_LIST_RESULT] departmentId={} fromDate={} toDate={} total={}",
+                departmentId, fromDate, toDate, total);
+
+        return total;
+    }
+
+    @Transactional(readOnly = true)
+    public long countDepartmentInTriagePatients(
+            Long departmentId,
+            LocalDate fromDate,
+            LocalDate toDate
+    ) {
+        LOG.debug("[COUNT_TRIAGE_LIST] departmentId={} fromDate={} toDate={}",
+                departmentId, fromDate, toDate);
+
+        long total = patientEncounterRepository.countByDepartmentIdAndEncounterDateBetweenAndStatusIn(
+                departmentId,
+                fromDate,
+                toDate,
+                List.of(
+                        EncounterStatus.WAITING_TRIAGE,
+                        EncounterStatus.TRIAGE_STARTED
+                )
+        );
+
+        LOG.debug("[COUNT_TRIAGE_LIST_RESULT] departmentId={} fromDate={} toDate={} total={}",
+                departmentId, fromDate, toDate, total);
+
+        return total;
+    }
+
+    @Transactional(readOnly = true)
+    public long countDepartmentDischargedPatients(
+            Long departmentId,
+            LocalDate fromDate,
+            LocalDate toDate
+    ) {
+        LOG.debug("[COUNT_DISCHARGED] departmentId={} fromDate={} toDate={}",
+                departmentId, fromDate, toDate);
+
+        long total = patientEncounterRepository.countByDepartmentIdAndEncounterDateBetweenAndStatus(
+                departmentId,
+                fromDate,
+                toDate,
+                EncounterStatus.DISCHARGED
+        );
+
+        LOG.debug("[COUNT_DISCHARGED_RESULT] departmentId={} fromDate={} toDate={} total={}",
+                departmentId, fromDate, toDate, total);
+
+        return total;
     }
 
     public PatientEncounter moveFromWaitingListToNew(Long id) {

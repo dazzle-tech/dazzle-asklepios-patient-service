@@ -94,41 +94,6 @@ public class EncounterAssignToBedController {
         return ResponseEntity.ok(encounterAssignToBed);
     }
 
-    @GetMapping("/encounter-assign-to-bed/by-encounter/{encounterId}")
-    public ResponseEntity<List<EncounterAssignToBed>> getEncounterAssignmentsByEncounterId(
-            @PathVariable @NotNull Long encounterId,
-            @ParameterObject Pageable pageable
-    ) {
-        LOG.debug("REST get EncounterAssignToBed by encounterId={} pageable={}", encounterId, pageable);
-
-        Page<EncounterAssignToBed> page =
-                encounterAssignToBedService.getAssignmentsByEncounterId(encounterId, pageable);
-
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(),
-                page
-        );
-
-        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
-    }
-
-    @GetMapping("/encounter-assign-to-bed/by-patient/{patientId}")
-    public ResponseEntity<List<EncounterAssignToBed>> getEncounterAssignmentsByPatientId(
-            @PathVariable @NotNull Long patientId,
-            @ParameterObject Pageable pageable
-    ) {
-        LOG.debug("REST get EncounterAssignToBed by patientId={} pageable={}", patientId, pageable);
-
-        Page<EncounterAssignToBed> page =
-                encounterAssignToBedService.getAssignmentsByPatientId(patientId, pageable);
-
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(),
-                page
-        );
-
-        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
-    }
 
     @GetMapping("/encounter-assign-to-bed/active/by-encounter/{encounterId}")
     public ResponseEntity<EncounterAssignToBed> getActiveAssignmentByEncounterId(
@@ -173,10 +138,10 @@ public class EncounterAssignToBedController {
     }
     @GetMapping("/bed-transaction/search/by-department-and-date")
     public ResponseEntity<List<BedTransaction>> getByDepartmentAndDateRange(
-            @RequestParam Long departmentId,
-            @RequestParam Instant from,
-            @RequestParam Instant to,
-            @ParameterObject Pageable pageable
+            @RequestParam @NotNull  Long departmentId,
+            @RequestParam @NotNull  Instant from,
+            @RequestParam @NotNull  Instant to,
+            @ParameterObject  Pageable pageable
     ) {
         LOG.debug("REST get BedTransactions by departmentId={} from={} to={} pageable={}",
                 departmentId, from, to, pageable);

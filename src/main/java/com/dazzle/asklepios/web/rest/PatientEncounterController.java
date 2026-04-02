@@ -28,10 +28,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 
@@ -357,5 +359,77 @@ public class PatientEncounterController {
                 patientEncounterService.moveFromWaitingListToNew(encounterId);
 
         return ResponseEntity.ok(updated);
+    }
+
+    @GetMapping("/encounter/department/{departmentId}/count/date-range/waiting-list")
+    public ResponseEntity<Long> countDepartmentWaitingList(
+            @PathVariable @NotNull Long departmentId,
+            @RequestParam LocalDate fromDate,
+            @RequestParam LocalDate toDate
+    ) {
+        LOG.debug("REST count WAITING_LIST departmentId={} fromDate={} toDate={}",
+                departmentId, fromDate, toDate);
+
+        long total = patientEncounterService.countDepartmentWaitingListPatients(
+                departmentId,
+                fromDate,
+                toDate
+        );
+
+        return ResponseEntity.ok(total);
+    }
+
+    @GetMapping("/encounter/department/{departmentId}/count/date-range/triage")
+    public ResponseEntity<Long> countDepartmentTriage(
+            @PathVariable @NotNull Long departmentId,
+            @RequestParam LocalDate fromDate,
+            @RequestParam LocalDate toDate
+    ) {
+        LOG.debug("REST count TRIAGE departmentId={} fromDate={} toDate={}",
+                departmentId, fromDate, toDate);
+
+        long total = patientEncounterService.countDepartmentInTriagePatients(
+                departmentId,
+                fromDate,
+                toDate
+        );
+
+        return ResponseEntity.ok(total);
+    }
+
+    @GetMapping("/encounter/department/{departmentId}/count/date-range/discharged")
+    public ResponseEntity<Long> countDepartmentDischarged(
+            @PathVariable @NotNull Long departmentId,
+            @RequestParam LocalDate fromDate,
+            @RequestParam LocalDate toDate
+    ) {
+        LOG.debug("REST count DISCHARGED departmentId={} fromDate={} toDate={}",
+                departmentId, fromDate, toDate);
+
+        long total = patientEncounterService.countDepartmentDischargedPatients(
+                departmentId,
+                fromDate,
+                toDate
+        );
+
+        return ResponseEntity.ok(total);
+    }
+
+    @GetMapping("/encounter/department/{departmentId}/count/date-range/total")
+    public ResponseEntity<Long> countDepartmentTotalByDateRange(
+            @PathVariable @NotNull Long departmentId,
+            @RequestParam LocalDate fromDate,
+            @RequestParam LocalDate toDate
+    ) {
+        LOG.debug("REST count TOTAL departmentId={} fromDate={} toDate={}",
+                departmentId, fromDate, toDate);
+
+        long total = patientEncounterService.countDepartmentEncountersByDateRange(
+                departmentId,
+                fromDate,
+                toDate
+        );
+
+        return ResponseEntity.ok(total);
     }
 }
