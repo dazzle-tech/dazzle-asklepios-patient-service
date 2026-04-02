@@ -180,6 +180,21 @@ public class AvailabilityTemplateController {
         return ResponseEntity.ok(result);
     }
 
+    @GetMapping("/availability-templates/active/department/by-facility-and-status")
+    public ResponseEntity<List<AvailabilityTemplateResponseVM>> getAllActiveByFacilityAndStatusAndTemplateTypeDepartment(
+            @RequestParam TemplateStatus status
+    ) {
+        LOG.debug("REST request to get active availability templates by status={}", status);
+
+        List<AvailabilityTemplateResponseVM> result = availabilityTemplateService
+                .getAllActiveByFacilityAndStatusAndTemplateTypeDepartment(status)
+                .stream()
+                .map(this::toResponseVM)
+                .toList();
+
+        return ResponseEntity.ok(result);
+    }
+
 
     private AvailabilityTemplateResponseVM toResponseVM(AvailabilityTemplate entity) {
         return new AvailabilityTemplateResponseVM(

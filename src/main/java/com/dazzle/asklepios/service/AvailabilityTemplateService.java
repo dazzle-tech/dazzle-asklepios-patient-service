@@ -191,6 +191,11 @@ public class AvailabilityTemplateService {
         Long facilityId = getFacility();
         return availabilityTemplateRepository.findAllByFacilityIdAndStatus(facilityId, status);
     }
+    public List<AvailabilityTemplate> getAllActiveByFacilityAndStatusAndTemplateTypeDepartment(TemplateStatus status) {
+        LOG.debug("Get active availability templates by status={}", status);
+        Long facilityId = getFacility();
+        return availabilityTemplateRepository.findAllByFacilityIdAndStatusAndIsActiveTrueAndTemplateType(facilityId, status, TemplateType.DEPARTMENT);
+    }
 
     private AvailabilityTemplate getRequired(Long id) {
         return availabilityTemplateRepository
