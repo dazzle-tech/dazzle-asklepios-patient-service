@@ -6,6 +6,7 @@ import com.dazzle.asklepios.service.DiagnosticOrderService;
 import com.dazzle.asklepios.service.PatientEncounterService;
 import com.dazzle.asklepios.service.PatientPrescriptionService;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
@@ -27,10 +28,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 
@@ -259,12 +262,42 @@ public class PatientEncounterController {
 
     @PostMapping("/encounter/{id}/discharge")
     public ResponseEntity<PatientEncounter> dischargeEncounter(
-            @PathVariable("id") @NotNull Long encounterId
+            @PathVariable("id") @NotNull Long encounterId,
+            @Valid @RequestBody @NotNull PatientEncounterDischargeDTO dischargeDTO
     ) {
-        LOG.debug("REST discharge PatientEncounter id={}", encounterId);
+        LOG.debug("REST discharge PatientEncounter id={} payload={}", encounterId, dischargeDTO);
 
-        PatientEncounter existing = patientEncounterService.dischargeEncounter(encounterId);
-        return ResponseEntity.ok(existing);
+        // Validation: consistency between path and body
+        if (!encounterId.equals(dischargeDTO.encounterId())) {
+            LOG.warn("[DISCHARGE] mismatch between path id={} and body id={}", encounterId, dischargeDTO.encounterId());
+            throw new BadRequestAlertException(
+                    "Encounter id mismatch between path and body.",
+                    "patientEncounter",
+                    "discharge.id.mismatch"
+            );
+        }
+
+        // Optional extra validation (before service)
+        if (dischargeDTO.dischargeType() == null) {
+            throw new BadRequestAlertException(
+                    "Discharge type is required.",
+                    "patientEncounter",
+                    "discharge.type.required"
+            );
+        }
+
+        if (dischargeDTO.dischargeAt() == null) {
+            throw new BadRequestAlertException(
+                    "Discharge date and time are required.",
+                    "patientEncounter",
+                    "discharge.at.required"
+            );
+        }
+
+        PatientEncounter discharged =
+                patientEncounterService.dischargeEncounter(dischargeDTO);
+
+        return ResponseEntity.ok(discharged);
     }
 
     @PostMapping("/encounter/{id}/complete")
@@ -314,5 +347,89 @@ public class PatientEncounterController {
 
         PatientEncounter encounterAppointment = patientEncounterService.getEncountersByAppointmentId(appointmentId);
         return ResponseEntity.ok(encounterAppointment);
+    }
+
+    @PostMapping("/encounter/{id}/move-to-new")
+    public ResponseEntity<PatientEncounter> moveWaitingListToNew(
+            @PathVariable("id") @NotNull Long encounterId
+    ) {
+        LOG.debug("REST move PatientEncounter from WAITING_LIST to NEW id={}", encounterId);
+
+        PatientEncounter updated =
+                patientEncounterService.moveFromWaitingListToNew(encounterId);
+
+        return ResponseEntity.ok(updated);
+    }
+
+    @GetMapping("/encounter/department/{departmentId}/count/date-range/waiting-list")
+    public ResponseEntity<Long> countDepartmentWaitingList(
+            @PathVariable @NotNull Long departmentId,
+            @RequestParam LocalDate fromDate,
+            @RequestParam LocalDate toDate
+    ) {
+        LOG.debug("REST count WAITING_LIST departmentId={} fromDate={} toDate={}",
+                departmentId, fromDate, toDate);
+
+        long total = patientEncounterService.countDepartmentWaitingListPatients(
+                departmentId,
+                fromDate,
+                toDate
+        );
+
+        return ResponseEntity.ok(total);
+    }
+
+    @GetMapping("/encounter/department/{departmentId}/count/date-range/triage")
+    public ResponseEntity<Long> countDepartmentTriage(
+            @PathVariable @NotNull Long departmentId,
+            @RequestParam LocalDate fromDate,
+            @RequestParam LocalDate toDate
+    ) {
+        LOG.debug("REST count TRIAGE departmentId={} fromDate={} toDate={}",
+                departmentId, fromDate, toDate);
+
+        long total = patientEncounterService.countDepartmentInTriagePatients(
+                departmentId,
+                fromDate,
+                toDate
+        );
+
+        return ResponseEntity.ok(total);
+    }
+
+    @GetMapping("/encounter/department/{departmentId}/count/date-range/discharged")
+    public ResponseEntity<Long> countDepartmentDischarged(
+            @PathVariable @NotNull Long departmentId,
+            @RequestParam LocalDate fromDate,
+            @RequestParam LocalDate toDate
+    ) {
+        LOG.debug("REST count DISCHARGED departmentId={} fromDate={} toDate={}",
+                departmentId, fromDate, toDate);
+
+        long total = patientEncounterService.countDepartmentDischargedPatients(
+                departmentId,
+                fromDate,
+                toDate
+        );
+
+        return ResponseEntity.ok(total);
+    }
+
+    @GetMapping("/encounter/department/{departmentId}/count/date-range/total")
+    public ResponseEntity<Long> countDepartmentTotalByDateRange(
+            @PathVariable @NotNull Long departmentId,
+            @RequestParam LocalDate fromDate,
+            @RequestParam LocalDate toDate
+    ) {
+        LOG.debug("REST count TOTAL departmentId={} fromDate={} toDate={}",
+                departmentId, fromDate, toDate);
+
+        long total = patientEncounterService.countDepartmentEncountersByDateRange(
+                departmentId,
+                fromDate,
+                toDate
+        );
+
+        return ResponseEntity.ok(total);
     }
 }
