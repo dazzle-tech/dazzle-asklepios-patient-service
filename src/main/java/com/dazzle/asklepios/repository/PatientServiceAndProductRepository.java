@@ -11,5 +11,7 @@ public interface PatientServiceAndProductRepository extends JpaRepository<Patien
 
     Page<PatientServiceAndProduct> findAllByEncounterId(Long encounterId, Pageable pageable);
 
+    Page<PatientServiceAndProduct> findAllByPatientId(Long patientId, Pageable pageable);
+
 }
 

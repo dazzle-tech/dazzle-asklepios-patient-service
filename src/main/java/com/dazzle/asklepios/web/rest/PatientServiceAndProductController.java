@@ -78,6 +78,26 @@ public class PatientServiceAndProductController {
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
+    @GetMapping("/patient-services-products/by-patient/{patientId}")
+    public ResponseEntity<List<PatientServiceAndProduct>> getAllByPatient(
+            @PathVariable Long patientId,
+            @ParameterObject Pageable pageable
+    ) {
+
+        LOG.debug("REST get Patient Services & Products by patientId={}", patientId);
+
+        Page<PatientServiceAndProduct> page =
+                patientServiceAndProductService
+                        .findAllServicesAndProductsByPatientId(pageable, patientId);
+
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), page
+        );
+
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+    }
+
+
 
     @PutMapping("/patient-services-products/{id}")
     public ResponseEntity<PatientServiceAndProduct> update(

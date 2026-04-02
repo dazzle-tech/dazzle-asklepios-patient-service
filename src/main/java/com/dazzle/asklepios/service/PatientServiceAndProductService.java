@@ -120,6 +120,18 @@ public class PatientServiceAndProductService {
         return patientServiceAndProductRepository.findAllByEncounterId(encounterId, pageable);
     }
 
+    @Transactional(readOnly = true)
+    public Page<PatientServiceAndProduct> findAllServicesAndProductsByPatientId(
+            Pageable pageable,
+            Long patientId
+    ) {
+
+        LOG.debug("Fetch Patient Services & Products for patient : {}", patientId);
+
+        return patientServiceAndProductRepository.findAllByPatientId(patientId, pageable);
+    }
+
+
 
     @Transactional
     public PatientServiceAndProduct update(PatientServiceProductUpdateDTO patientServiceProductUpdateDTO) {
