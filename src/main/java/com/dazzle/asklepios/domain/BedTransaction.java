@@ -60,8 +60,16 @@ public class BedTransaction extends AbstractAuditingEntity<Long> implements Seri
     private Long toBedId;
 
     @NotNull
-    @Column(name = "department_id", nullable = false)
-    private Long departmentId;
+    @Column(name = "from_department_id", nullable = false)
+    private Long fromDepartmentId;
+
+    @NotNull
+    @Column(name = "to_department_id", nullable = false)
+    private Long toDepartmentId;
+
+    @NotNull
+    @Column(name = "is_external", nullable = false)
+    private Boolean isExternal;
 
     @NotNull
     @Enumerated(EnumType.STRING)
@@ -72,5 +80,4 @@ public class BedTransaction extends AbstractAuditingEntity<Long> implements Seri
     @Column(name = "transaction_date", nullable = false)
     @Builder.Default
     private Instant transactionDate = Instant.now();
-
 }

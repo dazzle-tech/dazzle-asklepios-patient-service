@@ -13,8 +13,8 @@ public interface BedTransactionRepository extends JpaRepository<BedTransaction, 
 
     Page<BedTransaction> findByTransactionType(BedTransactionType transactionType, Pageable pageable);
 
-    Page<BedTransaction> findByDepartmentIdAndTransactionDateBetween(
-            Long departmentId,
+    Page<BedTransaction> findByToDepartmentIdAndTransactionDateBetween(
+            Long toDepartmentId,
             Instant from,
             Instant to,
             Pageable pageable

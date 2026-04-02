@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface EncounterAssignToBedRepository extends JpaRepository<EncounterAssignToBed, Long> {
-    
+
     Optional<EncounterAssignToBed> findByEncounter_IdAndIsActiveTrue(Long encounterId);
 
     List<EncounterAssignToBed> findAllByEncounter_IdInAndIsActiveTrue(List<Long> encounterIds);

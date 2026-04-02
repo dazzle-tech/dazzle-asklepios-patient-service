@@ -72,6 +72,11 @@ public class BedTransactionService {
                 createDTO.fromBedId(),
                 createDTO.toBedId()
         );
+        validateDepartmentTransition(
+                createDTO.fromDepartmentId(),
+                createDTO.toDepartmentId(),
+                createDTO.isExternal()
+        );
 
         BedTransaction bedTransactionToCreate = BedTransaction.builder()
                 .encounter(patientEncounter)
@@ -80,7 +85,9 @@ public class BedTransactionService {
                 .fromBedId(createDTO.fromBedId())
                 .toRoomId(createDTO.toRoomId())
                 .toBedId(createDTO.toBedId())
-                .departmentId(createDTO.departmentId())
+                .fromDepartmentId(createDTO.fromDepartmentId())
+                .toDepartmentId(createDTO.toDepartmentId())
+                .isExternal(createDTO.isExternal())
                 .transactionType(createDTO.transactionType())
                 .transactionDate(Instant.now())
                 .build();
@@ -158,6 +165,11 @@ public class BedTransactionService {
                 updateDTO.fromBedId(),
                 updateDTO.toBedId()
         );
+        validateDepartmentTransition(
+                updateDTO.fromDepartmentId(),
+                updateDTO.toDepartmentId(),
+                updateDTO.isExternal()
+        );
 
         existingBedTransaction.setEncounter(patientEncounter);
         existingBedTransaction.setPatient(patient);
@@ -165,7 +177,9 @@ public class BedTransactionService {
         existingBedTransaction.setFromBedId(updateDTO.fromBedId());
         existingBedTransaction.setToRoomId(updateDTO.toRoomId());
         existingBedTransaction.setToBedId(updateDTO.toBedId());
-        existingBedTransaction.setDepartmentId(updateDTO.departmentId());
+        existingBedTransaction.setFromDepartmentId(updateDTO.fromDepartmentId());
+        existingBedTransaction.setToDepartmentId(updateDTO.toDepartmentId());
+        existingBedTransaction.setIsExternal(updateDTO.isExternal());
         existingBedTransaction.setTransactionType(updateDTO.transactionType());
 
         try {
@@ -201,19 +215,17 @@ public class BedTransactionService {
                     );
                 });
     }
-
-
     @Transactional(readOnly = true)
-    public Page<BedTransaction> getByDepartmentAndTransactionDateRange(
+    public Page<BedTransaction> getByToDepartmentAndTransactionDateRange(
             Long departmentId,
             Instant from,
             Instant to,
             Pageable pageable
     ) {
-        LOG.debug("[GET_BY_DEPARTMENT_AND_DATE_RANGE] departmentId={} from={} to={} pageable={}",
+        LOG.debug("[GET_BY_TO_DEPARTMENT_AND_DATE_RANGE] departmentId={} from={} to={} pageable={}",
                 departmentId, from, to, pageable);
 
-        return bedTransactionRepository.findByDepartmentIdAndTransactionDateBetween(
+        return bedTransactionRepository.findByToDepartmentIdAndTransactionDateBetween(
                 departmentId,
                 from,
                 to,
@@ -305,6 +317,36 @@ public class BedTransactionService {
         }
     }
 
+    private void validateDepartmentTransition(
+            Long fromDepartmentId,
+            Long toDepartmentId,
+            Boolean isExternal
+    ) {
+        if (fromDepartmentId == null || toDepartmentId == null || isExternal == null) {
+            throw new BadRequestAlertException(
+                    "Department transition fields are required.",
+                    "bedTransaction",
+                    "departmentTransition.required"
+            );
+        }
+
+        if (!isExternal && !fromDepartmentId.equals(toDepartmentId)) {
+            throw new BadRequestAlertException(
+                    "Internal transaction must have the same source and destination department.",
+                    "bedTransaction",
+                    "departmentTransition.internal.invalid"
+            );
+        }
+
+        if (isExternal && fromDepartmentId.equals(toDepartmentId)) {
+            throw new BadRequestAlertException(
+                    "External transaction must have different source and destination departments.",
+                    "bedTransaction",
+                    "departmentTransition.external.invalid"
+            );
+        }
+    }
+
     private RuntimeException handleConstraintViolation(Exception exception) {
         Throwable rootCause = getRootCause(exception);
         String rootMessage = rootCause != null ? rootCause.getMessage() : exception.getMessage();
@@ -360,11 +402,19 @@ public class BedTransactionService {
             );
         }
 
-        if (rootMessageLower.contains("fk_bed_transaction_department")) {
+        if (rootMessageLower.contains("fk_bed_transaction_from_department")) {
             return new NotFoundAlertException(
-                    "Department not found.",
+                    "Source department not found.",
                     "bedTransaction",
-                    "department.notfound"
+                    "fromDepartment.notfound"
+            );
+        }
+
+        if (rootMessageLower.contains("fk_bed_transaction_to_department")) {
+            return new NotFoundAlertException(
+                    "Destination department not found.",
+                    "bedTransaction",
+                    "toDepartment.notfound"
             );
         }
 
@@ -373,6 +423,14 @@ public class BedTransactionService {
                     "Invalid bed transaction type.",
                     "bedTransaction",
                     "transactionType.invalid"
+            );
+        }
+
+        if (rootMessageLower.contains("ck_bed_transaction_external_flag")) {
+            return new BadRequestAlertException(
+                    "Invalid external flag and department transition combination.",
+                    "bedTransaction",
+                    "externalFlag.invalid"
             );
         }
 

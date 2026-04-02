@@ -27,7 +27,13 @@ public record BedTransactionUpdateDTO(
         Long toBedId,
 
         @NotNull
-        Long departmentId,
+        Long fromDepartmentId,
+
+        @NotNull
+        Long toDepartmentId,
+
+        @NotNull
+        Boolean isExternal,
 
         @NotNull
         BedTransactionType transactionType

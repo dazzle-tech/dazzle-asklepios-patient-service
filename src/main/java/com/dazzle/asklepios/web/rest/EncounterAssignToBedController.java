@@ -147,7 +147,7 @@ public class EncounterAssignToBedController {
                 departmentId, from, to, pageable);
 
         Page<BedTransaction> page =
-                bedTransactionService.getByDepartmentAndTransactionDateRange(
+                bedTransactionService.getByToDepartmentAndTransactionDateRange(
                         departmentId, from, to, pageable
                 );
 

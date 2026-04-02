@@ -91,6 +91,8 @@ public class EncounterAssignToBedService {
                     createDTO.roomId(),
                     createDTO.bedId(),
                     createDTO.departmentId(),
+                    createDTO.departmentId(),
+                    false,
                     BedTransactionType.ASSIGN
             ));
 
@@ -202,6 +204,9 @@ public class EncounterAssignToBedService {
 
             EncounterAssignToBed createdUpdatedEncounterAssignToBed =
                     encounterAssignToBedRepository.saveAndFlush(newEncounterAssignToBedRecord);
+            Long fromDepartmentId = currentActiveEncounterAssignToBed.getDepartmentId();
+            Long toDepartmentId = updateDTO.departmentId();
+            Boolean isExternal = !fromDepartmentId.equals(toDepartmentId);
 
             bedTransactionService.create(new BedTransactionCreateDTO(
                     updateDTO.encounterId(),
@@ -210,7 +215,9 @@ public class EncounterAssignToBedService {
                     previousBedId,
                     updateDTO.roomId(),
                     updateDTO.bedId(),
-                    updateDTO.departmentId(),
+                    fromDepartmentId,
+                    toDepartmentId,
+                    isExternal,
                     BedTransactionType.TRANSFER
             ));
 
@@ -269,6 +276,8 @@ public class EncounterAssignToBedService {
                     null,
                     null,
                     releasedEncounterAssignToBed.getDepartmentId(),
+                    releasedEncounterAssignToBed.getDepartmentId(),
+                    false,
                     BedTransactionType.RELEASE
             ));
 
@@ -430,6 +439,8 @@ public class EncounterAssignToBedService {
                     null,
                     null,
                     dischargedAssignment.getDepartmentId(),
+                    dischargedAssignment.getDepartmentId(),
+                    false,
                     BedTransactionType.DISCHARGE
             ));
 
