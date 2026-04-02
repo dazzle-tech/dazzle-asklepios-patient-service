@@ -4,7 +4,7 @@ import com.dazzle.asklepios.domain.AvailabilityGenerationBatch;
 import com.dazzle.asklepios.service.AvailabilityGenerationBatchService;
 import com.dazzle.asklepios.service.dto.availabilityGenerationBatch.AvailabilityGenerationBatchApplyDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.vm.availabilityGenerationBatch.ApplyAvailabilityTemplateResponseDTO;
+import com.dazzle.asklepios.web.rest.vm.availabilityGenerationBatch.ApplyAvailabilityTemplateResponseVM;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -27,13 +27,13 @@ public class AvailabilityGenerationBatchController {
      * Apply template and generate free appointments.
      */
     @PostMapping("/availability-generation-batches/apply")
-    public ResponseEntity<ApplyAvailabilityTemplateResponseDTO> applyTemplate(
+    public ResponseEntity<ApplyAvailabilityTemplateResponseVM> applyTemplate(
             @Valid @RequestBody AvailabilityGenerationBatchApplyDTO request
     ) {
         LOG.debug("REST request to apply availability template: {}", request);
         validateRequest(request);
 
-        ApplyAvailabilityTemplateResponseDTO response = availabilityGenerationBatchService.applyTemplate(request);
+        ApplyAvailabilityTemplateResponseVM response = availabilityGenerationBatchService.applyTemplate(request);
         return ResponseEntity.ok(response);
     }
 

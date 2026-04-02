@@ -173,7 +173,7 @@ public class AvailabilityTemplateService {
     public List<AvailabilityTemplate> getAllByFacilityAndTemplateName(String templateName) {
         LOG.debug("Get availability templates by templateName={}", templateName);
         Long facilityId = getFacility();
-        return availabilityTemplateRepository.findAllByFacilityIdAndTemplateName(facilityId, templateName);
+        return availabilityTemplateRepository.findAllByFacilityIdAndTemplateNameIsContainingIgnoreCase(facilityId, templateName);
     }
 
     public List<AvailabilityTemplate> getAllParentTemplateId(Long parentTemplateId) {

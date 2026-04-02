@@ -16,7 +16,7 @@ public interface AvailabilityTemplateRepository extends JpaRepository<Availabili
     List<AvailabilityTemplate> findAllByFacilityIdAndTemplateType(Long facility, TemplateType templateType);
 
     @EntityGraph(attributePaths = {"workingDays"})
-    List<AvailabilityTemplate> findAllByFacilityIdAndTemplateName(Long facility, String templateName);
+    List<AvailabilityTemplate> findAllByFacilityIdAndTemplateNameIsContainingIgnoreCase(Long facility, String templateName);
 
     @EntityGraph(attributePaths = {"workingDays"})
     List<AvailabilityTemplate> findAllByParentTemplate_Id(Long parentTemplateId);

@@ -18,7 +18,7 @@ import com.dazzle.asklepios.service.dto.availabilityGenerationBatch.Availability
 import com.dazzle.asklepios.service.helper.OrganizationHolidayHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-import com.dazzle.asklepios.web.rest.vm.availabilityGenerationBatch.ApplyAvailabilityTemplateResponseDTO;
+import com.dazzle.asklepios.web.rest.vm.availabilityGenerationBatch.ApplyAvailabilityTemplateResponseVM;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -72,7 +72,7 @@ public class AvailabilityGenerationBatchService {
                 ));
     }
 
-    public ApplyAvailabilityTemplateResponseDTO applyTemplate(AvailabilityGenerationBatchApplyDTO request) {
+    public ApplyAvailabilityTemplateResponseVM applyTemplate(AvailabilityGenerationBatchApplyDTO request) {
         LOG.info("[APPLY TEMPLATE] templateId={}, startDate={}, endDate={}, deferred={}, deferredAt={}, holidayHandlingMode={}",
                 request.templateId(),
                 request.startDate(),
@@ -101,7 +101,7 @@ public class AvailabilityGenerationBatchService {
         batch = availabilityGenerationBatchRepository.save(batch);
 
         try {
-            List<AppointmentFromTemplate> generatedAppointments = generateAppointments(template, batch, request.startDate(), request.endDate(), request.deferred(),request.deferredAt(),request.holidayHandlingMode(),holidays);
+            List<AppointmentFromTemplate> generatedAppointments = generateAppointments(template, batch, request.startDate(), request.endDate(), request.deferred(), request.deferredAt(), request.holidayHandlingMode(), holidays);
 
             appointmentFromTemplateRepository.saveAll(generatedAppointments);
 
@@ -114,13 +114,17 @@ public class AvailabilityGenerationBatchService {
             batch.setExecutionStatus(BatchStatus.COMPLETED);
             availabilityGenerationBatchRepository.save(batch);
 
-            return new ApplyAvailabilityTemplateResponseDTO(
+            return new ApplyAvailabilityTemplateResponseVM(
                     batch.getId(),
                     template.getId(),
+                    batch.getScope(),
+                    batch.getApplyStartDateTime(),
+                    batch.getApplyEndDateTime(),
                     totalSlots,
                     dailyAvg,
                     batch.getExecutionStatus(),
-                    buildApplyMessage(request.holidayHandlingMode())
+                    buildApplyMessage(request.holidayHandlingMode()),
+                    batch.getHolidayHandlingMode()
             );
         } catch (Exception ex) {
             LOG.error("[APPLY TEMPLATE FAILED] templateId={}, error={}", template.getId(), ex.getMessage(), ex);
