@@ -5,6 +5,9 @@ import com.dazzle.asklepios.domain.enumeration.TemplateStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import java.util.List;
 import java.util.Optional;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
@@ -13,28 +16,28 @@ import org.springframework.stereotype.Repository;
 public interface AvailabilityTemplateRepository extends JpaRepository<AvailabilityTemplate, Long> {
 
     @EntityGraph(attributePaths = {"workingDays"})
-    List<AvailabilityTemplate> findAllByFacilityIdAndTemplateType(Long facility, TemplateType templateType);
+    Page<AvailabilityTemplate> findAllByFacilityIdAndTemplateType(Long facility, TemplateType templateType, Pageable pageable);
 
     @EntityGraph(attributePaths = {"workingDays"})
-    List<AvailabilityTemplate> findAllByFacilityIdAndTemplateNameIsContainingIgnoreCase(Long facility, String templateName);
+    Page<AvailabilityTemplate> findAllByFacilityIdAndTemplateNameIsContainingIgnoreCaseAndTemplateType(Long facility, String templateName, TemplateType templateType, Pageable pageable);
 
     @EntityGraph(attributePaths = {"workingDays"})
     List<AvailabilityTemplate> findAllByParentTemplate_Id(Long parentTemplateId);
 
     @EntityGraph(attributePaths = {"workingDays"})
-    List<AvailabilityTemplate> findAllByDepartmentId(Long department);
+    Page<AvailabilityTemplate> findAllByDepartmentIdAAndTemplateType(Long department , TemplateType templateType, Pageable pageable);
 
     @EntityGraph(attributePaths = {"workingDays"})
-    List<AvailabilityTemplate> findAllByFacilityIdAndStatus(Long facility, TemplateStatus status);
+    Page<AvailabilityTemplate> findAllByFacilityIdAndStatusAndTemplateType(Long facility, TemplateStatus status, TemplateType templateType, Pageable pageable);
 
     @EntityGraph(attributePaths = {"workingDays"})
-    List<AvailabilityTemplate> findAllByFacilityIdAndStatusAndIsActiveTrueAndTemplateType(Long facility, TemplateStatus status, TemplateType type);
+    Page<AvailabilityTemplate> findAllByFacilityIdAndStatusAndIsActiveTrueAndTemplateType(Long facility, TemplateStatus status, TemplateType type, Pageable pageable);
 
     @EntityGraph(attributePaths = {"workingDays"})
-    List<AvailabilityTemplate> findAllBy();
+    Page<AvailabilityTemplate> findAllBy(Pageable pageable);
 
     @EntityGraph(attributePaths = {"workingDays"})
-    List<AvailabilityTemplate> findAllByFacilityIdAndDepartmentId(Long facility, Long department);
+    Page<AvailabilityTemplate> findAllByFacilityIdAndDepartmentIdAndTemplateType(Long facility, Long department, TemplateType templateType, Pageable pageable);
 
 
 
