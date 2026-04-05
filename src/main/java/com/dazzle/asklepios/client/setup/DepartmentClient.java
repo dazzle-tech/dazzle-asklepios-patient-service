@@ -1,7 +1,6 @@
 package com.dazzle.asklepios.client.setup;
 
 
-import com.dazzle.asklepios.client.setup.vm.DepartmentVM;
 import com.dazzle.asklepios.config.SetupServiceFeignConfig;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.ResponseEntity;
