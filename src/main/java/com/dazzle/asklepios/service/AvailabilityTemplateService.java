@@ -137,7 +137,8 @@ public class AvailabilityTemplateService {
     @Transactional(readOnly = true)
     public AvailabilityTemplate getOne(Long id) {
         LOG.debug("get availability template by id={}", id);
-        return availabilityTemplateRepository
+
+        AvailabilityTemplate entity = availabilityTemplateRepository
                 .findById(id)
                 .orElseThrow(() ->
                         new NotFoundAlertException(
@@ -146,14 +147,21 @@ public class AvailabilityTemplateService {
                                 "notfound"
                         )
                 );
-    }
 
+        initializeAllowedServices(entity);
+
+        return entity;
+    }
     @Transactional(readOnly = true)
-    public Page<AvailabilityTemplate> getAll( Pageable pageable) {
+    public Page<AvailabilityTemplate> getAll(Pageable pageable) {
         LOG.debug("get all availability templates");
-        return availabilityTemplateRepository.findAllBy(pageable);
-    }
 
+        Page<AvailabilityTemplate> page = availabilityTemplateRepository.findAllBy(pageable);
+
+        page.getContent().forEach(this::initializeAllowedServices);
+
+        return page;
+    }
     @Transactional(readOnly = true)
     public Page<AvailabilityTemplate> getAllByFacilityAndDepartment(Long departmentId, Pageable pageable) {
         LOG.debug("get availability templates by departmentId={}", departmentId);
@@ -231,6 +239,12 @@ public class AvailabilityTemplateService {
                                 "Missing mandatory claim 'tenant' in JWT."
                         )
                 );
+    }
+
+    private void initializeAllowedServices(AvailabilityTemplate template) {
+        if (template.getAllowedServices() != null) {
+            template.getAllowedServices().size();
+        }
     }
 
     private List<AvailabilityTemplateAllowedService> replaceAllowedServices(AvailabilityTemplate template, List<AvailabilityTemplateAllowedServiceDTO> allowedServices) {
