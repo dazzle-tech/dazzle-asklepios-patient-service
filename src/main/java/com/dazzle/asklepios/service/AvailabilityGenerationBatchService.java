@@ -148,6 +148,17 @@ public class AvailabilityGenerationBatchService {
             HolidayHandlingMode holidayHandlingMode,
             List<OrganizationHolidayDTO> holidays
     ) {
+        LOG.info("[GENERATE TEMPLATE] templateId={}, batchId={},startDate={}, endDate={}, deferred={}, deferredAt={}, holidayHandlingMode={}",
+                template.getId(),
+                batch.getId(),
+                startDate,
+                endDate,
+                deferred,
+                deferredAt,
+                holidayHandlingMode);
+
+
+
         List<AppointmentFromTemplate> appointments = new ArrayList<>();
 
         LocalDate current = startDate;
@@ -193,6 +204,17 @@ public class AvailabilityGenerationBatchService {
             boolean holiday,
             HolidayHandlingMode holidayHandlingMode
     ) {
+
+        LOG.info("[GENERATE APPOINTMENT FOR INTERVAL] templateId={}, batchId={},date={}, interval={}, deferred={}, deferredAt={}, holidayHandlingMode={}",
+                template.getId(),
+                batch.getId(),
+                date,
+                interval,
+                deferred,
+                deferredAt,
+                holidayHandlingMode);
+
+
         List<AppointmentFromTemplate> appointments = new ArrayList<>();
 
         int slotDuration = interval.getSlotDurationMinutes() != null
@@ -283,6 +305,10 @@ public class AvailabilityGenerationBatchService {
     }
 
     private boolean isHoliday(LocalDate date, List<OrganizationHolidayDTO> holidays) {
+        LOG.info("[isHoliday] date={}, holidays={}",
+                date,
+                holidays);
+
         if (date == null || holidays == null || holidays.isEmpty()) {
             return false;
         }

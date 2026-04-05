@@ -21,6 +21,8 @@ import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -135,16 +137,16 @@ public class AvailabilityTemplateService {
     }
 
     @Transactional(readOnly = true)
-    public List<AvailabilityTemplate> getAll() {
+    public Page<AvailabilityTemplate> getAll( Pageable pageable) {
         LOG.debug("get all availability templates");
-        return availabilityTemplateRepository.findAllBy();
+        return availabilityTemplateRepository.findAllBy(pageable);
     }
 
     @Transactional(readOnly = true)
-    public List<AvailabilityTemplate> getAllByFacilityAndDepartment(Long departmentId) {
+    public Page<AvailabilityTemplate> getAllByFacilityAndDepartment(Long departmentId, Pageable pageable) {
         LOG.debug("get availability templates by departmentId={}", departmentId);
         Long facilityId = getFacility();
-        return availabilityTemplateRepository.findAllByFacilityIdAndDepartmentId(facilityId, departmentId);
+        return availabilityTemplateRepository.findAllByFacilityIdAndDepartmentIdAndTemplateType(facilityId, departmentId , TemplateType.DEPARTMENT, pageable);
     }
 
     public Optional<AvailabilityTemplate> toggleIsActive(Long id) {
@@ -164,16 +166,16 @@ public class AvailabilityTemplateService {
         return updated;
     }
 
-    public List<AvailabilityTemplate> getAllByFacilityAndTemplateType(TemplateType templateType) {
+    public Page<AvailabilityTemplate> getAllByFacilityAndTemplateType(TemplateType templateType,  Pageable pageable) {
         LOG.debug("Get availability templates by templateType={}", templateType);
         Long facilityId = getFacility();
-        return availabilityTemplateRepository.findAllByFacilityIdAndTemplateType(facilityId, templateType);
+        return availabilityTemplateRepository.findAllByFacilityIdAndTemplateType(facilityId, templateType , pageable);
     }
 
-    public List<AvailabilityTemplate> getAllByFacilityAndTemplateName(String templateName) {
+    public Page<AvailabilityTemplate> getAllByFacilityAndTemplateName(String templateName,  Pageable pageable) {
         LOG.debug("Get availability templates by templateName={}", templateName);
         Long facilityId = getFacility();
-        return availabilityTemplateRepository.findAllByFacilityIdAndTemplateNameIsContainingIgnoreCase(facilityId, templateName);
+        return availabilityTemplateRepository.findAllByFacilityIdAndTemplateNameIsContainingIgnoreCaseAndTemplateType(facilityId, templateName, TemplateType.DEPARTMENT, pageable);
     }
 
     public List<AvailabilityTemplate> getAllParentTemplateId(Long parentTemplateId) {
@@ -181,20 +183,20 @@ public class AvailabilityTemplateService {
         return availabilityTemplateRepository.findAllByParentTemplate_Id(parentTemplateId);
     }
 
-    public List<AvailabilityTemplate> getAllByDepartmentId(Long departmentId) {
+    public Page<AvailabilityTemplate> getAllByDepartmentId(Long departmentId, Pageable pageable) {
         LOG.debug("Get availability templates by departmentId={}", departmentId);
-        return availabilityTemplateRepository.findAllByDepartmentId(departmentId);
+        return availabilityTemplateRepository.findAllByDepartmentIdAAndTemplateType(departmentId, TemplateType.DEPARTMENT, pageable);
     }
 
-    public List<AvailabilityTemplate> getAllByFacilityAndStatus(TemplateStatus status) {
+    public Page<AvailabilityTemplate> getAllByFacilityAndStatus(TemplateStatus status,  Pageable pageable) {
         LOG.debug("Get availability templates by status={}", status);
         Long facilityId = getFacility();
-        return availabilityTemplateRepository.findAllByFacilityIdAndStatus(facilityId, status);
+        return availabilityTemplateRepository.findAllByFacilityIdAndStatusAndTemplateType(facilityId, status, TemplateType.DEPARTMENT, pageable);
     }
-    public List<AvailabilityTemplate> getAllActiveByFacilityAndStatusAndTemplateTypeDepartment(TemplateStatus status) {
+    public Page<AvailabilityTemplate> getAllActiveByFacilityAndStatusAndTemplateTypeDepartment(TemplateStatus status, Pageable pageable) {
         LOG.debug("Get active availability templates by status={}", status);
         Long facilityId = getFacility();
-        return availabilityTemplateRepository.findAllByFacilityIdAndStatusAndIsActiveTrueAndTemplateType(facilityId, status, TemplateType.DEPARTMENT);
+        return availabilityTemplateRepository.findAllByFacilityIdAndStatusAndIsActiveTrueAndTemplateType(facilityId, status, TemplateType.DEPARTMENT, pageable);
     }
 
     private AvailabilityTemplate getRequired(Long id) {
