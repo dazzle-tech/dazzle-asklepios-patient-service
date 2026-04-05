@@ -1,9 +1,8 @@
 package com.dazzle.asklepios.client.setup;
 
-
-import com.dazzle.asklepios.client.setup.vm.FacilityVM;
 import com.dazzle.asklepios.config.SetupServiceFeignConfig;
 import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 
@@ -11,5 +10,5 @@ import org.springframework.web.bind.annotation.PathVariable;
 public interface FacilityClient {
 
     @GetMapping("/api/setup/facility/{id}")
-    FacilityVM getFacility(@PathVariable("id") Long id);
+    ResponseEntity<Void> existsFacility(@PathVariable("id") Long id);
 }

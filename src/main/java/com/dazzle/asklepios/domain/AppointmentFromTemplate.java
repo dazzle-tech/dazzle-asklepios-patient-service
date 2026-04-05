@@ -2,6 +2,7 @@ package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.BookingMode;
+import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -39,6 +40,9 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     @JoinColumn(name = "availability_generation_batch_id")
     private AvailabilityGenerationBatch availabilityGenerationBatch;
 
+    @Column(name = "capacity_index")
+    private Integer capacityIndex;
+
     @Column(name = "start_datetime", nullable = false)
     private Instant startDatetime;
 
@@ -57,6 +61,12 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
 
     @Column(name = "reason", length = 255)
     private String reason;
+
+    @Column(name = "service", length = 50)
+    private String service;
+
+    @Column(name = "service_group_id")
+    private Long serviceGroupId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "booking_mode", nullable = false, length = 20)
@@ -82,7 +92,7 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     private String cancelledBy;
 
     @Column(name = "priority", nullable = false, length = 50)
-    private String priority;
+    private EncounterPriority priority;
 
     @Column(name = "note")
     private String note;

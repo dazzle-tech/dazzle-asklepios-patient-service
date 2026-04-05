@@ -6,11 +6,18 @@ import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import com.dazzle.asklepios.service.AvailabilityTemplateService;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplateCreateDTO;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplateUpdateDTO;
+import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.availabilityTemplate.AvailabilityTemplateResponseVM;
 import com.dazzle.asklepios.web.rest.vm.availabilityTemplate.AvailabilityTemplateWorkingDayResponseVM;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springdoc.core.annotations.ParameterObject;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -41,13 +49,16 @@ public class AvailabilityTemplateController {
     @PostMapping("/availability-templates")
     public ResponseEntity<AvailabilityTemplateResponseVM> createAvailabilityTemplate(
             @Valid @RequestBody AvailabilityTemplateCreateDTO dto
-    ) throws URISyntaxException {
+    ) {
         LOG.debug("REST request to create AvailabilityTemplate : {}", dto);
+        if (dto.parentTemplateId() != null && dto.templateType() == TemplateType.DEPARTMENT) {
+            throw new BadRequestAlertException("Department should be a main template not a sub template", "AvailabilityTemplate", "templateTypeInvalid");
 
+        }
         AvailabilityTemplate result = availabilityTemplateService.create(dto);
 
         return ResponseEntity
-                .created(new URI("/api/patient/availability-templates/" + result.getId()))
+                .created(URI.create("/api/patient/availability-templates/" + result.getId()))
                 .body(toResponseVM(result));
     }
 
@@ -57,9 +68,12 @@ public class AvailabilityTemplateController {
             @Valid @RequestBody AvailabilityTemplateUpdateDTO dto
     ) {
         LOG.debug("REST request to update AvailabilityTemplate : {}, {}", id, dto);
+        if (dto.parentTemplateId() != null && dto.templateType() == TemplateType.DEPARTMENT) {
+            throw new BadRequestAlertException("Department should be a main template not a sub template", "AvailabilityTemplate", "templateTypeInvalid");
 
+        }
         if (!id.equals(dto.id())) {
-            throw new IllegalArgumentException("Path variable id does not match request body id");
+            throw new BadRequestAlertException("Path variable id does not match request body id", "AvailabilityTemplate", "idInvalid");
         }
 
         AvailabilityTemplate result = availabilityTemplateService.update(dto);
@@ -76,18 +90,16 @@ public class AvailabilityTemplateController {
 
     @GetMapping("/availability-templates")
     public ResponseEntity<List<AvailabilityTemplateResponseVM>> getAllAvailabilityTemplates(
-            @RequestParam(required = false) Long departmentId
+            @RequestParam(required = false) Long departmentId,
+            @ParameterObject Pageable pageable
     ) {
         LOG.debug("REST request to get AvailabilityTemplates, departmentId={}", departmentId);
 
-        List<AvailabilityTemplate> result;
-        if (departmentId != null) {
-            result = availabilityTemplateService.getAllByFacilityAndDepartment(departmentId);
-        } else {
-            result = availabilityTemplateService.getAll();
-        }
+        Page<AvailabilityTemplate> result = departmentId != null
+                ? availabilityTemplateService.getAllByFacilityAndDepartment(departmentId, pageable)
+                : availabilityTemplateService.getAll(pageable);
 
-        return ResponseEntity.ok(result.stream().map(this::toResponseVM).toList());
+        return buildPagedResponse(result);
     }
 
     @PutMapping("/availability-templates/{id}/toggle-active")
@@ -107,32 +119,28 @@ public class AvailabilityTemplateController {
 
     @GetMapping("/availability-templates/by-facility-and-type")
     public ResponseEntity<List<AvailabilityTemplateResponseVM>> getAllByFacilityAndTemplateType(
-            @RequestParam TemplateType templateType
+            @RequestParam TemplateType templateType,
+            @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST request to get availability templates by  templateType={}", templateType);
+        LOG.debug("REST request to get availability templates by templateType={}", templateType);
 
-        List<AvailabilityTemplateResponseVM> result = availabilityTemplateService
-                .getAllByFacilityAndTemplateType(templateType)
-                .stream()
-                .map(this::toResponseVM)
-                .toList();
+        Page<AvailabilityTemplate> result =
+                availabilityTemplateService.getAllByFacilityAndTemplateType(templateType, pageable);
 
-        return ResponseEntity.ok(result);
+        return buildPagedResponse(result);
     }
 
     @GetMapping("/availability-templates/by-facility-and-name")
     public ResponseEntity<List<AvailabilityTemplateResponseVM>> getAllByFacilityAndTemplateName(
-            @RequestParam String templateName
+            @RequestParam String templateName,
+            @ParameterObject Pageable pageable
     ) {
         LOG.debug("REST request to get availability templates by templateName={}", templateName);
 
-        List<AvailabilityTemplateResponseVM> result = availabilityTemplateService
-                .getAllByFacilityAndTemplateName(templateName)
-                .stream()
-                .map(this::toResponseVM)
-                .toList();
+        Page<AvailabilityTemplate> result =
+                availabilityTemplateService.getAllByFacilityAndTemplateName(templateName, pageable);
 
-        return ResponseEntity.ok(result);
+        return buildPagedResponse(result);
     }
 
     @GetMapping("/availability-templates/by-facility-and-parent")
@@ -152,34 +160,55 @@ public class AvailabilityTemplateController {
 
     @GetMapping("/availability-templates/by-department")
     public ResponseEntity<List<AvailabilityTemplateResponseVM>> getAllByDepartmentId(
-            @RequestParam Long departmentId
+            @RequestParam Long departmentId,
+            @ParameterObject Pageable pageable
     ) {
         LOG.debug("REST request to get availability templates by departmentId={}", departmentId);
 
-        List<AvailabilityTemplateResponseVM> result = availabilityTemplateService
-                .getAllByDepartmentId(departmentId)
-                .stream()
-                .map(this::toResponseVM)
-                .toList();
+        Page<AvailabilityTemplate> result =
+                availabilityTemplateService.getAllByDepartmentId(departmentId, pageable);
 
-        return ResponseEntity.ok(result);
+        return buildPagedResponse(result);
     }
 
     @GetMapping("/availability-templates/by-facility-and-status")
     public ResponseEntity<List<AvailabilityTemplateResponseVM>> getAllByFacilityAndStatus(
-            @RequestParam TemplateStatus status
+            @RequestParam TemplateStatus status,
+            @ParameterObject Pageable pageable
     ) {
         LOG.debug("REST request to get availability templates by status={}", status);
 
-        List<AvailabilityTemplateResponseVM> result = availabilityTemplateService
-                .getAllByFacilityAndStatus(status)
-                .stream()
-                .map(this::toResponseVM)
-                .toList();
+        Page<AvailabilityTemplate> result =
+                availabilityTemplateService.getAllByFacilityAndStatus(status, pageable);
 
-        return ResponseEntity.ok(result);
+        return buildPagedResponse(result);
     }
 
+    @GetMapping("/availability-templates/active/department/by-facility-and-status")
+    public ResponseEntity<List<AvailabilityTemplateResponseVM>> getAllActiveByFacilityAndStatusAndTemplateTypeDepartment(
+            @RequestParam TemplateStatus status,
+            @ParameterObject Pageable pageable
+    ) {
+        LOG.debug("REST request to get active availability templates by status={}", status);
+
+        Page<AvailabilityTemplate> result =
+                availabilityTemplateService.getAllActiveByFacilityAndStatusAndTemplateTypeDepartment(status, pageable);
+
+        return buildPagedResponse(result);
+    }
+
+    private ResponseEntity<List<AvailabilityTemplateResponseVM>> buildPagedResponse(Page<AvailabilityTemplate> result) {
+        Page<AvailabilityTemplateResponseVM> page = result.map(this::toResponseVM);
+
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                page
+        );
+
+        LOG.info("Retrieved {} availability templates", page.getNumberOfElements());
+
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+    }
 
     private AvailabilityTemplateResponseVM toResponseVM(AvailabilityTemplate entity) {
         return new AvailabilityTemplateResponseVM(
