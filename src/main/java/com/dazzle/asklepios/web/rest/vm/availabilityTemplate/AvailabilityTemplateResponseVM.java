@@ -37,6 +37,7 @@ public record AvailabilityTemplateResponseVM(
 
     Boolean allowPatientPortalBooking,
     Boolean requireConfirmation,
+    Boolean isActive,
 
     FinancialDetails financialDetails,
 
