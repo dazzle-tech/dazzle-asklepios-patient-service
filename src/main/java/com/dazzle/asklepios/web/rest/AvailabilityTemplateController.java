@@ -7,6 +7,7 @@ import com.dazzle.asklepios.service.AvailabilityTemplateService;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplateCreateDTO;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplateUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.availabilityTemplate.AvailabilityTemplateResponseVM;
 import com.dazzle.asklepios.web.rest.vm.availabilityTemplate.AvailabilityTemplateWorkingDayResponseVM;
 import jakarta.validation.Valid;
@@ -48,13 +49,16 @@ public class AvailabilityTemplateController {
     @PostMapping("/availability-templates")
     public ResponseEntity<AvailabilityTemplateResponseVM> createAvailabilityTemplate(
             @Valid @RequestBody AvailabilityTemplateCreateDTO dto
-    ) throws URISyntaxException {
+    ) {
         LOG.debug("REST request to create AvailabilityTemplate : {}", dto);
+        if (dto.parentTemplateId() != null && dto.templateType() == TemplateType.DEPARTMENT) {
+            throw new BadRequestAlertException("Department should be a main template not a sub template", "AvailabilityTemplate", "templateTypeInvalid");
 
+        }
         AvailabilityTemplate result = availabilityTemplateService.create(dto);
 
         return ResponseEntity
-                .created(new URI("/api/patient/availability-templates/" + result.getId()))
+                .created(URI.create("/api/patient/availability-templates/" + result.getId()))
                 .body(toResponseVM(result));
     }
 
@@ -64,9 +68,12 @@ public class AvailabilityTemplateController {
             @Valid @RequestBody AvailabilityTemplateUpdateDTO dto
     ) {
         LOG.debug("REST request to update AvailabilityTemplate : {}, {}", id, dto);
+        if (dto.parentTemplateId() != null && dto.templateType() == TemplateType.DEPARTMENT) {
+            throw new BadRequestAlertException("Department should be a main template not a sub template", "AvailabilityTemplate", "templateTypeInvalid");
 
+        }
         if (!id.equals(dto.id())) {
-            throw new IllegalArgumentException("Path variable id does not match request body id");
+            throw new BadRequestAlertException("Path variable id does not match request body id", "AvailabilityTemplate", "idInvalid");
         }
 
         AvailabilityTemplate result = availabilityTemplateService.update(dto);
