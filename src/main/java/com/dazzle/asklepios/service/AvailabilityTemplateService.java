@@ -12,6 +12,7 @@ import com.dazzle.asklepios.repository.AvailabilityTemplateRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplateCreateDTO;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplateUpdateDTO;
+import com.dazzle.asklepios.service.dto.availabilityTemplate.availabilityTemplateAllowedServices.AvailabilityTemplateAllowedServiceDTO;
 import com.dazzle.asklepios.service.dto.workingDays.WorkingDayJson;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
@@ -27,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -75,7 +77,11 @@ public class AvailabilityTemplateService {
         );
 
         AvailabilityTemplate entity = toEntityForCreate(dto);
-        return availabilityTemplateRepository.save(entity);
+        AvailabilityTemplate template = availabilityTemplateRepository.save(entity);
+        List<AvailabilityTemplateAllowedService> savedAllowedServices = replaceAllowedServices(template, dto.allowedServices());
+
+        template.setAllowedServices(savedAllowedServices);
+        return template;
     }
 
     public AvailabilityTemplate update(AvailabilityTemplateUpdateDTO dto) {
@@ -101,7 +107,13 @@ public class AvailabilityTemplateService {
                 entity.getRequirePractitioner()
         );
 
-        return availabilityTemplateRepository.save(entity);
+        AvailabilityTemplate updated = availabilityTemplateRepository.save(entity);
+        List<AvailabilityTemplateAllowedService> savedAllowedServices = replaceAllowedServices(updated, dto.allowedServices());
+
+        updated.setAllowedServices(savedAllowedServices);
+
+
+        return updated;
     }
 
     public void hardDelete(Long id) {
@@ -214,6 +226,26 @@ public class AvailabilityTemplateService {
                 );
     }
 
+    private List<AvailabilityTemplateAllowedService> replaceAllowedServices(AvailabilityTemplate template, List<AvailabilityTemplateAllowedServiceDTO> allowedServices) {
+
+        if (allowedServices == null || allowedServices.isEmpty()) {
+            return List.of();
+        }
+
+        List<AvailabilityTemplateAllowedService> entities = allowedServices.stream()
+                .filter(Objects::nonNull)
+                .filter(dto -> dto.service() != null)
+                .map(dto -> {
+                    AvailabilityTemplateAllowedService entity = new AvailabilityTemplateAllowedService();
+                    entity.setTemplate(template);
+                    entity.setService(dto.service());
+                    return entity;
+                })
+                .toList();
+
+        return availabilityTemplateAllowedServiceRepository.saveAll(entities);
+    }
+
     private AvailabilityTemplate toEntityForCreate(AvailabilityTemplateCreateDTO dto) {
         AvailabilityTemplate entity = new AvailabilityTemplate();
         entity.setFacilityId(dto.facilityId());
@@ -265,7 +297,6 @@ public class AvailabilityTemplateService {
 
         validateWorkingDays(dto.workingDays());
         entity.setWorkingDays(dto.workingDays() == null ? List.of() : dto.workingDays());
-
         return entity;
     }
 

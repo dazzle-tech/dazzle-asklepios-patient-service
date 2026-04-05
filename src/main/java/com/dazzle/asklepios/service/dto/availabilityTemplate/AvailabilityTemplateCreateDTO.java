@@ -1,8 +1,10 @@
 package com.dazzle.asklepios.service.dto.availabilityTemplate;
 
+import com.dazzle.asklepios.domain.AvailabilityTemplateAllowedService;
 import com.dazzle.asklepios.domain.enumeration.TemplateStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import com.dazzle.asklepios.domain.enumeration.FinancialDetails;
+import com.dazzle.asklepios.service.dto.availabilityTemplate.availabilityTemplateAllowedServices.AvailabilityTemplateAllowedServiceDTO;
 import com.dazzle.asklepios.service.dto.workingDays.WorkingDayJson;
 import jakarta.validation.constraints.NotEmpty;
 import software.amazon.awssdk.annotations.NotNull;
@@ -44,6 +46,8 @@ public record AvailabilityTemplateCreateDTO(
 
         @NotNull Boolean isActive,
 
-        List<WorkingDayJson> workingDays
+        List<WorkingDayJson> workingDays,
+
+        List<AvailabilityTemplateAllowedServiceDTO> allowedServices
 
 ) {}

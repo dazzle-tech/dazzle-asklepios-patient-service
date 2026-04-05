@@ -117,4 +117,7 @@ public class AvailabilityTemplate extends AbstractAuditingEntity<Long> implement
 
     @OneToMany(mappedBy = "template", cascade = CascadeType.ALL)
     private List<AvailabilityTemplateInterval> intervals;
+
+    @OneToMany(mappedBy = "template", cascade = CascadeType.ALL)
+    private List<AvailabilityTemplateAllowedService> allowedServices;
 }
