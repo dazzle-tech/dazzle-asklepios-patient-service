@@ -8,6 +8,7 @@ import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplat
 import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplateUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.vm.availabilityTemplate.AvailabilityTemplateAllowedServiceResponseVM;
 import com.dazzle.asklepios.web.rest.vm.availabilityTemplate.AvailabilityTemplateResponseVM;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -235,8 +236,11 @@ public class AvailabilityTemplateController {
                 entity.getRequireConfirmation(),
                 entity.getIsActive(),
                 entity.getFinancialDetails(),
-                entity.getWorkingDays()
-
-        );
+                entity.getWorkingDays(),
+                entity.getAllowedServices() != null
+                        ? entity.getAllowedServices().stream()
+                        .map(AvailabilityTemplateAllowedServiceResponseVM::ofEntity)
+                        .toList()
+                        : List.of());
     }
 }

@@ -42,5 +42,7 @@ public record AvailabilityTemplateResponseVM(
 
     FinancialDetails financialDetails,
 
-    List<WorkingDayJson> workingDays
+    List<WorkingDayJson> workingDays,
+
+    List<AvailabilityTemplateAllowedServiceResponseVM> allowedServices
 ){}
