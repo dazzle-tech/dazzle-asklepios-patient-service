@@ -3,6 +3,7 @@ package com.dazzle.asklepios.web.rest.vm.availabilityTemplate;
 import com.dazzle.asklepios.domain.enumeration.FinancialDetails;
 import com.dazzle.asklepios.domain.enumeration.TemplateStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
+import com.dazzle.asklepios.service.dto.workingDays.WorkingDayJson;
 
 import java.util.List;
 
@@ -41,5 +42,5 @@ public record AvailabilityTemplateResponseVM(
 
     FinancialDetails financialDetails,
 
-    List<AvailabilityTemplateWorkingDayResponseVM> workingDays
+    List<WorkingDayJson> workingDays
 ){}

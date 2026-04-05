@@ -7,7 +7,6 @@ import com.dazzle.asklepios.service.AvailabilityTemplateService;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplateCreateDTO;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplateUpdateDTO;
 import com.dazzle.asklepios.web.rest.vm.availabilityTemplate.AvailabilityTemplateResponseVM;
-import com.dazzle.asklepios.web.rest.vm.availabilityTemplate.AvailabilityTemplateWorkingDayResponseVM;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -207,15 +206,8 @@ public class AvailabilityTemplateController {
                 entity.getRequireConfirmation(),
                 entity.getIsActive(),
                 entity.getFinancialDetails(),
-                entity.getWorkingDays() == null
-                        ? List.of()
-                        : entity.getWorkingDays()
-                        .stream()
-                        .map(workingDay -> new AvailabilityTemplateWorkingDayResponseVM(
-                                workingDay.getDayOfWeek(),
-                                workingDay.getIsWorking()
-                        ))
-                        .toList()
+                entity.getWorkingDays()
+
         );
     }
 }

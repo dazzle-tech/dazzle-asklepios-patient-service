@@ -78,7 +78,7 @@ public class AvailabilityTemplate extends AbstractAuditingEntity<Long> implement
     private Integer defaultBufferAfterMinutes = 0;
 
     @Column(name = "parallel_capacity_value", nullable = false)
-    private Integer parallelCapacityValue = 0;
+    private Integer parallelCapacityValue = 1;
 
     @Column(name = "default_service_id")
     private Long defaultServiceId;
