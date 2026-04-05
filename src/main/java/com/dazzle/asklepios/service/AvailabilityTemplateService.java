@@ -197,7 +197,7 @@ public class AvailabilityTemplateService {
 
     public Page<AvailabilityTemplate> getAllByDepartmentId(Long departmentId, Pageable pageable) {
         LOG.debug("Get availability templates by departmentId={}", departmentId);
-        return availabilityTemplateRepository.findAllByDepartmentIdAAndTemplateType(departmentId, TemplateType.DEPARTMENT, pageable);
+        return availabilityTemplateRepository.findAllByDepartmentIdAndTemplateType(departmentId, TemplateType.DEPARTMENT, pageable);
     }
 
     public Page<AvailabilityTemplate> getAllByFacilityAndStatus(TemplateStatus status,  Pageable pageable) {
