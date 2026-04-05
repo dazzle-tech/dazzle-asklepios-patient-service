@@ -22,6 +22,8 @@ import com.dazzle.asklepios.web.rest.vm.availabilityGenerationBatch.ApplyAvailab
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,7 +47,7 @@ public class AvailabilityGenerationBatchService {
     private final OrganizationHolidayHelper organizationHolidayHelper;
 
     @Transactional(readOnly = true)
-    public List<AvailabilityGenerationBatch> getListByParentTemplate(Long templateId) {
+    public Page<AvailabilityGenerationBatch> getListByParentTemplate(Long templateId, Pageable pageable) {
         AvailabilityTemplate parentTemplate = getTemplate(templateId);
 
         List<AvailabilityTemplate> childTemplates =
@@ -59,7 +61,7 @@ public class AvailabilityGenerationBatchService {
                         .toList()
         );
 
-        return availabilityGenerationBatchRepository.findAllByTemplate_IdInOrderByApplyStartDateTimeDesc(templateIds);
+        return availabilityGenerationBatchRepository.findAllByTemplate_IdInOrderByApplyStartDateTimeDesc(templateIds, pageable);
     }
 
     @Transactional(readOnly = true)
