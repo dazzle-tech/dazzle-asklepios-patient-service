@@ -1,7 +1,6 @@
 package com.dazzle.asklepios.client.setup;
 
 
-import com.dazzle.asklepios.client.setup.vm.DepartmentVM;
 import com.dazzle.asklepios.config.SetupServiceFeignConfig;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +11,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 public interface DepartmentClient {
 
     @GetMapping("/api/setup/department/{id}")
-    DepartmentVM getDepartment(@PathVariable("id") Long id);
+    ResponseEntity<Void> existsDepartment(@PathVariable("id") Long id);
 
 }
