@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.DischargeType;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
@@ -24,6 +25,7 @@ import lombok.Setter;
 
 import java.io.Serializable;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "patient_encounters")
@@ -104,18 +106,11 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "chief_complaint", columnDefinition = "text")
     private String chiefComplaint;
 
-    @NotNull
-    @Builder.Default
-    @Column(name = "has_prescription", nullable = false)
-    private Boolean hasPrescription = false;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "discharge_type", length = 50)
+    private DischargeType dischargeType;
 
-    @NotNull
-    @Builder.Default
-    @Column(name = "has_order", nullable = false)
-    private Boolean hasOrder = false;
+    @Column(name = "discharge_at")
+    private LocalDateTime dischargeAt;
 
-    @NotNull
-    @Builder.Default
-    @Column(name = "is_observed", nullable = false)
-    private Boolean isObserved = false;
 }
