@@ -10,7 +10,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PastOrPresent;
 
 import java.io.Serializable;
-import java.util.Date;
+import java.time.LocalDate;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record PatientCreateDTO(
@@ -29,7 +29,7 @@ public record PatientCreateDTO(
 
         @NotNull
         @PastOrPresent
-        Date dateOfBirth,
+        LocalDate dateOfBirth,
 
         String patientClasses,
         Boolean isPrivatePatient,

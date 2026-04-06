@@ -1,9 +1,9 @@
 package com.dazzle.asklepios.service.dto.patient;
-import java.util.Date;
+import java.time.LocalDate;
 
 public record PatientDuplicationLookupDTO(
         Long ruleId,
-        Date dateOfBirth,
+        LocalDate dateOfBirth,
         String gender,
         String firstName,
         String lastName,

@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.DiagnosticOrder;
+import com.dazzle.asklepios.domain.PatientPrescription;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 
 @Repository
 public interface DiagnosticOrderRepository extends JpaRepository<DiagnosticOrder, Long>  , JpaSpecificationExecutor<DiagnosticOrder> {
@@ -34,5 +36,9 @@ public interface DiagnosticOrderRepository extends JpaRepository<DiagnosticOrder
           and o.createdDate between :from and :to
     """)
     List<Long> findIdsByPatientIdAndCreatedDateBetween(Long patientId, Instant from, Instant to);
+
+
+
+    Set<DiagnosticOrder> findDistinctByEncounterIdIn(List<Long> encounterIds);
 
 }

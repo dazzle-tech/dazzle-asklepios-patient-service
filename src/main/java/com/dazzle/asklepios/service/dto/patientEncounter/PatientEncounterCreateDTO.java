@@ -52,16 +52,7 @@ public record PatientEncounterCreateDTO(
         @NotNull
         EncounterStatus status,
 
-        String chiefComplaint,
-
-        @NotNull
-        Boolean hasPrescription,
-
-        @NotNull
-        Boolean hasOrder,
-
-        @NotNull
-        Boolean isObserved
+        String chiefComplaint
 
 ) implements Serializable {
 }
