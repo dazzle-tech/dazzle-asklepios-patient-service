@@ -1,8 +1,11 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.AppointmentFromTemplate;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
+import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
@@ -42,6 +45,7 @@ public class PatientEncounterService {
     private static final Logger LOG = LoggerFactory.getLogger(PatientEncounterService.class);
 
     private final PatientEncounterRepository patientEncounterRepository;
+    private final AppointmentFromTemplateRepository appointmentFromTemplateRepository;
     private final PatientRepository patientRepository;
     private final EntityManager entityManager;
 
@@ -63,7 +67,13 @@ public class PatientEncounterService {
                 .facilityId(createDTO.facilityId())
                 .departmentId(createDTO.departmentId())
                 .practitionerId(createDTO.practitionerId())
-                .appointmentId(createDTO.appointmentId())
+                .appointment(appointmentFromTemplateRepository.findById(createDTO.appointmentId())
+                                        .orElseThrow(() -> new NotFoundAlertException(
+                                                "appointment for this encounter not found with id " + createDTO.appointmentId(),
+                                                "patientEncounter",
+                                                "appointment.notfound"
+                                        ))
+                        )
                 .encounterType(createDTO.encounterType())
                 .encounterReason(createDTO.encounterReason())
                 .followUpEncounter(createDTO.followUpEncounterId() == null ? null :
@@ -317,6 +327,8 @@ public class PatientEncounterService {
                         "id.notfound"
                 ));
 
+        updateAppointmentStatusForEncounter(AppointmentStatus.IN_SERVICE, encounter.getAppointment().getId());
+
         boolean hasOtherOngoing = patientEncounterRepository
                 .existsByPatient_IdAndStatusAndIdNot(
                         encounter.getPatient().getId(),
@@ -421,6 +433,9 @@ public class PatientEncounterService {
         encounter.setStatus(EncounterStatus.CLOSED);
 
         PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
+
+        updateAppointmentStatusForEncounter(AppointmentStatus.COMPLETED, encounter.getAppointment().getId());
+
         LOG.info("[COMPLETE] success id={} status={}", saved.getId(), saved.getStatus());
         return saved;
     }
@@ -535,6 +550,25 @@ public class PatientEncounterService {
                     );
                 });
     }
+
+    public void updateAppointmentStatusForEncounter(
+            AppointmentStatus status,
+            Long appointmentId
+
+    ) {
+        LOG.debug("update Appointment Status From Encounter for status={}", status);
+        AppointmentFromTemplate appointment = appointmentFromTemplateRepository.findById(appointmentId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Appointment for this encounter not found with id " + appointmentId,
+                        "patientEncounter",
+                        "appointment.notfound"
+                ));
+
+        appointment.setStatus(AppointmentStatus.IN_SERVICE);
+        appointmentFromTemplateRepository.save(appointment);
+    }
+
+
     @Transactional(readOnly = true)
     public  PatientEncounter getEncountersByAppointmentId(
             String appointmentId

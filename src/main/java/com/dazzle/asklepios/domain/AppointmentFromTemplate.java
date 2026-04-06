@@ -3,6 +3,7 @@ package com.dazzle.asklepios.domain;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.BookingMode;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
+import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -39,6 +40,14 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "availability_generation_batch_id")
     private AvailabilityGenerationBatch availabilityGenerationBatch;
+
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "resource_type", nullable = false)
+    private TemplateType resourceType;
+
+    @Column(name = "resource_id", nullable = false)
+    private Long resourceId;
 
     @Column(name = "capacity_index")
     private Integer capacityIndex;

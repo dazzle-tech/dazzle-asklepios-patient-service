@@ -237,6 +237,8 @@ public class AvailabilityGenerationBatchService {
                 appointment.setFacility(template.getFacilityId());
                 appointment.setDepartment(template.getDepartmentId());
                 appointment.setAvailabilityGenerationBatch(batch);
+                appointment.setResourceType(template.getTemplateType());
+                appointment.setResourceId(template.getResourceId());
                 appointment.setStartDatetime(toInstant(slotStart));
                 appointment.setEndDatetime(toInstant(slotEnd));
                 appointment.setPatient(null);
