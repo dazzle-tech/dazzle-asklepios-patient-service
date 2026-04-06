@@ -150,6 +150,7 @@ public class AvailabilityTemplateIntervalService {
                     AvailabilityTemplateAllowedService entity = new AvailabilityTemplateAllowedService();
                     entity.setTemplate(template);
                     entity.setInterval(interval);
+                    entity.setDayOfWeek(interval.getDayOfWeek());
                     entity.setService(dto.service());
                     return entity;
                 })
