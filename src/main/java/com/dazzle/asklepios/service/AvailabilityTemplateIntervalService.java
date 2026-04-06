@@ -138,6 +138,7 @@ public class AvailabilityTemplateIntervalService {
 
     private List<AvailabilityTemplateAllowedService> replaceAllowedServices(AvailabilityTemplateInterval interval, AvailabilityTemplate template, List<AvailabilityTemplateAllowedServiceDTO> allowedServices) {
         allowedServiceRepository.deleteByInterval_Id(interval.getId());
+        allowedServiceRepository.flush();
 
         if (allowedServices == null || allowedServices.isEmpty()) {
             return List.of();
@@ -156,7 +157,7 @@ public class AvailabilityTemplateIntervalService {
                 })
                 .toList();
 
-        return allowedServiceRepository.saveAll(entities);
+        return allowedServiceRepository.saveAllAndFlush(entities);
     }
 
     private void validateInterval(DayOfWeek dayOfWeek, LocalTime startTime, LocalTime endTime,Integer slotDurationMinutes)
