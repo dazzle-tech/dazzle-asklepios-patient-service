@@ -44,5 +44,6 @@ public record AvailabilityTemplateResponseVM(
 
     List<WorkingDayJson> workingDays,
 
-    List<AvailabilityTemplateAllowedServiceResponseVM> allowedServices
+    List<AvailabilityTemplateAllowedServiceResponseVM> allowedServices,
+    Long resourceId
 ){}

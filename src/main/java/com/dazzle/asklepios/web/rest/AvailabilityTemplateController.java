@@ -241,6 +241,9 @@ public class AvailabilityTemplateController {
                         ? entity.getAllowedServices().stream()
                         .map(AvailabilityTemplateAllowedServiceResponseVM::ofEntity)
                         .toList()
-                        : List.of());
+                        : List.of(),
+                entity.getResourceId()
+
+        );
     }
 }
