@@ -306,6 +306,7 @@ public class AvailabilityTemplateService {
             List<AvailabilityTemplateAllowedServiceDTO> allowedServices
     ) {
         availabilityTemplateAllowedServiceRepository.deleteByTemplate_IdAndIntervalIsNull(template.getId());
+        availabilityTemplateAllowedServiceRepository.flush();
 
         if (allowedServices == null || allowedServices.isEmpty()) {
             return List.of();
@@ -322,7 +323,7 @@ public class AvailabilityTemplateService {
                 })
                 .toList();
 
-        return availabilityTemplateAllowedServiceRepository.saveAll(entities);
+        return availabilityTemplateAllowedServiceRepository.saveAllAndFlush(entities);
     }
 
     private AvailabilityTemplate toEntityForCreate(AvailabilityTemplateCreateDTO dto) {
