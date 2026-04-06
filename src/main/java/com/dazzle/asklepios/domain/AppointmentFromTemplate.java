@@ -3,6 +3,7 @@ package com.dazzle.asklepios.domain;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.BookingMode;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
+import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -72,7 +73,7 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     private String reason;
 
     @Column(name = "service", length = 50)
-    private String service;
+    private EncounterReason service;
 
     @Column(name = "service_group_id")
     private Long serviceGroupId;

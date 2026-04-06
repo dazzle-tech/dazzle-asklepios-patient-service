@@ -1,9 +1,10 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.AppointmentFromTemplate;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
-import com.dazzle.asklepios.domain.enumeration.EncounterType;
+import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
@@ -12,10 +13,12 @@ import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromT
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateNoShowDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateSearchFilterDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
+import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
@@ -23,9 +26,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -43,6 +44,8 @@ public class AppointmentFromTemplateService {
     private static final Logger LOG = LoggerFactory.getLogger(ReferralRequestService.class);
 
     private final PatientRepository patientRepository;
+    private final DepartmentHelper departmentHelper;
+    private final PatientEncounterService patientEncounterService;
 
     public AppointmentFromTemplate bookPatientAppointment(
             AppointmentFromTemplateBookPatientDTO dto
@@ -215,26 +218,26 @@ public class AppointmentFromTemplateService {
         appointment.setStatus(AppointmentStatus.CONFIRMED);
         AppointmentFromTemplate savedAppointment = appointmentFromTemplateRepository.save(appointment);
 
+        DepartmentDTO department = departmentHelper.getDepartment(savedAppointment.getDepartment());
+
         PatientEncounterCreateDTO encounterCreateDTO = new PatientEncounterCreateDTO(
-                savedAppointment.getPatient().getId(),                  // patientId
-                savedAppointment.getFacility(),                         // facilityId
-                savedAppointment.getDepartment(),                       // departmentId
-                savedAppointment.getDefaultPractitioner(),              // practitionerId
-                savedAppointment.getId(),                               // appointmentId
-                EncounterType.OUTPATIENT,                               // encounterType
-                savedAppointment.getService(),                           // encounterReason
-                null,                                                   // followUpEncounterId
-                savedAppointment.getPriority(),                         // priorityLevel
-                "APPOINTMENT",                                          // originType
-                "Appointment Confirmation",                             // originName
-                savedAppointment.getNote(),                             // notes
-                savedAppointment.getReason(),                           // chiefComplaint
-                false,                                                  // hasOrder
-                false,                                                  // isObserved
-                false,                                                  // hasPrescription
+                savedAppointment.getPatient().getId(),
+                savedAppointment.getFacility(),
+                savedAppointment.getDepartment(),
+                savedAppointment.getDefaultPractitioner(),
+                savedAppointment.getId(),
+                department.encounterType(),
+                savedAppointment.getService(),
+                null,
+                savedAppointment.getPriority(),
+                null,
+                null,
+                savedAppointment.getNote(),
                 savedAppointment.getStartDatetime()
                         .atZone(java.time.ZoneId.systemDefault())
-                        .toLocalDate()                                  // encounterDate
+                        .toLocalDate()  ,
+                EncounterStatus.NEW,
+                savedAppointment.getReason()
         );
 
         patientEncounterService.create(encounterCreateDTO);
@@ -293,10 +296,9 @@ public class AppointmentFromTemplateService {
     }
 
     private void validateCheckInable(AppointmentFromTemplate appointment) {
-        if (appointment.getStatus() != AppointmentStatus.CONFIRMED
-                && appointment.getStatus() != AppointmentStatus.BOOKED) {
+        if (appointment.getStatus() != AppointmentStatus.CONFIRMED) {
             throw new BadRequestAlertException(
-                    "Only booked or confirmed appointments can be checked in",
+                    "Only confirmed appointments can be checked in",
                     ENTITY_NAME,
                     "invalidstatus"
             );

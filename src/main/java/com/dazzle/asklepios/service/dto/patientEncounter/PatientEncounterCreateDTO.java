@@ -16,8 +16,6 @@ public record PatientEncounterCreateDTO(
         @NotNull
         Long patientId,
 
-        String encounterNumber,
-
         @NotNull
         Long facilityId,
 
@@ -45,8 +43,6 @@ public record PatientEncounterCreateDTO(
         String originName,
 
         String notes,
-
-        Integer departmentDailySequenceNumber,
 
         LocalDate encounterDate,
 
