@@ -12,5 +12,6 @@ public interface AvailabilityTemplateAllowedServiceRepository extends JpaReposit
     void deleteByInterval_Id(Long intervalId);
     void deleteByTemplate_Id(Long templateId);
     List<AvailabilityTemplateAllowedService> findAllByTemplate_IdAndIntervalIsNull(Long templateId);
+    void deleteByTemplate_IdAndIntervalIsNull(Long templateId);
 
 }

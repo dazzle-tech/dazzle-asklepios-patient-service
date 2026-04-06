@@ -125,14 +125,8 @@ public class AvailabilityTemplateService {
         if (!availabilityTemplateRepository.existsById(id)) {
             throw new BadRequestAlertException("Template not found with id " + id, "availabilityTemplate", "notfound");
         }
-
-        List<AvailabilityTemplateInterval> intervals = availabilityTemplateIntervalRepository.findByTemplate_Id(id);
-        for (AvailabilityTemplateInterval interval : intervals) {
-            availabilityTemplateAllowedServiceRepository.deleteByInterval_Id(interval.getId());
-            availabilityTemplateIntervalRepository.delete(interval);
-        }
-
         availabilityTemplateAllowedServiceRepository.deleteByTemplate_Id(id);
+        availabilityTemplateIntervalRepository.deleteByTemplate_Id(id);
         availabilityTemplateRepository.deleteById(id);
     }
 
@@ -311,6 +305,8 @@ public class AvailabilityTemplateService {
             AvailabilityTemplate template,
             List<AvailabilityTemplateAllowedServiceDTO> allowedServices
     ) {
+        availabilityTemplateAllowedServiceRepository.deleteByTemplate_IdAndIntervalIsNull(template.getId());
+
         if (allowedServices == null || allowedServices.isEmpty()) {
             return List.of();
         }
