@@ -1,11 +1,14 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.service.PatientServiceAndProductService;
+import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
+import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
-import com.dazzle.asklepios.web.rest.dto.PatientServiceProductCreateDTO;
-import com.dazzle.asklepios.web.rest.dto.PatientServiceProductUpdateDTO;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
@@ -41,13 +44,20 @@ public class PatientServiceAndProductController {
         this.patientServiceAndProductService = patientServiceAndProductService;
     }
 
-
     @PostMapping("/patient-services-products")
     public ResponseEntity<PatientServiceAndProduct> create(
             @Valid @RequestBody PatientServiceProductCreateDTO patientServiceProductCreateDTO
     ) {
 
         LOG.debug("REST create Patient Service/Product payload={}", patientServiceProductCreateDTO);
+
+        validateBillingItem(
+                patientServiceProductCreateDTO.billingItemType(),
+                patientServiceProductCreateDTO.brandMedicationId(),
+                patientServiceProductCreateDTO.diagnosticTestId(),
+                patientServiceProductCreateDTO.serviceId(),
+                patientServiceProductCreateDTO.procedureId()
+        );
 
         PatientServiceAndProduct created = patientServiceAndProductService.create(patientServiceProductCreateDTO);
 
@@ -58,18 +68,16 @@ public class PatientServiceAndProductController {
                 .body(created);
     }
 
-
     @GetMapping("/patient-services-products/by-encounter/{encounterId}")
     public ResponseEntity<List<PatientServiceAndProduct>> getAllByEncounter(
-            @PathVariable Long encounterId,
+            @PathVariable @NotNull Long encounterId,
             @ParameterObject Pageable pageable
     ) {
 
         LOG.debug("REST get Patient Services & Products by encounterId={}", encounterId);
 
         Page<PatientServiceAndProduct> page =
-                patientServiceAndProductService
-                        .findAllServicesAndProductsByEncounterId(pageable, encounterId);
+                patientServiceAndProductService.findAllServicesAndProductsByEncounterId(pageable, encounterId);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
@@ -101,18 +109,33 @@ public class PatientServiceAndProductController {
 
     @PutMapping("/patient-services-products/{id}")
     public ResponseEntity<PatientServiceAndProduct> update(
-            @PathVariable Long id,
+            @PathVariable @NotNull  Long id,
             @Valid @RequestBody PatientServiceProductUpdateDTO patientServiceProductUpdateDTO
     ) {
 
         LOG.debug("REST update Patient Service/Product id={} payload={}", id, patientServiceProductUpdateDTO);
+
+        if (!id.equals(patientServiceProductUpdateDTO.id())) {
+            throw new BadRequestAlertException(
+                    "idMismatch",
+                    "patientServicesAndProducts",
+                    "Path variable id does not match request body id"
+            );
+        }
+
+        validateBillingItem(
+                patientServiceProductUpdateDTO.billingItemType(),
+                patientServiceProductUpdateDTO.brandMedicationId(),
+                patientServiceProductUpdateDTO.diagnosticTestId(),
+                patientServiceProductUpdateDTO.serviceId(),
+                patientServiceProductUpdateDTO.procedureId()
+        );
 
         PatientServiceAndProduct updated =
                 patientServiceAndProductService.update(patientServiceProductUpdateDTO);
 
         return ResponseEntity.ok(updated);
     }
-
 
     @DeleteMapping("/patient-services-products/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
@@ -124,4 +147,99 @@ public class PatientServiceAndProductController {
         return ResponseEntity.noContent().build();
     }
 
+    private void validateBillingItem(
+            BillingItemTypes billingItemType,
+            Long brandMedicationId,
+            Long diagnosticTestId,
+            Long serviceId,
+            Long procedureId
+    ) {
+        if (billingItemType == null) {
+            throw new BadRequestAlertException(
+                    "billingItemTypeRequired",
+                    "patientServicesAndProducts",
+                    "Billing item type is required"
+            );
+        }
+
+        switch (billingItemType) {
+            case MEDICATION -> {
+                if (brandMedicationId == null) {
+                    throw new BadRequestAlertException(
+                            "brandMedicationIdRequired",
+                            "patientServicesAndProducts",
+                            "Brand medication is required when billing item type is MEDICATION"
+                    );
+                }
+
+                if (diagnosticTestId != null || serviceId != null || procedureId != null) {
+                    throw new BadRequestAlertException(
+                            "invalidReferenceCombination",
+                            "patientServicesAndProducts",
+                            "Only brandMedicationId is allowed for MEDICATION"
+                    );
+                }
+            }
+
+            case LABORATORY, RADIOLOGY, PATHOLOGY -> {
+                if (diagnosticTestId == null) {
+                    throw new BadRequestAlertException(
+                            "diagnosticTestIdRequired",
+                            "patientServicesAndProducts",
+                            "Diagnostic test is required for LABORATORY/RADIOLOGY/PATHOLOGY"
+                    );
+                }
+
+                if (brandMedicationId != null || serviceId != null || procedureId != null) {
+                    throw new BadRequestAlertException(
+                            "invalidReferenceCombination",
+                            "patientServicesAndProducts",
+                            "Only diagnosticTestId is allowed for diagnostic billing items"
+                    );
+                }
+            }
+
+            case SERVICE -> {
+                if (serviceId == null) {
+                    throw new BadRequestAlertException(
+                            "serviceIdRequired",
+                            "patientServicesAndProducts",
+                            "Service is required when billing item type is SERVICE"
+                    );
+                }
+
+                if (brandMedicationId != null || diagnosticTestId != null || procedureId != null) {
+                    throw new BadRequestAlertException(
+                            "invalidReferenceCombination",
+                            "patientServicesAndProducts",
+                            "Only serviceId is allowed for SERVICE"
+                    );
+                }
+            }
+
+            case PROCEDURE -> {
+                if (procedureId == null) {
+                    throw new BadRequestAlertException(
+                            "procedureIdRequired",
+                            "patientServicesAndProducts",
+                            "Procedure is required when billing item type is PROCEDURE"
+                    );
+                }
+
+                if (brandMedicationId != null || diagnosticTestId != null || serviceId != null) {
+                    throw new BadRequestAlertException(
+                            "invalidReferenceCombination",
+                            "patientServicesAndProducts",
+                            "Only procedureId is allowed for PROCEDURE"
+                    );
+                }
+            }
+
+            default -> throw new BadRequestAlertException(
+                    "invalidBillingItemType",
+                    "patientServicesAndProducts",
+                    "Unsupported billing item type"
+            );
+        }
+    }
 }

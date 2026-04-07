@@ -1,12 +1,11 @@
 package com.dazzle.asklepios.service;
 
-
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
-import com.dazzle.asklepios.domain.enumeration.PatientServiceCategory;
+import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
-import com.dazzle.asklepios.web.rest.dto.PatientServiceProductCreateDTO;
-import com.dazzle.asklepios.web.rest.dto.PatientServiceProductUpdateDTO;
+import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
+import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,10 +18,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
-
 
 @Service
 @Transactional
@@ -36,61 +35,25 @@ public class PatientServiceAndProductService {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
     }
 
+    public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
 
-    public PatientServiceAndProduct create(PatientServiceProductCreateDTO patientServiceProductCreateDTO) {
+        LOG.debug("Request to create Patient billing item : {}", dto);
 
-        LOG.debug("Request to create Patient Service/Product : {}", patientServiceProductCreateDTO);
-
-        // Category rules
-        if (patientServiceProductCreateDTO.category() == PatientServiceCategory.SERVICE) {
-
-            if (patientServiceProductCreateDTO.serviceId() == null) {
-                LOG.debug("service_id is null while category is SERVICE : {}", patientServiceProductCreateDTO);
-                throw new BadRequestAlertException(
-                        "serviceIdRequired",
-                        "patientServicesAndProducts",
-                        "Service is required when category is SERVICE"
-                );
-            }
-
-            if (patientServiceProductCreateDTO.productId() != null) {
-                LOG.debug("product_id is not null while category is SERVICE : {}", patientServiceProductCreateDTO);
-                throw new BadRequestAlertException(
-                        "productMustBeNull",
-                        "patientServicesAndProducts",
-                        "Product must be null when category is SERVICE"
-                );
-            }
-        }
-
-        if (patientServiceProductCreateDTO.category() == PatientServiceCategory.PRODUCT) {
-
-            if (patientServiceProductCreateDTO.productId() == null) {
-                LOG.debug("product_id is null while category is PRODUCT : {}", patientServiceProductCreateDTO);
-                throw new BadRequestAlertException(
-                        "productIdRequired",
-                        "patientServicesAndProducts",
-                        "Product is required when category is PRODUCT"
-                );
-            }
-
-            if (patientServiceProductCreateDTO.serviceId() != null) {
-                LOG.debug("service_id is not null while category is PRODUCT : {}", patientServiceProductCreateDTO);
-                throw new BadRequestAlertException(
-                        "serviceMustBeNull",
-                        "patientServicesAndProducts",
-                        "Service must be null when category is PRODUCT"
-                );
-            }
-        }
 
         PatientServiceAndProduct entity = PatientServiceAndProduct.builder()
-                .patientId(patientServiceProductCreateDTO.patientId())
-                .encounterId(patientServiceProductCreateDTO.encounterId())
-                .category(patientServiceProductCreateDTO.category())
-                .serviceId(patientServiceProductCreateDTO.serviceId())
-                .productId(patientServiceProductCreateDTO.productId())
-                .quantity(patientServiceProductCreateDTO.quantity() == null ? 1L : patientServiceProductCreateDTO.quantity())
+                .patientId(dto.patientId())
+                .encounterId(dto.encounterId())
+                .billingItemType(dto.billingItemType())
+                .brandMedicationId(dto.brandMedicationId())
+                .diagnosticTestId(dto.diagnosticTestId())
+                .serviceId(dto.serviceId())
+                .procedureId(dto.procedureId())
+                .quantity(dto.quantity() == null ? 1L : dto.quantity())
+                .unitPrice(dto.unitPrice())
+                .currency(dto.currency())
+                .isBilled(Boolean.FALSE)
+                .billingInvoiceId(null)
+                .billingInvoiceItemId(null)
                 .build();
 
         entity.setCreatedDate(Instant.now());
@@ -100,7 +63,7 @@ public class PatientServiceAndProductService {
 
         try {
             PatientServiceAndProduct saved = patientServiceAndProductRepository.save(entity);
-            LOG.debug("Created Patient Service/Product : {}", saved);
+            LOG.debug("Created Patient billing item : {}", saved);
             return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -108,15 +71,12 @@ public class PatientServiceAndProductService {
         }
     }
 
-
     @Transactional(readOnly = true)
     public Page<PatientServiceAndProduct> findAllServicesAndProductsByEncounterId(
             Pageable pageable,
             Long encounterId
     ) {
-
-        LOG.debug("Fetch Patient Services & Products for encounter : {}", encounterId);
-
+        LOG.debug("Fetch Patient billing items for encounter : {}", encounterId);
         return patientServiceAndProductRepository.findAllByEncounterId(encounterId, pageable);
     }
 
@@ -132,73 +92,43 @@ public class PatientServiceAndProductService {
     }
 
 
-
     @Transactional
-    public PatientServiceAndProduct update(PatientServiceProductUpdateDTO patientServiceProductUpdateDTO) {
+    public PatientServiceAndProduct update(PatientServiceProductUpdateDTO dto) {
 
-        LOG.debug("Request to update Patient Service/Product : {}", patientServiceProductUpdateDTO);
+        LOG.debug("Request to update Patient billing item : {}", dto);
 
-        PatientServiceAndProduct entity = patientServiceAndProductRepository.findById(patientServiceProductUpdateDTO.id())
+        PatientServiceAndProduct entity = patientServiceAndProductRepository.findById(dto.id())
                 .orElseThrow(() -> new BadRequestAlertException(
                         "idNotFound",
                         "patientServicesAndProducts",
-                        "Record not found with id " + patientServiceProductUpdateDTO.id()
+                        "Record not found with id " + dto.id()
                 ));
 
-        // ================= VALIDATIONS =================
+        entity.setBillingItemType(dto.billingItemType());
+        entity.setBrandMedicationId(dto.brandMedicationId());
+        entity.setDiagnosticTestId(dto.diagnosticTestId());
+        entity.setServiceId(dto.serviceId());
+        entity.setProcedureId(dto.procedureId());
+        entity.setQuantity(dto.quantity());
+        entity.setUnitPrice(dto.unitPrice());
+        entity.setDiscountAmount(defaultZero(dto.discountAmount()));
+        entity.setExemptionAmount(defaultZero(dto.exemptionAmount()));
+        entity.setTaxAmount(defaultZero(dto.taxAmount()));
+        entity.setTotalAmount(dto.totalAmount());
+        entity.setCurrency(dto.currency());
 
-        if (patientServiceProductUpdateDTO.category() == PatientServiceCategory.SERVICE) {
-
-            if (patientServiceProductUpdateDTO.serviceId() == null) {
-                LOG.debug("updated service_id is null while category is SERVICE : {}", patientServiceProductUpdateDTO);
-                throw new BadRequestAlertException(
-                        "serviceIdRequired",
-                        "patientServicesAndProducts",
-                        "Service is required when category is SERVICE"
-                );
-            }
-
-            if (patientServiceProductUpdateDTO.productId() != null) {
-                LOG.debug("updated product_id is not null while category is SERVICE : {}", patientServiceProductUpdateDTO);
-                throw new BadRequestAlertException(
-                        "productMustBeNull",
-                        "patientServicesAndProducts",
-                        "Product must be null when category is SERVICE"
-                );
-            }
+        if (dto.isBilled() != null) {
+            entity.setIsBilled(dto.isBilled());
         }
+        entity.setBillingInvoiceId(dto.billingInvoiceId());
+        entity.setBillingInvoiceItemId(dto.billingInvoiceItemId());
 
-        if (patientServiceProductUpdateDTO.category() == PatientServiceCategory.PRODUCT) {
-
-            if (patientServiceProductUpdateDTO.productId() == null) {
-                LOG.debug("updated product_id is null while category is PRODUCT : {}", patientServiceProductUpdateDTO);
-                throw new BadRequestAlertException(
-                        "productIdRequired",
-                        "patientServicesAndProducts",
-                        "Product is required when category is PRODUCT"
-                );
-            }
-
-            if (patientServiceProductUpdateDTO.serviceId() != null) {
-                LOG.debug("updated service_id is not null while category is PRODUCT : {}", patientServiceProductUpdateDTO);
-                throw new BadRequestAlertException(
-                        "serviceMustBeNull",
-                        "patientServicesAndProducts",
-                        "Service must be null when category is PRODUCT"
-                );
-            }
-        }
-
-        entity.setCategory(patientServiceProductUpdateDTO.category());
-        entity.setServiceId(patientServiceProductUpdateDTO.serviceId());
-        entity.setProductId(patientServiceProductUpdateDTO.productId());
-        entity.setQuantity(patientServiceProductUpdateDTO.quantity());
         entity.setLastModifiedBy(getCurrentUser());
         entity.setLastModifiedDate(Instant.now());
 
         try {
             PatientServiceAndProduct updated = patientServiceAndProductRepository.saveAndFlush(entity);
-            LOG.debug("Updated Patient Service/Product : {}", updated);
+            LOG.debug("Updated Patient billing item : {}", updated);
             return updated;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -209,7 +139,7 @@ public class PatientServiceAndProductService {
     @Transactional
     public void remove(Long id) {
 
-        LOG.debug("Request to delete Patient Service/Product : {}", id);
+        LOG.debug("Request to delete Patient billing item : {}", id);
 
         PatientServiceAndProduct entity = patientServiceAndProductRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
@@ -218,11 +148,24 @@ public class PatientServiceAndProductService {
                         "Record not found"
                 ));
 
+        if (Boolean.TRUE.equals(entity.getIsBilled())
+                || entity.getBillingInvoiceId() != null
+                || entity.getBillingInvoiceItemId() != null) {
+            throw new BadRequestAlertException(
+                    "deleteNotAllowed",
+                    "patientServicesAndProducts",
+                    "Cannot delete billed item or item linked to invoice"
+            );
+        }
+
         patientServiceAndProductRepository.delete(entity);
 
-        LOG.debug("Deleted Patient Service/Product : id={}", id);
+        LOG.debug("Deleted Patient billing item : id={}", id);
     }
 
+    private BigDecimal defaultZero(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
 
     private BadRequestAlertException handleConstraintViolation(RuntimeException ex) {
 
@@ -232,31 +175,23 @@ public class PatientServiceAndProductService {
 
         LOG.error("Database constraint violation: {}", message, ex);
 
-        if (msgLower.contains("uk_patient_product")) {
+        if (msgLower.contains("fk_psp_brand_medication")) {
             return new BadRequestAlertException(
-                    "duplicate.product",
+                    "brandMedicationNotFound",
                     "patient_services_and_products",
-                    "This product already exists"
+                    "Brand medication does not exist"
             );
         }
 
-        if (msgLower.contains("uk_patient_service")) {
+        if (msgLower.contains("fk_psp_diagnostic_test")) {
             return new BadRequestAlertException(
-                    "duplicate.service",
+                    "diagnosticTestNotFound",
                     "patient_services_and_products",
-                    "This service already exists"
+                    "Diagnostic test does not exist"
             );
         }
 
-        if (msgLower.contains("fk_patient_services_and_products_product_id")) {
-            return new BadRequestAlertException(
-                    "productNotFound",
-                    "patient_services_and_products",
-                    "Product does not exist"
-            );
-        }
-
-        if (msgLower.contains("fk_patient_services_and_products_service_id")) {
+        if (msgLower.contains("fk_psp_service")) {
             return new BadRequestAlertException(
                     "serviceNotFound",
                     "patient_services_and_products",
@@ -264,13 +199,36 @@ public class PatientServiceAndProductService {
             );
         }
 
+        if (msgLower.contains("fk_psp_procedure")) {
+            return new BadRequestAlertException(
+                    "procedureNotFound",
+                    "patient_services_and_products",
+                    "Procedure does not exist"
+            );
+        }
+
+        if (msgLower.contains("fk_psp_billing_invoice")) {
+            return new BadRequestAlertException(
+                    "billingInvoiceNotFound",
+                    "patient_services_and_products",
+                    "Billing invoice does not exist"
+            );
+        }
+
+        if (msgLower.contains("fk_psp_billing_invoice_item")) {
+            return new BadRequestAlertException(
+                    "billingInvoiceItemNotFound",
+                    "patient_services_and_products",
+                    "Billing invoice item does not exist"
+            );
+        }
+
         return new BadRequestAlertException(
                 "db.constraint",
                 "patient_services_and_products",
-                "Database constraint violated while saving patient service/product"
+                "Database constraint violated while saving patient billing item"
         );
     }
-
 
     private String getCurrentUser() {
         return SecurityUtils.getCurrentUserLogin()

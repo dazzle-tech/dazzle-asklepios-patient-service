@@ -39,8 +39,6 @@ public class PatientPrescriptionService {
     private static final org.slf4j.Logger LOG = LoggerFactory.getLogger(PatientPrescriptionService.class);
     private final PatientRepository patientRepository;
     private final PatientPrescriptionRepository patientPrescriptionRepository;
-    private final PatientEncounterService patientEncounterService;
-    private final PatientEncounterRepository patientEncounterRepository;
 
     public PatientPrescription create(PatientPrescriptionCreateDto prescriptionCreateDto) {
         LOG.debug("create a prescriptionCreateDto={}",prescriptionCreateDto);
@@ -87,11 +85,6 @@ public class PatientPrescriptionService {
     public PatientPrescription createOrGetByEncounter(PatientPrescriptionCreateDto patientPrescriptionCreateDto) {
         LOG.debug("createOrGetByEncounter Patient Prescription payload={}", patientPrescriptionCreateDto);
 
-        if(patientPrescriptionCreateDto.getEncounterId() != null) {
-            PatientEncounter encounter = patientEncounterService.getById(patientPrescriptionCreateDto.getEncounterId());
-            encounter.setHasPrescription(true);
-            patientEncounterRepository.save(encounter);
-        }
          return patientPrescriptionRepository
                 .findTopByEncounterIdAndStatusOrderByCreatedDateDesc(patientPrescriptionCreateDto.getEncounterId(), PrescriptionStatus.DRAFT)
                 .orElseGet(() -> {
