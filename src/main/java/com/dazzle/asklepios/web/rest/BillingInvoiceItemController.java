@@ -83,6 +83,24 @@ public class BillingInvoiceItemController {
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
 
+    @GetMapping("/billing/by-invoice/{invoiceId}")
+    public ResponseEntity<List<BillingInvoiceItemResponseVM>> getInvoiceItemsByInvoiceId(
+            @PathVariable Long invoiceId,
+            @ParameterObject Pageable pageable) {
+        LOG.debug("REST get BillingInvoiceItem invoiceId={}", invoiceId);
+        Page<BillingInvoiceItem> page = billingInvoiceItemService.findByInvoiceId(invoiceId, pageable);
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                page
+        );
+
+        List<BillingInvoiceItemResponseVM> body = page.getContent().stream()
+                .map(BillingInvoiceItemResponseVM::ofEntity)
+                .toList();
+
+        return new ResponseEntity<>(body, headers, HttpStatus.OK);
+    }
+
     @GetMapping("/billing/invoice-item/{id}")
     public ResponseEntity<BillingInvoiceItemResponseVM> getInvoiceItem(@PathVariable Long id) {
         LOG.debug("REST get BillingInvoiceItem id={}", id);
