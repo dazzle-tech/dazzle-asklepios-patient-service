@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface PatientEncounterRepository extends JpaRepository<PatientEncounter, Long> , JpaSpecificationExecutor<PatientEncounter> {
+public interface PatientEncounterRepository extends JpaRepository<PatientEncounter, Long>, JpaSpecificationExecutor<PatientEncounter> {
 
 
     Page<PatientEncounter> findByPatientIdAndDepartmentIdAndStatusInOrderByCreatedDateDesc(
@@ -29,6 +29,7 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
             Long departmentId,
             LocalDate encounterDate
     );
+
     long countByDepartmentIdAndEncounterDateAndStatusIn(
             Long departmentId,
             LocalDate encounterDate,
@@ -52,15 +53,14 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
             Pageable pageable
     );
 
-    PatientEncounter findByAppointmentId(
-            String appointmentId
-    );
+    PatientEncounter findByAppointment_Id(Long appointmentId);
 
     Optional<PatientEncounter> findFirstByPatientIdAndStatusAndEncounterDateLessThanEqualOrderByEncounterDateDesc(
             Long patientId,
             EncounterStatus status,
             LocalDate encounterDate
     );
+
     long countByDepartmentIdAndEncounterDateBetween(
             Long departmentId,
             LocalDate fromDate,

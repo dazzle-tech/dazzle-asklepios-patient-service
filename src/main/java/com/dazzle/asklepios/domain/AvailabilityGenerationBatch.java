@@ -36,7 +36,7 @@ public class AvailabilityGenerationBatch extends  AbstractAuditingEntity<Long> i
     private AvailabilityTemplate template;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "holiday_handling_mode", nullable = false)
+    @Column(name = "holiday_handling_mode")
     private HolidayHandlingMode holidayHandlingMode;
 
     @Enumerated(EnumType.STRING)

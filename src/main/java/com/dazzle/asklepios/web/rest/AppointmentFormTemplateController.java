@@ -17,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -35,29 +36,15 @@ public class AppointmentFormTemplateController {
     private final AppointmentFromTemplateService appointmentFromTemplateService;
 
     @PutMapping("/appointments/book-patient")
-    public ResponseEntity<AppointmentFromTemplate> bookPatientAppointment(
-            @Valid @RequestBody AppointmentFromTemplateBookPatientDTO dto
-    ) {
-        AppointmentFromTemplate result =
-                appointmentFromTemplateService.bookPatientAppointment(dto);
+    public ResponseEntity<AppointmentFromTemplate> bookPatientAppointment(@Valid @RequestBody AppointmentFromTemplateBookPatientDTO dto) {
+        AppointmentFromTemplate result = appointmentFromTemplateService.bookPatientAppointment(dto);
 
         return ResponseEntity.ok(result);
     }
 
     @GetMapping("/appointments/by-status-and-dates")
-    public ResponseEntity<List<AppointmentFromTemplate>> getAppointmentsByStatusBetweenDates(
-            @RequestParam("status") AppointmentStatus status,
-            @RequestParam("startDatetime") Instant startDatetime,
-            @RequestParam("endDatetime") Instant endDatetime,
-            Pageable pageable
-    ) {
-        Page<AppointmentFromTemplate> result =
-                appointmentFromTemplateService.getAppointmentsByStatusBetweenDates(
-                        status,
-                        startDatetime,
-                        endDatetime,
-                        pageable
-                );
+    public ResponseEntity<List<AppointmentFromTemplate>> getAppointmentsByStatusBetweenDates(@RequestParam("status") AppointmentStatus status, @RequestParam("startDatetime") Instant startDatetime, @RequestParam("endDatetime") Instant endDatetime, Pageable pageable) {
+        Page<AppointmentFromTemplate> result = appointmentFromTemplateService.getAppointmentsByStatusBetweenDates(status, startDatetime, endDatetime, pageable);
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(),
                 result
@@ -66,11 +53,8 @@ public class AppointmentFormTemplateController {
         return new ResponseEntity<>(result.getContent(), headers, HttpStatus.OK);
     }
 
-    @GetMapping("/appointments/search")
-    public ResponseEntity<List<AppointmentFromTemplate>> filterAppointments(
-            @Valid @RequestBody AppointmentFromTemplateSearchFilterDTO filter,
-            Pageable pageable
-    ) {
+    @PostMapping("/appointments/search")
+    public ResponseEntity<List<AppointmentFromTemplate>> filterAppointments(@Valid @RequestBody AppointmentFromTemplateSearchFilterDTO filter, Pageable pageable) {
         Page<AppointmentFromTemplate> appointment = appointmentFromTemplateService.filterAppointment(filter, pageable);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
@@ -81,17 +65,13 @@ public class AppointmentFormTemplateController {
     }
 
     @PutMapping("/appointments/cancel")
-    public ResponseEntity<AppointmentFromTemplate> cancel(
-            @Valid @RequestBody AppointmentFromTemplateCancelDTO dto
-    ) {
+    public ResponseEntity<AppointmentFromTemplate> cancel(@Valid @RequestBody AppointmentFromTemplateCancelDTO dto) {
         AppointmentFromTemplate result = appointmentFromTemplateService.cancel(dto);
         return ResponseEntity.ok(result);
     }
 
     @PutMapping("/appointments/no-show")
-    public ResponseEntity<AppointmentFromTemplate> noShow(
-            @Valid @RequestBody AppointmentFromTemplateNoShowDTO dto
-    ) {
+    public ResponseEntity<AppointmentFromTemplate> noShow(@Valid @RequestBody AppointmentFromTemplateNoShowDTO dto) {
         AppointmentFromTemplate result = appointmentFromTemplateService.noShow(dto);
         return ResponseEntity.ok(result);
     }

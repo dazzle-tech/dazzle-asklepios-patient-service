@@ -47,59 +47,38 @@ public class AppointmentFromTemplateService {
     private final DepartmentHelper departmentHelper;
     private final PatientEncounterService patientEncounterService;
 
-    public AppointmentFromTemplate bookPatientAppointment(
-            AppointmentFromTemplateBookPatientDTO dto
-    ) {
-        log.debug("Request to update AppointmentFromTemplate dto={}", dto);
+    public AppointmentFromTemplate bookPatientAppointment(AppointmentFromTemplateBookPatientDTO dto) {
+        LOG.debug("Request to update AppointmentFromTemplate dto={}", dto);
 
         AppointmentFromTemplate appointment = appointmentFromTemplateRepository.findById(dto.id())
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Appointment not found with id: " + dto.id(),
-                        ENTITY_NAME,
-                        "notfound"
-                ));
+                .orElseThrow(() -> new NotFoundAlertException("Appointment not found with id: " + dto.id(), ENTITY_NAME, "notfound"));
 
         if (dto.patientId() != null) {
             Patient patient = patientRepository.findById(dto.patientId())
-                    .orElseThrow(() -> new NotFoundAlertException(
-                            "Patient not found with id: " + dto.patientId(),
-                            ENTITY_NAME,
-                            "notfound"
-                    ));
+                    .orElseThrow(() -> new NotFoundAlertException("Patient not found with id: " + dto.patientId(), ENTITY_NAME, "notfound"));
             appointment.setPatient(patient);
         }
-
         if (dto.defaultService() != null) {
             appointment.setDefaultService(dto.defaultService());
         }
-
         if (dto.defaultPractitioner() != null) {
             appointment.setDefaultPractitioner(dto.defaultPractitioner());
         }
-
         if (dto.reason() != null) {
             appointment.setReason(dto.reason());
         }
-
         if (dto.status() != null) {
             appointment.setStatus(dto.status());
         }
-
         if (dto.note() != null) {
             appointment.setNote(dto.note());
         }
 
         AppointmentFromTemplate saved = appointmentFromTemplateRepository.save(appointment);
-
         return saved;
     }
 
-    public Page<AppointmentFromTemplate> getAppointmentsByStatusBetweenDates(
-            AppointmentStatus status,
-            Instant startDatetime,
-            Instant endDatetime,
-            Pageable pageable
-    ) {
+    public Page<AppointmentFromTemplate> getAppointmentsByStatusBetweenDates(AppointmentStatus status, Instant startDatetime, Instant endDatetime, Pageable pageable) {
         LOG.debug("Request to get appointments with patient not null between startDatetime={} and endDatetime={}", startDatetime, endDatetime);
 
         if (startDatetime == null || endDatetime == null) {
@@ -110,23 +89,15 @@ public class AppointmentFromTemplateService {
             throw new BadRequestAlertException("startDatetime must be before or equal to endDatetime", "appointmentFormTemplate", "payload.required");
         }
 
-        return appointmentFromTemplateRepository.findByStatusAndStartDatetimeBetween(
-                status,
-                startDatetime,
-                endDatetime,
-                pageable
-        );
+        return appointmentFromTemplateRepository.findByStatusAndStartDatetimeBetween(status, startDatetime, endDatetime, pageable);
     }
 
-    public Page<AppointmentFromTemplate> filterAppointment(
-            AppointmentFromTemplateSearchFilterDTO filter,
-            Pageable pageable
-    ) {
+    public Page<AppointmentFromTemplate> filterAppointment(AppointmentFromTemplateSearchFilterDTO filter, Pageable pageable) {
 
         LOG.debug("Service filter Appointments filter={} pageable={}", filter, pageable);
 
         if (filter.facility() == null) {
-            throw new IllegalArgumentException("Facility is required");
+            throw new BadRequestAlertException("Facility is required", ENTITY_NAME, "facility");
         }
 
         Specification<AppointmentFromTemplate> appointmentFilterSpec = (root, query, cb) -> {
@@ -163,21 +134,17 @@ public class AppointmentFromTemplateService {
             return cb.and(predicates.toArray(new Predicate[0]));
         };
 
-        Page<AppointmentFromTemplate> result =
-                appointmentFromTemplateRepository.findAll(appointmentFilterSpec, pageable);
+        Page<AppointmentFromTemplate> result = appointmentFromTemplateRepository.findAll(appointmentFilterSpec, pageable);
 
         LOG.debug("[FILTER] Appointments result totalElements={} totalPages={} pageNumber={} pageSize={}",
                 result.getTotalElements(), result.getTotalPages(), result.getNumber(), result.getSize());
 
         return result;
     }
+
     private AppointmentFromTemplate getAppointment(Long id) {
         return appointmentFromTemplateRepository.findById(id)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Appointment not found: " + id,
-                        ENTITY_NAME,
-                        "notfound"
-                ));
+                .orElseThrow(() -> new NotFoundAlertException("Appointment not found: " + id, ENTITY_NAME, "notfound"));
     }
 
     public AppointmentFromTemplate cancel(AppointmentFromTemplateCancelDTO dto) {
@@ -191,7 +158,7 @@ public class AppointmentFromTemplateService {
         return appointmentFromTemplateRepository.save(appointment);
     }
 
-    public AppointmentFromTemplate noShow(AppointmentFromTemplateNoShowDTO dto){
+    public AppointmentFromTemplate noShow(AppointmentFromTemplateNoShowDTO dto) {
         AppointmentFromTemplate appointment = getAppointment(dto.id());
 
         validateNoShowable(appointment);
@@ -208,11 +175,7 @@ public class AppointmentFromTemplateService {
         validateConfirmable(appointment);
 
         if (appointment.getPatient() == null) {
-            throw new BadRequestAlertException(
-                    "Cannot confirm appointment without patient",
-                    ENTITY_NAME,
-                    "patientrequired"
-            );
+            throw new BadRequestAlertException("Cannot confirm appointment without patient", ENTITY_NAME, "patientrequired");
         }
 
         appointment.setStatus(AppointmentStatus.CONFIRMED);
@@ -235,7 +198,7 @@ public class AppointmentFromTemplateService {
                 savedAppointment.getNote(),
                 savedAppointment.getStartDatetime()
                         .atZone(java.time.ZoneId.systemDefault())
-                        .toLocalDate()  ,
+                        .toLocalDate(),
                 EncounterStatus.NEW,
                 savedAppointment.getReason()
         );
@@ -254,17 +217,15 @@ public class AppointmentFromTemplateService {
 
         return appointmentFromTemplateRepository.save(appointment);
     }
+
     private void validateCancelable(AppointmentFromTemplate appointment) {
         if (appointment.getStatus() == AppointmentStatus.CANCELLED) {
             throw new BadRequestAlertException("Appointment already cancelled", ENTITY_NAME, "alreadycancelled");
-        }
-       else if (appointment.getStatus() == AppointmentStatus.CHECKED_IN) {
+        } else if (appointment.getStatus() == AppointmentStatus.CHECKED_IN) {
             throw new BadRequestAlertException("Checked-in appointment cannot be cancelled", ENTITY_NAME, "invalidstatus");
-        }
-        else if (appointment.getStatus() == AppointmentStatus.IN_SERVICE) {
+        } else if (appointment.getStatus() == AppointmentStatus.IN_SERVICE) {
             throw new BadRequestAlertException("IN_SERVICE appointment cannot be cancelled", ENTITY_NAME, "invalidstatus");
-        }
-        else if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
+        } else if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
             throw new BadRequestAlertException("Completed appointment cannot be cancelled", ENTITY_NAME, "invalidstatus");
         }
 
@@ -276,41 +237,27 @@ public class AppointmentFromTemplateService {
         }
         if (appointment.getStatus() == AppointmentStatus.CHECKED_IN) {
             throw new BadRequestAlertException("Checked-in appointment cannot be marked as no-show", ENTITY_NAME, "invalidstatus");
-        }
-        else if (appointment.getStatus() == AppointmentStatus.IN_SERVICE) {
+        } else if (appointment.getStatus() == AppointmentStatus.IN_SERVICE) {
             throw new BadRequestAlertException("IN_SERVICE appointment cannot be No-show", ENTITY_NAME, "invalidstatus");
-        }
-        else if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
+        } else if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
             throw new BadRequestAlertException("Completed appointment cannot be No-show", ENTITY_NAME, "invalidstatus");
         }
     }
 
     private void validateConfirmable(AppointmentFromTemplate appointment) {
         if (appointment.getStatus() != AppointmentStatus.BOOKED) {
-            throw new BadRequestAlertException(
-                    "Only booked appointments can be confirmed",
-                    ENTITY_NAME,
-                    "invalidstatus"
-            );
+            throw new BadRequestAlertException("Only booked appointments can be confirmed", ENTITY_NAME, "invalidstatus");
         }
     }
 
     private void validateCheckInable(AppointmentFromTemplate appointment) {
         if (appointment.getStatus() != AppointmentStatus.CONFIRMED) {
-            throw new BadRequestAlertException(
-                    "Only confirmed appointments can be checked in",
-                    ENTITY_NAME,
-                    "invalidstatus"
-            );
+            throw new BadRequestAlertException("Only confirmed appointments can be checked in", ENTITY_NAME, "invalidstatus");
         }
     }
 
     private String currentUsername() {
         return SecurityUtils.getCurrentUserLogin()
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "unauthenticated",
-                        "diagnostic_test_requests",
-                        "No authenticated user"
-                ));
+                .orElseThrow(() -> new BadRequestAlertException("unauthenticated", "diagnostic_test_requests", "No authenticated user"));
     }
 }

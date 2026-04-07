@@ -578,9 +578,9 @@ public class PatientEncounterService {
         }
     }
     @Transactional(readOnly = true)
-    public PatientEncounter getEncountersByAppointmentId(String appointmentId) {
+    public PatientEncounter getEncountersByAppointmentId(Long appointmentId) {
         LOG.debug("[GET_BY_APPOINTMENT_ID] appointmentId={} ", appointmentId);
-        return patientEncounterRepository.findByAppointmentId(appointmentId);
+        return patientEncounterRepository.findByAppointment_Id(appointmentId);
     }
 
     private RuntimeException handleConstraintViolation(Exception exception) {
