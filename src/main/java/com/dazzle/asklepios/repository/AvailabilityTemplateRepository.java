@@ -3,6 +3,7 @@ package com.dazzle.asklepios.repository;
 import com.dazzle.asklepios.domain.AvailabilityTemplate;
 import com.dazzle.asklepios.domain.enumeration.TemplateStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
+
 import java.util.List;
 import java.util.Optional;
 
@@ -25,7 +26,7 @@ public interface AvailabilityTemplateRepository extends JpaRepository<Availabili
     List<AvailabilityTemplate> findAllByParentTemplate_Id(Long parentTemplateId);
 
     @EntityGraph(attributePaths = {"workingDays"})
-    Page<AvailabilityTemplate> findAllByDepartmentIdAndTemplateType(Long department , TemplateType templateType, Pageable pageable);
+    Page<AvailabilityTemplate> findAllByDepartmentIdAndTemplateType(Long department, TemplateType templateType, Pageable pageable);
 
     @EntityGraph(attributePaths = {"workingDays"})
     Page<AvailabilityTemplate> findAllByFacilityIdAndStatusAndTemplateType(Long facility, TemplateStatus status, TemplateType templateType, Pageable pageable);
@@ -38,8 +39,4 @@ public interface AvailabilityTemplateRepository extends JpaRepository<Availabili
 
     @EntityGraph(attributePaths = {"workingDays"})
     Page<AvailabilityTemplate> findAllByFacilityIdAndDepartmentIdAndTemplateType(Long facility, Long department, TemplateType templateType, Pageable pageable);
-
-
-
-
 }

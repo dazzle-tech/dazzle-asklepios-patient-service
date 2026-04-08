@@ -91,7 +91,7 @@ public class AvailabilityTemplateService {
     public AvailabilityTemplate update(AvailabilityTemplateUpdateDTO dto) {
         LOG.debug("update availability template {}", dto);
 
-        AvailabilityTemplate entity = getRequired(dto.id());
+        AvailabilityTemplate entity = getAvailabilityTemplate(dto.id());
 
         if (!TemplateStatus.DRAFT.equals(entity.getStatus())) {
             throw new NotFoundAlertException(
@@ -163,6 +163,7 @@ public class AvailabilityTemplateService {
     public Page<AvailabilityTemplate> getAllByFacilityAndDepartment(Long departmentId, Pageable pageable) {
         LOG.debug("get availability templates by departmentId={}", departmentId);
         Long facilityId = getFacility();
+
 
         Page<AvailabilityTemplate> page =
                 availabilityTemplateRepository.findAllByFacilityIdAndDepartmentIdAndTemplateType(
@@ -256,6 +257,7 @@ public class AvailabilityTemplateService {
     }
 
     @Transactional(readOnly = true)
+
     public Page<AvailabilityTemplate> getAllActiveByFacilityAndStatusAndTemplateTypeDepartment(
             TemplateStatus status,
             Pageable pageable
@@ -272,7 +274,7 @@ public class AvailabilityTemplateService {
         return page;
     }
 
-    private AvailabilityTemplate getRequired(Long id) {
+    private AvailabilityTemplate getAvailabilityTemplate(Long id) {
         return availabilityTemplateRepository
                 .findById(id)
                 .orElseThrow(() ->
@@ -365,11 +367,11 @@ public class AvailabilityTemplateService {
         entity.setFinancialDetails(dto.financialDetails());
 
         if (dto.copyFromTemplateId() != null) {
-            entity.setCopyFromTemplate(getRequired(dto.copyFromTemplateId()));
+            entity.setCopyFromTemplate(getAvailabilityTemplate(dto.copyFromTemplateId()));
         }
 
         if (dto.parentTemplateId() != null) {
-            entity.setParentTemplate(getRequired(dto.parentTemplateId()));
+            entity.setParentTemplate(getAvailabilityTemplate(dto.parentTemplateId()));
         }
 
         entity.setDefaultServiceId(dto.defaultServiceId());
@@ -388,23 +390,27 @@ public class AvailabilityTemplateService {
         if (dto.status() != null) entity.setStatus(dto.status());
         if (dto.versionNo() != null) entity.setVersionNo(dto.versionNo());
         if (dto.durationMinutes() != null) entity.setDurationMinutes(dto.durationMinutes());
-        if (dto.defaultBufferBeforeMinutes() != null) entity.setDefaultBufferBeforeMinutes(dto.defaultBufferBeforeMinutes());
-        if (dto.defaultBufferAfterMinutes() != null) entity.setDefaultBufferAfterMinutes(dto.defaultBufferAfterMinutes());
+        if (dto.defaultBufferBeforeMinutes() != null)
+            entity.setDefaultBufferBeforeMinutes(dto.defaultBufferBeforeMinutes());
+        if (dto.defaultBufferAfterMinutes() != null)
+            entity.setDefaultBufferAfterMinutes(dto.defaultBufferAfterMinutes());
         if (dto.parallelCapacityValue() != null) entity.setParallelCapacityValue(dto.parallelCapacityValue());
-        if (dto.numberOfResourcesExpected() != null) entity.setNumberOfResourcesExpected(dto.numberOfResourcesExpected());
+        if (dto.numberOfResourcesExpected() != null)
+            entity.setNumberOfResourcesExpected(dto.numberOfResourcesExpected());
         if (dto.requirePractitioner() != null) entity.setRequirePractitioner(dto.requirePractitioner());
         if (dto.requireBilling() != null) entity.setRequireBilling(dto.requireBilling());
         if (dto.requirePreAssessment() != null) entity.setRequirePreAssessment(dto.requirePreAssessment());
-        if (dto.allowPatientPortalBooking() != null) entity.setAllowPatientPortalBooking(dto.allowPatientPortalBooking());
+        if (dto.allowPatientPortalBooking() != null)
+            entity.setAllowPatientPortalBooking(dto.allowPatientPortalBooking());
         if (dto.requireConfirmation() != null) entity.setRequireConfirmation(dto.requireConfirmation());
         if (dto.financialDetails() != null) entity.setFinancialDetails(dto.financialDetails());
 
         if (dto.copyFromTemplateId() != null) {
-            entity.setCopyFromTemplate(getRequired(dto.copyFromTemplateId()));
+            entity.setCopyFromTemplate(getAvailabilityTemplate(dto.copyFromTemplateId()));
         }
 
         if (dto.parentTemplateId() != null) {
-            entity.setParentTemplate(getRequired(dto.parentTemplateId()));
+            entity.setParentTemplate(getAvailabilityTemplate(dto.parentTemplateId()));
         }
 
         if (dto.defaultServiceId() != null) {

@@ -1,14 +1,17 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.AdditionalMeasurements;
+import com.dazzle.asklepios.domain.AppointmentFromTemplate;
 import com.dazzle.asklepios.domain.BodyMeasurements;
 import com.dazzle.asklepios.domain.PainAssessment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientObservationsComplaints;
 import com.dazzle.asklepios.domain.VitalSigns;
+import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.repository.AdditionalMeasurementsRepository;
+import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
 import com.dazzle.asklepios.repository.BodyMeasurementsRepository;
 import com.dazzle.asklepios.repository.PainAssessmentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
@@ -64,6 +67,7 @@ public class PatientEncounterService {
     private final VitalSignsRepository vitalSignsRepository;
     private final PatientObservationsComplaintsRepository patientObservationsComplaintsRepository;
     private final BodyMeasurementsRepository bodyMeasurementsRepository;
+    private final AppointmentFromTemplateRepository appointmentFromTemplateRepository;
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
         LOG.info("[CREATE] PatientEncounter payload={}", createDTO);
@@ -83,7 +87,13 @@ public class PatientEncounterService {
                 .facilityId(createDTO.facilityId())
                 .departmentId(createDTO.departmentId())
                 .practitionerId(createDTO.practitionerId())
-                .appointmentId(createDTO.appointmentId())
+                .appointment(appointmentFromTemplateRepository.findById(createDTO.appointmentId())
+                        .orElseThrow(() -> new NotFoundAlertException(
+                                "appointment for this encounter not found with id " + createDTO.appointmentId(),
+                                "patientEncounter",
+                                "appointment.notfound"
+                        ))
+                )
                 .encounterType(createDTO.encounterType())
                 .encounterReason(createDTO.encounterReason())
                 .followUpEncounter(createDTO.followUpEncounterId() == null ? null :
@@ -337,6 +347,7 @@ public class PatientEncounterService {
 
         try {
             PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
+            updateAppointmentStatusForEncounter(AppointmentStatus.IN_SERVICE, encounter.getAppointment().getId());
             LOG.info("[START] success id={} status={}", saved.getId(), saved.getStatus());
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -434,6 +445,7 @@ public class PatientEncounterService {
         encounter.setStatus(EncounterStatus.CLOSED);
 
         PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
+        updateAppointmentStatusForEncounter(AppointmentStatus.COMPLETED, encounter.getAppointment().getId());
         LOG.info("[COMPLETE] success id={} status={}", saved.getId(), saved.getStatus());
         return saved;
     }
@@ -566,9 +578,9 @@ public class PatientEncounterService {
         }
     }
     @Transactional(readOnly = true)
-    public PatientEncounter getEncountersByAppointmentId(String appointmentId) {
+    public PatientEncounter getEncountersByAppointmentId(Long appointmentId) {
         LOG.debug("[GET_BY_APPOINTMENT_ID] appointmentId={} ", appointmentId);
-        return patientEncounterRepository.findByAppointmentId(appointmentId);
+        return patientEncounterRepository.findByAppointment_Id(appointmentId);
     }
 
     private RuntimeException handleConstraintViolation(Exception exception) {
@@ -908,4 +920,23 @@ public class PatientEncounterService {
 
         return result;
     }
+
+    public void updateAppointmentStatusForEncounter(
+            AppointmentStatus status,
+            Long appointmentId
+
+    ) {
+        LOG.debug("update Appointment Status From Encounter for status={}", status);
+        AppointmentFromTemplate appointment = appointmentFromTemplateRepository.findById(appointmentId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Appointment for this encounter not found with id " + appointmentId,
+                        "patientEncounter",
+                        "appointment.notfound"
+                ));
+
+        appointment.setStatus(AppointmentStatus.IN_SERVICE);
+        appointmentFromTemplateRepository.save(appointment);
+    }
+
+
 }
