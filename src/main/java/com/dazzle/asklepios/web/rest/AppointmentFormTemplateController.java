@@ -2,12 +2,14 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.AppointmentFromTemplate;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
+import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.service.AppointmentFromTemplateService;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateBookPatientDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateCancelDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateNoShowDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateSearchFilterDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -37,6 +39,9 @@ public class AppointmentFormTemplateController {
 
     @PutMapping("/appointments/book-patient")
     public ResponseEntity<AppointmentFromTemplate> bookPatientAppointment(@Valid @RequestBody AppointmentFromTemplateBookPatientDTO dto) {
+        if (dto.service() == EncounterReason.FOLLOW_UP && dto.followUpEncounterId() == null) {
+            throw new BadRequestAlertException("Follow Up Encounter is require", "Appointment", "followUpEncounterId.invalid")
+        }
         AppointmentFromTemplate result = appointmentFromTemplateService.bookPatientAppointment(dto);
 
         return ResponseEntity.ok(result);

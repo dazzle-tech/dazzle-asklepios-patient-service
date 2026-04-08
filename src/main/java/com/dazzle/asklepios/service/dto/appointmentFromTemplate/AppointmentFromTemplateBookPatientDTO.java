@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service.dto.appointmentFromTemplate;
 
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
+import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import jakarta.validation.constraints.NotNull;
 
@@ -21,6 +22,8 @@ public record AppointmentFromTemplateBookPatientDTO(
         AppointmentStatus status,
 
         String note,
-        @NotNull(message = "service is required") EncounterReason service
-) {
+        @NotNull(message = "service is required") EncounterReason service,
+        @NotNull(message = "priority is required") EncounterPriority priority,
+        Long followUpEncounterId
+        ) {
 }

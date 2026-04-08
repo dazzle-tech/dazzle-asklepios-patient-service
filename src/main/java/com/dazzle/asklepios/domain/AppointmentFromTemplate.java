@@ -109,4 +109,8 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     @Column(name = "note")
     private String note;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "follow_up_encounter_id")
+    private PatientEncounter followUpEncounter;
+
 }

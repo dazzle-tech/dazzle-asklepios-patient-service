@@ -3,9 +3,12 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.AppointmentFromTemplate;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
+import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateBookPatientDTO;
@@ -46,6 +49,7 @@ public class AppointmentFromTemplateService {
     private final PatientRepository patientRepository;
     private final DepartmentHelper departmentHelper;
     private final PatientEncounterService patientEncounterService;
+    private final PatientEncounterRepository patientEncounterRepository;
 
     public AppointmentFromTemplate bookPatientAppointment(AppointmentFromTemplateBookPatientDTO dto) {
         LOG.debug("Request to update AppointmentFromTemplate dto={}", dto);
@@ -73,10 +77,15 @@ public class AppointmentFromTemplateService {
         if (dto.note() != null) {
             appointment.setNote(dto.note());
         }
-        if (dto.service() != null) {
-            appointment.setService(dto.service());
-        }
+        appointment.setService(dto.service());
 
+        appointment.setPriority(dto.priority());
+        if (dto.service() == EncounterReason.FOLLOW_UP && dto.followUpEncounterId() != null) {
+            PatientEncounter followUpEncounter = patientEncounterRepository.findById(dto.followUpEncounterId())
+                    .orElseThrow(() -> new NotFoundAlertException("Patient Encounter not found with id: " + dto.followUpEncounterId(), ENTITY_NAME, "notfound"));
+
+            appointment.setFollowUpEncounter(followUpEncounter);
+        }
         AppointmentFromTemplate saved = appointmentFromTemplateRepository.save(appointment);
         return saved;
     }
@@ -187,14 +196,14 @@ public class AppointmentFromTemplateService {
         DepartmentDTO department = departmentHelper.getDepartment(savedAppointment.getDepartmentId());
 
         PatientEncounterCreateDTO encounterCreateDTO = new PatientEncounterCreateDTO(
-                savedAppointment.getPatient().getId(),
+                savedAppointment.getPatient() != null ? savedAppointment.getPatient().getId() : null,
                 savedAppointment.getFacilityId(),
                 savedAppointment.getDepartmentId(),
                 savedAppointment.getDefaultPractitionerId(),
                 savedAppointment.getId(),
                 department.encounterType(),
                 savedAppointment.getService(),
-                null,
+                savedAppointment.getFollowUpEncounter() != null ? savedAppointment.getFollowUpEncounter().getId() : null,
                 savedAppointment.getPriority(),
                 null,
                 null,
@@ -204,6 +213,7 @@ public class AppointmentFromTemplateService {
                         .toLocalDate(),
                 EncounterStatus.NEW,
                 savedAppointment.getReason()
+
         );
 
         patientEncounterService.create(encounterCreateDTO);
