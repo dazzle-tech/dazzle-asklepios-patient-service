@@ -89,7 +89,7 @@ public class AvailabilityTemplateService {
     public AvailabilityTemplate update(AvailabilityTemplateUpdateDTO dto) {
         LOG.debug("update availability template {}", dto);
 
-        AvailabilityTemplate entity = getRequired(dto.id());
+        AvailabilityTemplate entity = getAvailabilityTemplate(dto.id());
 
         if (!TemplateStatus.DRAFT.equals(entity.getStatus())) {
             throw new NotFoundAlertException(
@@ -125,7 +125,7 @@ public class AvailabilityTemplateService {
             throw new BadRequestAlertException("Template not found with id " + id, "availabilityTemplate", "notfound");
         }
 
-     List<AvailabilityTemplateInterval> Intervals = availabilityTemplateIntervalRepository.findByTemplate_Id(id);
+        List<AvailabilityTemplateInterval> Intervals = availabilityTemplateIntervalRepository.findByTemplate_Id(id);
         for (AvailabilityTemplateInterval interval : Intervals) {
             availabilityTemplateAllowedServiceRepository.deleteByInterval_Id(interval.getId());
             availabilityTemplateIntervalRepository.delete(interval);
@@ -149,7 +149,7 @@ public class AvailabilityTemplateService {
     }
 
     @Transactional(readOnly = true)
-    public Page<AvailabilityTemplate> getAll( Pageable pageable) {
+    public Page<AvailabilityTemplate> getAll(Pageable pageable) {
         LOG.debug("get all availability templates");
         return availabilityTemplateRepository.findAllBy(pageable);
     }
@@ -158,7 +158,7 @@ public class AvailabilityTemplateService {
     public Page<AvailabilityTemplate> getAllByFacilityAndDepartment(Long departmentId, Pageable pageable) {
         LOG.debug("get availability templates by departmentId={}", departmentId);
         Long facilityId = getFacility();
-        return availabilityTemplateRepository.findAllByFacilityIdAndDepartmentIdAndTemplateType(facilityId, departmentId , TemplateType.DEPARTMENT, pageable);
+        return availabilityTemplateRepository.findAllByFacilityIdAndDepartmentIdAndTemplateType(facilityId, departmentId, TemplateType.DEPARTMENT, pageable);
     }
 
     public Optional<AvailabilityTemplate> toggleIsActive(Long id) {
@@ -178,40 +178,47 @@ public class AvailabilityTemplateService {
         return updated;
     }
 
-    public Page<AvailabilityTemplate> getAllByFacilityAndTemplateType(TemplateType templateType,  Pageable pageable) {
+    @Transactional(readOnly = true)
+    public Page<AvailabilityTemplate> getAllByFacilityAndTemplateType(TemplateType templateType, Pageable pageable) {
         LOG.debug("Get availability templates by templateType={}", templateType);
         Long facilityId = getFacility();
-        return availabilityTemplateRepository.findAllByFacilityIdAndTemplateType(facilityId, templateType , pageable);
+        return availabilityTemplateRepository.findAllByFacilityIdAndTemplateType(facilityId, templateType, pageable);
     }
 
-    public Page<AvailabilityTemplate> getAllByFacilityAndTemplateName(String templateName,  Pageable pageable) {
+    @Transactional(readOnly = true)
+    public Page<AvailabilityTemplate> getAllByFacilityAndTemplateName(String templateName, Pageable pageable) {
         LOG.debug("Get availability templates by templateName={}", templateName);
         Long facilityId = getFacility();
         return availabilityTemplateRepository.findAllByFacilityIdAndTemplateNameIsContainingIgnoreCaseAndTemplateType(facilityId, templateName, TemplateType.DEPARTMENT, pageable);
     }
 
+    @Transactional(readOnly = true)
     public List<AvailabilityTemplate> getAllParentTemplateId(Long parentTemplateId) {
         LOG.debug("Get availability templates by parentTemplateId={}", parentTemplateId);
         return availabilityTemplateRepository.findAllByParentTemplate_Id(parentTemplateId);
     }
 
+    @Transactional(readOnly = true)
     public Page<AvailabilityTemplate> getAllByDepartmentId(Long departmentId, Pageable pageable) {
         LOG.debug("Get availability templates by departmentId={}", departmentId);
         return availabilityTemplateRepository.findAllByDepartmentIdAndTemplateType(departmentId, TemplateType.DEPARTMENT, pageable);
     }
 
-    public Page<AvailabilityTemplate> getAllByFacilityAndStatus(TemplateStatus status,  Pageable pageable) {
+    @Transactional(readOnly = true)
+    public Page<AvailabilityTemplate> getAllByFacilityAndStatus(TemplateStatus status, Pageable pageable) {
         LOG.debug("Get availability templates by status={}", status);
         Long facilityId = getFacility();
         return availabilityTemplateRepository.findAllByFacilityIdAndStatusAndTemplateType(facilityId, status, TemplateType.DEPARTMENT, pageable);
     }
+
+    @Transactional(readOnly = true)
     public Page<AvailabilityTemplate> getAllActiveByFacilityAndStatusAndTemplateTypeDepartment(TemplateStatus status, Pageable pageable) {
         LOG.debug("Get active availability templates by status={}", status);
         Long facilityId = getFacility();
         return availabilityTemplateRepository.findAllByFacilityIdAndStatusAndIsActiveTrueAndTemplateType(facilityId, status, TemplateType.DEPARTMENT, pageable);
     }
 
-    private AvailabilityTemplate getRequired(Long id) {
+    private AvailabilityTemplate getAvailabilityTemplate(Long id) {
         return availabilityTemplateRepository
                 .findById(id)
                 .orElseThrow(() ->
@@ -292,11 +299,11 @@ public class AvailabilityTemplateService {
         entity.setFinancialDetails(dto.financialDetails());
 
         if (dto.copyFromTemplateId() != null) {
-            entity.setCopyFromTemplate(getRequired(dto.copyFromTemplateId()));
+            entity.setCopyFromTemplate(getAvailabilityTemplate(dto.copyFromTemplateId()));
         }
 
         if (dto.parentTemplateId() != null) {
-            entity.setParentTemplate(getRequired(dto.parentTemplateId()));
+            entity.setParentTemplate(getAvailabilityTemplate(dto.parentTemplateId()));
         }
 
         entity.setDefaultServiceId(dto.defaultServiceId());
@@ -310,28 +317,32 @@ public class AvailabilityTemplateService {
     private void applyUpdate(AvailabilityTemplate entity, AvailabilityTemplateUpdateDTO dto) {
         if (dto.templateName() != null) entity.setTemplateName(dto.templateName());
         if (dto.templateType() != null) entity.setTemplateType(dto.templateType());
-        if(dto.resourceId() != null) entity.setResourceId(dto.resourceId());
+        if (dto.resourceId() != null) entity.setResourceId(dto.resourceId());
         if (dto.templateColor() != null) entity.setTemplateColor(dto.templateColor());
         if (dto.status() != null) entity.setStatus(dto.status());
         if (dto.versionNo() != null) entity.setVersionNo(dto.versionNo());
         if (dto.durationMinutes() != null) entity.setDurationMinutes(dto.durationMinutes());
-        if (dto.defaultBufferBeforeMinutes() != null) entity.setDefaultBufferBeforeMinutes(dto.defaultBufferBeforeMinutes());
-        if (dto.defaultBufferAfterMinutes() != null) entity.setDefaultBufferAfterMinutes(dto.defaultBufferAfterMinutes());
+        if (dto.defaultBufferBeforeMinutes() != null)
+            entity.setDefaultBufferBeforeMinutes(dto.defaultBufferBeforeMinutes());
+        if (dto.defaultBufferAfterMinutes() != null)
+            entity.setDefaultBufferAfterMinutes(dto.defaultBufferAfterMinutes());
         if (dto.parallelCapacityValue() != null) entity.setParallelCapacityValue(dto.parallelCapacityValue());
-        if (dto.numberOfResourcesExpected() != null) entity.setNumberOfResourcesExpected(dto.numberOfResourcesExpected());
+        if (dto.numberOfResourcesExpected() != null)
+            entity.setNumberOfResourcesExpected(dto.numberOfResourcesExpected());
         if (dto.requirePractitioner() != null) entity.setRequirePractitioner(dto.requirePractitioner());
         if (dto.requireBilling() != null) entity.setRequireBilling(dto.requireBilling());
         if (dto.requirePreAssessment() != null) entity.setRequirePreAssessment(dto.requirePreAssessment());
-        if (dto.allowPatientPortalBooking() != null) entity.setAllowPatientPortalBooking(dto.allowPatientPortalBooking());
+        if (dto.allowPatientPortalBooking() != null)
+            entity.setAllowPatientPortalBooking(dto.allowPatientPortalBooking());
         if (dto.requireConfirmation() != null) entity.setRequireConfirmation(dto.requireConfirmation());
         if (dto.financialDetails() != null) entity.setFinancialDetails(dto.financialDetails());
 
         if (dto.copyFromTemplateId() != null) {
-            entity.setCopyFromTemplate(getRequired(dto.copyFromTemplateId()));
+            entity.setCopyFromTemplate(getAvailabilityTemplate(dto.copyFromTemplateId()));
         }
 
         if (dto.parentTemplateId() != null) {
-            entity.setParentTemplate(getRequired(dto.parentTemplateId()));
+            entity.setParentTemplate(getAvailabilityTemplate(dto.parentTemplateId()));
         }
 
         if (dto.defaultServiceId() != null) {
