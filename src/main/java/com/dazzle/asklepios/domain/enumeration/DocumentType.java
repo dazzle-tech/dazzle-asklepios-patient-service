@@ -6,5 +6,7 @@ public enum DocumentType {
     NO_DOCUMENT,
     PASSPORT,
     SOCIAL_CARD,
-    DRIVING_LICENSE
+    DRIVING_LICENSE,
+    IQAMA,
+    BORDER_NUMBER
 }
