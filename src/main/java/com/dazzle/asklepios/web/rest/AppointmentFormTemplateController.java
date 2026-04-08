@@ -40,7 +40,7 @@ public class AppointmentFormTemplateController {
     @PutMapping("/appointments/book-patient")
     public ResponseEntity<AppointmentFromTemplate> bookPatientAppointment(@Valid @RequestBody AppointmentFromTemplateBookPatientDTO dto) {
         if (dto.service() == EncounterReason.FOLLOW_UP && dto.followUpEncounterId() == null) {
-            throw new BadRequestAlertException("Follow Up Encounter is require", "Appointment", "followUpEncounterId.invalid")
+            throw new BadRequestAlertException("Follow Up Encounter is require", "Appointment", "followUpEncounterId.invalid");
         }
         AppointmentFromTemplate result = appointmentFromTemplateService.bookPatientAppointment(dto);
 
