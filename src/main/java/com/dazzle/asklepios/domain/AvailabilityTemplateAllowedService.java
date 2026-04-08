@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.DayOfWeek;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -31,6 +32,10 @@ public class AvailabilityTemplateAllowedService {
     @ManyToOne
     @JoinColumn(name = "template_interval_id")
     private AvailabilityTemplateInterval interval;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "day_of_week", nullable = false)
+    private DayOfWeek dayOfWeek;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "service")

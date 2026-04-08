@@ -56,7 +56,9 @@ public class AvailabilityTemplateService {
             DepartmentHelper departmentHelper,
             ServiceHelper serviceHelper,
             PractitionerHelper practitionerHelper,
-            AvailabilityTemplateAllowedServiceRepository availabilityTemplateAllowedServiceRepository, AvailabilityTemplateIntervalRepository availabilityTemplateIntervalRepository) {
+            AvailabilityTemplateAllowedServiceRepository availabilityTemplateAllowedServiceRepository,
+            AvailabilityTemplateIntervalRepository availabilityTemplateIntervalRepository
+    ) {
         this.availabilityTemplateRepository = availabilityTemplateRepository;
         this.facilityHelper = facilityHelper;
         this.departmentHelper = departmentHelper;
@@ -114,7 +116,6 @@ public class AvailabilityTemplateService {
 
         updated.setAllowedServices(savedAllowedServices);
 
-
         return updated;
     }
 
@@ -124,20 +125,16 @@ public class AvailabilityTemplateService {
         if (!availabilityTemplateRepository.existsById(id)) {
             throw new BadRequestAlertException("Template not found with id " + id, "availabilityTemplate", "notfound");
         }
-
-        List<AvailabilityTemplateInterval> Intervals = availabilityTemplateIntervalRepository.findByTemplate_Id(id);
-        for (AvailabilityTemplateInterval interval : Intervals) {
-            availabilityTemplateAllowedServiceRepository.deleteByInterval_Id(interval.getId());
-            availabilityTemplateIntervalRepository.delete(interval);
-        }
         availabilityTemplateAllowedServiceRepository.deleteByTemplate_Id(id);
+        availabilityTemplateIntervalRepository.deleteByTemplate_Id(id);
         availabilityTemplateRepository.deleteById(id);
     }
 
     @Transactional(readOnly = true)
     public AvailabilityTemplate getOne(Long id) {
         LOG.debug("get availability template by id={}", id);
-        return availabilityTemplateRepository
+
+        AvailabilityTemplate entity = availabilityTemplateRepository
                 .findById(id)
                 .orElseThrow(() ->
                         new NotFoundAlertException(
@@ -146,23 +143,40 @@ public class AvailabilityTemplateService {
                                 "notfound"
                         )
                 );
+
+        initializeAllowedServices(entity);
+
+        return entity;
     }
 
     @Transactional(readOnly = true)
     public Page<AvailabilityTemplate> getAll(Pageable pageable) {
         LOG.debug("get all availability templates");
-        return availabilityTemplateRepository.findAllBy(pageable);
+
+        Page<AvailabilityTemplate> page = availabilityTemplateRepository.findAllBy(pageable);
+        page.getContent().forEach(this::initializeAllowedServices);
+
+        return page;
     }
 
     @Transactional(readOnly = true)
     public Page<AvailabilityTemplate> getAllByFacilityAndDepartment(Long departmentId, Pageable pageable) {
         LOG.debug("get availability templates by departmentId={}", departmentId);
         Long facilityId = getFacility();
-        return availabilityTemplateRepository.findAllByFacilityIdAndDepartmentIdAndTemplateType(facilityId, departmentId, TemplateType.DEPARTMENT, pageable);
+
+
+        Page<AvailabilityTemplate> page =
+                availabilityTemplateRepository.findAllByFacilityIdAndDepartmentIdAndTemplateType(
+                        facilityId, departmentId, TemplateType.DEPARTMENT, pageable
+                );
+
+        page.getContent().forEach(this::initializeAllowedServices);
+        return page;
     }
 
     public Optional<AvailabilityTemplate> toggleIsActive(Long id) {
         LOG.info("Toggling isActive for active availability template id={}", id);
+
         Optional<AvailabilityTemplate> updated = availabilityTemplateRepository.findById(id)
                 .map(entity -> {
                     entity.setIsActive(!Boolean.TRUE.equals(entity.getIsActive()));
@@ -182,40 +196,82 @@ public class AvailabilityTemplateService {
     public Page<AvailabilityTemplate> getAllByFacilityAndTemplateType(TemplateType templateType, Pageable pageable) {
         LOG.debug("Get availability templates by templateType={}", templateType);
         Long facilityId = getFacility();
-        return availabilityTemplateRepository.findAllByFacilityIdAndTemplateType(facilityId, templateType, pageable);
+
+        Page<AvailabilityTemplate> page =
+                availabilityTemplateRepository.findAllByFacilityIdAndTemplateType(facilityId, templateType, pageable);
+
+        page.getContent().forEach(this::initializeAllowedServices);
+        return page;
     }
 
     @Transactional(readOnly = true)
     public Page<AvailabilityTemplate> getAllByFacilityAndTemplateName(String templateName, Pageable pageable) {
         LOG.debug("Get availability templates by templateName={}", templateName);
         Long facilityId = getFacility();
-        return availabilityTemplateRepository.findAllByFacilityIdAndTemplateNameIsContainingIgnoreCaseAndTemplateType(facilityId, templateName, TemplateType.DEPARTMENT, pageable);
+
+        Page<AvailabilityTemplate> page =
+                availabilityTemplateRepository.findAllByFacilityIdAndTemplateNameIsContainingIgnoreCaseAndTemplateType(
+                        facilityId, templateName, TemplateType.DEPARTMENT, pageable
+                );
+
+        page.getContent().forEach(this::initializeAllowedServices);
+        return page;
     }
 
     @Transactional(readOnly = true)
     public List<AvailabilityTemplate> getAllParentTemplateId(Long parentTemplateId) {
         LOG.debug("Get availability templates by parentTemplateId={}", parentTemplateId);
-        return availabilityTemplateRepository.findAllByParentTemplate_Id(parentTemplateId);
+
+        List<AvailabilityTemplate> templates =
+                availabilityTemplateRepository.findAllByParentTemplate_Id(parentTemplateId);
+
+        templates.forEach(this::initializeAllowedServices);
+        return templates;
     }
 
     @Transactional(readOnly = true)
     public Page<AvailabilityTemplate> getAllByDepartmentId(Long departmentId, Pageable pageable) {
         LOG.debug("Get availability templates by departmentId={}", departmentId);
-        return availabilityTemplateRepository.findAllByDepartmentIdAndTemplateType(departmentId, TemplateType.DEPARTMENT, pageable);
+
+        Page<AvailabilityTemplate> page =
+                availabilityTemplateRepository.findAllByDepartmentIdAndTemplateType(
+                        departmentId, TemplateType.DEPARTMENT, pageable
+                );
+
+        page.getContent().forEach(this::initializeAllowedServices);
+        return page;
     }
 
     @Transactional(readOnly = true)
     public Page<AvailabilityTemplate> getAllByFacilityAndStatus(TemplateStatus status, Pageable pageable) {
         LOG.debug("Get availability templates by status={}", status);
         Long facilityId = getFacility();
-        return availabilityTemplateRepository.findAllByFacilityIdAndStatusAndTemplateType(facilityId, status, TemplateType.DEPARTMENT, pageable);
+
+        Page<AvailabilityTemplate> page =
+                availabilityTemplateRepository.findAllByFacilityIdAndStatusAndTemplateType(
+                        facilityId, status, TemplateType.DEPARTMENT, pageable
+                );
+
+        page.getContent().forEach(this::initializeAllowedServices);
+        return page;
     }
 
     @Transactional(readOnly = true)
-    public Page<AvailabilityTemplate> getAllActiveByFacilityAndStatusAndTemplateTypeDepartment(TemplateStatus status, Pageable pageable) {
+
+    public Page<AvailabilityTemplate> getAllActiveByFacilityAndStatusAndTemplateTypeDepartment(
+            TemplateStatus status,
+            Pageable pageable
+    ) {
         LOG.debug("Get active availability templates by status={}", status);
         Long facilityId = getFacility();
-        return availabilityTemplateRepository.findAllByFacilityIdAndStatusAndIsActiveTrueAndTemplateType(facilityId, status, TemplateType.DEPARTMENT, pageable);
+
+        Page<AvailabilityTemplate> page =
+                availabilityTemplateRepository.findAllByFacilityIdAndStatusAndIsActiveTrueAndTemplateType(
+                        facilityId, status, TemplateType.DEPARTMENT, pageable
+                );
+
+        page.getContent().forEach(this::initializeAllowedServices);
+        return page;
     }
 
     private AvailabilityTemplate getAvailabilityTemplate(Long id) {
@@ -240,7 +296,19 @@ public class AvailabilityTemplateService {
                 );
     }
 
-    private List<AvailabilityTemplateAllowedService> replaceAllowedServices(AvailabilityTemplate template, List<AvailabilityTemplateAllowedServiceDTO> allowedServices) {
+    private void initializeAllowedServices(AvailabilityTemplate template) {
+        List<AvailabilityTemplateAllowedService> templateAllowedServices =
+                availabilityTemplateAllowedServiceRepository.findAllByTemplate_IdAndIntervalIsNull(template.getId());
+
+        template.setAllowedServices(templateAllowedServices);
+    }
+
+    private List<AvailabilityTemplateAllowedService> replaceAllowedServices(
+            AvailabilityTemplate template,
+            List<AvailabilityTemplateAllowedServiceDTO> allowedServices
+    ) {
+        availabilityTemplateAllowedServiceRepository.deleteByTemplate_IdAndIntervalIsNull(template.getId());
+        availabilityTemplateAllowedServiceRepository.flush();
 
         if (allowedServices == null || allowedServices.isEmpty()) {
             return List.of();
@@ -257,7 +325,7 @@ public class AvailabilityTemplateService {
                 })
                 .toList();
 
-        return availabilityTemplateAllowedServiceRepository.saveAll(entities);
+        return availabilityTemplateAllowedServiceRepository.saveAllAndFlush(entities);
     }
 
     private AvailabilityTemplate toEntityForCreate(AvailabilityTemplateCreateDTO dto) {
