@@ -59,10 +59,10 @@ public class AppointmentFromTemplateService {
             appointment.setPatient(patient);
         }
         if (dto.defaultService() != null) {
-            appointment.setDefaultService(dto.defaultService());
+            appointment.setDefaultServiceId(dto.defaultService());
         }
         if (dto.defaultPractitioner() != null) {
-            appointment.setDefaultPractitioner(dto.defaultPractitioner());
+            appointment.setDefaultPractitionerId(dto.defaultPractitioner());
         }
         if (dto.reason() != null) {
             appointment.setReason(dto.reason());
@@ -72,6 +72,9 @@ public class AppointmentFromTemplateService {
         }
         if (dto.note() != null) {
             appointment.setNote(dto.note());
+        }
+        if (dto.service() != null) {
+            appointment.setService(dto.service());
         }
 
         AppointmentFromTemplate saved = appointmentFromTemplateRepository.save(appointment);
@@ -105,10 +108,10 @@ public class AppointmentFromTemplateService {
 
             query.distinct(true);
 
-            predicates.add(cb.equal(root.get("facility"), filter.facility()));
+            predicates.add(cb.equal(root.get("facilityId"), filter.facility()));
 
             if (filter.department() != null) {
-                predicates.add(cb.equal(root.get("department"), filter.department()));
+                predicates.add(cb.equal(root.get("departmentId"), filter.department()));
             }
 
             if (filter.resourceType() != null) {
@@ -181,13 +184,13 @@ public class AppointmentFromTemplateService {
         appointment.setStatus(AppointmentStatus.CONFIRMED);
         AppointmentFromTemplate savedAppointment = appointmentFromTemplateRepository.save(appointment);
 
-        DepartmentDTO department = departmentHelper.getDepartment(savedAppointment.getDepartment());
+        DepartmentDTO department = departmentHelper.getDepartment(savedAppointment.getDepartmentId());
 
         PatientEncounterCreateDTO encounterCreateDTO = new PatientEncounterCreateDTO(
                 savedAppointment.getPatient().getId(),
-                savedAppointment.getFacility(),
-                savedAppointment.getDepartment(),
-                savedAppointment.getDefaultPractitioner(),
+                savedAppointment.getFacilityId(),
+                savedAppointment.getDepartmentId(),
+                savedAppointment.getDefaultPractitionerId(),
                 savedAppointment.getId(),
                 department.encounterType(),
                 savedAppointment.getService(),

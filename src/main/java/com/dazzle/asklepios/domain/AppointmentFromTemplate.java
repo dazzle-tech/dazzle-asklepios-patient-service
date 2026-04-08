@@ -33,10 +33,10 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     private Long id;
 
     @Column(name = "facility_id", nullable = false)
-    private Long facility;
+    private Long facilityId;
 
     @Column(name = "department_id", nullable = false)
-    private Long department;
+    private Long departmentId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "availability_generation_batch_id")
@@ -64,14 +64,15 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     private Patient patient;
 
     @Column(name = "default_service_id")
-    private Long defaultService;
+    private Long defaultServiceId;
 
     @Column(name = "default_practitioner_id")
-    private Long defaultPractitioner;
+    private Long defaultPractitionerId;
 
     @Column(name = "reason", length = 255)
     private String reason;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "service", length = 50)
     private EncounterReason service;
 

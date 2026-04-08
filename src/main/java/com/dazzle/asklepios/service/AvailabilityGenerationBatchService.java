@@ -234,24 +234,22 @@ public class AvailabilityGenerationBatchService {
 
             for (int i = 0; i < parallelCapacity; i++) {
                 AppointmentFromTemplate appointment = new AppointmentFromTemplate();
-                appointment.setFacility(template.getFacilityId());
-                appointment.setDepartment(template.getDepartmentId());
+                appointment.setFacilityId(template.getFacilityId());
+                appointment.setDepartmentId(template.getDepartmentId());
                 appointment.setAvailabilityGenerationBatch(batch);
                 appointment.setResourceType(template.getTemplateType());
                 appointment.setResourceId(template.getResourceId());
                 appointment.setStartDatetime(toInstant(slotStart));
                 appointment.setEndDatetime(toInstant(slotEnd));
                 appointment.setPatient(null);
-                appointment.setDefaultService(template.getDefaultServiceId());
-                appointment.setDefaultPractitioner(template.getDefaultPractitionerId());
+                appointment.setDefaultServiceId(template.getDefaultServiceId());
+                appointment.setDefaultPractitionerId(template.getDefaultPractitionerId());
                 appointment.setBookingMode(BookingMode.SLOT);
                 appointment.setStatus(AppointmentStatus.NEW);
                 appointment.setDeferred(deferred);
                 appointment.setDeferredAt(deferredAt);
                 appointment.setPriority(EncounterPriority.NORMAL);
                 appointment.setCapacityIndex(i + 1);
-                appointment.setDefaultService(template.getDefaultServiceId());
-                appointment.setDefaultPractitioner(template.getDefaultPractitionerId());
 
                 if (holiday && holidayHandlingMode == HolidayHandlingMode.INCLUDE_AS_EXCEPTION) {
                     appointment.setReason("Generated on organization holiday by user confirmation: " + template.getTemplateName());
