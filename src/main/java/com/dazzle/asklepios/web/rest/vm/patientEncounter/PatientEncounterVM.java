@@ -1,11 +1,12 @@
 package com.dazzle.asklepios.web.rest.vm.patientEncounter;
 
+import com.dazzle.asklepios.domain.AppointmentFromTemplate;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
-import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
+import com.dazzle.asklepios.domain.enumeration.EncounterType;
 
 import java.time.LocalDate;
 
@@ -18,7 +19,7 @@ public record PatientEncounterVM(
         Long departmentId,
         Long practitionerId,
 
-        String appointmentId,
+        AppointmentFromTemplate appointment,
 
         EncounterType encounterType,
         EncounterReason encounterReason,
@@ -40,7 +41,7 @@ public record PatientEncounterVM(
 
 ) {
 
-    public static PatientEncounterVM ofEntity(PatientEncounter encounter,Boolean hasOrder,Boolean hasPrescription,Boolean hasObservation) {
+    public static PatientEncounterVM ofEntity(PatientEncounter encounter, Boolean hasOrder, Boolean hasPrescription, Boolean hasObservation) {
         if (encounter == null) return null;
 
         return new PatientEncounterVM(
@@ -52,7 +53,7 @@ public record PatientEncounterVM(
                 encounter.getDepartmentId(),
                 encounter.getPractitionerId(),
 
-                encounter.getAppointmentId(),
+                encounter.getAppointment(),
 
                 encounter.getEncounterType(),
                 encounter.getEncounterReason(),

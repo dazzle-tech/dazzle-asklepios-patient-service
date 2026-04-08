@@ -59,9 +59,10 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "practitioner_id")
     private Long practitionerId;
 
-    //TODO: this column to be deleted when the change appointment
-    @Column(name = "appointment_id")
-    private String appointmentId;
+    @NotNull
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "appointment_id", nullable = false)
+    private AppointmentFromTemplate appointment;
 
     @NotNull
     @Enumerated(EnumType.STRING)

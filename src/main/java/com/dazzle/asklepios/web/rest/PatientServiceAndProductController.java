@@ -98,14 +98,13 @@ public class PatientServiceAndProductController {
                 patientServiceAndProductService
                         .findAllServicesAndProductsByPatientId(pageable, patientId);
 
+
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
         );
 
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
-
-
 
     @PutMapping("/patient-services-products/{id}")
     public ResponseEntity<PatientServiceAndProduct> update(

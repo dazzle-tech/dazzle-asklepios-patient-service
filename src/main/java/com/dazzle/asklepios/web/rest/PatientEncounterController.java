@@ -341,7 +341,7 @@ public class PatientEncounterController {
 
     @GetMapping("/encounter/appointment/{appointmentId}")
     public ResponseEntity<PatientEncounter> getEncountersByAppointment(
-            @PathVariable @NotNull String appointmentId
+            @PathVariable @NotNull Long appointmentId
     ) {
         LOG.debug("REST get EncounterAppointment by appointmentId={}", appointmentId);
 

@@ -1,4 +1,4 @@
-package com.dazzle.asklepios.client.dto;
+package com.dazzle.asklepios.client.setup.dto;
 
 import com.dazzle.asklepios.domain.enumeration.AgeUnit;
 import com.dazzle.asklepios.domain.enumeration.Condition;
