@@ -21,6 +21,7 @@ public record PatientUpdateDTO(
         @NotEmpty
         String firstName,
 
+        @NotEmpty
         String secondName,
         String thirdName,
 
