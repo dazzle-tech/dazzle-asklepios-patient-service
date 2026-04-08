@@ -3,6 +3,8 @@ package com.dazzle.asklepios.domain;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.BookingMode;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
+import com.dazzle.asklepios.domain.enumeration.EncounterReason;
+import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -31,14 +33,22 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     private Long id;
 
     @Column(name = "facility_id", nullable = false)
-    private Long facility;
+    private Long facilityId;
 
     @Column(name = "department_id", nullable = false)
-    private Long department;
+    private Long departmentId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "availability_generation_batch_id")
     private AvailabilityGenerationBatch availabilityGenerationBatch;
+
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "resource_type", nullable = false)
+    private TemplateType resourceType;
+
+    @Column(name = "resource_id", nullable = false)
+    private Long resourceId;
 
     @Column(name = "capacity_index")
     private Integer capacityIndex;
@@ -54,16 +64,17 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     private Patient patient;
 
     @Column(name = "default_service_id")
-    private Long defaultService;
+    private Long defaultServiceId;
 
     @Column(name = "default_practitioner_id")
-    private Long defaultPractitioner;
+    private Long defaultPractitionerId;
 
     @Column(name = "reason", length = 255)
     private String reason;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "service", length = 50)
-    private String service;
+    private EncounterReason service;
 
     @Column(name = "service_group_id")
     private Long serviceGroupId;
@@ -91,10 +102,15 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     @Column(name = "cancelled_by", length = 50)
     private String cancelledBy;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "priority", nullable = false, length = 50)
     private EncounterPriority priority;
 
     @Column(name = "note")
     private String note;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "follow_up_encounter_id")
+    private PatientEncounter followUpEncounter;
 
 }
