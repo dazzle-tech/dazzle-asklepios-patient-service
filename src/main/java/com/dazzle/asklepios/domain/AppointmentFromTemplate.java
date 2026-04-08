@@ -102,6 +102,7 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     @Column(name = "cancelled_by", length = 50)
     private String cancelledBy;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "priority", nullable = false, length = 50)
     private EncounterPriority priority;
 
