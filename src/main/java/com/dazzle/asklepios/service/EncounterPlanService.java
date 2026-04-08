@@ -11,6 +11,8 @@ import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -111,6 +113,12 @@ public class EncounterPlanService {
                         "encounterPlan",
                         "notfound"
                 ));
+    }
+
+    @Transactional(readOnly = true)
+    public Page<EncounterPlan> findByPatientId(Long patientId , Pageable pageable) {
+        LOG.debug("Request to get EncounterPlans by patientId={}", patientId);
+        return encounterPlanRepository.findAllByPatientIdOrderByCreatedDateDesc(patientId ,pageable);
     }
 
     private void handleConstraintsOnCreateOrUpdate(RuntimeException exception) {
