@@ -20,6 +20,8 @@ public interface AppointmentFromTemplateRepository extends JpaRepository<Appoint
             Pageable pageable
     );
 
+    Page<AppointmentFromTemplate> findByDepartmentIdAndStartDatetimeBetween(Long departmentId, Instant startDatetime, Instant endDatetime, Pageable pageable);
+
     Page<AppointmentFromTemplate> findByAvailabilityGenerationBatch_Id(Long id, Pageable pageable);
 
 }

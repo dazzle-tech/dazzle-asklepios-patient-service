@@ -1,12 +1,14 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.AvailabilityGenerationBatch;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.service.AvailabilityGenerationBatchService;
 import com.dazzle.asklepios.service.dto.availabilityGenerationBatch.AvailabilityGenerationBatchApplyDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.availabilityGenerationBatch.ApplyAvailabilityTemplateResponseVM;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,6 +82,16 @@ public class AvailabilityGenerationBatchController {
         if (Boolean.TRUE.equals(request.deferred()) && request.deferredAt() == null) {
             throw new BadRequestAlertException("Deferred at is required when deferred is true", "availabilityTemplate", "deferredatnull");
         }
+    }
+
+    @GetMapping("/availability-generation-batches/{id}")
+    public ResponseEntity<AvailabilityGenerationBatch> getBatchById(
+            @PathVariable("id") @NotNull Long batchId
+    ) {
+        LOG.debug("REST get Batch by id={}", batchId);
+
+        AvailabilityGenerationBatch batch = availabilityGenerationBatchService.getById(batchId);
+        return ResponseEntity.ok(batch);
     }
 
 }
