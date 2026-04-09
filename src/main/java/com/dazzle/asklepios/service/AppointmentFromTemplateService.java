@@ -262,7 +262,7 @@ public class AppointmentFromTemplateService {
 
             appointment.setFollowUpEncounter(followUpEncounter);
         }
-
+        appointment.setCapacityIndex(1);
         AppointmentFromTemplate quickAppointment = appointmentFromTemplateRepository.save(appointment);
         PatientEncounter encounter = createEncounter(quickAppointment, department, appointmentDTO.originType(), appointmentDTO.originName());
 
@@ -275,6 +275,13 @@ public class AppointmentFromTemplateService {
         AvailabilityGenerationBatch batch = getBatch(availabilityGenerationId);
 
         return appointmentFromTemplateRepository.findByAvailabilityGenerationBatch_Id(batch.getId(), pageable);
+    }
+
+    public Page<AppointmentFromTemplate> getAppointmentsByDepartmentBetweenDates(Long departmentId, Instant startDatetime, Instant endDatetime, Pageable pageable) {
+        LOG.debug("Request to get appointments for the department between startDatetime={} and endDatetime={}", startDatetime, endDatetime);
+
+
+        return appointmentFromTemplateRepository.findByDepartmentIdAndStartDatetimeBetween(departmentId, startDatetime, endDatetime, pageable);
     }
 
     private AvailabilityGenerationBatch getBatch(Long id) {

@@ -73,7 +73,19 @@ public class AvailabilityGenerationBatchService {
                         "idnotfound"
                 ));
     }
-
+    @Transactional(readOnly = true)
+    public AvailabilityGenerationBatch getById(Long batchId) {
+        LOG.debug("[GET_BY_ID] batchId={}", batchId);
+        return availabilityGenerationBatchRepository.findById(batchId)
+                .orElseThrow(() -> {
+                    LOG.warn("[GET_BY_ID] AvailabilityGenerationBatch not found id={}", batchId);
+                    return new NotFoundAlertException(
+                            "AvailabilityGenerationBatch not found with id " + batchId,
+                            "AvailabilityGenerationBatch",
+                            "id.notfound"
+                    );
+                });
+    }
     public ApplyAvailabilityTemplateResponseVM applyTemplate(AvailabilityGenerationBatchApplyDTO request) {
         LOG.info("[APPLY TEMPLATE] templateId={}, startDate={}, endDate={}, deferred={}, deferredAt={}, holidayHandlingMode={}",
                 request.templateId(),
