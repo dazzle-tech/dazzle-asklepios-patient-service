@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service.dto.vitalSigns;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 
 import java.io.Serializable;
@@ -29,9 +30,7 @@ public record VitalSignsUpdateDTO(
 
         String measurementSite,
         Integer heartRate,
-
-        Integer oxygenSaturation,
-
+        BigDecimal oxygenSaturation,
         Integer respiratoryRate,
 
         @NotNull
@@ -43,4 +42,16 @@ public record VitalSignsUpdateDTO(
         String notes
 
 ) implements Serializable {
+
+        @AssertTrue(message = "measurementSite, heartRate, oxygenSaturation, and respiratoryRate are required when isTriage is true")
+        public boolean isTriageFieldsValid() {
+                if (!Boolean.TRUE.equals(isTriage)) {
+                        return true;
+                }
+
+                return measurementSite != null && !measurementSite.isBlank()
+                        && heartRate != null
+                        && oxygenSaturation != null
+                        && respiratoryRate != null;
+        }
 }

@@ -760,8 +760,8 @@ public class PatientEncounterService {
         return total;
     }
 
-    public PatientEncounter moveFromWaitingListToNew(Long id) {
-        LOG.info("[STATUS CHANGE] Move encounter from WAITING_LIST to NEW id={}", id);
+    public PatientEncounter moveToNew(Long id) {
+        LOG.info("[STATUS CHANGE] Move encounter to NEW id={}", id);
 
         PatientEncounter encounter = patientEncounterRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -770,12 +770,15 @@ public class PatientEncounterService {
                         "notfound"
                 ));
 
-        if (encounter.getStatus() != EncounterStatus.WAITING_LIST) {
+        EncounterStatus currentStatus = encounter.getStatus();
+
+        if (!(currentStatus == EncounterStatus.WAITING_LIST
+                || currentStatus == EncounterStatus.TRIAGE_STARTED)) {
             LOG.warn("[STATUS CHANGE] Invalid transition for id={} currentStatus={}",
-                    id, encounter.getStatus());
+                    id, currentStatus);
 
             throw new BadRequestAlertException(
-                    "Only encounters in WAITING_LIST can be moved to NEW.",
+                    "Only encounters in WAITING_LIST or TRIAGE_STARTED can be moved to NEW.",
                     "patientEncounter",
                     "invalid.status.transition"
             );
