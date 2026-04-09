@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.AppointmentFromTemplate;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
+import com.dazzle.asklepios.domain.enumeration.BookingMode;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
@@ -14,11 +15,13 @@ import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateBookPatientDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateCancelDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateNoShowDTO;
+import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateSearchFilterDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentResponseVM;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.transaction.Transactional;
@@ -154,11 +157,6 @@ public class AppointmentFromTemplateService {
         return result;
     }
 
-    private AppointmentFromTemplate getAppointment(Long id) {
-        return appointmentFromTemplateRepository.findById(id)
-                .orElseThrow(() -> new NotFoundAlertException("Appointment not found: " + id, ENTITY_NAME, "notfound"));
-    }
-
     public AppointmentFromTemplate cancel(AppointmentFromTemplateCancelDTO dto) {
         AppointmentFromTemplate appointment = getAppointment(dto.id());
 
@@ -195,28 +193,7 @@ public class AppointmentFromTemplateService {
 
         DepartmentDTO department = departmentHelper.getDepartment(savedAppointment.getDepartmentId());
 
-        PatientEncounterCreateDTO encounterCreateDTO = new PatientEncounterCreateDTO(
-                savedAppointment.getPatient() != null ? savedAppointment.getPatient().getId() : null,
-                savedAppointment.getFacilityId(),
-                savedAppointment.getDepartmentId(),
-                savedAppointment.getDefaultPractitionerId(),
-                savedAppointment.getId(),
-                department.encounterType(),
-                savedAppointment.getService(),
-                savedAppointment.getFollowUpEncounter() != null ? savedAppointment.getFollowUpEncounter().getId() : null,
-                savedAppointment.getPriority(),
-                null,
-                null,
-                savedAppointment.getNote(),
-                savedAppointment.getStartDatetime()
-                        .atZone(java.time.ZoneId.systemDefault())
-                        .toLocalDate(),
-                EncounterStatus.NEW,
-                savedAppointment.getReason()
-
-        );
-
-        patientEncounterService.create(encounterCreateDTO);
+        createEncounter(savedAppointment, department, null,null);
 
         return savedAppointment;
     }
@@ -229,6 +206,94 @@ public class AppointmentFromTemplateService {
         appointment.setStatus(AppointmentStatus.CHECKED_IN);
 
         return appointmentFromTemplateRepository.save(appointment);
+    }
+
+    public AppointmentFromTemplateQuickAppointmentResponseVM createQuickAppointment(AppointmentFromTemplateQuickAppointmentDTO appointmentDTO) {
+        LOG.info("[CREATE QUICK APPOINTMENT] facilityId={}, departmentId={}, resourceType={}, resourceId={}, patientId={}",
+                appointmentDTO.facilityId(),
+                appointmentDTO.departmentId(),
+                appointmentDTO.resourceType(),
+                appointmentDTO.resourceId(),
+                appointmentDTO.patientId());
+
+        DepartmentDTO department = departmentHelper.getDepartment(appointmentDTO.departmentId());
+
+        if (department.defaultDurationMinutes() == null || department.defaultDurationMinutes() <= 0) {
+            throw new BadRequestAlertException(
+                    "Department default duration is invalid",
+                    "department",
+                    "defaultdurationinvalid"
+            );
+        }
+
+        Patient patient = patientRepository.findById(appointmentDTO.patientId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found",
+                        "patient",
+                        "idnotfound"
+                ));
+
+
+        Instant startDateTime = Instant.now();
+        Instant endDateTime = startDateTime.plusSeconds(department.defaultDurationMinutes() * 60L);
+
+        AppointmentFromTemplate appointment = new AppointmentFromTemplate();
+        appointment.setFacilityId(appointmentDTO.facilityId());
+        appointment.setDepartmentId(appointmentDTO.departmentId());
+        appointment.setResourceType(appointmentDTO.resourceType());
+        appointment.setResourceId(appointmentDTO.resourceId());
+        appointment.setPatient(patient);
+        appointment.setStartDatetime(startDateTime);
+        appointment.setEndDatetime(endDateTime);
+        appointment.setDefaultServiceId(appointmentDTO.defaultServiceId());
+        appointment.setDefaultPractitionerId(appointmentDTO.defaultPractitionerId());
+        appointment.setBookingMode(BookingMode.QUICK);
+        appointment.setStatus(AppointmentStatus.CONFIRMED);
+        appointment.setPriority(appointmentDTO.priority());
+        appointment.setReason(appointmentDTO.reason());
+        appointment.setNote(appointmentDTO.note());
+        appointment.setService(appointmentDTO.service());
+        if (appointmentDTO.service() == EncounterReason.FOLLOW_UP && appointmentDTO.followUpEncounterId() != null) {
+            PatientEncounter followUpEncounter = patientEncounterRepository.findById(appointmentDTO.followUpEncounterId())
+                    .orElseThrow(() -> new NotFoundAlertException("Patient Encounter not found with id: " + appointmentDTO.followUpEncounterId(), ENTITY_NAME, "notfound"));
+
+            appointment.setFollowUpEncounter(followUpEncounter);
+        }
+
+        AppointmentFromTemplate quickAppointment = appointmentFromTemplateRepository.save(appointment);
+        PatientEncounter encounter = createEncounter(quickAppointment, department, appointmentDTO.originType(),appointmentDTO.originName());
+
+        return new AppointmentFromTemplateQuickAppointmentResponseVM(quickAppointment, encounter);
+    }
+
+    private PatientEncounter createEncounter(AppointmentFromTemplate savedAppointment, DepartmentDTO department, String originType, String originName) {
+        PatientEncounterCreateDTO encounterCreateDTO = new PatientEncounterCreateDTO(
+                savedAppointment.getPatient() != null ? savedAppointment.getPatient().getId() : null,
+                savedAppointment.getFacilityId(),
+                savedAppointment.getDepartmentId(),
+                savedAppointment.getDefaultPractitionerId(),
+                savedAppointment.getId(),
+                department.encounterType(),
+                savedAppointment.getService(),
+                savedAppointment.getFollowUpEncounter() != null ? savedAppointment.getFollowUpEncounter().getId() : null,
+                savedAppointment.getPriority(),
+                originType,
+                originName,
+                savedAppointment.getNote(),
+                savedAppointment.getStartDatetime()
+                        .atZone(java.time.ZoneId.systemDefault())
+                        .toLocalDate(),
+                EncounterStatus.NEW,
+                savedAppointment.getReason()
+
+        );
+
+        return patientEncounterService.create(encounterCreateDTO);
+    }
+
+    private AppointmentFromTemplate getAppointment(Long id) {
+        return appointmentFromTemplateRepository.findById(id)
+                .orElseThrow(() -> new NotFoundAlertException("Appointment not found: " + id, ENTITY_NAME, "notfound"));
     }
 
     private void validateCancelable(AppointmentFromTemplate appointment) {

@@ -7,9 +7,11 @@ import com.dazzle.asklepios.service.AppointmentFromTemplateService;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateBookPatientDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateCancelDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateNoShowDTO;
+import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateSearchFilterDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentResponseVM;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -91,5 +93,14 @@ public class AppointmentFormTemplateController {
     public ResponseEntity<AppointmentFromTemplate> checkIn(@PathVariable Long id) {
         AppointmentFromTemplate result = appointmentFromTemplateService.checkIn(id);
         return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/appointments/quick-appointment")
+    public ResponseEntity<AppointmentFromTemplateQuickAppointmentResponseVM> createQuickAppointment(@Valid @RequestBody AppointmentFromTemplateQuickAppointmentDTO appointmentDTO) {
+        if (appointmentDTO.service() == EncounterReason.FOLLOW_UP && appointmentDTO.followUpEncounterId() == null) {
+            throw new BadRequestAlertException("Follow Up Encounter is require", "Appointment", "followUpEncounterId.invalid");
+        }
+        AppointmentFromTemplateQuickAppointmentResponseVM result = appointmentFromTemplateService.createQuickAppointment(appointmentDTO);
+        return ResponseEntity.status(HttpStatus.CREATED).body(result);
     }
 }
