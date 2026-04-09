@@ -350,13 +350,13 @@ public class PatientEncounterController {
     }
 
     @PostMapping("/encounter/{id}/move-to-new")
-    public ResponseEntity<PatientEncounter> moveWaitingListToNew(
+    public ResponseEntity<PatientEncounter> moveToNew(
             @PathVariable("id") @NotNull Long encounterId
     ) {
         LOG.debug("REST move PatientEncounter from WAITING_LIST to NEW id={}", encounterId);
 
         PatientEncounter updated =
-                patientEncounterService.moveFromWaitingListToNew(encounterId);
+                patientEncounterService.moveToNew(encounterId);
 
         return ResponseEntity.ok(updated);
     }

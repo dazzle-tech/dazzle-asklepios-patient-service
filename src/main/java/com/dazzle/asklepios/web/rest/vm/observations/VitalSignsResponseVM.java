@@ -22,7 +22,7 @@ public class VitalSignsResponseVM {
 
     private Integer bloodPressureDiastolic;
 
-    private Integer oxygenSaturation;
+    private BigDecimal oxygenSaturation;
 
     private Instant createdAt;
 

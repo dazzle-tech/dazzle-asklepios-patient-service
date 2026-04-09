@@ -4,12 +4,13 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 @Getter
 @Setter
 @Builder
 public class OxygenSaturationResponseVM {
-    private Integer oxygenSaturation;
+    private BigDecimal oxygenSaturation;
     private Instant createdAt;
 }

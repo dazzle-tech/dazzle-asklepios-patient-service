@@ -60,8 +60,8 @@ public class VitalSigns extends AbstractAuditingEntity<Long> implements Serializ
     @Column(name = "temperature", precision = 5, scale = 2)
     private BigDecimal temperature;
 
-    @Column(name = "oxygen_saturation")
-    private Integer oxygenSaturation;
+    @Column(name = "oxygen_saturation", precision = 5, scale = 2)
+    private BigDecimal oxygenSaturation;
 
     @Column(name = "respiratory_rate")
     private Integer respiratoryRate;
