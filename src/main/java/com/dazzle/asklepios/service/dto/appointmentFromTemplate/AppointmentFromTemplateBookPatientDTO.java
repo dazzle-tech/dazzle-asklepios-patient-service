@@ -24,6 +24,8 @@ public record AppointmentFromTemplateBookPatientDTO(
         String note,
         @NotNull(message = "service is required") EncounterReason service,
         @NotNull(message = "priority is required") EncounterPriority priority,
+        String originType,
+        String originName,
         Long followUpEncounterId
         ) {
 }
