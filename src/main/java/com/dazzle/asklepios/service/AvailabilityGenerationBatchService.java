@@ -158,7 +158,6 @@ public class AvailabilityGenerationBatchService {
                 holidayHandlingMode);
 
 
-
         List<AppointmentFromTemplate> appointments = new ArrayList<>();
 
         LocalDate current = startDate;
@@ -251,11 +250,7 @@ public class AvailabilityGenerationBatchService {
                 appointment.setPriority(EncounterPriority.NORMAL);
                 appointment.setCapacityIndex(i + 1);
 
-                if (holiday && holidayHandlingMode == HolidayHandlingMode.INCLUDE_AS_EXCEPTION) {
-                    appointment.setReason("Generated on organization holiday by user confirmation: " + template.getTemplateName());
-                } else {
-                    appointment.setReason("Generated from availability template: " + template.getTemplateName());
-                }
+                appointment.setReason(null);
 
                 appointments.add(appointment);
             }

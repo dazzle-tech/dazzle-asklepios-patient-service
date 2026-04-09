@@ -10,7 +10,8 @@ public record DepartmentDTO(
         String name,
         Boolean appointable,
         EncounterType encounterType,
-        Boolean isActive
+        Boolean isActive,
+        Integer defaultDurationMinutes
 ) {
 
 }
