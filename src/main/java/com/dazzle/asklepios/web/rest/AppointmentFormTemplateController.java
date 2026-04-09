@@ -103,4 +103,15 @@ public class AppointmentFormTemplateController {
         AppointmentFromTemplateQuickAppointmentResponseVM result = appointmentFromTemplateService.createQuickAppointment(appointmentDTO);
         return ResponseEntity.status(HttpStatus.CREATED).body(result);
     }
+
+    @GetMapping("/appointments/by-batch-id/{batchId}")
+    public ResponseEntity<List<AppointmentFromTemplate>> getAppointmentsByBatchId(@PathVariable Long batchId, Pageable pageable) {
+        Page<AppointmentFromTemplate> result = appointmentFromTemplateService.getAppointmentByAvailabilityGenerationBatch(batchId, pageable);
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                result
+        );
+
+        return new ResponseEntity<>(result.getContent(), headers, HttpStatus.OK);
+    }
 }

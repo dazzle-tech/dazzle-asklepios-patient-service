@@ -347,7 +347,7 @@ public class PatientEncounterService {
 
         try {
             PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
-            updateAppointmentStatusForEncounter(AppointmentStatus.IN_SERVICE, encounter.getAppointment().getId());
+            updateAppointmentStatusForEncounter(AppointmentStatus.IN_SERVICE, saved.getAppointment().getId());
             LOG.info("[START] success id={} status={}", saved.getId(), saved.getStatus());
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {

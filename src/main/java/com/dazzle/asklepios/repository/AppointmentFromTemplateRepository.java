@@ -20,5 +20,7 @@ public interface AppointmentFromTemplateRepository extends JpaRepository<Appoint
             Pageable pageable
     );
 
+    Page<AppointmentFromTemplate> findByAvailabilityGenerationBatch_Id(Long id, Pageable pageable);
+
 }
 

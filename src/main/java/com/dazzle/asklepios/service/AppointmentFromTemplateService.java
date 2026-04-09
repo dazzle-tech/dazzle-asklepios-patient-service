@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.AppointmentFromTemplate;
+import com.dazzle.asklepios.domain.AvailabilityGenerationBatch;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
@@ -9,6 +10,7 @@ import com.dazzle.asklepios.domain.enumeration.BookingMode;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
+import com.dazzle.asklepios.repository.AvailabilityGenerationBatchRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
@@ -53,6 +55,7 @@ public class AppointmentFromTemplateService {
     private final DepartmentHelper departmentHelper;
     private final PatientEncounterService patientEncounterService;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final AvailabilityGenerationBatchRepository availabilityGenerationBatchRepository;
 
     public AppointmentFromTemplate bookPatientAppointment(AppointmentFromTemplateBookPatientDTO dto) {
         LOG.debug("Request to update AppointmentFromTemplate dto={}", dto);
@@ -193,7 +196,7 @@ public class AppointmentFromTemplateService {
 
         DepartmentDTO department = departmentHelper.getDepartment(savedAppointment.getDepartmentId());
 
-        createEncounter(savedAppointment, department, null,null);
+        createEncounter(savedAppointment, department, null, null);
 
         return savedAppointment;
     }
@@ -261,9 +264,22 @@ public class AppointmentFromTemplateService {
         }
 
         AppointmentFromTemplate quickAppointment = appointmentFromTemplateRepository.save(appointment);
-        PatientEncounter encounter = createEncounter(quickAppointment, department, appointmentDTO.originType(),appointmentDTO.originName());
+        PatientEncounter encounter = createEncounter(quickAppointment, department, appointmentDTO.originType(), appointmentDTO.originName());
 
         return new AppointmentFromTemplateQuickAppointmentResponseVM(quickAppointment, encounter);
+    }
+
+    public Page<AppointmentFromTemplate> getAppointmentByAvailabilityGenerationBatch(Long availabilityGenerationId, Pageable pageable) {
+        LOG.debug("Request to get appointments for availability generation batch availabilityGenerationBatchId={}", availabilityGenerationId);
+
+        AvailabilityGenerationBatch batch = getBatch(availabilityGenerationId);
+
+        return appointmentFromTemplateRepository.findByAvailabilityGenerationBatch_Id(batch.getId(), pageable);
+    }
+
+    private AvailabilityGenerationBatch getBatch(Long id) {
+        return availabilityGenerationBatchRepository.findById(id)
+                .orElseThrow(() -> new NotFoundAlertException("Batch not found: " + id, ENTITY_NAME, "notfound"));
     }
 
     private PatientEncounter createEncounter(AppointmentFromTemplate savedAppointment, DepartmentDTO department, String originType, String originName) {
