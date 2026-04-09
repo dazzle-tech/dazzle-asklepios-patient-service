@@ -9,12 +9,13 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.util.List;
 
 @Repository
 public interface AppointmentFromTemplateRepository extends JpaRepository<AppointmentFromTemplate, Long>, JpaSpecificationExecutor<AppointmentFromTemplate> {
 
-    Page<AppointmentFromTemplate> findByStatusAndStartDatetimeBetween(
-            AppointmentStatus status,
+    Page<AppointmentFromTemplate> findByStatusInAndStartDatetimeBetween(
+            List<AppointmentStatus> status,
             Instant startDatetime,
             Instant endDatetime,
             Pageable pageable

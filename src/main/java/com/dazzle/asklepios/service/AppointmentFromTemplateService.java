@@ -90,18 +90,10 @@ public class AppointmentFromTemplateService {
         return saved;
     }
 
-    public Page<AppointmentFromTemplate> getAppointmentsByStatusBetweenDates(AppointmentStatus status, Instant startDatetime, Instant endDatetime, Pageable pageable) {
+    public Page<AppointmentFromTemplate> getAppointmentsByStatusBetweenDates(List<AppointmentStatus> status, Instant startDatetime, Instant endDatetime, Pageable pageable) {
         LOG.debug("Request to get appointments with patient not null between startDatetime={} and endDatetime={}", startDatetime, endDatetime);
 
-        if (startDatetime == null || endDatetime == null) {
-            throw new BadRequestAlertException("startDatetime and endDatetime are required", "appointmentFormTemplate", "payload.required");
-        }
-
-        if (startDatetime.isAfter(endDatetime)) {
-            throw new BadRequestAlertException("startDatetime must be before or equal to endDatetime", "appointmentFormTemplate", "payload.required");
-        }
-
-        return appointmentFromTemplateRepository.findByStatusAndStartDatetimeBetween(status, startDatetime, endDatetime, pageable);
+        return appointmentFromTemplateRepository.findByStatusInAndStartDatetimeBetween(status, startDatetime, endDatetime, pageable);
     }
 
     public Page<AppointmentFromTemplate> filterAppointment(AppointmentFromTemplateSearchFilterDTO filter, Pageable pageable) {

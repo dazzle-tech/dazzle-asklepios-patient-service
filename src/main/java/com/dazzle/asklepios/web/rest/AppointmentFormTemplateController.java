@@ -48,7 +48,16 @@ public class AppointmentFormTemplateController {
     }
 
     @GetMapping("/appointments/by-status-and-dates")
-    public ResponseEntity<List<AppointmentFromTemplate>> getAppointmentsByStatusBetweenDates(@RequestParam("status") AppointmentStatus status, @RequestParam("startDatetime") Instant startDatetime, @RequestParam("endDatetime") Instant endDatetime, Pageable pageable) {
+    public ResponseEntity<List<AppointmentFromTemplate>> getAppointmentsByStatusBetweenDates(@RequestParam("status") List<AppointmentStatus> status, @RequestParam("startDatetime") Instant startDatetime, @RequestParam("endDatetime") Instant endDatetime, Pageable pageable) {
+
+        if (startDatetime == null || endDatetime == null) {
+            throw new BadRequestAlertException("startDatetime and endDatetime are required", "appointmentFormTemplate", "payload.required");
+        }
+
+        if (startDatetime.isAfter(endDatetime)) {
+            throw new BadRequestAlertException("startDatetime must be before or equal to endDatetime", "appointmentFormTemplate", "payload.required");
+        }
+
         Page<AppointmentFromTemplate> result = appointmentFromTemplateService.getAppointmentsByStatusBetweenDates(status, startDatetime, endDatetime, pageable);
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(),
