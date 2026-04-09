@@ -106,6 +106,12 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     @Column(name = "priority", nullable = false, length = 50)
     private EncounterPriority priority;
 
+    @Column(name = "origin_type", length = 255)
+    private String originType;
+
+    @Column(name = "origin_name", length = 255)
+    private String originName;
+
     @Column(name = "note")
     private String note;
 

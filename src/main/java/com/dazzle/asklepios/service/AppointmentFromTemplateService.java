@@ -11,6 +11,7 @@ import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
 import com.dazzle.asklepios.repository.AvailabilityGenerationBatchRepository;
+import com.dazzle.asklepios.repository.DiagnosticTestRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
@@ -29,6 +30,7 @@ import jakarta.persistence.criteria.Predicate;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.Hibernate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -86,6 +88,14 @@ public class AppointmentFromTemplateService {
         appointment.setService(dto.service());
 
         appointment.setPriority(dto.priority());
+
+        if(dto.originType() != null){
+            appointment.setOriginType(dto.originType());
+        }
+
+        if(dto.originName() != null){
+            appointment.setOriginName(dto.originName());
+        }
         if (dto.service() == EncounterReason.FOLLOW_UP && dto.followUpEncounterId() != null) {
             PatientEncounter followUpEncounter = patientEncounterRepository.findById(dto.followUpEncounterId())
                     .orElseThrow(() -> new NotFoundAlertException("Patient Encounter not found with id: " + dto.followUpEncounterId(), ENTITY_NAME, "notfound"));
@@ -96,18 +106,10 @@ public class AppointmentFromTemplateService {
         return saved;
     }
 
-    public Page<AppointmentFromTemplate> getAppointmentsByStatusBetweenDates(AppointmentStatus status, Instant startDatetime, Instant endDatetime, Pageable pageable) {
+    public Page<AppointmentFromTemplate> getAppointmentsByStatusBetweenDates(List<AppointmentStatus> status, Instant startDatetime, Instant endDatetime, Pageable pageable) {
         LOG.debug("Request to get appointments with patient not null between startDatetime={} and endDatetime={}", startDatetime, endDatetime);
 
-        if (startDatetime == null || endDatetime == null) {
-            throw new BadRequestAlertException("startDatetime and endDatetime are required", "appointmentFormTemplate", "payload.required");
-        }
-
-        if (startDatetime.isAfter(endDatetime)) {
-            throw new BadRequestAlertException("startDatetime must be before or equal to endDatetime", "appointmentFormTemplate", "payload.required");
-        }
-
-        return appointmentFromTemplateRepository.findByStatusAndStartDatetimeBetween(status, startDatetime, endDatetime, pageable);
+        return appointmentFromTemplateRepository.findByStatusInAndStartDatetimeBetween(status, startDatetime, endDatetime, pageable);
     }
 
     public Page<AppointmentFromTemplate> filterAppointment(AppointmentFromTemplateSearchFilterDTO filter, Pageable pageable) {
@@ -196,7 +198,7 @@ public class AppointmentFromTemplateService {
 
         DepartmentDTO department = departmentHelper.getDepartment(savedAppointment.getDepartmentId());
 
-        createEncounter(savedAppointment, department, null, null);
+        createEncounter(savedAppointment, department);
 
         return savedAppointment;
     }
@@ -253,6 +255,8 @@ public class AppointmentFromTemplateService {
         appointment.setBookingMode(BookingMode.QUICK);
         appointment.setStatus(AppointmentStatus.CONFIRMED);
         appointment.setPriority(appointmentDTO.priority());
+        appointment.setOriginType(appointmentDTO.originType());
+        appointment.setOriginName(appointmentDTO.originName());
         appointment.setReason(appointmentDTO.reason());
         appointment.setNote(appointmentDTO.note());
         appointment.setService(appointmentDTO.service());
@@ -264,7 +268,7 @@ public class AppointmentFromTemplateService {
         }
         appointment.setCapacityIndex(1);
         AppointmentFromTemplate quickAppointment = appointmentFromTemplateRepository.save(appointment);
-        PatientEncounter encounter = createEncounter(quickAppointment, department, appointmentDTO.originType(), appointmentDTO.originName());
+        PatientEncounter encounter = createEncounter(quickAppointment, department);
 
         return new AppointmentFromTemplateQuickAppointmentResponseVM(quickAppointment, encounter);
     }
@@ -289,7 +293,7 @@ public class AppointmentFromTemplateService {
                 .orElseThrow(() -> new NotFoundAlertException("Batch not found: " + id, ENTITY_NAME, "notfound"));
     }
 
-    private PatientEncounter createEncounter(AppointmentFromTemplate savedAppointment, DepartmentDTO department, String originType, String originName) {
+    private PatientEncounter createEncounter(AppointmentFromTemplate savedAppointment, DepartmentDTO department) {
         PatientEncounterCreateDTO encounterCreateDTO = new PatientEncounterCreateDTO(
                 savedAppointment.getPatient() != null ? savedAppointment.getPatient().getId() : null,
                 savedAppointment.getFacilityId(),
@@ -300,8 +304,8 @@ public class AppointmentFromTemplateService {
                 savedAppointment.getService(),
                 savedAppointment.getFollowUpEncounter() != null ? savedAppointment.getFollowUpEncounter().getId() : null,
                 savedAppointment.getPriority(),
-                originType,
-                originName,
+                savedAppointment.getOriginType(),
+                savedAppointment.getOriginName(),
                 savedAppointment.getNote(),
                 savedAppointment.getStartDatetime()
                         .atZone(java.time.ZoneId.systemDefault())
