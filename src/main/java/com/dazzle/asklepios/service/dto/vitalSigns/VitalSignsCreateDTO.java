@@ -42,7 +42,6 @@ public record VitalSignsCreateDTO(
 
         @AssertTrue(message = "measurementSite, heartRate, oxygenSaturation, and respiratoryRate are required when isTriage is true")
         public boolean isTriageFieldsValid() {
-                System.out.println("isTriage = " + isTriage);
 
                 if (isTriage == null || !isTriage) {
                         return true;
