@@ -112,10 +112,13 @@ public class AvailabilityTemplateService {
         );
 
         AvailabilityTemplate updated = availabilityTemplateRepository.save(entity);
+
         List<AvailabilityTemplateAllowedService> savedAllowedServices = replaceAllowedServices(updated, dto.allowedServices());
 
         updated.setAllowedServices(savedAllowedServices);
-
+        if (updated.getStatus() == TemplateStatus.PUBLISHED) {
+            publishSubTemplates(updated.getId());
+        }
         return updated;
     }
 
@@ -272,6 +275,17 @@ public class AvailabilityTemplateService {
 
         page.getContent().forEach(this::initializeAllowedServices);
         return page;
+    }
+
+    private void publishSubTemplates(Long parentTemplateId) {
+        List<AvailabilityTemplate> subTemplates =
+                availabilityTemplateRepository.findAllByParentTemplateId(parentTemplateId);
+
+        for (AvailabilityTemplate subTemplate : subTemplates) {
+            subTemplate.setStatus(TemplateStatus.PUBLISHED);
+        }
+
+        availabilityTemplateRepository.saveAll(subTemplates);
     }
 
     private AvailabilityTemplate getAvailabilityTemplate(Long id) {
