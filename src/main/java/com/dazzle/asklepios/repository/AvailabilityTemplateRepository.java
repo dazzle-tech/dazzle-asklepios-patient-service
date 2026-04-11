@@ -39,4 +39,6 @@ public interface AvailabilityTemplateRepository extends JpaRepository<Availabili
 
     @EntityGraph(attributePaths = {"workingDays"})
     Page<AvailabilityTemplate> findAllByFacilityIdAndDepartmentIdAndTemplateType(Long facility, Long department, TemplateType templateType, Pageable pageable);
+
+    List<AvailabilityTemplate> findAllByParentTemplateId(Long parentTemplateId);
 }
