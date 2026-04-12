@@ -13,6 +13,7 @@ import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentResponseVM;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -141,6 +142,15 @@ public class AppointmentFormTemplateController {
         );
 
         return new ResponseEntity<>(result.getContent(), headers, HttpStatus.OK);
+    }
+
+    @GetMapping("/appointments/{id}")
+    public ResponseEntity<AppointmentFromTemplate> getAppointmentById(
+            @PathVariable("id") @NotNull Long appointmentId
+    ) {
+
+        AppointmentFromTemplate appointment = appointmentFromTemplateService.getById(appointmentId);
+        return ResponseEntity.ok(appointment);
     }
 
 }
