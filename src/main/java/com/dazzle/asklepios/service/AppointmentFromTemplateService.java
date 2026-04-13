@@ -61,6 +61,7 @@ public class AppointmentFromTemplateService {
     private final AvailabilityGenerationBatchRepository availabilityGenerationBatchRepository;
 
     public List<AppointmentLog> getAppointmentLogs(Long appointmentId) {
+        LOG.debug("Request to get AppointmentFromTemplate Log id={}", appointmentId);
         return appointmentLogRepository.findAllByAppointmentIdOrderByLogDateDesc(appointmentId);
     }
 
