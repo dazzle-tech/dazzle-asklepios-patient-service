@@ -134,7 +134,9 @@ public class ProgressNoteController {
                         log.getCreatedDate(),
                         log.getLastModifiedBy(),
                         log.getLastModifiedDate(),
-                        log.getPayload()
+                        log.getPayload(),
+                        log.getOldNoteText(),
+                        log.getNewNoteText()
                 ))
                 .toList();
         LOG.info("REST get ProgressNote logs - returned {} logs", result.size());

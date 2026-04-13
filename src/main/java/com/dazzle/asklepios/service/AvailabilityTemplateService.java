@@ -1,7 +1,6 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.AvailabilityTemplate;
-import com.dazzle.asklepios.domain.AvailabilityTemplateLog;
 import com.dazzle.asklepios.domain.AvailabilityTemplateAllowedService;
 import com.dazzle.asklepios.domain.AvailabilityTemplateInterval;
 import com.dazzle.asklepios.domain.enumeration.DayOfWeek;
@@ -9,7 +8,6 @@ import com.dazzle.asklepios.domain.enumeration.TemplateStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import com.dazzle.asklepios.repository.AvailabilityTemplateAllowedServiceRepository;
 import com.dazzle.asklepios.repository.AvailabilityTemplateIntervalRepository;
-import com.dazzle.asklepios.repository.AvailabilityTemplateLogRepository;
 import com.dazzle.asklepios.repository.AvailabilityTemplateRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplateCreateDTO;
@@ -51,7 +49,6 @@ public class AvailabilityTemplateService {
     private final PractitionerHelper practitionerHelper;
     private final AvailabilityTemplateAllowedServiceRepository availabilityTemplateAllowedServiceRepository;
     private final AvailabilityTemplateIntervalRepository availabilityTemplateIntervalRepository;
-    private final AvailabilityTemplateLogRepository availabilityTemplateLogRepository;
 
     public AvailabilityTemplateService(
             AvailabilityTemplateRepository availabilityTemplateRepository,
@@ -60,8 +57,7 @@ public class AvailabilityTemplateService {
             ServiceHelper serviceHelper,
             PractitionerHelper practitionerHelper,
             AvailabilityTemplateAllowedServiceRepository availabilityTemplateAllowedServiceRepository,
-            AvailabilityTemplateIntervalRepository availabilityTemplateIntervalRepository,
-            AvailabilityTemplateLogRepository availabilityTemplateLogRepository
+            AvailabilityTemplateIntervalRepository availabilityTemplateIntervalRepository
     ) {
         this.availabilityTemplateRepository = availabilityTemplateRepository;
         this.facilityHelper = facilityHelper;
@@ -70,13 +66,6 @@ public class AvailabilityTemplateService {
         this.practitionerHelper = practitionerHelper;
         this.availabilityTemplateAllowedServiceRepository = availabilityTemplateAllowedServiceRepository;
         this.availabilityTemplateIntervalRepository = availabilityTemplateIntervalRepository;
-        this.availabilityTemplateLogRepository = availabilityTemplateLogRepository;
-    }
-
-    @Transactional(readOnly = true)
-    public List<AvailabilityTemplateLog> getAvailabilityTemplateLogs(Long templateId) {
-        LOG.debug("get AvailabilityTemplate logs for templateId={}", templateId);
-        return availabilityTemplateLogRepository.findAllByTemplateIdOrderByLogDateDesc(templateId);
     }
 
     public AvailabilityTemplate create(AvailabilityTemplateCreateDTO dto) {
