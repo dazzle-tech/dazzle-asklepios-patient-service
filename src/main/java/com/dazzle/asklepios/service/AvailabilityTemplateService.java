@@ -2,7 +2,6 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.AvailabilityTemplate;
 import com.dazzle.asklepios.domain.AvailabilityTemplateAllowedService;
-import com.dazzle.asklepios.domain.AvailabilityTemplateInterval;
 import com.dazzle.asklepios.domain.enumeration.DayOfWeek;
 import com.dazzle.asklepios.domain.enumeration.TemplateStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
@@ -22,9 +21,11 @@ import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -34,6 +35,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+
+import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
 @Transactional
@@ -70,56 +73,74 @@ public class AvailabilityTemplateService {
 
     public AvailabilityTemplate create(AvailabilityTemplateCreateDTO dto) {
         LOG.debug("create availability template {}", dto);
+        try {
+            validateCreate(dto);
+            validateReferences(
+                    dto.facilityId(),
+                    dto.departmentId(),
+                    dto.defaultServiceId(),
+                    dto.defaultPractitionerId(),
+                    dto.requirePractitioner()
+            );
 
-        validateCreate(dto);
-        validateReferences(
-                dto.facilityId(),
-                dto.departmentId(),
-                dto.defaultServiceId(),
-                dto.defaultPractitionerId(),
-                dto.requirePractitioner()
-        );
+            AvailabilityTemplate entity = toEntityForCreate(dto);
+            AvailabilityTemplate template = availabilityTemplateRepository.save(entity);
+            List<AvailabilityTemplateAllowedService> savedAllowedServices = replaceAllowedServices(template, dto.allowedServices());
 
-        AvailabilityTemplate entity = toEntityForCreate(dto);
-        AvailabilityTemplate template = availabilityTemplateRepository.save(entity);
-        List<AvailabilityTemplateAllowedService> savedAllowedServices = replaceAllowedServices(template, dto.allowedServices());
+            template.setAllowedServices(savedAllowedServices);
+            return template;
+        } catch (DataIntegrityViolationException | JpaSystemException constraintException) {
+            handleConstraintsOnCreateOrUpdate(constraintException);
 
-        template.setAllowedServices(savedAllowedServices);
-        return template;
+            throw new BadRequestAlertException(
+                    "Database constraint violated while saving availability template (check required fields or unique constraints).",
+                    "address",
+                    "db.constraint"
+            );
+        }
     }
 
     public AvailabilityTemplate update(AvailabilityTemplateUpdateDTO dto) {
         LOG.debug("update availability template {}", dto);
+        try {
+            AvailabilityTemplate entity = getAvailabilityTemplate(dto.id());
 
-        AvailabilityTemplate entity = getAvailabilityTemplate(dto.id());
+            if (!TemplateStatus.DRAFT.equals(entity.getStatus())) {
+                throw new NotFoundAlertException(
+                        "Cannot update AvailabilityTemplate when status is not draft",
+                        ENTITY_NAME,
+                        "notdraft"
+                );
+            }
 
-        if (!TemplateStatus.DRAFT.equals(entity.getStatus())) {
-            throw new NotFoundAlertException(
-                    "Cannot update AvailabilityTemplate when status is not draft",
-                    ENTITY_NAME,
-                    "notdraft"
+            applyUpdate(entity, dto);
+            validateEntity(entity);
+            validateReferences(
+                    entity.getFacilityId(),
+                    entity.getDepartmentId(),
+                    entity.getDefaultServiceId(),
+                    entity.getDefaultPractitionerId(),
+                    entity.getRequirePractitioner()
+            );
+
+            AvailabilityTemplate updated = availabilityTemplateRepository.save(entity);
+
+            List<AvailabilityTemplateAllowedService> savedAllowedServices = replaceAllowedServices(updated, dto.allowedServices());
+
+            updated.setAllowedServices(savedAllowedServices);
+            if (updated.getStatus() == TemplateStatus.PUBLISHED) {
+                publishSubTemplates(updated.getId());
+            }
+            return updated;
+        } catch (DataIntegrityViolationException | JpaSystemException constraintException) {
+            handleConstraintsOnCreateOrUpdate(constraintException);
+
+            throw new BadRequestAlertException(
+                    "Database constraint violated while saving availability template (check required fields or unique constraints).",
+                    "address",
+                    "db.constraint"
             );
         }
-
-        applyUpdate(entity, dto);
-        validateEntity(entity);
-        validateReferences(
-                entity.getFacilityId(),
-                entity.getDepartmentId(),
-                entity.getDefaultServiceId(),
-                entity.getDefaultPractitionerId(),
-                entity.getRequirePractitioner()
-        );
-
-        AvailabilityTemplate updated = availabilityTemplateRepository.save(entity);
-
-        List<AvailabilityTemplateAllowedService> savedAllowedServices = replaceAllowedServices(updated, dto.allowedServices());
-
-        updated.setAllowedServices(savedAllowedServices);
-        if (updated.getStatus() == TemplateStatus.PUBLISHED) {
-            publishSubTemplates(updated.getId());
-        }
-        return updated;
     }
 
     public void hardDelete(Long id) {
@@ -510,4 +531,71 @@ public class AvailabilityTemplateService {
             practitionerHelper.validatePractitionerExists(practitionerId);
         }
     }
+
+    private void handleConstraintsOnCreateOrUpdate(RuntimeException constraintException) {
+        Throwable root = getRootCause(constraintException);
+        String message = (root != null ? root.getMessage() : constraintException.getMessage());
+        String lower = (message != null ? message.toLowerCase() : "");
+
+        LOG.error("Database constraint violation while saving availability template: {}", message, constraintException);
+
+        if (lower.contains("uk_template_name_per_department")
+                || lower.contains("unique constraint")
+                || lower.contains("duplicate key")
+                || lower.contains("duplicate entry")) {
+            throw new BadRequestAlertException(
+                    "This name already exists for another template.",
+                    ENTITY_NAME,
+                    "unique.template.name"
+            );
+        } else if (lower.contains("fk_template_copy")) {
+            throw new BadRequestAlertException(
+                    "Invalid template reference for template.",
+                    ENTITY_NAME,
+                    "fk.copy_from_template_id"
+            );
+        } else if (lower.contains("fk_template_parent")) {
+            throw new BadRequestAlertException(
+                    "Invalid template reference for template.",
+                    ENTITY_NAME,
+                    "fk.parent_template_id"
+            );
+        } else if (lower.contains("fk_template_service")) {
+            throw new BadRequestAlertException(
+                    "Invalid service reference for template.",
+                    ENTITY_NAME,
+                    "fk.default_service_id"
+            );
+        } else if (lower.contains("fk_template_practitioner")) {
+            throw new BadRequestAlertException(
+                    "Invalid practitioner reference for template.",
+                    ENTITY_NAME,
+                    "fk.default_practitioner_id"
+            );
+        } else if (lower.contains("fk_template_department")) {
+            throw new BadRequestAlertException(
+                    "Invalid department reference for template.",
+                    ENTITY_NAME,
+                    "fk.department_id"
+            );
+        } else if (lower.contains("fk_template_facility")) {
+            throw new BadRequestAlertException(
+                    "Invalid facility reference for template.",
+                    ENTITY_NAME,
+                    "fk.facility_id"
+            );
+        } else if (lower.contains("foreign key")) {
+            throw new BadRequestAlertException(
+                    "Invalid foreign key reference for template.",
+                    ENTITY_NAME,
+                    "fk.foreign_key"
+            );
+        }
+        throw new BadRequestAlertException(
+                "Database constraint violated while saving availability template (check required fields or unique constraints).",
+                "address",
+                "db.constraint"
+        );
+    }
+
 }
