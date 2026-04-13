@@ -55,6 +55,10 @@ public class AvailabilityTemplateController {
             throw new BadRequestAlertException("Department should be a main template not a sub template", "AvailabilityTemplate", "templateTypeInvalid");
 
         }
+        if (dto.status() != null && dto.status() != TemplateStatus.DRAFT) {
+            throw new BadRequestAlertException("Template Status should be draft", "AvailabilityTemplate", "templateStatusInvalid");
+
+        }
         AvailabilityTemplate result = availabilityTemplateService.create(dto);
 
         return ResponseEntity
