@@ -313,27 +313,21 @@ public class DiagnosticOrderTestController {
     @GetMapping("/diagnostic-order-tests")
     public ResponseEntity<List<DiagnosticOrderTestResponseVM>> filterDiagnosticOrderTests(
             @RequestParam(name = "orderId", required = false) Long orderId,
+            @RequestParam(name = "orderIdIn", required = false) List<Long> orderIdIn,
             @RequestParam(name = "testId", required = false) Long testId,
-
             @RequestParam(name = "status", required = false) DiagnosticStatus status,
             @RequestParam(name = "statusIn", required = false) List<DiagnosticStatus> includedStatuses,
             @RequestParam(name = "statusNotIn", required = false) List<DiagnosticStatus> excludedStatuses,
             @RequestParam(name = "excludeStatus", required = false) DiagnosticStatus excludedStatus,
-
             @RequestParam(name = "receivedDepartmentId", required = false) Long receivedDepartmentId,
             @RequestParam(name = "processingStatus", required = false) DiagnosticStatus processingStatus,
-
             @RequestParam(name = "orderType", required = false) TestType orderType,
-
             @RequestParam(name = "acceptedBy", required = false) String acceptedBy,
             @RequestParam(name = "rejectedBy", required = false) String rejectedBy,
-
             @RequestParam(name = "category", required = false) Long category,
             @RequestParam(name = "testName", required = false) String testName,
-
             @RequestParam(name = "submitDateFrom", required = false) Instant submitDateFrom,
             @RequestParam(name = "submitDateTo", required = false) Instant submitDateTo,
-
             @ParameterObject Pageable pageable
     ) {
 
@@ -355,13 +349,31 @@ public class DiagnosticOrderTestController {
 
         boolean hasTestNameFilter = testName != null && !testName.isBlank();
 
+        // ===================== MERGE ORDER IDS =====================
+        List<Long> tempOrderIds = new ArrayList<>();
+
+        if (orderIdIn != null && !orderIdIn.isEmpty()) {
+            tempOrderIds.addAll(orderIdIn);
+        }
+
+        if (orderId != null) {
+            tempOrderIds.add(orderId);
+        }
+
+        final List<Long> finalOrderIds = tempOrderIds.stream().distinct().toList();
+
+        // DEBUG
+        System.out.println("Filtering by orderIds: " + finalOrderIds);
+
+        // ===================== SPEC =====================
         Specification<DiagnosticOrderTest> filterSpec =
                 (orderTestRoot, criteriaQuery, criteriaBuilder) -> {
 
                     List<Predicate> predicates = new ArrayList<>();
 
-                    if (orderId != null)
-                        predicates.add(criteriaBuilder.equal(orderTestRoot.get("orderId"), orderId));
+                    if (!finalOrderIds.isEmpty()) {
+                        predicates.add(orderTestRoot.get("orderId").in(finalOrderIds));
+                    }
 
                     if (testId != null)
                         predicates.add(criteriaBuilder.equal(orderTestRoot.get("testId"), testId));
@@ -399,7 +411,6 @@ public class DiagnosticOrderTestController {
                     if (submitDateTo != null)
                         predicates.add(criteriaBuilder.lessThanOrEqualTo(orderTestRoot.get("submitDate"), submitDateTo));
 
-                    // testName filter
                     if (hasTestNameFilter) {
                         Root<DiagnosticTest> testRoot = criteriaQuery.from(DiagnosticTest.class);
 
@@ -416,9 +427,7 @@ public class DiagnosticOrderTestController {
                         criteriaQuery.distinct(true);
                     }
 
-                    // category filter
                     if (category != null) {
-
                         if (orderType == TestType.LABORATORY) {
                             Root<DiagnosticTestLaboratory> labRoot =
                                     criteriaQuery.from(DiagnosticTestLaboratory.class);
@@ -457,9 +466,10 @@ public class DiagnosticOrderTestController {
                     return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
                 };
 
-
         Page<DiagnosticOrderTestResponseVM> page =
                 diagnosticOrderTestService.filterDiagnosticOrderTests(filterSpec, pageable);
+
+       
 
         HttpHeaders headers =
                 PaginationUtil.generatePaginationHttpHeaders(
