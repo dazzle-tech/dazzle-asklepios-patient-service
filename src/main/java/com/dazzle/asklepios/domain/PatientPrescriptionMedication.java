@@ -13,6 +13,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -40,8 +41,12 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
     @JoinColumn(name = "prescription_header_id", nullable = false)
     private PatientPrescription prescriptionHeader;
 
-    @Column(name = "medications_id", nullable = false)
+    @Column(name = "medications_id")
     private Long medicationsId;
+
+    @NotNull(message = "Active Ingredient Can not be null")
+    @Column(name ="active_ingredient_id" ,nullable = false)
+    private long activeIngredientId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "instructions_type", nullable = false, length = 50)
@@ -74,8 +79,7 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
     @Column(name = "maximum_dose")
     private Long maximumDose;
 
-    @Column(name = "valid_util")
-    private LocalDate validUtil;
+
 
     @Column(name = "allowed_substitute")
     private Boolean allowedSubstitute;

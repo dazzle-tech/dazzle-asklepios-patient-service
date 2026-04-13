@@ -19,13 +19,12 @@ public class PrescriptionMedicationCreateDTO {
     public String doesUnit;
     public String rout;
     public String frequency;
-
+    public Long  activeIngredientId;
     public Boolean chronicMedication;
     public Long duration;
     public String durationType;
 
     public Long maximumDose;
-    public LocalDate validUtil;
     public Boolean allowedSubstitute;
 
     public String indicationManually;
