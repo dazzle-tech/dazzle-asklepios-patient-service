@@ -129,6 +129,7 @@ public class AvailabilityTemplateService {
 
             updated.setAllowedServices(savedAllowedServices);
             if (updated.getStatus() == TemplateStatus.PUBLISHED) {
+                validateTemplateOrSubTemplateHasIntervals(updated.getId());
                 publishSubTemplates(updated.getId());
             }
             return updated;
@@ -297,7 +298,28 @@ public class AvailabilityTemplateService {
         page.getContent().forEach(this::initializeAllowedServices);
         return page;
     }
+    private void validateTemplateOrSubTemplateHasIntervals(Long templateId) {
+        boolean templateHasIntervals = availabilityTemplateIntervalRepository.existsByTemplate_Id(templateId);
 
+        if (templateHasIntervals) {
+            return;
+        }
+
+        List<AvailabilityTemplate> subTemplates = availabilityTemplateRepository.findAllByParentTemplateId(templateId);
+
+        boolean anySubTemplateHasIntervals = subTemplates.stream()
+                .anyMatch(subTemplate ->
+                        availabilityTemplateIntervalRepository.existsByTemplate_Id(subTemplate.getId())
+                );
+
+        if (!anySubTemplateHasIntervals) {
+            throw new BadRequestAlertException(
+                    "Cannot publish template because neither the template nor its sub-templates contain any intervals",
+                    ENTITY_NAME,
+                    "template.no.intervals"
+            );
+        }
+    }
     private void publishSubTemplates(Long parentTemplateId) {
         List<AvailabilityTemplate> subTemplates =
                 availabilityTemplateRepository.findAllByParentTemplateId(parentTemplateId);

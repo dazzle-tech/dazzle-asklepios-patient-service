@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.AppointmentFromTemplate;
+import com.dazzle.asklepios.domain.AppointmentLog;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.service.AppointmentFromTemplateService;
@@ -144,6 +145,11 @@ public class AppointmentFormTemplateController {
         return new ResponseEntity<>(result.getContent(), headers, HttpStatus.OK);
     }
 
+    @GetMapping("/appointments/{appointmentId}/logs")
+    public ResponseEntity<List<AppointmentLog>> getAppointmentLogs(@PathVariable Long appointmentId) {
+        List<AppointmentLog> logs = appointmentFromTemplateService.getAppointmentLogs(appointmentId);
+        return ResponseEntity.ok(logs);
+    }
     @GetMapping("/appointments/{id}")
     public ResponseEntity<AppointmentFromTemplate> getAppointmentById(
             @PathVariable("id") @NotNull Long appointmentId
