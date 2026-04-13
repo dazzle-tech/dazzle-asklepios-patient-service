@@ -313,29 +313,30 @@ public class DiagnosticOrderTestController {
     @GetMapping("/diagnostic-order-tests")
     public ResponseEntity<List<DiagnosticOrderTestResponseVM>> filterDiagnosticOrderTests(
             @RequestParam(name = "orderId", required = false) Long orderId,
+            @RequestParam(name = "orderIdIn", required = false) List<Long> orderIdIn,
             @RequestParam(name = "testId", required = false) Long testId,
-
             @RequestParam(name = "status", required = false) DiagnosticStatus status,
             @RequestParam(name = "statusIn", required = false) List<DiagnosticStatus> includedStatuses,
             @RequestParam(name = "statusNotIn", required = false) List<DiagnosticStatus> excludedStatuses,
             @RequestParam(name = "excludeStatus", required = false) DiagnosticStatus excludedStatus,
-
             @RequestParam(name = "receivedDepartmentId", required = false) Long receivedDepartmentId,
             @RequestParam(name = "processingStatus", required = false) DiagnosticStatus processingStatus,
-
             @RequestParam(name = "orderType", required = false) TestType orderType,
-
             @RequestParam(name = "acceptedBy", required = false) String acceptedBy,
             @RequestParam(name = "rejectedBy", required = false) String rejectedBy,
-
             @RequestParam(name = "category", required = false) Long category,
             @RequestParam(name = "testName", required = false) String testName,
-
             @RequestParam(name = "submitDateFrom", required = false) Instant submitDateFrom,
             @RequestParam(name = "submitDateTo", required = false) Instant submitDateTo,
-
             @ParameterObject Pageable pageable
     ) {
+
+        LOG.debug(
+                "[FILTER] params -> orderId={} orderIdIn={} testId={} status={} statusIn={} statusNotIn={} excludeStatus={} receivedDepartmentId={} processingStatus={} orderType={} acceptedBy={} rejectedBy={} category={} testName={} from={} to={} pageable={}",
+                orderId, orderIdIn, testId, status, includedStatuses, excludedStatuses,
+                excludedStatus, receivedDepartmentId, processingStatus, orderType,
+                acceptedBy, rejectedBy, category, testName, submitDateFrom, submitDateTo, pageable
+        );
 
         if (status != null && includedStatuses != null && !includedStatuses.isEmpty()) {
             throw new BadRequestAlertException(
@@ -355,111 +356,158 @@ public class DiagnosticOrderTestController {
 
         boolean hasTestNameFilter = testName != null && !testName.isBlank();
 
-        Specification<DiagnosticOrderTest> filterSpec =
-                (orderTestRoot, criteriaQuery, criteriaBuilder) -> {
+        // ===== merge order ids =====
+        List<Long> tempOrderIds = new ArrayList<>();
 
-                    List<Predicate> predicates = new ArrayList<>();
+        if (orderIdIn != null && !orderIdIn.isEmpty()) {
+            tempOrderIds.addAll(orderIdIn);
+        }
 
-                    if (orderId != null)
-                        predicates.add(criteriaBuilder.equal(orderTestRoot.get("orderId"), orderId));
+        if (orderId != null) {
+            tempOrderIds.add(orderId);
+        }
 
-                    if (testId != null)
-                        predicates.add(criteriaBuilder.equal(orderTestRoot.get("testId"), testId));
+        final List<Long> finalOrderIds = tempOrderIds.stream().distinct().toList();
 
-                    if (status != null)
-                        predicates.add(criteriaBuilder.equal(orderTestRoot.get("status"), status));
+        LOG.debug("[FILTER] finalOrderIds={}", finalOrderIds);
 
-                    if (includedStatuses != null && !includedStatuses.isEmpty())
-                        predicates.add(orderTestRoot.get("status").in(includedStatuses));
+        // ===== specification =====
+        Specification<DiagnosticOrderTest> filterSpec = (root, query, cb) -> {
 
-                    if (excludedStatus != null)
-                        predicates.add(criteriaBuilder.notEqual(orderTestRoot.get("status"), excludedStatus));
+            List<Predicate> predicates = new ArrayList<>();
 
-                    if (excludedStatuses != null && !excludedStatuses.isEmpty())
-                        predicates.add(criteriaBuilder.not(orderTestRoot.get("status").in(excludedStatuses)));
+            if (!finalOrderIds.isEmpty()) {
+                LOG.debug("[FILTER] apply orderId IN {}", finalOrderIds);
+                predicates.add(root.get("orderId").in(finalOrderIds));
+            }
 
-                    if (receivedDepartmentId != null)
-                        predicates.add(criteriaBuilder.equal(orderTestRoot.get("receivedDepartmentId"), receivedDepartmentId));
+            if (testId != null) {
+                LOG.debug("[FILTER] apply testId={}", testId);
+                predicates.add(cb.equal(root.get("testId"), testId));
+            }
 
-                    if (processingStatus != null)
-                        predicates.add(criteriaBuilder.equal(orderTestRoot.get("processingStatus"), processingStatus));
+            if (status != null) {
+                LOG.debug("[FILTER] apply status={}", status);
+                predicates.add(cb.equal(root.get("status"), status));
+            }
 
-                    if (orderType != null)
-                        predicates.add(criteriaBuilder.equal(orderTestRoot.get("orderType"), orderType));
+            if (includedStatuses != null && !includedStatuses.isEmpty()) {
+                LOG.debug("[FILTER] apply status IN {}", includedStatuses);
+                predicates.add(root.get("status").in(includedStatuses));
+            }
 
-                    if (acceptedBy != null && !acceptedBy.isBlank())
-                        predicates.add(criteriaBuilder.equal(orderTestRoot.get("acceptedBy"), acceptedBy));
+            if (excludedStatus != null) {
+                LOG.debug("[FILTER] apply status != {}", excludedStatus);
+                predicates.add(cb.notEqual(root.get("status"), excludedStatus));
+            }
 
-                    if (rejectedBy != null && !rejectedBy.isBlank())
-                        predicates.add(criteriaBuilder.equal(orderTestRoot.get("rejectedBy"), rejectedBy));
+            if (excludedStatuses != null && !excludedStatuses.isEmpty()) {
+                LOG.debug("[FILTER] apply status NOT IN {}", excludedStatuses);
+                predicates.add(cb.not(root.get("status").in(excludedStatuses)));
+            }
 
-                    if (submitDateFrom != null)
-                        predicates.add(criteriaBuilder.greaterThanOrEqualTo(orderTestRoot.get("submitDate"), submitDateFrom));
+            if (receivedDepartmentId != null) {
+                LOG.debug("[FILTER] apply receivedDepartmentId={}", receivedDepartmentId);
+                predicates.add(cb.equal(root.get("receivedDepartmentId"), receivedDepartmentId));
+            }
 
-                    if (submitDateTo != null)
-                        predicates.add(criteriaBuilder.lessThanOrEqualTo(orderTestRoot.get("submitDate"), submitDateTo));
+            if (processingStatus != null) {
+                LOG.debug("[FILTER] apply processingStatus={}", processingStatus);
+                predicates.add(cb.equal(root.get("processingStatus"), processingStatus));
+            }
 
-                    // testName filter
-                    if (hasTestNameFilter) {
-                        Root<DiagnosticTest> testRoot = criteriaQuery.from(DiagnosticTest.class);
+            if (orderType != null) {
+                LOG.debug("[FILTER] apply orderType={}", orderType);
+                predicates.add(cb.equal(root.get("orderType"), orderType));
+            }
 
-                        predicates.add(criteriaBuilder.equal(
-                                testRoot.get("id"),
-                                orderTestRoot.get("testId")
-                        ));
+            if (acceptedBy != null && !acceptedBy.isBlank()) {
+                LOG.debug("[FILTER] apply acceptedBy={}", acceptedBy);
+                predicates.add(cb.equal(root.get("acceptedBy"), acceptedBy));
+            }
 
-                        predicates.add(criteriaBuilder.like(
-                                criteriaBuilder.lower(testRoot.get("name")),
-                                "%" + testName.toLowerCase() + "%"
-                        ));
+            if (rejectedBy != null && !rejectedBy.isBlank()) {
+                LOG.debug("[FILTER] apply rejectedBy={}", rejectedBy);
+                predicates.add(cb.equal(root.get("rejectedBy"), rejectedBy));
+            }
 
-                        criteriaQuery.distinct(true);
-                    }
+            if (submitDateFrom != null) {
+                LOG.debug("[FILTER] apply submitDate >= {}", submitDateFrom);
+                predicates.add(cb.greaterThanOrEqualTo(root.get("submitDate"), submitDateFrom));
+            }
 
-                    // category filter
-                    if (category != null) {
+            if (submitDateTo != null) {
+                LOG.debug("[FILTER] apply submitDate <= {}", submitDateTo);
+                predicates.add(cb.lessThanOrEqualTo(root.get("submitDate"), submitDateTo));
+            }
 
-                        if (orderType == TestType.LABORATORY) {
-                            Root<DiagnosticTestLaboratory> labRoot =
-                                    criteriaQuery.from(DiagnosticTestLaboratory.class);
+            if (hasTestNameFilter) {
+                LOG.debug("[FILTER] apply testName LIKE {}", testName);
 
-                            predicates.add(criteriaBuilder.equal(
-                                    labRoot.get("test").get("id"),
-                                    orderTestRoot.get("testId")
-                            ));
+                Root<DiagnosticTest> testRoot = query.from(DiagnosticTest.class);
 
-                            predicates.add(criteriaBuilder.equal(
-                                    labRoot.get("category"),
-                                    category
-                            ));
+                predicates.add(cb.equal(
+                        testRoot.get("id"),
+                        root.get("testId")
+                ));
 
-                            criteriaQuery.distinct(true);
-                        }
+                predicates.add(cb.like(
+                        cb.lower(testRoot.get("name")),
+                        "%" + testName.toLowerCase() + "%"
+                ));
 
-                        if (orderType == TestType.RADIOLOGY) {
-                            Root<DiagnosticTestRadiology> radRoot =
-                                    criteriaQuery.from(DiagnosticTestRadiology.class);
+                query.distinct(true);
+            }
 
-                            predicates.add(criteriaBuilder.equal(
-                                    radRoot.get("test").get("id"),
-                                    orderTestRoot.get("testId")
-                            ));
+            if (category != null) {
+                LOG.debug("[FILTER] apply category={} orderType={}", category, orderType);
 
-                            predicates.add(criteriaBuilder.equal(
-                                    radRoot.get("category"),
-                                    category
-                            ));
+                if (orderType == TestType.LABORATORY) {
+                    Root<DiagnosticTestLaboratory> labRoot = query.from(DiagnosticTestLaboratory.class);
 
-                            criteriaQuery.distinct(true);
-                        }
-                    }
+                    predicates.add(cb.equal(
+                            labRoot.get("test").get("id"),
+                            root.get("testId")
+                    ));
 
-                    return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
-                };
+                    predicates.add(cb.equal(
+                            labRoot.get("category"),
+                            category
+                    ));
 
+                    query.distinct(true);
+                }
+
+                if (orderType == TestType.RADIOLOGY) {
+                    Root<DiagnosticTestRadiology> radRoot = query.from(DiagnosticTestRadiology.class);
+
+                    predicates.add(cb.equal(
+                            radRoot.get("test").get("id"),
+                            root.get("testId")
+                    ));
+
+                    predicates.add(cb.equal(
+                            radRoot.get("category"),
+                            category
+                    ));
+
+                    query.distinct(true);
+                }
+            }
+
+            LOG.debug("[FILTER] total predicates={}", predicates.size());
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
 
         Page<DiagnosticOrderTestResponseVM> page =
                 diagnosticOrderTestService.filterDiagnosticOrderTests(filterSpec, pageable);
+
+        LOG.debug("[FILTER] result -> size={} total={} pages={}",
+                page.getContent().size(),
+                page.getTotalElements(),
+                page.getTotalPages()
+        );
 
         HttpHeaders headers =
                 PaginationUtil.generatePaginationHttpHeaders(
