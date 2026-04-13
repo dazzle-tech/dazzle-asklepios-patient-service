@@ -9,6 +9,7 @@ public record ProgressNoteLogVM(
         Instant createdDate,
         String lastModifiedBy,
         Instant lastModifiedDate,
-        String payload
-) {
-}
+        String payload,
+        String oldNoteText,
+        String newNoteText
+) {}
