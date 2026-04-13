@@ -119,4 +119,10 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     @JoinColumn(name = "follow_up_encounter_id")
     private PatientEncounter followUpEncounter;
 
+    @Column(name = "confirmed_at")
+    private Instant confirmedAt;
+
+    @Column(name = "checked_in_at")
+    private Instant checkedInAt;
+
 }

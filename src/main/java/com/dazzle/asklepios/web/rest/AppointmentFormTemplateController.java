@@ -15,6 +15,7 @@ import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentResponseVM;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -150,6 +151,14 @@ public class AppointmentFormTemplateController {
     public ResponseEntity<List<AppointmentLog>> getAppointmentLogs(@PathVariable Long appointmentId) {
         List<AppointmentLog> logs = appointmentLogRepository.findAllByAppointmentIdOrderByLogDateDesc(appointmentId);
         return ResponseEntity.ok(logs);
+    }
+    @GetMapping("/appointments/{id}")
+    public ResponseEntity<AppointmentFromTemplate> getAppointmentById(
+            @PathVariable("id") @NotNull Long appointmentId
+    ) {
+
+        AppointmentFromTemplate appointment = appointmentFromTemplateService.getById(appointmentId);
+        return ResponseEntity.ok(appointment);
     }
 
 }
