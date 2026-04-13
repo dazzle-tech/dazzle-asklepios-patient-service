@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.AppointmentFromTemplate;
+import com.dazzle.asklepios.domain.AppointmentLog;
 import com.dazzle.asklepios.domain.AvailabilityGenerationBatch;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
@@ -10,6 +11,7 @@ import com.dazzle.asklepios.domain.enumeration.BookingMode;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
+import com.dazzle.asklepios.repository.AppointmentLogRepository;
 import com.dazzle.asklepios.repository.AvailabilityGenerationBatchRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -46,6 +48,7 @@ import java.util.List;
 public class AppointmentFromTemplateService {
 
     private final AppointmentFromTemplateRepository appointmentFromTemplateRepository;
+    private final AppointmentLogRepository appointmentLogRepository;
 
     private static final String ENTITY_NAME = "AppointmentFromTemplate";
 
@@ -56,6 +59,10 @@ public class AppointmentFromTemplateService {
     private final PatientEncounterService patientEncounterService;
     private final PatientEncounterRepository patientEncounterRepository;
     private final AvailabilityGenerationBatchRepository availabilityGenerationBatchRepository;
+
+    public List<AppointmentLog> getAppointmentLogs(Long appointmentId) {
+        return appointmentLogRepository.findAllByAppointmentIdOrderByLogDateDesc(appointmentId);
+    }
 
     public AppointmentFromTemplate bookPatientAppointment(AppointmentFromTemplateBookPatientDTO dto) {
         LOG.debug("Request to update AppointmentFromTemplate dto={}", dto);

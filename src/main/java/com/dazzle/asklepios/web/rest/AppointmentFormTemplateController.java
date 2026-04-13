@@ -4,7 +4,6 @@ import com.dazzle.asklepios.domain.AppointmentFromTemplate;
 import com.dazzle.asklepios.domain.AppointmentLog;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
-import com.dazzle.asklepios.repository.AppointmentLogRepository;
 import com.dazzle.asklepios.service.AppointmentFromTemplateService;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateBookPatientDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateCancelDTO;
@@ -41,7 +40,6 @@ import java.util.List;
 public class AppointmentFormTemplateController {
 
     private final AppointmentFromTemplateService appointmentFromTemplateService;
-    private final AppointmentLogRepository appointmentLogRepository;
 
     @PutMapping("/appointments/book-patient")
     public ResponseEntity<AppointmentFromTemplate> bookPatientAppointment(@Valid @RequestBody AppointmentFromTemplateBookPatientDTO dto) {
@@ -149,7 +147,7 @@ public class AppointmentFormTemplateController {
 
     @GetMapping("/appointments/{appointmentId}/logs")
     public ResponseEntity<List<AppointmentLog>> getAppointmentLogs(@PathVariable Long appointmentId) {
-        List<AppointmentLog> logs = appointmentLogRepository.findAllByAppointmentIdOrderByLogDateDesc(appointmentId);
+        List<AppointmentLog> logs = appointmentFromTemplateService.getAppointmentLogs(appointmentId);
         return ResponseEntity.ok(logs);
     }
     @GetMapping("/appointments/{id}")

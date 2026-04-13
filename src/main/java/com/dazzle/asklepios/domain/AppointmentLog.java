@@ -23,7 +23,7 @@ import java.time.Instant;
 @Table(name = "appointment_log")
 @Getter
 @Setter
-public class AppointmentLog implements Serializable {
+public class AppointmentLog extends AbstractAuditingEntity<Long> implements Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -124,15 +124,4 @@ public class AppointmentLog implements Serializable {
     @Column(name = "follow_up_encounter_id")
     private Long followUpEncounterId;
 
-    @Column(name = "created_by", nullable = false, length = 50)
-    private String createdBy;
-
-    @Column(name = "created_date", nullable = false)
-    private Instant createdDate;
-
-    @Column(name = "last_modified_by", length = 50)
-    private String lastModifiedBy;
-
-    @Column(name = "last_modified_date")
-    private Instant lastModifiedDate;
 }
