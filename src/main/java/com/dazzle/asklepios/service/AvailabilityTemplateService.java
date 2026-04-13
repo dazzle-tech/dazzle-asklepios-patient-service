@@ -94,7 +94,7 @@ public class AvailabilityTemplateService {
 
             throw new BadRequestAlertException(
                     "Database constraint violated while saving availability template (check required fields or unique constraints).",
-                    "address",
+                    ENTITY_NAME,
                     "db.constraint"
             );
         }
@@ -138,7 +138,7 @@ public class AvailabilityTemplateService {
 
             throw new BadRequestAlertException(
                     "Database constraint violated while saving availability template (check required fields or unique constraints).",
-                    "address",
+                    ENTITY_NAME,
                     "db.constraint"
             );
         }
@@ -615,7 +615,7 @@ public class AvailabilityTemplateService {
         }
         throw new BadRequestAlertException(
                 "Database constraint violated while saving availability template (check required fields or unique constraints).",
-                "address",
+                ENTITY_NAME,
                 "db.constraint"
         );
     }
