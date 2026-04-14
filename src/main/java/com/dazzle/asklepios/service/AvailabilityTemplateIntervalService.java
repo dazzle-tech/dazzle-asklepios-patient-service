@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.AvailabilityTemplateAllowedService;
 import com.dazzle.asklepios.domain.AvailabilityTemplateInterval;
 import com.dazzle.asklepios.domain.enumeration.DayOfWeek;
 import com.dazzle.asklepios.repository.AvailabilityTemplateAllowedServiceRepository;
+import com.dazzle.asklepios.repository.AvailabilityTemplateIntervalBreakRepository;
 import com.dazzle.asklepios.repository.AvailabilityTemplateIntervalRepository;
 import com.dazzle.asklepios.repository.AvailabilityTemplateRepository;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.availabilityTemplateAllowedServices.AvailabilityTemplateAllowedServiceDTO;
@@ -30,11 +31,13 @@ public class AvailabilityTemplateIntervalService {
     private final AvailabilityTemplateIntervalRepository intervalRepository;
     private final AvailabilityTemplateAllowedServiceRepository allowedServiceRepository;
     private final AvailabilityTemplateRepository templateRepository;
+    private final AvailabilityTemplateIntervalBreakRepository availabilityTemplateIntervalBreakRepository;
 
-    public AvailabilityTemplateIntervalService(AvailabilityTemplateIntervalRepository intervalRepository, AvailabilityTemplateAllowedServiceRepository allowedServiceRepository, AvailabilityTemplateRepository templateRepository) {
+    public AvailabilityTemplateIntervalService(AvailabilityTemplateIntervalRepository intervalRepository, AvailabilityTemplateAllowedServiceRepository allowedServiceRepository, AvailabilityTemplateRepository templateRepository, AvailabilityTemplateIntervalBreakRepository availabilityTemplateIntervalBreakRepository) {
         this.intervalRepository = intervalRepository;
         this.allowedServiceRepository = allowedServiceRepository;
         this.templateRepository = templateRepository;
+        this.availabilityTemplateIntervalBreakRepository = availabilityTemplateIntervalBreakRepository;
     }
 
     public AvailabilityTemplateInterval create(AvailabilityTemplateIntervalCreateDTO dto) {
@@ -112,6 +115,7 @@ public class AvailabilityTemplateIntervalService {
         }
 
         allowedServiceRepository.deleteByInterval_Id(id);
+        availabilityTemplateIntervalBreakRepository.deleteByInterval_Id(id);
         intervalRepository.deleteById(id);
     }
 

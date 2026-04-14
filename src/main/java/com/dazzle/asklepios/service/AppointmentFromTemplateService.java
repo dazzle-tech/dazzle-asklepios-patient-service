@@ -384,7 +384,7 @@ public class AppointmentFromTemplateService {
 
     private String currentUsername() {
         return SecurityUtils.getCurrentUserLogin()
-                .orElseThrow(() -> new BadRequestAlertException("unauthenticated", "diagnostic_test_requests", "No authenticated user"));
+                .orElseThrow(() -> new BadRequestAlertException("unauthenticated", ENTITY_NAME, "No authenticated user"));
     }
 
 }
