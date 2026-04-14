@@ -1,12 +1,13 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.SetupServiceClient;
-import com.dazzle.asklepios.client.dto.NormalRangeMatchDTO;
+import com.dazzle.asklepios.client.setup.SetupServiceClient;
+import com.dazzle.asklepios.client.setup.dto.NormalRangeMatchDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.LabResultLog;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.NormalRangeType;
 import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
@@ -261,14 +262,17 @@ public class DiagnosticOrderTestResultService {
     }
 
     private String buildViewNormalRange(NormalRangeMatchDTO bestNormalRangeMatch) {
+        if (bestNormalRangeMatch == null) {
+            return " ";
+        }
 
-        if (bestNormalRangeMatch == null) return " ";
-
-        if (bestNormalRangeMatch.resultText() != null && !bestNormalRangeMatch.resultText().isBlank())
+        if (bestNormalRangeMatch.resultText() != null && !bestNormalRangeMatch.resultText().isBlank()) {
             return bestNormalRangeMatch.resultText();
+        }
 
-        if (bestNormalRangeMatch.resultLov() != null && !bestNormalRangeMatch.resultLov().isBlank())
+        if (bestNormalRangeMatch.resultLov() != null && !bestNormalRangeMatch.resultLov().isBlank()) {
             return bestNormalRangeMatch.resultLov();
+        }
 
         if (bestNormalRangeMatch.lovKeys() != null && !bestNormalRangeMatch.lovKeys().isEmpty()) {
             return String.join(", ", bestNormalRangeMatch.lovKeys());
@@ -277,16 +281,27 @@ public class DiagnosticOrderTestResultService {
         Double from = bestNormalRangeMatch.rangeFrom();
         Double to = bestNormalRangeMatch.rangeTo();
 
-        if (from != null && to != null)
-            return from + " - " + to;
+        NormalRangeType normalRangeType = bestNormalRangeMatch.normalRangeType();
+        if (normalRangeType == null) {
+            normalRangeType = NormalRangeType.RANGE;
+        }
 
-        if (from != null)
-            return ">= " + from;
-
-        if (to != null)
-            return "<= " + to;
-
-        return " ";
+        return switch (normalRangeType) {
+            case RANGE -> {
+                if (from != null && to != null) {
+                    yield from + " - " + to;
+                }
+                if (from != null) {
+                    yield ">= " + from;
+                }
+                if (to != null) {
+                    yield "<= " + to;
+                }
+                yield " ";
+            }
+            case LESS_THAN -> to != null ? "< " + to : " ";
+            case MORE_THAN -> from != null ? "> " + from : " ";
+        };
     }
 
     @Transactional(readOnly = true)

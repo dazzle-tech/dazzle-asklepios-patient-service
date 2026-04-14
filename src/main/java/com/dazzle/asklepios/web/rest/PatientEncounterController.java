@@ -2,12 +2,16 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
+import com.dazzle.asklepios.service.DiagnosticOrderService;
 import com.dazzle.asklepios.service.PatientEncounterService;
+import com.dazzle.asklepios.service.PatientPrescriptionService;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.vm.patientEncounter.PatientEncounterVM;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
@@ -24,11 +28,14 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/patient")
@@ -37,9 +44,12 @@ public class PatientEncounterController {
     private static final Logger LOG = LoggerFactory.getLogger(PatientEncounterController.class);
 
     private final PatientEncounterService patientEncounterService;
-
-    public PatientEncounterController(PatientEncounterService patientEncounterService) {
+    private final DiagnosticOrderService diagnosticOrderService;
+    private final PatientPrescriptionService patientPrescriptionService;
+    public PatientEncounterController(PatientEncounterService patientEncounterService, DiagnosticOrderService diagnosticOrderService, PatientPrescriptionService patientPrescriptionService) {
         this.patientEncounterService = patientEncounterService;
+        this.diagnosticOrderService = diagnosticOrderService;
+        this.patientPrescriptionService = patientPrescriptionService;
     }
 
     @PostMapping("/encounter")
@@ -130,7 +140,7 @@ public class PatientEncounterController {
     }
 
     @GetMapping("/encounter")
-    public ResponseEntity<List<PatientEncounter>> filterEncounters(
+    public ResponseEntity<List<PatientEncounterVM>> filterEncounters(
             @Valid @ParameterObject PatientEncounterSearchFilterDTO filter,
             @ParameterObject Pageable pageable
     ) {
@@ -142,6 +152,20 @@ public class PatientEncounterController {
         }
 
         Page<PatientEncounter> page = patientEncounterService.filterEncounters(filter, pageable);
+        List<Long> encounterIds = page.getContent().stream()
+                .map(PatientEncounter::getId)
+                .toList();
+        Set<Long> orderEncounterIds = diagnosticOrderService.findEncounterIdsWithOrders(encounterIds);
+        Set<Long> prescriptionEncounterIds = patientPrescriptionService.findEncounterIdsWithOrders(encounterIds);
+        Set<Long> observasionEncounterIds=patientEncounterService.findEncounterIdsWithObservation(encounterIds);
+        List<PatientEncounterVM> vmList = page.getContent().stream()
+                .map(encounter -> PatientEncounterVM.ofEntity(
+                        encounter,
+                        orderEncounterIds.contains(encounter.getId()),
+                        prescriptionEncounterIds.contains(encounter.getId()),
+                        observasionEncounterIds.contains(encounter.getId())
+                ))
+                .toList();
 
         HttpHeaders headers =
                 PaginationUtil.generatePaginationHttpHeaders(
@@ -149,7 +173,7 @@ public class PatientEncounterController {
                         page
                 );
 
-        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+        return new ResponseEntity<>(vmList, headers, HttpStatus.OK);
     }
 
     @GetMapping("/encounter/department/{departmentId}/count/today/total-patients")
@@ -238,12 +262,42 @@ public class PatientEncounterController {
 
     @PostMapping("/encounter/{id}/discharge")
     public ResponseEntity<PatientEncounter> dischargeEncounter(
-            @PathVariable("id") @NotNull Long encounterId
+            @PathVariable("id") @NotNull Long encounterId,
+            @Valid @RequestBody @NotNull PatientEncounterDischargeDTO dischargeDTO
     ) {
-        LOG.debug("REST discharge PatientEncounter id={}", encounterId);
+        LOG.debug("REST discharge PatientEncounter id={} payload={}", encounterId, dischargeDTO);
 
-        PatientEncounter existing = patientEncounterService.dischargeEncounter(encounterId);
-        return ResponseEntity.ok(existing);
+        // Validation: consistency between path and body
+        if (!encounterId.equals(dischargeDTO.encounterId())) {
+            LOG.warn("[DISCHARGE] mismatch between path id={} and body id={}", encounterId, dischargeDTO.encounterId());
+            throw new BadRequestAlertException(
+                    "Encounter id mismatch between path and body.",
+                    "patientEncounter",
+                    "discharge.id.mismatch"
+            );
+        }
+
+        // Optional extra validation (before service)
+        if (dischargeDTO.dischargeType() == null) {
+            throw new BadRequestAlertException(
+                    "Discharge type is required.",
+                    "patientEncounter",
+                    "discharge.type.required"
+            );
+        }
+
+        if (dischargeDTO.dischargeAt() == null) {
+            throw new BadRequestAlertException(
+                    "Discharge date and time are required.",
+                    "patientEncounter",
+                    "discharge.at.required"
+            );
+        }
+
+        PatientEncounter discharged =
+                patientEncounterService.dischargeEncounter(dischargeDTO);
+
+        return ResponseEntity.ok(discharged);
     }
 
     @PostMapping("/encounter/{id}/complete")
@@ -287,11 +341,95 @@ public class PatientEncounterController {
 
     @GetMapping("/encounter/appointment/{appointmentId}")
     public ResponseEntity<PatientEncounter> getEncountersByAppointment(
-            @PathVariable @NotNull String appointmentId
+            @PathVariable @NotNull Long appointmentId
     ) {
         LOG.debug("REST get EncounterAppointment by appointmentId={}", appointmentId);
 
         PatientEncounter encounterAppointment = patientEncounterService.getEncountersByAppointmentId(appointmentId);
         return ResponseEntity.ok(encounterAppointment);
+    }
+
+    @PostMapping("/encounter/{id}/move-to-new")
+    public ResponseEntity<PatientEncounter> moveToNew(
+            @PathVariable("id") @NotNull Long encounterId
+    ) {
+        LOG.debug("REST move PatientEncounter from WAITING_LIST to NEW id={}", encounterId);
+
+        PatientEncounter updated =
+                patientEncounterService.moveToNew(encounterId);
+
+        return ResponseEntity.ok(updated);
+    }
+
+    @GetMapping("/encounter/department/{departmentId}/count/date-range/waiting-list")
+    public ResponseEntity<Long> countDepartmentWaitingList(
+            @PathVariable @NotNull Long departmentId,
+            @RequestParam LocalDate fromDate,
+            @RequestParam LocalDate toDate
+    ) {
+        LOG.debug("REST count WAITING_LIST departmentId={} fromDate={} toDate={}",
+                departmentId, fromDate, toDate);
+
+        long total = patientEncounterService.countDepartmentWaitingListPatients(
+                departmentId,
+                fromDate,
+                toDate
+        );
+
+        return ResponseEntity.ok(total);
+    }
+
+    @GetMapping("/encounter/department/{departmentId}/count/date-range/triage")
+    public ResponseEntity<Long> countDepartmentTriage(
+            @PathVariable @NotNull Long departmentId,
+            @RequestParam LocalDate fromDate,
+            @RequestParam LocalDate toDate
+    ) {
+        LOG.debug("REST count TRIAGE departmentId={} fromDate={} toDate={}",
+                departmentId, fromDate, toDate);
+
+        long total = patientEncounterService.countDepartmentInTriagePatients(
+                departmentId,
+                fromDate,
+                toDate
+        );
+
+        return ResponseEntity.ok(total);
+    }
+
+    @GetMapping("/encounter/department/{departmentId}/count/date-range/discharged")
+    public ResponseEntity<Long> countDepartmentDischarged(
+            @PathVariable @NotNull Long departmentId,
+            @RequestParam LocalDate fromDate,
+            @RequestParam LocalDate toDate
+    ) {
+        LOG.debug("REST count DISCHARGED departmentId={} fromDate={} toDate={}",
+                departmentId, fromDate, toDate);
+
+        long total = patientEncounterService.countDepartmentDischargedPatients(
+                departmentId,
+                fromDate,
+                toDate
+        );
+
+        return ResponseEntity.ok(total);
+    }
+
+    @GetMapping("/encounter/department/{departmentId}/count/date-range/total")
+    public ResponseEntity<Long> countDepartmentTotalByDateRange(
+            @PathVariable @NotNull Long departmentId,
+            @RequestParam LocalDate fromDate,
+            @RequestParam LocalDate toDate
+    ) {
+        LOG.debug("REST count TOTAL departmentId={} fromDate={} toDate={}",
+                departmentId, fromDate, toDate);
+
+        long total = patientEncounterService.countDepartmentEncountersByDateRange(
+                departmentId,
+                fromDate,
+                toDate
+        );
+
+        return ResponseEntity.ok(total);
     }
 }

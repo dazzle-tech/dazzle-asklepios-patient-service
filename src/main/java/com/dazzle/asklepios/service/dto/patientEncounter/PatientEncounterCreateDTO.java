@@ -16,8 +16,6 @@ public record PatientEncounterCreateDTO(
         @NotNull
         Long patientId,
 
-        String encounterNumber,
-
         @NotNull
         Long facilityId,
 
@@ -26,7 +24,8 @@ public record PatientEncounterCreateDTO(
 
         Long practitionerId,
 
-        String appointmentId,
+        @NotNull
+        Long appointmentId,
 
         @NotNull
         EncounterType encounterType,
@@ -45,23 +44,12 @@ public record PatientEncounterCreateDTO(
 
         String notes,
 
-        Integer departmentDailySequenceNumber,
-
         LocalDate encounterDate,
 
         @NotNull
         EncounterStatus status,
 
-        String chiefComplaint,
-
-        @NotNull
-        Boolean hasPrescription,
-
-        @NotNull
-        Boolean hasOrder,
-
-        @NotNull
-        Boolean isObserved
+        String chiefComplaint
 
 ) implements Serializable {
 }

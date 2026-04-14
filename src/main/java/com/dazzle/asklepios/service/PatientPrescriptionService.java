@@ -23,6 +23,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -35,8 +39,6 @@ public class PatientPrescriptionService {
     private static final org.slf4j.Logger LOG = LoggerFactory.getLogger(PatientPrescriptionService.class);
     private final PatientRepository patientRepository;
     private final PatientPrescriptionRepository patientPrescriptionRepository;
-    private final PatientEncounterService patientEncounterService;
-    private final PatientEncounterRepository patientEncounterRepository;
 
     public PatientPrescription create(PatientPrescriptionCreateDto prescriptionCreateDto) {
         LOG.debug("create a prescriptionCreateDto={}",prescriptionCreateDto);
@@ -83,11 +85,6 @@ public class PatientPrescriptionService {
     public PatientPrescription createOrGetByEncounter(PatientPrescriptionCreateDto patientPrescriptionCreateDto) {
         LOG.debug("createOrGetByEncounter Patient Prescription payload={}", patientPrescriptionCreateDto);
 
-        if(patientPrescriptionCreateDto.getEncounterId() != null) {
-            PatientEncounter encounter = patientEncounterService.getById(patientPrescriptionCreateDto.getEncounterId());
-            encounter.setHasPrescription(true);
-            patientEncounterRepository.save(encounter);
-        }
          return patientPrescriptionRepository
                 .findTopByEncounterIdAndStatusOrderByCreatedDateDesc(patientPrescriptionCreateDto.getEncounterId(), PrescriptionStatus.DRAFT)
                 .orElseGet(() -> {
@@ -223,4 +220,17 @@ public class PatientPrescriptionService {
                 .findById(id)
                 .orElseThrow(() -> new NotFoundAlertException("Patient not found: " + id, "Patient", "notfound"));
     }
+
+
+
+public Set<Long> findEncounterIdsWithOrders(List<Long> encounterIds) {
+    if (encounterIds == null || encounterIds.isEmpty()) {
+        return Collections.emptySet();
+    }
+
+    return prescriptionRepository.findDistinctByEncounterIdIn(encounterIds)
+            .stream()
+            .map(prescription -> prescription.getEncounterId())
+            .collect(Collectors.toSet());
+}
 }

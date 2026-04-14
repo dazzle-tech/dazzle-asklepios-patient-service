@@ -1,11 +1,10 @@
-package com.dazzle.asklepios.client;
+package com.dazzle.asklepios.client.setup;
 
 
-import com.dazzle.asklepios.client.dto.NormalRangeMatchDTO;
+import com.dazzle.asklepios.client.setup.dto.NormalRangeMatchDTO;
 import com.dazzle.asklepios.config.SetupServiceFeignConfig;
 import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import org.springframework.cloud.openfeign.FeignClient;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;

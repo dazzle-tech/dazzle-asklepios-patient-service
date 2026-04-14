@@ -6,7 +6,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface PatientPrescriptionRepository extends JpaRepository<PatientPrescription, Long> {
 
@@ -36,4 +38,8 @@ public interface PatientPrescriptionRepository extends JpaRepository<PatientPres
             PrescriptionStatus status,
             Pageable pageable
     );
+
+//    Boolean existsByEncounter_Id(Long encounterId);
+    Set<PatientPrescription> findDistinctByEncounterIdIn(List<Long> encounterIds);
+
 }

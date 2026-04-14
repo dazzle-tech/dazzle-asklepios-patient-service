@@ -19,6 +19,7 @@ public record PatientCreateDTO(
         @NotEmpty
         String firstName,
 
+        @NotEmpty
         String secondName,
         String thirdName,
 

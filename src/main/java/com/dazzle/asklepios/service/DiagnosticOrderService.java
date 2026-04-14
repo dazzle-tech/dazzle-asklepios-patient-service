@@ -23,7 +23,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -366,5 +369,18 @@ public class DiagnosticOrderService {
                 order.getId(), order.getStatus(), order.getSaveDraft());
 
         return order;
+    }
+
+
+
+    public Set<Long> findEncounterIdsWithOrders(List<Long> encounterIds) {
+        if (encounterIds == null || encounterIds.isEmpty()) {
+            return Collections.emptySet();
+        }
+
+        return diagnosticOrderRepository.findDistinctByEncounterIdIn(encounterIds)
+                .stream()
+                .map(prescription -> prescription.getEncounterId())
+                .collect(Collectors.toSet());
     }
 }
