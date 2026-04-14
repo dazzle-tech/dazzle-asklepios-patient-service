@@ -54,18 +54,11 @@ public class PatientController {
         LOG.debug("REST create Patient payload={}", patientDTO);
 
         if (patientDTO == null) {
-            throw new BadRequestAlertException(
-                    "Patient payload is required",
-                    "patient",
-                    "payload.required"
-            );
+            throw new BadRequestAlertException("Patient payload is required", "patient", "payload.required");
         }
 
         Patient created = patientService.create(patientDTO);
-
-        return ResponseEntity
-                .created(URI.create("/api/patient/" + created.getId()))
-                .body(created);
+        return ResponseEntity.created(URI.create("/api/patient/" + created.getId())).body(created);
     }
 
 
@@ -77,23 +70,14 @@ public class PatientController {
         LOG.debug("REST update Patient id={} payload={}", id, patientDTO);
 
         if (patientDTO == null) {
-            throw new BadRequestAlertException(
-                    "Patient payload is required",
-                    "patient",
-                    "payload.required"
-            );
+            throw new BadRequestAlertException("Patient payload is required", "patient", "payload.required");
         }
 
         if (patientDTO.id() == null || !patientDTO.id().equals(id)) {
-            throw new BadRequestAlertException(
-                    "Path id does not match payload id",
-                    "patient",
-                    "id.mismatch"
-            );
+            throw new BadRequestAlertException("Path id does not match payload id", "patient", "id.mismatch");
         }
 
         Patient updatedPatient = patientService.update(id, patientDTO);
-
         return ResponseEntity.ok(updatedPatient);
     }
 

@@ -1,11 +1,11 @@
 package com.dazzle.asklepios.web.rest;
 
-import com.dazzle.asklepios.domain.PatientDiagnosis;
 import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.service.PatientPrescriptionMedicationService;
 import com.dazzle.asklepios.service.dto.patientPrescription.PrescriptionMedicationCreateDTO;
 import com.dazzle.asklepios.service.dto.patientPrescription.PrescriptionMedicationUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,13 +57,14 @@ public class PatientPrescriptionMedicationController {
     }
 
     @PostMapping("/patient-prescription-medications")
-    public ResponseEntity<PatientPrescriptionMedication> create(@RequestBody PrescriptionMedicationCreateDTO prescriptionMedicationCreateDTO) {
+    public ResponseEntity<PatientPrescriptionMedication> create(@Valid @RequestBody PrescriptionMedicationCreateDTO prescriptionMedicationCreateDTO) {
         LOG.debug("Received request to create a prescription medication");
         return ResponseEntity.ok(patientPrescriptionMedicationService.create(prescriptionMedicationCreateDTO));
     }
 
+
     @PutMapping("/patient-prescription-medications/{id}")
-    public ResponseEntity<PatientPrescriptionMedication> update(@PathVariable Long id, @RequestBody PrescriptionMedicationUpdateDTO prescriptionMedicationUpdateDTO) {
+    public ResponseEntity<PatientPrescriptionMedication> update(@Valid @PathVariable Long id,@Valid @RequestBody PrescriptionMedicationUpdateDTO prescriptionMedicationUpdateDTO) {
         LOG.debug("Received request to update a prescription medication with id: {}", id);
         return ResponseEntity.ok(patientPrescriptionMedicationService.update(id, prescriptionMedicationUpdateDTO));
     }
