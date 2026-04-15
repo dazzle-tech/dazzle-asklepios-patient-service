@@ -17,6 +17,7 @@ import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.Diagnosti
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestUpdateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.commands.DiagnosticOrderTestCancelDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.commands.DiagnosticOrderTestRejectDTO;
+import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.commands.DiagnosticOrderTestUndoAcceptDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.patientarrived.PatientArrivedCreateRequestDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -684,11 +685,13 @@ public class DiagnosticOrderTestController {
      * @return updated entity response
      */
     @PostMapping("/diagnostic-order-tests/{id}/undo-accept")
-    public ResponseEntity<DiagnosticOrderTestResponseVM> undoAccept(@PathVariable Long id) {
-        LOG.debug("REST undo-accept DiagnosticOrderTest id={}", id);
-
-        DiagnosticOrderTest updated = diagnosticOrderTestStatusService.undoAccept(id);
-
+    public ResponseEntity<DiagnosticOrderTestResponseVM> undoAccept(
+            @PathVariable Long id,
+            @Valid @RequestBody DiagnosticOrderTestUndoAcceptDTO dto
+    ) {
+        LOG.debug("REST undo-accept DiagnosticOrderTest id={} reason={}", id, dto.undoAcceptReason());
+        String username = currentUsername();
+        DiagnosticOrderTest updated = diagnosticOrderTestStatusService.undoAccept(id, username, dto.undoAcceptReason());
         return ResponseEntity.ok(DiagnosticOrderTestResponseVM.ofEntity(updated));
     }
 

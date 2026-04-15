@@ -37,9 +37,16 @@ public class DiagnosticOrderTestCollectedSampleService {
     private final PatientRepository patientRepository;
     private final DiagnosticTestRepository diagnosticTestRepository;
     private final DepartmentsRepository departmentRepository;
+
     public DiagnosticOrderTestCollectedSampleService(
             DiagnosticOrderTestCollectedSampleRepository repository,
-            DiagnosticOrderTestStatusService diagnosticOrderTestStatusService, DiagnosticOrderTestRepository orderTestRepository, DiagnosticOrderTestCollectedSampleRepository sampleRepository, DiagnosticOrderRepository orderRepository, PatientRepository patientRepository, DiagnosticTestRepository diagnosticTestRepository, DepartmentsRepository departmentRepository
+            DiagnosticOrderTestStatusService diagnosticOrderTestStatusService,
+            DiagnosticOrderTestRepository orderTestRepository,
+            DiagnosticOrderTestCollectedSampleRepository sampleRepository,
+            DiagnosticOrderRepository orderRepository,
+            PatientRepository patientRepository,
+            DiagnosticTestRepository diagnosticTestRepository,
+            DepartmentsRepository departmentRepository
     ) {
         this.repository = repository;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
@@ -54,18 +61,16 @@ public class DiagnosticOrderTestCollectedSampleService {
     public DiagnosticOrderTestCollectedSample create(DiagnosticOrderTestCollectedSampleDTO dto) {
         LOG.debug("[CollectedSampleService] CREATE - start. payload={}", dto);
 
-        // Build collected sample entity
         DiagnosticOrderTestCollectedSample s = new DiagnosticOrderTestCollectedSample();
         s.setOrderId(dto.orderId());
         s.setOrderTestId(dto.orderTestId());
         s.setUnit(dto.unit());
         s.setQuantity(dto.quantity());
         s.setCollectedAt(dto.collectedAt());
+        s.setExpiryDate(dto.expiryDate()); // ✅ added
 
-        // Persist collected sample
         DiagnosticOrderTestCollectedSample saved = repository.save(s);
 
-        // Update test processing status: NEW -> SAMPLE_COLLECTED
         diagnosticOrderTestStatusService.collectSample(dto.orderTestId());
 
         LOG.debug("[CollectedSampleService] CREATE - done. id={} orderId={} orderTestId={}",
@@ -79,7 +84,6 @@ public class DiagnosticOrderTestCollectedSampleService {
         LOG.debug("[CollectedSampleService] BULK_CREATE_SAME - start. orderId={} orderTestIdsCount={}",
                 dto.orderId(), dto.orderTestIds() == null ? 0 : dto.orderTestIds().size());
 
-        // Build entities for all orderTestIds
         List<DiagnosticOrderTestCollectedSample> entities = dto.orderTestIds().stream().map(orderTestId -> {
             DiagnosticOrderTestCollectedSample s = new DiagnosticOrderTestCollectedSample();
             s.setOrderId(dto.orderId());
@@ -87,13 +91,12 @@ public class DiagnosticOrderTestCollectedSampleService {
             s.setUnit(dto.unit());
             s.setQuantity(dto.quantity());
             s.setCollectedAt(dto.collectedAt());
+            s.setExpiryDate(dto.expiryDate());
             return s;
         }).toList();
 
-        // Persist all collected samples
         List<DiagnosticOrderTestCollectedSample> saved = repository.saveAll(entities);
 
-        // Update processing status for each test
         dto.orderTestIds().forEach(diagnosticOrderTestStatusService::collectSample);
 
         LOG.debug("[CollectedSampleService] BULK_CREATE_SAME - done. savedCount={} orderId={}",
@@ -107,82 +110,83 @@ public class DiagnosticOrderTestCollectedSampleService {
         LOG.debug("[CollectedSampleService] DELETE - done. id={}", id);
     }
 
-   //TODO move this logic to analytic service
-   public DiagnosticOrderTestSampleLabelDTO getSampleLabel(Long orderTestId) {
+    //TODO move this logic to analytic service
+    public DiagnosticOrderTestSampleLabelDTO getSampleLabel(Long orderTestId) {
 
-       LOG.debug("[SampleLabelService] GET_SAMPLE_LABEL - start. orderTestId={}", orderTestId);
+        LOG.debug("[SampleLabelService] GET_SAMPLE_LABEL - start. orderTestId={}", orderTestId);
 
-       DiagnosticOrderTest orderTest = orderTestRepository.findById(orderTestId)
-               .orElseThrow(() -> new BadRequestAlertException(
-                       "notfound",
-                       "diagnostic_order_tests",
-                       "DiagnosticOrderTest not found with id " + orderTestId
-               ));
+        DiagnosticOrderTest orderTest = orderTestRepository.findById(orderTestId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_order_tests",
+                        "DiagnosticOrderTest not found with id " + orderTestId
+                ));
 
-       DiagnosticOrderTestCollectedSample  lastSample = sampleRepository
-               .findTopByOrderTestIdOrderByCreatedDateDescIdDesc(orderTestId)
-               .orElseThrow(() -> new BadRequestAlertException(
-                       "no_sample",
-                       "diagnostic_order_test_collected_samples",
-                       "No collected sample found for orderTestId " + orderTestId
-               ));
+        DiagnosticOrderTestCollectedSample lastSample = sampleRepository
+                .findTopByOrderTestIdOrderByCreatedDateDescIdDesc(orderTestId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "no_sample",
+                        "diagnostic_order_test_collected_samples",
+                        "No collected sample found for orderTestId " + orderTestId
+                ));
 
-       Long orderId = orderTest.getOrderId();
-       if (orderId == null) {
-           throw new BadRequestAlertException(
-                   "invalid_order",
-                   "diagnostic_order_tests",
-                   "OrderId is null for orderTestId " + orderTestId
-           );
-       }
+        Long orderId = orderTest.getOrderId();
+        if (orderId == null) {
+            throw new BadRequestAlertException(
+                    "invalid_order",
+                    "diagnostic_order_tests",
+                    "OrderId is null for orderTestId " + orderTestId
+            );
+        }
 
-       DiagnosticOrder order = orderRepository.findById(orderId)
-               .orElseThrow(() -> new BadRequestAlertException(
-                       "notfound",
-                       "diagnostic_orders",
-                       "Order not found with id " + orderId
-               ));
+        DiagnosticOrder order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_orders",
+                        "Order not found with id " + orderId
+                ));
 
-       Patient patient = patientRepository.findById(order.getPatientId())
-               .orElseThrow(() -> new BadRequestAlertException(
-                       "notfound",
-                       "patients",
-                       "Patient not found with id " + order.getPatientId()
-               ));
+        Patient patient = patientRepository.findById(order.getPatientId())
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "patients",
+                        "Patient not found with id " + order.getPatientId()
+                ));
 
-       DiagnosticTest test = diagnosticTestRepository.findById(orderTest.getTestId())
-               .orElseThrow(() -> new BadRequestAlertException(
-                       "notfound",
-                       "diagnostic_tests",
-                       "Diagnostic test not found with id " + orderTest.getTestId()
-               ));
-       Department department = departmentRepository.findById(orderTest.getReceivedDepartmentId())
-               .orElseThrow(() -> new BadRequestAlertException(
-                       "notfound",
-                       "diagnostic_tests",
-                       "Facility not found with id " + orderTest.getTestId()
-               ));
-       String patientName = (patient.getFirstName() + " " + patient.getLastName()).trim();
-       String mrn = patient.getMedicalRecordNumber();
+        DiagnosticTest test = diagnosticTestRepository.findById(orderTest.getTestId())
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_tests",
+                        "Diagnostic test not found with id " + orderTest.getTestId()
+                ));
 
-       String facilityName =department.getFacility().getName();
+        Department department = departmentRepository.findById(orderTest.getReceivedDepartmentId())
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_tests",
+                        "Facility not found with id " + orderTest.getTestId()
+                ));
 
-       LOG.debug(
-               "[SampleLabelService] GET_SAMPLE_LABEL - data prepared. orderTestId={} patient={} test={}",
-               orderTestId,
-               patientName,
-               test.getName()
-       );
+        String patientName = (patient.getFirstName() + " " + patient.getLastName()).trim();
+        String mrn = patient.getMedicalRecordNumber();
+        String facilityName = department.getFacility().getName();
 
-       return new DiagnosticOrderTestSampleLabelDTO(
-               orderTestId,
-               patientName,
-               facilityName,
-               mrn,
-               test.getName(),
-               lastSample.getCollectedAt(),
-               lastSample.getQuantity(),
-               lastSample.getUnit()
-       );
-   }
+        LOG.debug(
+                "[SampleLabelService] GET_SAMPLE_LABEL - data prepared. orderTestId={} patient={} test={}",
+                orderTestId,
+                patientName,
+                test.getName()
+        );
+
+        return new DiagnosticOrderTestSampleLabelDTO(
+                orderTestId,
+                patientName,
+                facilityName,
+                mrn,
+                test.getName(),
+                lastSample.getCollectedAt(),
+                lastSample.getQuantity(),
+                lastSample.getUnit()
+        );
+    }
 }

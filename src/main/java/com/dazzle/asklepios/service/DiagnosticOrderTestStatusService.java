@@ -201,7 +201,7 @@ public class DiagnosticOrderTestStatusService {
     // Undo Accept
     // ---------------------------------------------------------------------
 
-    public DiagnosticOrderTest undoAccept(Long testId) {
+    public DiagnosticOrderTest undoAccept(Long testId, String username, String undoAcceptReason) {
         DiagnosticOrderTest test = getTest(testId);
 
         if (test.getProcessingStatus() != DiagnosticStatus.ACCEPTED) {
@@ -212,7 +212,6 @@ public class DiagnosticOrderTestStatusService {
             );
         }
 
-        // Radiology goes back to PATIENT_ARRIVED, Lab goes back to SAMPLE_COLLECTED
         if (test.getOrderType() == TestType.RADIOLOGY) {
             test.setProcessingStatus(DiagnosticStatus.PATIENT_ARRIVED);
         } else {
@@ -221,6 +220,10 @@ public class DiagnosticOrderTestStatusService {
 
         test.setAcceptedBy(null);
         test.setAcceptedDate(null);
+
+        test.setUndoAcceptReason(undoAcceptReason);
+        test.setUndoAcceptBy(username);
+        test.setUndoAcceptDate(Instant.now());
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
