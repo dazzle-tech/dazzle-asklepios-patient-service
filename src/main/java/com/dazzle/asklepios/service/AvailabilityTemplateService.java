@@ -98,9 +98,9 @@ public class AvailabilityTemplateService {
             handleConstraintsOnCreateOrUpdate(constraintException);
 
             throw new BadRequestAlertException(
-                    "Database constraint violated while saving availability template (check required fields or unique constraints).",
+                    "db.constraint",
                     ENTITY_NAME,
-                    "db.constraint"
+                    "Database constraint violated while saving availability template (check required fields or unique constraints)."
             );
         }
     }
@@ -142,9 +142,9 @@ public class AvailabilityTemplateService {
             handleConstraintsOnCreateOrUpdate(constraintException);
 
             throw new BadRequestAlertException(
-                    "Database constraint violated while saving availability template (check required fields or unique constraints).",
+                    "db.constraint",
                     ENTITY_NAME,
-                    "db.constraint"
+                    "Database constraint violated while saving availability template (check required fields or unique constraints)."
             );
         }
     }
@@ -319,9 +319,9 @@ public class AvailabilityTemplateService {
 
         if (!anySubTemplateHasIntervals) {
             throw new BadRequestAlertException(
-                    "Cannot publish template because neither the template nor its sub-templates contain any intervals",
+                    "template.no.intervals",
                     ENTITY_NAME,
-                    "template.no.intervals"
+                    "Cannot publish template because neither the template nor its sub-templates contain any intervals"
             );
         }
     }
@@ -341,9 +341,9 @@ public class AvailabilityTemplateService {
                 .findById(id)
                 .orElseThrow(() ->
                         new NotFoundAlertException(
-                                "AvailabilityTemplate not found: " + id,
+                                "notfound",
                                 ENTITY_NAME,
-                                "notfound"
+                                "AvailabilityTemplate not found: " + id
                         )
                 );
     }
@@ -571,57 +571,57 @@ public class AvailabilityTemplateService {
                 || lower.contains("duplicate key")
                 || lower.contains("duplicate entry")) {
             throw new BadRequestAlertException(
-                    "This name already exists for another template.",
+                    "unique.template.name",
                     ENTITY_NAME,
-                    "unique.template.name"
+                    "This name already exists for another template."
             );
         } else if (lower.contains("fk_template_copy")) {
             throw new BadRequestAlertException(
-                    "Invalid template reference for template.",
+                    "fk.copy_from_template_id",
                     ENTITY_NAME,
-                    "fk.copy_from_template_id"
+                    "Invalid template reference for template."
             );
         } else if (lower.contains("fk_template_parent")) {
             throw new BadRequestAlertException(
-                    "Invalid template reference for template.",
+                    "fk.parent_template_id",
                     ENTITY_NAME,
-                    "fk.parent_template_id"
+                    "Invalid template reference for template."
             );
         } else if (lower.contains("fk_template_service")) {
             throw new BadRequestAlertException(
-                    "Invalid service reference for template.",
+                    "fk.default_service_id",
                     ENTITY_NAME,
-                    "fk.default_service_id"
+                    "Invalid service reference for template."
             );
         } else if (lower.contains("fk_template_practitioner")) {
             throw new BadRequestAlertException(
-                    "Invalid practitioner reference for template.",
+                    "fk.default_practitioner_id",
                     ENTITY_NAME,
-                    "fk.default_practitioner_id"
+                    "Invalid practitioner reference for template."
             );
         } else if (lower.contains("fk_template_department")) {
             throw new BadRequestAlertException(
-                    "Invalid department reference for template.",
+                    "fk.department_id",
                     ENTITY_NAME,
-                    "fk.department_id"
+                    "Invalid department reference for template."
             );
         } else if (lower.contains("fk_template_facility")) {
             throw new BadRequestAlertException(
-                    "Invalid facility reference for template.",
+                    "fk.facility_id",
                     ENTITY_NAME,
-                    "fk.facility_id"
+                    "Invalid facility reference for template."
             );
         } else if (lower.contains("foreign key")) {
             throw new BadRequestAlertException(
-                    "Invalid foreign key reference for template.",
+                    "fk.foreign_key",
                     ENTITY_NAME,
-                    "fk.foreign_key"
+                    "Invalid foreign key reference for template."
             );
         }
         throw new BadRequestAlertException(
-                "Database constraint violated while saving availability template (check required fields or unique constraints).",
+                "db.constraint",
                 ENTITY_NAME,
-                "db.constraint"
+                "Database constraint violated while saving availability template (check required fields or unique constraints)."
         );
     }
 
