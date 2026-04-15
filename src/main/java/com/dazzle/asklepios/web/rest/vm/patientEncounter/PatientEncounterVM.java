@@ -8,7 +8,9 @@ import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 public record PatientEncounterVM(
 
@@ -37,7 +39,9 @@ public record PatientEncounterVM(
 
         Boolean hasPrescription,
         Boolean hasOrder,
-        Boolean isObserved
+        Boolean isObserved,
+        Instant createdAt,
+        LocalDateTime dischargeAt
 
 ) {
 
@@ -70,7 +74,9 @@ public record PatientEncounterVM(
                 encounter.getChiefComplaint(),
                 hasPrescription,
                 hasOrder,
-                hasObservation
+                hasObservation,
+                encounter.getCreatedDate(),
+                encounter.getDischargeAt()
 
         );
     }
