@@ -54,4 +54,7 @@ public class AvailabilityTemplateInterval extends AbstractAuditingEntity<Long> i
 
     @OneToMany(mappedBy = "interval", cascade = CascadeType.ALL)
     private List<AvailabilityTemplateAllowedService> allowedServices;
+
+    @OneToMany(mappedBy = "interval", cascade = CascadeType.ALL)
+    private List<AvailabilityTemplateIntervalBreak> breaks;
 }

@@ -7,6 +7,7 @@ import com.dazzle.asklepios.domain.enumeration.DayOfWeek;
 import com.dazzle.asklepios.domain.enumeration.TemplateStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import com.dazzle.asklepios.repository.AvailabilityTemplateAllowedServiceRepository;
+import com.dazzle.asklepios.repository.AvailabilityTemplateIntervalBreakRepository;
 import com.dazzle.asklepios.repository.AvailabilityTemplateIntervalRepository;
 import com.dazzle.asklepios.repository.AvailabilityTemplateLogRepository;
 import com.dazzle.asklepios.repository.AvailabilityTemplateRepository;
@@ -56,6 +57,9 @@ public class AvailabilityTemplateService {
     private final AvailabilityTemplateIntervalRepository availabilityTemplateIntervalRepository;
     private final AvailabilityTemplateLogRepository availabilityTemplateLogRepository;
 
+    private final AvailabilityTemplateIntervalBreakRepository availabilityTemplateIntervalBreakRepository;
+
+
     public AvailabilityTemplateService(
             AvailabilityTemplateRepository availabilityTemplateRepository,
             FacilityHelper facilityHelper,
@@ -64,7 +68,8 @@ public class AvailabilityTemplateService {
             PractitionerHelper practitionerHelper,
             AvailabilityTemplateAllowedServiceRepository availabilityTemplateAllowedServiceRepository,
             AvailabilityTemplateIntervalRepository availabilityTemplateIntervalRepository,
-            AvailabilityTemplateLogRepository availabilityTemplateLogRepository
+            AvailabilityTemplateLogRepository availabilityTemplateLogRepository,
+            AvailabilityTemplateIntervalBreakRepository availabilityTemplateIntervalBreakRepository
     ) {
         this.availabilityTemplateRepository = availabilityTemplateRepository;
         this.facilityHelper = facilityHelper;
@@ -74,6 +79,8 @@ public class AvailabilityTemplateService {
         this.availabilityTemplateAllowedServiceRepository = availabilityTemplateAllowedServiceRepository;
         this.availabilityTemplateIntervalRepository = availabilityTemplateIntervalRepository;
         this.availabilityTemplateLogRepository = availabilityTemplateLogRepository;
+
+        this.availabilityTemplateIntervalBreakRepository = availabilityTemplateIntervalBreakRepository;
     }
 
     public AvailabilityTemplate create(AvailabilityTemplateCreateDTO dto) {
@@ -157,6 +164,7 @@ public class AvailabilityTemplateService {
         }
         availabilityTemplateAllowedServiceRepository.deleteByTemplate_Id(id);
         availabilityTemplateIntervalRepository.deleteByTemplate_Id(id);
+        availabilityTemplateIntervalBreakRepository.deleteByTemplate_Id(id);
         availabilityTemplateRepository.deleteById(id);
     }
 
@@ -303,6 +311,7 @@ public class AvailabilityTemplateService {
         page.getContent().forEach(this::initializeAllowedServices);
         return page;
     }
+
     private void validateTemplateOrSubTemplateHasIntervals(Long templateId) {
         boolean templateHasIntervals = availabilityTemplateIntervalRepository.existsByTemplate_Id(templateId);
 
@@ -325,6 +334,7 @@ public class AvailabilityTemplateService {
             );
         }
     }
+
     private void publishSubTemplates(Long parentTemplateId) {
         List<AvailabilityTemplate> subTemplates =
                 availabilityTemplateRepository.findAllByParentTemplateId(parentTemplateId);
