@@ -411,31 +411,15 @@ public class AvailabilityTemplateService {
         entity.setStatus(dto.status());
         entity.setVersionNo(dto.versionNo());
         entity.setDurationMinutes(dto.durationMinutes());
-        entity.setDefaultBufferBeforeMinutes(
-                dto.defaultBufferBeforeMinutes() != null ? dto.defaultBufferBeforeMinutes() : 0
-        );
-        entity.setDefaultBufferAfterMinutes(
-                dto.defaultBufferAfterMinutes() != null ? dto.defaultBufferAfterMinutes() : 0
-        );
-        entity.setParallelCapacityValue(
-                dto.parallelCapacityValue() != null ? dto.parallelCapacityValue() : 0
-        );
+        entity.setDefaultBufferBeforeMinutes(dto.defaultBufferBeforeMinutes() != null ? dto.defaultBufferBeforeMinutes() : 0);
+        entity.setDefaultBufferAfterMinutes(dto.defaultBufferAfterMinutes() != null ? dto.defaultBufferAfterMinutes() : 0);
+        entity.setParallelCapacityValue(dto.parallelCapacityValue() != null ? dto.parallelCapacityValue() : 1);
         entity.setNumberOfResourcesExpected(dto.numberOfResourcesExpected());
-        entity.setRequirePractitioner(
-                dto.requirePractitioner() != null ? dto.requirePractitioner() : false
-        );
-        entity.setRequireBilling(
-                dto.requireBilling() != null ? dto.requireBilling() : false
-        );
-        entity.setRequirePreAssessment(
-                dto.requirePreAssessment() != null ? dto.requirePreAssessment() : false
-        );
-        entity.setAllowPatientPortalBooking(
-                dto.allowPatientPortalBooking() != null ? dto.allowPatientPortalBooking() : false
-        );
-        entity.setRequireConfirmation(
-                dto.requireConfirmation() != null ? dto.requireConfirmation() : true
-        );
+        entity.setRequirePractitioner(dto.requirePractitioner() != null ? dto.requirePractitioner() : false);
+        entity.setRequireBilling(dto.requireBilling() != null ? dto.requireBilling() : false);
+        entity.setRequirePreAssessment(dto.requirePreAssessment() != null ? dto.requirePreAssessment() : false);
+        entity.setAllowPatientPortalBooking(dto.allowPatientPortalBooking() != null ? dto.allowPatientPortalBooking() : false);
+        entity.setRequireConfirmation(dto.requireConfirmation() != null ? dto.requireConfirmation() : true);
         entity.setFinancialDetails(dto.financialDetails());
 
         if (dto.copyFromTemplateId() != null) {
