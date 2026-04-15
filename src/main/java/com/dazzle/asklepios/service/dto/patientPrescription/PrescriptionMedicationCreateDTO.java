@@ -13,7 +13,7 @@ import java.time.LocalDate;
 public class PrescriptionMedicationCreateDTO {
 
     @NotNull public Long prescriptionHeaderId;
-    @NotNull public Long medicationsId;
+     public Long medicationsId;
     @NotNull public PrescriptionInstructionsType instructionsType;
     public String instructions;
     public Long dose;
