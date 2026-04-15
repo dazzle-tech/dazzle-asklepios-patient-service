@@ -67,7 +67,7 @@ public class DiagnosticOrderTestCollectedSampleService {
         s.setUnit(dto.unit());
         s.setQuantity(dto.quantity());
         s.setCollectedAt(dto.collectedAt());
-        s.setExpiryDate(dto.expiryDate()); // ✅ added
+        s.setExpiryDate(dto.expiryDate());
 
         DiagnosticOrderTestCollectedSample saved = repository.save(s);
 
@@ -110,7 +110,6 @@ public class DiagnosticOrderTestCollectedSampleService {
         LOG.debug("[CollectedSampleService] DELETE - done. id={}", id);
     }
 
-    //TODO move this logic to analytic service
     public DiagnosticOrderTestSampleLabelDTO getSampleLabel(Long orderTestId) {
 
         LOG.debug("[SampleLabelService] GET_SAMPLE_LABEL - start. orderTestId={}", orderTestId);

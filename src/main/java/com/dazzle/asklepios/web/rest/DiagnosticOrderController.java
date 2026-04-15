@@ -362,7 +362,7 @@ public class DiagnosticOrderController {
                 submittedDateTo,
                 departmentId,
                 testType,
-                orderNumber,   // ── NEW
+                orderNumber,
                 pageable
         );
 
