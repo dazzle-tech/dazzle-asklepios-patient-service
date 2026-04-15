@@ -34,7 +34,7 @@ public class AvailabilityTemplateIntervalBreakService {
         LOG.debug("Request to create AvailabilityTemplateIntervalBreak: {}", dto);
 
         AvailabilityTemplateInterval interval = intervalRepository.findById(dto.intervalId())
-                .orElseThrow(() -> new BadRequestAlertException("Interval not found with id " + dto.intervalId(), ENTITY_NAME, "interval.notfound"));
+                .orElseThrow(() -> new BadRequestAlertException("interval.notfound", ENTITY_NAME, "Interval not found with id " + dto.intervalId()));
 
         validateBreak(interval, dto.startTime(), dto.endTime());
         validateNoOverlap(interval.getId(), dto.startTime(), dto.endTime());
@@ -52,7 +52,7 @@ public class AvailabilityTemplateIntervalBreakService {
         LOG.debug("Request to hard delete AvailabilityTemplateIntervalBreak id={}", id);
 
         if (!intervalBreakRepository.existsById(id)) {
-            throw new BadRequestAlertException("Break not found with id " + id, ENTITY_NAME, "notfound");
+            throw new BadRequestAlertException("notfound", ENTITY_NAME, "Break not found with id " + id);
         }
         intervalBreakRepository.deleteById(id);
     }
@@ -62,7 +62,7 @@ public class AvailabilityTemplateIntervalBreakService {
         LOG.debug("Request to get AvailabilityTemplateIntervalBreak list by intervalId={}", intervalId);
 
         if (!intervalRepository.existsById(intervalId)) {
-            throw new BadRequestAlertException("Interval not found with id " + intervalId, ENTITY_NAME, "interval.notfound");
+            throw new BadRequestAlertException("interval.notfound", ENTITY_NAME, "Interval not found with id " + intervalId);
         }
 
         return intervalBreakRepository.findByInterval_IdOrderByStartTimeAsc(intervalId);
@@ -70,26 +70,26 @@ public class AvailabilityTemplateIntervalBreakService {
 
     private void validateBreak(AvailabilityTemplateInterval interval, LocalTime startTime, LocalTime endTime) {
         if (startTime == null) {
-            throw new BadRequestAlertException("Start time is required", ENTITY_NAME, "starttime.required");
+            throw new BadRequestAlertException("starttime.required", ENTITY_NAME, "Start time is required");
         }
         if (endTime == null) {
-            throw new BadRequestAlertException("End time is required", ENTITY_NAME, "endtime.required");
+            throw new BadRequestAlertException( "endtime.required", ENTITY_NAME,"End time is required");
         }
 
         if (!endTime.isAfter(startTime)) {
-            throw new BadRequestAlertException("End time must be after start time", ENTITY_NAME, "timerange.invalid");
+            throw new BadRequestAlertException("timerange.invalid", ENTITY_NAME, "End time must be after start time");
         }
 
         if (!startTime.isAfter(interval.getStartTime()) && !startTime.equals(interval.getStartTime())) {
-            throw new BadRequestAlertException("Break start time must be within interval time range", ENTITY_NAME, "break.outside.interval");
+            throw new BadRequestAlertException("break.outside.interval" , ENTITY_NAME, "Break start time must be within interval time range");
         }
 
         if (!endTime.isBefore(interval.getEndTime()) && !endTime.equals(interval.getEndTime())) {
-            throw new BadRequestAlertException("Break end time must be within interval time range", ENTITY_NAME, "break.outside.interval");
+            throw new BadRequestAlertException("break.outside.interval", ENTITY_NAME, "Break end time must be within interval time range");
         }
 
         if (startTime.isBefore(interval.getStartTime()) || endTime.isAfter(interval.getEndTime())) {
-            throw new BadRequestAlertException("Break must be fully inside the interval time range", ENTITY_NAME, "break.outside.interval");
+            throw new BadRequestAlertException("break.outside.interval", ENTITY_NAME, "Break must be fully inside the interval time range");
         }
     }
 
@@ -97,7 +97,7 @@ public class AvailabilityTemplateIntervalBreakService {
         List<AvailabilityTemplateIntervalBreak> overlaps = intervalBreakRepository.findByInterval_IdAndStartTimeLessThanAndEndTimeGreaterThan(intervalId, endTime, startTime);
 
         if (!overlaps.isEmpty()) {
-            throw new BadRequestAlertException("Break overlaps with an existing break for the same interval", ENTITY_NAME, "break.overlap");
+            throw new BadRequestAlertException("break.overlap", ENTITY_NAME, "Break overlaps with an existing break for the same interval");
         }
     }
 }
