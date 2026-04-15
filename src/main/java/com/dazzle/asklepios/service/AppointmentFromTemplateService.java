@@ -108,8 +108,7 @@ public class AppointmentFromTemplateService {
 
             appointment.setFollowUpEncounter(followUpEncounter);
         }
-        AppointmentFromTemplate saved = appointmentFromTemplateRepository.save(appointment);
-        return saved;
+        return appointmentFromTemplateRepository.save(appointment);
     }
 
     public Page<AppointmentFromTemplate> getAppointmentsByStatusBetweenDates(List<AppointmentStatus> status, Instant startDatetime, Instant endDatetime, Pageable pageable) {
@@ -200,13 +199,8 @@ public class AppointmentFromTemplateService {
         }
         appointment.setConfirmedAt(Instant.now());
         appointment.setStatus(AppointmentStatus.CONFIRMED);
-        AppointmentFromTemplate savedAppointment = appointmentFromTemplateRepository.save(appointment);
 
-        DepartmentDTO department = departmentHelper.getDepartment(savedAppointment.getDepartmentId());
-
-        createEncounter(savedAppointment, department);
-
-        return savedAppointment;
+        return appointmentFromTemplateRepository.save(appointment);
     }
 
     public AppointmentFromTemplate checkIn(Long id) {
@@ -216,8 +210,11 @@ public class AppointmentFromTemplateService {
 
         appointment.setStatus(AppointmentStatus.CHECKED_IN);
         appointment.setCheckedInAt(Instant.now());
+        AppointmentFromTemplate savedAppointment = appointmentFromTemplateRepository.save(appointment);
+        DepartmentDTO department = departmentHelper.getDepartment(savedAppointment.getDepartmentId());
 
-        return appointmentFromTemplateRepository.save(appointment);
+        createEncounter(savedAppointment, department);
+        return savedAppointment;
     }
 
     public AppointmentFromTemplateQuickAppointmentResponseVM createQuickAppointment(AppointmentFromTemplateQuickAppointmentDTO appointmentDTO) {
@@ -260,7 +257,7 @@ public class AppointmentFromTemplateService {
         appointment.setDefaultServiceId(appointmentDTO.defaultServiceId());
         appointment.setDefaultPractitionerId(appointmentDTO.defaultPractitionerId());
         appointment.setBookingMode(BookingMode.QUICK);
-        appointment.setStatus(AppointmentStatus.CONFIRMED);
+        appointment.setStatus(AppointmentStatus.CHECKED_IN);
         appointment.setPriority(appointmentDTO.priority());
         appointment.setOriginType(appointmentDTO.originType());
         appointment.setOriginName(appointmentDTO.originName());
