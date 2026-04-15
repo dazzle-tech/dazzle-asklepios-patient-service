@@ -6,12 +6,8 @@ import java.io.Serializable;
 import java.time.LocalTime;
 
 public record AvailabilityTemplateIntervalBreakCreateDTO(
-        @NotNull
-        Long intervalId,
+        @NotNull Long intervalId,
 
-        @NotNull
-        LocalTime startTime,
-
-        @NotNull
-        LocalTime endTime
+        @NotNull LocalTime startTime,
+        @NotNull LocalTime endTime
 ) implements Serializable {}
