@@ -266,7 +266,6 @@ public class PatientEncounterController {
             @Valid @RequestBody @NotNull PatientEncounterDischargeDTO dischargeDTO
     ) {
         LOG.debug("REST discharge PatientEncounter id={} payload={}", encounterId, dischargeDTO);
-        System.out.println("Disc--------------------->"+dischargeDTO);
         // Validation: consistency between path and body
         if (!encounterId.equals(dischargeDTO.encounterId())) {
             LOG.warn("[DISCHARGE] mismatch between path id={} and body id={}", encounterId, dischargeDTO.encounterId());
