@@ -336,12 +336,16 @@ public class DiagnosticOrderController {
             @RequestParam(name = "departmentId", required = false) Long departmentId,
             @RequestParam(name = "testType", required = false) TestType testType,
 
+            @RequestParam(name = "orderNumber", required = false) String orderNumber,
+
             @ParameterObject Pageable pageable
     ) {
-
-        LOG.debug("[DiagnosticOrder] FILTER - request received. patientId={} encounterId={} status={} statusIn={} statusNotIn={} excludeStatus={} saveDraft={} isUrgent={} labStatus={} radStatus={} submittedDateFrom={} submittedDateTo={} departmentId={} testType={} pageable={}",
-                patientId, encounterId, status, statusIn, statusNotIn, excludeStatus, saveDraft, isUrgent, labStatus,
-                radStatus, submittedDateFrom, submittedDateTo, departmentId, testType, pageable);
+        LOG.debug("[DiagnosticOrder] FILTER - request received. patientId={} encounterId={} status={} statusIn={} " +
+                        "statusNotIn={} excludeStatus={} saveDraft={} isUrgent={} labStatus={} radStatus={} " +
+                        "submittedDateFrom={} submittedDateTo={} departmentId={} testType={} orderNumber={} pageable={}",
+                patientId, encounterId, status, statusIn, statusNotIn, excludeStatus, saveDraft, isUrgent,
+                labStatus, radStatus, submittedDateFrom, submittedDateTo, departmentId, testType,
+                orderNumber, pageable);
 
         Page<DiagnosticOrder> ordersPage = diagnosticOrderService.filter(
                 patientId,
@@ -358,6 +362,7 @@ public class DiagnosticOrderController {
                 submittedDateTo,
                 departmentId,
                 testType,
+                orderNumber,
                 pageable
         );
 

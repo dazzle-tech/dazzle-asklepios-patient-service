@@ -14,5 +14,7 @@ public record DiagnosticOrderTestCollectedSampleBulkSameDTO(
         @NotEmpty List<@NotNull Long> orderTestIds,
         @NotBlank String unit,
         @NotNull BigDecimal quantity,
-        @NotNull Instant collectedAt
+        @NotNull Instant collectedAt,
+        @NotNull Instant expiryDate,
+        @NotBlank String sourceOfSample
 ) {}

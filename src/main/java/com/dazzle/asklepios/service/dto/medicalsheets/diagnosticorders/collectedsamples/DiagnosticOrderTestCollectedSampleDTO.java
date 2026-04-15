@@ -11,5 +11,7 @@ public record DiagnosticOrderTestCollectedSampleDTO(
         @NotNull Long orderTestId,
         @NotBlank String unit,
         @NotNull BigDecimal quantity,
-        @NotNull Instant collectedAt
+        @NotNull Instant collectedAt,
+        @NotNull Instant expiryDate,
+        @NotBlank String sourceOfSample
 ) {}

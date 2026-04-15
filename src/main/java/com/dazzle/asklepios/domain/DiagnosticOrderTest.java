@@ -111,5 +111,14 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
     @Column(name = "cancellation_reason", length = 250)
     private String cancellationReason;
 
+    @Column(name = "undo_accept_reason", length = 500)
+    private String undoAcceptReason;
+
+    @Column(name = "undo_accept_by", length = 50)
+    private String undoAcceptBy;
+
+    @Column(name = "undo_accept_date")
+    private Instant undoAcceptDate;
+
 
 }

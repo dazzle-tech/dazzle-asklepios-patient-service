@@ -37,11 +37,17 @@ public record DiagnosticOrderTestResponseVM(
         String cancellationReason,
         String cancelledBy,
         Instant cancelledDate,
+
         Instant createdDate,
         Instant lastModifiedDate,
         String createdBy,
         String lastModifiedBy,
-        boolean hasNote
+        boolean hasNote,
+
+        String undoAcceptReason,
+        String undoAcceptBy,
+        Instant undoAcceptDate
+
 ) implements Serializable {
 
     public static DiagnosticOrderTestResponseVM ofEntity(DiagnosticOrderTest orderTest) {
@@ -80,10 +86,15 @@ public record DiagnosticOrderTestResponseVM(
                 orderTest.getLastModifiedDate(),
                 orderTest.getCreatedBy(),
                 orderTest.getLastModifiedBy(),
-                false
+                false,
+
+                orderTest.getUndoAcceptReason(),
+                orderTest.getUndoAcceptBy(),
+                orderTest.getUndoAcceptDate()
         );
     }
-    public static DiagnosticOrderTestResponseVM ofEntityWithNote(DiagnosticOrderTest orderTest,boolean hasNote) {
+
+    public static DiagnosticOrderTestResponseVM ofEntityWithNote(DiagnosticOrderTest orderTest, boolean hasNote) {
         return new DiagnosticOrderTestResponseVM(
 
                 orderTest.getId(),
@@ -119,7 +130,11 @@ public record DiagnosticOrderTestResponseVM(
                 orderTest.getLastModifiedDate(),
                 orderTest.getCreatedBy(),
                 orderTest.getLastModifiedBy(),
-                hasNote
+                hasNote,
+
+                orderTest.getUndoAcceptReason(),
+                orderTest.getUndoAcceptBy(),
+                orderTest.getUndoAcceptDate()
         );
     }
 }
