@@ -24,10 +24,8 @@ public class PrescriptionMedicationUpdateDTO {
     public String durationType;
 
     public Long maximumDose;
-    @FutureOrPresent
-    public LocalDate validUtil;
     public Boolean allowedSubstitute;
-
+    public Long activeIngredientId;
     public String indicationManually;
     public String indicationUse;
     public Long indicationIcd;

@@ -39,6 +39,7 @@ public class PatientPrescriptionMedicationService {
         PatientPrescriptionMedication entity = PatientPrescriptionMedication.builder()
                 .prescriptionHeader(header)
                 .medicationsId(prescriptionMedicationCreateDTO.medicationsId)
+                .activeIngredientId(prescriptionMedicationCreateDTO.activeIngredientId)
                 .instructionsType(required(prescriptionMedicationCreateDTO.instructionsType, "instructionsType"))
                 .instructions(prescriptionMedicationCreateDTO.instructions)
                 .dose(prescriptionMedicationCreateDTO.dose)
@@ -49,7 +50,6 @@ public class PatientPrescriptionMedicationService {
                 .duration(prescriptionMedicationCreateDTO.duration)
                 .durationType(prescriptionMedicationCreateDTO.durationType)
                 .maximumDose(prescriptionMedicationCreateDTO.maximumDose)
-                .validUtil(prescriptionMedicationCreateDTO.validUtil)
                 .allowedSubstitute(prescriptionMedicationCreateDTO.allowedSubstitute)
                 .indicationManually(prescriptionMedicationCreateDTO.indicationManually)
                 .indicationUse(prescriptionMedicationCreateDTO.indicationUse)
@@ -96,7 +96,6 @@ public class PatientPrescriptionMedicationService {
         }
 
         if (prescriptionMedicationUpdateDTO.maximumDose != null) entity.setMaximumDose(prescriptionMedicationUpdateDTO.maximumDose);
-        if (prescriptionMedicationUpdateDTO.validUtil != null) entity.setValidUtil(prescriptionMedicationUpdateDTO.validUtil);
         if (prescriptionMedicationUpdateDTO.allowedSubstitute != null) entity.setAllowedSubstitute(prescriptionMedicationUpdateDTO.allowedSubstitute);
 
         if (prescriptionMedicationUpdateDTO.indicationManually != null) entity.setIndicationManually(prescriptionMedicationUpdateDTO.indicationManually);
@@ -173,6 +172,7 @@ public class PatientPrescriptionMedicationService {
         dto.setId(e.getId());
         dto.setPrescriptionHeader(e.getPrescriptionHeader());
         dto.setMedicationsId(e.getMedicationsId());
+        dto.setActiveIngredientId(e.getActiveIngredientId());
         dto.setInstructionsType(e.getInstructionsType());
         dto.setInstructions(e.getInstructions());
         dto.setDose(e.getDose());
@@ -183,7 +183,6 @@ public class PatientPrescriptionMedicationService {
         dto.setDurationType(e.getDurationType());
         dto.setChronicMedication(e.getChronicMedication());
         dto.setMaximumDose(e.getMaximumDose());
-        dto.setValidUtil(e.getValidUtil());
         dto.setAllowedSubstitute(e.getAllowedSubstitute());
         dto.setIndicationManually(e.getIndicationManually());
         dto.setIndicationUse(e.getIndicationUse());
