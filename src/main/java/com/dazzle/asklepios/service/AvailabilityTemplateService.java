@@ -621,7 +621,7 @@ public class AvailabilityTemplateService {
         throw new BadRequestAlertException(
                 "db.constraint",
                 ENTITY_NAME,
-                "Database constraint violated while saving availability template (check required fields or unique constraints)"
+                "Database constraint violated while saving availability template (check required fields or unique constraints)."
         );
     }
 
