@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.AvailabilityTemplate;
+import com.dazzle.asklepios.domain.AvailabilityTemplateLog;
 import com.dazzle.asklepios.domain.enumeration.TemplateStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import com.dazzle.asklepios.service.AvailabilityTemplateService;
@@ -55,6 +56,10 @@ public class AvailabilityTemplateController {
             throw new BadRequestAlertException("Department should be a main template not a sub template", "AvailabilityTemplate", "templateTypeInvalid");
 
         }
+        if (dto.status() != null && dto.status() != TemplateStatus.DRAFT) {
+            throw new BadRequestAlertException("Template Status should be draft", "AvailabilityTemplate", "templateStatusInvalid");
+
+        }
         AvailabilityTemplate result = availabilityTemplateService.create(dto);
 
         return ResponseEntity
@@ -86,6 +91,18 @@ public class AvailabilityTemplateController {
 
         AvailabilityTemplate result = availabilityTemplateService.getOne(id);
         return ResponseEntity.ok(toResponseVM(result));
+    }
+
+    @GetMapping("/availability-templates/{templateId}/logs")
+    public ResponseEntity<List<AvailabilityTemplateLog>> getAvailabilityTemplateLogs(
+            @PathVariable Long templateId
+    ) {
+        LOG.debug("REST request to get AvailabilityTemplate logs for templateId={}", templateId);
+
+        List<AvailabilityTemplateLog> logs =
+                availabilityTemplateService.getAvailabilityTemplateLogs(templateId);
+
+        return ResponseEntity.ok(logs);
     }
 
     @GetMapping("/availability-templates")

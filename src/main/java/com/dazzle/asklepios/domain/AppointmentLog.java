@@ -9,12 +9,9 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
@@ -23,14 +20,26 @@ import java.io.Serializable;
 import java.time.Instant;
 
 @Entity
-@Table(name = "appointment")
+@Table(name = "appointment_log")
 @Getter
 @Setter
-public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implements Serializable{
+public class AppointmentLog extends AbstractAuditingEntity<Long> implements Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "appointment_id", nullable = false)
+    private Long appointmentId;
+
+    @Column(name = "operation_type", nullable = false, length = 10)
+    private String operationType;
+
+    @Column(name = "log_date", nullable = false)
+    private Instant logDate;
+
+    @Column(name = "log_by", length = 50)
+    private String logBy;
 
     @Column(name = "facility_id", nullable = false)
     private Long facilityId;
@@ -38,10 +47,8 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     @Column(name = "department_id", nullable = false)
     private Long departmentId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "availability_generation_batch_id")
-    private AvailabilityGenerationBatch availabilityGenerationBatch;
-
+    @Column(name = "availability_generation_batch_id")
+    private Long availabilityGenerationBatchId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "resource_type", nullable = false)
@@ -59,9 +66,8 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     @Column(name = "end_datetime", nullable = false)
     private Instant endDatetime;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "patient_id")
-    private Patient patient;
+    @Column(name = "patient_id")
+    private Long patientId;
 
     @Column(name = "default_service_id")
     private Long defaultServiceId;
@@ -73,13 +79,6 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     private String reason;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "service", length = 50)
-    private EncounterReason service;
-
-    @Column(name = "service_group_id")
-    private Long serviceGroupId;
-
-    @Enumerated(EnumType.STRING)
     @Column(name = "booking_mode", nullable = false, length = 20)
     private BookingMode bookingMode;
 
@@ -87,8 +86,15 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     @Column(name = "status", nullable = false, length = 50)
     private AppointmentStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "service", length = 50)
+    private EncounterReason service;
+
+    @Column(name = "service_group_id")
+    private Long serviceGroupId;
+
     @Column(name = "deferred", nullable = false)
-    private Boolean deferred = false;
+    private Boolean deferred;
 
     @Column(name = "deferred_at")
     private Instant deferredAt;
@@ -112,17 +118,10 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     @Column(name = "origin_name", length = 255)
     private String originName;
 
-    @Column(name = "note")
+    @Column(name = "note", columnDefinition = "text")
     private String note;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "follow_up_encounter_id")
-    private PatientEncounter followUpEncounter;
-
-    @Column(name = "confirmed_at")
-    private Instant confirmedAt;
-
-    @Column(name = "checked_in_at")
-    private Instant checkedInAt;
+    @Column(name = "follow_up_encounter_id")
+    private Long followUpEncounterId;
 
 }

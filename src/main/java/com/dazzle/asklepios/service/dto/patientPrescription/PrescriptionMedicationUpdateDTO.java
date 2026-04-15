@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service.dto.patientPrescription;
 
 import com.dazzle.asklepios.domain.enumeration.PrescriptionInstructionsType;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.validation.constraints.FutureOrPresent;
 import lombok.Data;
 
 import java.time.LocalDate;

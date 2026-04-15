@@ -5,6 +5,7 @@ import com.dazzle.asklepios.client.setup.dto.NormalRangeMatchDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.AgeUnit;
 import com.dazzle.asklepios.domain.enumeration.Gender;
+import com.dazzle.asklepios.domain.enumeration.NormalRangeType;
 import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -16,6 +17,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.Date;
@@ -65,7 +67,14 @@ public class NormalRangeMatcherService {
 
         return getBestNormalRangeMatchForPatient(candidates, patient).orElse(null);
     }
+    private int ageSpecificityScore(NormalRangeMatchDTO normalRange) {
+        boolean hasFrom = normalRange.ageFrom() != null;
+        boolean hasTo = normalRange.ageTo() != null;
 
+        if (hasFrom && hasTo) return 2;
+        if (hasFrom || hasTo) return 1;
+        return 0;
+    }
     private Optional<NormalRangeMatchDTO> getBestNormalRangeMatchForPatient(List<NormalRangeMatchDTO> candidates, Patient patient) {
         String patientGender = toGenderString(patient.getSexAtBirth());
         LocalDate patientDateOfBirth = patient.getDateOfBirth();
@@ -73,13 +82,15 @@ public class NormalRangeMatcherService {
                 .filter(normalRange -> matchesGender(normalRange, patientGender))
                 .filter(normalRange -> matchesAge(normalRange, patientDateOfBirth))
                 .filter(normalRange -> matchesCondition(normalRange, patient))
-                .max(Comparator
-                        .comparingInt((NormalRangeMatchDTO normalRange) -> specificityScore(normalRange))
-                        .thenComparingDouble(this::ageWindowWidthOrInfinity).reversed()
-                        .thenComparingLong(normalRange -> normalRange.id() == null ? Long.MAX_VALUE : normalRange.id())
-                );
+                .sorted(
+                        Comparator
+                                .comparingInt((NormalRangeMatchDTO normalRange) -> specificityScore(normalRange))
+                                .thenComparingInt(this::ageSpecificityScore)
+                                .thenComparing(normalRange -> normalRange.id() == null ? Long.MAX_VALUE : normalRange.id())
+                                .reversed()
+                )
+                .findFirst();
     }
-
     private boolean matchesGender(NormalRangeMatchDTO normalRange, String patientGender) {
         if (normalRange.gender() == null || normalRange.gender().isBlank()) {
             return true;
@@ -92,7 +103,8 @@ public class NormalRangeMatcherService {
 
     private boolean matchesAge(NormalRangeMatchDTO normalRange, LocalDate patientDateOfBirth) {
         boolean hasAnyAgeConstraint =
-                normalRange.ageFrom() != null || normalRange.ageTo() != null || normalRange.ageFromUnit() != null || normalRange.ageToUnit() != null;
+                normalRange.ageFrom() != null || normalRange.ageTo() != null
+                        || normalRange.ageFromUnit() != null || normalRange.ageToUnit() != null;
 
         if (!hasAnyAgeConstraint) {
             return true;
@@ -102,27 +114,8 @@ public class NormalRangeMatcherService {
             return false;
         }
 
-        Instant currentInstant = Instant.now();
-
-        if (normalRange.ageFrom() != null) {
-            AgeUnit ageFromUnit = Objects.requireNonNullElse(normalRange.ageFromUnit(), AgeUnit.YEARS);
-            double patientAgeAtLowerBoundUnit = patientAgeInUnit(patientDateOfBirth, ageFromUnit, currentInstant);
-            if (patientAgeAtLowerBoundUnit < normalRange.ageFrom()) {
-                return false;
-            }
-        }
-
-        if (normalRange.ageTo() != null) {
-            AgeUnit ageToUnit = Objects.requireNonNullElse(normalRange.ageToUnit(), AgeUnit.YEARS);
-            double patientAgeAtUpperBoundUnit = patientAgeInUnit(patientDateOfBirth, ageToUnit, currentInstant);
-            if (patientAgeAtUpperBoundUnit > normalRange.ageTo()) {
-                return false;
-            }
-        }
-
-        return true;
+        return isPatientWithinAgeRange(patientDateOfBirth, normalRange, Instant.now());
     }
-
     /**
      * Placeholder: patient domain does not include condition currently.
      * If you later add condition on Patient, implement strict comparison here.
@@ -150,41 +143,69 @@ public class NormalRangeMatcherService {
         if (normalRange.ageFrom() == null || normalRange.ageTo() == null) {
             return Double.POSITIVE_INFINITY;
         }
-        AgeUnit fromUnit = Objects.requireNonNullElse(normalRange.ageFromUnit(), AgeUnit.YEARS);
-        AgeUnit toUnit = Objects.requireNonNullElse(normalRange.ageToUnit(), AgeUnit.YEARS);
-
-        double fromDays = toDays(normalRange.ageFrom(), fromUnit);
-        double toDays = toDays(normalRange.ageTo(), toUnit);
-        return Math.abs(toDays - fromDays);
+        return Math.abs(normalRange.ageTo() - normalRange.ageFrom());
     }
 
-    private double patientAgeInUnit(LocalDate dateOfBirth, AgeUnit unit, Instant nowInstant) {
-        LocalDate currentDate = nowInstant.atZone(ZoneId.systemDefault()).toLocalDate();
+    private boolean isPatientWithinAgeRange(
+            LocalDate dateOfBirth,
+            NormalRangeMatchDTO range,
+            Instant nowInstant
+    ) {
+        ZoneId zone = ZoneId.systemDefault();
+        ZonedDateTime now = nowInstant.atZone(zone);
+        ZonedDateTime dob = dateOfBirth.atStartOfDay(zone);
 
-        return switch (unit) {
-            case YEARS -> ChronoUnit.YEARS.between(dateOfBirth, currentDate);
-            case MONTHS -> ChronoUnit.MONTHS.between(dateOfBirth, currentDate);
-            case WEEKS -> ChronoUnit.WEEKS.between(dateOfBirth, currentDate);
-            case DAYS -> ChronoUnit.DAYS.between(dateOfBirth, currentDate);
-            case HOURS -> {
-                long ageInHours = ChronoUnit.HOURS.between(dateOfBirth.atStartOfDay(ZoneId.systemDefault()).toInstant(), nowInstant);
-                yield ageInHours;
+        Double ageFrom = range.ageFrom();
+        Double ageTo = range.ageTo();
+
+        AgeUnit fromUnit = Objects.requireNonNullElse(range.ageFromUnit(), AgeUnit.YEARS);
+        AgeUnit toUnit = Objects.requireNonNullElse(range.ageToUnit(), AgeUnit.YEARS);
+
+        // minimum age
+        if (ageFrom != null) {
+            ZonedDateTime latestAllowedDob = subtractAge(now, ageFrom, fromUnit);
+            if (dob.isAfter(latestAllowedDob)) {
+                return false;
             }
-        };
+        }
+
+        // maximum age
+        if (ageTo != null) {
+            ZonedDateTime earliestAllowedDob = subtractAge(now, ageTo, toUnit);
+            if (dob.isBefore(earliestAllowedDob)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
-    private double toDays(Double value, AgeUnit unit) {
-        if (value == null) return 0d;
+    private ZonedDateTime subtractAge(ZonedDateTime dateTime, Double value, AgeUnit unit) {
+        if (value == null) return dateTime;
 
-        return switch (unit) {
-            case YEARS -> value * 365d;
-            case MONTHS -> value * 30d;
-            case WEEKS -> value * 7d;
-            case DAYS -> value;
-            case HOURS -> value / 24d;
+        long whole = value.longValue();
+        double fraction = value - whole;
+
+        ZonedDateTime result = switch (unit) {
+            case YEARS -> dateTime.minusYears(whole);
+            case MONTHS -> dateTime.minusMonths(whole);
+            case WEEKS -> dateTime.minusWeeks(whole);
+            case DAYS -> dateTime.minusDays(whole);
+            case HOURS -> dateTime.minusHours(whole);
         };
-    }
 
+        if (fraction > 0) {
+            result = switch (unit) {
+                case YEARS -> result.minusDays(Math.round(fraction * result.toLocalDate().lengthOfYear()));
+                case MONTHS -> result.minusDays(Math.round(fraction * result.toLocalDate().lengthOfMonth()));
+                case WEEKS -> result.minusHours(Math.round(fraction * 7 * 24));
+                case DAYS -> result.minusHours(Math.round(fraction * 24));
+                case HOURS -> result.minusMinutes(Math.round(fraction * 60));
+            };
+        }
+
+        return result;
+    }
     private String toGenderString(Gender gender) {
         if (gender == null) return null;
         return gender.name().toLowerCase(Locale.ROOT);
@@ -224,21 +245,56 @@ public class NormalRangeMatcherService {
 
         if (Boolean.TRUE.equals(normalRange.criticalValue())) {
             Double criticalLowerThreshold = normalRange.criticalValueLessThan();
-            if (criticalLowerThreshold != null && numericResultValue < criticalLowerThreshold) return TestResultMarker.CRITICAL_LOWER;
+            if (criticalLowerThreshold != null && numericResultValue < criticalLowerThreshold) {
+                return TestResultMarker.CRITICAL_LOWER;
+            }
 
             Double criticalUpperThreshold = normalRange.criticalValueMoreThan();
-            if (criticalUpperThreshold != null && numericResultValue > criticalUpperThreshold) return TestResultMarker.CRITICAL_UPPER;
+            if (criticalUpperThreshold != null && numericResultValue > criticalUpperThreshold) {
+                return TestResultMarker.CRITICAL_UPPER;
+            }
         }
 
-        Double normalLowerLimit = normalRange.rangeFrom();
-        if (normalLowerLimit != null && numericResultValue < normalLowerLimit) return TestResultMarker.LOWER_LIMIT;
+        NormalRangeType normalRangeType = normalRange.normalRangeType();
 
-        Double normalUpperLimit = normalRange.rangeTo();
-        if (normalUpperLimit != null && numericResultValue > normalUpperLimit) return TestResultMarker.UPPER_LIMIT;
+        if (normalRangeType == null) {
+            normalRangeType = NormalRangeType.RANGE;
+        }
 
-        return TestResultMarker.NORMAL_MARKER;
+        return switch (normalRangeType) {
+            case RANGE -> {
+                Double normalLowerLimit = normalRange.rangeFrom();
+                if (normalLowerLimit != null && numericResultValue < normalLowerLimit) {
+                    yield TestResultMarker.LOWER_LIMIT;
+                }
+
+                Double normalUpperLimit = normalRange.rangeTo();
+                if (normalUpperLimit != null && numericResultValue > normalUpperLimit) {
+                    yield TestResultMarker.UPPER_LIMIT;
+                }
+
+                yield TestResultMarker.NORMAL_MARKER;
+            }
+
+            case LESS_THAN -> {
+                Double upperLimit = normalRange.rangeTo();
+                if (upperLimit != null && numericResultValue > upperLimit) {
+                    yield TestResultMarker.UPPER_LIMIT;
+                }
+
+                yield TestResultMarker.NORMAL_MARKER;
+            }
+
+            case MORE_THAN -> {
+                Double lowerLimit = normalRange.rangeFrom();
+                if (lowerLimit != null && numericResultValue < lowerLimit) {
+                    yield TestResultMarker.LOWER_LIMIT;
+                }
+
+                yield TestResultMarker.NORMAL_MARKER;
+            }
+        };
     }
-
     private static TestResultMarker calculateLov(String resultValueText, NormalRangeMatchDTO normalRange) {
         if (resultValueText == null || resultValueText.isBlank()) {
             throw new BadRequestAlertException(

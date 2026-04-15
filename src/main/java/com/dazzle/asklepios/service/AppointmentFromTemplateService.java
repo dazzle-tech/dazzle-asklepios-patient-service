@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.AppointmentFromTemplate;
+import com.dazzle.asklepios.domain.AppointmentLog;
 import com.dazzle.asklepios.domain.AvailabilityGenerationBatch;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
@@ -10,8 +11,8 @@ import com.dazzle.asklepios.domain.enumeration.BookingMode;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
+import com.dazzle.asklepios.repository.AppointmentLogRepository;
 import com.dazzle.asklepios.repository.AvailabilityGenerationBatchRepository;
-import com.dazzle.asklepios.repository.DiagnosticTestRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
@@ -27,16 +28,15 @@ import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentResponseVM;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.hibernate.Hibernate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -48,6 +48,7 @@ import java.util.List;
 public class AppointmentFromTemplateService {
 
     private final AppointmentFromTemplateRepository appointmentFromTemplateRepository;
+    private final AppointmentLogRepository appointmentLogRepository;
 
     private static final String ENTITY_NAME = "AppointmentFromTemplate";
 
@@ -58,6 +59,11 @@ public class AppointmentFromTemplateService {
     private final PatientEncounterService patientEncounterService;
     private final PatientEncounterRepository patientEncounterRepository;
     private final AvailabilityGenerationBatchRepository availabilityGenerationBatchRepository;
+
+    public List<AppointmentLog> getAppointmentLogs(Long appointmentId) {
+        LOG.debug("Request to get AppointmentFromTemplate Log id={}", appointmentId);
+        return appointmentLogRepository.findAllByAppointmentIdOrderByLogDateDesc(appointmentId);
+    }
 
     public AppointmentFromTemplate bookPatientAppointment(AppointmentFromTemplateBookPatientDTO dto) {
         LOG.debug("Request to update AppointmentFromTemplate dto={}", dto);
@@ -89,11 +95,11 @@ public class AppointmentFromTemplateService {
 
         appointment.setPriority(dto.priority());
 
-        if(dto.originType() != null){
+        if (dto.originType() != null) {
             appointment.setOriginType(dto.originType());
         }
 
-        if(dto.originName() != null){
+        if (dto.originName() != null) {
             appointment.setOriginName(dto.originName());
         }
         if (dto.service() == EncounterReason.FOLLOW_UP && dto.followUpEncounterId() != null) {
@@ -192,7 +198,7 @@ public class AppointmentFromTemplateService {
         if (appointment.getPatient() == null) {
             throw new BadRequestAlertException("Cannot confirm appointment without patient", ENTITY_NAME, "patientrequired");
         }
-
+        appointment.setConfirmedAt(Instant.now());
         appointment.setStatus(AppointmentStatus.CONFIRMED);
         AppointmentFromTemplate savedAppointment = appointmentFromTemplateRepository.save(appointment);
 
@@ -209,6 +215,7 @@ public class AppointmentFromTemplateService {
         validateCheckInable(appointment);
 
         appointment.setStatus(AppointmentStatus.CHECKED_IN);
+        appointment.setCheckedInAt(Instant.now());
 
         return appointmentFromTemplateRepository.save(appointment);
     }
@@ -288,6 +295,20 @@ public class AppointmentFromTemplateService {
         return appointmentFromTemplateRepository.findByDepartmentIdAndStartDatetimeBetween(departmentId, startDatetime, endDatetime, pageable);
     }
 
+    public AppointmentFromTemplate getById(Long appointmentId) {
+        LOG.debug("[GET_BY_ID] appointmentId={}", appointmentId);
+
+        return appointmentFromTemplateRepository.findById(appointmentId)
+                .orElseThrow(() -> {
+                    LOG.warn("[GET_BY_ID] appointment not found id={}", appointmentId);
+                    return new NotFoundAlertException(
+                            "appointment not found with id " + appointmentId,
+                            "appointment",
+                            "id.notfound"
+                    );
+                });
+    }
+
     private AvailabilityGenerationBatch getBatch(Long id) {
         return availabilityGenerationBatchRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException("Batch not found: " + id, ENTITY_NAME, "notfound"));
@@ -365,4 +386,5 @@ public class AppointmentFromTemplateService {
         return SecurityUtils.getCurrentUserLogin()
                 .orElseThrow(() -> new BadRequestAlertException("unauthenticated", "diagnostic_test_requests", "No authenticated user"));
     }
+
 }

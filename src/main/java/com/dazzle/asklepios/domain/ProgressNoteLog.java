@@ -36,4 +36,10 @@ public class ProgressNoteLog extends AbstractAuditingEntity<Long> implements Ser
 
     @Column(name = "payload", columnDefinition = "jsonb")
     private String payload;
+
+    @Column(name = "old_note_text", columnDefinition = "text")
+    private String oldNoteText;
+
+    @Column(name = "new_note_text", columnDefinition = "text")
+    private String newNoteText;
 }
