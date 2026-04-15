@@ -73,6 +73,7 @@ public class AvailabilityGenerationBatchService {
                         "idnotfound"
                 ));
     }
+
     @Transactional(readOnly = true)
     public AvailabilityGenerationBatch getById(Long batchId) {
         LOG.debug("[GET_BY_ID] batchId={}", batchId);
@@ -86,6 +87,7 @@ public class AvailabilityGenerationBatchService {
                     );
                 });
     }
+
     public ApplyAvailabilityTemplateResponseVM applyTemplate(AvailabilityGenerationBatchApplyDTO request) {
         LOG.info("[APPLY TEMPLATE] templateId={}, startDate={}, endDate={}, deferred={}, deferredAt={}, holidayHandlingMode={}",
                 request.templateId(),
@@ -150,24 +152,8 @@ public class AvailabilityGenerationBatchService {
         }
     }
 
-    private List<AppointmentFromTemplate> generateAppointments(
-            AvailabilityTemplate template,
-            AvailabilityGenerationBatch batch,
-            LocalDate startDate,
-            LocalDate endDate,
-            boolean deferred,
-            Instant deferredAt,
-            HolidayHandlingMode holidayHandlingMode,
-            List<OrganizationHolidayDTO> holidays
-    ) {
-        LOG.info("[GENERATE TEMPLATE] templateId={}, batchId={},startDate={}, endDate={}, deferred={}, deferredAt={}, holidayHandlingMode={}",
-                template.getId(),
-                batch.getId(),
-                startDate,
-                endDate,
-                deferred,
-                deferredAt,
-                holidayHandlingMode);
+    private List<AppointmentFromTemplate> generateAppointments(AvailabilityTemplate template, AvailabilityGenerationBatch batch, LocalDate startDate, LocalDate endDate, boolean deferred, Instant deferredAt, HolidayHandlingMode holidayHandlingMode, List<OrganizationHolidayDTO> holidays) {
+        LOG.info("[GENERATE TEMPLATE] templateId={}, batchId={},startDate={}, endDate={}, deferred={}, deferredAt={}, holidayHandlingMode={}", template.getId(), batch.getId(), startDate, endDate, deferred, deferredAt, holidayHandlingMode);
 
 
         List<AppointmentFromTemplate> appointments = new ArrayList<>();
@@ -186,45 +172,16 @@ public class AvailabilityGenerationBatchService {
                 if (!matchesDay(current, interval)) {
                     continue;
                 }
-
-                appointments.addAll(generateAppointmentsForInterval(
-                        template,
-                        batch,
-                        current,
-                        interval,
-                        deferred,
-                        deferredAt,
-                        holiday,
-                        holidayHandlingMode
-                ));
+                appointments.addAll(generateAppointmentsForInterval(template, batch, current, interval, deferred, deferredAt, holiday, holidayHandlingMode));
             }
-
             current = current.plusDays(1);
         }
 
         return appointments;
     }
 
-    private List<AppointmentFromTemplate> generateAppointmentsForInterval(
-            AvailabilityTemplate template,
-            AvailabilityGenerationBatch batch,
-            LocalDate date,
-            AvailabilityTemplateInterval interval,
-            boolean deferred,
-            Instant deferredAt,
-            boolean holiday,
-            HolidayHandlingMode holidayHandlingMode
-    ) {
-
-        LOG.info("[GENERATE APPOINTMENT FOR INTERVAL] templateId={}, batchId={},date={}, interval={}, deferred={}, deferredAt={}, holidayHandlingMode={}",
-                template.getId(),
-                batch.getId(),
-                date,
-                interval,
-                deferred,
-                deferredAt,
-                holidayHandlingMode);
-
+    private List<AppointmentFromTemplate> generateAppointmentsForInterval(AvailabilityTemplate template, AvailabilityGenerationBatch batch, LocalDate date, AvailabilityTemplateInterval interval, boolean deferred, Instant deferredAt, boolean holiday, HolidayHandlingMode holidayHandlingMode) {
+        LOG.info("[GENERATE APPOINTMENT FOR INTERVAL] templateId={}, batchId={},date={}, interval={}, deferred={}, deferredAt={}, holidayHandlingMode={}", template.getId(), batch.getId(), date, interval, deferred, deferredAt, holidayHandlingMode);
 
         List<AppointmentFromTemplate> appointments = new ArrayList<>();
 
@@ -242,6 +199,12 @@ public class AvailabilityGenerationBatchService {
 
         while (!slotStart.plusMinutes(slotDuration).isAfter(intervalEnd)) {
             LocalDateTime slotEnd = slotStart.plusMinutes(slotDuration);
+
+            LocalDateTime overlappingBreakEnd = findOverlappingBreakEnd(interval, date, slotStart, slotEnd);
+            if (overlappingBreakEnd != null) {
+                slotStart = overlappingBreakEnd;
+                continue;
+            }
 
             for (int i = 0; i < parallelCapacity; i++) {
                 AppointmentFromTemplate appointment = new AppointmentFromTemplate();
@@ -261,7 +224,6 @@ public class AvailabilityGenerationBatchService {
                 appointment.setDeferredAt(deferredAt);
                 appointment.setPriority(EncounterPriority.NORMAL);
                 appointment.setCapacityIndex(i + 1);
-
                 appointment.setReason(null);
 
                 appointments.add(appointment);
@@ -271,6 +233,22 @@ public class AvailabilityGenerationBatchService {
         }
 
         return appointments;
+    }
+
+    private LocalDateTime findOverlappingBreakEnd(AvailabilityTemplateInterval interval, LocalDate date, LocalDateTime slotStart, LocalDateTime slotEnd) {
+        if (interval.getBreaks() == null || interval.getBreaks().isEmpty()) {
+            return null;
+        }
+
+        return interval.getBreaks().stream()
+                .map(intervalBreak -> new Object() {
+                    final LocalDateTime breakStart = LocalDateTime.of(date, intervalBreak.getStartTime());
+                    final LocalDateTime breakEnd = LocalDateTime.of(date, intervalBreak.getEndTime());
+                })
+                .filter(b -> slotStart.isBefore(b.breakEnd) && slotEnd.isAfter(b.breakStart))
+                .map(b -> b.breakEnd)
+                .max(LocalDateTime::compareTo)
+                .orElse(null);
     }
 
     private boolean matchesDay(LocalDate date, AvailabilityTemplateInterval interval) {
@@ -312,19 +290,16 @@ public class AvailabilityGenerationBatchService {
     }
 
     private boolean isHoliday(LocalDate date, List<OrganizationHolidayDTO> holidays) {
-        LOG.info("[isHoliday] date={}, holidays={}",
-                date,
-                holidays);
+        LOG.info("[isHoliday] date={}, holidays={}", date, holidays);
 
         if (date == null || holidays == null || holidays.isEmpty()) {
             return false;
         }
 
-        return holidays.stream().anyMatch(holiday ->
-                holiday.startDate() != null
-                        && holiday.endDate() != null
-                        && !date.isBefore(holiday.startDate())
-                        && !date.isAfter(holiday.endDate())
+        return holidays.stream().anyMatch(holiday -> holiday.startDate() != null
+                && holiday.endDate() != null
+                && !date.isBefore(holiday.startDate())
+                && !date.isAfter(holiday.endDate())
         );
     }
 }

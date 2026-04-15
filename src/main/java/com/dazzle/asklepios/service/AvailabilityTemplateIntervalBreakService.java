@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.AvailabilityTemplateInterval;
 import com.dazzle.asklepios.domain.AvailabilityTemplateIntervalBreak;
 import com.dazzle.asklepios.repository.AvailabilityTemplateIntervalBreakRepository;
 import com.dazzle.asklepios.repository.AvailabilityTemplateIntervalRepository;
+import com.dazzle.asklepios.repository.AvailabilityTemplateRepository;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.availabilityTemplateIntervalBreak.AvailabilityTemplateIntervalBreakCreateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import org.slf4j.Logger;
@@ -24,8 +25,7 @@ public class AvailabilityTemplateIntervalBreakService {
     private final AvailabilityTemplateIntervalBreakRepository intervalBreakRepository;
     private final AvailabilityTemplateIntervalRepository intervalRepository;
 
-    public AvailabilityTemplateIntervalBreakService(AvailabilityTemplateIntervalBreakRepository intervalBreakRepository, AvailabilityTemplateIntervalRepository intervalRepository
-    ) {
+    public AvailabilityTemplateIntervalBreakService(AvailabilityTemplateIntervalBreakRepository intervalBreakRepository, AvailabilityTemplateIntervalRepository intervalRepository) {
         this.intervalBreakRepository = intervalBreakRepository;
         this.intervalRepository = intervalRepository;
     }
@@ -40,6 +40,7 @@ public class AvailabilityTemplateIntervalBreakService {
         validateNoOverlap(interval.getId(), dto.startTime(), dto.endTime());
 
         AvailabilityTemplateIntervalBreak entity = new AvailabilityTemplateIntervalBreak();
+        entity.setTemplate(interval.getTemplate());
         entity.setInterval(interval);
         entity.setStartTime(dto.startTime());
         entity.setEndTime(dto.endTime());
