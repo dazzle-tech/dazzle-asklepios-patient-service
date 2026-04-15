@@ -46,7 +46,7 @@ public class AvailabilityTemplateIntervalBreakController {
     public ResponseEntity<AvailabilityTemplateIntervalBreakResponseVM> createIntervalBreak(@Valid @RequestBody AvailabilityTemplateIntervalBreakCreateDTO dto) {
         LOG.debug("REST request to create AvailabilityTemplateIntervalBreak : {}", dto);
         if (dto == null) {
-            throw new BadRequestAlertException("Break payload is required", ENTITY_NAME, "payload.required");
+            throw new BadRequestAlertException("payload.required", ENTITY_NAME, "Break payload is required");
         }
         AvailabilityTemplateIntervalBreak result = availabilityTemplateIntervalBreakService.create(dto);
 
