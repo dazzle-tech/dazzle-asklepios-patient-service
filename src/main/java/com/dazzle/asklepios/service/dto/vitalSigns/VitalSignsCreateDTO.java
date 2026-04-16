@@ -26,8 +26,14 @@ public record VitalSignsCreateDTO(
         BigDecimal temperature,
 
         String measurementSite,
+
+        @NotNull
         Integer heartRate,
+
+        @NotNull
         BigDecimal oxygenSaturation,
+
+        @NotNull
         Integer respiratoryRate,
 
         @NotNull

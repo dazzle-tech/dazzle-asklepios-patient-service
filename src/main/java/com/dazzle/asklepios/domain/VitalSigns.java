@@ -43,26 +43,29 @@ public class VitalSigns extends AbstractAuditingEntity<Long> implements Serializ
     private Long encounterId;
 
     @NotNull
-    @Column(name = "blood_pressure_systolic")
+    @Column(name = "blood_pressure_systolic", nullable = false)
     private Integer bloodPressureSystolic;
 
     @NotNull
-    @Column(name = "blood_pressure_diastolic")
+    @Column(name = "blood_pressure_diastolic", nullable = false)
     private Integer bloodPressureDiastolic;
 
     @Column(name = "measurement_site")
     private String measurementSite;
 
+    @NotNull
     @Column(name = "heart_rate")
     private Integer heartRate;
 
     @NotNull
-    @Column(name = "temperature", precision = 5, scale = 2)
+    @Column(name = "temperature", precision = 5, scale = 2, nullable = false)
     private BigDecimal temperature;
 
+    @NotNull
     @Column(name = "oxygen_saturation", precision = 5, scale = 2)
     private BigDecimal oxygenSaturation;
 
+    @NotNull
     @Column(name = "respiratory_rate")
     private Integer respiratoryRate;
 
