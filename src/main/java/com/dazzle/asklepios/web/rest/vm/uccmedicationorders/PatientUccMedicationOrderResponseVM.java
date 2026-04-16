@@ -1,6 +1,6 @@
 package com.dazzle.asklepios.web.rest.vm.uccmedicationorders;
 
-import com.dazzle.asklepios.domain.PatientUccMedicationOrder;
+import com.dazzle.asklepios.domain.UrgentCareMedicationOrder;
 import com.dazzle.asklepios.domain.enumeration.MedicationInstructionType;
 import com.dazzle.asklepios.domain.enumeration.MedicationOrderStatus;
 
@@ -31,7 +31,7 @@ public record PatientUccMedicationOrderResponseVM(
         String lastModifiedBy,
         Instant lastModifiedDate
 ) {
-    public static PatientUccMedicationOrderResponseVM ofEntity(PatientUccMedicationOrder entity) {
+    public static PatientUccMedicationOrderResponseVM ofEntity(UrgentCareMedicationOrder entity) {
         return new PatientUccMedicationOrderResponseVM(
                 entity.getId(),
                 entity.getActiveIngredientId(),

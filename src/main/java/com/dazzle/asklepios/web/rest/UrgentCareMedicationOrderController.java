@@ -1,15 +1,14 @@
 package com.dazzle.asklepios.web.rest;
 
-import com.dazzle.asklepios.domain.PatientUccMedicationOrder;
+import com.dazzle.asklepios.domain.UrgentCareMedicationOrder;
 import com.dazzle.asklepios.domain.enumeration.MedicationOrderStatus;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.PatientUccMedicationOrderService;
-import com.dazzle.asklepios.service.PatientUccMedicationOrderStatusService;
-import com.dazzle.asklepios.service.dto.medicalsheets.uccmedicationorders.PatientUccMedicationOrderCreateDTO;
-import com.dazzle.asklepios.service.dto.medicalsheets.uccmedicationorders.PatientUccMedicationOrderUpdateDTO;
-import com.dazzle.asklepios.service.dto.medicalsheets.uccmedicationorders.commands.PatientUccMedicationOrderCancelDTO;
-import com.dazzle.asklepios.service.dto.medicalsheets.uccmedicationorders.commands.PatientUccMedicationOrderDiscardDTO;
-import com.dazzle.asklepios.service.dto.medicalsheets.uccmedicationorders.commands.PatientUccMedicationOrderSubmitDTO;
+import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderCreateDTO;
+import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderUpdateDTO;
+import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.commands.UrgentCareMedicationOrderCancelDTO;
+import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.commands.UrgentCareMedicationOrderDiscardDTO;
+import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.commands.UrgentCareMedicationOrderSubmitDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.validation.Valid;
@@ -33,19 +32,16 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/patient")
-public class PatientUccMedicationOrderController {
+public class UrgentCareMedicationOrderController {
 
-    private static final Logger LOG = LoggerFactory.getLogger(PatientUccMedicationOrderController.class);
+    private static final Logger LOG = LoggerFactory.getLogger(UrgentCareMedicationOrderController.class);
 
-    private final PatientUccMedicationOrderService patientUccMedicationOrderService;
-    private final PatientUccMedicationOrderStatusService patientUccMedicationOrderStatusService;
+    private final PatientUccMedicationOrderService UrgentCareMedicationOrderService;
 
-    public PatientUccMedicationOrderController(
-            PatientUccMedicationOrderService patientUccMedicationOrderService,
-            PatientUccMedicationOrderStatusService patientUccMedicationOrderStatusService
+    public UrgentCareMedicationOrderController(
+            PatientUccMedicationOrderService UrgentCareMedicationOrderService
     ) {
-        this.patientUccMedicationOrderService = patientUccMedicationOrderService;
-        this.patientUccMedicationOrderStatusService = patientUccMedicationOrderStatusService;
+        this.UrgentCareMedicationOrderService = UrgentCareMedicationOrderService;
     }
 
     private String currentUsername() {
@@ -63,20 +59,20 @@ public class PatientUccMedicationOrderController {
         return username;
     }
 
-    @PostMapping("/ucc-medication-orders")
-    public ResponseEntity<PatientUccMedicationOrder> create(@Valid @RequestBody PatientUccMedicationOrderCreateDTO dto) {
+    @PostMapping("/urgent-care-medication-orders")
+    public ResponseEntity<UrgentCareMedicationOrder> create(@Valid @RequestBody UrgentCareMedicationOrderCreateDTO dto) {
         LOG.debug("[CREATE] request -> {}", dto);
 
-        PatientUccMedicationOrder result = patientUccMedicationOrderService.create(dto);
+        UrgentCareMedicationOrder result = UrgentCareMedicationOrderService.create(dto);
 
         LOG.debug("[CREATE] response -> id={} status={}", result.getId(), result.getStatus());
         return ResponseEntity.ok(result);
     }
 
-    @PutMapping("/ucc-medication-orders/{id}")
-    public ResponseEntity<PatientUccMedicationOrder> update(
+    @PutMapping("/urgent-care-medication-orders/{id}")
+    public ResponseEntity<UrgentCareMedicationOrder> update(
             @PathVariable("id") Long id,
-            @Valid @RequestBody PatientUccMedicationOrderUpdateDTO dto
+            @Valid @RequestBody UrgentCareMedicationOrderUpdateDTO dto
     ) {
         LOG.debug("[UPDATE] request -> pathId={} payload={}", id, dto);
 
@@ -89,35 +85,35 @@ public class PatientUccMedicationOrderController {
             );
         }
 
-        PatientUccMedicationOrder existing = patientUccMedicationOrderService.findOne(id);
-        PatientUccMedicationOrder updated = patientUccMedicationOrderService.update(existing, dto);
+        UrgentCareMedicationOrder existing = UrgentCareMedicationOrderService.findOne(id);
+        UrgentCareMedicationOrder updated = UrgentCareMedicationOrderService.update(existing, dto);
 
         LOG.debug("[UPDATE] response -> id={} status={}", updated.getId(), updated.getStatus());
         return ResponseEntity.ok(updated);
     }
 
-    @GetMapping("/ucc-medication-orders/{id}")
-    public ResponseEntity<PatientUccMedicationOrder> getById(@PathVariable("id") Long id) {
+    @GetMapping("/urgent-care-medication-orders/{id}")
+    public ResponseEntity<UrgentCareMedicationOrder> getById(@PathVariable("id") Long id) {
         LOG.debug("[GET_BY_ID] request -> id={}", id);
 
-        PatientUccMedicationOrder result = patientUccMedicationOrderService.findOne(id);
+        UrgentCareMedicationOrder result = UrgentCareMedicationOrderService.findOne(id);
 
         LOG.debug("[GET_BY_ID] response -> id={} status={}", result.getId(), result.getStatus());
         return ResponseEntity.ok(result);
     }
 
-    @GetMapping("/ucc-medication-orders")
-    public ResponseEntity<Page<PatientUccMedicationOrder>> getAll(
+    @GetMapping("/urgent-care-medication-orders")
+    public ResponseEntity<Page<UrgentCareMedicationOrder>> getAll(
             @RequestParam(name = "status", required = false) MedicationOrderStatus status,
             Pageable pageable
     ) {
         LOG.debug("[GET_ALL] request -> status={} pageable={}", status, pageable);
 
-        Page<PatientUccMedicationOrder> page;
+        Page<UrgentCareMedicationOrder> page;
         if (status != null) {
-            page = patientUccMedicationOrderService.findByStatus(status, pageable);
+            page = UrgentCareMedicationOrderService.findByStatus(status, pageable);
         } else {
-            page = patientUccMedicationOrderService.findAll(pageable);
+            page = UrgentCareMedicationOrderService.findAll(pageable);
         }
 
         LOG.debug("[GET_ALL] response -> size={} totalElements={} totalPages={}",
@@ -128,8 +124,8 @@ public class PatientUccMedicationOrderController {
         return ResponseEntity.ok(page);
     }
 
-    @GetMapping("/ucc-medication-orders/filter")
-    public ResponseEntity<Page<PatientUccMedicationOrder>> filter(
+    @GetMapping("/urgent-care-medication-orders/filter")
+    public ResponseEntity<Page<UrgentCareMedicationOrder>> filter(
             @RequestParam(name = "patientId", required = false) Long patientId,
             @RequestParam(name = "encounterId", required = false) Long encounterId,
             @RequestParam(name = "activeIngredientId", required = false) Long activeIngredientId,
@@ -154,7 +150,7 @@ public class PatientUccMedicationOrderController {
             );
         }
 
-        Specification<PatientUccMedicationOrder> spec = (root, query, cb) -> {
+        Specification<UrgentCareMedicationOrder> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
             if (patientId != null) {
@@ -201,7 +197,7 @@ public class PatientUccMedicationOrderController {
             return cb.and(predicates.toArray(new Predicate[0]));
         };
 
-        Page<PatientUccMedicationOrder> page = patientUccMedicationOrderService.filter(spec, pageable);
+        Page<UrgentCareMedicationOrder> page = UrgentCareMedicationOrderService.filter(spec, pageable);
 
         LOG.debug("[FILTER] response -> size={} totalElements={} totalPages={}",
                 page.getContent().size(),
@@ -211,14 +207,14 @@ public class PatientUccMedicationOrderController {
         return ResponseEntity.ok(page);
     }
 
-    @PostMapping("/ucc-medication-orders/{id}/submit")
-    public ResponseEntity<PatientUccMedicationOrder> submit(
+    @PostMapping("/urgent-care-medication-orders/{id}/submit")
+    public ResponseEntity<UrgentCareMedicationOrder> submit(
             @PathVariable("id") Long id,
-            @Valid @RequestBody PatientUccMedicationOrderSubmitDTO dto
+            @Valid @RequestBody UrgentCareMedicationOrderSubmitDTO dto
     ) {
         LOG.debug("[SUBMIT] request -> id={} isHighAlert={}", id, dto.isHighAlert());
 
-        PatientUccMedicationOrder result = patientUccMedicationOrderStatusService.submit(
+        UrgentCareMedicationOrder result = UrgentCareMedicationOrderService.submit(
                 id,
                 currentUsername(),
                 dto.isHighAlert()
@@ -228,36 +224,36 @@ public class PatientUccMedicationOrderController {
         return ResponseEntity.ok(result);
     }
 
-    @PostMapping("/ucc-medication-orders/{id}/administer")
-    public ResponseEntity<PatientUccMedicationOrder> administer(@PathVariable("id") Long id) {
+    @PostMapping("/urgent-care-medication-orders/{id}/administer")
+    public ResponseEntity<UrgentCareMedicationOrder> administer(@PathVariable("id") Long id) {
         LOG.debug("[ADMINISTER] request -> id={}", id);
 
-        PatientUccMedicationOrder result =
-                patientUccMedicationOrderStatusService.administer(id, currentUsername());
+        UrgentCareMedicationOrder result =
+                UrgentCareMedicationOrderService.administer(id, currentUsername());
 
         LOG.debug("[ADMINISTER] response -> id={} status={}", result.getId(), result.getStatus());
         return ResponseEntity.ok(result);
     }
 
-    @PostMapping("/ucc-medication-orders/{id}/double-check")
-    public ResponseEntity<PatientUccMedicationOrder> doubleCheck(@PathVariable("id") Long id) {
+    @PostMapping("/urgent-care-medication-orders/{id}/double-check")
+    public ResponseEntity<UrgentCareMedicationOrder> doubleCheck(@PathVariable("id") Long id) {
         LOG.debug("[DOUBLE_CHECK] request -> id={}", id);
 
-        PatientUccMedicationOrder result =
-                patientUccMedicationOrderStatusService.doubleCheck(id, currentUsername());
+        UrgentCareMedicationOrder result =
+                UrgentCareMedicationOrderService.doubleCheck(id, currentUsername());
 
         LOG.debug("[DOUBLE_CHECK] response -> id={} status={}", result.getId(), result.getStatus());
         return ResponseEntity.ok(result);
     }
 
-    @PostMapping("/ucc-medication-orders/{id}/discard")
-    public ResponseEntity<PatientUccMedicationOrder> discard(
+    @PostMapping("/urgent-care-medication-orders/{id}/discard")
+    public ResponseEntity<UrgentCareMedicationOrder> discard(
             @PathVariable("id") Long id,
-            @Valid @RequestBody PatientUccMedicationOrderDiscardDTO dto
+            @Valid @RequestBody UrgentCareMedicationOrderDiscardDTO dto
     ) {
         LOG.debug("[DISCARD] request -> id={} reason={}", id, dto.discardReason());
 
-        PatientUccMedicationOrder result = patientUccMedicationOrderStatusService.discard(
+        UrgentCareMedicationOrder result = UrgentCareMedicationOrderService.discard(
                 id,
                 currentUsername(),
                 dto.discardReason()
@@ -267,14 +263,14 @@ public class PatientUccMedicationOrderController {
         return ResponseEntity.ok(result);
     }
 
-    @PostMapping("/ucc-medication-orders/{id}/cancel")
-    public ResponseEntity<PatientUccMedicationOrder> cancel(
+    @PostMapping("/urgent-care-medication-orders/{id}/cancel")
+    public ResponseEntity<UrgentCareMedicationOrder> cancel(
             @PathVariable("id") Long id,
-            @Valid @RequestBody PatientUccMedicationOrderCancelDTO dto
+            @Valid @RequestBody UrgentCareMedicationOrderCancelDTO dto
     ) {
         LOG.debug("[CANCEL] request -> id={} reason={}", id, dto.cancellationReason());
 
-        PatientUccMedicationOrder result = patientUccMedicationOrderStatusService.cancel(
+        UrgentCareMedicationOrder result = UrgentCareMedicationOrderService.cancel(
                 id,
                 currentUsername(),
                 dto.cancellationReason()

@@ -2,7 +2,17 @@ package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.MedicationInstructionType;
 import com.dazzle.asklepios.domain.enumeration.MedicationOrderStatus;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -16,14 +26,14 @@ import java.io.Serializable;
 import java.time.Instant;
 
 @Entity
-@Table(name = "patient_ucc_medication_order")
+@Table(name = "urgent_care_medication_order")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 @EqualsAndHashCode(callSuper = false)
-public class PatientUccMedicationOrder extends AbstractAuditingEntity implements Serializable {
+public class UrgentCareMedicationOrder extends AbstractAuditingEntity implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 1L;
@@ -66,8 +76,8 @@ public class PatientUccMedicationOrder extends AbstractAuditingEntity implements
     @Column(name = "frequency", length = 100)
     private String frequency;
 
-    @Column(name = "is_high_alert")
-    private Boolean isHighAlert;
+    @Column(name = "is_high_alert", nullable = false)
+    private Boolean isHighAlert = false;
 
     @NotNull
     @Enumerated(EnumType.STRING)

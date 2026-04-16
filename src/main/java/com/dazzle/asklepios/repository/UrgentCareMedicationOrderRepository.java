@@ -1,6 +1,6 @@
 package com.dazzle.asklepios.repository;
 
-import com.dazzle.asklepios.domain.PatientUccMedicationOrder;
+import com.dazzle.asklepios.domain.UrgentCareMedicationOrder;
 import com.dazzle.asklepios.domain.enumeration.MedicationOrderStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -9,8 +9,8 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface PatientUccMedicationOrderRepository extends JpaRepository<PatientUccMedicationOrder, Long>,
-        JpaSpecificationExecutor<PatientUccMedicationOrder> {
+public interface UrgentCareMedicationOrderRepository extends JpaRepository<UrgentCareMedicationOrder, Long>,
+        JpaSpecificationExecutor<UrgentCareMedicationOrder> {
 
-    Page<PatientUccMedicationOrder> findByStatus(MedicationOrderStatus status, Pageable pageable);
+    Page<UrgentCareMedicationOrder> findByStatus(MedicationOrderStatus status, Pageable pageable);
 }

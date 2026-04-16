@@ -1,8 +1,8 @@
 package com.dazzle.asklepios.service.validation;
 
 import com.dazzle.asklepios.domain.enumeration.MedicationInstructionType;
-import com.dazzle.asklepios.service.dto.medicalsheets.uccmedicationorders.PatientUccMedicationOrderCreateDTO;
-import com.dazzle.asklepios.service.dto.medicalsheets.uccmedicationorders.PatientUccMedicationOrderUpdateDTO;
+import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderCreateDTO;
+import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderUpdateDTO;
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
 
@@ -21,14 +21,14 @@ public class MedicationInstructionValidator implements ConstraintValidator<Valid
         String route = null;
         String frequency = null;
 
-        if (value instanceof PatientUccMedicationOrderCreateDTO dto) {
+        if (value instanceof UrgentCareMedicationOrderCreateDTO dto) {
             instructionType = dto.instructionType();
             instructionText = dto.instructionText();
             dose = dto.dose();
             doseUnit = dto.doseUnit();
             route = dto.route();
             frequency = dto.frequency();
-        } else if (value instanceof PatientUccMedicationOrderUpdateDTO dto) {
+        } else if (value instanceof UrgentCareMedicationOrderUpdateDTO dto) {
             instructionType = dto.instructionType();
             instructionText = dto.instructionText();
             dose = dto.dose();

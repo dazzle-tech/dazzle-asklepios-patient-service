@@ -1,9 +1,9 @@
-package com.dazzle.asklepios.service.dto.medicalsheets.uccmedicationorders;
+package com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders;
 
 import com.dazzle.asklepios.domain.enumeration.MedicationInstructionType;
 import jakarta.validation.constraints.NotNull;
 
-public record PatientUccMedicationOrderUpdateDTO(
+public record UrgentCareMedicationOrderUpdateDTO(
         @NotNull Long id,
         @NotNull Long activeIngredientId,
         @NotNull MedicationInstructionType instructionType,

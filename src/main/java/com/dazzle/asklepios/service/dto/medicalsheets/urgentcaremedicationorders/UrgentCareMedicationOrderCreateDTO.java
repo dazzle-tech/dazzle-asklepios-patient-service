@@ -1,4 +1,4 @@
-package com.dazzle.asklepios.service.dto.medicalsheets.uccmedicationorders;
+package com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders;
 
 
 import com.dazzle.asklepios.domain.enumeration.MedicationInstructionType;
@@ -8,7 +8,7 @@ import lombok.Builder;
 
 @Builder
 @ValidMedicationInstruction
-public record PatientUccMedicationOrderCreateDTO(
+public record UrgentCareMedicationOrderCreateDTO(
 
 
 
