@@ -3,7 +3,6 @@ package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.domain.UrgentCareMedicationOrder;
 import com.dazzle.asklepios.domain.enumeration.MedicationOrderStatus;
 import com.dazzle.asklepios.security.SecurityUtils;
-import com.dazzle.asklepios.service.PatientUccMedicationOrderService;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderUpdateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.commands.UrgentCareMedicationOrderCancelDTO;
@@ -36,10 +35,10 @@ public class UrgentCareMedicationOrderController {
 
     private static final Logger LOG = LoggerFactory.getLogger(UrgentCareMedicationOrderController.class);
 
-    private final PatientUccMedicationOrderService UrgentCareMedicationOrderService;
+    private final com.dazzle.asklepios.service.UrgentCareMedicationOrderService UrgentCareMedicationOrderService;
 
     public UrgentCareMedicationOrderController(
-            PatientUccMedicationOrderService UrgentCareMedicationOrderService
+            com.dazzle.asklepios.service.UrgentCareMedicationOrderService UrgentCareMedicationOrderService
     ) {
         this.UrgentCareMedicationOrderService = UrgentCareMedicationOrderService;
     }
