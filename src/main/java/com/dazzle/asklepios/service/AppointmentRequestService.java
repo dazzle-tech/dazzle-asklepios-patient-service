@@ -6,7 +6,6 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.AppointmentRequestStatus;
 import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
-import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.AppointmentRequestRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -36,7 +35,6 @@ public class AppointmentRequestService {
     private final AppointmentRequestRepository appointmentRequestRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
-    private final AppointmentRepository appointmentRepository;
     private final AppointmentFromTemplateRepository appointmentFromTemplateRepository;
 
     public AppointmentRequestResponseVM create(AppointmentRequestCreateDTO dto) {
