@@ -18,6 +18,7 @@ import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientObservationsComplaintsRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.VitalSignsRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
@@ -40,6 +41,7 @@ import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -344,6 +346,8 @@ public class PatientEncounterService {
         }
 
         encounter.setStatus(EncounterStatus.ONGOING);
+        encounter.setStartedBy(currentUsername());
+        encounter.setStartedDate(Instant.now());
 
         try {
             PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
@@ -939,6 +943,19 @@ public class PatientEncounterService {
 
         appointment.setStatus(AppointmentStatus.IN_SERVICE);
         appointmentFromTemplateRepository.save(appointment);
+    }
+
+    private String currentUsername() {
+        String username = SecurityUtils.getCurrentUserLogin().orElse(null);
+        if (username == null) {
+            LOG.warn("[ConsultationPortalService] AUTH - unauthenticated request");
+            throw new BadRequestAlertException(
+                    "unauthenticated",
+                    "consultation",
+                    "No authenticated user"
+            );
+        }
+        return username;
     }
 
 
