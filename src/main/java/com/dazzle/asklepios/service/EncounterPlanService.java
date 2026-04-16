@@ -51,7 +51,8 @@ public class EncounterPlanService {
         EncounterPlan entity = EncounterPlan.builder()
                 .patient(patient)
                 .encounterId(createRequest.encounterId())
-                .planInstructions(createRequest.planInstructions())
+                .goals(createRequest.goals())
+                .treatmentPlan(createRequest.treatmentPlan())
                 .build();
 
         try {
@@ -86,7 +87,8 @@ public class EncounterPlanService {
 
         existing.setPatient(patient);
         existing.setEncounterId(updateRequest.encounterId());
-        existing.setPlanInstructions(updateRequest.planInstructions());
+        existing.setGoals(updateRequest.goals());
+        existing.setTreatmentPlan(updateRequest.treatmentPlan());
         existing.setLastModifiedDate(Instant.now());
 
         try {
@@ -116,9 +118,9 @@ public class EncounterPlanService {
     }
 
     @Transactional(readOnly = true)
-    public Page<EncounterPlan> findByPatientId(Long patientId , Pageable pageable) {
+    public Page<EncounterPlan> findByPatientId(Long patientId, Pageable pageable) {
         LOG.debug("Request to get EncounterPlans by patientId={}", patientId);
-        return encounterPlanRepository.findAllByPatientIdOrderByCreatedDateDesc(patientId ,pageable);
+        return encounterPlanRepository.findAllByPatientIdOrderByCreatedDateDesc(patientId, pageable);
     }
 
     private void handleConstraintsOnCreateOrUpdate(RuntimeException exception) {

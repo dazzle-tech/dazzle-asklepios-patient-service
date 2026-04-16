@@ -68,6 +68,7 @@ public class DiagnosticOrderTestCollectedSampleService {
         s.setQuantity(dto.quantity());
         s.setCollectedAt(dto.collectedAt());
         s.setExpiryDate(dto.expiryDate());
+        s.setSourceOfSample(dto.sourceOfSample());
 
         DiagnosticOrderTestCollectedSample saved = repository.save(s);
 
@@ -92,6 +93,7 @@ public class DiagnosticOrderTestCollectedSampleService {
             s.setQuantity(dto.quantity());
             s.setCollectedAt(dto.collectedAt());
             s.setExpiryDate(dto.expiryDate());
+            s.setSourceOfSample(dto.sourceOfSample());
             return s;
         }).toList();
 

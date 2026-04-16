@@ -18,8 +18,10 @@ public record EncounterPlanUpdateDTO(
         @NotNull
         Long encounterId,
 
+        String goals,
+
         @NotBlank
-        String planInstructions
+        String treatmentPlan
 
 ) implements Serializable {
 }
