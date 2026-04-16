@@ -120,5 +120,6 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
     @Column(name = "undo_accept_date")
     private Instant undoAcceptDate;
 
-
+   @Column(name = "icd_diagnosis_id")
+    private Long icdDiagnosisId;
 }
