@@ -100,4 +100,17 @@ public class CurrentMedicationController {
 
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
+    @GetMapping("/current-medication/exists")
+    public ResponseEntity<Boolean> exists(
+            @RequestParam Long patientId,
+            @RequestParam Long activeIngredientId
+    ) {
+        LOG.debug("REST check CurrentMedication exists patientId={} activeIngredientId={}",
+                patientId, activeIngredientId);
+
+        boolean exists = currentMedicationService
+                .existsByPatientAndIngredient(patientId, activeIngredientId);
+
+        return ResponseEntity.ok(exists);
+    }
 }

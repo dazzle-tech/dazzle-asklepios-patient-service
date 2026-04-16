@@ -146,4 +146,19 @@ public class CurrentMedicationService {
                 "db.constraint"
         );
     }
+
+    @Transactional
+    public boolean existsByPatientAndIngredient(Long patientId, Long activeIngredientId) {
+
+        LOG.debug("Checking existence of CurrentMedication for patientId={} and activeIngredientId={}",
+                patientId, activeIngredientId);
+
+        boolean exists = currentMedicationRepository
+                .existsByPatientIdAndActiveIngredientId(patientId, activeIngredientId);
+
+        LOG.debug("Existence result for patientId={} and activeIngredientId={} => {}",
+                patientId, activeIngredientId, exists);
+
+        return exists;
+    }
 }

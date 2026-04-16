@@ -20,15 +20,15 @@ import java.time.Instant;
 
 @Service
 @Transactional
-public class PatientUccMedicationOrderService {
+public class UrgentCareMedicationOrderService {
 
-    private static final Logger LOG = LoggerFactory.getLogger(PatientUccMedicationOrderService.class);
+    private static final Logger LOG = LoggerFactory.getLogger(UrgentCareMedicationOrderService.class);
 
     private final UrgentCareMedicationOrderRepository urgentCareMedicationOrderRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository encounterRepository;
 
-    public PatientUccMedicationOrderService(
+    public UrgentCareMedicationOrderService(
             UrgentCareMedicationOrderRepository urgentCareMedicationOrderRepository,
             PatientRepository patientRepository,
             PatientEncounterRepository encounterRepository
