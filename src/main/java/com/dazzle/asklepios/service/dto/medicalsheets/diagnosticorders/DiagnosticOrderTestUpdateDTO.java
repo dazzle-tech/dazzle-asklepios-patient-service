@@ -14,6 +14,8 @@ DiagnosticOrderTestUpdateDTO(
 
         Long receivedDepartmentId,
         String reason,
-        String notes
+        String notes,
+        Long icdDiagnosisId
+
 
 ) implements Serializable { }

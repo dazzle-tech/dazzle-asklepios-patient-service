@@ -102,6 +102,7 @@ public class DiagnosticOrderTestService {
         orderTest.setReason(dto.reason());
         orderTest.setNotes(dto.notes());
         orderTest.setOrderType(dto.orderType());
+        orderTest.setIcdDiagnosisId(dto.icdDiagnosisId());
 
         // Persist the entity
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(orderTest);
@@ -137,6 +138,8 @@ public class DiagnosticOrderTestService {
         existing.setReceivedDepartmentId(dto.receivedDepartmentId());
         existing.setReason(dto.reason());
         existing.setNotes(dto.notes());
+        existing.setIcdDiagnosisId(dto.icdDiagnosisId());
+
 
         // Persist the updated entity
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(existing);
