@@ -35,6 +35,9 @@ public record PatientEncounterVM(
         Integer departmentDailySequenceNumber,
         LocalDate encounterDate,
 
+        Instant startedDate,
+        String startedBy,
+
         String chiefComplaint,
 
         Boolean hasPrescription,
@@ -70,7 +73,8 @@ public record PatientEncounterVM(
 
                 encounter.getDepartmentDailySequenceNumber(),
                 encounter.getEncounterDate(),
-
+                encounter.getStartedDate(),
+                encounter.getStartedBy(),
                 encounter.getChiefComplaint(),
                 hasPrescription,
                 hasOrder,
