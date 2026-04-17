@@ -22,8 +22,10 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.data.annotation.CreatedDate;
 
 import java.io.Serializable;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -112,5 +114,12 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @Column(name = "discharge_at")
     private LocalDateTime dischargeAt;
+
+    @Column(name = "started_by", length = 50)
+    private String startedBy;
+
+    @Column(name = "started_date")
+    private Instant startedDate;
+
 
 }
