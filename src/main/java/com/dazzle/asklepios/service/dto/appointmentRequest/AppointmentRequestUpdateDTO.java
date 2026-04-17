@@ -41,9 +41,6 @@ public record AppointmentRequestUpdateDTO(
      String note,
 
     @NotNull
-     AppointmentRequestStatus status,
-
-    @Size(max = 255)
-     String cancelReason){
+     AppointmentRequestStatus status){
 
 }

@@ -30,10 +30,7 @@ public record AppointmentRequestCreateDTO (
     @Size(max = 255)
      String reason,
 
-     String note,
-
-    @NotNull
-    @Size(max = 50)
-     String requestedBy){
+     String note
+){
 
 }

@@ -5,11 +5,15 @@ import com.dazzle.asklepios.domain.AppointmentRequest;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.AppointmentRequestStatus;
+import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
+import com.dazzle.asklepios.domain.enumeration.EncounterReason;
+import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
 import com.dazzle.asklepios.repository.AppointmentRequestRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateBookPatientDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestCancelDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestCreateDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestUpdateDTO;
@@ -36,6 +40,7 @@ public class AppointmentRequestService {
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final AppointmentFromTemplateRepository appointmentFromTemplateRepository;
+    private final AppointmentFromTemplateService appointmentFromTemplateService;
 
     public AppointmentRequestResponseVM create(AppointmentRequestCreateDTO dto) {
         log.debug("Request to create AppointmentRequest dto={}", dto);
@@ -70,8 +75,8 @@ public class AppointmentRequestService {
         return toResponseVM(saved);
     }
 
-    public AppointmentRequestResponseVM update(AppointmentRequestUpdateDTO dto) {
-        log.debug("Request to update AppointmentRequest dto={}", dto);
+    public AppointmentRequestResponseVM approve(AppointmentRequestUpdateDTO dto) {
+        log.debug("Request to approve AppointmentRequest dto={}", dto);
 
         AppointmentRequest request = appointmentRequestRepository.findById(dto.id())
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -79,6 +84,30 @@ public class AppointmentRequestService {
                         ENTITY_NAME,
                         "id.notfound"
                 ));
+
+        if (request.getStatus() == AppointmentRequestStatus.CANCELLED) {
+            throw new BadRequestAlertException(
+                    "Cancelled request cannot be approved",
+                    ENTITY_NAME,
+                    "invalidstatus"
+            );
+        }
+
+        if (request.getStatus() == AppointmentRequestStatus.APPROVED) {
+            throw new BadRequestAlertException(
+                    "Appointment request already approved",
+                    ENTITY_NAME,
+                    "alreadyapproved"
+            );
+        }
+
+        if (dto.appointmentId() == null) {
+            throw new BadRequestAlertException(
+                    "Appointment id is required for approval",
+                    ENTITY_NAME,
+                    "appointmentidrequired"
+            );
+        }
 
         Patient patient = patientRepository.findById(dto.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -94,6 +123,30 @@ public class AppointmentRequestService {
                         "sourceEncounter.notfound"
                 ));
 
+        AppointmentFromTemplate appointment = appointmentFromTemplateRepository.findById(dto.appointmentId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Appointment not found with id: " + dto.appointmentId(),
+                        ENTITY_NAME,
+                        "appointment.notfound"
+                ));
+
+        AppointmentFromTemplateBookPatientDTO bookDto = new AppointmentFromTemplateBookPatientDTO(
+                appointment.getId(),
+                patient.getId(),
+                appointment.getDefaultServiceId(),
+                appointment.getDefaultPractitionerId(),
+                dto.reason(),
+                AppointmentStatus.BOOKED,
+                dto.note(),
+                EncounterReason.FOLLOW_UP,
+                dto.priority(),
+                null,
+                null,
+                sourceEncounter.getId()
+        );
+
+        AppointmentFromTemplate bookedAppointment = appointmentFromTemplateService.bookPatientAppointment(bookDto);
+
         request.setPatient(patient);
         request.setFacilityId(dto.facilityId());
         request.setDepartmentId(dto.departmentId());
@@ -103,20 +156,8 @@ public class AppointmentRequestService {
         request.setPriority(dto.priority());
         request.setReason(dto.reason());
         request.setNote(dto.note());
-        request.setStatus(dto.status());
-        request.setCancelReason(dto.cancelReason());
-
-        if (dto.appointmentId() != null) {
-            AppointmentFromTemplate appointment = appointmentFromTemplateRepository.findById(dto.appointmentId())
-                    .orElseThrow(() -> new NotFoundAlertException(
-                            "Appointment not found with id: " + dto.appointmentId(),
-                            ENTITY_NAME,
-                            "appointment.notfound"
-                    ));
-            request.setAppointment(appointment);
-        } else {
-            request.setAppointment(null);
-        }
+        request.setAppointment(bookedAppointment);
+        request.setStatus(AppointmentRequestStatus.APPROVED);
 
         AppointmentRequest saved = appointmentRequestRepository.save(request);
         return toResponseVM(saved);
@@ -186,6 +227,32 @@ public class AppointmentRequestService {
                 .toList();
     }
 
+    public AppointmentRequestResponseVM approve(Long id) {
+        log.debug("Request to approve AppointmentRequest id={}", id);
+
+        AppointmentRequest request = getRequest(id);
+
+        if (request.getStatus() == AppointmentRequestStatus.CANCELLED) {
+            throw new BadRequestAlertException(
+                    "Cancelled request cannot be approved",
+                    ENTITY_NAME,
+                    "invalidstatus"
+            );
+        }
+
+        if (request.getStatus() == AppointmentRequestStatus.APPROVED) {
+            throw new BadRequestAlertException(
+                    "Appointment request already approved",
+                    ENTITY_NAME,
+                    "alreadyapproved"
+            );
+        }
+
+        request.setStatus(AppointmentRequestStatus.APPROVED);
+
+        AppointmentRequest saved = appointmentRequestRepository.save(request);
+        return toResponseVM(saved);
+    }
 
     public AppointmentRequestResponseVM cancel(Long id, AppointmentRequestCancelDTO dto) {
         log.debug("Request to cancel AppointmentRequest id={} dto={}", id, dto);
@@ -201,7 +268,7 @@ public class AppointmentRequestService {
         }
 
         request.setStatus(AppointmentRequestStatus.CANCELLED);
-        request.setCancelReason(dto.reason());
+        request.setCancelReason(dto.cancelReason());
         request.setCancelledAt(Instant.now());
 
         AppointmentRequest saved = appointmentRequestRepository.save(request);
@@ -227,7 +294,7 @@ public class AppointmentRequestService {
     private AppointmentRequestResponseVM toResponseVM(AppointmentRequest entity) {
         Long patientId = entity.getPatient() != null ? entity.getPatient().getId() : null;
         String patientName = entity.getPatient() != null ? entity.getPatient().getFirstName() + "" + entity.getPatient().getLastName() : null;
-
+        String patientMrn =  entity.getPatient() != null ? entity.getPatient().getMedicalRecordNumber() : null ;
         Long sourceEncounterId = entity.getSourceEncounter() != null ? entity.getSourceEncounter().getId() : null;
         Long appointmentId = entity.getAppointment() != null ? entity.getAppointment().getId() : null;
 
@@ -235,6 +302,7 @@ public class AppointmentRequestService {
                 entity.getId(),
                 patientId,
                 patientName,
+                patientMrn,
                 entity.getFacilityId(),
                 null,
                 entity.getDepartmentId(),
@@ -247,7 +315,6 @@ public class AppointmentRequestService {
                 entity.getReason(),
                 entity.getNote(),
                 entity.getStatus(),
-                entity.getConvertedAt(),
                 entity.getCancelledAt(),
                 entity.getCancelReason(),
                 entity.getCreatedBy(),

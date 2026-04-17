@@ -7,7 +7,7 @@ public record AppointmentRequestCancelDTO(
 
         @NotBlank
         @Size(max = 255)
-        String reason
+        String cancelReason
 
 ){
 

@@ -5,7 +5,6 @@ import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 
 import java.time.Instant;
-import java.time.LocalDate;
 
 public record AppointmentRequestResponseVM(
 
@@ -13,6 +12,7 @@ public record AppointmentRequestResponseVM(
 
         Long patientId,
         String patientName,
+        String patientMrn,
 
         Long facilityId,
         String facilityName,
@@ -32,7 +32,6 @@ public record AppointmentRequestResponseVM(
 
         AppointmentRequestStatus status,
 
-        Instant convertedAt,
         Instant cancelledAt,
         String cancelReason,
 

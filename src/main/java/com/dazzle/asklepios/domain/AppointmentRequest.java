@@ -70,9 +70,6 @@ public class AppointmentRequest extends AbstractAuditingEntity<Long> implements 
     @Column(name = "status", nullable = false, length = 30)
     private AppointmentRequestStatus status;
 
-    @Column(name = "converted_at")
-    private Instant convertedAt;
-
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
 

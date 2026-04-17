@@ -11,7 +11,15 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
@@ -30,8 +38,8 @@ public class AppointmentRequestController {
         return ResponseEntity.ok(result);
     }
 
-    @PutMapping("/appointment-requests")
-    public ResponseEntity<AppointmentRequestResponseVM> update(
+    @PutMapping("/appointment-requests/approve")
+    public ResponseEntity<AppointmentRequestResponseVM> approve(
             @Valid @RequestBody AppointmentRequestUpdateDTO dto
     ) {
         if (dto.id() == null) {
@@ -42,7 +50,7 @@ public class AppointmentRequestController {
             );
         }
 
-        AppointmentRequestResponseVM result = appointmentRequestService.update(dto);
+        AppointmentRequestResponseVM result = appointmentRequestService.approve(dto);
         return ResponseEntity.ok(result);
     }
 
@@ -79,6 +87,7 @@ public class AppointmentRequestController {
 
         return ResponseEntity.ok(appointmentRequestService.getAll());
     }
+
 
     @PutMapping("/appointment-requests/{id}/cancel")
     public ResponseEntity<AppointmentRequestResponseVM> cancel(
