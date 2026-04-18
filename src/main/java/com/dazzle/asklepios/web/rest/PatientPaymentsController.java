@@ -47,30 +47,7 @@ public class PatientPaymentsController {
             LOG.warn("[CREATE] PatientPayments rejected: encounterId is null payload={}", dto);
             throw new BadRequestAlertException("encounterId is required", "patientPayments", "encounter.required");
         }
-        if (dto.services() == null || dto.services().isEmpty()) {
-            LOG.warn("[CREATE] PatientPayments rejected: services is empty payload={}", dto);
-            throw new BadRequestAlertException(
-                    "No services to pay for",
-                    "patientPayments",
-                    "no.services"
-            );
-        }
 
-        boolean invalidService = dto.services().stream().anyMatch(serviceItem ->
-                serviceItem == null
-                        || serviceItem.serviceId() == null
-                        || serviceItem.serviceId() <= 0
-                        || serviceItem.price() == null
-                        || serviceItem.isExempted() == null
-        );
-        if (invalidService) {
-            LOG.warn("[CREATE] PatientPayments rejected: invalid services payload={}", dto);
-            throw new BadRequestAlertException(
-                    "Invalid serviceId/price/isExempted in services",
-                    "patientPayments",
-                    "services.invalid"
-            );
-        }
 
         PatientPaymentDetailsDTO result = patientPaymentsService.create(dto);
 

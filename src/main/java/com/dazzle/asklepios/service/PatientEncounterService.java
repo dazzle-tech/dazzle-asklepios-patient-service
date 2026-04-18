@@ -330,21 +330,6 @@ public class PatientEncounterService {
                         "id.notfound"
                 ));
 
-        boolean hasOtherOngoing = patientEncounterRepository
-                .existsByPatient_IdAndStatusAndIdNot(
-                        encounter.getPatient().getId(),
-                        EncounterStatus.ONGOING,
-                        encounter.getId()
-                );
-
-        if (hasOtherOngoing) {
-            throw new BadRequestAlertException(
-                    "Patient already has an ONGOING encounter. Starting another one is not allowed.",
-                    "patientEncounter",
-                    "patient.hasOngoing.notAllowed"
-            );
-        }
-
         encounter.setStatus(EncounterStatus.ONGOING);
         encounter.setStartedBy(currentUsername());
         encounter.setStartedDate(Instant.now());
@@ -569,17 +554,6 @@ public class PatientEncounterService {
         if (encounterType == null || !"EMERGENCY".equals(encounterType.toString())) {
             return;
         }
-
-        boolean hasOngoingEncounter = patientEncounterRepository
-                .existsByPatient_IdAndStatus(patientId, EncounterStatus.ONGOING);
-
-        if (hasOngoingEncounter) {
-            throw new BadRequestAlertException(
-                    "Patient currently treated by another doctor",
-                    "patientEncounter",
-                    "patient.emergency.notAllowed.withOngoing"
-            );
-        }
     }
     @Transactional(readOnly = true)
     public PatientEncounter getEncountersByAppointmentId(Long appointmentId) {
@@ -655,14 +629,6 @@ public class PatientEncounterService {
                     "Department daily sequence number already exists for this date.",
                     "patientEncounter",
                     "department.date.sequence.duplicate"
-            );
-        }
-
-        if (messageLower.contains("uq_patient_one_ongoing_encounter")) {
-            return new BadRequestAlertException(
-                    "Patient already has an ONGOING encounter. Starting another one is not allowed.",
-                    "patientEncounter",
-                    "patient.hasOngoing.dbRule"
             );
         }
 
