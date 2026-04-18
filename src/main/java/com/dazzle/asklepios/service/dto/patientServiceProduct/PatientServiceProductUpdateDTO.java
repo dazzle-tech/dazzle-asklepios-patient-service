@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service.dto.patientServiceProduct;
 
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.Currency;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
@@ -22,7 +23,7 @@ public record PatientServiceProductUpdateDTO(
         BigDecimal exemptionAmount,
         BigDecimal taxAmount,
         @NotNull BigDecimal totalAmount,
-        @NotBlank String currency,
+        @NotNull Currency currency,
         String notes,
 
         Boolean isBilled,

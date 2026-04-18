@@ -2,6 +2,7 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.service.PatientServiceAndProductService;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductUpdateDTO;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
@@ -136,6 +138,40 @@ public class PatientServiceAndProductController {
         return ResponseEntity.ok(updated);
     }
 
+    @PostMapping("/patient-services-products/bulk")
+    public ResponseEntity<List<PatientServiceAndProduct>> createBulk(
+            @Valid @RequestBody List<PatientServiceProductCreateDTO> dtos
+    ) {
+
+        LOG.debug("REST bulk create Patient Service/Product payload size={}", dtos == null ? 0 : dtos.size());
+
+        if (dtos == null || dtos.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "emptyRequest",
+                    "patientServicesAndProducts",
+                    "Request body cannot be empty"
+            );
+        }
+        for (PatientServiceProductCreateDTO dto : dtos) {
+            validateBillingItem(
+                    dto.billingItemType(),
+                    dto.brandMedicationId(),
+                    dto.diagnosticTestId(),
+                    dto.serviceId(),
+                    dto.procedureId()
+            );
+        }
+
+        List<PatientServiceAndProduct> createdList =
+                patientServiceAndProductService.createBulk(dtos);
+
+        LOG.debug("REST bulk create Patient Service/Product response count={}", createdList.size());
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(createdList);
+    }
+
     @DeleteMapping("/patient-services-products/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
 
@@ -146,6 +182,36 @@ public class PatientServiceAndProductController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/patient-services-products/by-encounter/{encounterId}/by-source/{source}")
+    public ResponseEntity<List<PatientServiceAndProduct>> getAllByEncounterAndSource(
+            @PathVariable @NotNull Long encounterId,
+            @PathVariable ServiceSource source,
+            @RequestParam Long sourceId,
+            @ParameterObject Pageable pageable
+    ) {
+
+        LOG.debug(
+                "REST get Patient Services & Products by encounterId={} and source={} and sourceId={}",
+                encounterId,
+                source,
+                sourceId
+        );
+
+        Page<PatientServiceAndProduct> page =
+                patientServiceAndProductService
+                        .findAllServicesAndProductsByEncounterIdAndSource(
+                                pageable,
+                                encounterId,
+                                source,
+                                sourceId
+                        );
+
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(), page
+        );
+
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+    }
     private void validateBillingItem(
             BillingItemTypes billingItemType,
             Long brandMedicationId,

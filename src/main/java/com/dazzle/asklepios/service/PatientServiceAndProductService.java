@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
@@ -20,6 +21,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -51,6 +53,7 @@ public class PatientServiceAndProductService {
                 .quantity(dto.quantity() == null ? 1L : dto.quantity())
                 .unitPrice(dto.unitPrice())
                 .currency(dto.currency())
+                .serviceSource(dto.serviceSource())
                 .isBilled(Boolean.FALSE)
                 .billingInvoiceId(null)
                 .billingInvoiceItemId(null)
@@ -135,7 +138,55 @@ public class PatientServiceAndProductService {
             throw handleConstraintViolation(ex);
         }
     }
+    @Transactional
+    public List<PatientServiceAndProduct> createBulk(List<PatientServiceProductCreateDTO> dtos) {
 
+        LOG.debug("Request to bulk create Patient billing items : count={}", dtos == null ? 0 : dtos.size());
+
+        if (dtos == null || dtos.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "emptyRequest",
+                    "patient_services_and_products",
+                    "Billing items list cannot be empty"
+            );
+        }
+
+        try {
+
+            List<PatientServiceAndProduct> entities = dtos.stream()
+                    .map(dto -> {
+                        PatientServiceAndProduct entity = PatientServiceAndProduct.builder()
+                                .patientId(dto.patientId())
+                                .encounterId(dto.encounterId())
+                                .billingItemType(dto.billingItemType())
+                                .brandMedicationId(dto.brandMedicationId())
+                                .diagnosticTestId(dto.diagnosticTestId())
+                                .serviceId(dto.serviceId())
+                                .procedureId(dto.procedureId())
+                                .quantity(dto.quantity() == null ? 1L : dto.quantity())
+                                .unitPrice(dto.unitPrice())
+                                .currency(dto.currency())
+                                .sourceId(dto.sourceId())
+                                .serviceSource(dto.serviceSource())
+                                .notes(dto.notes())
+                                .isBilled(Boolean.FALSE)
+                                .billingInvoiceId(null)
+                                .billingInvoiceItemId(null)
+                                .build();
+                        return entity;
+                    })
+                    .toList();
+
+            List<PatientServiceAndProduct> saved = patientServiceAndProductRepository.saveAll(entities);
+            patientServiceAndProductRepository.flush();
+
+            LOG.debug("Bulk created Patient billing items : count={}", saved.size());
+            return saved;
+
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            throw handleConstraintViolation(ex);
+        }
+    }
     @Transactional
     public void remove(Long id) {
 
@@ -229,7 +280,28 @@ public class PatientServiceAndProductService {
                 "Database constraint violated while saving patient billing item"
         );
     }
+    @Transactional(readOnly = true)
+    public Page<PatientServiceAndProduct> findAllServicesAndProductsByEncounterIdAndSource(
+            Pageable pageable,
+            Long encounterId,
+            ServiceSource serviceSource,
+            Long sourceId
+    ) {
+        LOG.debug(
+                "Fetch Patient billing items for encounter : {} and source : {} and sourceId : {}",
+                encounterId,
+                serviceSource,
+                sourceId
+        );
 
+        return patientServiceAndProductRepository
+                .findAllByEncounterIdAndServiceSourceAndSourceId(
+                        encounterId,
+                        serviceSource,
+                        sourceId,
+                        pageable
+                );
+    }
     private String getCurrentUser() {
         return SecurityUtils.getCurrentUserLogin()
                 .orElseThrow(() -> new ResponseStatusException(

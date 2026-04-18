@@ -433,6 +433,7 @@ public class PatientPaymentsService {
 
     public PatientPaymentDetailsDTO create(PatientPaymentCreateDTO dto) {
         LOG.info("[CREATE] PatientPayments payload={}", dto);
+
         Patient patient = patientRepository.findById(dto.patientId())
                 .orElseThrow(() -> {
                     LOG.warn("[CREATE] PatientPayments rejected: patient not found patientId={}", dto.patientId());
@@ -473,12 +474,49 @@ public class PatientPaymentsService {
             );
         });
 
-        PatientInsurance plan = resolvePlan(dto);
+        List<PatientPaymentServiceItemDTO> services = dto.services() == null ? List.of() : dto.services();
 
-        BigDecimal dueAmount = dto.services().stream()
+        BigDecimal dueAmount = services.stream()
                 .filter(serviceItem -> !Boolean.TRUE.equals(serviceItem.isExempted()))
                 .map(PatientPaymentServiceItemDTO::price)
                 .reduce(ZERO_AMOUNT, BigDecimal::add);
+
+        if (services.isEmpty() || dueAmount.compareTo(ZERO_AMOUNT) == 0) {
+            LOG.info("[CREATE] Skipping payment step for encounterId={} because there are no services to pay",
+                    dto.encounterId());
+
+            if (encounter.getEncounterType().equals(EncounterType.EMERGENCY)) {
+                encounter.setStatus(EncounterStatus.WAITING_TRIAGE);
+            } else {
+                encounter.setStatus(EncounterStatus.NEW);
+            }
+
+            encounterRepository.saveAndFlush(encounter);
+
+            List<PatientPaymentServices> skippedServiceRows = services.stream()
+                    .map(serviceItem -> PatientPaymentServices.builder()
+                            .serviceId(serviceItem.serviceId())
+                            .price(serviceItem.price())
+                            .isExempted(Boolean.TRUE.equals(serviceItem.isExempted()))
+                            .build())
+                    .toList();
+
+            return new PatientPaymentDetailsDTO(
+                    null,
+                    patient.getId(),
+                    encounter.getId(),
+                    ZERO_AMOUNT,
+                    ZERO_AMOUNT,
+                    ZERO_AMOUNT,
+                    ZERO_AMOUNT,
+                    ZERO_AMOUNT,
+                    ZERO_AMOUNT,
+                    ZERO_AMOUNT,
+                    skippedServiceRows
+            );
+        }
+
+        PatientInsurance plan = resolvePlan(dto);
 
         PatientPayments payment = PatientPayments.builder()
                 .patient(patient)
@@ -512,7 +550,7 @@ public class PatientPaymentsService {
         try {
             PatientPayments saved = paymentRepository.saveAndFlush(payment);
 
-            List<PatientPaymentServices> serviceRows = dto.services().stream()
+            List<PatientPaymentServices> serviceRows = services.stream()
                     .map(serviceItem -> PatientPaymentServices.builder()
                             .payment(saved)
                             .serviceId(serviceItem.serviceId())
@@ -527,12 +565,12 @@ public class PatientPaymentsService {
             LOG.info("[CREATE] PatientPayments saved paymentId={} patientId={} encounterId={} servicesCount={} dueAmount={}",
                     saved.getId(), dto.patientId(), dto.encounterId(), serviceRows.size(), dueAmount);
 
-            if(encounter.getEncounterType().equals(EncounterType.EMERGENCY)){
+            if (encounter.getEncounterType().equals(EncounterType.EMERGENCY)) {
                 encounter.setStatus(EncounterStatus.WAITING_TRIAGE);
-
-            }else {
+            } else {
                 encounter.setStatus(EncounterStatus.NEW);
             }
+
             encounterRepository.saveAndFlush(encounter);
 
             return finalizeAndReturnDetails(saved);
