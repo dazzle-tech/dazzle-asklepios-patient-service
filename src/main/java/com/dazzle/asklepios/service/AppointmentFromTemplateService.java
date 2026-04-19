@@ -29,6 +29,7 @@ import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromT
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestCreateDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
+import com.dazzle.asklepios.service.helper.CatalogHelper;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.DiagnosticTestHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -72,6 +73,7 @@ public class AppointmentFromTemplateService {
     private final DiagnosticTestHelper diagnosticTestHelper;
     private final DiagnosticOrderService diagnosticOrderService;
     private final DiagnosticOrderTestService diagnosticOrderTestService;
+    private final CatalogHelper catalogHelper;
 
     public List<AppointmentLog> getAppointmentLogs(Long appointmentId) {
         LOG.debug("Request to get AppointmentFromTemplate Log id={}", appointmentId);
@@ -239,6 +241,10 @@ public class AppointmentFromTemplateService {
             encounter = patientEncounterService.startEncounter(encounter.getId());
             createAndSubmitDiagnosticOrderFlow(savedAppointment, encounter);
         }
+        else if (savedAppointment.getResourceType() == TemplateType.CATALOG){
+            encounter = patientEncounterService.startEncounter(encounter.getId());
+            createAndSubmitCatalogOrderFlow(savedAppointment, encounter);
+        }
 
         return savedAppointment;
     }
@@ -374,6 +380,76 @@ public class AppointmentFromTemplateService {
         );
 
         diagnosticOrderTestService.create(orderTestCreateDTO);
+
+        diagnosticOrderService.submit(diagnosticOrder, currentUsername());
+    }
+
+    private void createAndSubmitCatalogOrderFlow(AppointmentFromTemplate appointment, PatientEncounter encounter) {
+        if (appointment.getResourceId() == null) {
+            throw new BadRequestAlertException("Catalog appointment must have resourceId", ENTITY_NAME, "resourceidrequired");
+        }
+
+        if (appointment.getPatient() == null || appointment.getPatient().getId() == null) {
+            throw new BadRequestAlertException("Catalog appointment must have patient", ENTITY_NAME, "patientrequired");
+        }
+
+        List<DiagnosticTestSetupDTO> catalogTests = catalogHelper.getTestsByCatalog(appointment.getResourceId());
+
+//        if (catalog == null) {
+//            throw new NotFoundAlertException("Catalog not found with id: " + appointment.getResourceId(), "Catalog", "notfound");
+//        }
+//
+//        if (Boolean.FALSE.equals(catalog.isActive())) {
+//            throw new BadRequestAlertException("Catalog is inactive", "Catalog", "inactive");
+//        }
+
+        if (catalogTests == null || catalogTests.isEmpty()) {
+            throw new BadRequestAlertException("Catalog does not contain diagnostic tests", "Catalog", "empty");
+        }
+
+        boolean hasLab = catalogTests.stream()
+                .anyMatch(test -> test.type() == TestType.LABORATORY);
+
+        boolean hasRadiology = catalogTests.stream()
+                .anyMatch(test -> test.type() == TestType.RADIOLOGY);
+
+        DiagnosticOrderCreateDTO orderCreateDTO = new DiagnosticOrderCreateDTO(
+                appointment.getPatient().getId(),
+                encounter.getId(),
+                false,
+                hasLab ? DiagnosticStatus.NEW : null,
+                hasRadiology ? DiagnosticStatus.NEW : null,
+                appointment.getDepartmentId(),
+                appointment.getFacilityId()
+        );
+
+        DiagnosticOrder diagnosticOrder = diagnosticOrderService.create(orderCreateDTO);
+
+        for (DiagnosticTestSetupDTO diagnosticTest : catalogTests) {
+            if (diagnosticTest == null) {
+                continue;
+            }
+
+            if (Boolean.FALSE.equals(diagnosticTest.isActive())) {
+                throw new BadRequestAlertException(
+                        "Diagnostic test is inactive: " + diagnosticTest.id(),
+                        "DiagnosticTest",
+                        "inactive"
+                );
+            }
+
+            DiagnosticOrderTestCreateDTO orderTestCreateDTO = new DiagnosticOrderTestCreateDTO(
+                    diagnosticOrder.getId(),
+                    diagnosticTest.id(),
+                    appointment.getDepartmentId(),
+                    appointment.getReason(),
+                    appointment.getNote(),
+                    diagnosticTest.type(),
+                    null
+            );
+
+            diagnosticOrderTestService.create(orderTestCreateDTO);
+        }
 
         diagnosticOrderService.submit(diagnosticOrder, currentUsername());
     }
