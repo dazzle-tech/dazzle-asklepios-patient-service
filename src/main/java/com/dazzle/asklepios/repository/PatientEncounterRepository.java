@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
@@ -16,6 +17,7 @@ import java.util.Optional;
 public interface PatientEncounterRepository extends JpaRepository<PatientEncounter, Long>, JpaSpecificationExecutor<PatientEncounter> {
 
 
+    @EntityGraph(attributePaths = "appointment")
     Page<PatientEncounter> findByPatientIdAndDepartmentIdAndStatusInOrderByCreatedDateDesc(
             Long patientId,
             Long departmentId,
@@ -42,19 +44,16 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
             EncounterStatus status
     );
 
-    boolean existsByPatient_IdAndStatusAndIdNot(
-            Long patientId,
-            EncounterStatus status,
-            Long id
-    );
-
+    @EntityGraph(attributePaths = "appointment")
     Page<PatientEncounter> findByPatientIdOrderByCreatedDateDesc(
             Long patientId,
             Pageable pageable
     );
 
+    @EntityGraph(attributePaths = "appointment")
     PatientEncounter findByAppointment_Id(Long appointmentId);
 
+    @EntityGraph(attributePaths = "appointment")
     Optional<PatientEncounter> findFirstByPatientIdAndStatusAndEncounterDateLessThanEqualOrderByEncounterDateDesc(
             Long patientId,
             EncounterStatus status,
@@ -81,5 +80,4 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
             List<EncounterStatus> statuses
     );
 
-    boolean existsByPatient_IdAndStatus(Long patientId, EncounterStatus status);
 }
