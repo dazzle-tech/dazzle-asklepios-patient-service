@@ -67,10 +67,10 @@ public class AvailabilityGenerationBatchService {
     @Transactional(readOnly = true)
     public AvailabilityTemplate getTemplate(Long templateId) {
         return availabilityTemplateRepository.findById(templateId)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Availability template not found",
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "idnotfound",
                         "availabilityTemplate",
-                        "idnotfound"
+                        "Availability template not found"
                 ));
     }
 
@@ -80,10 +80,10 @@ public class AvailabilityGenerationBatchService {
         return availabilityGenerationBatchRepository.findById(batchId)
                 .orElseThrow(() -> {
                     LOG.warn("[GET_BY_ID] AvailabilityGenerationBatch not found id={}", batchId);
-                    return new NotFoundAlertException(
-                            "AvailabilityGenerationBatch not found with id " + batchId,
+                    return new BadRequestAlertException(
+                            "id.notfound",
                             "AvailabilityGenerationBatch",
-                            "id.notfound"
+                            "AvailabilityGenerationBatch not found with id " + batchId
                     );
                 });
     }
@@ -258,15 +258,15 @@ public class AvailabilityGenerationBatchService {
 
     private void validateTemplateForApply(AvailabilityTemplate template) {
         if (!Boolean.TRUE.equals(template.getIsActive())) {
-            throw new BadRequestAlertException("Template is inactive", "availabilityTemplate", "templateinactive");
+            throw new BadRequestAlertException( "templateinactive", "availabilityTemplate","Template is inactive" );
         }
 
         if (template.getStatus() != TemplateStatus.PUBLISHED) {
-            throw new BadRequestAlertException("Only published template can be applied", "availabilityTemplate", "templatenotpublished");
+            throw new BadRequestAlertException("templatenotpublished", "availabilityTemplate","Only published template can be applied");
         }
 
         if (template.getIntervals() == null || template.getIntervals().isEmpty()) {
-            throw new BadRequestAlertException("Template has no intervals", "availabilityTemplate", "templatenointervals");
+            throw new BadRequestAlertException("templatenointervals", "availabilityTemplate","Template has no intervals");
         }
     }
 
