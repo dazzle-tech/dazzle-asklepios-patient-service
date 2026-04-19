@@ -60,7 +60,7 @@ public record PatientEncounterVM(
                 encounter.getDepartmentId(),
                 encounter.getPractitionerId(),
 
-                encounter.getAppointment(),
+                encounter.getAppointment()!=null? encounter.getAppointment() : null,
 
                 encounter.getEncounterType(),
                 encounter.getEncounterReason(),

@@ -26,10 +26,12 @@ import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateD
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +46,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -204,13 +207,12 @@ public class PatientEncounterService {
 
     @Transactional(readOnly = true)
     public Page<PatientEncounter> filterEncounters(PatientEncounterSearchFilterDTO filter, Pageable pageable) {
-
         LOG.debug("Service filter PatientEncounters filter={} pageable={}", filter, pageable);
 
         LocalDate today = LocalDate.now();
 
-        LocalDate effectiveFrom = (filter.fromDate() != null) ? filter.fromDate() : today;
-        LocalDate effectiveTo = (filter.toDate() != null) ? filter.toDate() : today;
+        LocalDate effectiveFrom = filter.fromDate() != null ? filter.fromDate() : today;
+        LocalDate effectiveTo = filter.toDate() != null ? filter.toDate() : today;
 
         List<EncounterStatus> effectiveStatuses =
                 (filter.statuses() != null && !filter.statuses().isEmpty())
@@ -221,12 +223,14 @@ public class PatientEncounterService {
         boolean hasMrn = filter.mrn() != null && !filter.mrn().isBlank();
         boolean hasChief = filter.chiefComplaint() != null && !filter.chiefComplaint().isBlank();
 
-        LOG.debug("[FILTER] effectiveFrom={} effectiveTo={} statuses={} hasPatientName={} hasMrn={} hasChief={}",
-                effectiveFrom, effectiveTo, effectiveStatuses, hasPatientName, hasMrn, hasChief);
+        LOG.debug(
+                "[FILTER] effectiveFrom={} effectiveTo={} statuses={} hasPatientName={} hasMrn={} hasChief={}",
+                effectiveFrom, effectiveTo, effectiveStatuses, hasPatientName, hasMrn, hasChief
+        );
 
-        Specification<PatientEncounter> encounterFilterSpec = (root, query, cb) -> {
-            root.fetch("patient", JoinType.LEFT);
-            query.distinct(true);
+        Specification<PatientEncounter> spec = (root, query, cb) -> {
+            applyFetches(root, query);
+
             List<Predicate> predicates = new ArrayList<>();
 
             predicates.add(cb.equal(root.get("departmentId"), filter.departmentId()));
@@ -244,14 +248,13 @@ public class PatientEncounterService {
             if (hasChief) {
                 predicates.add(
                         cb.like(
-                                cb.lower(root.get("chiefComplaint")),
+                                cb.lower(cb.coalesce(root.get("chiefComplaint"), "")),
                                 "%" + filter.chiefComplaint().trim().toLowerCase() + "%"
                         )
                 );
             }
 
             if (hasPatientName || hasMrn) {
-
                 Join<PatientEncounter, Patient> patientJoin = root.join("patient", JoinType.INNER);
 
                 if (hasMrn) {
@@ -259,31 +262,28 @@ public class PatientEncounterService {
                 }
 
                 if (hasPatientName) {
-                    String raw = filter.patientName();
-                    if (raw != null) {
-                        String[] tokens = raw.trim().toLowerCase().split("\\s+");
+                    String[] tokens = filter.patientName().trim().toLowerCase().split("\\s+");
 
-                        Expression<String> first = cb.lower(cb.coalesce(patientJoin.get("firstName"), ""));
-                        Expression<String> second = cb.lower(cb.coalesce(patientJoin.get("secondName"), ""));
-                        Expression<String> third = cb.lower(cb.coalesce(patientJoin.get("thirdName"), ""));
-                        Expression<String> last = cb.lower(cb.coalesce(patientJoin.get("lastName"), ""));
+                    Expression<String> first = cb.lower(cb.coalesce(patientJoin.get("firstName"), ""));
+                    Expression<String> second = cb.lower(cb.coalesce(patientJoin.get("secondName"), ""));
+                    Expression<String> third = cb.lower(cb.coalesce(patientJoin.get("thirdName"), ""));
+                    Expression<String> last = cb.lower(cb.coalesce(patientJoin.get("lastName"), ""));
 
-                        Predicate[] tokenPreds = java.util.Arrays.stream(tokens)
-                                .filter(t -> t != null && !t.isBlank())
-                                .map(t -> {
-                                    String like = "%" + t + "%";
-                                    return cb.or(
-                                            cb.like(first, like),
-                                            cb.like(second, like),
-                                            cb.like(third, like),
-                                            cb.like(last, like)
-                                    );
-                                })
-                                .toArray(Predicate[]::new);
+                    Predicate[] tokenPredicates = Arrays.stream(tokens)
+                            .filter(token -> token != null && !token.isBlank())
+                            .map(token -> {
+                                String like = "%" + token + "%";
+                                return cb.or(
+                                        cb.like(first, like),
+                                        cb.like(second, like),
+                                        cb.like(third, like),
+                                        cb.like(last, like)
+                                );
+                            })
+                            .toArray(Predicate[]::new);
 
-                        if (tokenPreds.length > 0) {
-                            predicates.add(cb.and(tokenPreds));
-                        }
+                    if (tokenPredicates.length > 0) {
+                        predicates.add(cb.and(tokenPredicates));
                     }
                 }
             }
@@ -291,11 +291,26 @@ public class PatientEncounterService {
             return cb.and(predicates.toArray(new Predicate[0]));
         };
 
-        Page<PatientEncounter> result = patientEncounterRepository.findAll(encounterFilterSpec, pageable);
-        LOG.debug("[FILTER] PatientEncounters result totalElements={} totalPages={} pageNumber={} pageSize={}",
-                result.getTotalElements(), result.getTotalPages(), result.getNumber(), result.getSize());
+        Page<PatientEncounter> result = patientEncounterRepository.findAll(spec, pageable);
+
+        LOG.debug("[FILTER] PatientEncounters result totalElements={} totalPages={} pageNumber={} pageSize={}", result.getTotalElements(), result.getTotalPages(), result.getNumber(), result.getSize());
 
         return result;
+    }
+
+    private void applyFetches(Root<PatientEncounter> root, CriteriaQuery<?> query) {
+        if (query == null || query.getResultType() == null) {
+            return;
+        }
+
+        boolean isCountQuery =
+                Long.class.equals(query.getResultType()) || long.class.equals(query.getResultType());
+
+        if (!isCountQuery) {
+            root.fetch("patient", JoinType.LEFT);
+            root.fetch("appointment", JoinType.LEFT);
+            query.distinct(true);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -388,6 +403,7 @@ public class PatientEncounterService {
             throw handleConstraintViolation(ex);
         }
     }
+
     public PatientEncounter dischargeEncounter(Long encounterId) {
         LOG.info("[DISCHARGE] PatientEncounter id={}", encounterId);
 
@@ -550,11 +566,13 @@ public class PatientEncounterService {
                     );
                 });
     }
+
     private void validateEmergencyEncounterCreation(Long patientId, Object encounterType) {
         if (encounterType == null || !"EMERGENCY".equals(encounterType.toString())) {
             return;
         }
     }
+
     @Transactional(readOnly = true)
     public PatientEncounter getEncountersByAppointmentId(Long appointmentId) {
         LOG.debug("[GET_BY_APPOINTMENT_ID] appointmentId={} ", appointmentId);
@@ -762,6 +780,7 @@ public class PatientEncounterService {
 
         return updated;
     }
+
     public PatientEncounter dischargeEncounter(PatientEncounterDischargeDTO dischargeDTO) {
         LOG.info("[DISCHARGE] PatientEncounter payload={}", dischargeDTO);
 
@@ -827,7 +846,9 @@ public class PatientEncounterService {
             LOG.error("[DISCHARGE] failed (unexpected) payload={}", dischargeDTO, ex);
             throw ex;
         }
-    }    @Transactional(readOnly = true)
+    }
+
+    @Transactional(readOnly = true)
     public Optional<PatientEncounter> getPreviousClosedEncounter(Long encounterId) {
         PatientEncounter currentEncounter = patientEncounterRepository.findById(encounterId)
                 .orElseThrow(() -> new NotFoundAlertException(
