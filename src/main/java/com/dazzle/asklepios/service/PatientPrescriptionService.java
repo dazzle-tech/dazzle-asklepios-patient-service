@@ -10,8 +10,10 @@ import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientPrescriptionMedicationRepository;
 import com.dazzle.asklepios.repository.PatientPrescriptionRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patientPrescription.PatientPrescriptionCreateDto;
 import com.dazzle.asklepios.service.dto.patientPrescription.PatientPrescriptionUpdateDTO;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -39,7 +41,18 @@ public class PatientPrescriptionService {
     private static final org.slf4j.Logger LOG = LoggerFactory.getLogger(PatientPrescriptionService.class);
     private final PatientRepository patientRepository;
     private final PatientPrescriptionRepository patientPrescriptionRepository;
-
+    private String currentUsername() {
+        String username = SecurityUtils.getCurrentUserLogin().orElse(null);
+        if (username == null) {
+            LOG.warn("[PatientPrescriptionService] AUTH - unauthenticated request");
+            throw new BadRequestAlertException(
+                    "unauthenticated",
+                    "prescription",
+                    "No authenticated user"
+            );
+        }
+        return username;
+    }
     public PatientPrescription create(PatientPrescriptionCreateDto prescriptionCreateDto) {
         LOG.debug("create a prescriptionCreateDto={}",prescriptionCreateDto);
 
@@ -160,21 +173,26 @@ public class PatientPrescriptionService {
         return patientPrescriptionRepository.findAll(pageable);
     }
 
-    public PatientPrescription submit(Long id, String lastModifiedBy) {
-        LOG.debug("submit prescription for id ={}",id);
+    public PatientPrescription submit(Long id) {
+        LOG.debug("submit prescription for id ={}", id);
 
         PatientPrescription entity = prescriptionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
 
+        String username = currentUsername();
+        Instant now = Instant.now();
+
         entity.setStatus(PrescriptionStatus.SUBMITTED);
-        entity.setLastModifiedBy(lastModifiedBy);
-        entity.setLastModifiedDate(Instant.now());
+        entity.setLastModifiedBy(username);
+        entity.setLastModifiedDate(now);
+        entity.setSubmitedBy(username);
+        entity.setSubmitedDate(now);
 
         if (entity.getMedications() != null) {
             for (PatientPrescriptionMedication med : entity.getMedications()) {
                 med.setStatus(PrescriptionStatus.SUBMITTED);
-                med.setLastModifiedBy(lastModifiedBy);
-                med.setLastModifiedDate(Instant.now());
+                med.setLastModifiedBy(username);
+                med.setLastModifiedDate(now);
                 prescriptionMedicationRepository.save(med);
             }
         }
