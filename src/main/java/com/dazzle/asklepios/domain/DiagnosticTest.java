@@ -32,13 +32,4 @@ public class DiagnosticTest {
     // Adjust column name if different in DB (e.g. test_name, name, etc.)
     @Column(name = "name")
     private String name;
-
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "type")
-    private TestType type;
-
-    @Column(name = "is_active")
-    private Boolean isActive ;
-
 }
