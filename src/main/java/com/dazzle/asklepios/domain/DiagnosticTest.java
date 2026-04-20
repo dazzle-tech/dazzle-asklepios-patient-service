@@ -1,8 +1,11 @@
 // DiagnosticTest.java
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.TestType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -29,4 +32,13 @@ public class DiagnosticTest {
     // Adjust column name if different in DB (e.g. test_name, name, etc.)
     @Column(name = "name")
     private String name;
+
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type")
+    private TestType type;
+
+    @Column(name = "is_active")
+    private Boolean isActive ;
+
 }

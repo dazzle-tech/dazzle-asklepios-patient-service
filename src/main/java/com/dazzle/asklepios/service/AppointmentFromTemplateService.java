@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.setup.dto.CatalogDiagnosticTestDTO;
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.client.setup.dto.DiagnosticTestSetupDTO;
 import com.dazzle.asklepios.domain.AppointmentFromTemplate;
@@ -393,25 +394,17 @@ public class AppointmentFromTemplateService {
             throw new BadRequestAlertException("Catalog appointment must have patient", ENTITY_NAME, "patientrequired");
         }
 
-        List<DiagnosticTestSetupDTO> catalogTests = catalogHelper.getTestsByCatalog(appointment.getResourceId());
-
-//        if (catalog == null) {
-//            throw new NotFoundAlertException("Catalog not found with id: " + appointment.getResourceId(), "Catalog", "notfound");
-//        }
-//
-//        if (Boolean.FALSE.equals(catalog.isActive())) {
-//            throw new BadRequestAlertException("Catalog is inactive", "Catalog", "inactive");
-//        }
+        List<CatalogDiagnosticTestDTO> catalogTests = catalogHelper.getTestsByCatalog(appointment.getResourceId());
 
         if (catalogTests == null || catalogTests.isEmpty()) {
             throw new BadRequestAlertException("Catalog does not contain diagnostic tests", "Catalog", "empty");
         }
 
         boolean hasLab = catalogTests.stream()
-                .anyMatch(test -> test.type() == TestType.LABORATORY);
+                .anyMatch(catalog -> catalog.test().type() == TestType.LABORATORY);
 
         boolean hasRadiology = catalogTests.stream()
-                .anyMatch(test -> test.type() == TestType.RADIOLOGY);
+                .anyMatch(catalog -> catalog.test().type() == TestType.RADIOLOGY);
 
         DiagnosticOrderCreateDTO orderCreateDTO = new DiagnosticOrderCreateDTO(
                 appointment.getPatient().getId(),
@@ -425,14 +418,14 @@ public class AppointmentFromTemplateService {
 
         DiagnosticOrder diagnosticOrder = diagnosticOrderService.create(orderCreateDTO);
 
-        for (DiagnosticTestSetupDTO diagnosticTest : catalogTests) {
-            if (diagnosticTest == null) {
+        for (CatalogDiagnosticTestDTO catalogDiagnosticTestDTO : catalogTests) {
+            if (catalogDiagnosticTestDTO == null) {
                 continue;
             }
 
-            if (Boolean.FALSE.equals(diagnosticTest.isActive())) {
+            if (Boolean.FALSE.equals(catalogDiagnosticTestDTO.test().isActive())) {
                 throw new BadRequestAlertException(
-                        "Diagnostic test is inactive: " + diagnosticTest.id(),
+                        "Diagnostic test is inactive: " + catalogDiagnosticTestDTO.test().id(),
                         "DiagnosticTest",
                         "inactive"
                 );
@@ -440,11 +433,11 @@ public class AppointmentFromTemplateService {
 
             DiagnosticOrderTestCreateDTO orderTestCreateDTO = new DiagnosticOrderTestCreateDTO(
                     diagnosticOrder.getId(),
-                    diagnosticTest.id(),
+                    catalogDiagnosticTestDTO.test().id(),
                     appointment.getDepartmentId(),
                     appointment.getReason(),
                     appointment.getNote(),
-                    diagnosticTest.type(),
+                    catalogDiagnosticTestDTO.test().type(),
                     null
             );
 
