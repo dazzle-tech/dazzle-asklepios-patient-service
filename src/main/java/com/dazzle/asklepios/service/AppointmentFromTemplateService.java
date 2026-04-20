@@ -1,15 +1,21 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
+import com.dazzle.asklepios.client.setup.dto.DiagnosticTestSetupDTO;
 import com.dazzle.asklepios.domain.AppointmentFromTemplate;
 import com.dazzle.asklepios.domain.AppointmentLog;
 import com.dazzle.asklepios.domain.AvailabilityGenerationBatch;
+import com.dazzle.asklepios.domain.DiagnosticOrder;
+import com.dazzle.asklepios.domain.DiagnosticTest;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.BookingMode;
+import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
+import com.dazzle.asklepios.domain.enumeration.TemplateType;
+import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
 import com.dazzle.asklepios.repository.AppointmentLogRepository;
 import com.dazzle.asklepios.repository.AvailabilityGenerationBatchRepository;
@@ -21,8 +27,12 @@ import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromT
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateNoShowDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateSearchFilterDTO;
+import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderCreateDTO;
+import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestCreateDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
+import com.dazzle.asklepios.service.helper.CatalogHelper;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.DiagnosticTestHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentResponseVM;
@@ -39,6 +49,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -59,6 +71,10 @@ public class AppointmentFromTemplateService {
     private final PatientEncounterService patientEncounterService;
     private final PatientEncounterRepository patientEncounterRepository;
     private final AvailabilityGenerationBatchRepository availabilityGenerationBatchRepository;
+    private final DiagnosticTestHelper diagnosticTestHelper;
+    private final DiagnosticOrderService diagnosticOrderService;
+    private final DiagnosticOrderTestService diagnosticOrderTestService;
+    private final CatalogHelper catalogHelper;
 
     public List<AppointmentLog> getAppointmentLogs(Long appointmentId) {
         LOG.debug("Request to get AppointmentFromTemplate Log id={}", appointmentId);
@@ -203,17 +219,34 @@ public class AppointmentFromTemplateService {
         return appointmentFromTemplateRepository.save(appointment);
     }
 
+    @Transactional
     public AppointmentFromTemplate checkIn(Long id) {
         AppointmentFromTemplate appointment = getAppointment(id);
 
         validateCheckInable(appointment);
 
+        if (appointment.getPatient() == null) {
+            throw new BadRequestAlertException("Cannot check in appointment without patient", ENTITY_NAME, "patientrequired");
+        }
+
         appointment.setStatus(AppointmentStatus.CHECKED_IN);
         appointment.setCheckedInAt(Instant.now());
+
         AppointmentFromTemplate savedAppointment = appointmentFromTemplateRepository.save(appointment);
+
         DepartmentDTO department = departmentHelper.getDepartment(savedAppointment.getDepartmentId());
 
-        createEncounter(savedAppointment, department);
+        PatientEncounter encounter = createEncounter(savedAppointment, department);
+
+        if (savedAppointment.getResourceType() == TemplateType.DIAGNOSTIC_TEST) {
+            encounter = patientEncounterService.startEncounter(encounter.getId());
+            createAndSubmitDiagnosticOrderFlow(savedAppointment, encounter);
+        }
+        else if (savedAppointment.getResourceType() == TemplateType.CATALOG){
+            encounter = patientEncounterService.startEncounter(encounter.getId());
+            createAndSubmitCatalogOrderFlow(savedAppointment, encounter);
+        }
+
         return savedAppointment;
     }
 
@@ -306,6 +339,136 @@ public class AppointmentFromTemplateService {
                 });
     }
 
+    private void createAndSubmitDiagnosticOrderFlow(AppointmentFromTemplate appointment, PatientEncounter encounter) {
+        if (appointment.getResourceId() == null) {
+            throw new BadRequestAlertException("Diagnostic test appointment must have resourceId", ENTITY_NAME, "resourceidrequired");
+        }
+
+        if (appointment.getPatient() == null || appointment.getPatient().getId() == null) {
+            throw new BadRequestAlertException("Diagnostic test appointment must have patient", ENTITY_NAME, "patientrequired");
+        }
+
+        DiagnosticTestSetupDTO diagnosticTest = diagnosticTestHelper.getDiagnosticTest(appointment.getResourceId());
+
+        if (diagnosticTest == null) {
+            throw new NotFoundAlertException("Diagnostic test not found with id: " + appointment.getResourceId(), "DiagnosticTest", "notfound");
+        }
+
+        if (Boolean.FALSE.equals(diagnosticTest.isActive())) {
+            throw new BadRequestAlertException("Diagnostic test is inactive", "DiagnosticTest", "inactive");
+        }
+
+        DiagnosticOrderCreateDTO orderCreateDTO = new DiagnosticOrderCreateDTO(
+                appointment.getPatient().getId(),
+                encounter.getId(),
+                false,
+                resolveLabStatus(diagnosticTest.type()),
+                resolveRadStatus(diagnosticTest.type()),
+                appointment.getDepartmentId(),
+                appointment.getFacilityId()
+        );
+
+        DiagnosticOrder diagnosticOrder = diagnosticOrderService.create(orderCreateDTO);
+
+        DiagnosticOrderTestCreateDTO orderTestCreateDTO = new DiagnosticOrderTestCreateDTO(
+                diagnosticOrder.getId(),
+                diagnosticTest.id(),
+                appointment.getDepartmentId(),
+                appointment.getReason(),
+                appointment.getNote(),
+                diagnosticTest.type(),
+                null
+        );
+
+        diagnosticOrderTestService.create(orderTestCreateDTO);
+
+        diagnosticOrderService.submit(diagnosticOrder, currentUsername());
+    }
+
+    private void createAndSubmitCatalogOrderFlow(AppointmentFromTemplate appointment, PatientEncounter encounter) {
+        if (appointment.getResourceId() == null) {
+            throw new BadRequestAlertException("Catalog appointment must have resourceId", ENTITY_NAME, "resourceidrequired");
+        }
+
+        if (appointment.getPatient() == null || appointment.getPatient().getId() == null) {
+            throw new BadRequestAlertException("Catalog appointment must have patient", ENTITY_NAME, "patientrequired");
+        }
+
+        List<DiagnosticTestSetupDTO> diagnosticTests = catalogHelper.getTestsByCatalog(appointment.getResourceId());
+
+        if (diagnosticTests == null || diagnosticTests.isEmpty()) {
+            throw new BadRequestAlertException("Catalog does not contain diagnostic tests", "Catalog", "empty");
+        }
+
+        boolean hasLab = diagnosticTests.stream()
+                .anyMatch(test -> test.type() == TestType.LABORATORY);
+
+        boolean hasRadiology = diagnosticTests.stream()
+                .anyMatch(test -> test.type() == TestType.RADIOLOGY);
+
+        DiagnosticOrderCreateDTO orderCreateDTO = new DiagnosticOrderCreateDTO(
+                appointment.getPatient().getId(),
+                encounter.getId(),
+                false,
+                hasLab ? DiagnosticStatus.NEW : null,
+                hasRadiology ? DiagnosticStatus.NEW : null,
+                appointment.getDepartmentId(),
+                appointment.getFacilityId()
+        );
+
+        DiagnosticOrder diagnosticOrder = diagnosticOrderService.create(orderCreateDTO);
+
+        for (DiagnosticTestSetupDTO diagnosticTest : diagnosticTests) {
+            if (diagnosticTest == null) {
+                continue;
+            }
+
+            if (Boolean.FALSE.equals(diagnosticTest.isActive())) {
+                throw new BadRequestAlertException(
+                        "Diagnostic test is inactive: " + diagnosticTest.id(),
+                        "DiagnosticTest",
+                        "inactive"
+                );
+            }
+
+            DiagnosticOrderTestCreateDTO orderTestCreateDTO = new DiagnosticOrderTestCreateDTO(
+                    diagnosticOrder.getId(),
+                    diagnosticTest.id(),
+                    appointment.getDepartmentId(),
+                    appointment.getReason(),
+                    appointment.getNote(),
+                    diagnosticTest.type(),
+                    null
+            );
+
+            diagnosticOrderTestService.create(orderTestCreateDTO);
+        }
+
+        diagnosticOrderService.submit(diagnosticOrder, currentUsername());
+    }
+
+    private DiagnosticStatus resolveLabStatus(TestType type) {
+        if (type == null) {
+            return DiagnosticStatus.NEW;
+        }
+
+        return switch (type) {
+            case LABORATORY, PATHOLOGY, MICROBIOLOGY -> DiagnosticStatus.NEW;
+            case RADIOLOGY -> null;
+        };
+    }
+
+    private DiagnosticStatus resolveRadStatus(TestType type) {
+        if (type == null) {
+            return DiagnosticStatus.NEW;
+        }
+
+        return switch (type) {
+            case RADIOLOGY -> DiagnosticStatus.NEW;
+            case LABORATORY, PATHOLOGY, MICROBIOLOGY -> null;
+        };
+    }
+
     private AvailabilityGenerationBatch getBatch(Long id) {
         return availabilityGenerationBatchRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException("Batch not found: " + id, ENTITY_NAME, "notfound"));
@@ -376,6 +539,29 @@ public class AppointmentFromTemplateService {
     private void validateCheckInable(AppointmentFromTemplate appointment) {
         if (appointment.getStatus() != AppointmentStatus.CONFIRMED) {
             throw new BadRequestAlertException("Only confirmed appointments can be checked in", ENTITY_NAME, "invalidstatus");
+        }
+        if (appointment.getStartDatetime() == null) {
+            throw new BadRequestAlertException(
+                    "startdatetimerequired",
+                    ENTITY_NAME,
+                    "Appointment start date is missing"
+
+
+                    );
+        }
+
+        LocalDate appointmentDate = appointment.getStartDatetime()
+                .atZone(ZoneId.systemDefault())
+                .toLocalDate();
+
+        LocalDate today = LocalDate.now(ZoneId.systemDefault());
+
+        if (!today.equals(appointmentDate)) {
+            throw new BadRequestAlertException(
+                    "Check-in is allowed only on the appointment date",
+                    ENTITY_NAME,
+                    "invalidcheckindate"
+            );
         }
     }
 
