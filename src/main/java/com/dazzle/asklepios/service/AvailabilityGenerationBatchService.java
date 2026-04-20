@@ -180,14 +180,7 @@ public class AvailabilityGenerationBatchService {
         return appointments;
     }
 
-    private List<AppointmentFromTemplate> generateAppointmentsForInterval(
-            AvailabilityTemplate template,
-            AvailabilityGenerationBatch batch,
-            LocalDate date,
-            AvailabilityTemplateInterval interval,
-            boolean deferred,
-            Instant deferredAt
-    ) {
+    private List<AppointmentFromTemplate> generateAppointmentsForInterval(AvailabilityTemplate template, AvailabilityGenerationBatch batch, LocalDate date, AvailabilityTemplateInterval interval, boolean deferred, Instant deferredAt) {
         List<AppointmentFromTemplate> appointments = new ArrayList<>();
 
         int slotDuration = interval.getSlotDurationMinutes() != null
@@ -256,16 +249,8 @@ public class AvailabilityGenerationBatchService {
 
         return appointments;
     }
-    private AppointmentFromTemplate buildAppointment(
-            AvailabilityTemplate template,
-            AvailabilityGenerationBatch batch,
-            boolean deferred,
-            Instant deferredAt,
-            int capacityIndex,
-            LocalDateTime start,
-            LocalDateTime end,
-            BookingMode bookingMode
-    ) {
+
+    private AppointmentFromTemplate buildAppointment(AvailabilityTemplate template, AvailabilityGenerationBatch batch, boolean deferred, Instant deferredAt, int capacityIndex, LocalDateTime start, LocalDateTime end, BookingMode bookingMode) {
         AppointmentFromTemplate appointment = new AppointmentFromTemplate();
         appointment.setFacilityId(template.getFacilityId());
         appointment.setDepartmentId(template.getDepartmentId());
@@ -286,6 +271,7 @@ public class AvailabilityGenerationBatchService {
         appointment.setReason(null);
         return appointment;
     }
+
     private LocalDateTime findOverlappingBreakEnd(AvailabilityTemplateInterval interval, LocalDate date, LocalDateTime slotStart, LocalDateTime slotEnd) {
         if (interval.getBreaks() == null || interval.getBreaks().isEmpty()) {
             return null;
@@ -309,15 +295,15 @@ public class AvailabilityGenerationBatchService {
 
     private void validateTemplateForApply(AvailabilityTemplate template) {
         if (!Boolean.TRUE.equals(template.getIsActive())) {
-            throw new BadRequestAlertException( "templateinactive", "availabilityTemplate","Template is inactive" );
+            throw new BadRequestAlertException("templateinactive", "availabilityTemplate", "Template is inactive");
         }
 
         if (template.getStatus() != TemplateStatus.PUBLISHED) {
-            throw new BadRequestAlertException("templatenotpublished", "availabilityTemplate","Only published template can be applied");
+            throw new BadRequestAlertException("templatenotpublished", "availabilityTemplate", "Only published template can be applied");
         }
 
         if (template.getIntervals() == null || template.getIntervals().isEmpty()) {
-            throw new BadRequestAlertException("templatenointervals", "availabilityTemplate","Template has no intervals");
+            throw new BadRequestAlertException("templatenointervals", "availabilityTemplate", "Template has no intervals");
         }
     }
 
