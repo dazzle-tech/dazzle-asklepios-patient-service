@@ -72,6 +72,12 @@ public class PatientPrescription extends AbstractAuditingEntity<Long> implements
     @Column(name = "to_department_id")
     private Long toDepartmentId;
 
+    @Column(name="submited_by")
+    private  String submitedBy;
+
+    @Column(name="submited_date")
+    private  Instant submitedDate;
+
     @OneToMany(mappedBy = "prescriptionHeader", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<PatientPrescriptionMedication> medications = new ArrayList<>();
