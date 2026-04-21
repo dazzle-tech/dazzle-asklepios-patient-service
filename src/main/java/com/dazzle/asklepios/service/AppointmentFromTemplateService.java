@@ -164,8 +164,11 @@ public class AppointmentFromTemplateService {
                 predicates.add(cb.equal(root.get("status"), filter.status()));
             }
 
-            if (filter.bookingMode() != null) {
-                predicates.add(cb.equal(root.get("bookingMode"), filter.bookingMode()));
+            if (filter.bookingMode() != null && !filter.bookingMode().isEmpty()) {
+                predicates.add(root.get("bookingMode").in(filter.bookingMode()));
+            }
+            else {
+                predicates.add(cb.notEqual(root.get("bookingMode"), BookingMode.BUFFER));
             }
 
             if (filter.patientId() != null) {
