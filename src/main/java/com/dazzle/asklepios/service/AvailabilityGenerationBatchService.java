@@ -172,7 +172,7 @@ public class AvailabilityGenerationBatchService {
                 if (!matchesDay(current, interval)) {
                     continue;
                 }
-                appointments.addAll(generateAppointmentsForInterval(template, batch, current, interval, deferred, deferredAt, holiday, holidayHandlingMode));
+                appointments.addAll(generateAppointmentsForInterval(template, batch, current, interval, deferred, deferredAt));
             }
             current = current.plusDays(1);
         }
@@ -180,59 +180,96 @@ public class AvailabilityGenerationBatchService {
         return appointments;
     }
 
-    private List<AppointmentFromTemplate> generateAppointmentsForInterval(AvailabilityTemplate template, AvailabilityGenerationBatch batch, LocalDate date, AvailabilityTemplateInterval interval, boolean deferred, Instant deferredAt, boolean holiday, HolidayHandlingMode holidayHandlingMode) {
-        LOG.info("[GENERATE APPOINTMENT FOR INTERVAL] templateId={}, batchId={},date={}, interval={}, deferred={}, deferredAt={}, holidayHandlingMode={}", template.getId(), batch.getId(), date, interval, deferred, deferredAt, holidayHandlingMode);
-
+    private List<AppointmentFromTemplate> generateAppointmentsForInterval(AvailabilityTemplate template, AvailabilityGenerationBatch batch, LocalDate date, AvailabilityTemplateInterval interval, boolean deferred, Instant deferredAt) {
         List<AppointmentFromTemplate> appointments = new ArrayList<>();
 
         int slotDuration = interval.getSlotDurationMinutes() != null
                 ? interval.getSlotDurationMinutes()
                 : template.getDurationMinutes();
 
+        int slotBeforeMinutes = template.getDefaultBufferBeforeMinutes() != null
+                ? template.getDefaultBufferBeforeMinutes()
+                : 0;
+
+        int slotAfterMinutes = template.getDefaultBufferAfterMinutes() != null
+                ? template.getDefaultBufferAfterMinutes()
+                : 0;
+
         int parallelCapacity = template.getParallelCapacityValue() != null
                 && template.getParallelCapacityValue() > 0
                 ? template.getParallelCapacityValue()
                 : 1;
 
-        LocalDateTime slotStart = LocalDateTime.of(date, interval.getStartTime());
+        LocalDateTime currentSlotStart = LocalDateTime.of(date, interval.getStartTime());
         LocalDateTime intervalEnd = LocalDateTime.of(date, interval.getEndTime());
 
-        while (!slotStart.plusMinutes(slotDuration).isAfter(intervalEnd)) {
+        while (true) {
+            LocalDateTime beforeBufferStart = currentSlotStart.minusMinutes(slotBeforeMinutes);
+            LocalDateTime beforeBufferEnd = currentSlotStart;
+
+            LocalDateTime slotStart = currentSlotStart;
             LocalDateTime slotEnd = slotStart.plusMinutes(slotDuration);
+
+            LocalDateTime afterBufferStart = slotEnd;
+            LocalDateTime afterBufferEnd = slotEnd.plusMinutes(slotAfterMinutes);
+
+            if (slotEnd.isAfter(intervalEnd)) {
+                break;
+            }
 
             LocalDateTime overlappingBreakEnd = findOverlappingBreakEnd(interval, date, slotStart, slotEnd);
             if (overlappingBreakEnd != null) {
-                slotStart = overlappingBreakEnd;
+                currentSlotStart = overlappingBreakEnd.plusMinutes(slotBeforeMinutes);
                 continue;
             }
 
             for (int i = 0; i < parallelCapacity; i++) {
-                AppointmentFromTemplate appointment = new AppointmentFromTemplate();
-                appointment.setFacilityId(template.getFacilityId());
-                appointment.setDepartmentId(template.getDepartmentId());
-                appointment.setAvailabilityGenerationBatch(batch);
-                appointment.setResourceType(template.getTemplateType());
-                appointment.setResourceId(template.getResourceId());
-                appointment.setStartDatetime(toInstant(slotStart));
-                appointment.setEndDatetime(toInstant(slotEnd));
-                appointment.setPatient(null);
-                appointment.setDefaultServiceId(template.getDefaultServiceId());
-                appointment.setDefaultPractitionerId(template.getDefaultPractitionerId());
-                appointment.setBookingMode(BookingMode.SLOT);
-                appointment.setStatus(AppointmentStatus.NEW);
-                appointment.setDeferred(deferred);
-                appointment.setDeferredAt(deferredAt);
-                appointment.setPriority(EncounterPriority.NORMAL);
-                appointment.setCapacityIndex(i + 1);
-                appointment.setReason(null);
+                if (slotBeforeMinutes > 0) {
+                    appointments.add(buildAppointment(
+                            template, batch, deferred, deferredAt, i + 1,
+                            beforeBufferStart, beforeBufferEnd, BookingMode.BUFFER
+                    ));
+                }
 
-                appointments.add(appointment);
+                appointments.add(buildAppointment(
+                        template, batch, deferred, deferredAt, i + 1,
+                        slotStart, slotEnd, BookingMode.SLOT
+                ));
+
+                if (slotAfterMinutes > 0) {
+                    appointments.add(buildAppointment(
+                            template, batch, deferred, deferredAt, i + 1,
+                            afterBufferStart, afterBufferEnd, BookingMode.BUFFER
+                    ));
+                }
             }
 
-            slotStart = slotEnd;
+            currentSlotStart = afterBufferEnd.plusMinutes(slotBeforeMinutes);
         }
 
         return appointments;
+    }
+
+    private AppointmentFromTemplate buildAppointment(AvailabilityTemplate template, AvailabilityGenerationBatch batch, boolean deferred, Instant deferredAt, int capacityIndex, LocalDateTime start, LocalDateTime end, BookingMode bookingMode) {
+        AppointmentFromTemplate appointment = new AppointmentFromTemplate();
+        appointment.setFacilityId(template.getFacilityId());
+        appointment.setDepartmentId(template.getDepartmentId());
+        appointment.setAvailabilityGenerationBatch(batch);
+        appointment.setResourceType(template.getTemplateType());
+        appointment.setResourceId(template.getResourceId());
+        appointment.setStartDatetime(toInstant(start));
+        appointment.setEndDatetime(toInstant(end));
+        appointment.setPatient(null);
+        appointment.setDefaultServiceId(template.getDefaultServiceId());
+        appointment.setDefaultPractitionerId(template.getDefaultPractitionerId());
+        appointment.setBookingMode(bookingMode);
+        appointment.setStatus(AppointmentStatus.NEW);
+        appointment.setDeferred(deferred);
+        appointment.setDeferredAt(deferredAt);
+        appointment.setPriority(EncounterPriority.NORMAL);
+        appointment.setCapacityIndex(capacityIndex);
+        appointment.setReason(null);
+        return appointment;
     }
 
     private LocalDateTime findOverlappingBreakEnd(AvailabilityTemplateInterval interval, LocalDate date, LocalDateTime slotStart, LocalDateTime slotEnd) {
@@ -258,15 +295,15 @@ public class AvailabilityGenerationBatchService {
 
     private void validateTemplateForApply(AvailabilityTemplate template) {
         if (!Boolean.TRUE.equals(template.getIsActive())) {
-            throw new BadRequestAlertException( "templateinactive", "availabilityTemplate","Template is inactive" );
+            throw new BadRequestAlertException("templateinactive", "availabilityTemplate", "Template is inactive");
         }
 
         if (template.getStatus() != TemplateStatus.PUBLISHED) {
-            throw new BadRequestAlertException("templatenotpublished", "availabilityTemplate","Only published template can be applied");
+            throw new BadRequestAlertException("templatenotpublished", "availabilityTemplate", "Only published template can be applied");
         }
 
         if (template.getIntervals() == null || template.getIntervals().isEmpty()) {
-            throw new BadRequestAlertException("templatenointervals", "availabilityTemplate","Template has no intervals");
+            throw new BadRequestAlertException("templatenointervals", "availabilityTemplate", "Template has no intervals");
         }
     }
 
