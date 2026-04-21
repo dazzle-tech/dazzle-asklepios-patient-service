@@ -345,13 +345,24 @@ public class PatientEncounterService {
                         "id.notfound"
                 ));
 
+        if (EncounterStatus.ONGOING.equals(encounter.getStatus())) {
+            throw new BadRequestAlertException(
+                    "Encounter is already ongoing",
+                    "patientEncounter",
+                    "encounter.alreadyOngoing"
+            );
+        }
+
         encounter.setStatus(EncounterStatus.ONGOING);
         encounter.setStartedBy(currentUsername());
         encounter.setStartedDate(Instant.now());
 
         try {
             PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
-            updateAppointmentStatusForEncounter(AppointmentStatus.IN_SERVICE, saved.getAppointment().getId());
+            updateAppointmentStatusForEncounter(
+                    AppointmentStatus.IN_SERVICE,
+                    saved.getAppointment().getId()
+            );
             LOG.info("[START] success id={} status={}", saved.getId(), saved.getStatus());
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -359,7 +370,6 @@ public class PatientEncounterService {
             throw handleConstraintViolation(ex);
         }
     }
-
     public PatientEncounter cancelEncounter(Long encounterId) {
         LOG.info("[CANCEL] PatientEncounter id={}", encounterId);
 
