@@ -6,7 +6,6 @@ import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.dentalProcedure.DentalProcedureCreateDTO;
 import com.dazzle.asklepios.service.dto.dentalProcedure.DentalProcedureUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.vm.DentalProcedure.DentalProcedureResponseVM;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -32,12 +31,12 @@ public class DentalProcedureService {
         this.dentalProcedureRepository = dentalProcedureRepository;
     }
 
-    public DentalProcedureResponseVM create(DentalProcedureCreateDTO dto) {
+    public DentalProcedure create(DentalProcedureCreateDTO dto) {
         LOG.debug("Request to create DentalProcedure : {}", dto);
 
         DentalProcedure entity = DentalProcedure.builder()
-                .patientId(dto.patientId())
-                .encounterId(dto.encounterId())
+                .patient(dto.patientId())
+                .encounter(dto.encounterId())
                 .toothNumber(dto.toothNumber())
                 .surface(dto.surface())
                 .anesthesiaUsed(dto.anesthesiaUsed())
@@ -53,31 +52,29 @@ public class DentalProcedureService {
         try {
             DentalProcedure saved = dentalProcedureRepository.save(entity);
             LOG.debug("Created DentalProcedure: {}", saved);
-            return DentalProcedureResponseVM.ofEntity(saved);
+            return saved;
         } catch (DataIntegrityViolationException | JpaSystemException e) {
             throw handleConstraintViolation(e);
         }
     }
 
     @Transactional(readOnly = true)
-    public Page<DentalProcedureResponseVM> findAllByPatientId(
+    public Page<DentalProcedure> findAllByPatientId(
             Long patientId,
             boolean showCancelled,
             Pageable pageable
     ) {
-        Page<DentalProcedure> page;
         if (showCancelled) {
             LOG.debug("Fetch DentalProcedures with cancelled for patientId={}", patientId);
-            page = dentalProcedureRepository.findByPatientId(patientId, pageable);
+            return dentalProcedureRepository.findByPatientId(patientId, pageable);
         } else {
             LOG.debug("Fetch DentalProcedures without cancelled for patientId={}", patientId);
-            page = dentalProcedureRepository.findByPatientIdAndCancelledFalse(patientId, pageable);
+            return dentalProcedureRepository.findByPatientIdAndCancelledFalse(patientId, pageable);
         }
-        return page.map(DentalProcedureResponseVM::ofEntity);
     }
 
     @Transactional
-    public DentalProcedureResponseVM update(DentalProcedureUpdateDTO dto) {
+    public DentalProcedure update(DentalProcedureUpdateDTO dto) {
         LOG.debug("Request to update DentalProcedure : {}", dto);
 
         DentalProcedure entity = dentalProcedureRepository.findById(dto.id())
@@ -108,14 +105,14 @@ public class DentalProcedureService {
         try {
             DentalProcedure updated = dentalProcedureRepository.saveAndFlush(entity);
             LOG.debug("Updated DentalProcedure: {}", updated);
-            return DentalProcedureResponseVM.ofEntity(updated);
+            return updated;
         } catch (DataIntegrityViolationException | JpaSystemException e) {
             throw handleConstraintViolation(e);
         }
     }
 
     @Transactional
-    public DentalProcedureResponseVM cancel(Long id) {
+    public DentalProcedure cancel(Long id) {
         LOG.debug("Request to cancel DentalProcedure : {}", id);
 
         SecurityUtils.getCurrentUserLogin()
@@ -138,7 +135,7 @@ public class DentalProcedureService {
 
         entity.setCancelled(true);
         LOG.debug("Cancelled DentalProcedure: {}", entity);
-        return DentalProcedureResponseVM.ofEntity(entity);
+        return entity;
     }
 
     private BadRequestAlertException handleConstraintViolation(RuntimeException e) {

@@ -1,8 +1,23 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.ToothNumber;
-import jakarta.persistence.*;
-import lombok.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
@@ -20,11 +35,14 @@ public class DentalProcedure extends AbstractAuditingEntity<Long> implements Ser
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "patient_id", nullable = false)
-    private Long patientId;
+    @NotNull
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "patient_id", nullable = false)
+    private Patient patient;
 
-    @Column(name = "encounter_id", nullable = false)
-    private Long encounterId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "encounter_id", nullable = false)
+    private PatientEncounter encounter;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "tooth_number", nullable = false)
