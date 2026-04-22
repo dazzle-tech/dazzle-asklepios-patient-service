@@ -9,6 +9,10 @@ import java.util.Optional;
 
 public interface PatientAdministrativeWarningsRepository extends JpaRepository<PatientAdministrativeWarnings, Long> {
 
+    @Override
+    @EntityGraph(attributePaths = "patient")
+    Optional<PatientAdministrativeWarnings> findById(Long id);
+
     @EntityGraph(attributePaths = "patient")
     List<PatientAdministrativeWarnings> findByPatientIdAndWarningTypeContainsIgnoreCaseOrPatientIdAndDescriptionContainsIgnoreCase(Long patientId, String warningTypeText, Long patientId2, String descriptionText);
 
