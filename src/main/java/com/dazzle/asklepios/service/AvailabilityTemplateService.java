@@ -159,9 +159,18 @@ public class AvailabilityTemplateService {
     public void hardDelete(Long id) {
         LOG.debug("Request to hard delete AvailabilityTemplate id={}", id);
 
-        if (!availabilityTemplateRepository.existsById(id)) {
-            throw new BadRequestAlertException("Template not found with id " + id, "availabilityTemplate", "notfound");
+        availabilityTemplateRepository.findById(id)
+                .orElseThrow(() -> new BadRequestAlertException("Template not found with id " + id, "availabilityTemplate", "notfound"));
+
+        if (availabilityTemplateRepository.existsByParentTemplate_Id(id) || availabilityTemplateRepository.existsByCopyFromTemplate_Id(id)) {
+            throw new BadRequestAlertException(
+                    "template.has.dependents",
+                    ENTITY_NAME,
+                    "Cannot hard delete a template that is referenced by other templates."
+            );
         }
+
+        availabilityTemplateLogRepository.deleteByTemplateIdOrCopyFromTemplateIdOrParentTemplateId(id, id, id);
         availabilityTemplateAllowedServiceRepository.deleteByTemplate_Id(id);
         availabilityTemplateIntervalRepository.deleteByTemplate_Id(id);
         availabilityTemplateIntervalBreakRepository.deleteByTemplate_Id(id);

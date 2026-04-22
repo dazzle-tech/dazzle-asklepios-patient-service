@@ -10,4 +10,6 @@ import java.util.List;
 public interface AvailabilityTemplateLogRepository extends JpaRepository<AvailabilityTemplateLog, Long> {
 
     List<AvailabilityTemplateLog> findAllByTemplateIdOrderByLogDateDesc(Long templateId);
+
+    void deleteByTemplateIdOrCopyFromTemplateIdOrParentTemplateId(Long templateId, Long copyFromTemplateId, Long parentTemplateId);
 }
