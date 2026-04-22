@@ -56,7 +56,7 @@ public class PatientAdministrativeWarningsService {
 
         PatientAdministrativeWarnings saved = patientAdministrativeWarningsRepository.save(entity);
         LOG.debug("create: saved id={}", saved.getId());
-        return saved;
+        return patientAdministrativeWarningsRepository.findById(saved.getId()).orElseThrow();
     }
 
     /**
@@ -79,7 +79,7 @@ public class PatientAdministrativeWarningsService {
 
         PatientAdministrativeWarnings saved = patientAdministrativeWarningsRepository.save(entity);
         LOG.debug("resolve: saved id={} resolved={}", saved.getId(), saved.getResolved());
-        return saved;
+        return patientAdministrativeWarningsRepository.findById(saved.getId()).orElseThrow();
     }
 
     /**
@@ -101,7 +101,7 @@ public class PatientAdministrativeWarningsService {
 
         PatientAdministrativeWarnings saved = patientAdministrativeWarningsRepository.save(entity);
         LOG.debug("undoResolve: saved id={} resolved={}", saved.getId(), saved.getResolved());
-        return saved;
+        return patientAdministrativeWarningsRepository.findById(saved.getId()).orElseThrow();
     }
 
     /**
