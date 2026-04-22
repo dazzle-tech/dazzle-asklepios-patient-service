@@ -31,6 +31,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -101,17 +102,20 @@ public class AvailabilityGenerationBatchService {
         AvailabilityTemplate template = getTemplate(request.templateId());
         validateTemplateForApply(template);
 
+        LocalDate startDate = request.startDate().atZone(ZoneId.systemDefault()).toLocalDate();
+        LocalDate endDate = request.endDate().atZone(ZoneId.systemDefault()).toLocalDate();
+
         List<OrganizationHolidayDTO> holidays = organizationHolidayHelper.getOrganizationHolidayByDateRange(
                 template.getFacilityId(),
-                request.startDate(),
-                request.endDate()
+                startDate,
+                endDate
         );
 
         AvailabilityGenerationBatch batch = new AvailabilityGenerationBatch();
         batch.setTemplate(template);
         batch.setScope(request.scope());
-        batch.setApplyStartDateTime(toStartOfDayInstant(request.startDate()));
-        batch.setApplyEndDateTime(toEndOfDayInstant(request.endDate()));
+        batch.setApplyStartDateTime(request.startDate());
+        batch.setApplyEndDateTime(request.endDate());
         batch.setExecutionStatus(BatchStatus.PENDING);
         batch.setHolidayHandlingMode(request.holidayHandlingMode());
         batch = availabilityGenerationBatchRepository.save(batch);
@@ -122,7 +126,7 @@ public class AvailabilityGenerationBatchService {
             appointmentFromTemplateRepository.saveAll(generatedAppointments);
 
             int totalSlots = generatedAppointments.size();
-            int days = (int) (request.endDate().toEpochDay() - request.startDate().toEpochDay()) + 1;
+            int days = (int) (endDate.toEpochDay() - startDate.toEpochDay()) + 1;
             int dailyAvg = totalSlots == 0 || days <= 0 ? 0 : totalSlots / days;
 
             batch.setTotalSlots(totalSlots);
@@ -152,35 +156,56 @@ public class AvailabilityGenerationBatchService {
         }
     }
 
-    private List<AppointmentFromTemplate> generateAppointments(AvailabilityTemplate template, AvailabilityGenerationBatch batch, LocalDate startDate, LocalDate endDate, boolean deferred, Instant deferredAt, HolidayHandlingMode holidayHandlingMode, List<OrganizationHolidayDTO> holidays) {
+    private List<AppointmentFromTemplate> generateAppointments(AvailabilityTemplate template, AvailabilityGenerationBatch batch, Instant startDate, Instant endDate, boolean deferred, Instant deferredAt, HolidayHandlingMode holidayHandlingMode, List<OrganizationHolidayDTO> holidays) {
         LOG.info("[GENERATE TEMPLATE] templateId={}, batchId={},startDate={}, endDate={}, deferred={}, deferredAt={}, holidayHandlingMode={}", template.getId(), batch.getId(), startDate, endDate, deferred, deferredAt, holidayHandlingMode);
 
 
         List<AppointmentFromTemplate> appointments = new ArrayList<>();
-
-        LocalDate current = startDate;
+        ZoneId zone = ZoneId.systemDefault();
+        Instant current = startDate;
         while (!current.isAfter(endDate)) {
 
-            boolean holiday = isHoliday(current, holidays);
+            LocalDate currentDate = current.atZone(zone).toLocalDate();
+            boolean holiday = isHoliday(currentDate, holidays);
 
             if (holiday && holidayHandlingMode == HolidayHandlingMode.EXCLUDE_HOLIDAYS) {
-                current = current.plusDays(1);
+                current = current.plus(1, ChronoUnit.DAYS);
                 continue;
             }
 
             for (AvailabilityTemplateInterval interval : template.getIntervals()) {
-                if (!matchesDay(current, interval)) {
+                if (!matchesDay(currentDate, interval)) {
                     continue;
                 }
-                appointments.addAll(generateAppointmentsForInterval(template, batch, current, interval, deferred, deferredAt));
+                appointments.addAll(
+                        generateAppointmentsForInterval(
+                                template,
+                                batch,
+                                current,
+                                startDate,
+                                endDate,
+                                interval,
+                                deferred,
+                                deferredAt
+                        )
+                );
             }
-            current = current.plusDays(1);
+            current = current.plus(1, ChronoUnit.DAYS);
         }
 
         return appointments;
     }
 
-    private List<AppointmentFromTemplate> generateAppointmentsForInterval(AvailabilityTemplate template, AvailabilityGenerationBatch batch, LocalDate date, AvailabilityTemplateInterval interval, boolean deferred, Instant deferredAt) {
+    private List<AppointmentFromTemplate> generateAppointmentsForInterval(
+            AvailabilityTemplate template,
+            AvailabilityGenerationBatch batch,
+            Instant currentDate,
+            Instant applyStart,
+            Instant applyEnd,
+            AvailabilityTemplateInterval interval,
+            boolean deferred,
+            Instant deferredAt
+    ) {
         List<AppointmentFromTemplate> appointments = new ArrayList<>();
 
         int slotDuration = interval.getSlotDurationMinutes() != null
@@ -200,8 +225,31 @@ public class AvailabilityGenerationBatchService {
                 ? template.getParallelCapacityValue()
                 : 1;
 
-        LocalDateTime currentSlotStart = LocalDateTime.of(date, interval.getStartTime());
-        LocalDateTime intervalEnd = LocalDateTime.of(date, interval.getEndTime());
+        ZoneId zone = ZoneId.systemDefault();
+
+        LocalDate currentLocalDate = LocalDateTime.ofInstant(currentDate, zone).toLocalDate();
+        LocalDateTime applyStartDateTime = LocalDateTime.ofInstant(applyStart, zone);
+        LocalDateTime applyEndDateTime = LocalDateTime.ofInstant(applyEnd, zone);
+
+        LocalDateTime intervalStart = LocalDateTime.of(currentLocalDate, interval.getStartTime());
+        LocalDateTime intervalEnd = LocalDateTime.of(currentLocalDate, interval.getEndTime());
+
+        LocalDateTime effectiveStart = intervalStart;
+        LocalDateTime effectiveEnd = intervalEnd;
+
+        if (currentLocalDate.equals(applyStartDateTime.toLocalDate()) && applyStartDateTime.isAfter(effectiveStart)) {
+            effectiveStart = applyStartDateTime;
+        }
+
+        if (currentLocalDate.equals(applyEndDateTime.toLocalDate()) && applyEndDateTime.isBefore(effectiveEnd)) {
+            effectiveEnd = applyEndDateTime;
+        }
+
+        if (!effectiveStart.isBefore(effectiveEnd)) {
+            return appointments;
+        }
+
+        LocalDateTime currentSlotStart = effectiveStart;
 
         while (true) {
             LocalDateTime beforeBufferStart = currentSlotStart.minusMinutes(slotBeforeMinutes);
@@ -213,11 +261,13 @@ public class AvailabilityGenerationBatchService {
             LocalDateTime afterBufferStart = slotEnd;
             LocalDateTime afterBufferEnd = slotEnd.plusMinutes(slotAfterMinutes);
 
-            if (slotEnd.isAfter(intervalEnd)) {
+            if (slotEnd.isAfter(effectiveEnd)) {
                 break;
             }
 
-            LocalDateTime overlappingBreakEnd = findOverlappingBreakEnd(interval, date, slotStart, slotEnd);
+            LocalDateTime overlappingBreakEnd =
+                    findOverlappingBreakEnd(interval, currentLocalDate, slotStart, slotEnd);
+
             if (overlappingBreakEnd != null) {
                 currentSlotStart = overlappingBreakEnd.plusMinutes(slotBeforeMinutes);
                 continue;
@@ -249,6 +299,88 @@ public class AvailabilityGenerationBatchService {
 
         return appointments;
     }
+
+
+//    private List<AppointmentFromTemplate> generateAppointmentsForInterval(AvailabilityTemplate template, AvailabilityGenerationBatch batch, Instant date, AvailabilityTemplateInterval interval, boolean deferred, Instant deferredAt) {
+//        List<AppointmentFromTemplate> appointments = new ArrayList<>();
+//
+//        int slotDuration = interval.getSlotDurationMinutes() != null
+//                ? interval.getSlotDurationMinutes()
+//                : template.getDurationMinutes();
+//
+//        int slotBeforeMinutes = template.getDefaultBufferBeforeMinutes() != null
+//                ? template.getDefaultBufferBeforeMinutes()
+//                : 0;
+//
+//        int slotAfterMinutes = template.getDefaultBufferAfterMinutes() != null
+//                ? template.getDefaultBufferAfterMinutes()
+//                : 0;
+//
+//        int parallelCapacity = template.getParallelCapacityValue() != null
+//                && template.getParallelCapacityValue() > 0
+//                ? template.getParallelCapacityValue()
+//                : 1;
+//
+//        ZoneId zone = ZoneId.systemDefault();
+//
+//        LocalDateTime requestedDateTime = LocalDateTime.ofInstant(date, zone);
+//        LocalDate localDate = requestedDateTime.toLocalDate();
+//
+//
+//
+//        LocalDateTime intervalStart = LocalDateTime.of(localDate, interval.getStartTime());
+//        LocalDateTime intervalEnd = LocalDateTime.of(localDate, interval.getEndTime());
+//
+//        LocalDateTime currentSlotStart = requestedDateTime.isAfter(intervalStart)
+//                ? requestedDateTime
+//                : intervalStart;
+//
+//        while (true) {
+//            LocalDateTime beforeBufferStart = currentSlotStart.minusMinutes(slotBeforeMinutes);
+//            LocalDateTime beforeBufferEnd = currentSlotStart;
+//
+//            LocalDateTime slotStart = currentSlotStart;
+//            LocalDateTime slotEnd = slotStart.plusMinutes(slotDuration);
+//
+//            LocalDateTime afterBufferStart = slotEnd;
+//            LocalDateTime afterBufferEnd = slotEnd.plusMinutes(slotAfterMinutes);
+//
+//            if (slotEnd.isAfter(intervalEnd)) {
+//                break;
+//            }
+//
+//            LocalDateTime overlappingBreakEnd =findOverlappingBreakEnd(interval, localDate, slotStart, slotEnd);
+//            if (overlappingBreakEnd != null) {
+//                currentSlotStart = overlappingBreakEnd.plusMinutes(slotBeforeMinutes);
+//                continue;
+//            }
+//
+//            for (int i = 0; i < parallelCapacity; i++) {
+//                if (slotBeforeMinutes > 0) {
+//                    appointments.add(buildAppointment(
+//                            template, batch, deferred, deferredAt, i + 1,
+//                            beforeBufferStart, beforeBufferEnd, BookingMode.BUFFER
+//                    ));
+//                }
+//
+//                appointments.add(buildAppointment(
+//                        template, batch, deferred, deferredAt, i + 1,
+//                        slotStart, slotEnd, BookingMode.SLOT
+//                ));
+//
+//                if (slotAfterMinutes > 0) {
+//                    appointments.add(buildAppointment(
+//                            template, batch, deferred, deferredAt, i + 1,
+//                            afterBufferStart, afterBufferEnd, BookingMode.BUFFER
+//                    ));
+//                }
+//            }
+//
+//            currentSlotStart = afterBufferEnd.plusMinutes(slotBeforeMinutes);
+//        }
+//
+//        return appointments;
+//    }
 
     private AppointmentFromTemplate buildAppointment(AvailabilityTemplate template, AvailabilityGenerationBatch batch, boolean deferred, Instant deferredAt, int capacityIndex, LocalDateTime start, LocalDateTime end, BookingMode bookingMode) {
         AppointmentFromTemplate appointment = new AppointmentFromTemplate();
