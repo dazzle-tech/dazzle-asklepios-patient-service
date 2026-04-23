@@ -10,8 +10,8 @@ import java.time.LocalDate;
 
 public record AvailabilityGenerationBatchApplyDTO(
         @NotNull Long templateId,
-        @NotNull @FutureOrPresent LocalDate startDate,
-        @NotNull @FutureOrPresent  LocalDate endDate,
+        @NotNull @FutureOrPresent Instant startDate,
+        @NotNull @FutureOrPresent Instant endDate,
         @NotNull Boolean deferred,
         Instant deferredAt,
         @NotNull AvailabilityGenerationScope scope,
