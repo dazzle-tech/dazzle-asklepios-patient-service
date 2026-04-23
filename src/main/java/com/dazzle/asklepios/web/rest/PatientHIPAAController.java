@@ -59,6 +59,6 @@ public class PatientHIPAAController {
 
         return hipaaService.findByPatientId(patientId)
                 .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 }
