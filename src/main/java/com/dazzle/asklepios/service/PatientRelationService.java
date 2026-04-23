@@ -54,9 +54,9 @@ public class PatientRelationService {
         if (sourcePatientId.equals(relatedPatientId)) {
             LOG.warn("Reject create PatientRelation: same patientId={}", sourcePatientId);
             throw new BadRequestAlertException(
-                    "A patient2 cannot be linked to themselves.",
+                    "samePatient",
                     "patientRelation",
-                    "samePatient"
+                    "A patient2 cannot be linked to themselves."
             );
         }
 

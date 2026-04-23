@@ -4,9 +4,9 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientAdministrativeWarnings;
 import com.dazzle.asklepios.repository.PatientAdministrativeWarningsRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patientAdministrativeWarnings.PatientAdministrativeWarningsCreateDTO;
-import com.dazzle.asklepios.service.dto.patientAdministrativeWarnings.PatientAdministrativeWarningsResolveDTO;
-import com.dazzle.asklepios.service.dto.patientAdministrativeWarnings.PatientAdministrativeWarningsUndoResolveDTO;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,19 +62,19 @@ public class PatientAdministrativeWarningsService {
     /**
      * Resolve a warning (set resolved = true, set resolvedBy / resolvedDate).
      */
-    public PatientAdministrativeWarnings resolve(PatientAdministrativeWarningsResolveDTO vm) {
-        LOG.debug("resolve PatientAdministrativeWarnings payload={}", vm);
+    public PatientAdministrativeWarnings resolve(Long id) {
+        LOG.debug("resolve PatientAdministrativeWarnings id={}", id);
 
-        PatientAdministrativeWarnings entity = patientAdministrativeWarningsRepository.findById(vm.id())
+        PatientAdministrativeWarnings entity = patientAdministrativeWarningsRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException(
-                        "PatientAdministrativeWarnings not found: " + vm.id(),
+                        "PatientAdministrativeWarnings not found: " + id,
                         ENTITY_NAME,
                         "notfound"
                 ));
 
         entity.setResolved(true);
-        entity.setResolvedBy(vm.resolvedBy());
-        entity.setResolvedDate(vm.resolvedDate() != null ? vm.resolvedDate() : Instant.now());
+        entity.setResolvedBy(currentUsername());
+        entity.setResolvedDate(Instant.now());
 
 
         PatientAdministrativeWarnings saved = patientAdministrativeWarningsRepository.save(entity);
@@ -85,19 +85,19 @@ public class PatientAdministrativeWarningsService {
     /**
      * Undo resolve (set resolved = false, set undo_resolved_by / undoResolvedDate).
      */
-    public PatientAdministrativeWarnings undoResolve(PatientAdministrativeWarningsUndoResolveDTO vm) {
-        LOG.debug("undoResolve PatientAdministrativeWarnings payload={}", vm);
+    public PatientAdministrativeWarnings undoResolve(Long id) {
+        LOG.debug("undoResolve PatientAdministrativeWarnings id={}", id);
 
-        PatientAdministrativeWarnings entity = patientAdministrativeWarningsRepository.findById(vm.id())
+        PatientAdministrativeWarnings entity = patientAdministrativeWarningsRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException(
-                        "PatientAdministrativeWarnings not found: " + vm.id(),
+                        "PatientAdministrativeWarnings not found: " + id,
                         ENTITY_NAME,
                         "notfound"
                 ));
 
         entity.setResolved(false);
-        entity.setUndoResolvedBy(vm.undoResolvedBy());
-        entity.setUndoResolvedDate(vm.undoResolvedDate() != null ? vm.undoResolvedDate() : Instant.now());
+        entity.setUndoResolvedBy(currentUsername());
+        entity.setUndoResolvedDate(Instant.now());
 
         PatientAdministrativeWarnings saved = patientAdministrativeWarningsRepository.save(entity);
         LOG.debug("undoResolve: saved id={} resolved={}", saved.getId(), saved.getResolved());
@@ -184,6 +184,15 @@ public class PatientAdministrativeWarningsService {
                         "Patient not found: " + patientId,
                         "Patient",
                         "notfound"
+                ));
+    }
+    private String currentUsername() {
+        LOG.debug("[DiagnosticOrder] CURRENT_USER - resolving username");
+        return SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "unauthenticated",
+                        "diagnostic_orders",
+                        "No authenticated user"
                 ));
     }
 }

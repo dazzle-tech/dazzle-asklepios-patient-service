@@ -3,8 +3,6 @@ package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.domain.PatientAdministrativeWarnings;
 import com.dazzle.asklepios.service.PatientAdministrativeWarningsService;
 import com.dazzle.asklepios.service.dto.patientAdministrativeWarnings.PatientAdministrativeWarningsCreateDTO;
-import com.dazzle.asklepios.service.dto.patientAdministrativeWarnings.PatientAdministrativeWarningsResolveDTO;
-import com.dazzle.asklepios.service.dto.patientAdministrativeWarnings.PatientAdministrativeWarningsUndoResolveDTO;
 import com.dazzle.asklepios.web.rest.vm.patientAdministrativeWarnings.PatientAdministrativeWarningsResponseVM;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -62,21 +60,16 @@ public class PatientAdministrativeWarningsController {
      * Resolve a patient administrative warning (set resolved=true).
      *
      * @param id the identifier of the warning to resolve.
-     * @param vm the resolve payload (must have matching id).
      * @return {@link ResponseEntity} with status {@code 200 (OK)} and updated warning,
      *         or {@code 400 (Bad Request)} if id mismatch,
      *         or {@code 404 (Not Found)} if warning does not exist.
      */
     @PatchMapping("/patient-administrative-warnings/{id}/resolve")
     public ResponseEntity<PatientAdministrativeWarningsResponseVM> resolve(
-            @PathVariable Long id,
-            @Valid @RequestBody PatientAdministrativeWarningsResolveDTO vm
-    ) {
-        LOG.debug("REST resolve PatientAdministrativeWarnings id={} payload={}", id, vm);
-        if (vm.id() == null || !id.equals(vm.id())) {
-            return ResponseEntity.badRequest().build();
-        }
-        PatientAdministrativeWarnings updated = patientAdministrativeWarningsService.resolve(vm);
+            @PathVariable Long id) {
+        LOG.debug("REST resolve PatientAdministrativeWarnings id={}", id);
+
+        PatientAdministrativeWarnings updated = patientAdministrativeWarningsService.resolve(id);
         return ResponseEntity.ok(PatientAdministrativeWarningsResponseVM.ofEntity(updated));
     }
 
@@ -85,21 +78,16 @@ public class PatientAdministrativeWarningsController {
      * Undo resolve of a patient administrative warning (set resolved=false).
      *
      * @param id the identifier of the warning to undo resolve.
-     * @param vm the undo resolve payload (must have matching id).
      * @return {@link ResponseEntity} with status {@code 200 (OK)} and updated warning,
      *         or {@code 400 (Bad Request)} if id mismatch,
      *         or {@code 404 (Not Found)} if warning does not exist.
      */
     @PatchMapping("/patient-administrative-warnings/{id}/undo-resolve")
     public ResponseEntity<PatientAdministrativeWarningsResponseVM> undoResolve(
-            @PathVariable Long id,
-            @Valid @RequestBody PatientAdministrativeWarningsUndoResolveDTO vm
+            @PathVariable Long id
     ) {
-        LOG.debug("REST undoResolve PatientAdministrativeWarnings id={} payload={}", id, vm);
-        if (vm.id() == null || !id.equals(vm.id())) {
-            return ResponseEntity.badRequest().build();
-        }
-        PatientAdministrativeWarnings updated = patientAdministrativeWarningsService.undoResolve(vm);
+        LOG.debug("REST undoResolve PatientAdministrativeWarnings id={}", id);
+        PatientAdministrativeWarnings updated = patientAdministrativeWarningsService.undoResolve(id);
         return ResponseEntity.ok(PatientAdministrativeWarningsResponseVM.ofEntity(updated));
     }
 
