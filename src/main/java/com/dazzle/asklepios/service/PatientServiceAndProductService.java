@@ -1,26 +1,29 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
-import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
-import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductUpdateDTO;
+import com.dazzle.asklepios.service.helper.DiagnosticTestHelper;
+import com.dazzle.asklepios.service.helper.ProcedureHelper;
+import com.dazzle.asklepios.service.helper.ServiceHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.util.List;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -32,19 +35,53 @@ public class PatientServiceAndProductService {
     private static final Logger LOG = LoggerFactory.getLogger(PatientServiceAndProductService.class);
 
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
+    private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
+    private final DiagnosticTestHelper diagnosticTestHelper;
+    private final ServiceHelper serviceHelper;
+    private final ProcedureHelper procedureHelper;
 
-    public PatientServiceAndProductService(PatientServiceAndProductRepository patientServiceAndProductRepository) {
+    public PatientServiceAndProductService(PatientServiceAndProductRepository patientServiceAndProductRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository, DiagnosticTestHelper diagnosticTestHelper, ServiceHelper serviceHelper, ProcedureHelper procedureHelper) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
+        this.patientRepository = patientRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
+        this.diagnosticTestHelper = diagnosticTestHelper;
+        this.serviceHelper = serviceHelper;
+        this.procedureHelper = procedureHelper;
     }
 
     public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
 
         LOG.debug("Request to create Patient billing item : {}", dto);
 
+        Patient patient = patientRepository.findById(dto.patientId())
+                .orElseThrow(() ->
+                        new NotFoundAlertException(
+                                "Patient not found with id " + dto.patientId(),
+                                "procedure",
+                                "patient.notfound"
+                        )
+                );
 
+        PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
+                .orElseThrow(() ->
+                        new NotFoundAlertException(
+                                "Encounter not found with id " + dto.encounterId(),
+                                "procedure",
+                                "encounter.notfound"
+                        )
+                );
+        if (dto.diagnosticTestId() != null)
+            diagnosticTestHelper.getDiagnosticTest(dto.diagnosticTestId());
+        if (dto.serviceId() != null)
+            serviceHelper.validateServiceExists(dto.serviceId());
+        if (dto.procedureId() != null)
+            procedureHelper.validateProcedureExists(dto.procedureId());
+
+        //TODO: add validation for brand medication id
         PatientServiceAndProduct entity = PatientServiceAndProduct.builder()
-                .patientId(dto.patientId())
-                .encounterId(dto.encounterId())
+                .patientId(patient.getId())
+                .encounterId(encounter.getId())
                 .billingItemType(dto.billingItemType())
                 .brandMedicationId(dto.brandMedicationId())
                 .diagnosticTestId(dto.diagnosticTestId())
@@ -59,10 +96,6 @@ public class PatientServiceAndProductService {
                 .billingInvoiceItemId(null)
                 .build();
 
-        entity.setCreatedDate(Instant.now());
-        entity.setCreatedBy(getCurrentUser());
-        entity.setLastModifiedDate(Instant.now());
-        entity.setLastModifiedBy(getCurrentUser());
 
         try {
             PatientServiceAndProduct saved = patientServiceAndProductRepository.save(entity);
@@ -75,19 +108,13 @@ public class PatientServiceAndProductService {
     }
 
     @Transactional(readOnly = true)
-    public Page<PatientServiceAndProduct> findAllServicesAndProductsByEncounterId(
-            Pageable pageable,
-            Long encounterId
-    ) {
+    public Page<PatientServiceAndProduct> findAllServicesAndProductsByEncounterId(Pageable pageable, Long encounterId) {
         LOG.debug("Fetch Patient billing items for encounter : {}", encounterId);
         return patientServiceAndProductRepository.findAllByEncounterId(encounterId, pageable);
     }
 
     @Transactional(readOnly = true)
-    public Page<PatientServiceAndProduct> findAllServicesAndProductsByPatientId(
-            Pageable pageable,
-            Long patientId
-    ) {
+    public Page<PatientServiceAndProduct> findAllServicesAndProductsByPatientId(Pageable pageable, Long patientId) {
 
         LOG.debug("Fetch Patient Services & Products for patient : {}", patientId);
 
@@ -108,10 +135,21 @@ public class PatientServiceAndProductService {
                 ));
 
         entity.setBillingItemType(dto.billingItemType());
+        //TODO: add validation for brand medication id
+
         entity.setBrandMedicationId(dto.brandMedicationId());
-        entity.setDiagnosticTestId(dto.diagnosticTestId());
-        entity.setServiceId(dto.serviceId());
-        entity.setProcedureId(dto.procedureId());
+        if (dto.diagnosticTestId() != null) {
+            diagnosticTestHelper.getDiagnosticTest(dto.diagnosticTestId());
+            entity.setDiagnosticTestId(dto.diagnosticTestId());
+        }
+        if (dto.serviceId() != null) {
+            serviceHelper.validateServiceExists(dto.serviceId());
+            entity.setServiceId(dto.serviceId());
+        }
+        if (dto.procedureId() != null) {
+            procedureHelper.validateProcedureExists(dto.procedureId());
+            entity.setProcedureId(dto.procedureId());
+        }
         entity.setQuantity(dto.quantity());
         entity.setUnitPrice(dto.unitPrice());
         entity.setDiscountAmount(defaultZero(dto.discountAmount()));
@@ -126,9 +164,6 @@ public class PatientServiceAndProductService {
         entity.setBillingInvoiceId(dto.billingInvoiceId());
         entity.setBillingInvoiceItemId(dto.billingInvoiceItemId());
 
-        entity.setLastModifiedBy(getCurrentUser());
-        entity.setLastModifiedDate(Instant.now());
-
         try {
             PatientServiceAndProduct updated = patientServiceAndProductRepository.saveAndFlush(entity);
             LOG.debug("Updated Patient billing item : {}", updated);
@@ -138,6 +173,7 @@ public class PatientServiceAndProductService {
             throw handleConstraintViolation(ex);
         }
     }
+
     @Transactional
     public List<PatientServiceAndProduct> createBulk(List<PatientServiceProductCreateDTO> dtos) {
 
@@ -155,9 +191,42 @@ public class PatientServiceAndProductService {
 
             List<PatientServiceAndProduct> entities = dtos.stream()
                     .map(dto -> {
-                        PatientServiceAndProduct entity = PatientServiceAndProduct.builder()
-                                .patientId(dto.patientId())
-                                .encounterId(dto.encounterId())
+
+                        Patient patient = patientRepository.findById(dto.patientId())
+                                .orElseThrow(() ->
+                                        new NotFoundAlertException(
+                                                "Patient not found with id " + dto.patientId(),
+                                                "procedure",
+                                                "patient.notfound"
+                                        )
+                                );
+
+                        PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
+                                .orElseThrow(() ->
+                                        new NotFoundAlertException(
+                                                "Encounter not found with id " + dto.encounterId(),
+                                                "procedure",
+                                                "encounter.notfound"
+                                        )
+                                );
+
+                        if (dto.diagnosticTestId() != null) {
+                            diagnosticTestHelper.getDiagnosticTest(dto.diagnosticTestId());
+                        }
+
+                        if (dto.serviceId() != null) {
+                            serviceHelper.validateServiceExists(dto.serviceId());
+                        }
+
+                        if (dto.procedureId() != null) {
+                            procedureHelper.validateProcedureExists(dto.procedureId());
+                        }
+
+                        // TODO: add validation for brand medication id
+
+                        return PatientServiceAndProduct.builder()
+                                .patientId(patient.getId())
+                                .encounterId(encounter.getId())
                                 .billingItemType(dto.billingItemType())
                                 .brandMedicationId(dto.brandMedicationId())
                                 .diagnosticTestId(dto.diagnosticTestId())
@@ -173,7 +242,6 @@ public class PatientServiceAndProductService {
                                 .billingInvoiceId(null)
                                 .billingInvoiceItemId(null)
                                 .build();
-                        return entity;
                     })
                     .toList();
 
@@ -187,6 +255,7 @@ public class PatientServiceAndProductService {
             throw handleConstraintViolation(ex);
         }
     }
+
     @Transactional
     public void remove(Long id) {
 
@@ -280,6 +349,7 @@ public class PatientServiceAndProductService {
                 "Database constraint violated while saving patient billing item"
         );
     }
+
     @Transactional(readOnly = true)
     public Page<PatientServiceAndProduct> findAllServicesAndProductsByEncounterIdAndSource(
             Pageable pageable,
@@ -301,12 +371,5 @@ public class PatientServiceAndProductService {
                         sourceId,
                         pageable
                 );
-    }
-    private String getCurrentUser() {
-        return SecurityUtils.getCurrentUserLogin()
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.UNAUTHORIZED,
-                        "User not authenticated."
-                ));
     }
 }
