@@ -10,6 +10,7 @@ import com.dazzle.asklepios.repository.TelephonicConsultationRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.telephonicconsultation.TelephonicConsultationCreateDTO;
 import com.dazzle.asklepios.service.dto.telephonicconsultation.TelephonicConsultationUpdateDTO;
+import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.EntityManager;
@@ -36,6 +37,7 @@ public class TelephonicConsultationService {
     private final TelephonicConsultationRepository repository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final PractitionerHelper practitionerHelper;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -43,11 +45,12 @@ public class TelephonicConsultationService {
     public TelephonicConsultationService(
             TelephonicConsultationRepository repository,
             PatientRepository patientRepository,
-            PatientEncounterRepository patientEncounterRepository
-    ) {
+            PatientEncounterRepository patientEncounterRepository,
+            PractitionerHelper practitionerHelper) {
         this.repository = repository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
+        this.practitionerHelper = practitionerHelper;
     }
 
     private String currentUsername() {
@@ -82,6 +85,8 @@ public class TelephonicConsultationService {
                                 "encounter.notfound"
                         )
                 );
+        practitionerHelper.validatePractitionerExists(dto.practitionerId());
+
         TelephonicConsultation entity = TelephonicConsultation.builder()
                 .patient(patient)
                 .encounter(encounter)
@@ -91,7 +96,7 @@ public class TelephonicConsultationService {
                 .approvalNumber(dto.approvalNumber())
                 .notes(dto.notes())
                 .extraDocumentation(dto.extraDocumentation())
-                .status(dto.status() != null ? dto.status() : DiagnosticStatus.NEW)                .build();
+                .status(dto.status() != null ? dto.status() : DiagnosticStatus.NEW).build();
 
         try {
             TelephonicConsultation saved = repository.saveAndFlush(entity);
@@ -126,6 +131,7 @@ public class TelephonicConsultationService {
                     "already.cancelled"
             );
         }
+        practitionerHelper.validatePractitionerExists(dto.practitionerId());
 
         existing.setPractitionerId(dto.practitionerId());
         existing.setDateOfCall(dto.dateOfCall());

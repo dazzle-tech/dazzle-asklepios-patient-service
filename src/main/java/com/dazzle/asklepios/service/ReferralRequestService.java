@@ -11,6 +11,8 @@ import com.dazzle.asklepios.repository.ReferralRequestRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.referralRequest.ReferralRequestCreateDTO;
 import com.dazzle.asklepios.service.dto.referralRequest.ReferralRequestUpdateDTO;
+import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +39,8 @@ public class ReferralRequestService {
     private final ReferralRequestRepository referralRequestRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final FacilityHelper facilityHelper;
+    private final DepartmentHelper departmentHelper;
 
     public ReferralRequest createReferralRequest(ReferralRequestCreateDTO createDto) {
         LOG.info("[CREATE] ReferralRequest payload={}", createDto);
@@ -49,6 +53,10 @@ public class ReferralRequestService {
                 ));
 
         PatientEncounter encounter = findEncounterByIdOrThrow(createDto.encounterId(), "CREATE");
+        facilityHelper.validateFacilityExists(createDto.fromFacilityId());
+        facilityHelper.validateFacilityExists(createDto.toFacilityId());
+        departmentHelper.validateDepartmentExists(createDto.fromDepartmentId());
+        departmentHelper.validateDepartmentExists(createDto.toDepartmentId());
 
         ReferralRequest referralRequest = ReferralRequest.builder()
                 .patient(patient)
@@ -86,6 +94,11 @@ public class ReferralRequestService {
                     ));
 
             PatientEncounter encounter = findEncounterByIdOrThrow(updateDto.encounterId(), "UPDATE");
+
+            facilityHelper.validateFacilityExists(updateDto.fromFacilityId());
+            facilityHelper.validateFacilityExists(updateDto.toFacilityId());
+            departmentHelper.validateDepartmentExists(updateDto.fromDepartmentId());
+            departmentHelper.validateDepartmentExists(updateDto.toDepartmentId());
 
             existingReferralRequest.setPatient(patient);
             existingReferralRequest.setEncounter(encounter);
