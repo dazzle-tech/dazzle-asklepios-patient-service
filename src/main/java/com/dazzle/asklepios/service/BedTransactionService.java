@@ -9,7 +9,9 @@ import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.bedTransaction.BedTransactionCreateDTO;
 import com.dazzle.asklepios.service.dto.bedTransaction.BedTransactionUpdateDTO;
+import com.dazzle.asklepios.service.helper.BedHelper;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.RoomHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -33,10 +35,14 @@ public class BedTransactionService {
 
     private static final Logger LOG = LoggerFactory.getLogger(BedTransactionService.class);
 
+    private static final String ENTITY_NAME = "BedTransaction";
+
     private final BedTransactionRepository bedTransactionRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientRepository patientRepository;
     private final DepartmentHelper departmentHelper;
+    private final RoomHelper roomHelper;
+    private final BedHelper bedHelper;
 
     public BedTransaction create(BedTransactionCreateDTO createDTO) {
         LOG.info("[CREATE] BedTransaction payload={}", createDTO);
@@ -60,9 +66,13 @@ public class BedTransactionService {
                             "patient.notfound"
                     );
                 });
-        //TODO: add validation for room and bed ids from setup
+        bedHelper.validateBedExists(createDTO.fromBedId());
+        bedHelper.validateBedExists(createDTO.toBedId());
+        roomHelper.validateRoomExists(createDTO.fromRoomId());
+        roomHelper.validateRoomExists(createDTO.toRoomId());
         departmentHelper.validateDepartmentExists(createDTO.fromDepartmentId());
         departmentHelper.validateDepartmentExists(createDTO.toDepartmentId());
+
 
         validatePatientMatchesEncounter(patientEncounter, patient);
         validateTransactionDirection(
@@ -156,7 +166,10 @@ public class BedTransactionService {
                             "patient.notfound"
                     );
                 });
-        //TODO: add validation for room and bed ids from setup
+        bedHelper.validateBedExists(updateDTO.fromBedId());
+        bedHelper.validateBedExists(updateDTO.toBedId());
+        roomHelper.validateRoomExists(updateDTO.fromRoomId());
+        roomHelper.validateRoomExists(updateDTO.toRoomId());
         departmentHelper.validateDepartmentExists(updateDTO.fromDepartmentId());
         departmentHelper.validateDepartmentExists(updateDTO.toDepartmentId());
 
