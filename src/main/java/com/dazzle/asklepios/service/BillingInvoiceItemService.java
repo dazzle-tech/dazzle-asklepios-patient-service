@@ -46,6 +46,7 @@ public class BillingInvoiceItemService {
                         "billingInvoice",
                         "notfound"
                 ));
+        //TODO: add validation for nurseServiceProductId from setup service
 
         BillingInvoiceItem item = BillingInvoiceItem.builder()
                 .invoice(invoice)

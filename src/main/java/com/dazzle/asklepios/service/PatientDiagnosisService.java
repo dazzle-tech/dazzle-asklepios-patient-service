@@ -2,8 +2,10 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDiagnosis;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.DiagnosisType;
 import com.dazzle.asklepios.repository.PatientDiagnosisRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.patientDiagnosis.PatientDiagnosisCreateDTO;
 import com.dazzle.asklepios.service.dto.patientDiagnosis.PatientDiagnosisUpdateDTO;
@@ -32,13 +34,15 @@ public class PatientDiagnosisService {
 
     private final PatientDiagnosisRepository patientDiagnosisRepository;
     private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
 
     public PatientDiagnosisService(
             PatientDiagnosisRepository patientDiagnosisRepository,
-            PatientRepository patientRepository
-    ) {
+            PatientRepository patientRepository,
+            PatientEncounterRepository patientEncounterRepository) {
         this.patientDiagnosisRepository = patientDiagnosisRepository;
         this.patientRepository = patientRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
     }
 
     public PatientDiagnosis create(PatientDiagnosisCreateDTO dto) {
@@ -51,9 +55,16 @@ public class PatientDiagnosisService {
                         "notfound"
                 ));
 
+        PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Encounter not found with id " + dto.encounterId(),
+                        "painAssessment",
+                        "encounter.notfound"
+                ));
+        //TODO: diagnosisId validation from setup service
         PatientDiagnosis entity = PatientDiagnosis.builder()
                 .patient(patient)
-                .encounterId(dto.encounterId())
+                .encounterId(encounter.getId())
                 .diagnosisId(dto.diagnosisId())
                 .type(dto.type())
                 .suspected(dto.suspected())
@@ -89,9 +100,15 @@ public class PatientDiagnosisService {
                         "patient",
                         "notfound"
                 ));
+        PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Encounter not found with id " + dto.encounterId(),
+                        "painAssessment",
+                        "encounter.notfound"
+                ));
 
         existing.setPatient(patient);
-        existing.setEncounterId(dto.encounterId());
+        existing.setEncounterId(encounter.getId());
         existing.setDiagnosisId(dto.diagnosisId());
         existing.setType(dto.type());
         existing.setSuspected(dto.suspected());
@@ -136,6 +153,7 @@ public class PatientDiagnosisService {
         LOG.debug("[GET_DIAGNOSIS_BY_ENCOUNTER] encounterId={}", encounterId);
         return patientDiagnosisRepository.findByEncounterId(encounterId);
     }
+
     @Transactional(readOnly = true)
     public PatientDiagnosis getPrimaryDiagnosisByEncounterId(Long encounterId) {
         LOG.debug("[GET_PRIMARY_DIAGNOSIS_BY_ENCOUNTER] encounterId={}", encounterId);
@@ -148,6 +166,7 @@ public class PatientDiagnosisService {
                         "notfound"
                 ));
     }
+
     public void hardDelete(Long id) {
         LOG.warn("[HARD_DELETE] Request to permanently delete PatientDiagnosis id={}", id);
 
@@ -217,6 +236,7 @@ public class PatientDiagnosisService {
                 "db.constraint"
         );
     }
+
     @Transactional(readOnly = true)
     public boolean existsByEncounterId(Long encounterId) {
         LOG.debug("[EXISTS CHECK] encounterId={}", encounterId);

@@ -1,15 +1,20 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientAllergies;
 import com.dazzle.asklepios.domain.PatientAllergiesActiveIngredient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.AllergenTypes;
 import com.dazzle.asklepios.domain.enumeration.PatientAllergyStatus;
 import com.dazzle.asklepios.repository.PatientAllergiesActiveIngredientsRepository;
 import com.dazzle.asklepios.repository.PatientAllergiesRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.PatientAllergiesCreateDTO;
 import com.dazzle.asklepios.service.dto.PatientAllergiesUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.PatientAllergies.PatientAllergiesResponseVM;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,10 +41,14 @@ public class PatientAllergiesService {
     private static final Logger LOG = LoggerFactory.getLogger(PatientAllergiesService.class);
     private final PatientAllergiesRepository patientAllergiesRepository;
     private final PatientAllergiesActiveIngredientsRepository patientAllergiesActiveIngredientRepository;
+    private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
 
-    public PatientAllergiesService(PatientAllergiesRepository patientAllergiesRepository, PatientAllergiesActiveIngredientsRepository patientAllergiesActiveIngredientRepository) {
+    public PatientAllergiesService(PatientAllergiesRepository patientAllergiesRepository, PatientAllergiesActiveIngredientsRepository patientAllergiesActiveIngredientRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository) {
         this.patientAllergiesRepository = patientAllergiesRepository;
         this.patientAllergiesActiveIngredientRepository = patientAllergiesActiveIngredientRepository;
+        this.patientRepository = patientRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
     }
 
     public PatientAllergies create(PatientAllergiesCreateDTO patientAllergyCreateDto) {
@@ -134,9 +143,22 @@ public class PatientAllergiesService {
                     "source of Information is required"
             );
         }
+        Patient patient = patientRepository.findById(patientAllergyCreateDto.patientId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found with id " + patientAllergyCreateDto.patientId(),
+                        "painAssessment",
+                        "patient.notfound"
+                ));
+        PatientEncounter encounter = patientEncounterRepository.findById(patientAllergyCreateDto.encounterId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Encounter not found with id " + patientAllergyCreateDto.encounterId(),
+                        "painAssessment",
+                        "encounter.notfound"
+                ));
+        //TODO: allergen id, medicationClassId validation from setup service
         PatientAllergies entity = PatientAllergies.builder()
-                .patientId(patientAllergyCreateDto.patientId())
-                .encounterId(patientAllergyCreateDto.encounterId())
+                .patientId(patient.getId())
+                .encounterId(encounter.getId())
                 .allergenType(patientAllergyCreateDto.allergenType())
                 .allergenId(patientAllergyCreateDto.allergenId())
                 .severity(patientAllergyCreateDto.severity())

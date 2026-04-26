@@ -42,8 +42,7 @@ public class AdditionalMeasurementsService {
         Patient patient = loadPatient(dto.patientId());
 
         try {
-            // ✅ FIX: save the deactivated record first, flush it, THEN create the new one
-            // This avoids any constraint timing issue between the two operations
+            //TODO: add validation for encounter id
             resetIsActiveForEncounterToday(dto.encounterId());
 
             AdditionalMeasurements entity = AdditionalMeasurements.builder()
@@ -57,7 +56,6 @@ public class AdditionalMeasurementsService {
                     .pupilResponse(dto.pupilResponse())
                     .abilityToFollowTarget(dto.abilityToFollowTarget())
                     .colorTesting(dto.colorTesting())
-                    // ✅ FIX: always force isActive=true on create regardless of DTO value
                     .isActive(true)
                     .build();
 
@@ -74,7 +72,7 @@ public class AdditionalMeasurementsService {
 
         return additionalMeasurementsRepository.findById(targetId).map(entity -> {
             Patient patient = loadPatient(dto.patientId());
-
+            //TODO: add validation for encounter id
             entity.setPatient(patient);
             entity.setEncounterId(dto.encounterId());
             entity.setAgeGroup(dto.ageGroup());
@@ -99,9 +97,9 @@ public class AdditionalMeasurementsService {
         LOG.info("[CREATE_GERIATRIC] AdditionalMeasurements payload={}", dto);
 
         Patient patient = loadPatient(dto.patientId());
+        //TODO: add validation for encounter id
 
         try {
-            // ✅ FIX: same as infant — reset first, flush, then create
             resetIsActiveForEncounterToday(dto.encounterId());
 
             AdditionalMeasurements entity = AdditionalMeasurements.builder()
@@ -113,7 +111,6 @@ public class AdditionalMeasurementsService {
                     .hearingProblemsAffectingFunction(dto.hearingProblemsAffectingFunction())
                     .details(dto.details())
                     .actionToTake(dto.actionToTake())
-                    // ✅ FIX: always force isActive=true on create regardless of DTO value
                     .isActive(true)
                     .build();
 
@@ -130,6 +127,7 @@ public class AdditionalMeasurementsService {
 
         return additionalMeasurementsRepository.findById(targetId).map(entity -> {
             Patient patient = loadPatient(dto.patientId());
+            //TODO: add validation for encounter id
 
             entity.setPatient(patient);
             entity.setEncounterId(dto.encounterId());

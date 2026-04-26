@@ -43,7 +43,7 @@ public class CurrentMedicationService {
         LOG.info("[CREATE] CurrentMedication dto={}", dto);
 
         Patient patient = getPatientOrThrow(dto.patientId());
-
+// TODO: add validation for active ingredient id from setup service
         CurrentMedication entity = CurrentMedication.builder()
                 .patient(patient)
                 .activeIngredientId(dto.activeIngredientId())
@@ -75,6 +75,8 @@ public class CurrentMedicationService {
                         "currentMedication",
                         "notfound"
                 ));
+        // TODO: add validation for active ingredient id from setup service
+
 
         Patient patient = getPatientOrThrow(dto.patientId());
 

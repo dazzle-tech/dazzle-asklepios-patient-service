@@ -3,6 +3,7 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
 import com.dazzle.asklepios.domain.enumeration.DocumentType;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.patientDocuments.PatientDocumentCreateDTO;
 import com.dazzle.asklepios.service.dto.patientDocuments.PatientDocumentUpdateDTO;
 import com.dazzle.asklepios.service.dto.patientDocuments.PatientNoDocumentCreateDTO;
@@ -28,19 +29,21 @@ public class PatientDocumentService {
     private static final Logger LOG = LoggerFactory.getLogger(PatientDocumentService.class);
 
     private final PatientDocumentRepository patientDocumentRepository;
+    private final PatientRepository patientRepository;
 
     @PersistenceContext
     private EntityManager entityManager;
 
     public PatientDocumentService(
-            PatientDocumentRepository patientDocumentRepository
-    ) {
+            PatientDocumentRepository patientDocumentRepository,
+            PatientRepository patientRepository) {
         this.patientDocumentRepository = patientDocumentRepository;
+        this.patientRepository = patientRepository;
     }
 
     public PatientDocument create(PatientDocumentCreateDTO dto) {
         LOG.info("[CREATE] Request to create PatientDocument payload={}", dto);
-
+//TODO: country id validation from setup service
         PatientDocument entity = PatientDocument.builder()
                 .patient(refPatient(dto.patientId()))
                 .countryId(dto.countryId())
@@ -65,6 +68,7 @@ public class PatientDocumentService {
 
     public PatientDocument createNoDocument(PatientNoDocumentCreateDTO dto) {
         LOG.info("[CREATE NO_DOCUMENT] Request payload={}", dto);
+//TODO: country id validation from setup service
 
         PatientDocument entity = PatientDocument.builder()
                 .patient(refPatient(dto.patientId()))
@@ -145,7 +149,12 @@ public class PatientDocumentService {
     }
 
     private Patient refPatient(Long patientId) {
-        return entityManager.getReference(Patient.class, patientId);
+        return patientRepository.findById(patientId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found with id " + patientId,
+                        "patient",
+                        "notfound"
+                ));
     }
 
     private RuntimeException handleConstraintViolation(Exception exception) {

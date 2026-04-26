@@ -18,9 +18,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -46,7 +44,7 @@ public class NormalRangeMatcherService {
      * - age: null bounds/units => not restricted; otherwise patient age must fall within bounds
      * - condition: null => general; otherwise must match patient condition (if applicable)
      * Selection:
-     *
+     * <p>
      * - prefer more specific records (gender specified, age specified, condition specified)
      * - tie-breaker: narrower age window (if both specified), then smallest id
      */
@@ -67,6 +65,7 @@ public class NormalRangeMatcherService {
 
         return getBestNormalRangeMatchForPatient(candidates, patient).orElse(null);
     }
+
     private int ageSpecificityScore(NormalRangeMatchDTO normalRange) {
         boolean hasFrom = normalRange.ageFrom() != null;
         boolean hasTo = normalRange.ageTo() != null;
@@ -75,6 +74,7 @@ public class NormalRangeMatcherService {
         if (hasFrom || hasTo) return 1;
         return 0;
     }
+
     private Optional<NormalRangeMatchDTO> getBestNormalRangeMatchForPatient(List<NormalRangeMatchDTO> candidates, Patient patient) {
         String patientGender = toGenderString(patient.getSexAtBirth());
         LocalDate patientDateOfBirth = patient.getDateOfBirth();
@@ -91,6 +91,7 @@ public class NormalRangeMatcherService {
                 )
                 .findFirst();
     }
+
     private boolean matchesGender(NormalRangeMatchDTO normalRange, String patientGender) {
         if (normalRange.gender() == null || normalRange.gender().isBlank()) {
             return true;
@@ -116,6 +117,7 @@ public class NormalRangeMatcherService {
 
         return isPatientWithinAgeRange(patientDateOfBirth, normalRange, Instant.now());
     }
+
     /**
      * Placeholder: patient domain does not include condition currently.
      * If you later add condition on Patient, implement strict comparison here.
@@ -206,14 +208,10 @@ public class NormalRangeMatcherService {
 
         return result;
     }
+
     private String toGenderString(Gender gender) {
         if (gender == null) return null;
         return gender.name().toLowerCase(Locale.ROOT);
-    }
-
-    private LocalDate toLocalDate(Date date) {
-        if (date == null) return null;
-        return date.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
     }
 
     public static TestResultMarker calculateMarker(
@@ -295,6 +293,7 @@ public class NormalRangeMatcherService {
             }
         };
     }
+
     private static TestResultMarker calculateLov(String resultValueText, NormalRangeMatchDTO normalRange) {
         if (resultValueText == null || resultValueText.isBlank()) {
             throw new BadRequestAlertException(
