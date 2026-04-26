@@ -646,9 +646,9 @@ public class PatientEncounterService {
 
         if (messageLower.contains("unique_patient_department_date_encounter")) {
             return new BadRequestAlertException(
-                    "This patient already has an encounter for this department on this date.",
+                    "patient.department.date.duplicate",
                     "patientEncounter",
-                    "patient.department.date.duplicate"
+                    "This patient already has an encounter for this department on this date."
             );
         }
 
