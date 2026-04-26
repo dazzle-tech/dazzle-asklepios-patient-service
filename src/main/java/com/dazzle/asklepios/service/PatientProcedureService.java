@@ -8,6 +8,7 @@ import com.dazzle.asklepios.domain.PatientProcedure;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.ProcStatus;
+import com.dazzle.asklepios.domain.enumeration.ProcedureLevel;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientProcedureRepository;
@@ -141,6 +142,14 @@ public class PatientProcedureService {
                         "notfound"
                 ));
 
+        procedureEntity.setProcedureId(procedureUpdateDTO.procedureId());
+        procedureEntity.setProcedureLevel(
+                procedureUpdateDTO.procedureLevel() != null
+                        ? ProcedureLevel.valueOf(procedureUpdateDTO.procedureLevel())
+                        : null
+        );
+        procedureEntity.setPriority(procedureUpdateDTO.priority());
+        procedureEntity.setBodyPart(procedureUpdateDTO.bodyPart());
         procedureEntity.setSide(procedureUpdateDTO.side());
         procedureEntity.setIndicationId(procedureUpdateDTO.indicationId());
         procedureEntity.setToFacilityId(procedureUpdateDTO.toFacilityId());
