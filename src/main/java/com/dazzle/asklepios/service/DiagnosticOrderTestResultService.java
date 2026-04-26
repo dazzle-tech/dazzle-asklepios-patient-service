@@ -1,6 +1,6 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.setup.SetupServiceClient;
+import com.dazzle.asklepios.client.setup.DiagnosticTestProfileClient;
 import com.dazzle.asklepios.client.setup.dto.NormalRangeMatchDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
@@ -44,9 +44,9 @@ public class DiagnosticOrderTestResultService {
     private final DiagnosticOrderTestRepository orderTestRepository;
     private final DiagnosticOrderRepository orderRepository;
     private final LabResultLogRepository labResultLogRepository;
-    private final SetupServiceClient setupServiceClient;
     private final NormalRangeMatcherService normalRangeMatcherService;
     private final DiagnosticOrderTestResultTechnicianNoteRepository diagnosticOrderTestResultTechnicianNoteRepository;
+    private final DiagnosticTestProfileClient diagnosticTestProfileClient;
 
     public DiagnosticOrderTestResultService(
             DiagnosticOrderTestResultRepository repository,
@@ -54,18 +54,17 @@ public class DiagnosticOrderTestResultService {
             DiagnosticOrderTestRepository orderTestRepository,
             DiagnosticOrderRepository orderRepository,
             LabResultLogRepository labResultLogRepository,
-            SetupServiceClient setupServiceClient,
             NormalRangeMatcherService normalRangeMatcherService,
-            DiagnosticOrderTestResultTechnicianNoteRepository diagnosticOrderTestResultTechnicianNoteRepository
-    ) {
+            DiagnosticOrderTestResultTechnicianNoteRepository diagnosticOrderTestResultTechnicianNoteRepository,
+            DiagnosticTestProfileClient diagnosticTestProfileClient) {
         this.diagnosticOrderTestResultRepository = repository;
         this.orderTestResultStatusService = statusService;
         this.orderTestRepository = orderTestRepository;
         this.orderRepository = orderRepository;
         this.labResultLogRepository = labResultLogRepository;
-        this.setupServiceClient = setupServiceClient;
         this.normalRangeMatcherService = normalRangeMatcherService;
         this.diagnosticOrderTestResultTechnicianNoteRepository = diagnosticOrderTestResultTechnicianNoteRepository;
+        this.diagnosticTestProfileClient = diagnosticTestProfileClient;
     }
 
     /**
@@ -145,8 +144,7 @@ public class DiagnosticOrderTestResultService {
 
         TestResultType resultType;
         try {
-            resultType = setupServiceClient
-                    .getResultTypeByProfileTestIdInternal(result.getProfileTestId());
+            resultType = diagnosticTestProfileClient.getResultTypeByProfileTestIdInternal(result.getProfileTestId());
         } catch (Exception e) {
             throw new BadRequestAlertException(
                     "setup_service_error",
@@ -182,7 +180,7 @@ public class DiagnosticOrderTestResultService {
     /**
      * Bulk approve results using the same business logic as single approve.
      *
-     * @param resultIds list of result ids
+     * @param resultIds  list of result ids
      * @param approvedBy current username
      */
     public void bulkApproveResults(List<Long> resultIds, String approvedBy) {
@@ -216,7 +214,7 @@ public class DiagnosticOrderTestResultService {
             TestResultType resultType = null;
 
             try {
-                resultType = setupServiceClient
+                resultType = diagnosticTestProfileClient
                         .getResultTypeByProfileTestIdInternal(
                                 result.getProfileTestId()
                         );

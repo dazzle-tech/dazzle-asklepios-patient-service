@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.setup.SetupServiceClient;
+import com.dazzle.asklepios.client.setup.DiagnosticTestClient;
+import com.dazzle.asklepios.client.setup.DiagnosticTestProfileClient;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
@@ -61,7 +62,8 @@ public class DiagnosticOrderTestResultStatusService {
     /**
      * Setup service client used to fetch expected profile tests for a test.
      */
-    private final SetupServiceClient setupServiceClient;
+    private final DiagnosticTestClient diagnosticTestClient;
+    private final DiagnosticTestProfileClient diagnosticTestProfileClient;
 
     public DiagnosticOrderTestResultStatusService(
             DiagnosticOrderTestResultRepository resultRepository,
@@ -69,14 +71,14 @@ public class DiagnosticOrderTestResultStatusService {
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
             DiagnosticOrderStatusService diagnosticOrderStatusService,
             NormalRangeMatcherService normalRangeMatcherService,
-            SetupServiceClient setupServiceClient
-    ) {
+            DiagnosticTestClient diagnosticTestClient, DiagnosticTestProfileClient diagnosticTestProfileClient) {
         this.resultRepository = resultRepository;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
         this.normalRangeMatcherService = normalRangeMatcherService;
-        this.setupServiceClient = setupServiceClient;
+        this.diagnosticTestClient = diagnosticTestClient;
+        this.diagnosticTestProfileClient = diagnosticTestProfileClient;
     }
 
     /**
@@ -144,8 +146,8 @@ public class DiagnosticOrderTestResultStatusService {
      *
      * <p>Applies the same workflow as {@link #reject(RejectResultDTO)} for each result id.</p>
      *
-     * @param resultIds list of result ids
-     * @param rejectedBy current username
+     * @param resultIds      list of result ids
+     * @param rejectedBy     current username
      * @param rejectedReason rejection reason
      */
     public void bulkReject(List<Long> resultIds, String rejectedBy, String rejectedReason) {
@@ -223,7 +225,7 @@ public class DiagnosticOrderTestResultStatusService {
                 ));
 
         List<Long> expectedProfileTestIds =
-                setupServiceClient.getTestProfilesIdsByTestId(orderTest.getTestId());
+                diagnosticTestProfileClient.getTestProfilesIdsByTestId(orderTest.getTestId());
 
         if (expectedProfileTestIds == null || expectedProfileTestIds.isEmpty()) {
             LOG.debug("[TestRecompute] skip no expected profiles orderTestId={} testId={}",

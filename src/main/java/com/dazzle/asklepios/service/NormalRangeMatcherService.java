@@ -1,6 +1,6 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.setup.SetupServiceClient;
+import com.dazzle.asklepios.client.setup.DiagnosticTestNormalRangeClient;
 import com.dazzle.asklepios.client.setup.dto.NormalRangeMatchDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.AgeUnit;
@@ -28,12 +28,12 @@ import java.util.Optional;
 @Transactional
 public class NormalRangeMatcherService {
 
-    private final SetupServiceClient setupServiceClient;
     private final PatientRepository patientRepository;
+    private final DiagnosticTestNormalRangeClient diagnosticTestNormalRangeClient;
 
-    public NormalRangeMatcherService(SetupServiceClient setupServiceClient, PatientRepository patientRepository) {
-        this.setupServiceClient = setupServiceClient;
+    public NormalRangeMatcherService(PatientRepository patientRepository, DiagnosticTestNormalRangeClient diagnosticTestNormalRangeClient) {
         this.patientRepository = patientRepository;
+        this.diagnosticTestNormalRangeClient = diagnosticTestNormalRangeClient;
     }
 
     /**
@@ -50,7 +50,7 @@ public class NormalRangeMatcherService {
      */
     public NormalRangeMatchDTO findBestNormalRange(Long profileTestId, Long patientId) {
         List<NormalRangeMatchDTO> candidates =
-                setupServiceClient.findAllByProfileTestIdInternal(profileTestId);
+                diagnosticTestNormalRangeClient.findAllByProfileTestIdInternal(profileTestId);
 
         if (candidates == null || candidates.isEmpty()) {
             return null;
