@@ -95,9 +95,8 @@ public class EncounterAssessmentController {
             );
         }
 
-        EncounterAssessment latest =
-                encounterAssessmentService.findLatestByEncounterId(encounterId);
-
-        return ResponseEntity.ok(latest);
+        return encounterAssessmentService.findLatestByEncounterId(encounterId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 }

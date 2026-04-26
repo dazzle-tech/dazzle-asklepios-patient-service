@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -105,16 +106,11 @@ public class EncounterPlanService {
     }
 
     @Transactional(readOnly = true)
-    public EncounterPlan findLatestByEncounterId(Long encounterId) {
+    public Optional<EncounterPlan> findLatestByEncounterId(Long encounterId) {
         LOG.debug("[FIND LATEST] encounterId={}", encounterId);
 
         return encounterPlanRepository
-                .findTopByEncounterIdOrderByCreatedDateDesc(encounterId)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "No encounter plan found for encounterId=" + encounterId,
-                        "encounterPlan",
-                        "notfound"
-                ));
+                .findTopByEncounterIdOrderByCreatedDateDesc(encounterId);
     }
 
     @Transactional(readOnly = true)
