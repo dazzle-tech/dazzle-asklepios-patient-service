@@ -2,7 +2,9 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.AdditionalMeasurements;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.repository.AdditionalMeasurementsRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.additionalMeasurements.AdditionalMeasurementsGeriatricCreateDTO;
 import com.dazzle.asklepios.service.dto.additionalMeasurements.AdditionalMeasurementsGeriatricUpdateDTO;
@@ -34,15 +36,15 @@ public class AdditionalMeasurementsService {
 
     private final AdditionalMeasurementsRepository additionalMeasurementsRepository;
     private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
 
 
     public AdditionalMeasurements createInfant(AdditionalMeasurementsInfantCreateDTO dto) {
         LOG.info("[CREATE_INFANT] AdditionalMeasurements payload={}", dto);
 
         Patient patient = loadPatient(dto.patientId());
-
+        PatientEncounter encounter = loadEncounter(dto.encounterId());
         try {
-            //TODO: add validation for encounter id
             resetIsActiveForEncounterToday(dto.encounterId());
 
             AdditionalMeasurements entity = AdditionalMeasurements.builder()
@@ -72,7 +74,7 @@ public class AdditionalMeasurementsService {
 
         return additionalMeasurementsRepository.findById(targetId).map(entity -> {
             Patient patient = loadPatient(dto.patientId());
-            //TODO: add validation for encounter id
+            PatientEncounter encounter = loadEncounter(dto.encounterId());
             entity.setPatient(patient);
             entity.setEncounterId(dto.encounterId());
             entity.setAgeGroup(dto.ageGroup());
@@ -97,7 +99,7 @@ public class AdditionalMeasurementsService {
         LOG.info("[CREATE_GERIATRIC] AdditionalMeasurements payload={}", dto);
 
         Patient patient = loadPatient(dto.patientId());
-        //TODO: add validation for encounter id
+        PatientEncounter encounter = loadEncounter(dto.encounterId());
 
         try {
             resetIsActiveForEncounterToday(dto.encounterId());
@@ -127,7 +129,7 @@ public class AdditionalMeasurementsService {
 
         return additionalMeasurementsRepository.findById(targetId).map(entity -> {
             Patient patient = loadPatient(dto.patientId());
-            //TODO: add validation for encounter id
+            PatientEncounter encounter = loadEncounter(dto.encounterId());
 
             entity.setPatient(patient);
             entity.setEncounterId(dto.encounterId());
@@ -160,10 +162,19 @@ public class AdditionalMeasurementsService {
 
     private Patient loadPatient(Long patientId) {
         return patientRepository.findById(patientId)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient not found with id " + patientId,
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "patient.notfound",
                         ENTITY_NAME,
-                        "patient.notfound"
+                        "Patient not found with id " + patientId
+                ));
+    }
+
+    private PatientEncounter loadEncounter(Long encounterId) {
+        return patientEncounterRepository.findById(encounterId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "encounter.notfound",
+                        ENTITY_NAME,
+                        "Encounter not found with id " + encounterId
                 ));
     }
 
@@ -185,9 +196,6 @@ public class AdditionalMeasurementsService {
                         encounterId, dayStart, dayEnd)
                 .ifPresentOrElse(existing -> {
                     existing.setIsActive(false);
-                    // ✅ FIX: saveAndFlush instead of just flush()
-                    // flush() alone only flushes the dirty state to the JDBC batch;
-                    // saveAndFlush guarantees the UPDATE reaches the DB before the next INSERT
                     additionalMeasurementsRepository.saveAndFlush(existing);
                     LOG.debug("[RESET_ACTIVE] Done. deactivatedId={} encounterId={}",
                             existing.getId(), encounterId);
@@ -215,5 +223,8 @@ public class AdditionalMeasurementsService {
                 "db.constraint"
         );
     }
+
+
+
 
 }
