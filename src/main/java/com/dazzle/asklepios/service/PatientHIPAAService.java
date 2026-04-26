@@ -1,9 +1,11 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientHIPAA;
 import com.dazzle.asklepios.repository.PatientHIPAARepository;
-import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.patient.hippa.PatientHIPAAVM;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -21,6 +23,7 @@ public class PatientHIPAAService {
     private static final Logger LOG = LoggerFactory.getLogger(PatientHIPAAService.class);
 
     private final PatientHIPAARepository repository;
+    private final PatientRepository patientRepository;
 
     public PatientHIPAA create(PatientHIPAAVM incoming) {
 
@@ -33,9 +36,15 @@ public class PatientHIPAAService {
         if (repository.findByPatientId(incoming.patientId()).isPresent()) {
             throw new BadRequestAlertException("HIPAA already exists for patient", "hipaa", "unique.patient");
         }
+        Patient patient = patientRepository.findById(incoming.patientId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found with id " + incoming.patientId(),
+                        "painAssessment",
+                        "patient.notfound"
+                ));
 
         PatientHIPAA entity = PatientHIPAA.builder()
-                .patientId(incoming.patientId())
+                .patientId(patient.getId())
                 .noticeOfPrivacyPractice(incoming.noticeOfPrivacyPractice())
                 .privacyAuthorization(incoming.privacyAuthorization())
                 .noticeOfPrivacyPracticeDate(incoming.noticeOfPrivacyPracticeDate())

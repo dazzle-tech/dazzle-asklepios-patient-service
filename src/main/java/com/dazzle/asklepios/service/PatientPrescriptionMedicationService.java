@@ -35,7 +35,7 @@ public class PatientPrescriptionMedicationService {
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + prescriptionMedicationCreateDTO.prescriptionHeaderId));
 
         validateChronicVsDuration(prescriptionMedicationCreateDTO.chronicMedication, prescriptionMedicationCreateDTO.duration);
-
+//TODO: add validation for medicationsId, activeIngredientId from setup service
         PatientPrescriptionMedication entity = PatientPrescriptionMedication.builder()
                 .prescriptionHeader(header)
                 .medicationsId(prescriptionMedicationCreateDTO.medicationsId)
