@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.AvailabilityTemplate;
 import com.dazzle.asklepios.domain.AvailabilityTemplateAllowedService;
 import com.dazzle.asklepios.domain.AvailabilityTemplateLog;
 import com.dazzle.asklepios.domain.enumeration.DayOfWeek;
+import com.dazzle.asklepios.domain.enumeration.TemplateCloneType;
 import com.dazzle.asklepios.domain.enumeration.TemplateStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import com.dazzle.asklepios.repository.AvailabilityTemplateAllowedServiceRepository;
@@ -12,6 +13,7 @@ import com.dazzle.asklepios.repository.AvailabilityTemplateIntervalRepository;
 import com.dazzle.asklepios.repository.AvailabilityTemplateLogRepository;
 import com.dazzle.asklepios.repository.AvailabilityTemplateRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplateCloneDTO;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplateCreateDTO;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplateUpdateDTO;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.availabilityTemplateAllowedServices.AvailabilityTemplateAllowedServiceDTO;
@@ -110,6 +112,56 @@ public class AvailabilityTemplateService {
                     "Database constraint violated while saving availability template (check required fields or unique constraints)."
             );
         }
+    }
+
+    public AvailabilityTemplate cloneTemplate(Long sourceTemplateId, AvailabilityTemplateCloneDTO dto) {
+        LOG.debug("clone availability template sourceTemplateId={}, dto={}", sourceTemplateId, dto);
+
+        AvailabilityTemplate source = getAvailabilityTemplate(sourceTemplateId);
+        initializeAllowedServices(source);
+
+        AvailabilityTemplate clone = new AvailabilityTemplate();
+
+        copyTemplateFields(source, clone);
+
+        clone.setTemplateName(resolveCloneName(source, dto));
+        clone.setStatus(TemplateStatus.DRAFT);
+        clone.setVersionNo(1);
+        clone.setIsActive(true);
+
+        if (dto.cloneType() == TemplateCloneType.SIMPLE) {
+            clone.setCopyFromTemplate(source);
+            clone.setParentTemplate(null);
+        } else if (dto.cloneType() == TemplateCloneType.RESCHEDULE) {
+            clone.setParentTemplate(source);
+            clone.setCopyFromTemplate(source);
+        }
+
+        validateEntity(clone);
+        validateReferences(
+                clone.getFacilityId(),
+                clone.getDepartmentId(),
+                clone.getDefaultServiceId(),
+                clone.getDefaultPractitionerId(),
+                clone.getRequirePractitioner()
+        );
+
+        AvailabilityTemplate savedClone = availabilityTemplateRepository.save(clone);
+
+//        List<AvailabilityTemplateAllowedServiceDTO> allowedServices = source.getAllowedServices() == null
+//                ? List.of()
+//                : source.getAllowedServices().stream()
+//                .map(entity -> new AvailabilityTemplateAllowedServiceDTO(entity.getService()))
+//                .toList();
+//
+//        List<AvailabilityTemplateAllowedService> savedAllowedServices =
+//                replaceAllowedServices(savedClone, allowedServices);
+//
+//        savedClone.setAllowedServices(savedAllowedServices);
+
+//        cloneIntervals(source, savedClone);
+
+        return savedClone;
     }
 
     public AvailabilityTemplate update(AvailabilityTemplateUpdateDTO dto) {
@@ -398,6 +450,52 @@ public class AvailabilityTemplateService {
                 .toList();
 
         return availabilityTemplateAllowedServiceRepository.saveAllAndFlush(entities);
+    }
+
+
+    private void copyTemplateFields(AvailabilityTemplate source, AvailabilityTemplate target) {
+        target.setFacilityId(source.getFacilityId());
+        target.setDepartmentId(source.getDepartmentId());
+        target.setTemplateType(source.getTemplateType());
+        target.setResourceId(source.getResourceId());
+        target.setTemplateColor(source.getTemplateColor());
+        target.setDurationMinutes(source.getDurationMinutes());
+        target.setDefaultBufferBeforeMinutes(source.getDefaultBufferBeforeMinutes());
+        target.setDefaultBufferAfterMinutes(source.getDefaultBufferAfterMinutes());
+        target.setParallelCapacityValue(source.getParallelCapacityValue());
+        target.setDefaultServiceId(source.getDefaultServiceId());
+        target.setNumberOfResourcesExpected(source.getNumberOfResourcesExpected());
+        target.setRequirePractitioner(source.getRequirePractitioner());
+        target.setDefaultPractitionerId(source.getDefaultPractitionerId());
+        target.setRequireBilling(source.getRequireBilling());
+        target.setRequirePreAssessment(source.getRequirePreAssessment());
+        target.setAllowPatientPortalBooking(source.getAllowPatientPortalBooking());
+        target.setRequireConfirmation(source.getRequireConfirmation());
+        target.setFinancialDetails(source.getFinancialDetails());
+
+        target.setWorkingDays(
+                source.getWorkingDays() == null
+                        ? List.of()
+                        : source.getWorkingDays().stream()
+                        .map(this::copyWorkingDay)
+                        .toList()
+        );
+    }
+
+    private WorkingDayJson copyWorkingDay(WorkingDayJson source) {
+        WorkingDayJson copy = new WorkingDayJson();
+        copy.setDayOfWeek(source.getDayOfWeek());
+        copy.setIsWorking(source.getIsWorking());
+        return copy;
+    }
+
+    private String resolveCloneName(AvailabilityTemplate source, AvailabilityTemplateCloneDTO dto) {
+        if (dto.templateName() != null && !dto.templateName().isBlank()) {
+            return dto.templateName().trim();
+        }
+
+        String suffix = dto.cloneType() == TemplateCloneType.RESCHEDULE ? " - Reschedule" : " - Copy";
+        return source.getTemplateName() + suffix;
     }
 
     private AvailabilityTemplate toEntityForCreate(AvailabilityTemplateCreateDTO dto) {
