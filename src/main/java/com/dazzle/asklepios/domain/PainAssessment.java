@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.PainLevel;
+import com.dazzle.asklepios.domain.enumeration.Severity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -43,8 +44,9 @@ public class PainAssessment extends AbstractAuditingEntity<Long> implements Seri
     private Long encounterId;
 
     @NotNull
+    @Enumerated(EnumType.STRING)
     @Column(name = "pain_degree", length = 200)
-    private String painDegree;
+    private Severity painDegree;
 
     @NotNull
     @Enumerated(EnumType.STRING)

@@ -2,7 +2,11 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.PainAssessment;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.enumeration.PainLevel;
+import com.dazzle.asklepios.domain.enumeration.Severity;
 import com.dazzle.asklepios.repository.PainAssessmentRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.painAssessment.PainAssessmentCreateDTO;
 import com.dazzle.asklepios.service.dto.painAssessment.PainAssessmentUpdateDTO;
@@ -30,6 +34,7 @@ public class PainAssessmentService {
 
     private final PainAssessmentRepository painAssessmentRepository;
     private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
 
     public PainAssessment create(PainAssessmentCreateDTO dto) {
         LOG.info("[CREATE] PainAssessment payload={}", dto);
@@ -40,14 +45,20 @@ public class PainAssessmentService {
                         "painAssessment",
                         "patient.notfound"
                 ));
+        PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Encounter not found with id " + dto.patientId(),
+                        "painAssessment",
+                        "encounter.notfound"
+                ));
 
         try {
             resetIsActiveForEncounterToday(dto.encounterId());
 
             PainAssessment entity = PainAssessment.builder()
                     .patient(patient)
-                    .encounterId(dto.encounterId())
-                    .painDegree(dto.painDegree())
+                    .encounterId(encounter.getId())
+                    .painDegree(calculatePainDegree(dto.painLevel()))
                     .painLevel(dto.painLevel())
                     .painPattern(dto.painPattern())
                     .painDescription(dto.painDescription())
@@ -73,10 +84,15 @@ public class PainAssessmentService {
                             "painAssessment",
                             "patient.notfound"
                     ));
-
+            PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
+                    .orElseThrow(() -> new NotFoundAlertException(
+                            "Encounter not found with id " + dto.patientId(),
+                            "painAssessment",
+                            "encounter.notfound"
+                    ));
             entity.setPatient(patient);
-            entity.setEncounterId(dto.encounterId());
-            entity.setPainDegree(dto.painDegree());
+            entity.setEncounterId(encounter.getId());
+            entity.setPainDegree(calculatePainDegree(dto.painLevel()));
             entity.setPainLevel(dto.painLevel());
             entity.setPainPattern(dto.painPattern());
             entity.setPainDescription(dto.painDescription());
@@ -95,6 +111,7 @@ public class PainAssessmentService {
         LOG.debug("[FIND_LATEST_BY_ENCOUNTER] encounterId={}", encounterId);
         return painAssessmentRepository.findFirstByEncounterIdAndIsActiveTrueOrderByCreatedDateDesc(encounterId);
     }
+
     private void resetIsActiveForEncounterToday(Long encounterId) {
 
         Instant now = Instant.now();
@@ -142,5 +159,17 @@ public class PainAssessmentService {
                 "painAssessment",
                 "db.constraint"
         );
+    }
+
+    private Severity calculatePainDegree(PainLevel painLevel) {
+        if (painLevel == null) {
+            return null;
+        }
+
+        return switch (painLevel) {
+            case LEVEL_0, LEVEL_1, LEVEL_2, LEVEL_3 -> Severity.MILD_MINOR;
+            case LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7 -> Severity.MODERATE;
+            case LEVEL_8, LEVEL_9, LEVEL_10 -> Severity.SEVERE;
+        };
     }
 }
