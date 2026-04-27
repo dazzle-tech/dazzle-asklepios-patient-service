@@ -1,4 +1,5 @@
 package com.dazzle.asklepios.service;
+
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
 import com.dazzle.asklepios.domain.enumeration.DocumentType;
@@ -7,6 +8,7 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.patientDocuments.PatientDocumentCreateDTO;
 import com.dazzle.asklepios.service.dto.patientDocuments.PatientDocumentUpdateDTO;
 import com.dazzle.asklepios.service.dto.patientDocuments.PatientNoDocumentCreateDTO;
+import com.dazzle.asklepios.service.helper.CountryHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.EntityManager;
@@ -19,7 +21,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.util.Optional;
+
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
@@ -30,20 +34,23 @@ public class PatientDocumentService {
 
     private final PatientDocumentRepository patientDocumentRepository;
     private final PatientRepository patientRepository;
+    private final CountryHelper countryHelper;
 
     @PersistenceContext
     private EntityManager entityManager;
 
     public PatientDocumentService(
             PatientDocumentRepository patientDocumentRepository,
-            PatientRepository patientRepository) {
+            PatientRepository patientRepository, CountryHelper countryHelper) {
         this.patientDocumentRepository = patientDocumentRepository;
         this.patientRepository = patientRepository;
+        this.countryHelper = countryHelper;
     }
 
     public PatientDocument create(PatientDocumentCreateDTO dto) {
         LOG.info("[CREATE] Request to create PatientDocument payload={}", dto);
-//TODO: country id validation from setup service
+        countryHelper.validateCountryExists(dto.countryId());
+
         PatientDocument entity = PatientDocument.builder()
                 .patient(refPatient(dto.patientId()))
                 .countryId(dto.countryId())
@@ -68,8 +75,6 @@ public class PatientDocumentService {
 
     public PatientDocument createNoDocument(PatientNoDocumentCreateDTO dto) {
         LOG.info("[CREATE NO_DOCUMENT] Request payload={}", dto);
-//TODO: country id validation from setup service
-
         PatientDocument entity = PatientDocument.builder()
                 .patient(refPatient(dto.patientId()))
                 .countryId(null)
@@ -101,6 +106,7 @@ public class PatientDocumentService {
                         "patientDocument",
                         "notfound"
                 ));
+        countryHelper.validateCountryExists(dto.countryId());
 
         existing.setPatient(refPatient(dto.patientId()));
         existing.setCountryId(dto.countryId());
