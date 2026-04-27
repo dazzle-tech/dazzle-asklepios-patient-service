@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.setup.ActiveIngredientClient;
 import com.dazzle.asklepios.domain.CurrentMedication;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.repository.CurrentMedicationRepository;
@@ -29,6 +30,7 @@ public class CurrentMedicationService {
 
     private final CurrentMedicationRepository currentMedicationRepository;
     private final PatientRepository patientRepository;
+    private final ActiveIngredientClient activeIngredientClient;
 
     private Patient getPatientOrThrow(Long patientId) {
         return patientRepository.findById(patientId)
@@ -43,7 +45,7 @@ public class CurrentMedicationService {
         LOG.info("[CREATE] CurrentMedication dto={}", dto);
 
         Patient patient = getPatientOrThrow(dto.patientId());
-// TODO: add validation for active ingredient id from setup service
+        activeIngredientClient.existsActiveIngredient(dto.activeIngredientId());
         CurrentMedication entity = CurrentMedication.builder()
                 .patient(patient)
                 .activeIngredientId(dto.activeIngredientId())
@@ -75,10 +77,9 @@ public class CurrentMedicationService {
                         "currentMedication",
                         "notfound"
                 ));
-        // TODO: add validation for active ingredient id from setup service
-
 
         Patient patient = getPatientOrThrow(dto.patientId());
+        activeIngredientClient.existsActiveIngredient(dto.activeIngredientId());
 
         entity.setPatient(patient);
         entity.setActiveIngredientId(dto.activeIngredientId());
