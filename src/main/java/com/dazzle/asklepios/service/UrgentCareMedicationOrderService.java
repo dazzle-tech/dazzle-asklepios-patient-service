@@ -9,6 +9,7 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.UrgentCareMedicationOrderRepository;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderUpdateDTO;
+import com.dazzle.asklepios.service.helper.ActiveIngredientHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
@@ -29,18 +30,17 @@ public class UrgentCareMedicationOrderService {
 
     private final UrgentCareMedicationOrderRepository urgentCareMedicationOrderRepository;
     private final PatientRepository patientRepository;
-    private final PatientEncounterRepository encounterRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final ActiveIngredientHelper activeIngredientHelper;
 
     public UrgentCareMedicationOrderService(
             UrgentCareMedicationOrderRepository urgentCareMedicationOrderRepository,
             PatientRepository patientRepository,
-            PatientEncounterRepository encounterRepository,
-            PatientEncounterRepository patientEncounterRepository) {
+            PatientEncounterRepository patientEncounterRepository, ActiveIngredientHelper activeIngredientHelper) {
         this.urgentCareMedicationOrderRepository = urgentCareMedicationOrderRepository;
         this.patientRepository = patientRepository;
-        this.encounterRepository = encounterRepository;
         this.patientEncounterRepository = patientEncounterRepository;
+        this.activeIngredientHelper = activeIngredientHelper;
     }
 
     public UrgentCareMedicationOrder create(UrgentCareMedicationOrderCreateDTO dto) {
@@ -61,7 +61,7 @@ public class UrgentCareMedicationOrderService {
                                 "encounter.notfound"
                         )
                 );
-//TODO: add active ingredient id validation from setup service
+        activeIngredientHelper.validateActiveIngredientExists(dto.activeIngredientId());
         UrgentCareMedicationOrder order = new UrgentCareMedicationOrder();
         order.setActiveIngredientId(dto.activeIngredientId());
         order.setInstructionType(dto.instructionType());
@@ -88,8 +88,7 @@ public class UrgentCareMedicationOrderService {
 
     public UrgentCareMedicationOrder update(UrgentCareMedicationOrder existing, UrgentCareMedicationOrderUpdateDTO dto) {
         LOG.debug("[SERVICE][UPDATE] request -> existingId={} payload={}", existing.getId(), dto);
-//TODO: add active ingredient id validation from setup service
-
+        activeIngredientHelper.validateActiveIngredientExists(dto.activeIngredientId());
         existing.setActiveIngredientId(dto.activeIngredientId());
         existing.setInstructionType(dto.instructionType());
         existing.setInstructionText(dto.instructionText());

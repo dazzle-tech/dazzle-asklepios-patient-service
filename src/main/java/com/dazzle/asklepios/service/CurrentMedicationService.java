@@ -7,6 +7,7 @@ import com.dazzle.asklepios.repository.CurrentMedicationRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.currentMedication.CurrentMedicationCreateDTO;
 import com.dazzle.asklepios.service.dto.currentMedication.CurrentMedicationUpdateDTO;
+import com.dazzle.asklepios.service.helper.ActiveIngredientHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -30,7 +31,7 @@ public class CurrentMedicationService {
 
     private final CurrentMedicationRepository currentMedicationRepository;
     private final PatientRepository patientRepository;
-    private final ActiveIngredientClient activeIngredientClient;
+    private final ActiveIngredientHelper activeIngredientHelper;
 
     private Patient getPatientOrThrow(Long patientId) {
         return patientRepository.findById(patientId)
@@ -45,7 +46,7 @@ public class CurrentMedicationService {
         LOG.info("[CREATE] CurrentMedication dto={}", dto);
 
         Patient patient = getPatientOrThrow(dto.patientId());
-        activeIngredientClient.existsActiveIngredient(dto.activeIngredientId());
+        activeIngredientHelper.validateActiveIngredientExists(dto.activeIngredientId());
         CurrentMedication entity = CurrentMedication.builder()
                 .patient(patient)
                 .activeIngredientId(dto.activeIngredientId())
@@ -79,7 +80,7 @@ public class CurrentMedicationService {
                 ));
 
         Patient patient = getPatientOrThrow(dto.patientId());
-        activeIngredientClient.existsActiveIngredient(dto.activeIngredientId());
+        activeIngredientHelper.validateActiveIngredientExists(dto.activeIngredientId());
 
         entity.setPatient(patient);
         entity.setActiveIngredientId(dto.activeIngredientId());

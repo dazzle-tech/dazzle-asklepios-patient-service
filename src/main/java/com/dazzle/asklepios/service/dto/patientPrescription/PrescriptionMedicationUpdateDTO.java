@@ -37,6 +37,6 @@ public class PrescriptionMedicationUpdateDTO {
 
     public String notes;
     public String extraDocumentation;
+    public Long medicationsId;
 
-    public String lastModifiedBy;
 }

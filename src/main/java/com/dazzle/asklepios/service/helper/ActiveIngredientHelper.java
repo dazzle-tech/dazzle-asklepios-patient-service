@@ -1,7 +1,6 @@
 package com.dazzle.asklepios.service.helper;
 
 import com.dazzle.asklepios.client.setup.ActiveIngredientClient;
-import com.dazzle.asklepios.client.setup.BedClient;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.springframework.stereotype.Service;
 
@@ -14,7 +13,7 @@ public class ActiveIngredientHelper {
         this.activeIngredientClient = activeIngredientClient;
     }
 
-    public void validateBedExists(Long activeIngredientId) {
+    public void validateActiveIngredientExists(Long activeIngredientId) {
         try {
             activeIngredientClient.existsActiveIngredient(activeIngredientId);
         } catch (feign.FeignException.NotFound ex) {
