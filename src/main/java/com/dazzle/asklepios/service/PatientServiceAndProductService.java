@@ -9,6 +9,7 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductUpdateDTO;
+import com.dazzle.asklepios.service.helper.BrandMedicationHelper;
 import com.dazzle.asklepios.service.helper.DiagnosticTestHelper;
 import com.dazzle.asklepios.service.helper.ProcedureHelper;
 import com.dazzle.asklepios.service.helper.ServiceHelper;
@@ -40,14 +41,16 @@ public class PatientServiceAndProductService {
     private final DiagnosticTestHelper diagnosticTestHelper;
     private final ServiceHelper serviceHelper;
     private final ProcedureHelper procedureHelper;
+    private final BrandMedicationHelper brandMedicationHelper;
 
-    public PatientServiceAndProductService(PatientServiceAndProductRepository patientServiceAndProductRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository, DiagnosticTestHelper diagnosticTestHelper, ServiceHelper serviceHelper, ProcedureHelper procedureHelper) {
+    public PatientServiceAndProductService(PatientServiceAndProductRepository patientServiceAndProductRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository, DiagnosticTestHelper diagnosticTestHelper, ServiceHelper serviceHelper, ProcedureHelper procedureHelper, BrandMedicationHelper brandMedicationHelper) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
         this.diagnosticTestHelper = diagnosticTestHelper;
         this.serviceHelper = serviceHelper;
         this.procedureHelper = procedureHelper;
+        this.brandMedicationHelper = brandMedicationHelper;
     }
 
     public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
@@ -78,7 +81,9 @@ public class PatientServiceAndProductService {
         if (dto.procedureId() != null)
             procedureHelper.validateProcedureExists(dto.procedureId());
 
-        //TODO: add validation for brand medication id
+        if (dto.brandMedicationId() != null)
+            brandMedicationHelper.validateBrandMedicationExists(dto.brandMedicationId());
+
         PatientServiceAndProduct entity = PatientServiceAndProduct.builder()
                 .patientId(patient.getId())
                 .encounterId(encounter.getId())
@@ -135,9 +140,10 @@ public class PatientServiceAndProductService {
                 ));
 
         entity.setBillingItemType(dto.billingItemType());
-        //TODO: add validation for brand medication id
-
-        entity.setBrandMedicationId(dto.brandMedicationId());
+        if (dto.brandMedicationId() != null) {
+            brandMedicationHelper.validateBrandMedicationExists(dto.brandMedicationId());
+            entity.setBrandMedicationId(dto.brandMedicationId());
+        }
         if (dto.diagnosticTestId() != null) {
             diagnosticTestHelper.getDiagnosticTest(dto.diagnosticTestId());
             entity.setDiagnosticTestId(dto.diagnosticTestId());
@@ -222,7 +228,8 @@ public class PatientServiceAndProductService {
                             procedureHelper.validateProcedureExists(dto.procedureId());
                         }
 
-                        // TODO: add validation for brand medication id
+                        if (dto.brandMedicationId() != null)
+                            brandMedicationHelper.validateBrandMedicationExists(dto.brandMedicationId());
 
                         return PatientServiceAndProduct.builder()
                                 .patientId(patient.getId())
