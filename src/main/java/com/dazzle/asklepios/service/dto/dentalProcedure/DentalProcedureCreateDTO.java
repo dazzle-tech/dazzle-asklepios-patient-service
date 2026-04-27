@@ -17,7 +17,8 @@ public record DentalProcedureCreateDTO(
         BigDecimal dose,
         String unit,
         String fillingMaterial,
-        @NotNull Long serviceId,
+        @NotNull Long procedureId,
+        Long serviceId,
         Long cdtCodeId,
         String notes
 ) implements Serializable {}

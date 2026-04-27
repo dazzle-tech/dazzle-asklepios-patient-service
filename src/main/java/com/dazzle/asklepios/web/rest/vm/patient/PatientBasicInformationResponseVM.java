@@ -14,6 +14,7 @@ import java.time.LocalDate;
 public class PatientBasicInformationResponseVM {
     private Long id;
     private String firstName;
+    private String secondName;
     private String lastName;
     private String medicalRecordNumber;
     private LocalDate dateOfBirth;
@@ -28,6 +29,7 @@ public class PatientBasicInformationResponseVM {
                 .id(patient.getId())
                 .medicalRecordNumber(patient.getMedicalRecordNumber())
                 .firstName(patient.getFirstName())
+                .secondName(patient.getSecondName())
                 .lastName(patient.getLastName())
                 .sexAtBirth(patient.getSexAtBirth())
                 .dateOfBirth(patient.getDateOfBirth())
