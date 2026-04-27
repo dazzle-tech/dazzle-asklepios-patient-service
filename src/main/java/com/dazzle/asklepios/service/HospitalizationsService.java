@@ -32,7 +32,12 @@ public class HospitalizationsService {
     private final PatientRepository patientRepository;
 
     private Patient refPatient(Long patientId) {
-        return patientRepository.getReferenceById(patientId);
+        return patientRepository.findById(patientId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found with id " + patientId,
+                        "patient",
+                        "notfound"
+                ));
     }
 
     public Hospitalization create(HospitalizationsCreateDTO hospitalizationsCreateDTO) {

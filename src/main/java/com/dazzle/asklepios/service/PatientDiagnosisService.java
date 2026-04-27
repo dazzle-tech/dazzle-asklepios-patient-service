@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.setup.ICDTreeClient;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDiagnosis;
 import com.dazzle.asklepios.domain.PatientEncounter;
@@ -35,14 +36,16 @@ public class PatientDiagnosisService {
     private final PatientDiagnosisRepository patientDiagnosisRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final ICDTreeClient iCDTreeClient;
 
     public PatientDiagnosisService(
             PatientDiagnosisRepository patientDiagnosisRepository,
             PatientRepository patientRepository,
-            PatientEncounterRepository patientEncounterRepository) {
+            PatientEncounterRepository patientEncounterRepository, ICDTreeClient iCDTreeClient) {
         this.patientDiagnosisRepository = patientDiagnosisRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
+        this.iCDTreeClient = iCDTreeClient;
     }
 
     public PatientDiagnosis create(PatientDiagnosisCreateDTO dto) {
@@ -61,7 +64,8 @@ public class PatientDiagnosisService {
                         "painAssessment",
                         "encounter.notfound"
                 ));
-        //TODO: diagnosisId validation from setup service
+        iCDTreeClient.existsICDDiagnosis(dto.diagnosisId());
+
         PatientDiagnosis entity = PatientDiagnosis.builder()
                 .patient(patient)
                 .encounterId(encounter.getId())
@@ -106,6 +110,7 @@ public class PatientDiagnosisService {
                         "painAssessment",
                         "encounter.notfound"
                 ));
+        iCDTreeClient.existsICDDiagnosis(dto.diagnosisId());
 
         existing.setPatient(patient);
         existing.setEncounterId(encounter.getId());
