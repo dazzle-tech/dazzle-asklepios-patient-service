@@ -53,7 +53,8 @@ public record PatientEncounterUpdateDTO(
         @NotNull
         EncounterStatus status,
 
-        String chiefComplaint
+        String chiefComplaint,
+        String physicalExaminationSummery
 
 ) implements Serializable {
 }

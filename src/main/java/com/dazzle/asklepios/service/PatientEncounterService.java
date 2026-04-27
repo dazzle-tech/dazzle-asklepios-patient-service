@@ -173,6 +173,7 @@ public class PatientEncounterService {
         existingPatientEncounter.setNotes(updateDTO.notes());
         existingPatientEncounter.setStatus(updateDTO.status());
         existingPatientEncounter.setChiefComplaint(updateDTO.chiefComplaint());
+        existingPatientEncounter.setPhysicalExaminationSummery(updateDTO.physicalExaminationSummery());
 
         if (updateDTO.followUpEncounterId() != null) {
             PatientEncounter followUpEncounter = patientEncounterRepository.findById(updateDTO.followUpEncounterId())

@@ -120,6 +120,6 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @Column(name = "started_date")
     private Instant startedDate;
-
-
+   @Column(name = "physical_examination_summery")
+  private String physicalExaminationSummery;
 }
