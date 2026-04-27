@@ -2,14 +2,21 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
+import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderUpdateDTO;
+import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
@@ -36,13 +43,21 @@ public class DiagnosticOrderService {
 
     private final DiagnosticOrderRepository diagnosticOrderRepository;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
+    private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
+    private final FacilityHelper facilityHelper;
+    private final DepartmentHelper departmentHelper;
 
     public DiagnosticOrderService(
             DiagnosticOrderRepository diagnosticOrderRepository,
-            DiagnosticOrderTestRepository diagnosticOrderTestRepository
-    ) {
+            DiagnosticOrderTestRepository diagnosticOrderTestRepository,
+            PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository, FacilityHelper facilityHelper, DepartmentHelper departmentHelper) {
         this.diagnosticOrderRepository = diagnosticOrderRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
+        this.patientRepository = patientRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
+        this.departmentHelper = departmentHelper;
+        this.facilityHelper = facilityHelper;
     }
 
     /**
@@ -60,11 +75,25 @@ public class DiagnosticOrderService {
      */
     public DiagnosticOrder create(DiagnosticOrderCreateDTO dto) {
         LOG.debug("[DiagnosticOrderService] CREATE - start. payload={}", dto);
+        Patient patient = patientRepository.findById(dto.patientId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found with id " + dto.patientId(),
+                        "patient",
+                        "notfound"
+                ));
+        PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "PatientEncounter not found with id " + dto.encounterId(),
+                        "patientEncounter",
+                        "notfound"
+                ));
 
+        facilityHelper.validateFacilityExists(dto.fromFacilityId());
+        departmentHelper.validateDepartmentExists(dto.fromDepartmentId());
         DiagnosticOrder order = new DiagnosticOrder();
 
-        order.setEncounterId(dto.encounterId());
-        order.setPatientId(dto.patientId());
+        order.setEncounterId(encounter.getId());
+        order.setPatientId(patient.getId());
         order.setFromDepartmentId(dto.fromDepartmentId());
         order.setFromFacilityId(dto.fromFacilityId());
 
@@ -94,9 +123,6 @@ public class DiagnosticOrderService {
 
     public DiagnosticOrder update(DiagnosticOrder existing, DiagnosticOrderUpdateDTO dto) {
         LOG.debug("[DiagnosticOrderService] UPDATE - start. id={} payload={}", existing.getId(), dto);
-
-
-        existing.setEncounterId(dto.encounterId());
 
         if (dto.isUrgent() != null) {
             existing.setIsUrgent(dto.isUrgent());
@@ -204,7 +230,7 @@ public class DiagnosticOrderService {
 
     /**
      * Submits a draft order.
-     *
+     * <p>
      * Side effects:
      * - Updates order: saveDraft=false, status=SUBMITTED, submittedBy/submittedDate set
      * - Updates tests: bulk updates all tests under this order to SUBMITTED, excluding CANCELLED tests
@@ -245,7 +271,7 @@ public class DiagnosticOrderService {
 
     /**
      * Deletes a diagnostic order by id.
-     *
+     * <p>
      * Note:
      * - This does not cascade delete tests unless configured at DB/entity level.
      * - Controller is responsible for guarding deletion business rules if any.
