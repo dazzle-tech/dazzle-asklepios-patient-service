@@ -46,7 +46,13 @@ public class BillingInvoiceItemService {
                         "billingInvoice",
                         "notfound"
                 ));
-        //TODO: add validation for nurseServiceProductId from setup service
+
+        PatientServiceAndProduct serviceAndProduct = patientServiceAndProductRepository.findById(billingInvoiceItemCreateDTO.nurseServiceProductId())
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "nurseServiceProductId not found with id " + billingInvoiceItemCreateDTO.nurseServiceProductId(),
+                        "billingInvoice",
+                        "notfound"
+                ));
 
         BillingInvoiceItem item = BillingInvoiceItem.builder()
                 .invoice(invoice)
@@ -59,12 +65,7 @@ public class BillingInvoiceItemService {
                 .build();
 
         BillingInvoiceItem saved = billingInvoiceItemRepository.save(item);
-        PatientServiceAndProduct serviceAndProduct = patientServiceAndProductRepository.findById(billingInvoiceItemCreateDTO.nurseServiceProductId())
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "nurseServiceProductId not found with id " + billingInvoiceItemCreateDTO.nurseServiceProductId(),
-                        "billingInvoice",
-                        "notfound"
-                ));
+
         serviceAndProduct.setIsBilled(true);
         serviceAndProduct.setBillingInvoiceId(invoice.getId());
         serviceAndProduct.setBillingInvoiceItemId(saved.getId());
@@ -92,8 +93,16 @@ public class BillingInvoiceItemService {
                     ));
             item.setInvoice(invoice);
         }
-        if (billingInvoiceItemUpdateDTO.nurseServiceProductId() != null)
+        if (billingInvoiceItemUpdateDTO.nurseServiceProductId() != null){
+            PatientServiceAndProduct serviceAndProduct = patientServiceAndProductRepository.findById(billingInvoiceItemUpdateDTO.nurseServiceProductId())
+                    .orElseThrow(() -> new BadRequestAlertException(
+                            "nurseServiceProductId not found with id " + billingInvoiceItemUpdateDTO.nurseServiceProductId(),
+                            "billingInvoice",
+                            "notfound"
+                    ));
             item.setNurseServiceProductId(billingInvoiceItemUpdateDTO.nurseServiceProductId());
+        }
+
         if (billingInvoiceItemUpdateDTO.code() != null) item.setCode(billingInvoiceItemUpdateDTO.code());
         if (billingInvoiceItemUpdateDTO.quantity() != null) item.setQuantity(billingInvoiceItemUpdateDTO.quantity());
         if (billingInvoiceItemUpdateDTO.unitPrice() != null) item.setUnitPrice(billingInvoiceItemUpdateDTO.unitPrice());
