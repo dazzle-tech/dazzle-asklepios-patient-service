@@ -64,10 +64,10 @@ public class DentalProcedure extends AbstractAuditingEntity<Long> implements Ser
     private String fillingMaterial;
 
     @NotNull
-    @Column(name = "procedure_id", nullable = false)  // ✅ أضفنا
+    @Column(name = "procedure_id", nullable = false)
     private Long procedureId;
 
-    @Column(name = "service_id")                       // ✅ nullable
+    @Column(name = "service_id")
     private Long serviceId;
 
     @Column(name = "cdt_code_id")

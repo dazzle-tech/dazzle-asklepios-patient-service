@@ -43,7 +43,7 @@ public class DentalProcedureService {
                 .dose(dto.dose())
                 .unit(dto.unit())
                 .fillingMaterial(dto.fillingMaterial())
-                .procedureId(dto.procedureId())   // ✅ أضفنا
+                .procedureId(dto.procedureId())
                 .serviceId(dto.serviceId())
                 .cdtCodeId(dto.cdtCodeId())
                 .notes(dto.notes())
@@ -99,7 +99,7 @@ public class DentalProcedureService {
         entity.setDose(dto.dose());
         entity.setUnit(dto.unit());
         entity.setFillingMaterial(dto.fillingMaterial());
-        entity.setProcedureId(dto.procedureId());   // ✅ أضفنا
+        entity.setProcedureId(dto.procedureId());
         entity.setServiceId(dto.serviceId());
         entity.setCdtCodeId(dto.cdtCodeId());
         entity.setNotes(dto.notes());
