@@ -43,6 +43,7 @@ public class DentalProcedureService {
                 .dose(dto.dose())
                 .unit(dto.unit())
                 .fillingMaterial(dto.fillingMaterial())
+                .procedureId(dto.procedureId())
                 .serviceId(dto.serviceId())
                 .cdtCodeId(dto.cdtCodeId())
                 .notes(dto.notes())
@@ -98,6 +99,7 @@ public class DentalProcedureService {
         entity.setDose(dto.dose());
         entity.setUnit(dto.unit());
         entity.setFillingMaterial(dto.fillingMaterial());
+        entity.setProcedureId(dto.procedureId());
         entity.setServiceId(dto.serviceId());
         entity.setCdtCodeId(dto.cdtCodeId());
         entity.setNotes(dto.notes());
@@ -145,6 +147,13 @@ public class DentalProcedureService {
 
         LOG.error("DB constraint violation while saving DentalProcedure: {}", message, e);
 
+        if (msgLower.contains("fk_dental_procedure_procedure")) {
+            return new BadRequestAlertException(
+                    "procedureNotFound",
+                    "dentalProcedure",
+                    "The specified procedure does not exist"
+            );
+        }
         if (msgLower.contains("fk_dental_procedure_service")) {
             return new BadRequestAlertException(
                     "serviceNotFound",
