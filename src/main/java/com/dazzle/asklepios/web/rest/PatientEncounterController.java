@@ -431,4 +431,19 @@ public class PatientEncounterController {
 
         return ResponseEntity.ok(total);
     }
+    @PostMapping("/encounter/by-ids")
+    public ResponseEntity<List<PatientEncounter>> getEncountersByIds(
+            @RequestBody(required = false) List<Long> encounterIds
+    ) {
+        LOG.debug("REST get PatientEncounters by ids={}", encounterIds);
+
+        if (encounterIds == null || encounterIds.isEmpty()) {
+            return ResponseEntity.ok(List.of());
+        }
+
+        List<PatientEncounter> encounters =
+                patientEncounterService.getEncountersByIds(encounterIds);
+
+        return ResponseEntity.ok(encounters);
+    }
 }
