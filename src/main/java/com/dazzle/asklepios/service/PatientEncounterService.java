@@ -956,5 +956,11 @@ public class PatientEncounterService {
         return username;
     }
 
+    public List<PatientEncounter> getEncountersByIds(List<Long> encounterIds) {
+        if (encounterIds == null || encounterIds.isEmpty()) {
+            return List.of();
+        }
 
+        return patientEncounterRepository.findAllById(encounterIds);
+    }
 }

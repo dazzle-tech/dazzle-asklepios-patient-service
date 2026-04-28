@@ -7,6 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PastOrPresent;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
@@ -48,6 +49,7 @@ public class DiagnosticOrderTestCollectedSample extends AbstractAuditingEntity i
     @Column(name = "quantity", precision = 19, scale = 2, nullable = false)
     private BigDecimal quantity;
 
+    @PastOrPresent(message = "collected sample at cannot be in the future")
     @Column(name = "collected_at", nullable = false)
     private Instant collectedAt;
 

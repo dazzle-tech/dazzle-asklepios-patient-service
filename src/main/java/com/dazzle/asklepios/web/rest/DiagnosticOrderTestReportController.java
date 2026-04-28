@@ -38,6 +38,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import java.net.URI;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * REST controller for managing radiology reports ({@link DiagnosticOrderTestReport}).
@@ -149,14 +150,22 @@ public class DiagnosticOrderTestReportController {
     }
 
     @GetMapping("/radiology/reports/by-test/{orderTestId}")
-    public ResponseEntity<DiagnosticOrderTestReportResponseVM> getByOrderTestId(@PathVariable Long orderTestId) {
+    public ResponseEntity<DiagnosticOrderTestReportResponseVM> getByOrderTestId(
+            @PathVariable Long orderTestId
+    ) {
         LOG.debug("[RadiologyReport] GET_BY_TEST orderTestId={}", orderTestId);
 
-        DiagnosticOrderTestReport report = reportService.getByOrderTestIdForRadiology(orderTestId);
+        Optional<DiagnosticOrderTestReport> reportOpt =
+                reportService.findByOrderTestIdForRadiology(orderTestId);
 
-        return ResponseEntity.ok(DiagnosticOrderTestReportResponseVM.ofEntity(report));
+        if (reportOpt.isEmpty()) {
+            return ResponseEntity.noContent().build(); // 204
+        }
+
+        return ResponseEntity.ok(
+                DiagnosticOrderTestReportResponseVM.ofEntity(reportOpt.get())
+        );
     }
-
     @PostMapping("/radiology/reports")
     public ResponseEntity<DiagnosticOrderTestReportResponseVM> create(@Valid @RequestBody DiagnosticOrderTestReportCreateDTO orderTestReportCreateDTO) {
         LOG.debug("[RadiologyReport] CREATE payload={}", orderTestReportCreateDTO);
