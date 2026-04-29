@@ -93,6 +93,9 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     @Column(name = "deferred_at")
     private Instant deferredAt;
 
+    @Column(name = "require_confirmation", nullable = false)
+    private Boolean requireConfirmation = true;
+
     @Column(name = "no_show_reason", length = 255)
     private String noShowReason;
 
