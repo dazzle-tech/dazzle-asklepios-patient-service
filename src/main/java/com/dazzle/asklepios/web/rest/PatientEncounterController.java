@@ -125,7 +125,7 @@ public class PatientEncounterController {
 
         return patientEncounterService.getPreviousClosedEncounter(encounterId)
                 .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+                .orElseGet(() -> ResponseEntity.ok().build());
     }
 
     @GetMapping("/encounter/facility/{facilityId}/count/today")
