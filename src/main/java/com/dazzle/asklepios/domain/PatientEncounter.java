@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -22,7 +23,6 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedDate;
 
 import java.io.Serializable;
 import java.time.Instant;
@@ -45,6 +45,7 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "patient_id", nullable = false)
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "encounters"})
     private Patient patient;
 
     @Column(name = "encounter_number", nullable = false, unique = true, length = 50, updatable = false, insertable = false)
@@ -64,6 +65,7 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "appointment_id", nullable = false)
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private AppointmentFromTemplate appointment;
 
     @NotNull
@@ -78,6 +80,7 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "follow_up_encounter_id")
+    @JsonIgnoreProperties({"followUpEncounter", "patient", "appointment", "hibernateLazyInitializer", "handler"})
     private PatientEncounter followUpEncounter;
 
     @NotNull
@@ -120,6 +123,7 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @Column(name = "started_date")
     private Instant startedDate;
-   @Column(name = "physical_examination_summery")
-  private String physicalExaminationSummery;
+
+    @Column(name = "physical_examination_summery")
+    private String physicalExaminationSummery;
 }
