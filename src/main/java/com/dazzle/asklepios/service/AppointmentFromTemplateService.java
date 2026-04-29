@@ -296,6 +296,7 @@ public class AppointmentFromTemplateService {
         appointment.setPriority(appointmentDTO.priority());
         appointment.setOriginType(appointmentDTO.originType());
         appointment.setOriginName(appointmentDTO.originName());
+        appointment.setRequireConfirmation(true);
         appointment.setReason(appointmentDTO.reason());
         appointment.setNote(appointmentDTO.note());
         appointment.setService(appointmentDTO.service());
@@ -539,8 +540,25 @@ public class AppointmentFromTemplateService {
     }
 
     private void validateCheckInable(AppointmentFromTemplate appointment) {
-        if (appointment.getStatus() != AppointmentStatus.CONFIRMED) {
-            throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Only confirmed appointments can be checked in");
+        boolean requireConfirmation = !Boolean.FALSE.equals(appointment.getRequireConfirmation());
+        boolean eligibleStatus =
+                appointment.getStatus() == AppointmentStatus.BOOKED ||
+                appointment.getStatus() == AppointmentStatus.CONFIRMED;
+
+        if (!eligibleStatus) {
+            throw new BadRequestAlertException(
+                    "invalidstatus",
+                    ENTITY_NAME,
+                    "Only booked or confirmed appointments can be checked in"
+            );
+        }
+
+        if (requireConfirmation && appointment.getStatus() != AppointmentStatus.CONFIRMED) {
+            throw new BadRequestAlertException(
+                    "invalidstatus",
+                    ENTITY_NAME,
+                    "Appointment requires confirmation before check-in"
+            );
         }
         if (appointment.getStartDatetime() == null) {
             throw new BadRequestAlertException(
