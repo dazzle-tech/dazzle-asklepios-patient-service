@@ -1,7 +1,11 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.BloodGroup;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -53,6 +57,10 @@ public class PatientObservationsComplaints extends AbstractAuditingEntity<Long> 
 
     @Column(name = "cognitive_check", columnDefinition = "text")
     private String cognitiveCheck;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "blood_group", length = 20)
+    private BloodGroup bloodGroup;
 
     @NotNull
     @Column(name = "is_active", nullable = false)
