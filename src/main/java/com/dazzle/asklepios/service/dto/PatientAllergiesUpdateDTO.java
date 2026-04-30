@@ -12,6 +12,7 @@ public record PatientAllergiesUpdateDTO(
         @NotNull Long id,
         @NotNull AllergenTypes allergenType,
         Long allergenId,
+        String allergenName,
         @NotNull Severity severity,
         Long medicationClassId,
         String criticality,

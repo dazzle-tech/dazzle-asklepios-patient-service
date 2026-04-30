@@ -62,31 +62,40 @@ public class PatientAllergiesService {
                         "Allergen must be null for MEDICATION type"
                 );
             }
-        } else {
-            if (patientAllergyCreateDto.allergenId() == null) {
-                LOG.debug("The allergen id is null : {}", patientAllergyCreateDto);
+        } else if (patientAllergyCreateDto.allergenType() == AllergenTypes.OTHER) {
+
+            if (patientAllergyCreateDto.allergenName() == null || patientAllergyCreateDto.allergenName().isBlank()) {
                 throw new BadRequestAlertException(
-                        "allergenRequired",
+                        "allergenNameRequired",
                         "patientAllergies",
-                        "Allergen ID is required for non-MEDICATION types"
+                        "Allergen free text is required"
                 );
             }
+
+            if (patientAllergyCreateDto.allergenId() != null) {
+                throw new BadRequestAlertException(
+                        "allergenMustBeNull",
+                        "patientAllergies",
+                        "Allergen ID must be null for OTHER type"
+                );
+            }
+
             if (patientAllergyCreateDto.medicationClassId() != null) {
-                LOG.debug("The medication class id is not null : {}", patientAllergyCreateDto);
                 throw new BadRequestAlertException(
                         "medicationClassMustBeNull",
                         "patientAllergies",
-                        "Medication Class must be null for non-MEDICATION types"
+                        "Medication Class must be null for OTHER type"
                 );
             }
+
             if (patientAllergyCreateDto.activeIngredients() != null && !patientAllergyCreateDto.activeIngredients().isEmpty()) {
-                LOG.debug("The active ingredients list is not empty : {}", patientAllergyCreateDto);
                 throw new BadRequestAlertException(
                         "activeIngredientsMustBeEmpty",
                         "patientAllergies",
-                        "Active Ingredients must be empty for non-MEDICATION types"
+                        "Active Ingredients must be empty for OTHER type"
                 );
             }
+
         }
         if (patientAllergyCreateDto.onsetDateUndefined() && patientAllergyCreateDto.onsetDate() != null) {
             LOG.debug("The onset date is not null : {}", patientAllergyCreateDto);
@@ -138,7 +147,16 @@ public class PatientAllergiesService {
                 .patientId(patientAllergyCreateDto.patientId())
                 .encounterId(patientAllergyCreateDto.encounterId())
                 .allergenType(patientAllergyCreateDto.allergenType())
-                .allergenId(patientAllergyCreateDto.allergenId())
+                .allergenId(
+                        patientAllergyCreateDto.allergenType() == AllergenTypes.OTHER
+                                ? null
+                                : patientAllergyCreateDto.allergenId()
+                )
+                .allergenName(
+                        patientAllergyCreateDto.allergenType() == AllergenTypes.OTHER
+                                ? patientAllergyCreateDto.allergenName()
+                                : null
+                )
                 .severity(patientAllergyCreateDto.severity())
                 .medicationClassId(patientAllergyCreateDto.medicationClassId())
                 .criticality(patientAllergyCreateDto.criticality())

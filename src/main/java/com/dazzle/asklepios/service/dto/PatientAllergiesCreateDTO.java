@@ -15,6 +15,7 @@ public record PatientAllergiesCreateDTO(
         @NotNull Long encounterId,
         @NotNull AllergenTypes allergenType,
         Long allergenId,
+        String allergenName,
         @NotNull Severity severity,
         Long medicationClassId,
         String criticality,
