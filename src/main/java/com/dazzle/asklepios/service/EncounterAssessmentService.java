@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -101,7 +102,7 @@ public class EncounterAssessmentService {
     }
 
     @Transactional(readOnly = true)
-    public EncounterAssessment findLatestByEncounterId(Long encounterId) {
+    public Optional<EncounterAssessment> findLatestByEncounterId(Long encounterId) {
 
         String currentUser = SecurityUtils.getCurrentUserLogin()
                 .orElseThrow(() -> new BadRequestAlertException(
@@ -113,12 +114,7 @@ public class EncounterAssessmentService {
         LOG.debug("[FIND LATEST] encounterId={} createdBy={}", encounterId, currentUser);
 
         return encounterAssessmentRepository
-                .findTopByEncounterIdAndCreatedByOrderByCreatedDateDesc(encounterId, currentUser)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "No encounter assessment found for encounterId=" + encounterId,
-                        "encounterAssessment",
-                        "notfound"
-                ));
+                .findTopByEncounterIdAndCreatedByOrderByCreatedDateDesc(encounterId, currentUser);
     }
 
     private void handleConstraintsOnCreateOrUpdate(RuntimeException exception) {

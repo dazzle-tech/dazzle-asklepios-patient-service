@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -134,16 +135,11 @@ public class PatientDiagnosisService {
     }
 
     @Transactional(readOnly = true)
-    public PatientDiagnosis findLatestByEncounterId(Long encounterId) {
+    public Optional<PatientDiagnosis> findLatestByEncounterId(Long encounterId) {
         LOG.debug("[FIND LATEST] encounterId={}", encounterId);
 
         return patientDiagnosisRepository
-                .findTopByEncounterIdOrderByCreatedDateDesc(encounterId)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "No patient diagnosis found for encounterId=" + encounterId,
-                        "patientDiagnosis",
-                        "notfound"
-                ));
+                .findTopByEncounterIdOrderByCreatedDateDesc(encounterId);
     }
 
     @Transactional(readOnly = true)
@@ -160,16 +156,11 @@ public class PatientDiagnosisService {
     }
 
     @Transactional(readOnly = true)
-    public PatientDiagnosis getPrimaryDiagnosisByEncounterId(Long encounterId) {
+    public Optional<PatientDiagnosis> getPrimaryDiagnosisByEncounterId(Long encounterId) {
         LOG.debug("[GET_PRIMARY_DIAGNOSIS_BY_ENCOUNTER] encounterId={}", encounterId);
 
         return patientDiagnosisRepository
-                .findByEncounterIdAndType(encounterId, DiagnosisType.PRIMARY)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Primary diagnosis not found for encounterId=" + encounterId,
-                        "patientDiagnosis",
-                        "notfound"
-                ));
+                .findByEncounterIdAndType(encounterId, DiagnosisType.PRIMARY);
     }
 
     public void hardDelete(Long id) {

@@ -44,11 +44,20 @@ public class ExternalTestController {
     }
 
     @GetMapping("/external-test/{id}")
-    public ResponseEntity<ExternalTestResponseVM> getByTestId(@Valid @PathVariable("id") Long testId) {
+    public ResponseEntity<ExternalTestResponseVM> getByTestId(@PathVariable("id") Long testId) {
         LOG.debug("[ExternalTest] GET_BY_TEST_ID - request received. testId={}", testId);
-        ExternalTest existing = externalTestService.getByTestId(testId);
-        LOG.debug("[ExternalTest] GET_BY_TEST_ID - found. testId={}", existing.getTestId());
-        return ResponseEntity.ok(ExternalTestResponseVM.ofEntity(existing));
+
+        return externalTestService.getByTestId(testId)
+                .map(entity -> {
+                    LOG.debug("[ExternalTest] GET_BY_TEST_ID - found. testId={}", entity.getTestId());
+
+                    ExternalTestResponseVM vm = ExternalTestResponseVM.ofEntity(entity);
+                    return ResponseEntity.ok(vm);
+                })
+                .orElseGet(() -> {
+                    LOG.debug("[ExternalTest] GET_BY_TEST_ID - not found. testId={}", testId);
+                    return ResponseEntity.noContent().build();
+                });
     }
 
     @DeleteMapping("/external-test/{testId}")

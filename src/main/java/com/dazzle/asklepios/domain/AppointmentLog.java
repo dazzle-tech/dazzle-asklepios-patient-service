@@ -99,6 +99,9 @@ public class AppointmentLog extends AbstractAuditingEntity<Long> implements Seri
     @Column(name = "deferred_at")
     private Instant deferredAt;
 
+    @Column(name = "require_confirmation", nullable = false)
+    private Boolean requireConfirmation;
+
     @Column(name = "no_show_reason", length = 255)
     private String noShowReason;
 

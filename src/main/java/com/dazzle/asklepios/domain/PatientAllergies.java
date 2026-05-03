@@ -46,6 +46,9 @@ public class PatientAllergies extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "allergen_id")
     private Long allergenId;
 
+    @Column(name = "allergen_name")
+    private String allergenName;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "severity", nullable = false)
     private Severity severity;

@@ -9,7 +9,7 @@ import java.time.Instant;
 
 public record DiagnosticOrderResponseVM(
         Long id,
-        String patientId,
+        Long patientId,
         Long encounterId,
         DiagnosticStatus status,
         Long orderNumber,
@@ -30,7 +30,7 @@ public record DiagnosticOrderResponseVM(
     public static DiagnosticOrderResponseVM ofEntity(DiagnosticOrder o) {
         return new DiagnosticOrderResponseVM(
                 o.getId(),
-                String.valueOf(o.getPatientId()),
+                o.getPatientId(),
                 o.getEncounterId(),
                 o.getStatus(),
                 o.getOrderNumber(),

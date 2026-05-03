@@ -11,6 +11,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PastOrPresent;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
@@ -78,6 +79,7 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
     @Column(name = "cancelled_date")
     private Instant cancelledDate;
 
+    @PastOrPresent(message = "patient arrivel  at cannot be in the future")
     @Column(name = "patient_arrived_date")
     private Instant patientArrivedDate;
 
