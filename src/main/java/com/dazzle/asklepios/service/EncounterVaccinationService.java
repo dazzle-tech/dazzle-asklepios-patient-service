@@ -1,9 +1,12 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.setup.VaccineClient;
 import com.dazzle.asklepios.domain.EncounterVaccination;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.EncounterVaccinationStatus;
 import com.dazzle.asklepios.repository.EncounterVaccinationRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.projection.EncounterVaccinationProjections;
 import com.dazzle.asklepios.security.SecurityUtils;
@@ -12,6 +15,9 @@ import com.dazzle.asklepios.service.dto.encounterVaccination.EncounterVaccinatio
 import com.dazzle.asklepios.service.dto.encounterVaccination.EncounterVaccinationReviewDTO;
 import com.dazzle.asklepios.service.dto.encounterVaccination.EncounterVaccinationUpdateDTO;
 import com.dazzle.asklepios.service.dto.encounterVaccination.PatientVaccineDetailsDTO;
+import com.dazzle.asklepios.service.helper.VaccineBrandHelper;
+import com.dazzle.asklepios.service.helper.VaccineDosesHelper;
+import com.dazzle.asklepios.service.helper.VaccineHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -36,8 +42,14 @@ public class EncounterVaccinationService {
 
     private static final Logger LOG = LoggerFactory.getLogger(EncounterVaccinationService.class);
 
+    private static final String ENTITY_NAME = "EncounterVaccination";
+
     private final EncounterVaccinationRepository encounterVaccinationRepository;
     private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
+    private final VaccineHelper vaccineHelper;
+    private final VaccineBrandHelper vaccineBrandHelper;
+    private final VaccineDosesHelper vaccineDosesHelper;
 
     public EncounterVaccination create(EncounterVaccinationCreateDTO createRequest) {
         LOG.info("[CREATE] EncounterVaccination payload={}", createRequest);
@@ -51,6 +63,11 @@ public class EncounterVaccinationService {
                             "patient.notfound"
                     );
                 });
+
+        loadEncounter(createRequest.encounterId());
+        vaccineHelper.validateVaccineExists(createRequest.vaccineId());
+        vaccineBrandHelper.validateVaccineBrandExists(createRequest.encounterId());
+        vaccineDosesHelper.validateVaccineDosesExists(createRequest.vaccineDoseId());
 
         String normalizedExternalFacilityName = Boolean.TRUE.equals(createRequest.isExternalFacility())
                 ? createRequest.externalFacilityName()
@@ -111,6 +128,11 @@ public class EncounterVaccinationService {
                                         "patient.notfound"
                                 );
                             });
+
+                    loadEncounter(updateRequest.encounterId());
+                    vaccineHelper.validateVaccineExists(updateRequest.vaccineId());
+                    vaccineBrandHelper.validateVaccineBrandExists(updateRequest.encounterId());
+                    vaccineDosesHelper.validateVaccineDosesExists(updateRequest.vaccineDoseId());
 
                     encounterVaccination.setPatient(patient);
                     encounterVaccination.setEncounterId(updateRequest.encounterId());
@@ -385,6 +407,16 @@ public class EncounterVaccinationService {
         );
 
         return new PatientVaccineDetailsDTO(records, brandIds, doseIds);
+    }
+
+
+    private PatientEncounter loadEncounter(Long encounterId) {
+        return patientEncounterRepository.findById(encounterId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "encounter.notfound",
+                        ENTITY_NAME,
+                        "Encounter not found with id " + encounterId
+                ));
     }
 
     @Transactional(readOnly = true)
