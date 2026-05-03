@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service.dto.patientObservationsComplaints;
 
+import com.dazzle.asklepios.domain.enumeration.BloodGroup;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -23,6 +24,8 @@ public record PatientObservationsComplaintsCreateDTO(
         String reasonOfVisit,
 
         String cognitiveCheck,
+
+        BloodGroup bloodGroup,
 
         @NotNull
         Boolean isActive

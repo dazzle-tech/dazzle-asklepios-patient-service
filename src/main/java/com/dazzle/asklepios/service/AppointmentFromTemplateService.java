@@ -34,7 +34,6 @@ import com.dazzle.asklepios.service.helper.CatalogHelper;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.DiagnosticTestHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentResponseVM;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
@@ -85,11 +84,11 @@ public class AppointmentFromTemplateService {
         LOG.debug("Request to update AppointmentFromTemplate dto={}", dto);
 
         AppointmentFromTemplate appointment = appointmentFromTemplateRepository.findById(dto.id())
-                .orElseThrow(() -> new NotFoundAlertException("Appointment not found with id: " + dto.id(), ENTITY_NAME, "notfound"));
+                .orElseThrow(() -> new BadRequestAlertException("notfound", ENTITY_NAME, "Appointment not found with id: " + dto.id()));
 
         if (dto.patientId() != null) {
             Patient patient = patientRepository.findById(dto.patientId())
-                    .orElseThrow(() -> new NotFoundAlertException("Patient not found with id: " + dto.patientId(), ENTITY_NAME, "notfound"));
+                    .orElseThrow(() -> new BadRequestAlertException("notfound", ENTITY_NAME, "Patient not found with id: " + dto.patientId()));
             appointment.setPatient(patient);
         }
         if (dto.defaultService() != null) {
@@ -120,7 +119,7 @@ public class AppointmentFromTemplateService {
         }
         if (dto.service() == EncounterReason.FOLLOW_UP && dto.followUpEncounterId() != null) {
             PatientEncounter followUpEncounter = patientEncounterRepository.findById(dto.followUpEncounterId())
-                    .orElseThrow(() -> new NotFoundAlertException("Patient Encounter not found with id: " + dto.followUpEncounterId(), ENTITY_NAME, "notfound"));
+                    .orElseThrow(() -> new BadRequestAlertException("notfound", ENTITY_NAME, "Patient Encounter not found with id: " + dto.followUpEncounterId()));
 
             appointment.setFollowUpEncounter(followUpEncounter);
         }
@@ -138,7 +137,7 @@ public class AppointmentFromTemplateService {
         LOG.debug("Service filter Appointments filter={} pageable={}", filter, pageable);
 
         if (filter.facility() == null) {
-            throw new BadRequestAlertException("Facility is required", ENTITY_NAME, "facility");
+            throw new BadRequestAlertException("facility", ENTITY_NAME, "Facility is required");
         }
 
         Specification<AppointmentFromTemplate> appointmentFilterSpec = (root, query, cb) -> {
@@ -214,7 +213,7 @@ public class AppointmentFromTemplateService {
         validateConfirmable(appointment);
 
         if (appointment.getPatient() == null) {
-            throw new BadRequestAlertException("Cannot confirm appointment without patient", ENTITY_NAME, "patientrequired");
+            throw new BadRequestAlertException("patientrequired", ENTITY_NAME, "Cannot confirm appointment without patient");
         }
         appointment.setConfirmedAt(Instant.now());
         appointment.setStatus(AppointmentStatus.CONFIRMED);
@@ -229,7 +228,7 @@ public class AppointmentFromTemplateService {
         validateCheckInable(appointment);
 
         if (appointment.getPatient() == null) {
-            throw new BadRequestAlertException("Cannot check in appointment without patient", ENTITY_NAME, "patientrequired");
+            throw new BadRequestAlertException("patientrequired", ENTITY_NAME, "Cannot check in appointment without patient");
         }
 
         appointment.setStatus(AppointmentStatus.CHECKED_IN);
@@ -265,14 +264,14 @@ public class AppointmentFromTemplateService {
 
         if (department.defaultDurationMinutes() == null || department.defaultDurationMinutes() <= 0) {
             throw new BadRequestAlertException(
-                    "Department default duration is invalid",
+                    "defaultdurationinvalid",
                     "department",
-                    "defaultdurationinvalid"
+                    "Department default duration is invalid"
             );
         }
 
         Patient patient = patientRepository.findById(appointmentDTO.patientId())
-                .orElseThrow(() -> new NotFoundAlertException(
+                .orElseThrow(() -> new BadRequestAlertException(
                         "Patient not found",
                         "patient",
                         "idnotfound"
@@ -297,12 +296,13 @@ public class AppointmentFromTemplateService {
         appointment.setPriority(appointmentDTO.priority());
         appointment.setOriginType(appointmentDTO.originType());
         appointment.setOriginName(appointmentDTO.originName());
+        appointment.setRequireConfirmation(true);
         appointment.setReason(appointmentDTO.reason());
         appointment.setNote(appointmentDTO.note());
         appointment.setService(appointmentDTO.service());
         if (appointmentDTO.service() == EncounterReason.FOLLOW_UP && appointmentDTO.followUpEncounterId() != null) {
             PatientEncounter followUpEncounter = patientEncounterRepository.findById(appointmentDTO.followUpEncounterId())
-                    .orElseThrow(() -> new NotFoundAlertException("Patient Encounter not found with id: " + appointmentDTO.followUpEncounterId(), ENTITY_NAME, "notfound"));
+                    .orElseThrow(() -> new BadRequestAlertException("Patient Encounter not found with id: " + appointmentDTO.followUpEncounterId(), ENTITY_NAME, "notfound"));
 
             appointment.setFollowUpEncounter(followUpEncounter);
         }
@@ -334,7 +334,7 @@ public class AppointmentFromTemplateService {
         return appointmentFromTemplateRepository.findById(appointmentId)
                 .orElseThrow(() -> {
                     LOG.warn("[GET_BY_ID] appointment not found id={}", appointmentId);
-                    return new NotFoundAlertException(
+                    return new BadRequestAlertException(
                             "appointment not found with id " + appointmentId,
                             "appointment",
                             "id.notfound"
@@ -344,21 +344,21 @@ public class AppointmentFromTemplateService {
 
     private void createAndSubmitDiagnosticOrderFlow(AppointmentFromTemplate appointment, PatientEncounter encounter) {
         if (appointment.getResourceId() == null) {
-            throw new BadRequestAlertException("Diagnostic test appointment must have resourceId", ENTITY_NAME, "resourceidrequired");
+            throw new BadRequestAlertException("resourceidrequired", ENTITY_NAME, "Diagnostic test appointment must have resourceId");
         }
 
         if (appointment.getPatient() == null || appointment.getPatient().getId() == null) {
-            throw new BadRequestAlertException("Diagnostic test appointment must have patient", ENTITY_NAME, "patientrequired");
+            throw new BadRequestAlertException("patientrequired", ENTITY_NAME, "Diagnostic test appointment must have patient");
         }
 
         DiagnosticTestSetupDTO diagnosticTest = diagnosticTestHelper.getDiagnosticTest(appointment.getResourceId());
 
         if (diagnosticTest == null) {
-            throw new NotFoundAlertException("Diagnostic test not found with id: " + appointment.getResourceId(), "DiagnosticTest", "notfound");
+            throw new BadRequestAlertException("Diagnostic test not found with id: " + appointment.getResourceId(), "DiagnosticTest", "notfound");
         }
 
         if (Boolean.FALSE.equals(diagnosticTest.isActive())) {
-            throw new BadRequestAlertException("Diagnostic test is inactive", "DiagnosticTest", "inactive");
+            throw new BadRequestAlertException("inactive", "DiagnosticTest", "Diagnostic test is inactive");
         }
 
         DiagnosticOrderCreateDTO orderCreateDTO = new DiagnosticOrderCreateDTO(
@@ -390,17 +390,17 @@ public class AppointmentFromTemplateService {
 
     private void createAndSubmitCatalogOrderFlow(AppointmentFromTemplate appointment, PatientEncounter encounter) {
         if (appointment.getResourceId() == null) {
-            throw new BadRequestAlertException("Catalog appointment must have resourceId", ENTITY_NAME, "resourceidrequired");
+            throw new BadRequestAlertException("resourceidrequired", ENTITY_NAME, "Catalog appointment must have resourceId");
         }
 
         if (appointment.getPatient() == null || appointment.getPatient().getId() == null) {
-            throw new BadRequestAlertException("Catalog appointment must have patient", ENTITY_NAME, "patientrequired");
+            throw new BadRequestAlertException("patientrequired", ENTITY_NAME, "Catalog appointment must have patient");
         }
 
         List<DiagnosticTestSetupDTO> diagnosticTests = catalogHelper.getTestsByCatalog(appointment.getResourceId());
 
         if (diagnosticTests == null || diagnosticTests.isEmpty()) {
-            throw new BadRequestAlertException("Catalog does not contain diagnostic tests", "Catalog", "empty");
+            throw new BadRequestAlertException("empty", "Catalog", "Catalog does not contain diagnostic tests");
         }
 
         boolean hasLab = diagnosticTests.stream()
@@ -428,9 +428,9 @@ public class AppointmentFromTemplateService {
 
             if (Boolean.FALSE.equals(diagnosticTest.isActive())) {
                 throw new BadRequestAlertException(
-                        "Diagnostic test is inactive: " + diagnosticTest.id(),
+                        "inactive",
                         "DiagnosticTest",
-                        "inactive"
+                        "Diagnostic test is inactive: " + diagnosticTest.id()
                 );
             }
 
@@ -474,7 +474,7 @@ public class AppointmentFromTemplateService {
 
     private AvailabilityGenerationBatch getBatch(Long id) {
         return availabilityGenerationBatchRepository.findById(id)
-                .orElseThrow(() -> new NotFoundAlertException("Batch not found: " + id, ENTITY_NAME, "notfound"));
+                .orElseThrow(() -> new BadRequestAlertException("Batch not found: " + id, ENTITY_NAME, "notfound"));
     }
 
     private PatientEncounter createEncounter(AppointmentFromTemplate savedAppointment, DepartmentDTO department) {
@@ -504,50 +504,67 @@ public class AppointmentFromTemplateService {
 
     private AppointmentFromTemplate getAppointment(Long id) {
         return appointmentFromTemplateRepository.findById(id)
-                .orElseThrow(() -> new NotFoundAlertException("Appointment not found: " + id, ENTITY_NAME, "notfound"));
+                .orElseThrow(() -> new BadRequestAlertException("Appointment not found: " + id, ENTITY_NAME, "notfound"));
     }
 
     private void validateCancelable(AppointmentFromTemplate appointment) {
         if (appointment.getStatus() == AppointmentStatus.CANCELLED) {
-            throw new BadRequestAlertException("Appointment already cancelled", ENTITY_NAME, "alreadycancelled");
+            throw new BadRequestAlertException("alreadycancelled", ENTITY_NAME, "Appointment already cancelled");
         } else if (appointment.getStatus() == AppointmentStatus.CHECKED_IN) {
-            throw new BadRequestAlertException("Checked-in appointment cannot be cancelled", ENTITY_NAME, "invalidstatus");
+            throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Checked-in appointment cannot be cancelled");
         } else if (appointment.getStatus() == AppointmentStatus.IN_SERVICE) {
-            throw new BadRequestAlertException("IN_SERVICE appointment cannot be cancelled", ENTITY_NAME, "invalidstatus");
+            throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "IN_SERVICE appointment cannot be cancelled");
         } else if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
-            throw new BadRequestAlertException("Completed appointment cannot be cancelled", ENTITY_NAME, "invalidstatus");
+            throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Completed appointment cannot be cancelled");
         }
 
     }
 
     private void validateNoShowable(AppointmentFromTemplate appointment) {
         if (appointment.getStatus() == AppointmentStatus.CANCELLED) {
-            throw new BadRequestAlertException("Cancelled appointment cannot be marked as no-show", ENTITY_NAME, "invalidstatus");
+            throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Cancelled appointment cannot be marked as no-show");
         }
         if (appointment.getStatus() == AppointmentStatus.CHECKED_IN) {
-            throw new BadRequestAlertException("Checked-in appointment cannot be marked as no-show", ENTITY_NAME, "invalidstatus");
+            throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Checked-in appointment cannot be marked as no-show");
         } else if (appointment.getStatus() == AppointmentStatus.IN_SERVICE) {
-            throw new BadRequestAlertException("IN_SERVICE appointment cannot be No-show", ENTITY_NAME, "invalidstatus");
+            throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "IN_SERVICE appointment cannot be No-show");
         } else if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
-            throw new BadRequestAlertException("Completed appointment cannot be No-show", ENTITY_NAME, "invalidstatus");
+            throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Completed appointment cannot be No-show");
         }
     }
 
     private void validateConfirmable(AppointmentFromTemplate appointment) {
         if (appointment.getStatus() != AppointmentStatus.BOOKED) {
-            throw new BadRequestAlertException("Only booked appointments can be confirmed", ENTITY_NAME, "invalidstatus");
+            throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Only booked appointments can be confirmed");
         }
     }
 
     private void validateCheckInable(AppointmentFromTemplate appointment) {
-        if (appointment.getStatus() != AppointmentStatus.CONFIRMED) {
-            throw new BadRequestAlertException("Only confirmed appointments can be checked in", ENTITY_NAME, "invalidstatus");
+        boolean requireConfirmation = !Boolean.FALSE.equals(appointment.getRequireConfirmation());
+        boolean eligibleStatus =
+                appointment.getStatus() == AppointmentStatus.BOOKED ||
+                appointment.getStatus() == AppointmentStatus.CONFIRMED;
+
+        if (!eligibleStatus) {
+            throw new BadRequestAlertException(
+                    "invalidstatus",
+                    ENTITY_NAME,
+                    "Only booked or confirmed appointments can be checked in"
+            );
+        }
+
+        if (requireConfirmation && appointment.getStatus() != AppointmentStatus.CONFIRMED) {
+            throw new BadRequestAlertException(
+                    "invalidstatus",
+                    ENTITY_NAME,
+                    "Appointment requires confirmation before check-in"
+            );
         }
         if (appointment.getStartDatetime() == null) {
             throw new BadRequestAlertException(
-                    "startdatetimerequired",
+                    "Appointment start date is missing",
                     ENTITY_NAME,
-                    "Appointment start date is missing"
+                    "startdatetimerequired"
 
 
                     );
@@ -561,16 +578,16 @@ public class AppointmentFromTemplateService {
 
         if (!today.equals(appointmentDate)) {
             throw new BadRequestAlertException(
-                    "Check-in is allowed only on the appointment date",
+                    "invalidcheckindate",
                     ENTITY_NAME,
-                    "invalidcheckindate"
+                    "Check-in is allowed only on the appointment date"
             );
         }
     }
 
     private String currentUsername() {
         return SecurityUtils.getCurrentUserLogin()
-                .orElseThrow(() -> new BadRequestAlertException("unauthenticated", ENTITY_NAME, "No authenticated user"));
+                .orElseThrow(() -> new BadRequestAlertException("No authenticated user", ENTITY_NAME, "unauthenticated"));
     }
 
 }

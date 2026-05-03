@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -121,20 +122,13 @@ public class DiagnosticOrderTestReportService {
     }
 
     @Transactional(readOnly = true)
-    public DiagnosticOrderTestReport getByOrderTestIdForRadiology(Long orderTestId) {
+    public Optional<DiagnosticOrderTestReport> findByOrderTestIdForRadiology(Long orderTestId) {
         LOG.debug("[DiagnosticOrderTestReportService] GET_BY_ORDER_TEST_ID - start. orderTestId={}", orderTestId);
-        requireRadiologyTest(orderTestId);
-        DiagnosticOrderTestReport report = diagnosticOrderTestReportRepository.findByOrderTestId(orderTestId)
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
-                        "diagnostic_order_tests_report",
-                        "Report not found for orderTestId " + orderTestId
-                ));
-        LOG.debug("[DiagnosticOrderTestReportService] GET_BY_ORDER_TEST_ID - done. reportId={} orderTestId={}",
-                report.getId(), report.getOrderTestId());
-        return report;
-    }
 
+        requireRadiologyTest(orderTestId);
+
+        return diagnosticOrderTestReportRepository.findByOrderTestId(orderTestId);
+    }
     public DiagnosticOrderTestReport createRadiologyReport(DiagnosticOrderTestReportCreateDTO reportCreateDTO) {
         LOG.debug("[DiagnosticOrderTestReportService] CREATE_RADIOLOGY_REPORT - start. payload={}", reportCreateDTO);
         DiagnosticOrderTest orderTest = requireRadiologyTest(reportCreateDTO.orderTestId());

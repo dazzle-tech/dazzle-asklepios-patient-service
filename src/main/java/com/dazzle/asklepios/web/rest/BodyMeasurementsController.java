@@ -102,11 +102,7 @@ public class BodyMeasurementsController {
     ) {
         return bodyMeasurementsService.findLatestByPatientId(patientId)
                 .map(ResponseEntity::ok)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "No body measurements found for patientId " + patientId,
-                        ENTITY_NAME,
-                        "notfound"
-                ));
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     @GetMapping("/body-measurements/latest/encounter/{encounterId}")

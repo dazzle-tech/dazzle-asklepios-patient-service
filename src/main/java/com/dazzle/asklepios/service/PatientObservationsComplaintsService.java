@@ -59,6 +59,7 @@ public class PatientObservationsComplaintsService {
                 .reasonOfVisit(dto.reasonOfVisit())
                 .cognitiveCheck(dto.cognitiveCheck())
                 .patientConditions(dto.patientConditions())
+                .bloodGroup(dto.bloodGroup())
                 .isActive(dto.isActive())
                 .build();
 
@@ -88,6 +89,7 @@ public class PatientObservationsComplaintsService {
             entity.setReasonOfVisit(dto.reasonOfVisit());
             entity.setCognitiveCheck(dto.cognitiveCheck());
             entity.setPatientConditions(dto.patientConditions());
+            entity.setBloodGroup(dto.bloodGroup());
             entity.setIsActive(dto.isActive());
 
             try {

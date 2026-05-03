@@ -190,6 +190,7 @@ public class PatientEncounterService {
         existingPatientEncounter.setNotes(updateDTO.notes());
         existingPatientEncounter.setStatus(updateDTO.status());
         existingPatientEncounter.setChiefComplaint(updateDTO.chiefComplaint());
+        existingPatientEncounter.setPhysicalExaminationSummery(updateDTO.physicalExaminationSummery());
 
         if (updateDTO.followUpEncounterId() != null) {
             PatientEncounter followUpEncounter = patientEncounterRepository.findById(updateDTO.followUpEncounterId())
@@ -664,7 +665,7 @@ public class PatientEncounterService {
 
         if (messageLower.contains("unique_patient_department_date_encounter")) {
             return new BadRequestAlertException(
-                    "This patient already has an encounter for this department on this date.",
+                    "Patient already has same department encounter Today",
                     "patientEncounter",
                     "patient.department.date.duplicate"
             );
@@ -973,5 +974,11 @@ public class PatientEncounterService {
         return username;
     }
 
+    public List<PatientEncounter> getEncountersByIds(List<Long> encounterIds) {
+        if (encounterIds == null || encounterIds.isEmpty()) {
+            return List.of();
+        }
 
+        return patientEncounterRepository.findAllById(encounterIds);
+    }
 }
