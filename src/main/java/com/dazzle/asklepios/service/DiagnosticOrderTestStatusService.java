@@ -49,12 +49,7 @@ public class DiagnosticOrderTestStatusService {
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final DiagnosticTestClient diagnosticTestClient;
 
-    public DiagnosticOrderTestStatusService(
-            DiagnosticOrderRepository diagnosticOrderRepository,
-            DiagnosticOrderTestRepository diagnosticOrderTestRepository,
-            DiagnosticOrderStatusService diagnosticOrderStatusService,
-            PatientServiceAndProductRepository patientServiceAndProductRepository,
-            DiagnosticTestClient diagnosticTestClient) {
+    public DiagnosticOrderTestStatusService(DiagnosticOrderRepository diagnosticOrderRepository, DiagnosticOrderTestRepository diagnosticOrderTestRepository, DiagnosticOrderStatusService diagnosticOrderStatusService, PatientServiceAndProductRepository patientServiceAndProductRepository, DiagnosticTestClient diagnosticTestClient) {
         this.diagnosticOrderRepository = diagnosticOrderRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
@@ -77,12 +72,7 @@ public class DiagnosticOrderTestStatusService {
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
 
-        LOG.debug(
-                "[DiagnosticOrderTestStatus] COLLECT_SAMPLE - done. testId={} orderId={} status={}",
-                saved.getId(),
-                saved.getOrderId(),
-                saved.getProcessingStatus()
-        );
+        LOG.debug("[DiagnosticOrderTestStatus] COLLECT_SAMPLE - done. testId={} orderId={} status={}", saved.getId(), saved.getOrderId(), saved.getProcessingStatus());
 
         return saved;
     }
@@ -113,13 +103,7 @@ public class DiagnosticOrderTestStatusService {
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
 
-        LOG.debug(
-                "[DiagnosticOrderTestStatus] PATIENT_ARRIVED - done. testId={} orderId={} status={} arrivedDate={}",
-                saved.getId(),
-                saved.getOrderId(),
-                saved.getProcessingStatus(),
-                saved.getPatientArrivedDate()
-        );
+        LOG.debug("[DiagnosticOrderTestStatus] PATIENT_ARRIVED - done. testId={} orderId={} status={} arrivedDate={}", saved.getId(), saved.getOrderId(), saved.getProcessingStatus(), saved.getPatientArrivedDate());
 
         return new PatientArrivedResponseVM(
                 saved.getId(),
