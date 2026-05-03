@@ -6,6 +6,8 @@ import com.dazzle.asklepios.domain.enumeration.DiagnosticTestRequestStatus;
 import com.dazzle.asklepios.repository.DiagnosticTestRequestRepository;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.requests.DiagnosticTestRequestCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.requests.DiagnosticTestRequestUpdateDTO;
+import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,13 +23,19 @@ public class DiagnosticTestRequestService {
     private static final Logger LOG = LoggerFactory.getLogger(DiagnosticTestRequestService.class);
 
     private final DiagnosticTestRequestRepository repository;
+    private final FacilityHelper facilityHelper;
+    private final DepartmentHelper departmentHelper;
 
-    public DiagnosticTestRequestService(DiagnosticTestRequestRepository repository) {
+    public DiagnosticTestRequestService(DiagnosticTestRequestRepository repository, FacilityHelper facilityHelper, DepartmentHelper departmentHelper) {
         this.repository = repository;
+        this.facilityHelper = facilityHelper;
+        this.departmentHelper = departmentHelper;
     }
 
     public DiagnosticTestRequest create(DiagnosticTestRequestCreateDTO dto, String username) {
         LOG.debug("[DiagnosticTestRequestService] CREATE - start. payload={} username={}", dto, username);
+        facilityHelper.validateFacilityExists(dto.fromFacilityId());
+        departmentHelper.validateDepartmentExists(dto.fromDepartmentId());
         DiagnosticTestRequest request = new DiagnosticTestRequest();
         request.setStatus(DiagnosticTestRequestStatus.REQUESTED);
         request.setType(dto.type());
@@ -54,7 +62,8 @@ public class DiagnosticTestRequestService {
                     "Cannot update a non-REQUESTED request"
             );
         }
-
+        facilityHelper.validateFacilityExists(dto.fromFacilityId());
+        departmentHelper.validateDepartmentExists(dto.fromDepartmentId());
         request.setType(dto.type());
         request.setName(dto.name());
         request.setIndication(dto.indication());
