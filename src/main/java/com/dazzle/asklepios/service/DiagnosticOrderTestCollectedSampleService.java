@@ -37,6 +37,8 @@ public class DiagnosticOrderTestCollectedSampleService {
     private final PatientRepository patientRepository;
     private final DiagnosticTestRepository diagnosticTestRepository;
     private final DepartmentsRepository departmentRepository;
+    private final DiagnosticOrderRepository diagnosticOrderRepository;
+    private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
 
     public DiagnosticOrderTestCollectedSampleService(
             DiagnosticOrderTestCollectedSampleRepository repository,
@@ -46,8 +48,8 @@ public class DiagnosticOrderTestCollectedSampleService {
             DiagnosticOrderRepository orderRepository,
             PatientRepository patientRepository,
             DiagnosticTestRepository diagnosticTestRepository,
-            DepartmentsRepository departmentRepository
-    ) {
+            DepartmentsRepository departmentRepository,
+            DiagnosticOrderRepository diagnosticOrderRepository, DiagnosticOrderTestRepository diagnosticOrderTestRepository) {
         this.repository = repository;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
         this.orderTestRepository = orderTestRepository;
@@ -56,14 +58,17 @@ public class DiagnosticOrderTestCollectedSampleService {
         this.patientRepository = patientRepository;
         this.diagnosticTestRepository = diagnosticTestRepository;
         this.departmentRepository = departmentRepository;
+        this.diagnosticOrderRepository = diagnosticOrderRepository;
+        this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
     }
 
     public DiagnosticOrderTestCollectedSample create(DiagnosticOrderTestCollectedSampleDTO dto) {
         LOG.debug("[CollectedSampleService] CREATE - start. payload={}", dto);
-
+        DiagnosticOrder diagnosticOrder = getDiagnosticOrder(dto.orderId());
+        DiagnosticOrderTest diagnosticOrderTest = getDiagnosticOrderTest(dto.orderTestId());
         DiagnosticOrderTestCollectedSample s = new DiagnosticOrderTestCollectedSample();
-        s.setOrderId(dto.orderId());
-        s.setOrderTestId(dto.orderTestId());
+        s.setOrderId(diagnosticOrder.getId());
+        s.setOrderTestId(diagnosticOrderTest.getId());
         s.setUnit(dto.unit());
         s.setQuantity(dto.quantity());
         s.setCollectedAt(dto.collectedAt());
@@ -84,8 +89,9 @@ public class DiagnosticOrderTestCollectedSampleService {
     ) {
         LOG.debug("[CollectedSampleService] BULK_CREATE_SAME - start. orderId={} orderTestIdsCount={}",
                 dto.orderId(), dto.orderTestIds() == null ? 0 : dto.orderTestIds().size());
-
+        DiagnosticOrder diagnosticOrder = getDiagnosticOrder(dto.orderId());
         List<DiagnosticOrderTestCollectedSample> entities = dto.orderTestIds().stream().map(orderTestId -> {
+
             DiagnosticOrderTestCollectedSample s = new DiagnosticOrderTestCollectedSample();
             s.setOrderId(dto.orderId());
             s.setOrderTestId(orderTestId);
@@ -190,4 +196,27 @@ public class DiagnosticOrderTestCollectedSampleService {
                 lastSample.getUnit()
         );
     }
+
+    private DiagnosticOrder getDiagnosticOrder(Long diagnosticOrderId) {
+        LOG.debug("[TechnicianNoteService]  getDiagnosticOrder:  id={}", diagnosticOrderId);
+
+        return diagnosticOrderRepository.findById(diagnosticOrderId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_orders",
+                        "Order not found with id " + diagnosticOrderId
+                ));
+    }
+
+    private DiagnosticOrderTest getDiagnosticOrderTest(Long diagnosticOrderTestId) {
+        LOG.debug("[TechnicianNoteService]  getDiagnosticOrderTest:  id={}", diagnosticOrderTestId);
+
+        return diagnosticOrderTestRepository.findById(diagnosticOrderTestId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnosticOrdersTest",
+                        "Test not found with id " + diagnosticOrderTestId
+                ));
+    }
+
 }

@@ -17,6 +17,8 @@ import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromT
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestCancelDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestCreateDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestUpdateDTO;
+import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointmentRequest.AppointmentRequestResponseVM;
@@ -41,6 +43,8 @@ public class AppointmentRequestService {
     private final PatientEncounterRepository patientEncounterRepository;
     private final AppointmentFromTemplateRepository appointmentFromTemplateRepository;
     private final AppointmentFromTemplateService appointmentFromTemplateService;
+    private final FacilityHelper facilityHelper;
+    private final DepartmentHelper departmentHelper;
 
     public AppointmentRequestResponseVM create(AppointmentRequestCreateDTO dto) {
         log.debug("Request to create AppointmentRequest dto={}", dto);
@@ -58,6 +62,9 @@ public class AppointmentRequestService {
                         ENTITY_NAME,
                         "sourceEncounter.notfound"
                 ));
+        facilityHelper.validateFacilityExists(dto.facilityId());
+        departmentHelper.validateDepartmentExists(dto.departmentId());
+
 
         AppointmentRequest request = new AppointmentRequest();
         request.setPatient(patient);

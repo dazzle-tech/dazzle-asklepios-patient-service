@@ -124,8 +124,6 @@ public class DiagnosticOrderController {
         // Ensure the DTO id matches the path variable id
         DiagnosticOrderUpdateDTO fixedDto = new DiagnosticOrderUpdateDTO(
                 id,
-                dto.patientId(),
-                dto.encounterId(),
                 dto.isUrgent()
         );
 

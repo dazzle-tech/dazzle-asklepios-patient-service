@@ -8,8 +8,6 @@ import java.io.Serializable;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record DiagnosticOrderUpdateDTO(
         @NotNull Long id,
-        @NotNull Long patientId,
-        @NotNull Long encounterId,
         @NotNull Boolean isUrgent
 ) implements Serializable {
 }

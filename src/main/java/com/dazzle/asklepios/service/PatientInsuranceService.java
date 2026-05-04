@@ -4,8 +4,11 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.repository.PatientInsuranceCoverageRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.patientInsurance.PatientInsuranceCreateDTO;
 import com.dazzle.asklepios.service.dto.patientInsurance.PatientInsuranceUpdateDTO;
+import com.dazzle.asklepios.service.helper.PayorHelper;
+import com.dazzle.asklepios.service.helper.PayorPlanHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
@@ -27,26 +30,32 @@ public class PatientInsuranceService {
 
     private final PatientInsuranceRepository patientInsuranceRepository;
     private final PatientInsuranceCoverageRepository patientInsuranceCoverageRepository;
-    private final PatientService patientService;
+    private final PatientRepository patientRepository;
+    private final PayorHelper payorHelper;
+    private final PayorPlanHelper payorPlanHelper;
 
     public PatientInsuranceService(
             PatientInsuranceRepository patientInsuranceRepository,
             PatientInsuranceCoverageRepository patientInsuranceCoverageRepository,
-            PatientService patientService
-    ) {
+            PatientRepository patientRepository, PayorHelper payorHelper, PayorPlanHelper payorPlanHelper) {
         this.patientInsuranceRepository = patientInsuranceRepository;
         this.patientInsuranceCoverageRepository = patientInsuranceCoverageRepository;
-        this.patientService = patientService;
+        this.patientRepository = patientRepository;
+        this.payorHelper = payorHelper;
+        this.payorPlanHelper = payorPlanHelper;
     }
 
     public PatientInsurance create(PatientInsuranceCreateDTO dto) {
         LOG.info("[CREATE] PatientInsurance payload={}", dto);
 
+        payorHelper.validatePayorExists(dto.payorId());
+        payorPlanHelper.validatePayorPlanExists(dto.planId());
+
         PatientInsurance entity = PatientInsurance.builder()
                 .patient(refPatient(dto.patientId()))
                 .payorId(dto.payorId())
                 .planId(dto.planId())
-                .policyHolderId(dto.policyHolderId())
+                .policyHolderId(refPatient(dto.policyHolderId()).getId())
                 .policyNumber(dto.policyNumber())
                 .groupNumber(dto.groupNumber())
                 .expirationDate(dto.expirationDate())
@@ -79,11 +88,13 @@ public class PatientInsuranceService {
                         "patientInsurance",
                         "notfound"
                 ));
+        payorHelper.validatePayorExists(dto.payorId());
+        payorPlanHelper.validatePayorPlanExists(dto.planId());
 
         existing.setPatient(refPatient(dto.patientId()));
         existing.setPayorId(dto.payorId());
         existing.setPlanId(dto.planId());
-        existing.setPolicyHolderId(dto.policyHolderId());
+        existing.setPolicyHolderId(refPatient(dto.policyHolderId()).getId());
         existing.setPolicyNumber(dto.policyNumber());
         existing.setGroupNumber(dto.groupNumber());
         existing.setExpirationDate(dto.expirationDate());
@@ -168,8 +179,12 @@ public class PatientInsuranceService {
     }
 
     private Patient refPatient(Long patientId) {
-        LOG.debug("[REF_PATIENT] Resolving patient via PatientService patientId={}", patientId);
-        return patientService.findById(patientId);
+        return patientRepository.findById(patientId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found with id " + patientId,
+                        "patient",
+                        "notfound"
+                ));
     }
 
     private RuntimeException handleConstraintViolation(Exception exception) {

@@ -1,12 +1,17 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientWarnings;
 import com.dazzle.asklepios.domain.enumeration.PatientWarningStatus;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientWarningsRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.PatientWarningCreateDTO;
 import com.dazzle.asklepios.service.dto.PatientWarningUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -29,9 +34,13 @@ public class PatientWarningsService {
 
     private static final Logger LOG = LoggerFactory.getLogger(PatientWarningsService.class);
     private final PatientWarningsRepository patientWarningsRepository;
+    private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
 
-    public PatientWarningsService(PatientWarningsRepository patientWarningsRepository) {
+    public PatientWarningsService(PatientWarningsRepository patientWarningsRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository) {
         this.patientWarningsRepository = patientWarningsRepository;
+        this.patientRepository = patientRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
     }
 
     public PatientWarnings create(PatientWarningCreateDTO patientWarningCreateDTO) {
@@ -85,9 +94,27 @@ public class PatientWarningsService {
                     "source of Information is required"
             );
         }
+
+        Patient patient = patientRepository.findById(patientWarningCreateDTO.patientId())
+                .orElseThrow(() ->
+                        new NotFoundAlertException(
+                                "Patient not found with id " + patientWarningCreateDTO.patientId(),
+                                "procedure",
+                                "patient.notfound"
+                        )
+                );
+
+        PatientEncounter encounter = patientEncounterRepository.findById(patientWarningCreateDTO.encounterId())
+                .orElseThrow(() ->
+                        new NotFoundAlertException(
+                                "Encounter not found with id " + patientWarningCreateDTO.encounterId(),
+                                "PatientWarnings",
+                                "encounter.notfound"
+                        )
+                );
         PatientWarnings entity = PatientWarnings.builder()
-                .patientId(patientWarningCreateDTO.patientId())
-                .encounterId(patientWarningCreateDTO.encounterId())
+                .patientId(patient.getId())
+                .encounterId(encounter.getId())
                 .warningType(patientWarningCreateDTO.warningType())
                 .warning(patientWarningCreateDTO.warning())
                 .severity(patientWarningCreateDTO.severity())

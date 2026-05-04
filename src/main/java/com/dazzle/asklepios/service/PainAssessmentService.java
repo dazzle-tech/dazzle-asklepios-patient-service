@@ -86,7 +86,7 @@ public class PainAssessmentService {
                     ));
             PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
                     .orElseThrow(() -> new NotFoundAlertException(
-                            "Encounter not found with id " + dto.patientId(),
+                            "Encounter not found with id " + dto.encounterId(),
                             "painAssessment",
                             "encounter.notfound"
                     ));

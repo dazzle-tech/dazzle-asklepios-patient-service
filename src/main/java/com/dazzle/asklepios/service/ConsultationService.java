@@ -12,6 +12,9 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.consultation.ConsultationCreateDTO;
 import com.dazzle.asklepios.service.dto.consultation.ConsultationUpdateDTO;
+import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.FacilityHelper;
+import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
@@ -40,15 +43,21 @@ public class ConsultationService {
     private final ConsultationRepository consultationRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final FacilityHelper facilityHelper;
+    private final DepartmentHelper departmentHelper;
+    private final PractitionerHelper practitionerHelper;
 
     public ConsultationService(
             ConsultationRepository consultationRepository,
             PatientRepository patientRepository,
-            PatientEncounterRepository patientEncounterRepository
-    ) {
+            PatientEncounterRepository patientEncounterRepository,
+            FacilityHelper facilityHelper, DepartmentHelper departmentHelper, PractitionerHelper practitionerHelper) {
         this.consultationRepository = consultationRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
+        this.facilityHelper = facilityHelper;
+        this.departmentHelper = departmentHelper;
+        this.practitionerHelper = practitionerHelper;
     }
 
     private String currentUsername() {
@@ -84,6 +93,13 @@ public class ConsultationService {
                         )
                 );
 
+        facilityHelper.validateFacilityExists(dto.fromFacilityId());
+        facilityHelper.validateFacilityExists(dto.toFacilityId());
+
+        departmentHelper.validateDepartmentExists(dto.fromDepartmentId());
+        departmentHelper.validateDepartmentExists(dto.toDepartmentId());
+        if (dto.practitionerId() != null)
+            practitionerHelper.validatePractitionerExists(dto.practitionerId());
 
 
         LOG.debug("[CREATE] Patient found with id={}", patient.getId());
@@ -322,5 +338,5 @@ public class ConsultationService {
                 "db.constraint"
         );
     }
-    
+
 }

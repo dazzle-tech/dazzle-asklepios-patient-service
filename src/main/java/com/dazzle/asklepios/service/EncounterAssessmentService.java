@@ -2,7 +2,9 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.EncounterAssessment;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.repository.EncounterAssessmentRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 
 import com.dazzle.asklepios.security.SecurityUtils;
@@ -30,24 +32,24 @@ public class EncounterAssessmentService {
 
     private final EncounterAssessmentRepository encounterAssessmentRepository;
     private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
+
+    private static final String ENTITY_NAME = "EncounterAssessment";
 
     public EncounterAssessmentService(
             EncounterAssessmentRepository encounterAssessmentRepository,
-            PatientRepository patientRepository
-    ) {
+            PatientRepository patientRepository,
+            PatientEncounterRepository patientEncounterRepository) {
         this.encounterAssessmentRepository = encounterAssessmentRepository;
         this.patientRepository = patientRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
     }
 
     public EncounterAssessment create(EncounterAssessmentCreateDTO createRequest) {
         LOG.info("[CREATE] Request to create EncounterAssessment payload={}", createRequest);
 
-        Patient patient = patientRepository.findById(createRequest.patientId())
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient not found with id " + createRequest.patientId(),
-                        "patient",
-                        "notfound"
-                ));
+        Patient patient = loadPatient(createRequest.patientId());
+        PatientEncounter patientEncounter = loadEncounter(createRequest.encounterId());
 
         EncounterAssessment entity = EncounterAssessment.builder()
                 .patient(patient)
@@ -78,12 +80,8 @@ public class EncounterAssessmentService {
                         "notfound"
                 ));
 
-        Patient patient = patientRepository.findById(updateRequest.patientId())
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient not found with id " + updateRequest.patientId(),
-                        "patient",
-                        "notfound"
-                ));
+        Patient patient = loadPatient(updateRequest.patientId());
+        PatientEncounter patientEncounter = loadEncounter(updateRequest.encounterId());
 
         existing.setPatient(patient);
         existing.setEncounterId(updateRequest.encounterId());
@@ -165,4 +163,23 @@ public class EncounterAssessmentService {
                 "db.constraint"
         );
     }
+
+    private Patient loadPatient(Long patientId) {
+        return patientRepository.findById(patientId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "patient.notfound",
+                        ENTITY_NAME,
+                        "Patient not found with id " + patientId
+                ));
+    }
+
+    private PatientEncounter loadEncounter(Long encounterId) {
+        return patientEncounterRepository.findById(encounterId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "encounter.notfound",
+                        ENTITY_NAME,
+                        "Encounter not found with id " + encounterId
+                ));
+    }
+
 }

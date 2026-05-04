@@ -1,7 +1,9 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientObservationsComplaints;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientObservationsComplaintsRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.patientObservationsComplaints.PatientObservationsComplaintsCreateDTO;
@@ -32,6 +34,7 @@ public class PatientObservationsComplaintsService {
 
     private final PatientObservationsComplaintsRepository patientObservationsComplaintsRepository;
     private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
 
     public PatientObservationsComplaints create(PatientObservationsComplaintsCreateDTO dto) {
         LOG.info("[CREATE] PatientObservationsComplaints payload={}", dto);
@@ -42,10 +45,16 @@ public class PatientObservationsComplaintsService {
                         "patientObservationsComplaints",
                         "patient.notfound"
                 ));
+        PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Encounter not found with id " + dto.encounterId(),
+                        "painAssessment",
+                        "encounter.notfound"
+                ));
 
         PatientObservationsComplaints entity = PatientObservationsComplaints.builder()
                 .patient(patient)
-                .encounterId(dto.encounterId())
+                .encounterId(encounter.getId())
                 .functionalStatus(dto.functionalStatus())
                 .reasonOfVisit(dto.reasonOfVisit())
                 .cognitiveCheck(dto.cognitiveCheck())

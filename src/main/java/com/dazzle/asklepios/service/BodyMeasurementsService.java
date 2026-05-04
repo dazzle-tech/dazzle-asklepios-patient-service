@@ -2,7 +2,9 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.BodyMeasurements;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.repository.BodyMeasurementsRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.bodyMeasurements.BodyMeasurementsCreateDTO;
 import com.dazzle.asklepios.service.dto.bodyMeasurements.BodyMeasurementsUpdateDTO;
@@ -17,6 +19,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -32,6 +35,7 @@ public class BodyMeasurementsService {
 
     private final BodyMeasurementsRepository bodyMeasurementsRepository;
     private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
 
     public BodyMeasurements create(BodyMeasurementsCreateDTO dto) {
         LOG.info("[CREATE] BodyMeasurements payload={}", dto);
@@ -42,6 +46,7 @@ public class BodyMeasurementsService {
                         "bodyMeasurements",
                         "patient.notfound"
                 ));
+        getEncounter(dto.encounterId());
 
         try {
             resetIsActiveForEncounterToday(dto.encounterId());
@@ -75,6 +80,7 @@ public class BodyMeasurementsService {
                             "bodyMeasurements",
                             "patient.notfound"
                     ));
+            getEncounter(dto.encounterId());
 
             bodyMeasurements.setPatient(patient);
             bodyMeasurements.setEncounterId(dto.encounterId());
@@ -91,29 +97,30 @@ public class BodyMeasurementsService {
         });
     }
 
-@Transactional(readOnly = true)
-public Page<BodyMeasurements> findBodyMeasurementsByPatientBetweenDates(
-        Long patientId,
-        Instant from,
-        Instant to,
-        Pageable pageable
-) {
+    @Transactional(readOnly = true)
+    public Page<BodyMeasurements> findBodyMeasurementsByPatientBetweenDates(
+            Long patientId,
+            Instant from,
+            Instant to,
+            Pageable pageable
+    ) {
 
-    patientRepository.findById(patientId)
-            .orElseThrow(() -> new NotFoundAlertException(
-                    "Patient not found with id " + patientId,
-                    "bodyMeasurements",
-                    "patient.notfound"
-            ));
+        patientRepository.findById(patientId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found with id " + patientId,
+                        "bodyMeasurements",
+                        "patient.notfound"
+                ));
 
-    if (from != null && to != null) {
+        if (from != null && to != null) {
+            return bodyMeasurementsRepository
+                    .findByPatientIdAndIsActiveTrueAndCreatedDateBetween(patientId, from, to, pageable);
+        }
+
         return bodyMeasurementsRepository
-                .findByPatientIdAndIsActiveTrueAndCreatedDateBetween(patientId, from, to, pageable);
+                .findByPatientIdAndIsActiveTrue(patientId, pageable);
     }
 
-    return bodyMeasurementsRepository
-            .findByPatientIdAndIsActiveTrue(patientId, pageable);
-}
     @Transactional(readOnly = true)
     public List<BodyMeasurements> findBodyMeasurementsListByPatientBetweenDates(
             Long patientId,
@@ -204,5 +211,9 @@ public Page<BodyMeasurements> findBodyMeasurementsByPatientBetweenDates(
     public Optional<BodyMeasurements> findLatestWeightByPatientId(Long patientId) {
         return bodyMeasurementsRepository
                 .findFirstByPatientIdAndWeightIsNotNullOrderByCreatedDateDesc(patientId);
+    }
+
+    private PatientEncounter getEncounter(Long id) {
+        return patientEncounterRepository.findById(id).orElseThrow(() -> new BadRequestAlertException("notfound" + id, "BodyMeasurements", "Patient Encounter not found: "));
     }
 }

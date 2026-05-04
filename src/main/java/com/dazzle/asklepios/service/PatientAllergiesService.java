@@ -6,9 +6,14 @@ import com.dazzle.asklepios.domain.enumeration.AllergenTypes;
 import com.dazzle.asklepios.domain.enumeration.PatientAllergyStatus;
 import com.dazzle.asklepios.repository.PatientAllergiesActiveIngredientsRepository;
 import com.dazzle.asklepios.repository.PatientAllergiesRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.PatientAllergiesCreateDTO;
 import com.dazzle.asklepios.service.dto.PatientAllergiesUpdateDTO;
+import com.dazzle.asklepios.service.helper.ActiveIngredientHelper;
+import com.dazzle.asklepios.service.helper.AllergenHelper;
+import com.dazzle.asklepios.service.helper.MedicationCategoryClassHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.PatientAllergies.PatientAllergiesResponseVM;
 import org.slf4j.Logger;
@@ -36,10 +41,20 @@ public class PatientAllergiesService {
     private static final Logger LOG = LoggerFactory.getLogger(PatientAllergiesService.class);
     private final PatientAllergiesRepository patientAllergiesRepository;
     private final PatientAllergiesActiveIngredientsRepository patientAllergiesActiveIngredientRepository;
+    private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
+    private final MedicationCategoryClassHelper medicationCategoryClassHelper;
+    private final AllergenHelper allergenHelper;
+    private final ActiveIngredientHelper activeIngredientHelper;
 
-    public PatientAllergiesService(PatientAllergiesRepository patientAllergiesRepository, PatientAllergiesActiveIngredientsRepository patientAllergiesActiveIngredientRepository) {
+    public PatientAllergiesService(PatientAllergiesRepository patientAllergiesRepository, PatientAllergiesActiveIngredientsRepository patientAllergiesActiveIngredientRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository, MedicationCategoryClassHelper medicationCategoryClassHelper, AllergenHelper allergenHelper, ActiveIngredientHelper activeIngredientHelper) {
         this.patientAllergiesRepository = patientAllergiesRepository;
         this.patientAllergiesActiveIngredientRepository = patientAllergiesActiveIngredientRepository;
+        this.patientRepository = patientRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
+        this.medicationCategoryClassHelper = medicationCategoryClassHelper;
+        this.allergenHelper = allergenHelper;
+        this.activeIngredientHelper = activeIngredientHelper;
     }
 
     public PatientAllergies create(PatientAllergiesCreateDTO patientAllergyCreateDto) {
@@ -62,6 +77,8 @@ public class PatientAllergiesService {
                         "Allergen must be null for MEDICATION type"
                 );
             }
+            if (patientAllergyCreateDto.medicationClassId() != null)
+                medicationCategoryClassHelper.validateMedicationCategoryClassExists(patientAllergyCreateDto.medicationClassId());
         } else if (patientAllergyCreateDto.allergenType() == AllergenTypes.OTHER) {
 
             if (patientAllergyCreateDto.allergenName() == null || patientAllergyCreateDto.allergenName().isBlank()) {
@@ -143,12 +160,16 @@ public class PatientAllergiesService {
                     "source of Information is required"
             );
         }
+        if (patientAllergyCreateDto.allergenId() != null) {
+            allergenHelper.validateAllergenExists(patientAllergyCreateDto.allergenId());
+
+        }
         PatientAllergies entity = PatientAllergies.builder()
                 .patientId(patientAllergyCreateDto.patientId())
                 .encounterId(patientAllergyCreateDto.encounterId())
                 .allergenType(patientAllergyCreateDto.allergenType())
                 .allergenId(
-                        patientAllergyCreateDto.allergenType() == AllergenTypes.OTHER
+                        patientAllergyCreateDto.allergenType() == AllergenTypes.OTHER || patientAllergyCreateDto.allergenType() == AllergenTypes.MEDICATION
                                 ? null
                                 : patientAllergyCreateDto.allergenId()
                 )
@@ -328,6 +349,8 @@ public class PatientAllergiesService {
                         "Medication Class ID is required for MEDICATION type"
                 );
             }
+            if (patientAllergiesUpdateDTO.medicationClassId() != null)
+                medicationCategoryClassHelper.validateMedicationCategoryClassExists(patientAllergiesUpdateDTO.medicationClassId());
             if (patientAllergiesUpdateDTO.allergenId() != null) {
                 LOG.debug("The updated allergen id is not null : {}", patientAllergiesUpdateDTO);
 
@@ -347,6 +370,9 @@ public class PatientAllergiesService {
                         "Allergen ID is required for non-MEDICATION types"
                 );
             }
+            if (patientAllergiesUpdateDTO.allergenId() != null)
+                allergenHelper.validateAllergenExists(patientAllergiesUpdateDTO.allergenId());
+
             if (patientAllergiesUpdateDTO.medicationClassId() != null) {
                 LOG.debug("The updated medication class id is not null : {}", patientAllergiesUpdateDTO);
 
@@ -515,7 +541,6 @@ public class PatientAllergiesService {
                 "Database constraint violated while saving patient allergy"
         );
     }
-
 
 
 }

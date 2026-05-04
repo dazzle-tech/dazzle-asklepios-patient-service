@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.UrgentCareMedicationOrder;
 import com.dazzle.asklepios.domain.enumeration.MedicationOrderStatus;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
@@ -7,7 +9,9 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.UrgentCareMedicationOrderRepository;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderUpdateDTO;
+import com.dazzle.asklepios.service.helper.ActiveIngredientHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -26,21 +30,38 @@ public class UrgentCareMedicationOrderService {
 
     private final UrgentCareMedicationOrderRepository urgentCareMedicationOrderRepository;
     private final PatientRepository patientRepository;
-    private final PatientEncounterRepository encounterRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
+    private final ActiveIngredientHelper activeIngredientHelper;
 
     public UrgentCareMedicationOrderService(
             UrgentCareMedicationOrderRepository urgentCareMedicationOrderRepository,
             PatientRepository patientRepository,
-            PatientEncounterRepository encounterRepository
-    ) {
+            PatientEncounterRepository patientEncounterRepository, ActiveIngredientHelper activeIngredientHelper) {
         this.urgentCareMedicationOrderRepository = urgentCareMedicationOrderRepository;
         this.patientRepository = patientRepository;
-        this.encounterRepository = encounterRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
+        this.activeIngredientHelper = activeIngredientHelper;
     }
 
     public UrgentCareMedicationOrder create(UrgentCareMedicationOrderCreateDTO dto) {
         LOG.debug("Request to create PatientUccMedicationOrder: {}", dto);
-
+        Patient patient = patientRepository.findById(dto.patientId())
+                .orElseThrow(() ->
+                        new NotFoundAlertException(
+                                "Patient not found with id " + dto.patientId(),
+                                "UrgentCareMedicationOrder",
+                                "patient.notfound"
+                        )
+                );
+        PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
+                .orElseThrow(() ->
+                        new NotFoundAlertException(
+                                "Encounter not found with id " + dto.encounterId(),
+                                "UrgentCareMedicationOrder",
+                                "encounter.notfound"
+                        )
+                );
+        activeIngredientHelper.validateActiveIngredientExists(dto.activeIngredientId());
         UrgentCareMedicationOrder order = new UrgentCareMedicationOrder();
         order.setActiveIngredientId(dto.activeIngredientId());
         order.setInstructionType(dto.instructionType());
@@ -51,8 +72,8 @@ public class UrgentCareMedicationOrderService {
         order.setFrequency(dto.frequency());
 
         order.setStatus(MedicationOrderStatus.NEW);
-        order.setPatient(patientRepository.getReferenceById(dto.patientId()));
-        order.setEncounter(encounterRepository.getReferenceById(dto.encounterId()));
+        order.setPatient(patient);
+        order.setEncounter(encounter);
 
         UrgentCareMedicationOrder saved = urgentCareMedicationOrderRepository.save(order);
 
@@ -67,7 +88,7 @@ public class UrgentCareMedicationOrderService {
 
     public UrgentCareMedicationOrder update(UrgentCareMedicationOrder existing, UrgentCareMedicationOrderUpdateDTO dto) {
         LOG.debug("[SERVICE][UPDATE] request -> existingId={} payload={}", existing.getId(), dto);
-
+        activeIngredientHelper.validateActiveIngredientExists(dto.activeIngredientId());
         existing.setActiveIngredientId(dto.activeIngredientId());
         existing.setInstructionType(dto.instructionType());
         existing.setInstructionText(dto.instructionText());
@@ -146,195 +167,194 @@ public class UrgentCareMedicationOrderService {
     }
 
 
+    public UrgentCareMedicationOrder submit(Long orderId, String username, Boolean isHighAlert) {
+        LOG.debug("[STATUS][SUBMIT] request -> orderId={} username={} isHighAlert={}", orderId, username, isHighAlert);
 
-public UrgentCareMedicationOrder submit(Long orderId, String username, Boolean isHighAlert) {
-    LOG.debug("[STATUS][SUBMIT] request -> orderId={} username={} isHighAlert={}", orderId, username, isHighAlert);
+        UrgentCareMedicationOrder order = getOrder(orderId);
 
-    UrgentCareMedicationOrder order = getOrder(orderId);
+        ensureTransition(order, MedicationOrderStatus.SUBMITTED);
 
-    ensureTransition(order, MedicationOrderStatus.SUBMITTED);
+        order.setIsHighAlert(isHighAlert);
+        order.setStatus(MedicationOrderStatus.SUBMITTED);
+        order.setSubmittedBy(username);
+        order.setSubmittedDate(Instant.now());
 
-    order.setIsHighAlert(isHighAlert);
-    order.setStatus(MedicationOrderStatus.SUBMITTED);
-    order.setSubmittedBy(username);
-    order.setSubmittedDate(Instant.now());
+        UrgentCareMedicationOrder saved = urgentCareMedicationOrderRepository.save(order);
 
-    UrgentCareMedicationOrder saved = urgentCareMedicationOrderRepository.save(order);
+        LOG.debug("[STATUS][SUBMIT] saved -> id={} status={} submittedBy={}",
+                saved.getId(), saved.getStatus(), saved.getSubmittedBy());
 
-    LOG.debug("[STATUS][SUBMIT] saved -> id={} status={} submittedBy={}",
-            saved.getId(), saved.getStatus(), saved.getSubmittedBy());
-
-    return saved;
-}
-
-public UrgentCareMedicationOrder administer(Long orderId, String username) {
-    LOG.debug("[STATUS][ADMINISTER] request -> orderId={} username={}", orderId, username);
-
-    UrgentCareMedicationOrder order = getOrder(orderId);
-
-    if (order.getStatus() != MedicationOrderStatus.SUBMITTED) {
-        LOG.error("[STATUS][ADMINISTER] invalid status -> currentStatus={}", order.getStatus());
-        throw new BadRequestAlertException(
-                "invalid_transition",
-                "patient_ucc_medication_order",
-                "Administer is allowed only when status is SUBMITTED"
-        );
+        return saved;
     }
 
-    if (Boolean.TRUE.equals(order.getIsHighAlert())) {
-        order.setStatus(MedicationOrderStatus.WAITING_DOUBLE_CHECK);
-        LOG.debug("[STATUS][ADMINISTER] high alert order -> move to WAITING_DOUBLE_CHECK");
-    } else {
+    public UrgentCareMedicationOrder administer(Long orderId, String username) {
+        LOG.debug("[STATUS][ADMINISTER] request -> orderId={} username={}", orderId, username);
+
+        UrgentCareMedicationOrder order = getOrder(orderId);
+
+        if (order.getStatus() != MedicationOrderStatus.SUBMITTED) {
+            LOG.error("[STATUS][ADMINISTER] invalid status -> currentStatus={}", order.getStatus());
+            throw new BadRequestAlertException(
+                    "invalid_transition",
+                    "patient_ucc_medication_order",
+                    "Administer is allowed only when status is SUBMITTED"
+            );
+        }
+
+        if (Boolean.TRUE.equals(order.getIsHighAlert())) {
+            order.setStatus(MedicationOrderStatus.WAITING_DOUBLE_CHECK);
+            LOG.debug("[STATUS][ADMINISTER] high alert order -> move to WAITING_DOUBLE_CHECK");
+        } else {
+            order.setStatus(MedicationOrderStatus.ADMINISTERED);
+            LOG.debug("[STATUS][ADMINISTER] normal order -> move to ADMINISTERED");
+        }
+
+        order.setAdministeredBy(username);
+        order.setAdministeredDate(Instant.now());
+
+        UrgentCareMedicationOrder saved = urgentCareMedicationOrderRepository.save(order);
+
+        LOG.debug("[STATUS][ADMINISTER] saved -> id={} status={} administeredBy={}",
+                saved.getId(), saved.getStatus(), saved.getAdministeredBy());
+
+        return saved;
+    }
+
+    public UrgentCareMedicationOrder doubleCheck(Long orderId, String username) {
+        LOG.debug("[STATUS][DOUBLE_CHECK] request -> orderId={} username={}", orderId, username);
+
+        UrgentCareMedicationOrder order = getOrder(orderId);
+
+        ensureTransition(order, MedicationOrderStatus.ADMINISTERED);
+
+        if (order.getStatus() != MedicationOrderStatus.WAITING_DOUBLE_CHECK) {
+            LOG.error("[STATUS][DOUBLE_CHECK] invalid status -> currentStatus={}", order.getStatus());
+            throw new BadRequestAlertException(
+                    "invalid_transition",
+                    "patient_ucc_medication_order",
+                    "Double-check is allowed only when status is WAITING_DOUBLE_CHECK"
+            );
+        }
+
         order.setStatus(MedicationOrderStatus.ADMINISTERED);
-        LOG.debug("[STATUS][ADMINISTER] normal order -> move to ADMINISTERED");
+        order.setDoubleCheckedBy(username);
+        order.setDoubleCheckedDate(Instant.now());
+        order.setAdministeredBy(username);
+        order.setAdministeredDate(Instant.now());
+
+        UrgentCareMedicationOrder saved = urgentCareMedicationOrderRepository.save(order);
+
+        LOG.debug("[STATUS][DOUBLE_CHECK] saved -> id={} status={} doubleCheckedBy={}",
+                saved.getId(), saved.getStatus(), saved.getDoubleCheckedBy());
+
+        return saved;
     }
 
-    order.setAdministeredBy(username);
-    order.setAdministeredDate(Instant.now());
+    public UrgentCareMedicationOrder discard(Long orderId, String username, String discardReason) {
+        LOG.debug("[STATUS][DISCARD] request -> orderId={} username={} reason={}", orderId, username, discardReason);
 
-    UrgentCareMedicationOrder saved = urgentCareMedicationOrderRepository.save(order);
+        UrgentCareMedicationOrder order = getOrder(orderId);
 
-    LOG.debug("[STATUS][ADMINISTER] saved -> id={} status={} administeredBy={}",
-            saved.getId(), saved.getStatus(), saved.getAdministeredBy());
+        ensureTransition(order, MedicationOrderStatus.DISCARDED);
 
-    return saved;
-}
+        order.setStatus(MedicationOrderStatus.DISCARDED);
+        order.setDiscardedBy(username);
+        order.setDiscardedDate(Instant.now());
+        order.setDiscardReason(discardReason);
 
-public UrgentCareMedicationOrder doubleCheck(Long orderId, String username) {
-    LOG.debug("[STATUS][DOUBLE_CHECK] request -> orderId={} username={}", orderId, username);
+        UrgentCareMedicationOrder saved = urgentCareMedicationOrderRepository.save(order);
 
-    UrgentCareMedicationOrder order = getOrder(orderId);
+        LOG.debug("[STATUS][DISCARD] saved -> id={} status={} discardedBy={}",
+                saved.getId(), saved.getStatus(), saved.getDiscardedBy());
 
-    ensureTransition(order, MedicationOrderStatus.ADMINISTERED);
+        return saved;
+    }
 
-    if (order.getStatus() != MedicationOrderStatus.WAITING_DOUBLE_CHECK) {
-        LOG.error("[STATUS][DOUBLE_CHECK] invalid status -> currentStatus={}", order.getStatus());
-        throw new BadRequestAlertException(
+    public UrgentCareMedicationOrder cancel(Long orderId, String username, String cancellationReason) {
+        LOG.debug("[STATUS][CANCEL] request -> orderId={} username={} reason={}", orderId, username, cancellationReason);
+
+        UrgentCareMedicationOrder order = getOrder(orderId);
+
+        ensureTransition(order, MedicationOrderStatus.CANCELLED);
+
+        order.setStatus(MedicationOrderStatus.CANCELLED);
+        order.setCancelledBy(username);
+        order.setCancelledDate(Instant.now());
+        order.setCancellationReason(cancellationReason);
+
+        UrgentCareMedicationOrder saved = urgentCareMedicationOrderRepository.save(order);
+
+        LOG.debug("[STATUS][CANCEL] saved -> id={} status={} cancelledBy={}",
+                saved.getId(), saved.getStatus(), saved.getCancelledBy());
+
+        return saved;
+    }
+
+    private UrgentCareMedicationOrder getOrder(Long orderId) {
+        LOG.debug("[STATUS][GET_ORDER] request -> orderId={}", orderId);
+
+        UrgentCareMedicationOrder order = urgentCareMedicationOrderRepository.findById(orderId)
+                .orElseThrow(() -> {
+                    LOG.error("[STATUS][GET_ORDER] not found -> orderId={}", orderId);
+                    return new BadRequestAlertException(
+                            "notfound",
+                            "patient_ucc_medication_order",
+                            "PatientUccMedicationOrder not found with id " + orderId
+                    );
+                });
+
+        LOG.debug("[STATUS][GET_ORDER] found -> id={} status={}", order.getId(), order.getStatus());
+        return order;
+    }
+
+    private void ensureTransition(UrgentCareMedicationOrder order, MedicationOrderStatus to) {
+        MedicationOrderStatus from = order.getStatus() == null ? MedicationOrderStatus.NEW : order.getStatus();
+
+        LOG.debug("[STATUS][TRANSITION] validate -> from={} to={} orderId={}",
+                from, to, order.getId());
+
+        if (to == MedicationOrderStatus.SUBMITTED) {
+            if (from != MedicationOrderStatus.NEW) {
+                LOG.error("[STATUS][TRANSITION] invalid -> {} -> {}", from, to);
+                throw invalid(from, to);
+            }
+            return;
+        }
+
+        if (to == MedicationOrderStatus.CANCELLED) {
+            if (from == MedicationOrderStatus.CANCELLED ||
+                    from == MedicationOrderStatus.ADMINISTERED ||
+                    from == MedicationOrderStatus.DISCARDED) {
+                LOG.error("[STATUS][TRANSITION] invalid -> {} -> {}", from, to);
+                throw invalid(from, to);
+            }
+            return;
+        }
+
+        if (to == MedicationOrderStatus.DISCARDED) {
+            if (from == MedicationOrderStatus.ADMINISTERED ||
+                    from == MedicationOrderStatus.DISCARDED ||
+                    from == MedicationOrderStatus.CANCELLED) {
+                LOG.error("[STATUS][TRANSITION] invalid -> {} -> {}", from, to);
+                throw invalid(from, to);
+            }
+            return;
+        }
+
+        if (to == MedicationOrderStatus.ADMINISTERED) {
+            if (from != MedicationOrderStatus.WAITING_DOUBLE_CHECK) {
+                LOG.error("[STATUS][TRANSITION] invalid -> {} -> {}", from, to);
+                throw invalid(from, to);
+            }
+        }
+    }
+
+    private BadRequestAlertException invalid(MedicationOrderStatus from, MedicationOrderStatus to) {
+        LOG.error("[STATUS][INVALID_TRANSITION] {} -> {}", from, to);
+        return new BadRequestAlertException(
                 "invalid_transition",
                 "patient_ucc_medication_order",
-                "Double-check is allowed only when status is WAITING_DOUBLE_CHECK"
+                "Invalid transition " + from + " -> " + to
         );
     }
-
-    order.setStatus(MedicationOrderStatus.ADMINISTERED);
-    order.setDoubleCheckedBy(username);
-    order.setDoubleCheckedDate(Instant.now());
-    order.setAdministeredBy(username);
-    order.setAdministeredDate(Instant.now());
-
-    UrgentCareMedicationOrder saved = urgentCareMedicationOrderRepository.save(order);
-
-    LOG.debug("[STATUS][DOUBLE_CHECK] saved -> id={} status={} doubleCheckedBy={}",
-            saved.getId(), saved.getStatus(), saved.getDoubleCheckedBy());
-
-    return saved;
-}
-
-public UrgentCareMedicationOrder discard(Long orderId, String username, String discardReason) {
-    LOG.debug("[STATUS][DISCARD] request -> orderId={} username={} reason={}", orderId, username, discardReason);
-
-    UrgentCareMedicationOrder order = getOrder(orderId);
-
-    ensureTransition(order, MedicationOrderStatus.DISCARDED);
-
-    order.setStatus(MedicationOrderStatus.DISCARDED);
-    order.setDiscardedBy(username);
-    order.setDiscardedDate(Instant.now());
-    order.setDiscardReason(discardReason);
-
-    UrgentCareMedicationOrder saved = urgentCareMedicationOrderRepository.save(order);
-
-    LOG.debug("[STATUS][DISCARD] saved -> id={} status={} discardedBy={}",
-            saved.getId(), saved.getStatus(), saved.getDiscardedBy());
-
-    return saved;
-}
-
-public UrgentCareMedicationOrder cancel(Long orderId, String username, String cancellationReason) {
-    LOG.debug("[STATUS][CANCEL] request -> orderId={} username={} reason={}", orderId, username, cancellationReason);
-
-    UrgentCareMedicationOrder order = getOrder(orderId);
-
-    ensureTransition(order, MedicationOrderStatus.CANCELLED);
-
-    order.setStatus(MedicationOrderStatus.CANCELLED);
-    order.setCancelledBy(username);
-    order.setCancelledDate(Instant.now());
-    order.setCancellationReason(cancellationReason);
-
-    UrgentCareMedicationOrder saved = urgentCareMedicationOrderRepository.save(order);
-
-    LOG.debug("[STATUS][CANCEL] saved -> id={} status={} cancelledBy={}",
-            saved.getId(), saved.getStatus(), saved.getCancelledBy());
-
-    return saved;
-}
-
-private UrgentCareMedicationOrder getOrder(Long orderId) {
-    LOG.debug("[STATUS][GET_ORDER] request -> orderId={}", orderId);
-
-    UrgentCareMedicationOrder order = urgentCareMedicationOrderRepository.findById(orderId)
-            .orElseThrow(() -> {
-                LOG.error("[STATUS][GET_ORDER] not found -> orderId={}", orderId);
-                return new BadRequestAlertException(
-                        "notfound",
-                        "patient_ucc_medication_order",
-                        "PatientUccMedicationOrder not found with id " + orderId
-                );
-            });
-
-    LOG.debug("[STATUS][GET_ORDER] found -> id={} status={}", order.getId(), order.getStatus());
-    return order;
-}
-
-private void ensureTransition(UrgentCareMedicationOrder order, MedicationOrderStatus to) {
-    MedicationOrderStatus from = order.getStatus() == null ? MedicationOrderStatus.NEW : order.getStatus();
-
-    LOG.debug("[STATUS][TRANSITION] validate -> from={} to={} orderId={}",
-            from, to, order.getId());
-
-    if (to == MedicationOrderStatus.SUBMITTED) {
-        if (from != MedicationOrderStatus.NEW) {
-            LOG.error("[STATUS][TRANSITION] invalid -> {} -> {}", from, to);
-            throw invalid(from, to);
-        }
-        return;
-    }
-
-    if (to == MedicationOrderStatus.CANCELLED) {
-        if (from == MedicationOrderStatus.CANCELLED ||
-                from == MedicationOrderStatus.ADMINISTERED ||
-                from == MedicationOrderStatus.DISCARDED) {
-            LOG.error("[STATUS][TRANSITION] invalid -> {} -> {}", from, to);
-            throw invalid(from, to);
-        }
-        return;
-    }
-
-    if (to == MedicationOrderStatus.DISCARDED) {
-        if (from == MedicationOrderStatus.ADMINISTERED ||
-                from == MedicationOrderStatus.DISCARDED ||
-                from == MedicationOrderStatus.CANCELLED) {
-            LOG.error("[STATUS][TRANSITION] invalid -> {} -> {}", from, to);
-            throw invalid(from, to);
-        }
-        return;
-    }
-
-    if (to == MedicationOrderStatus.ADMINISTERED) {
-        if (from != MedicationOrderStatus.WAITING_DOUBLE_CHECK) {
-            LOG.error("[STATUS][TRANSITION] invalid -> {} -> {}", from, to);
-            throw invalid(from, to);
-        }
-    }
-}
-
-private BadRequestAlertException invalid(MedicationOrderStatus from, MedicationOrderStatus to) {
-    LOG.error("[STATUS][INVALID_TRANSITION] {} -> {}", from, to);
-    return new BadRequestAlertException(
-            "invalid_transition",
-            "patient_ucc_medication_order",
-            "Invalid transition " + from + " -> " + to
-    );
-}
 }

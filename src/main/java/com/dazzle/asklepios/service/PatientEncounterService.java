@@ -23,6 +23,9 @@ import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateD
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
+import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.FacilityHelper;
+import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.EntityManager;
@@ -73,6 +76,9 @@ public class PatientEncounterService {
     private final PatientObservationsComplaintsRepository patientObservationsComplaintsRepository;
     private final BodyMeasurementsRepository bodyMeasurementsRepository;
     private final AppointmentFromTemplateRepository appointmentFromTemplateRepository;
+    private final FacilityHelper facilityHelper;
+    private final DepartmentHelper departmentHelper;
+    private final PractitionerHelper practitionerHelper;
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
         LOG.info("[CREATE] PatientEncounter payload={}", createDTO);
@@ -86,6 +92,12 @@ public class PatientEncounterService {
                             "patient.notfound"
                     );
                 });
+
+        facilityHelper.validateFacilityExists(createDTO.facilityId());
+        departmentHelper.validateDepartmentExists(createDTO.departmentId());
+        if (createDTO.practitionerId() != null)
+            practitionerHelper.validatePractitionerExists(createDTO.practitionerId());
+
         validateEmergencyEncounterCreation(createDTO.patientId(), createDTO.encounterType());
         PatientEncounter patientEncounterToCreate = PatientEncounter.builder()
                 .patient(patient)
@@ -160,6 +172,11 @@ public class PatientEncounterService {
                             "patient.notfound"
                     );
                 });
+
+        facilityHelper.validateFacilityExists(updateDTO.facilityId());
+        departmentHelper.validateDepartmentExists(updateDTO.departmentId());
+        if (updateDTO.practitionerId() != null)
+            practitionerHelper.validatePractitionerExists(updateDTO.practitionerId());
 
         existingPatientEncounter.setPatient(patient);
         existingPatientEncounter.setFacilityId(updateDTO.facilityId());
@@ -371,6 +388,7 @@ public class PatientEncounterService {
             throw handleConstraintViolation(ex);
         }
     }
+
     public PatientEncounter cancelEncounter(Long encounterId) {
         LOG.info("[CANCEL] PatientEncounter id={}", encounterId);
 
