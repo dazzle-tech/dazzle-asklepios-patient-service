@@ -1,7 +1,11 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.DentalProcedure;
+import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.repository.DentalProcedureRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.dentalProcedure.DentalProcedureCreateDTO;
 import com.dazzle.asklepios.service.dto.dentalProcedure.DentalProcedureUpdateDTO;
@@ -26,17 +30,41 @@ public class DentalProcedureService {
     private static final Logger LOG = LoggerFactory.getLogger(DentalProcedureService.class);
 
     private final DentalProcedureRepository dentalProcedureRepository;
+    private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
 
-    public DentalProcedureService(DentalProcedureRepository dentalProcedureRepository) {
+    public DentalProcedureService(
+            DentalProcedureRepository dentalProcedureRepository,
+            PatientRepository patientRepository,
+            PatientEncounterRepository patientEncounterRepository
+    ) {
         this.dentalProcedureRepository = dentalProcedureRepository;
+        this.patientRepository = patientRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
     }
 
     public DentalProcedure create(DentalProcedureCreateDTO dto) {
         LOG.debug("Request to create DentalProcedure : {}", dto);
 //TODO: validate patient id , encounter id, procedure id, service id and cdtCode id
+
+
+        Patient patient = patientRepository.findById(dto.patientId())
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "patientNotFound",
+                        "dentalProcedure",
+                        "Patient not found with id " + dto.patientId()
+                ));
+
+        PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "encounterNotFound",
+                        "dentalProcedure",
+                        "Encounter not found with id " + dto.encounterId()
+                ));
+
         DentalProcedure entity = DentalProcedure.builder()
-                .patient(dto.patientId())
-                .encounter(dto.encounterId())
+                .patient(patient)
+                .encounter(encounter)
                 .toothNumber(dto.toothNumber())
                 .surface(dto.surface())
                 .anesthesiaUsed(dto.anesthesiaUsed())
