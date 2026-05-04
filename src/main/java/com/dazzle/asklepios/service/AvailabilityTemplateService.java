@@ -617,7 +617,7 @@ public class AvailabilityTemplateService {
 
     // Clone helper
     private String resolveCloneName(AvailabilityTemplate source) {
-        return source.getTemplateName() + " - Copy";
+        return source.getTemplateName() + " - Clone";
     }
 
     private Integer resolveNextVersionNo(AvailabilityTemplate source) {

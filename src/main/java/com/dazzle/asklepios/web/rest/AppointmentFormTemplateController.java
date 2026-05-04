@@ -9,6 +9,7 @@ import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromT
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateCancelDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateNoShowDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentDTO;
+import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateRescheduleDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateSearchFilterDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -150,13 +151,18 @@ public class AppointmentFormTemplateController {
         List<AppointmentLog> logs = appointmentFromTemplateService.getAppointmentLogs(appointmentId);
         return ResponseEntity.ok(logs);
     }
+
     @GetMapping("/appointments/{id}")
-    public ResponseEntity<AppointmentFromTemplate> getAppointmentById(
-            @PathVariable("id") @NotNull Long appointmentId
-    ) {
+    public ResponseEntity<AppointmentFromTemplate> getAppointmentById(@PathVariable("id") @NotNull Long appointmentId) {
 
         AppointmentFromTemplate appointment = appointmentFromTemplateService.getById(appointmentId);
         return ResponseEntity.ok(appointment);
+    }
+
+    @PostMapping("/appointments/reschedule")
+    public ResponseEntity<AppointmentFromTemplate> reschedule(@Valid @RequestBody AppointmentFromTemplateRescheduleDTO dto) {
+        AppointmentFromTemplate result = appointmentFromTemplateService.reschedule(dto);
+        return ResponseEntity.ok(result);
     }
 
 }
