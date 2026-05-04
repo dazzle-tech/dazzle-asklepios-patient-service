@@ -33,7 +33,7 @@ public class DentalProcedureService {
 
     public DentalProcedure create(DentalProcedureCreateDTO dto) {
         LOG.debug("Request to create DentalProcedure : {}", dto);
-
+//TODO: validate patient id , encounter id, procedure id, service id and cdtCode id
         DentalProcedure entity = DentalProcedure.builder()
                 .patient(dto.patientId())
                 .encounter(dto.encounterId())
@@ -77,6 +77,7 @@ public class DentalProcedureService {
     @Transactional
     public DentalProcedure update(DentalProcedureUpdateDTO dto) {
         LOG.debug("Request to update DentalProcedure : {}", dto);
+//TODO: validate procedure id, service id and cdtCode id
 
         DentalProcedure entity = dentalProcedureRepository.findById(dto.id())
                 .orElseThrow(() -> new BadRequestAlertException(
