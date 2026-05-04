@@ -7,7 +7,6 @@ import com.dazzle.asklepios.domain.AvailabilityTemplateIntervalBreak;
 import com.dazzle.asklepios.domain.AvailabilityTemplateLog;
 import com.dazzle.asklepios.domain.enumeration.DayOfWeek;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
-import com.dazzle.asklepios.domain.enumeration.TemplateCloneType;
 import com.dazzle.asklepios.domain.enumeration.TemplateStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import com.dazzle.asklepios.repository.AvailabilityTemplateAllowedServiceRepository;
@@ -16,7 +15,6 @@ import com.dazzle.asklepios.repository.AvailabilityTemplateIntervalRepository;
 import com.dazzle.asklepios.repository.AvailabilityTemplateLogRepository;
 import com.dazzle.asklepios.repository.AvailabilityTemplateRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
-import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplateCloneDTO;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplateCreateDTO;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.AvailabilityTemplateUpdateDTO;
 import com.dazzle.asklepios.service.dto.availabilityTemplate.availabilityTemplateAllowedServices.AvailabilityTemplateAllowedServiceDTO;
@@ -161,33 +159,16 @@ public class AvailabilityTemplateService {
         }
     }
 
-    public AvailabilityTemplate cloneTemplate(Long sourceTemplateId, AvailabilityTemplateCloneDTO dto) {
-        LOG.debug("clone availability template sourceTemplateId={}, dto={}", sourceTemplateId, dto);
+    public AvailabilityTemplate cloneTemplate(Long sourceTemplateId) {
+        LOG.debug("clone availability template sourceTemplateId={}", sourceTemplateId);
 
         AvailabilityTemplate source = getAvailabilityTemplate(sourceTemplateId);
-        initializeAllowedServices(source);
 
-        AvailabilityTemplate clone = new AvailabilityTemplate();
-
-        copyTemplateFields(source, clone);
-
-        clone.setTemplateName(resolveCloneName(source, dto));
-        clone.setStatus(TemplateStatus.DRAFT);
-        clone.setVersionNo(resolveNextVersionNo(source));
-        clone.setIsActive(true);
-        clone.setCopyFromTemplate(source);
-        clone.setParentTemplate(null);
-
-        validateEntity(clone);
-        validateReferences(clone.getFacilityId(), clone.getDepartmentId(), clone.getDefaultServiceId(), clone.getDefaultPractitionerId(), clone.getRequirePractitioner());
-
-        AvailabilityTemplate savedClone = availabilityTemplateRepository.save(clone);
-
-        List<AvailabilityTemplateAllowedService> savedAllowedServices = replaceAllowedServicesByEntities(savedClone, source.getAllowedServices());
-
-        savedClone.setAllowedServices(savedAllowedServices);
-
-        cloneIntervals(source, savedClone);
+        AvailabilityTemplate savedClone = cloneSingleTemplate(
+                source,
+                null,
+                resolveCloneName(source)
+        );
 
         cloneResourceTemplates(source, savedClone);
 
@@ -347,6 +328,41 @@ public class AvailabilityTemplateService {
         return page;
     }
 
+    private AvailabilityTemplate cloneSingleTemplate(AvailabilityTemplate source, AvailabilityTemplate parentTemplate, String templateName) {
+        initializeAllowedServices(source);
+
+        AvailabilityTemplate clone = new AvailabilityTemplate();
+
+        copyTemplateFields(source, clone);
+
+        clone.setTemplateName(templateName);
+        clone.setStatus(TemplateStatus.DRAFT);
+        clone.setVersionNo(resolveNextVersionNo(source));
+        clone.setIsActive(true);
+        clone.setCopyFromTemplate(source);
+        clone.setParentTemplate(parentTemplate);
+
+        validateEntity(clone);
+        validateReferences(
+                clone.getFacilityId(),
+                clone.getDepartmentId(),
+                clone.getDefaultServiceId(),
+                clone.getDefaultPractitionerId(),
+                clone.getRequirePractitioner()
+        );
+
+        AvailabilityTemplate savedClone = availabilityTemplateRepository.save(clone);
+
+        List<AvailabilityTemplateAllowedService> savedAllowedServices =
+                replaceAllowedServicesByEntities(savedClone, source.getAllowedServices());
+
+        savedClone.setAllowedServices(savedAllowedServices);
+
+        cloneIntervals(source, savedClone);
+
+        return savedClone;
+    }
+
     private void validateTemplateOrSubTemplateHasIntervals(Long templateId) {
         boolean templateHasIntervals = availabilityTemplateIntervalRepository.existsByTemplate_Id(templateId);
 
@@ -490,30 +506,7 @@ public class AvailabilityTemplateService {
         }
 
         for (AvailabilityTemplate sourceResource : sourceResources) {
-            initializeAllowedServices(sourceResource);
-
-            AvailabilityTemplate clonedResource = new AvailabilityTemplate();
-
-            copyTemplateFields(sourceResource, clonedResource);
-
-            clonedResource.setTemplateName(sourceResource.getTemplateName());
-            clonedResource.setStatus(TemplateStatus.DRAFT);
-            clonedResource.setVersionNo(resolveNextVersionNo(sourceResource));
-            clonedResource.setIsActive(true);
-            clonedResource.setCopyFromTemplate(sourceResource);
-            clonedResource.setParentTemplate(clonedTemplate);
-
-            validateEntity(clonedResource);
-            validateReferences(clonedResource.getFacilityId(), clonedResource.getDepartmentId(), clonedResource.getDefaultServiceId(), clonedResource.getDefaultPractitionerId(), clonedResource.getRequirePractitioner());
-
-            AvailabilityTemplate savedResourceClone =
-                    availabilityTemplateRepository.save(clonedResource);
-
-            List<AvailabilityTemplateAllowedService> savedResourceAllowedServices = replaceAllowedServicesByEntities(savedResourceClone, sourceResource.getAllowedServices());
-
-            savedResourceClone.setAllowedServices(savedResourceAllowedServices);
-
-            cloneIntervals(sourceResource, savedResourceClone);
+            cloneSingleTemplate(sourceResource, clonedTemplate, resolveCloneName(sourceResource));
         }
     }
 
@@ -623,13 +616,8 @@ public class AvailabilityTemplateService {
         return copy;
     }
 
-    private String resolveCloneName(AvailabilityTemplate source, AvailabilityTemplateCloneDTO dto) {
-        if (dto.templateName() != null && !dto.templateName().isBlank()) {
-            return dto.templateName().trim();
-        }
-
-        String suffix = " - Copy";
-        return source.getTemplateName() + suffix;
+    private String resolveCloneName(AvailabilityTemplate source) {
+        return source.getTemplateName() + " - Copy";
     }
 
     private AvailabilityTemplate toEntityForCreate(AvailabilityTemplateCreateDTO dto) {
