@@ -69,6 +69,9 @@ public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implem
     @Column(name = "default_practitioner_id")
     private Long defaultPractitionerId;
 
+    @Column(name = "require_practitioner", nullable = false)
+    private Boolean requirePractitioner = false;
+
     @Column(name = "reason", length = 255)
     private String reason;
 
