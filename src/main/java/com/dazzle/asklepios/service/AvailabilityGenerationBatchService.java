@@ -319,6 +319,9 @@ public class AvailabilityGenerationBatchService {
         appointment.setRequireConfirmation(
                 template.getRequireConfirmation() != null ? template.getRequireConfirmation() : true
         );
+        appointment.setRequirePractitioner(
+                template.getRequirePractitioner() != null ? template.getRequirePractitioner() : false
+        );
         appointment.setPriority(EncounterPriority.NORMAL);
         appointment.setCapacityIndex(capacityIndex);
         appointment.setReason(null);
