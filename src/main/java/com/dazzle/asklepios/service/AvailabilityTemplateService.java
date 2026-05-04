@@ -2,8 +2,11 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.AvailabilityTemplate;
 import com.dazzle.asklepios.domain.AvailabilityTemplateAllowedService;
+import com.dazzle.asklepios.domain.AvailabilityTemplateInterval;
+import com.dazzle.asklepios.domain.AvailabilityTemplateIntervalBreak;
 import com.dazzle.asklepios.domain.AvailabilityTemplateLog;
 import com.dazzle.asklepios.domain.enumeration.DayOfWeek;
+import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.TemplateCloneType;
 import com.dazzle.asklepios.domain.enumeration.TemplateStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
@@ -114,56 +117,6 @@ public class AvailabilityTemplateService {
         }
     }
 
-    public AvailabilityTemplate cloneTemplate(Long sourceTemplateId, AvailabilityTemplateCloneDTO dto) {
-        LOG.debug("clone availability template sourceTemplateId={}, dto={}", sourceTemplateId, dto);
-
-        AvailabilityTemplate source = getAvailabilityTemplate(sourceTemplateId);
-        initializeAllowedServices(source);
-
-        AvailabilityTemplate clone = new AvailabilityTemplate();
-
-        copyTemplateFields(source, clone);
-
-        clone.setTemplateName(resolveCloneName(source, dto));
-        clone.setStatus(TemplateStatus.DRAFT);
-        clone.setVersionNo(1);
-        clone.setIsActive(true);
-
-        if (dto.cloneType() == TemplateCloneType.SIMPLE) {
-            clone.setCopyFromTemplate(source);
-            clone.setParentTemplate(null);
-        } else if (dto.cloneType() == TemplateCloneType.RESCHEDULE) {
-            clone.setParentTemplate(source);
-            clone.setCopyFromTemplate(source);
-        }
-
-        validateEntity(clone);
-        validateReferences(
-                clone.getFacilityId(),
-                clone.getDepartmentId(),
-                clone.getDefaultServiceId(),
-                clone.getDefaultPractitionerId(),
-                clone.getRequirePractitioner()
-        );
-
-        AvailabilityTemplate savedClone = availabilityTemplateRepository.save(clone);
-
-//        List<AvailabilityTemplateAllowedServiceDTO> allowedServices = source.getAllowedServices() == null
-//                ? List.of()
-//                : source.getAllowedServices().stream()
-//                .map(entity -> new AvailabilityTemplateAllowedServiceDTO(entity.getService()))
-//                .toList();
-//
-//        List<AvailabilityTemplateAllowedService> savedAllowedServices =
-//                replaceAllowedServices(savedClone, allowedServices);
-//
-//        savedClone.setAllowedServices(savedAllowedServices);
-
-//        cloneIntervals(source, savedClone);
-
-        return savedClone;
-    }
-
     public AvailabilityTemplate update(AvailabilityTemplateUpdateDTO dto) {
         LOG.debug("update availability template {}", dto);
         try {
@@ -206,6 +159,39 @@ public class AvailabilityTemplateService {
                     "Database constraint violated while saving availability template (check required fields or unique constraints)."
             );
         }
+    }
+
+    public AvailabilityTemplate cloneTemplate(Long sourceTemplateId, AvailabilityTemplateCloneDTO dto) {
+        LOG.debug("clone availability template sourceTemplateId={}, dto={}", sourceTemplateId, dto);
+
+        AvailabilityTemplate source = getAvailabilityTemplate(sourceTemplateId);
+        initializeAllowedServices(source);
+
+        AvailabilityTemplate clone = new AvailabilityTemplate();
+
+        copyTemplateFields(source, clone);
+
+        clone.setTemplateName(resolveCloneName(source, dto));
+        clone.setStatus(TemplateStatus.DRAFT);
+        clone.setVersionNo(resolveNextVersionNo(source));
+        clone.setIsActive(true);
+        clone.setCopyFromTemplate(source);
+        clone.setParentTemplate(null);
+
+        validateEntity(clone);
+        validateReferences(clone.getFacilityId(), clone.getDepartmentId(), clone.getDefaultServiceId(), clone.getDefaultPractitionerId(), clone.getRequirePractitioner());
+
+        AvailabilityTemplate savedClone = availabilityTemplateRepository.save(clone);
+
+        List<AvailabilityTemplateAllowedService> savedAllowedServices = replaceAllowedServicesByEntities(savedClone, source.getAllowedServices());
+
+        savedClone.setAllowedServices(savedAllowedServices);
+
+        cloneIntervals(source, savedClone);
+
+        cloneResourceTemplates(source, savedClone);
+
+        return savedClone;
     }
 
     public void hardDelete(Long id) {
@@ -348,10 +334,7 @@ public class AvailabilityTemplateService {
 
     @Transactional(readOnly = true)
 
-    public Page<AvailabilityTemplate> getAllActiveByFacilityAndStatusAndTemplateTypeDepartment(
-            TemplateStatus status,
-            Pageable pageable
-    ) {
+    public Page<AvailabilityTemplate> getAllActiveByFacilityAndStatusAndTemplateTypeDepartment(TemplateStatus status, Pageable pageable) {
         LOG.debug("Get active availability templates by status={}", status);
         Long facilityId = getFacility();
 
@@ -427,10 +410,7 @@ public class AvailabilityTemplateService {
         template.setAllowedServices(templateAllowedServices);
     }
 
-    private List<AvailabilityTemplateAllowedService> replaceAllowedServices(
-            AvailabilityTemplate template,
-            List<AvailabilityTemplateAllowedServiceDTO> allowedServices
-    ) {
+    private List<AvailabilityTemplateAllowedService> replaceAllowedServices(AvailabilityTemplate template, List<AvailabilityTemplateAllowedServiceDTO> allowedServices) {
         availabilityTemplateAllowedServiceRepository.deleteByTemplate_IdAndIntervalIsNull(template.getId());
         availabilityTemplateAllowedServiceRepository.flush();
 
@@ -452,6 +432,160 @@ public class AvailabilityTemplateService {
         return availabilityTemplateAllowedServiceRepository.saveAllAndFlush(entities);
     }
 
+    private List<AvailabilityTemplateAllowedService> replaceAllowedServicesByEntities(AvailabilityTemplate template, List<AvailabilityTemplateAllowedService> allowedServices) {
+        List<EncounterReason> services = allowedServices == null
+                ? List.of()
+                : allowedServices.stream()
+                .filter(Objects::nonNull)
+                .map(AvailabilityTemplateAllowedService::getService)
+                .filter(Objects::nonNull)
+                .toList();
+
+        return replaceAllowedServicesByServices(template, services);
+    }
+
+    private List<AvailabilityTemplateAllowedService> replaceAllowedServicesByServices(AvailabilityTemplate template, List<EncounterReason> services) {
+        availabilityTemplateAllowedServiceRepository.deleteByTemplate_IdAndIntervalIsNull(template.getId());
+        availabilityTemplateAllowedServiceRepository.flush();
+
+        if (services == null || services.isEmpty()) {
+            return List.of();
+        }
+
+        List<AvailabilityTemplateAllowedService> entities = services.stream()
+                .filter(Objects::nonNull)
+                .map(service -> {
+                    AvailabilityTemplateAllowedService entity =
+                            new AvailabilityTemplateAllowedService();
+
+                    entity.setTemplate(template);
+                    entity.setService(service);
+
+                    return entity;
+                })
+                .toList();
+
+        return availabilityTemplateAllowedServiceRepository.saveAllAndFlush(entities);
+    }
+
+    private Integer resolveNextVersionNo(AvailabilityTemplate source) {
+        AvailabilityTemplate originalTemplate = source.getCopyFromTemplate() != null ? source.getCopyFromTemplate() : source;
+
+        List<AvailabilityTemplate> templateVersions = availabilityTemplateRepository.findByCopyFromTemplate_IdOrderByVersionNoDesc(originalTemplate.getId());
+
+        Integer maxVersionNo = templateVersions.stream()
+                .map(AvailabilityTemplate::getVersionNo)
+                .filter(Objects::nonNull)
+                .max(Integer::compareTo)
+                .orElse(originalTemplate.getVersionNo() == null ? 0 : originalTemplate.getVersionNo());
+
+        return maxVersionNo + 1;
+    }
+
+    private void cloneResourceTemplates(AvailabilityTemplate sourceTemplate, AvailabilityTemplate clonedTemplate) {
+        List<AvailabilityTemplate> sourceResources = availabilityTemplateRepository.findAllByParentTemplateId(sourceTemplate.getId());
+
+        if (sourceResources == null || sourceResources.isEmpty()) {
+            return;
+        }
+
+        for (AvailabilityTemplate sourceResource : sourceResources) {
+            initializeAllowedServices(sourceResource);
+
+            AvailabilityTemplate clonedResource = new AvailabilityTemplate();
+
+            copyTemplateFields(sourceResource, clonedResource);
+
+            clonedResource.setTemplateName(sourceResource.getTemplateName());
+            clonedResource.setStatus(TemplateStatus.DRAFT);
+            clonedResource.setVersionNo(resolveNextVersionNo(sourceResource));
+            clonedResource.setIsActive(true);
+            clonedResource.setCopyFromTemplate(sourceResource);
+            clonedResource.setParentTemplate(clonedTemplate);
+
+            validateEntity(clonedResource);
+            validateReferences(clonedResource.getFacilityId(), clonedResource.getDepartmentId(), clonedResource.getDefaultServiceId(), clonedResource.getDefaultPractitionerId(), clonedResource.getRequirePractitioner());
+
+            AvailabilityTemplate savedResourceClone =
+                    availabilityTemplateRepository.save(clonedResource);
+
+            List<AvailabilityTemplateAllowedService> savedResourceAllowedServices = replaceAllowedServicesByEntities(savedResourceClone, sourceResource.getAllowedServices());
+
+            savedResourceClone.setAllowedServices(savedResourceAllowedServices);
+
+            cloneIntervals(sourceResource, savedResourceClone);
+        }
+    }
+
+    private void cloneIntervals(AvailabilityTemplate source, AvailabilityTemplate target) {
+        List<AvailabilityTemplateInterval> sourceIntervals = availabilityTemplateIntervalRepository.findByTemplate_Id(source.getId());
+
+        if (sourceIntervals == null || sourceIntervals.isEmpty()) {
+            return;
+        }
+
+        for (AvailabilityTemplateInterval sourceInterval : sourceIntervals) {
+
+            AvailabilityTemplateInterval clonedInterval = new AvailabilityTemplateInterval();
+
+            clonedInterval.setTemplate(target);
+            clonedInterval.setDayOfWeek(sourceInterval.getDayOfWeek());
+            clonedInterval.setStartTime(sourceInterval.getStartTime());
+            clonedInterval.setEndTime(sourceInterval.getEndTime());
+            clonedInterval.setSlotStrategy(sourceInterval.getSlotStrategy());
+            clonedInterval.setSlotDurationMinutes(sourceInterval.getSlotDurationMinutes());
+
+            AvailabilityTemplateInterval savedInterval = availabilityTemplateIntervalRepository.save(clonedInterval);
+
+            cloneIntervalBreaks(sourceInterval, savedInterval);
+            cloneIntervalAllowedServices(sourceInterval, savedInterval, target);
+        }
+    }
+
+    private void cloneIntervalBreaks(AvailabilityTemplateInterval sourceInterval, AvailabilityTemplateInterval targetInterval) {
+        List<AvailabilityTemplateIntervalBreak> sourceBreaks = availabilityTemplateIntervalBreakRepository.findByInterval_IdOrderByStartTimeAsc(sourceInterval.getId());
+
+        if (sourceBreaks == null || sourceBreaks.isEmpty()) {
+            return;
+        }
+
+        List<AvailabilityTemplateIntervalBreak> clonedBreaks = sourceBreaks.stream()
+                .filter(Objects::nonNull)
+                .map(sourceBreak -> {
+                    AvailabilityTemplateIntervalBreak clonedBreak = new AvailabilityTemplateIntervalBreak();
+
+                    clonedBreak.setInterval(targetInterval);
+                    clonedBreak.setStartTime(sourceBreak.getStartTime());
+                    clonedBreak.setEndTime(sourceBreak.getEndTime());
+                    return clonedBreak;
+                })
+                .toList();
+
+        availabilityTemplateIntervalBreakRepository.saveAll(clonedBreaks);
+    }
+
+    private void cloneIntervalAllowedServices(AvailabilityTemplateInterval sourceInterval, AvailabilityTemplateInterval targetInterval, AvailabilityTemplate targetTemplate) {
+        List<AvailabilityTemplateAllowedService> sourceServices = availabilityTemplateAllowedServiceRepository.findAllByInterval_Id(sourceInterval.getId());
+
+        if (sourceServices == null || sourceServices.isEmpty()) {
+            return;
+        }
+
+        List<AvailabilityTemplateAllowedService> clonedServices = sourceServices.stream()
+                .filter(Objects::nonNull)
+                .map(sourceService -> {
+                    AvailabilityTemplateAllowedService clonedService = new AvailabilityTemplateAllowedService();
+
+                    clonedService.setTemplate(targetTemplate);
+                    clonedService.setInterval(targetInterval);
+                    clonedService.setService(sourceService.getService());
+
+                    return clonedService;
+                })
+                .toList();
+
+        availabilityTemplateAllowedServiceRepository.saveAllAndFlush(clonedServices);
+    }
 
     private void copyTemplateFields(AvailabilityTemplate source, AvailabilityTemplate target) {
         target.setFacilityId(source.getFacilityId());
@@ -494,7 +628,7 @@ public class AvailabilityTemplateService {
             return dto.templateName().trim();
         }
 
-        String suffix = dto.cloneType() == TemplateCloneType.RESCHEDULE ? " - Reschedule" : " - Copy";
+        String suffix = " - Copy";
         return source.getTemplateName() + suffix;
     }
 
@@ -623,13 +757,7 @@ public class AvailabilityTemplateService {
         }
     }
 
-    private void validateReferences(
-            Long facilityId,
-            Long departmentId,
-            Long serviceId,
-            Long practitionerId,
-            Boolean requirePractitioner
-    ) {
+    private void validateReferences(Long facilityId, Long departmentId, Long serviceId, Long practitionerId, Boolean requirePractitioner) {
         facilityHelper.validateFacilityExists(facilityId);
         departmentHelper.validateDepartmentExists(departmentId);
 

@@ -39,4 +39,6 @@ public interface AvailabilityTemplateRepository extends JpaRepository<Availabili
     Page<AvailabilityTemplate> findAllByFacilityIdAndDepartmentIdAndTemplateType(Long facility, Long department, TemplateType templateType, Pageable pageable);
 
     List<AvailabilityTemplate> findAllByParentTemplateId(Long parentTemplateId);
+
+    List<AvailabilityTemplate> findByCopyFromTemplate_IdOrderByVersionNoDesc(Long copyFromTemplateId);
 }

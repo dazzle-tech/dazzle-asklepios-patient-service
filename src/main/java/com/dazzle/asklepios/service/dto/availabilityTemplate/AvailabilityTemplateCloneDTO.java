@@ -4,8 +4,6 @@ import com.dazzle.asklepios.domain.enumeration.TemplateCloneType;
 import jakarta.validation.constraints.NotNull;
 
 public record AvailabilityTemplateCloneDTO(
-        @NotNull
-        TemplateCloneType cloneType,
         String templateName
 ) {
 }

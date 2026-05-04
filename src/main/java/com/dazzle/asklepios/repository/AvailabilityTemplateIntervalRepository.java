@@ -24,5 +24,9 @@ public interface AvailabilityTemplateIntervalRepository extends JpaRepository<Av
     List<AvailabilityTemplateInterval> findByTemplate_IdAndDayOfWeekAndStartTimeLessThanAndEndTimeGreaterThanAndIdNot(Long templateId, DayOfWeek dayOfWeek, LocalTime endTime, LocalTime startTime, Long id);
 
     void deleteByTemplate_Id(Long templateId);
+
     boolean existsByTemplate_Id(Long templateId);
+
+    @EntityGraph(attributePaths = {"allowedServices"})
+    List<AvailabilityTemplateInterval> findByTemplate_Id(Long templateId);
 }
