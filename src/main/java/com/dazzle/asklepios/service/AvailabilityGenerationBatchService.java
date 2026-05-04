@@ -311,6 +311,7 @@ public class AvailabilityGenerationBatchService {
         appointment.setEndDatetime(toInstant(end));
         appointment.setPatient(null);
         appointment.setDefaultServiceId(template.getDefaultServiceId());
+        appointment.setDefaultPractitionerId(template.getDefaultPractitionerId());
         appointment.setBookingMode(bookingMode);
         appointment.setStatus(AppointmentStatus.NEW);
         appointment.setDeferred(deferred);
