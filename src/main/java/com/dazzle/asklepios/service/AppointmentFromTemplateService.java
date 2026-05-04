@@ -85,18 +85,18 @@ public class AppointmentFromTemplateService {
 
         AppointmentFromTemplate appointment = appointmentFromTemplateRepository.findById(dto.id())
                 .orElseThrow(() -> new BadRequestAlertException("notfound", ENTITY_NAME, "Appointment not found with id: " + dto.id()));
-
         if (dto.patientId() != null) {
             Patient patient = patientRepository.findById(dto.patientId())
                     .orElseThrow(() -> new BadRequestAlertException("notfound", ENTITY_NAME, "Patient not found with id: " + dto.patientId()));
             appointment.setPatient(patient);
         }
+        if(appointment.getRequirePractitioner() && dto.defaultPractitioner() == null){
+            throw new BadRequestAlertException("practitionerid", ENTITY_NAME, "Practitioner is required for this appointment");
+        }
         if (dto.defaultService() != null) {
             appointment.setDefaultServiceId(dto.defaultService());
         }
-        if (dto.defaultPractitioner() != null) {
             appointment.setDefaultPractitionerId(dto.defaultPractitioner());
-        }
         if (dto.reason() != null) {
             appointment.setReason(dto.reason());
         }
@@ -117,6 +117,7 @@ public class AppointmentFromTemplateService {
         if (dto.originName() != null) {
             appointment.setOriginName(dto.originName());
         }
+
         if (dto.service() == EncounterReason.FOLLOW_UP && dto.followUpEncounterId() != null) {
             PatientEncounter followUpEncounter = patientEncounterRepository.findById(dto.followUpEncounterId())
                     .orElseThrow(() -> new BadRequestAlertException("notfound", ENTITY_NAME, "Patient Encounter not found with id: " + dto.followUpEncounterId()));
