@@ -29,6 +29,8 @@ public record AvailabilityTemplateIntervalCreateDTO(
         @NotNull
         Integer slotDurationMinutes,
 
+        Boolean applyToAllWorkingDays,
+
         List<AvailabilityTemplateAllowedServiceDTO> allowedServices
 
 ) implements Serializable {}
