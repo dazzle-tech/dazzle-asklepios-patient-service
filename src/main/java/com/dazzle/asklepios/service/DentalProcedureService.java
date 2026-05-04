@@ -9,6 +9,9 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.dentalProcedure.DentalProcedureCreateDTO;
 import com.dazzle.asklepios.service.dto.dentalProcedure.DentalProcedureUpdateDTO;
+import com.dazzle.asklepios.service.helper.CDTCodeHelper;
+import com.dazzle.asklepios.service.helper.ProcedureHelper;
+import com.dazzle.asklepios.service.helper.ServiceHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,20 +35,25 @@ public class DentalProcedureService {
     private final DentalProcedureRepository dentalProcedureRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final ServiceHelper serviceHelper;
+    private final ProcedureHelper procedureHelper;
+    private final CDTCodeHelper cdtCodeHelper;
 
     public DentalProcedureService(
             DentalProcedureRepository dentalProcedureRepository,
             PatientRepository patientRepository,
-            PatientEncounterRepository patientEncounterRepository
-    ) {
+            PatientEncounterRepository patientEncounterRepository,
+            ServiceHelper serviceHelper, ProcedureHelper procedureHelper, CDTCodeHelper cdtCodeHelper) {
         this.dentalProcedureRepository = dentalProcedureRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
+        this.serviceHelper = serviceHelper;
+        this.procedureHelper = procedureHelper;
+        this.cdtCodeHelper = cdtCodeHelper;
     }
 
     public DentalProcedure create(DentalProcedureCreateDTO dto) {
         LOG.debug("Request to create DentalProcedure : {}", dto);
-//TODO: validate patient id , encounter id, procedure id, service id and cdtCode id
 
 
         Patient patient = patientRepository.findById(dto.patientId())
@@ -61,6 +69,19 @@ public class DentalProcedureService {
                         "dentalProcedure",
                         "Encounter not found with id " + dto.encounterId()
                 ));
+
+
+        if (dto.serviceId() != null){
+            serviceHelper.validateServiceExists(dto.serviceId());
+        }
+
+        if(dto.cdtCodeId() != null){
+            cdtCodeHelper.validateCDTCodeExists(dto.cdtCodeId());
+        }
+
+        procedureHelper.validateProcedureExists(dto.procedureId());
+
+
 
         DentalProcedure entity = DentalProcedure.builder()
                 .patient(patient)
@@ -105,7 +126,6 @@ public class DentalProcedureService {
     @Transactional
     public DentalProcedure update(DentalProcedureUpdateDTO dto) {
         LOG.debug("Request to update DentalProcedure : {}", dto);
-//TODO: validate procedure id, service id and cdtCode id
 
         DentalProcedure entity = dentalProcedureRepository.findById(dto.id())
                 .orElseThrow(() -> new BadRequestAlertException(
@@ -121,6 +141,16 @@ public class DentalProcedureService {
                     "Cannot update a cancelled dental procedure"
             );
         }
+
+        if (dto.serviceId() != null){
+            serviceHelper.validateServiceExists(dto.serviceId());
+        }
+
+        if(dto.cdtCodeId() != null){
+            cdtCodeHelper.validateCDTCodeExists(dto.cdtCodeId());
+        }
+
+        procedureHelper.validateProcedureExists(dto.procedureId());
 
         entity.setToothNumber(dto.toothNumber());
         entity.setSurface(dto.surface());
