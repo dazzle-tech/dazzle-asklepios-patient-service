@@ -66,10 +66,23 @@ public class BedTransactionService {
                             "patient.notfound"
                     );
                 });
-        bedHelper.validateBedExists(createDTO.fromBedId());
-        bedHelper.validateBedExists(createDTO.toBedId());
-        roomHelper.validateRoomExists(createDTO.fromRoomId());
-        roomHelper.validateRoomExists(createDTO.toRoomId());
+
+        if(createDTO.fromBedId() != null){
+            bedHelper.validateBedExists(createDTO.fromBedId());
+        }
+
+        if(createDTO.toBedId() != null){
+            bedHelper.validateBedExists(createDTO.toBedId());
+        }
+
+        if(createDTO.fromRoomId() != null){
+            roomHelper.validateRoomExists(createDTO.fromRoomId());
+        }
+
+        if(createDTO.toRoomId() != null){
+            roomHelper.validateRoomExists(createDTO.toRoomId());
+        }
+
         departmentHelper.validateDepartmentExists(createDTO.fromDepartmentId());
         departmentHelper.validateDepartmentExists(createDTO.toDepartmentId());
 
@@ -166,10 +179,23 @@ public class BedTransactionService {
                             "patient.notfound"
                     );
                 });
-        bedHelper.validateBedExists(updateDTO.fromBedId());
-        bedHelper.validateBedExists(updateDTO.toBedId());
-        roomHelper.validateRoomExists(updateDTO.fromRoomId());
-        roomHelper.validateRoomExists(updateDTO.toRoomId());
+
+        if(updateDTO.fromBedId() != null){
+            bedHelper.validateBedExists(updateDTO.fromBedId());
+        }
+
+        if(updateDTO.toBedId() != null){
+            bedHelper.validateBedExists(updateDTO.toBedId());
+        }
+
+        if(updateDTO.fromRoomId() != null){
+            roomHelper.validateRoomExists(updateDTO.fromRoomId());
+        }
+
+        if(updateDTO.toRoomId() != null){
+            roomHelper.validateRoomExists(updateDTO.toRoomId());
+        }
+
         departmentHelper.validateDepartmentExists(updateDTO.fromDepartmentId());
         departmentHelper.validateDepartmentExists(updateDTO.toDepartmentId());
 
