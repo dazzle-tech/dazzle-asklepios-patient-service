@@ -10,6 +10,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Optional;
+
 @Service
 @Transactional
 public class ExternalTestService {
@@ -53,23 +55,11 @@ public class ExternalTestService {
     }
 
     @Transactional(readOnly = true)
-    public ExternalTest getByTestId(Long testId) {
-        return externalTestRepository.findByTestId(testId)
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
-                        "external_tests",
-                        "ExternalTest not found for testId " + testId
-                ));
+    public Optional<ExternalTest> getByTestId(Long testId) {
+        return externalTestRepository.findByTestId(testId);
     }
 
     public void deleteByTestId(Long testId) {
-        if (!externalTestRepository.existsByTestId(testId)) {
-            throw new BadRequestAlertException(
-                    "notfound",
-                    "external_tests",
-                    "ExternalTest not found for testId " + testId
-            );
-        }
         externalTestRepository.deleteByTestId(testId);
     }
 

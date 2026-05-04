@@ -104,10 +104,9 @@ public class EncounterPlanController {
             );
         }
 
-        EncounterPlan latest =
-                encounterPlanService.findLatestByEncounterId(encounterId);
-
-        return ResponseEntity.ok(latest);
+        return encounterPlanService.findLatestByEncounterId(encounterId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
     @GetMapping("/encounter-plans/by-patient")
     public ResponseEntity<List<EncounterPlan>> getByPatient(

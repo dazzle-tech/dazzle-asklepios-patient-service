@@ -1,6 +1,6 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.setup.SetupServiceClient;
+import com.dazzle.asklepios.client.setup.DiagnosticTestClient;
 import com.dazzle.asklepios.client.setup.dto.DiagnosticTestSetupDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
@@ -43,24 +43,18 @@ public class DiagnosticOrderTestStatusService {
 
     private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderTestStatusService.class);
 
-    private final SetupServiceClient setupServiceClient;
     private final DiagnosticOrderRepository diagnosticOrderRepository;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
+    private final DiagnosticTestClient diagnosticTestClient;
 
-    public DiagnosticOrderTestStatusService(
-            SetupServiceClient setupServiceClient,
-            DiagnosticOrderRepository diagnosticOrderRepository,
-            DiagnosticOrderTestRepository diagnosticOrderTestRepository,
-            DiagnosticOrderStatusService diagnosticOrderStatusService,
-            PatientServiceAndProductRepository patientServiceAndProductRepository
-    ) {
-        this.setupServiceClient = setupServiceClient;
+    public DiagnosticOrderTestStatusService(DiagnosticOrderRepository diagnosticOrderRepository, DiagnosticOrderTestRepository diagnosticOrderTestRepository, DiagnosticOrderStatusService diagnosticOrderStatusService, PatientServiceAndProductRepository patientServiceAndProductRepository, DiagnosticTestClient diagnosticTestClient) {
         this.diagnosticOrderRepository = diagnosticOrderRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
+        this.diagnosticTestClient = diagnosticTestClient;
     }
 
     // ---------------------------------------------------------------------
@@ -78,12 +72,7 @@ public class DiagnosticOrderTestStatusService {
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
 
-        LOG.debug(
-                "[DiagnosticOrderTestStatus] COLLECT_SAMPLE - done. testId={} orderId={} status={}",
-                saved.getId(),
-                saved.getOrderId(),
-                saved.getProcessingStatus()
-        );
+        LOG.debug("[DiagnosticOrderTestStatus] COLLECT_SAMPLE - done. testId={} orderId={} status={}", saved.getId(), saved.getOrderId(), saved.getProcessingStatus());
 
         return saved;
     }
@@ -114,13 +103,7 @@ public class DiagnosticOrderTestStatusService {
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
 
-        LOG.debug(
-                "[DiagnosticOrderTestStatus] PATIENT_ARRIVED - done. testId={} orderId={} status={} arrivedDate={}",
-                saved.getId(),
-                saved.getOrderId(),
-                saved.getProcessingStatus(),
-                saved.getPatientArrivedDate()
-        );
+        LOG.debug("[DiagnosticOrderTestStatus] PATIENT_ARRIVED - done. testId={} orderId={} status={} arrivedDate={}", saved.getId(), saved.getOrderId(), saved.getProcessingStatus(), saved.getPatientArrivedDate());
 
         return new PatientArrivedResponseVM(
                 saved.getId(),
@@ -316,7 +299,7 @@ public class DiagnosticOrderTestStatusService {
     // Undo Accept
     // ---------------------------------------------------------------------
 
-    public DiagnosticOrderTest undoAccept(Long testId , String username, String undoAcceptReason) {
+    public DiagnosticOrderTest undoAccept(Long testId, String username, String undoAcceptReason) {
         LOG.debug("[DiagnosticOrderTestStatus] UNDO_ACCEPT - start. testId={}", testId);
 
         DiagnosticOrderTest test = getTest(testId);
@@ -518,7 +501,7 @@ public class DiagnosticOrderTestStatusService {
         LOG.debug("[DiagnosticOrderTestStatus] FETCH_SETUP - diagnosticTestId={}", diagnosticTestId);
 
         try {
-            DiagnosticTestSetupDTO dto = setupServiceClient.getDiagnosticTest(diagnosticTestId);
+            DiagnosticTestSetupDTO dto = diagnosticTestClient.getDiagnosticTest(diagnosticTestId);
 
             LOG.debug(
                     "[DiagnosticOrderTestStatus] FETCH_SETUP - success. diagnosticTestId={} name={} price={} currency={}",

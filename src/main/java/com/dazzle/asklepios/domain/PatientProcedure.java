@@ -3,6 +3,8 @@ package com.dazzle.asklepios.domain;
 import com.dazzle.asklepios.domain.enumeration.Priority;
 import com.dazzle.asklepios.domain.enumeration.ProcedureLevel;
 import com.dazzle.asklepios.domain.enumeration.ProcStatus;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -45,12 +47,24 @@ public class PatientProcedure extends AbstractAuditingEntity<Long> implements Se
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "patient_id", nullable = false)
+    @JsonIgnore
     private Patient patient;
 
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "encounter_id", nullable = false)
+    @JsonIgnore
     private PatientEncounter encounter;
+
+    @JsonProperty("patientId")
+    public Long getPatientIdJson() {
+        return patient == null ? null : patient.getId();
+    }
+
+    @JsonProperty("encounterId")
+    public Long getEncounterIdJson() {
+        return encounter == null ? null : encounter.getId();
+    }
 
     @NotNull
     @Column(name = "from_facility_id", nullable = false)

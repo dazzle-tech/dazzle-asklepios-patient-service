@@ -1,6 +1,6 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.setup.SetupServiceClient;
+import com.dazzle.asklepios.client.setup.ProcedureClient;
 import com.dazzle.asklepios.client.setup.dto.ProcedureSetupDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
@@ -8,6 +8,7 @@ import com.dazzle.asklepios.domain.PatientProcedure;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.ProcStatus;
+import com.dazzle.asklepios.domain.enumeration.ProcedureLevel;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientProcedureRepository;
@@ -16,6 +17,8 @@ import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedureCreateDTO;
 import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedureUpdateDTO;
+import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import feign.FeignException;
@@ -45,7 +48,9 @@ public class PatientProcedureService {
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
-    private final SetupServiceClient setupProcedureClient;
+    private final ProcedureClient procedureClient;
+    private final FacilityHelper facilityHelper;
+    private final DepartmentHelper departmentHelper;
 
     private String currentUsername() {
         String username = SecurityUtils.getCurrentUserLogin().orElse(null);
@@ -86,6 +91,10 @@ public class PatientProcedureService {
                 );
 
         ProcedureSetupDTO setupProcedure = fetchProcedureSetup(procedureCreateDTO.procedureId());
+        facilityHelper.validateFacilityExists(procedureCreateDTO.fromFacilityId());
+        facilityHelper.validateFacilityExists(procedureCreateDTO.toFacilityId());
+        departmentHelper.validateDepartmentExists(procedureCreateDTO.fromDepartmentId());
+        departmentHelper.validateDepartmentExists(procedureCreateDTO.toDepartmentId());
 
         PatientProcedure procedureEntity = PatientProcedure.builder()
                 .procedureId(procedureCreateDTO.procedureId())
@@ -140,7 +149,17 @@ public class PatientProcedureService {
                         "procedure",
                         "notfound"
                 ));
+        facilityHelper.validateFacilityExists(procedureUpdateDTO.toFacilityId());
+        departmentHelper.validateDepartmentExists(procedureUpdateDTO.toDepartmentId());
 
+        procedureEntity.setProcedureId(procedureUpdateDTO.procedureId());
+        procedureEntity.setProcedureLevel(
+                procedureUpdateDTO.procedureLevel() != null
+                        ? ProcedureLevel.valueOf(procedureUpdateDTO.procedureLevel())
+                        : null
+        );
+        procedureEntity.setPriority(procedureUpdateDTO.priority());
+        procedureEntity.setBodyPart(procedureUpdateDTO.bodyPart());
         procedureEntity.setSide(procedureUpdateDTO.side());
         procedureEntity.setIndicationId(procedureUpdateDTO.indicationId());
         procedureEntity.setToFacilityId(procedureUpdateDTO.toFacilityId());
@@ -234,7 +253,7 @@ public class PatientProcedureService {
 
     private ProcedureSetupDTO fetchProcedureSetup(Long procedureId) {
         try {
-            ProcedureSetupDTO response = setupProcedureClient.getProcedure(procedureId);
+            ProcedureSetupDTO response = procedureClient.getProcedure(procedureId);
 
             if (response == null || response.id() == null) {
                 throw new NotFoundAlertException(

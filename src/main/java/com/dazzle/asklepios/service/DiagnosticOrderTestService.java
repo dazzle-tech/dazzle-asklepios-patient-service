@@ -1,12 +1,18 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestTechnicianNoteRepository;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestUpdateDTO;
+import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.DiagnosticTestHelper;
+import com.dazzle.asklepios.service.helper.ICDTreeHelper;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.diagnosticorders.DiagnosticOrderTestResponseVM;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,6 +57,10 @@ public class DiagnosticOrderTestService {
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
 
     private final DiagnosticOrderTestTechnicianNoteRepository diagnosticOrderTestTechnicianNoteRepository;
+    private final DiagnosticOrderRepository diagnosticOrderRepository;
+    private final DiagnosticTestHelper diagnosticTestHelper;
+    private final DepartmentHelper departmentHelper;
+    private final ICDTreeHelper icdTreeHelper;
 
     /**
      * Creates the service with required dependencies.
@@ -60,12 +70,16 @@ public class DiagnosticOrderTestService {
      */
     public DiagnosticOrderTestService(
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
-            DiagnosticOrderStatusService diagnosticOrderStatusService, DiagnosticOrderTestTechnicianNoteRepository diagnosticOrderTestTechnicianNoteRepository
-    ) {
+            DiagnosticOrderStatusService diagnosticOrderStatusService, DiagnosticOrderTestTechnicianNoteRepository diagnosticOrderTestTechnicianNoteRepository,
+            DiagnosticOrderRepository diagnosticOrderRepository, DiagnosticTestHelper diagnosticTestHelper, DepartmentHelper departmentHelper, ICDTreeHelper icdTreeHelper) {
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
 
         this.diagnosticOrderTestTechnicianNoteRepository = diagnosticOrderTestTechnicianNoteRepository;
+        this.diagnosticOrderRepository = diagnosticOrderRepository;
+        this.diagnosticTestHelper = diagnosticTestHelper;
+        this.departmentHelper = departmentHelper;
+        this.icdTreeHelper = icdTreeHelper;
     }
 
     /**
@@ -85,8 +99,15 @@ public class DiagnosticOrderTestService {
         LOG.debug("Request to create DiagnosticOrderTest: {}", dto);
 
         // Build a new entity instance from DTO fields
+        DiagnosticOrder order = getDiagnosticOrder(dto.orderId());
+        diagnosticTestHelper.getDiagnosticTest(dto.testId());
+        if (dto.receivedDepartmentId() != null)
+            departmentHelper.validateDepartmentExists(dto.receivedDepartmentId());
+        if (dto.icdDiagnosisId() != null)
+            icdTreeHelper.validateICDDiagnosisExists(dto.icdDiagnosisId());
+
         DiagnosticOrderTest orderTest = new DiagnosticOrderTest();
-        orderTest.setOrderId(dto.orderId());
+        orderTest.setOrderId(order.getId());
         orderTest.setTestId(dto.testId());
 
         // Initial lifecycle status for a newly created order test
@@ -94,7 +115,7 @@ public class DiagnosticOrderTestService {
 
         // Set processing status if provided; otherwise default to NEW
 
-            orderTest.setProcessingStatus(DiagnosticStatus.NEW);
+        orderTest.setProcessingStatus(DiagnosticStatus.NEW);
 
 
         // Additional metadata and routing information
@@ -130,8 +151,13 @@ public class DiagnosticOrderTestService {
      */
     public DiagnosticOrderTest update(DiagnosticOrderTest existing, DiagnosticOrderTestUpdateDTO dto) {
         LOG.debug("Request to update DiagnosticOrderTest id={} payload={}", existing.getId(), dto);
-
-        existing.setOrderId(dto.orderId());
+        DiagnosticOrder order = getDiagnosticOrder(dto.orderId());
+        diagnosticTestHelper.getDiagnosticTest(dto.testId());
+        if (dto.receivedDepartmentId() != null)
+            departmentHelper.validateDepartmentExists(dto.receivedDepartmentId());
+        if (dto.icdDiagnosisId() != null)
+            icdTreeHelper.validateICDDiagnosisExists(dto.icdDiagnosisId());
+        existing.setOrderId(order.getId());
         existing.setTestId(dto.testId());
 
         // Update request details
@@ -188,9 +214,9 @@ public class DiagnosticOrderTestService {
     /**
      * Retrieves {@link DiagnosticOrderTest} records for a given orderId excluding provided statuses.
      *
-     * @param orderId          parent diagnostic order identifier
-     * @param excludeStatuses  list of statuses to exclude
-     * @param pageable         pagination and sorting information
+     * @param orderId         parent diagnostic order identifier
+     * @param excludeStatuses list of statuses to exclude
+     * @param pageable        pagination and sorting information
      * @return paged results excluding the provided statuses
      */
     public Page<DiagnosticOrderTest> findByOrderIdExcludingStatuses(
@@ -207,6 +233,7 @@ public class DiagnosticOrderTestService {
                 orderId, page.getNumberOfElements(), page.getTotalElements(), page.getTotalPages());
         return page;
     }
+
     @Transactional(readOnly = true)
     public Page<DiagnosticOrderTestResponseVM> filterDiagnosticOrderTests(
             Specification<DiagnosticOrderTest> spec,
@@ -245,5 +272,16 @@ public class DiagnosticOrderTestService {
         LOG.debug("[DiagnosticOrderTestService] DELETE - start. id={}", id);
         diagnosticOrderTestRepository.deleteById(id);
         LOG.debug("[DiagnosticOrderTestService] DELETE - done. id={}", id);
+    }
+
+    private DiagnosticOrder getDiagnosticOrder(Long diagnosticOrderId) {
+        LOG.debug("[TechnicianNoteService]  getDiagnosticOrder:  id={}", diagnosticOrderId);
+
+        return diagnosticOrderRepository.findById(diagnosticOrderId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_orders",
+                        "Order not found with id " + diagnosticOrderId
+                ));
     }
 }

@@ -1,8 +1,10 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.UserStickyNotes;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.UserStickyNotesRepository;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -18,9 +20,11 @@ public class UserStickyNotesService {
     private static final Logger LOG = LoggerFactory.getLogger(UserStickyNotesService.class);
 
     private final UserStickyNotesRepository userStickyNotesRepository;
+    private final PatientRepository patientRepository;
 
-    public UserStickyNotesService(UserStickyNotesRepository userStickyNotesRepository) {
+    public UserStickyNotesService(UserStickyNotesRepository userStickyNotesRepository, PatientRepository patientRepository) {
         this.userStickyNotesRepository = userStickyNotesRepository;
+        this.patientRepository = patientRepository;
     }
 
     @Transactional(readOnly = true)
@@ -31,7 +35,16 @@ public class UserStickyNotesService {
 
     public UserStickyNotes create(UserStickyNotes userStickyNotes) {
         LOG.info("[CREATE] Request to create UserStickyNotes for payload={}", userStickyNotes);
-
+        if (userStickyNotes.getPatientId() != null) {
+            patientRepository.findById(userStickyNotes.getPatientId())
+                    .orElseThrow(() ->
+                            new NotFoundAlertException(
+                                    "Patient not found with id " + userStickyNotes.getPatientId(),
+                                    "UserStickyNotes",
+                                    "patient.notfound"
+                            )
+                    );
+        }
         UserStickyNotes entity = UserStickyNotes.builder()
                 .userId(userStickyNotes.getUserId())
                 .note(userStickyNotes.getNote())

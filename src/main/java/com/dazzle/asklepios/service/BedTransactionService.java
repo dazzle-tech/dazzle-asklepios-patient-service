@@ -9,6 +9,9 @@ import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.bedTransaction.BedTransactionCreateDTO;
 import com.dazzle.asklepios.service.dto.bedTransaction.BedTransactionUpdateDTO;
+import com.dazzle.asklepios.service.helper.BedHelper;
+import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.RoomHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -32,9 +35,14 @@ public class BedTransactionService {
 
     private static final Logger LOG = LoggerFactory.getLogger(BedTransactionService.class);
 
+    private static final String ENTITY_NAME = "BedTransaction";
+
     private final BedTransactionRepository bedTransactionRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientRepository patientRepository;
+    private final DepartmentHelper departmentHelper;
+    private final RoomHelper roomHelper;
+    private final BedHelper bedHelper;
 
     public BedTransaction create(BedTransactionCreateDTO createDTO) {
         LOG.info("[CREATE] BedTransaction payload={}", createDTO);
@@ -58,6 +66,26 @@ public class BedTransactionService {
                             "patient.notfound"
                     );
                 });
+
+        if(createDTO.fromBedId() != null){
+            bedHelper.validateBedExists(createDTO.fromBedId());
+        }
+
+        if(createDTO.toBedId() != null){
+            bedHelper.validateBedExists(createDTO.toBedId());
+        }
+
+        if(createDTO.fromRoomId() != null){
+            roomHelper.validateRoomExists(createDTO.fromRoomId());
+        }
+
+        if(createDTO.toRoomId() != null){
+            roomHelper.validateRoomExists(createDTO.toRoomId());
+        }
+
+        departmentHelper.validateDepartmentExists(createDTO.fromDepartmentId());
+        departmentHelper.validateDepartmentExists(createDTO.toDepartmentId());
+
 
         validatePatientMatchesEncounter(patientEncounter, patient);
         validateTransactionDirection(
@@ -151,6 +179,26 @@ public class BedTransactionService {
                             "patient.notfound"
                     );
                 });
+
+        if(updateDTO.fromBedId() != null){
+            bedHelper.validateBedExists(updateDTO.fromBedId());
+        }
+
+        if(updateDTO.toBedId() != null){
+            bedHelper.validateBedExists(updateDTO.toBedId());
+        }
+
+        if(updateDTO.fromRoomId() != null){
+            roomHelper.validateRoomExists(updateDTO.fromRoomId());
+        }
+
+        if(updateDTO.toRoomId() != null){
+            roomHelper.validateRoomExists(updateDTO.toRoomId());
+        }
+
+        departmentHelper.validateDepartmentExists(updateDTO.fromDepartmentId());
+        departmentHelper.validateDepartmentExists(updateDTO.toDepartmentId());
+
 
         validatePatientMatchesEncounter(patientEncounter, patient);
         validateTransactionDirection(

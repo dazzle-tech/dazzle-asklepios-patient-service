@@ -2,7 +2,9 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.EncounterPlan;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.repository.EncounterPlanRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.encounterPlan.EncounterPlanCreateDTO;
 import com.dazzle.asklepios.service.dto.encounterPlan.EncounterPlanUpdateDTO;
@@ -18,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -29,13 +32,15 @@ public class EncounterPlanService {
 
     private final EncounterPlanRepository encounterPlanRepository;
     private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
 
     public EncounterPlanService(
             EncounterPlanRepository encounterPlanRepository,
-            PatientRepository patientRepository
-    ) {
+            PatientRepository patientRepository,
+            PatientEncounterRepository patientEncounterRepository) {
         this.encounterPlanRepository = encounterPlanRepository;
         this.patientRepository = patientRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
     }
 
     public EncounterPlan create(EncounterPlanCreateDTO createRequest) {
@@ -47,10 +52,16 @@ public class EncounterPlanService {
                         "patient",
                         "notfound"
                 ));
+        PatientEncounter encounter = patientEncounterRepository.findById(createRequest.encounterId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "PatientEncounter not found with id " + createRequest.encounterId(),
+                        "patientEncounter",
+                        "notfound"
+                ));
 
         EncounterPlan entity = EncounterPlan.builder()
                 .patient(patient)
-                .encounterId(createRequest.encounterId())
+                .encounterId(encounter.getId())
                 .goals(createRequest.goals())
                 .treatmentPlan(createRequest.treatmentPlan())
                 .build();
@@ -84,9 +95,15 @@ public class EncounterPlanService {
                         "patient",
                         "notfound"
                 ));
+        PatientEncounter encounter = patientEncounterRepository.findById(updateRequest.encounterId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "PatientEncounter not found with id " + updateRequest.encounterId(),
+                        "patientEncounter",
+                        "notfound"
+                ));
 
         existing.setPatient(patient);
-        existing.setEncounterId(updateRequest.encounterId());
+        existing.setEncounterId(encounter.getId());
         existing.setGoals(updateRequest.goals());
         existing.setTreatmentPlan(updateRequest.treatmentPlan());
         existing.setLastModifiedDate(Instant.now());
@@ -105,16 +122,11 @@ public class EncounterPlanService {
     }
 
     @Transactional(readOnly = true)
-    public EncounterPlan findLatestByEncounterId(Long encounterId) {
+    public Optional<EncounterPlan> findLatestByEncounterId(Long encounterId) {
         LOG.debug("[FIND LATEST] encounterId={}", encounterId);
 
         return encounterPlanRepository
-                .findTopByEncounterIdOrderByCreatedDateDesc(encounterId)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "No encounter plan found for encounterId=" + encounterId,
-                        "encounterPlan",
-                        "notfound"
-                ));
+                .findTopByEncounterIdOrderByCreatedDateDesc(encounterId);
     }
 
     @Transactional(readOnly = true)

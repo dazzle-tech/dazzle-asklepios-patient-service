@@ -1,8 +1,13 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.DiagnosticOrderTest;
+import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestReportComments;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportCommentsRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.service.dto.radiology.comments.DiagnosticOrderTestReportCommentsDTO;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.persistence.EntityNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,9 +24,13 @@ public class DiagnosticOrderTestReportCommentsService {
     private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderTestReportCommentsService.class);
 
     private final DiagnosticOrderTestReportCommentsRepository noteRepository;
+    private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
+    private final DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository;
 
-    public DiagnosticOrderTestReportCommentsService(DiagnosticOrderTestReportCommentsRepository noteRepository) {
+    public DiagnosticOrderTestReportCommentsService(DiagnosticOrderTestReportCommentsRepository noteRepository, DiagnosticOrderTestRepository diagnosticOrderTestRepository, DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository) {
         this.noteRepository = noteRepository;
+        this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
+        this.diagnosticOrderTestReportRepository = diagnosticOrderTestReportRepository;
     }
 
     /**
@@ -33,10 +42,11 @@ public class DiagnosticOrderTestReportCommentsService {
     public DiagnosticOrderTestReportComments create(DiagnosticOrderTestReportCommentsDTO orderTestReportCommentsDTO) {
         Objects.requireNonNull(orderTestReportCommentsDTO, "orderTestReportCommentsDTO must not be null");
         LOG.debug("Request to create DiagnosticOrderTestReportComments orderTestReportCommentsDTO={}", orderTestReportCommentsDTO);
-
+        DiagnosticOrderTest diagnosticOrderTest = getDiagnosticOrderTest(orderTestReportCommentsDTO.orderTestId());
+        DiagnosticOrderTestReport diagnosticOrderTestReport = getDiagnosticOrderTestReport(orderTestReportCommentsDTO.reportId());
         DiagnosticOrderTestReportComments orderTestReportComments = new DiagnosticOrderTestReportComments();
-        orderTestReportComments.setOrderTestId(orderTestReportCommentsDTO.orderTestId());
-        orderTestReportComments.setReportId(orderTestReportCommentsDTO.reportId());
+        orderTestReportComments.setOrderTestId(diagnosticOrderTest.getId());
+        orderTestReportComments.setReportId(diagnosticOrderTestReport.getId());
         orderTestReportComments.setNote(orderTestReportCommentsDTO.note());
 
         DiagnosticOrderTestReportComments saved = noteRepository.save(orderTestReportComments);
@@ -76,10 +86,31 @@ public class DiagnosticOrderTestReportCommentsService {
         LOG.debug("Request to get DiagnosticOrderTestReportComments by reportId={}", reportId);
 
 
-
         List<DiagnosticOrderTestReportComments> result = noteRepository.findByReportId(reportId);
 
         LOG.info("Found {} DiagnosticOrderTestReportComments for reportId={}", result.size(), reportId);
         return result;
+    }
+
+    private DiagnosticOrderTestReport getDiagnosticOrderTestReport(Long diagnosticOrderTestReportId) {
+        LOG.debug("[TechnicianNoteService]  getDiagnosticOrderTestReport:  id={}", diagnosticOrderTestReportId);
+
+        return diagnosticOrderTestReportRepository.findById(diagnosticOrderTestReportId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnosticOrdersTestReport",
+                        "Report not found with id " + diagnosticOrderTestReportId
+                ));
+    }
+
+    private DiagnosticOrderTest getDiagnosticOrderTest(Long diagnosticOrderTestId) {
+        LOG.debug("[TechnicianNoteService]  getDiagnosticOrderTest:  id={}", diagnosticOrderTestId);
+
+        return diagnosticOrderTestRepository.findById(diagnosticOrderTestId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnosticOrdersTest",
+                        "Test not found with id " + diagnosticOrderTestId
+                ));
     }
 }

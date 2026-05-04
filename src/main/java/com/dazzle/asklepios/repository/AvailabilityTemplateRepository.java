@@ -41,4 +41,8 @@ public interface AvailabilityTemplateRepository extends JpaRepository<Availabili
     List<AvailabilityTemplate> findAllByParentTemplateId(Long parentTemplateId);
 
     List<AvailabilityTemplate> findByCopyFromTemplate_IdOrderByVersionNoDesc(Long copyFromTemplateId);
+
+    boolean existsByParentTemplate_Id(Long parentTemplateId);
+
+    boolean existsByCopyFromTemplate_Id(Long copyFromTemplateId);
 }

@@ -15,9 +15,6 @@ public record PainAssessmentCreateDTO(
         Long encounterId,
 
         @NotNull
-        String painDegree,
-
-        @NotNull
         PainLevel painLevel,
 
         String painDescription,

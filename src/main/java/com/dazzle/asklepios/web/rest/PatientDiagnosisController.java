@@ -113,10 +113,9 @@ PatientDiagnosisController {
     ) {
         LOG.debug("REST get primary PatientDiagnosis by encounterId={}", encounterId);
 
-        PatientDiagnosis primaryDiagnosis =
-                patientDiagnosisService.getPrimaryDiagnosisByEncounterId(encounterId);
-
-        return ResponseEntity.ok(primaryDiagnosis);
+        return patientDiagnosisService.getPrimaryDiagnosisByEncounterId(encounterId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     @GetMapping("/patient-diagnoses/latest")
@@ -133,10 +132,9 @@ PatientDiagnosisController {
             );
         }
 
-        PatientDiagnosis latest =
-                patientDiagnosisService.findLatestByEncounterId(encounterId);
-
-        return ResponseEntity.ok(latest);
+        return patientDiagnosisService.findLatestByEncounterId(encounterId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     @GetMapping("/patient-diagnoses/patient/{patientId}")

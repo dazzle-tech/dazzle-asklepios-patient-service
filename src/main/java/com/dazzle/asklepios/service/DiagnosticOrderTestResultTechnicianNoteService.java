@@ -1,7 +1,9 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResultTechnicianNote;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestResultTechnicianNoteRepository;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.resulttechniciannote.DiagnosticOrderTestResultTechnicianNoteDTO;
@@ -33,13 +35,15 @@ public class DiagnosticOrderTestResultTechnicianNoteService {
 
     private final DiagnosticOrderTestResultTechnicianNoteRepository diagnosticOrderTestResultTechnicianNoteRepository;
     private final DiagnosticOrderTestResultRepository testResultRepository;
+    private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
 
     public DiagnosticOrderTestResultTechnicianNoteService(
             DiagnosticOrderTestResultTechnicianNoteRepository noteRepository,
-            DiagnosticOrderTestResultRepository testResultRepository
-    ) {
+            DiagnosticOrderTestResultRepository testResultRepository,
+            DiagnosticOrderTestRepository diagnosticOrderTestRepository) {
         this.diagnosticOrderTestResultTechnicianNoteRepository = noteRepository;
         this.testResultRepository = testResultRepository;
+        this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
     }
 
     /**
@@ -73,9 +77,9 @@ public class DiagnosticOrderTestResultTechnicianNoteService {
                     "orderTestId does not match the given resultId"
             );
         }
-
+        DiagnosticOrderTest diagnosticOrderTest = getDiagnosticOrderTest(orderTestResultTechnicianNoteDTO.orderTestId());
         DiagnosticOrderTestResultTechnicianNote note = new DiagnosticOrderTestResultTechnicianNote();
-        note.setOrderTestId(orderTestResultTechnicianNoteDTO.orderTestId());
+        note.setOrderTestId(diagnosticOrderTest.getId());
         note.setResultId(orderTestResultTechnicianNoteDTO.resultId());
         note.setNote(orderTestResultTechnicianNoteDTO.note());
 
@@ -162,5 +166,16 @@ public class DiagnosticOrderTestResultTechnicianNoteService {
         diagnosticOrderTestResultTechnicianNoteRepository.deleteById(id);
 
         LOG.debug("[TestResultTechnicianNoteService] DELETE - done. id={}", id);
+    }
+
+    private DiagnosticOrderTest getDiagnosticOrderTest(Long diagnosticOrderTestId) {
+        LOG.debug("[TechnicianNoteService]  getDiagnosticOrderTest:  id={}", diagnosticOrderTestId);
+
+        return diagnosticOrderTestRepository.findById(diagnosticOrderTestId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnosticOrdersTest",
+                        "Test not found with id " + diagnosticOrderTestId
+                ));
     }
 }

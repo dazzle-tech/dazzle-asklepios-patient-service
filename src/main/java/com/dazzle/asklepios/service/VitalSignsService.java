@@ -1,25 +1,18 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.VitalSigns;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.VitalSignsRepository;
 import com.dazzle.asklepios.service.dto.vitalSigns.VitalSignsCreateDTO;
 import com.dazzle.asklepios.service.dto.vitalSigns.VitalSignsUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-
-import com.dazzle.asklepios.web.rest.vm.observations.BloodPressureResponseVM;
-import com.dazzle.asklepios.web.rest.vm.observations.OxygenSaturationResponseVM;
-import com.dazzle.asklepios.web.rest.vm.observations.PulseRateResponseVM;
-import com.dazzle.asklepios.web.rest.vm.observations.RespiratoryRateResponseVM;
-import com.dazzle.asklepios.web.rest.vm.observations.TemperatureResponseVM;
-import com.dazzle.asklepios.web.rest.vm.observations.VitalSignsResponseVM;
 import lombok.RequiredArgsConstructor;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -42,6 +35,7 @@ public class VitalSignsService {
 
     private final VitalSignsRepository vitalSignsRepository;
     private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
 
     public VitalSigns create(VitalSignsCreateDTO dto) {
         LOG.info("[CREATE] VitalSigns payload={}", dto);
@@ -53,12 +47,21 @@ public class VitalSignsService {
                         "patient.notfound"
                 ));
 
+        PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
+                .orElseThrow(() ->
+                        new NotFoundAlertException(
+                                "Encounter not found with id " + dto.encounterId(),
+                                "VitalSigns",
+                                "encounter.notfound"
+                        )
+                );
+
         try {
             resetIsActiveForEncounterToday(dto.encounterId());
 
             VitalSigns entity = VitalSigns.builder()
                     .patient(patient)
-                    .encounterId(dto.encounterId())
+                    .encounterId(encounter.getId())
                     .bloodPressureSystolic(dto.bloodPressureSystolic())
                     .bloodPressureDiastolic(dto.bloodPressureDiastolic())
                     .temperature(dto.temperature())
@@ -90,9 +93,17 @@ public class VitalSignsService {
                             "vitalSigns",
                             "patient.notfound"
                     ));
+            PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
+                    .orElseThrow(() ->
+                            new NotFoundAlertException(
+                                    "Encounter not found with id " + dto.encounterId(),
+                                    "VitalSigns",
+                                    "encounter.notfound"
+                            )
+                    );
 
             entity.setPatient(patient);
-            entity.setEncounterId(dto.encounterId());
+            entity.setEncounterId(encounter.getId());
             entity.setBloodPressureSystolic(dto.bloodPressureSystolic());
             entity.setBloodPressureDiastolic(dto.bloodPressureDiastolic());
             entity.setTemperature(dto.temperature());
@@ -175,34 +186,34 @@ public class VitalSignsService {
                 ));
     }
 
-@Transactional(readOnly = true)
-public Page<VitalSigns> findVitalSignsByPatientIdBetweenDates(
-        Long patientId,
-        Instant from,
-        Instant to,
-        Pageable pageable
-) {
+    @Transactional(readOnly = true)
+    public Page<VitalSigns> findVitalSignsByPatientIdBetweenDates(
+            Long patientId,
+            Instant from,
+            Instant to,
+            Pageable pageable
+    ) {
 
-    LOG.debug(
-            "[FIND_BY_PATIENT_BETWEEN_DATES] patientId={} from={} to={} pageable={}",
-            patientId, from, to, pageable
-    );
+        LOG.debug(
+                "[FIND_BY_PATIENT_BETWEEN_DATES] patientId={} from={} to={} pageable={}",
+                patientId, from, to, pageable
+        );
 
-    patientRepository.findById(patientId)
-            .orElseThrow(() -> new NotFoundAlertException(
-                    "Patient not found with id " + patientId,
-                    "vitalSigns",
-                    "patient.notfound"
-            ));
+        patientRepository.findById(patientId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found with id " + patientId,
+                        "vitalSigns",
+                        "patient.notfound"
+                ));
 
-    if (from != null && to != null) {
+        if (from != null && to != null) {
+            return vitalSignsRepository
+                    .findByPatientIdAndIsActiveTrueAndCreatedDateBetween(patientId, from, to, pageable);
+        }
+
         return vitalSignsRepository
-                .findByPatientIdAndIsActiveTrueAndCreatedDateBetween(patientId, from, to, pageable);
+                .findByPatientIdAndIsActiveTrue(patientId, pageable);
     }
-
-    return vitalSignsRepository
-            .findByPatientIdAndIsActiveTrue(patientId, pageable);
-}
 
     @Transactional(readOnly = true)
     public List<VitalSigns> findVitalSignsListByPatientBetweenDates(

@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.PatientPreferredHealthProfessional;
 import com.dazzle.asklepios.repository.PatientPreferredHealthProfessionalRepository;
 import com.dazzle.asklepios.service.dto.patientPreferredHealthProfessional.PatientPreferredHealthProfessionalCreateDTO;
 import com.dazzle.asklepios.service.dto.patientPreferredHealthProfessional.PatientPreferredHealthProfessionalUpdateDTO;
+import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
@@ -26,10 +27,12 @@ public class PatientPreferredHealthProfessionalService {
     private static final Logger LOG = LoggerFactory.getLogger(PatientPreferredHealthProfessionalService.class);
 
     private final PatientPreferredHealthProfessionalRepository preferredRepository;
+    private final PractitionerHelper practitionerHelper;
 
     public PatientPreferredHealthProfessionalService(
-            PatientPreferredHealthProfessionalRepository preferredRepository) {
+            PatientPreferredHealthProfessionalRepository preferredRepository, PractitionerHelper practitionerHelper) {
         this.preferredRepository = preferredRepository;
+        this.practitionerHelper = practitionerHelper;
     }
 
     @Transactional(readOnly = true)
@@ -41,6 +44,8 @@ public class PatientPreferredHealthProfessionalService {
     public PatientPreferredHealthProfessional create(Patient patient, PatientPreferredHealthProfessionalCreateDTO dto) {
         LOG.info("[CREATE] Request to create PatientPreferredHealthProfessional for patientId={} payload={}", patient.getId(), dto);
         try {
+            practitionerHelper.validatePractitionerExists(dto.practitionerId());
+
             PatientPreferredHealthProfessional entity = PatientPreferredHealthProfessional.builder()
                     .patient(patient)
                     .practitionerId(dto.practitionerId())
@@ -67,6 +72,7 @@ public class PatientPreferredHealthProfessionalService {
         
         try {
             if (dto.practitionerId() != null) {
+                practitionerHelper.validatePractitionerExists(dto.practitionerId());
                 existing.setPractitionerId(dto.practitionerId());
             }
             existing.setNetworkAffiliation(dto.networkAffiliation());

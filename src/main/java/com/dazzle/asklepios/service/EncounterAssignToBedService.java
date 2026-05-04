@@ -10,6 +10,9 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.bedTransaction.BedTransactionCreateDTO;
 import com.dazzle.asklepios.service.dto.encounterAssignToBed.EncounterAssignToBedCreateDTO;
 import com.dazzle.asklepios.service.dto.encounterAssignToBed.EncounterAssignToBedUpdateDTO;
+import com.dazzle.asklepios.service.helper.BedHelper;
+import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.RoomHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +40,9 @@ public class EncounterAssignToBedService {
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientRepository patientRepository;
     private final BedTransactionService bedTransactionService;
+    private final BedHelper bedHelper;
+    private final RoomHelper roomHelper;
+    private final DepartmentHelper departmentHelper;
 
     public EncounterAssignToBed create(EncounterAssignToBedCreateDTO createDTO) {
         LOG.info("[CREATE] EncounterAssignToBed payload={}", createDTO);
@@ -62,8 +68,11 @@ public class EncounterAssignToBedService {
                 });
 
         validatePatientMatchesEncounter(patientEncounter, patient);
+        bedHelper.validateBedExists(createDTO.bedId());
+        roomHelper.validateRoomExists(createDTO.roomId());
         validateBedAvailabilityForCreate(createDTO.bedId());
         validateEncounterHasNoActiveAssignment(createDTO.encounterId());
+        departmentHelper.validateDepartmentExists(createDTO.departmentId());
 
         Instant assignmentTime = Instant.now();
 
@@ -177,6 +186,9 @@ public class EncounterAssignToBedService {
         }
 
         validateBedAvailabilityForUpdate(updateDTO.bedId(), currentActiveEncounterAssignToBed.getBedId());
+        bedHelper.validateBedExists(updateDTO.bedId());
+        roomHelper.validateRoomExists(updateDTO.roomId());
+        departmentHelper.validateDepartmentExists(updateDTO.departmentId());
 
         Instant transferTime = Instant.now();
 
@@ -557,4 +569,5 @@ public class EncounterAssignToBedService {
                 "db.constraint"
         );
     }
+
 }

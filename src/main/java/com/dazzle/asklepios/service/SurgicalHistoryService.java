@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.SurgicalHistory;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.SurgicalHistoryRepository;
 import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryCreateDTO;
 import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryUpdateDTO;
@@ -30,12 +31,18 @@ public class SurgicalHistoryService {
             LoggerFactory.getLogger(SurgicalHistoryService.class);
 
     private final SurgicalHistoryRepository repository;
+    private final PatientRepository patientRepository;
 
     @PersistenceContext
     private EntityManager entityManager;
 
     private Patient refPatient(Long patientId) {
-        return entityManager.getReference(Patient.class, patientId);
+        return patientRepository.findById(patientId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found with id " + patientId,
+                        "SurgicalHistory",
+                        "patient.notfound"
+                ));
     }
 
     public SurgicalHistory create(SurgicalHistoryCreateDTO dto) {
@@ -164,6 +171,6 @@ public class SurgicalHistoryService {
                 "surgicalHistory",
                 "db.constraint"
         );
-        
+
     }
 }
