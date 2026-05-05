@@ -560,32 +560,6 @@ public class DentalProcedureService {
         );
     }
 
-    private void updateProcedureBillingItemFields(
-            PatientServiceAndProduct billingItem,
-            DentalProcedure dentalProcedure,
-            ProcedureSetupDTO setupProcedure,
-            String notes,
-            String surface
-    ) {
-        BigDecimal unitPrice = BigDecimal.valueOf(setupProcedure.price() == null ? 0L : setupProcedure.price());
-        Long quantity = billingItem.getQuantity() == null ? 1L : billingItem.getQuantity();
-        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
-        String billingNotes = buildBillingNotesValue(notes, surface);
-
-        billingItem.setPatientId(dentalProcedure.getPatient().getId());
-        billingItem.setEncounterId(dentalProcedure.getEncounter().getId());
-        billingItem.setBillingItemType(BillingItemTypes.PROCEDURE);
-        billingItem.setProcedureId(setupProcedure.id());
-        billingItem.setServiceId(null);
-        billingItem.setServiceSource(ServiceSource.DENTAL_PROCEDURE);
-        billingItem.setSourceId(dentalProcedure.getId());
-        billingItem.setQuantity(quantity);
-        billingItem.setUnitPrice(unitPrice);
-        billingItem.setTotalAmount(totalAmount);
-        billingItem.setCurrency(setupProcedure.currency());
-        billingItem.setNotes(billingNotes);
-    }
-
     private void deleteBillingItemIfNotBilled(
             Optional<PatientServiceAndProduct> billingItemOptional,
             Long dentalProcedureId,
