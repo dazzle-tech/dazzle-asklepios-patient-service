@@ -289,10 +289,25 @@ public class PatientService {
                 "[FIND BY NAME] Searching patients by keyword='{}' pageable={}",
                 keyword, pageable
         );
-        return patientRepository
-                .findByFirstNameContainingIgnoreCaseOrSecondNameContainingIgnoreCaseOrThirdNameContainingIgnoreCaseOrLastNameContainingIgnoreCase(
-                        keyword, keyword, keyword, keyword, pageable
-                );
+        String[] tokens = keyword.trim().split("\\s+");
+        Specification<Patient> spec = (root, query, cb) -> {
+            List<Predicate> tokenPredicates = new ArrayList<>();
+            for (String token : tokens) {
+                String pattern = "%" + token.toLowerCase() + "%";
+                tokenPredicates.add(cb.or(
+                    cb.like(cb.lower(root.get("firstName")), pattern),
+                    cb.like(cb.lower(root.get("secondName")), pattern),
+                    cb.like(cb.lower(root.get("thirdName")), pattern),
+                    cb.like(cb.lower(root.get("lastName")), pattern),
+                    cb.like(cb.lower(root.get("firstNameSecondaryLang")), pattern),
+                    cb.like(cb.lower(root.get("secondNameSecondaryLang")), pattern),
+                    cb.like(cb.lower(root.get("thirdNameSecondaryLang")), pattern),
+                    cb.like(cb.lower(root.get("lastNameSecondaryLang")), pattern)
+                ));
+            }
+            return cb.and(tokenPredicates.toArray(new Predicate[0]));
+        };
+        return patientRepository.findAll(spec, pageable);
     }
 
 
