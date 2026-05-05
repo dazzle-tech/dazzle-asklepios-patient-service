@@ -11,6 +11,7 @@ import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromT
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateRescheduleDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateSearchFilterDTO;
+import com.dazzle.asklepios.service.dto.appointmentFromTemplate.DiagnosticTestAppointmentRescheduleDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentResponseVM;
@@ -162,6 +163,13 @@ public class AppointmentFormTemplateController {
     @PostMapping("/appointments/reschedule")
     public ResponseEntity<AppointmentFromTemplate> reschedule(@Valid @RequestBody AppointmentFromTemplateRescheduleDTO dto) {
         AppointmentFromTemplate result = appointmentFromTemplateService.reschedule(dto);
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/appointments/reschedule-diagnostic-test")
+    public ResponseEntity<AppointmentFromTemplate> rescheduleDiagnosticTestAppointment(@Valid @RequestBody DiagnosticTestAppointmentRescheduleDTO dto) {
+        AppointmentFromTemplate result = appointmentFromTemplateService.rescheduleDiagnosticTestAppointment(dto);
+
         return ResponseEntity.ok(result);
     }
 

@@ -7,11 +7,14 @@ import com.dazzle.asklepios.domain.AppointmentLog;
 import com.dazzle.asklepios.domain.AppointmentReschedule;
 import com.dazzle.asklepios.domain.AvailabilityGenerationBatch;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
+import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.BookingMode;
+import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
@@ -20,6 +23,8 @@ import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
 import com.dazzle.asklepios.repository.AppointmentLogRepository;
 import com.dazzle.asklepios.repository.AppointmentRescheduleRepository;
 import com.dazzle.asklepios.repository.AvailabilityGenerationBatchRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
@@ -29,6 +34,7 @@ import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromT
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateRescheduleDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateSearchFilterDTO;
+import com.dazzle.asklepios.service.dto.appointmentFromTemplate.DiagnosticTestAppointmentRescheduleDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestCreateDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
@@ -36,6 +42,7 @@ import com.dazzle.asklepios.service.helper.CatalogHelper;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.DiagnosticTestHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentResponseVM;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
@@ -77,6 +84,8 @@ public class AppointmentFromTemplateService {
     private final DiagnosticOrderTestService diagnosticOrderTestService;
     private final CatalogHelper catalogHelper;
     private final AppointmentRescheduleRepository appointmentRescheduleRepository;
+    private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
+    private final DiagnosticOrderRepository diagnosticOrderRepository;
 
     public List<AppointmentLog> getAppointmentLogs(Long appointmentId) {
         LOG.debug("Request to get AppointmentFromTemplate Log id={}", appointmentId);
@@ -93,13 +102,13 @@ public class AppointmentFromTemplateService {
                     .orElseThrow(() -> new BadRequestAlertException("notfound", ENTITY_NAME, "Patient not found with id: " + dto.patientId()));
             appointment.setPatient(patient);
         }
-        if(appointment.getRequirePractitioner() && dto.defaultPractitioner() == null){
+        if (appointment.getRequirePractitioner() && dto.defaultPractitioner() == null) {
             throw new BadRequestAlertException("practitionerid", ENTITY_NAME, "Practitioner is required for this appointment");
         }
         if (dto.defaultService() != null) {
             appointment.setDefaultServiceId(dto.defaultService());
         }
-            appointment.setDefaultPractitionerId(dto.defaultPractitioner());
+        appointment.setDefaultPractitionerId(dto.defaultPractitioner());
         if (dto.reason() != null) {
             appointment.setReason(dto.reason());
         }
@@ -346,17 +355,151 @@ public class AppointmentFromTemplateService {
 
     @Transactional
     public AppointmentFromTemplate reschedule(AppointmentFromTemplateRescheduleDTO dto) {
-        LOG.debug("[RESCHEDULE] oldAppointmentId={}, newAppointmentId={}", dto.oldAppointmentId(), dto.newAppointmentId());
-
-        if (dto.oldAppointmentId().equals(dto.newAppointmentId())) {
-            throw new BadRequestAlertException("Old appointment and new appointment cannot be the same", ENTITY_NAME, "sameappointment");
-        }
-
         AppointmentFromTemplate oldAppointment = getAppointment(dto.oldAppointmentId());
         AppointmentFromTemplate newAppointment = getAppointment(dto.newAppointmentId());
 
         validateReschedule(oldAppointment);
         validateFreeSlotForReschedule(oldAppointment, newAppointment);
+
+        return executeSingleReschedule(
+                oldAppointment,
+                newAppointment,
+                dto.rescheduleReason()
+        );
+    }
+
+    @Transactional
+    public AppointmentFromTemplate rescheduleDiagnosticTestAppointment(DiagnosticTestAppointmentRescheduleDTO dto) {
+        LOG.debug("[RESCHEDULE_DIAGNOSTIC_TEST_APPOINTMENT] orderTestId={}, newAppointmentId={}", dto.orderTestId(), dto.newAppointmentId());
+
+        DiagnosticOrderTest orderTest = diagnosticOrderTestRepository.findById(dto.orderTestId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Diagnostic order test not found with id: " + dto.orderTestId(),
+                        "DiagnosticOrderTest",
+                        "notfound"
+                ));
+
+        if (orderTest.getOrderId() == null) {
+            throw new BadRequestAlertException(
+                    "Diagnostic order test is not linked to an order",
+                    "DiagnosticOrderTest",
+                    "orderrequired"
+            );
+        }
+        DiagnosticOrder order = diagnosticOrderRepository.findById(orderTest.getOrderId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Diagnostic order  not found with id: " + orderTest.getOrderId(),
+                        "DiagnosticOrder",
+                        "notfound"
+                ));
+
+        if (order.getEncounter() == null) {
+            throw new BadRequestAlertException(
+                    "Diagnostic order is not linked to an encounter",
+                    "DiagnosticOrder",
+                    "encounterrequired"
+            );
+        }
+
+        PatientEncounter encounter = order.getEncounter();
+
+        if (encounter.getAppointment() == null) {
+            throw new BadRequestAlertException(
+                    "Encounter is not linked to an appointment",
+                    "DiagnosticOrderTest",
+                    "appointmentrequired"
+            );
+        }
+
+        if (orderTest.getTestId() == null) {
+            throw new BadRequestAlertException(
+                    "Diagnostic order test does not have diagnostic test id",
+                    "DiagnosticOrderTest",
+                    "testidrequired"
+            );
+        }
+
+        AppointmentFromTemplate oldAppointment = encounter.getAppointment();
+        AppointmentFromTemplate newAppointment = getAppointment(dto.newAppointmentId());
+
+        validateReschedule(oldAppointment);
+
+        validateDiagnosticTestFreeSlotForReschedule(
+                oldAppointment,
+                newAppointment,
+                orderTest.getTestId()
+        );
+
+        AppointmentFromTemplate savedNewAppointment = executeSingleReschedule(
+                oldAppointment,
+                newAppointment,
+                dto.rescheduleReason()
+        );
+
+        orderTest.setStatus(DiagnosticOrderTestStatus.RESCHEDULED);
+        diagnosticOrderTestRepository.save(orderTest);
+
+        return savedNewAppointment;
+    }
+
+    private void validateDiagnosticTestFreeSlotForReschedule(AppointmentFromTemplate oldAppointment, AppointmentFromTemplate newAppointment, Long diagnosticTestId) {
+        if (newAppointment.getStatus() != AppointmentStatus.NEW) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must be free",
+                    ENTITY_NAME,
+                    "slotnotfree"
+            );
+        }
+
+        if (newAppointment.getBookingMode() != BookingMode.SLOT) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must be a slot appointment",
+                    ENTITY_NAME,
+                    "invalidslotbookingmode"
+            );
+        }
+
+        if (!equalsNullable(oldAppointment.getDepartmentId(), newAppointment.getDepartmentId())) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must belong to the same department",
+                    ENTITY_NAME,
+                    "departmentmismatch"
+            );
+        }
+
+        if (newAppointment.getResourceType() != TemplateType.DIAGNOSTIC_TEST) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must be for diagnostic test resource type",
+                    ENTITY_NAME,
+                    "invalidresourcetype"
+            );
+        }
+
+        if (!equalsNullable(diagnosticTestId, newAppointment.getResourceId())) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must be for the same diagnostic test",
+                    ENTITY_NAME,
+                    "diagnostictestmismatch"
+            );
+        }
+
+        if (!equalsNullable(oldAppointment.getFacilityId(), newAppointment.getFacilityId())) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must belong to the same facility",
+                    ENTITY_NAME,
+                    "facilitymismatch"
+            );
+        }
+    }
+
+    private AppointmentFromTemplate executeSingleReschedule(AppointmentFromTemplate oldAppointment, AppointmentFromTemplate newAppointment, String rescheduleReason) {
+        if (oldAppointment.getId().equals(newAppointment.getId())) {
+            throw new BadRequestAlertException(
+                    "Old appointment and new appointment cannot be the same",
+                    ENTITY_NAME,
+                    "sameappointment"
+            );
+        }
 
         Instant newStartDatetime = newAppointment.getStartDatetime();
         Instant newEndDatetime = newAppointment.getEndDatetime();
@@ -368,10 +511,18 @@ public class AppointmentFromTemplateService {
                     "slotdatetimerequired"
             );
         }
+        copyAppointmentDataForReschedule(oldAppointment, newAppointment);
 
         oldAppointment.setStatus(AppointmentStatus.RESCHEDULED);
+        oldAppointment.setPatient(null);
+        oldAppointment.setReason(null);
+        oldAppointment.setNote(null);
+        oldAppointment.setService(null);
+        oldAppointment.setPriority(EncounterPriority.NORMAL);
+        oldAppointment.setOriginName(null);
+        oldAppointment.setOriginType(null);
+        oldAppointment.setFollowUpEncounter(null);
 
-        copyAppointmentDataForReschedule(oldAppointment, newAppointment);
 
         newAppointment.setStartDatetime(newStartDatetime);
         newAppointment.setEndDatetime(newEndDatetime);
@@ -383,7 +534,8 @@ public class AppointmentFromTemplateService {
         AppointmentReschedule appointmentReschedule = new AppointmentReschedule();
         appointmentReschedule.setOldAppointmentId(savedOldAppointment.getId());
         appointmentReschedule.setNewAppointmentId(savedNewAppointment.getId());
-        appointmentReschedule.setRescheduleReason(dto.rescheduleReason());
+        appointmentReschedule.setRescheduleReason(rescheduleReason);
+        appointmentReschedule.setCreatedBy(currentUsername());
 
         appointmentRescheduleRepository.save(appointmentReschedule);
 
@@ -739,7 +891,6 @@ public class AppointmentFromTemplateService {
         newAppointment.setService(oldAppointment.getService());
         newAppointment.setFollowUpEncounter(oldAppointment.getFollowUpEncounter());
 
-        newAppointment.setCapacityIndex(oldAppointment.getCapacityIndex());
 
         newAppointment.setCancelReason(null);
         newAppointment.setCancelledBy(null);

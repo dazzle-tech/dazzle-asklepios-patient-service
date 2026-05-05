@@ -30,8 +30,8 @@ public class AppointmentReschedule {
     @Column(name = "reschedule_reason", nullable = false)
     private String rescheduleReason;
 
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt = Instant.now();
+    @Column(name = "created_date", nullable = false)
+    private Instant createdDate = Instant.now();
 
     @Column(name = "created_by", nullable = false)
     private String createdBy;
