@@ -736,7 +736,7 @@ public class AppointmentFromTemplateService {
         }
 
 
-        if (appointment.getStatus() != AppointmentStatus.CONFIRMED) {
+        if (requireConfirmation && appointment.getStatus() != AppointmentStatus.CONFIRMED) {
             throw new BadRequestAlertException("Only confirmed appointments can be checked in", ENTITY_NAME, "invalidstatus");
         }
         if (appointment.getStartDatetime() == null) {
