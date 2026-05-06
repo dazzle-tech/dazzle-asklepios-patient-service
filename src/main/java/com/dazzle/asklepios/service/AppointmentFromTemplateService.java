@@ -72,7 +72,7 @@ public class AppointmentFromTemplateService {
 
     private static final String ENTITY_NAME = "AppointmentFromTemplate";
 
-    private static final Logger LOG = LoggerFactory.getLogger(ReferralRequestService.class);
+    private static final Logger LOG = LoggerFactory.getLogger(AppointmentFromTemplateService.class);
 
     private final PatientRepository patientRepository;
     private final DepartmentHelper departmentHelper;
@@ -358,14 +358,10 @@ public class AppointmentFromTemplateService {
         AppointmentFromTemplate oldAppointment = getAppointment(dto.oldAppointmentId());
         AppointmentFromTemplate newAppointment = getAppointment(dto.newAppointmentId());
 
-        validateReschedule(oldAppointment);
+        validateReschedule(oldAppointment,false);
         validateFreeSlotForReschedule(oldAppointment, newAppointment);
 
-        return executeSingleReschedule(
-                oldAppointment,
-                newAppointment,
-                dto.rescheduleReason()
-        );
+        return executeSingleReschedule(oldAppointment, newAppointment, dto.rescheduleReason());
     }
 
     @Transactional
@@ -419,22 +415,15 @@ public class AppointmentFromTemplateService {
             );
         }
 
-        AppointmentFromTemplate oldAppointment = encounter.getAppointment();
+        AppointmentFromTemplate oldAppointment = getAppointment(encounter.getAppointment().getId());
+        LOG.debug("[RESCHEDULE_DIAGNOSTIC_TEST_APPOINTMENT] oldAppointment loaded id={}, status={}", oldAppointment.getId(),oldAppointment.getStatus());
         AppointmentFromTemplate newAppointment = getAppointment(dto.newAppointmentId());
 
-        validateReschedule(oldAppointment);
+        validateReschedule(oldAppointment, true);
 
-        validateDiagnosticTestFreeSlotForReschedule(
-                oldAppointment,
-                newAppointment,
-                orderTest.getTestId()
-        );
+        validateDiagnosticTestFreeSlotForReschedule(oldAppointment, newAppointment, orderTest.getTestId());
 
-        AppointmentFromTemplate savedNewAppointment = executeSingleReschedule(
-                oldAppointment,
-                newAppointment,
-                dto.rescheduleReason()
-        );
+        AppointmentFromTemplate savedNewAppointment = executeSingleReschedule(oldAppointment, newAppointment, dto.rescheduleReason());
 
         orderTest.setStatus(DiagnosticOrderTestStatus.RESCHEDULED);
         diagnosticOrderTestRepository.save(orderTest);
@@ -456,14 +445,6 @@ public class AppointmentFromTemplateService {
                     "Selected appointment must be a slot appointment",
                     ENTITY_NAME,
                     "invalidslotbookingmode"
-            );
-        }
-
-        if (!equalsNullable(oldAppointment.getDepartmentId(), newAppointment.getDepartmentId())) {
-            throw new BadRequestAlertException(
-                    "Selected appointment must belong to the same department",
-                    ENTITY_NAME,
-                    "departmentmismatch"
             );
         }
 
@@ -790,10 +771,16 @@ public class AppointmentFromTemplateService {
 
     //Reschedule Helper
 
-    private void validateReschedule(AppointmentFromTemplate appointment) {
-        if (appointment.getStatus() != AppointmentStatus.BOOKED && appointment.getStatus() != AppointmentStatus.CONFIRMED) {
+    private void validateReschedule(AppointmentFromTemplate appointment, boolean allowReschedulingOfInServiceAppointments) {
+        if (!allowReschedulingOfInServiceAppointments && appointment.getStatus() != AppointmentStatus.BOOKED && appointment.getStatus() != AppointmentStatus.CONFIRMED) {
             throw new BadRequestAlertException(
                     "Only booked or confirmed appointments can be rescheduled",
+                    ENTITY_NAME,
+                    "invalidstatus"
+            );
+        } else if (allowReschedulingOfInServiceAppointments && appointment.getStatus() != AppointmentStatus.IN_SERVICE) {
+            throw new BadRequestAlertException(
+                    "Only in-service appointments can be rescheduled",
                     ENTITY_NAME,
                     "invalidstatus"
             );
