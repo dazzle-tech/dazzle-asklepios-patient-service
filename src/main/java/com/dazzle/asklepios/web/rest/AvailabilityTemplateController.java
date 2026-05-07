@@ -213,6 +213,19 @@ public class AvailabilityTemplateController {
         return buildPagedResponse(result);
     }
 
+    @PostMapping("/availability-templates/{id}/clone")
+    public ResponseEntity<AvailabilityTemplateResponseVM> cloneAvailabilityTemplate(
+            @PathVariable Long id
+    ) {
+        LOG.debug("REST request to clone AvailabilityTemplate : {}", id);
+
+        AvailabilityTemplate result = availabilityTemplateService.cloneTemplate(id);
+
+        return ResponseEntity
+                .created(URI.create("/api/patient/availability-templates/" + result.getId()))
+                .body(toResponseVM(result));
+    }
+
     private ResponseEntity<List<AvailabilityTemplateResponseVM>> buildPagedResponse(Page<AvailabilityTemplate> result) {
         Page<AvailabilityTemplateResponseVM> page = result.map(this::toResponseVM);
 

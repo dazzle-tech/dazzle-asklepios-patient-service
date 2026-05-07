@@ -21,15 +21,6 @@ public interface PatientRepository  extends JpaRepository<Patient, Long>,
 
     Page<Patient> findByDateOfBirth(LocalDate dateOfBirth, Pageable pageable);
 
-    Page<Patient>
-    findByFirstNameContainingIgnoreCaseOrSecondNameContainingIgnoreCaseOrThirdNameContainingIgnoreCaseOrLastNameContainingIgnoreCase(
-            String firstName,
-            String secondName,
-            String thirdName,
-            String lastName,
-            Pageable pageable
-    );
-
     Page<Patient> findByIsUnknownTrue(Pageable pageable);
     Page<Patient> findDistinctByPatientDocuments_NumberContainingIgnoreCase(String numberPart, Pageable pageable);
     Optional<Patient> findByPreviousId(String previousId);

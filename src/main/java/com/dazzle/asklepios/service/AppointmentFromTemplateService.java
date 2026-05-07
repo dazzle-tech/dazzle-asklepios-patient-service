@@ -2,23 +2,31 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.client.setup.dto.DiagnosticTestSetupDTO;
+import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
 import com.dazzle.asklepios.domain.AppointmentFromTemplate;
 import com.dazzle.asklepios.domain.AppointmentLog;
+import com.dazzle.asklepios.domain.AppointmentReschedule;
 import com.dazzle.asklepios.domain.AvailabilityGenerationBatch;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
-import com.dazzle.asklepios.domain.DiagnosticTest;
+import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.BookingMode;
+import com.dazzle.asklepios.domain.enumeration.DayOfWeek;
+import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
 import com.dazzle.asklepios.repository.AppointmentLogRepository;
+import com.dazzle.asklepios.repository.AppointmentRescheduleRepository;
 import com.dazzle.asklepios.repository.AvailabilityGenerationBatchRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
@@ -26,14 +34,18 @@ import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromT
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateCancelDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateNoShowDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentDTO;
+import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateRescheduleDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateSearchFilterDTO;
+import com.dazzle.asklepios.service.dto.appointmentFromTemplate.DiagnosticTestAppointmentRescheduleDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestCreateDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
 import com.dazzle.asklepios.service.helper.CatalogHelper;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.DiagnosticTestHelper;
+import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentResponseVM;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
@@ -63,7 +75,7 @@ public class AppointmentFromTemplateService {
 
     private static final String ENTITY_NAME = "AppointmentFromTemplate";
 
-    private static final Logger LOG = LoggerFactory.getLogger(ReferralRequestService.class);
+    private static final Logger LOG = LoggerFactory.getLogger(AppointmentFromTemplateService.class);
 
     private final PatientRepository patientRepository;
     private final DepartmentHelper departmentHelper;
@@ -74,6 +86,10 @@ public class AppointmentFromTemplateService {
     private final DiagnosticOrderService diagnosticOrderService;
     private final DiagnosticOrderTestService diagnosticOrderTestService;
     private final CatalogHelper catalogHelper;
+    private final AppointmentRescheduleRepository appointmentRescheduleRepository;
+    private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
+    private final DiagnosticOrderRepository diagnosticOrderRepository;
+    private final PractitionerHelper practitionerHelper;
 
     public List<AppointmentLog> getAppointmentLogs(Long appointmentId) {
         LOG.debug("Request to get AppointmentFromTemplate Log id={}", appointmentId);
@@ -90,13 +106,13 @@ public class AppointmentFromTemplateService {
                     .orElseThrow(() -> new BadRequestAlertException("notfound", ENTITY_NAME, "Patient not found with id: " + dto.patientId()));
             appointment.setPatient(patient);
         }
-        if(appointment.getRequirePractitioner() && dto.defaultPractitioner() == null){
+        if (appointment.getRequirePractitioner() && dto.defaultPractitioner() == null) {
             throw new BadRequestAlertException("practitionerid", ENTITY_NAME, "Practitioner is required for this appointment");
         }
         if (dto.defaultService() != null) {
             appointment.setDefaultServiceId(dto.defaultService());
         }
-            appointment.setDefaultPractitionerId(dto.defaultPractitioner());
+        appointment.setDefaultPractitionerId(dto.defaultPractitioner());
         if (dto.reason() != null) {
             appointment.setReason(dto.reason());
         }
@@ -166,8 +182,7 @@ public class AppointmentFromTemplateService {
 
             if (filter.bookingMode() != null && !filter.bookingMode().isEmpty()) {
                 predicates.add(root.get("bookingMode").in(filter.bookingMode()));
-            }
-            else {
+            } else {
                 predicates.add(cb.notEqual(root.get("bookingMode"), BookingMode.BUFFER));
             }
 
@@ -200,7 +215,7 @@ public class AppointmentFromTemplateService {
     public AppointmentFromTemplate noShow(AppointmentFromTemplateNoShowDTO dto) {
         AppointmentFromTemplate appointment = getAppointment(dto.id());
 
-        validateNoShowable(appointment);
+        validateNoShow(appointment);
 
         appointment.setStatus(AppointmentStatus.NO_SHOW);
         appointment.setNoShowReason(dto.noShowReason());
@@ -226,7 +241,7 @@ public class AppointmentFromTemplateService {
     public AppointmentFromTemplate checkIn(Long id) {
         AppointmentFromTemplate appointment = getAppointment(id);
 
-        validateCheckInable(appointment);
+        validateCheckIn(appointment);
 
         if (appointment.getPatient() == null) {
             throw new BadRequestAlertException("patientrequired", ENTITY_NAME, "Cannot check in appointment without patient");
@@ -244,8 +259,7 @@ public class AppointmentFromTemplateService {
         if (savedAppointment.getResourceType() == TemplateType.DIAGNOSTIC_TEST) {
             encounter = patientEncounterService.startEncounter(encounter.getId());
             createAndSubmitDiagnosticOrderFlow(savedAppointment, encounter);
-        }
-        else if (savedAppointment.getResourceType() == TemplateType.CATALOG){
+        } else if (savedAppointment.getResourceType() == TemplateType.CATALOG) {
             encounter = patientEncounterService.startEncounter(encounter.getId());
             createAndSubmitCatalogOrderFlow(savedAppointment, encounter);
         }
@@ -262,6 +276,13 @@ public class AppointmentFromTemplateService {
                 appointmentDTO.patientId());
 
         DepartmentDTO department = departmentHelper.getDepartment(appointmentDTO.departmentId());
+        if (appointmentDTO.resourceType() == TemplateType.DEPARTMENT) {
+            validateDepartmentWorkingDay(department);
+        }
+        else if(appointmentDTO.resourceType() == TemplateType.PRACTITIONER){
+            PractitionerDTO practitioner = practitionerHelper.getPractitioner(appointmentDTO.resourceId());
+            validatePractitionerWorkingDay(practitioner);
+        }
 
         if (department.defaultDurationMinutes() == null || department.defaultDurationMinutes() <= 0) {
             throw new BadRequestAlertException(
@@ -341,6 +362,176 @@ public class AppointmentFromTemplateService {
                             "id.notfound"
                     );
                 });
+    }
+
+    @Transactional
+    public AppointmentFromTemplate reschedule(AppointmentFromTemplateRescheduleDTO dto) {
+        AppointmentFromTemplate oldAppointment = getAppointment(dto.oldAppointmentId());
+        AppointmentFromTemplate newAppointment = getAppointment(dto.newAppointmentId());
+
+        validateReschedule(oldAppointment, false);
+        validateFreeSlotForReschedule(oldAppointment, newAppointment);
+
+        return executeSingleReschedule(oldAppointment, newAppointment, dto.rescheduleReason());
+    }
+
+    @Transactional
+    public AppointmentFromTemplate rescheduleDiagnosticTestAppointment(DiagnosticTestAppointmentRescheduleDTO dto) {
+        LOG.debug("[RESCHEDULE_DIAGNOSTIC_TEST_APPOINTMENT] orderTestId={}, newAppointmentId={}", dto.orderTestId(), dto.newAppointmentId());
+
+        DiagnosticOrderTest orderTest = diagnosticOrderTestRepository.findById(dto.orderTestId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Diagnostic order test not found with id: " + dto.orderTestId(),
+                        "DiagnosticOrderTest",
+                        "notfound"
+                ));
+
+        if (orderTest.getOrderId() == null) {
+            throw new BadRequestAlertException(
+                    "Diagnostic order test is not linked to an order",
+                    "DiagnosticOrderTest",
+                    "orderrequired"
+            );
+        }
+        DiagnosticOrder order = diagnosticOrderRepository.findById(orderTest.getOrderId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Diagnostic order  not found with id: " + orderTest.getOrderId(),
+                        "DiagnosticOrder",
+                        "notfound"
+                ));
+
+        if (order.getEncounter() == null) {
+            throw new BadRequestAlertException(
+                    "Diagnostic order is not linked to an encounter",
+                    "DiagnosticOrder",
+                    "encounterrequired"
+            );
+        }
+
+        PatientEncounter encounter = order.getEncounter();
+
+        if (encounter.getAppointment() == null) {
+            throw new BadRequestAlertException(
+                    "Encounter is not linked to an appointment",
+                    "DiagnosticOrderTest",
+                    "appointmentrequired"
+            );
+        }
+
+        if (orderTest.getTestId() == null) {
+            throw new BadRequestAlertException(
+                    "Diagnostic order test does not have diagnostic test id",
+                    "DiagnosticOrderTest",
+                    "testidrequired"
+            );
+        }
+
+        AppointmentFromTemplate oldAppointment = getAppointment(encounter.getAppointment().getId());
+        LOG.debug("[RESCHEDULE_DIAGNOSTIC_TEST_APPOINTMENT] oldAppointment loaded id={}, status={}", oldAppointment.getId(), oldAppointment.getStatus());
+        AppointmentFromTemplate newAppointment = getAppointment(dto.newAppointmentId());
+
+        validateReschedule(oldAppointment, true);
+
+        validateDiagnosticTestFreeSlotForReschedule(oldAppointment, newAppointment, orderTest.getTestId());
+
+        AppointmentFromTemplate savedNewAppointment = executeSingleReschedule(oldAppointment, newAppointment, dto.rescheduleReason());
+
+        orderTest.setStatus(DiagnosticOrderTestStatus.RESCHEDULED);
+        diagnosticOrderTestRepository.save(orderTest);
+
+        return savedNewAppointment;
+    }
+
+    private void validateDiagnosticTestFreeSlotForReschedule(AppointmentFromTemplate oldAppointment, AppointmentFromTemplate newAppointment, Long diagnosticTestId) {
+        if (newAppointment.getStatus() != AppointmentStatus.NEW) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must be free",
+                    ENTITY_NAME,
+                    "slotnotfree"
+            );
+        }
+
+        if (newAppointment.getBookingMode() != BookingMode.SLOT) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must be a slot appointment",
+                    ENTITY_NAME,
+                    "invalidslotbookingmode"
+            );
+        }
+
+        if (newAppointment.getResourceType() != TemplateType.DIAGNOSTIC_TEST) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must be for diagnostic test resource type",
+                    ENTITY_NAME,
+                    "invalidresourcetype"
+            );
+        }
+
+        if (!equalsNullable(diagnosticTestId, newAppointment.getResourceId())) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must be for the same diagnostic test",
+                    ENTITY_NAME,
+                    "diagnostictestmismatch"
+            );
+        }
+
+        if (!equalsNullable(oldAppointment.getFacilityId(), newAppointment.getFacilityId())) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must belong to the same facility",
+                    ENTITY_NAME,
+                    "facilitymismatch"
+            );
+        }
+    }
+
+    private AppointmentFromTemplate executeSingleReschedule(AppointmentFromTemplate oldAppointment, AppointmentFromTemplate newAppointment, String rescheduleReason) {
+        if (oldAppointment.getId().equals(newAppointment.getId())) {
+            throw new BadRequestAlertException(
+                    "Old appointment and new appointment cannot be the same",
+                    ENTITY_NAME,
+                    "sameappointment"
+            );
+        }
+
+        Instant newStartDatetime = newAppointment.getStartDatetime();
+        Instant newEndDatetime = newAppointment.getEndDatetime();
+
+        if (newStartDatetime == null || newEndDatetime == null) {
+            throw new BadRequestAlertException(
+                    "Selected appointment slot must have start and end datetime",
+                    ENTITY_NAME,
+                    "slotdatetimerequired"
+            );
+        }
+        copyAppointmentDataForReschedule(oldAppointment, newAppointment);
+
+        oldAppointment.setStatus(AppointmentStatus.RESCHEDULED);
+        oldAppointment.setPatient(null);
+        oldAppointment.setReason(null);
+        oldAppointment.setNote(null);
+        oldAppointment.setService(null);
+        oldAppointment.setPriority(EncounterPriority.NORMAL);
+        oldAppointment.setOriginName(null);
+        oldAppointment.setOriginType(null);
+        oldAppointment.setFollowUpEncounter(null);
+
+
+        newAppointment.setStartDatetime(newStartDatetime);
+        newAppointment.setEndDatetime(newEndDatetime);
+        newAppointment.setStatus(AppointmentStatus.BOOKED);
+
+        AppointmentFromTemplate savedOldAppointment = appointmentFromTemplateRepository.save(oldAppointment);
+        AppointmentFromTemplate savedNewAppointment = appointmentFromTemplateRepository.save(newAppointment);
+
+        AppointmentReschedule appointmentReschedule = new AppointmentReschedule();
+        appointmentReschedule.setOldAppointmentId(savedOldAppointment.getId());
+        appointmentReschedule.setNewAppointmentId(savedNewAppointment.getId());
+        appointmentReschedule.setRescheduleReason(rescheduleReason);
+        appointmentReschedule.setCreatedBy(currentUsername());
+
+        appointmentRescheduleRepository.save(appointmentReschedule);
+
+        return savedNewAppointment;
     }
 
     private void createAndSubmitDiagnosticOrderFlow(AppointmentFromTemplate appointment, PatientEncounter encounter) {
@@ -521,7 +712,7 @@ public class AppointmentFromTemplateService {
 
     }
 
-    private void validateNoShowable(AppointmentFromTemplate appointment) {
+    private void validateNoShow(AppointmentFromTemplate appointment) {
         if (appointment.getStatus() == AppointmentStatus.CANCELLED) {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Cancelled appointment cannot be marked as no-show");
         }
@@ -540,11 +731,12 @@ public class AppointmentFromTemplateService {
         }
     }
 
-    private void validateCheckInable(AppointmentFromTemplate appointment) {
+
+    private void validateCheckIn(AppointmentFromTemplate appointment) {
         boolean requireConfirmation = !Boolean.FALSE.equals(appointment.getRequireConfirmation());
         boolean eligibleStatus =
                 appointment.getStatus() == AppointmentStatus.BOOKED ||
-                appointment.getStatus() == AppointmentStatus.CONFIRMED;
+                        appointment.getStatus() == AppointmentStatus.CONFIRMED;
 
         if (!eligibleStatus) {
             throw new BadRequestAlertException(
@@ -554,12 +746,9 @@ public class AppointmentFromTemplateService {
             );
         }
 
+
         if (requireConfirmation && appointment.getStatus() != AppointmentStatus.CONFIRMED) {
-            throw new BadRequestAlertException(
-                    "invalidstatus",
-                    ENTITY_NAME,
-                    "Appointment requires confirmation before check-in"
-            );
+            throw new BadRequestAlertException("Only confirmed appointments can be checked in", ENTITY_NAME, "invalidstatus");
         }
         if (appointment.getStartDatetime() == null) {
             throw new BadRequestAlertException(
@@ -568,7 +757,7 @@ public class AppointmentFromTemplateService {
                     "startdatetimerequired"
 
 
-                    );
+            );
         }
 
         LocalDate appointmentDate = appointment.getStartDatetime()
@@ -589,6 +778,170 @@ public class AppointmentFromTemplateService {
     private String currentUsername() {
         return SecurityUtils.getCurrentUserLogin()
                 .orElseThrow(() -> new BadRequestAlertException("No authenticated user", ENTITY_NAME, "unauthenticated"));
+    }
+
+    //Reschedule Helper
+
+    private void validateReschedule(AppointmentFromTemplate appointment, boolean allowReschedulingOfInServiceAppointments) {
+        if (!allowReschedulingOfInServiceAppointments && appointment.getStatus() != AppointmentStatus.BOOKED && appointment.getStatus() != AppointmentStatus.CONFIRMED) {
+            throw new BadRequestAlertException(
+                    "Only booked or confirmed appointments can be rescheduled",
+                    ENTITY_NAME,
+                    "invalidstatus"
+            );
+        } else if (allowReschedulingOfInServiceAppointments && appointment.getStatus() != AppointmentStatus.IN_SERVICE) {
+            throw new BadRequestAlertException(
+                    "Only in-service appointments can be rescheduled",
+                    ENTITY_NAME,
+                    "invalidstatus"
+            );
+        }
+
+        if (appointment.getBookingMode() != BookingMode.SLOT) {
+            throw new BadRequestAlertException(
+                    "Only slot appointments can be rescheduled",
+                    ENTITY_NAME,
+                    "invalidbookingmode"
+            );
+        }
+
+        if (appointment.getPatient() == null || appointment.getPatient().getId() == null) {
+            throw new BadRequestAlertException(
+                    "Cannot reschedule appointment without patient",
+                    ENTITY_NAME,
+                    "patientrequired"
+            );
+        }
+    }
+
+    private void validateFreeSlotForReschedule(AppointmentFromTemplate oldAppointment, AppointmentFromTemplate newAppointment) {
+        if (newAppointment.getStatus() != AppointmentStatus.NEW) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must be free",
+                    ENTITY_NAME,
+                    "slotnotfree"
+            );
+        }
+
+        if (newAppointment.getBookingMode() != BookingMode.SLOT) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must be a slot appointment",
+                    ENTITY_NAME,
+                    "invalidslotbookingmode"
+            );
+        }
+
+        if (!equalsNullable(oldAppointment.getFacilityId(), newAppointment.getFacilityId())) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must belong to the same facility",
+                    ENTITY_NAME,
+                    "facilitymismatch"
+            );
+        }
+
+        if (!equalsNullable(oldAppointment.getDepartmentId(), newAppointment.getDepartmentId())) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must belong to the same department",
+                    ENTITY_NAME,
+                    "departmentmismatch"
+            );
+        }
+
+        if (oldAppointment.getResourceType() != newAppointment.getResourceType()) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must have the same resource type",
+                    ENTITY_NAME,
+                    "resourcetypemismatch"
+            );
+        }
+
+        if (!equalsNullable(oldAppointment.getResourceId(), newAppointment.getResourceId())) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must have the same resource",
+                    ENTITY_NAME,
+                    "resourcemismatch"
+            );
+        }
+
+    }
+
+    private boolean equalsNullable(Object first, Object second) {
+        return first == null ? second == null : first.equals(second);
+    }
+
+    private void copyAppointmentDataForReschedule(AppointmentFromTemplate oldAppointment, AppointmentFromTemplate newAppointment) {
+        newAppointment.setPatient(oldAppointment.getPatient());
+
+        newAppointment.setFacilityId(oldAppointment.getFacilityId());
+        newAppointment.setDepartmentId(oldAppointment.getDepartmentId());
+        newAppointment.setResourceType(oldAppointment.getResourceType());
+        newAppointment.setResourceId(oldAppointment.getResourceId());
+
+        newAppointment.setDefaultServiceId(oldAppointment.getDefaultServiceId());
+        newAppointment.setDefaultPractitionerId(oldAppointment.getDefaultPractitionerId());
+
+        newAppointment.setBookingMode(oldAppointment.getBookingMode());
+        newAppointment.setPriority(oldAppointment.getPriority());
+        newAppointment.setOriginType(oldAppointment.getOriginType());
+        newAppointment.setOriginName(oldAppointment.getOriginName());
+        newAppointment.setReason(oldAppointment.getReason());
+        newAppointment.setNote(oldAppointment.getNote());
+        newAppointment.setService(oldAppointment.getService());
+        newAppointment.setFollowUpEncounter(oldAppointment.getFollowUpEncounter());
+
+
+        newAppointment.setCancelReason(null);
+        newAppointment.setCancelledBy(null);
+        newAppointment.setNoShowReason(null);
+        newAppointment.setConfirmedAt(null);
+        newAppointment.setCheckedInAt(null);
+    }
+
+    // Quick appointment helper
+    private void validateDepartmentWorkingDay(DepartmentDTO department) {
+        if (department.workingDays() == null || department.workingDays().isEmpty()) {
+            throw new BadRequestAlertException(
+                    "departmentworkingdaysnotconfigured",
+                    "department",
+                    "Department working days are not configured"
+            );
+        }
+
+        DayOfWeek today = DayOfWeek.valueOf(LocalDate.now().getDayOfWeek().name());
+
+        boolean isWorkingDay = department.workingDays().stream()
+                .anyMatch(workingDay -> workingDay.getDayOfWeek() == today && Boolean.TRUE.equals(workingDay.getIsWorking()));
+
+        if (!isWorkingDay) {
+            throw new BadRequestAlertException(
+                    "departmentnotworkingtoday",
+                    "department",
+                    "Department is not working today"
+            );
+        }
+    }
+    private void validatePractitionerWorkingDay(PractitionerDTO practitionerDTO) {
+        if (practitionerDTO.workingDays() == null || practitionerDTO.workingDays().isEmpty()) {
+            throw new BadRequestAlertException(
+                    "practitionerworkingdaysnotconfigured",
+                    "practitioner",
+                    "practitioner working days are not configured"
+            );
+        }
+
+        DayOfWeek today = DayOfWeek.valueOf(LocalDate.now().getDayOfWeek().name());
+
+        boolean isWorkingDay = practitionerDTO.workingDays().stream()
+                .anyMatch(workingDay -> workingDay.getDayOfWeek() == today && Boolean.TRUE.equals(workingDay.getIsWorking()));
+
+        if (!isWorkingDay) {
+            throw new BadRequestAlertException(
+                    "practitionernotworkingtoday"  ,
+                    "practitioner",
+                    "Practitioner is not working today"
+
+            );
+        }
     }
 
 }
