@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.client.setup.dto.DiagnosticTestSetupDTO;
+import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
 import com.dazzle.asklepios.domain.AppointmentFromTemplate;
 import com.dazzle.asklepios.domain.AppointmentLog;
 import com.dazzle.asklepios.domain.AppointmentReschedule;
@@ -12,6 +13,7 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.BookingMode;
+import com.dazzle.asklepios.domain.enumeration.DayOfWeek;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
@@ -41,6 +43,7 @@ import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateD
 import com.dazzle.asklepios.service.helper.CatalogHelper;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.DiagnosticTestHelper;
+import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentResponseVM;
@@ -86,6 +89,7 @@ public class AppointmentFromTemplateService {
     private final AppointmentRescheduleRepository appointmentRescheduleRepository;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
     private final DiagnosticOrderRepository diagnosticOrderRepository;
+    private final PractitionerHelper practitionerHelper;
 
     public List<AppointmentLog> getAppointmentLogs(Long appointmentId) {
         LOG.debug("Request to get AppointmentFromTemplate Log id={}", appointmentId);
@@ -272,6 +276,13 @@ public class AppointmentFromTemplateService {
                 appointmentDTO.patientId());
 
         DepartmentDTO department = departmentHelper.getDepartment(appointmentDTO.departmentId());
+        if (appointmentDTO.resourceType() == TemplateType.DEPARTMENT) {
+            validateDepartmentWorkingDay(department);
+        }
+        else if(appointmentDTO.resourceType() == TemplateType.PRACTITIONER){
+            PractitionerDTO practitioner = practitionerHelper.getPractitioner(appointmentDTO.resourceId());
+            validatePractitionerWorkingDay(practitioner);
+        }
 
         if (department.defaultDurationMinutes() == null || department.defaultDurationMinutes() <= 0) {
             throw new BadRequestAlertException(
@@ -358,7 +369,7 @@ public class AppointmentFromTemplateService {
         AppointmentFromTemplate oldAppointment = getAppointment(dto.oldAppointmentId());
         AppointmentFromTemplate newAppointment = getAppointment(dto.newAppointmentId());
 
-        validateReschedule(oldAppointment,false);
+        validateReschedule(oldAppointment, false);
         validateFreeSlotForReschedule(oldAppointment, newAppointment);
 
         return executeSingleReschedule(oldAppointment, newAppointment, dto.rescheduleReason());
@@ -416,7 +427,7 @@ public class AppointmentFromTemplateService {
         }
 
         AppointmentFromTemplate oldAppointment = getAppointment(encounter.getAppointment().getId());
-        LOG.debug("[RESCHEDULE_DIAGNOSTIC_TEST_APPOINTMENT] oldAppointment loaded id={}, status={}", oldAppointment.getId(),oldAppointment.getStatus());
+        LOG.debug("[RESCHEDULE_DIAGNOSTIC_TEST_APPOINTMENT] oldAppointment loaded id={}, status={}", oldAppointment.getId(), oldAppointment.getStatus());
         AppointmentFromTemplate newAppointment = getAppointment(dto.newAppointmentId());
 
         validateReschedule(oldAppointment, true);
@@ -886,5 +897,51 @@ public class AppointmentFromTemplateService {
         newAppointment.setCheckedInAt(null);
     }
 
+    // Quick appointment helper
+    private void validateDepartmentWorkingDay(DepartmentDTO department) {
+        if (department.workingDays() == null || department.workingDays().isEmpty()) {
+            throw new BadRequestAlertException(
+                    "departmentworkingdaysnotconfigured",
+                    "department",
+                    "Department working days are not configured"
+            );
+        }
+
+        DayOfWeek today = DayOfWeek.valueOf(LocalDate.now().getDayOfWeek().name());
+
+        boolean isWorkingDay = department.workingDays().stream()
+                .anyMatch(workingDay -> workingDay.getDayOfWeek() == today && Boolean.TRUE.equals(workingDay.getIsWorking()));
+
+        if (!isWorkingDay) {
+            throw new BadRequestAlertException(
+                    "departmentnotworkingtoday",
+                    "department",
+                    "Department is not working today"
+            );
+        }
+    }
+    private void validatePractitionerWorkingDay(PractitionerDTO practitionerDTO) {
+        if (practitionerDTO.workingDays() == null || practitionerDTO.workingDays().isEmpty()) {
+            throw new BadRequestAlertException(
+                    "practitionerworkingdaysnotconfigured",
+                    "practitioner",
+                    "practitioner working days are not configured"
+            );
+        }
+
+        DayOfWeek today = DayOfWeek.valueOf(LocalDate.now().getDayOfWeek().name());
+
+        boolean isWorkingDay = practitionerDTO.workingDays().stream()
+                .anyMatch(workingDay -> workingDay.getDayOfWeek() == today && Boolean.TRUE.equals(workingDay.getIsWorking()));
+
+        if (!isWorkingDay) {
+            throw new BadRequestAlertException(
+                    "practitionernotworkingtoday"  ,
+                    "practitioner",
+                    "Practitioner is not working today"
+
+            );
+        }
+    }
 
 }
