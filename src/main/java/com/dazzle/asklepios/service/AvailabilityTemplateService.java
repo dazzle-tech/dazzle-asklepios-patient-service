@@ -339,6 +339,19 @@ public class AvailabilityTemplateService {
         LOG.debug("Get AvailabilityTemplate logs for templateId={}", templateId);
         return availabilityTemplateLogRepository.findAllByTemplateIdOrderByLogDateDesc(templateId);
     }
+    @Transactional(readOnly = true)
+    public Page<AvailabilityTemplate> getAllPublishedTemplate(Pageable pageable) {
+        LOG.debug("Get availability templates");
+        Long facilityId = getFacility();
+
+        Page<AvailabilityTemplate> page =
+                availabilityTemplateRepository.findAllByFacilityIdAndStatus(
+                        facilityId, TemplateStatus.PUBLISHED, pageable
+                );
+
+        page.getContent().forEach(this::initializeAllowedServices);
+        return page;
+    }
 
     private void validateTemplateOrSubTemplateHasIntervals(Long templateId) {
         boolean templateHasIntervals = availabilityTemplateIntervalRepository.existsByTemplate_Id(templateId);

@@ -226,6 +226,15 @@ public class AvailabilityTemplateController {
                 .body(toResponseVM(result));
     }
 
+    @GetMapping("/availability-templates/by-facility-and-publish-status")
+    public ResponseEntity<List<AvailabilityTemplateResponseVM>> getAllByFacilityAndPublishStatus(@ParameterObject Pageable pageable) {
+        LOG.debug("REST request to get availability templates");
+
+        Page<AvailabilityTemplate> result = availabilityTemplateService.getAllPublishedTemplate(pageable);
+
+        return buildPagedResponse(result);
+    }
+
     private ResponseEntity<List<AvailabilityTemplateResponseVM>> buildPagedResponse(Page<AvailabilityTemplate> result) {
         Page<AvailabilityTemplateResponseVM> page = result.map(this::toResponseVM);
 
