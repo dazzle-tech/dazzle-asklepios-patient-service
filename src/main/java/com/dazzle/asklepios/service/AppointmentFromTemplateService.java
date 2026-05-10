@@ -36,6 +36,7 @@ import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromT
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateRescheduleDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateSearchFilterDTO;
+import com.dazzle.asklepios.service.dto.appointmentFromTemplate.BulkAppointmentRescheduleDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.DiagnosticTestAppointmentRescheduleDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestCreateDTO;
@@ -47,6 +48,8 @@ import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentResponseVM;
+import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.BulkAppointmentRescheduleResponseVM;
+import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.BulkReschedulePreviewVM;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
@@ -74,6 +77,9 @@ public class AppointmentFromTemplateService {
     private final AppointmentLogRepository appointmentLogRepository;
 
     private static final String ENTITY_NAME = "AppointmentFromTemplate";
+
+    private static final String SYSTEM_CANCEL_REASON = "cancel appointment from reschedule by ";
+    private static final String SYSTEM_RESCHEDULE_REASON = "reschedualed by ";
 
     private static final Logger LOG = LoggerFactory.getLogger(AppointmentFromTemplateService.class);
 
@@ -278,8 +284,7 @@ public class AppointmentFromTemplateService {
         DepartmentDTO department = departmentHelper.getDepartment(appointmentDTO.departmentId());
         if (appointmentDTO.resourceType() == TemplateType.DEPARTMENT) {
             validateDepartmentWorkingDay(department);
-        }
-        else if(appointmentDTO.resourceType() == TemplateType.PRACTITIONER){
+        } else if (appointmentDTO.resourceType() == TemplateType.PRACTITIONER) {
             PractitionerDTO practitioner = practitionerHelper.getPractitioner(appointmentDTO.resourceId());
             validatePractitionerWorkingDay(practitioner);
         }
@@ -440,6 +445,147 @@ public class AppointmentFromTemplateService {
         diagnosticOrderTestRepository.save(orderTest);
 
         return savedNewAppointment;
+    }
+
+    @Transactional(readOnly = true)
+    public BulkReschedulePreviewVM getBulkReschedulePreview(Long availabilityGenerationBatchId) {
+        LOG.debug("[BULK_RESCHEDULE_PREVIEW] batchId={}", availabilityGenerationBatchId);
+
+        getBatch(availabilityGenerationBatchId);
+
+        Instant tomorrowStart = tomorrowStartInstant();
+
+        List<AppointmentFromTemplate> bookedOrConfirmedAppointments =
+                appointmentFromTemplateRepository
+                        .findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(
+                                availabilityGenerationBatchId,
+                                List.of(AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED),
+                                tomorrowStart
+                        );
+
+        return new BulkReschedulePreviewVM(bookedOrConfirmedAppointments);
+    }
+
+    @Transactional
+    public void cancelBulkRescheduleAppointments(Long availabilityGenerationBatchId) {
+        LOG.debug("[BULK_RESCHEDULE_CANCEL] batchId={}", availabilityGenerationBatchId);
+
+        getBatch(availabilityGenerationBatchId);
+
+        Instant tomorrowStart = tomorrowStartInstant();
+
+        List<AppointmentFromTemplate> appointmentsToCancel =
+                appointmentFromTemplateRepository
+                        .findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(
+                                availabilityGenerationBatchId,
+                                List.of(
+                                        AppointmentStatus.NEW,
+                                        AppointmentStatus.BOOKED,
+                                        AppointmentStatus.CONFIRMED
+                                ),
+                                tomorrowStart
+                        );
+
+        String username = currentUsername();
+
+        for (AppointmentFromTemplate appointment : appointmentsToCancel) {
+            appointment.setStatus(AppointmentStatus.CANCELLED);
+            appointment.setCancelReason(SYSTEM_CANCEL_REASON + currentUsername());
+            appointment.setCancelledBy(username);
+
+            // TODO: trigger patient notification here for booked/confirmed appointments.
+
+        }
+
+        appointmentFromTemplateRepository.saveAll(appointmentsToCancel);
+
+        LOG.info("[BULK_RESCHEDULE_CANCEL] cancelledCount={}", appointmentsToCancel.size());
+    }
+
+    @Transactional
+    public BulkAppointmentRescheduleResponseVM bulkReschedule(BulkAppointmentRescheduleDTO dto) {
+        LOG.debug(
+                "[BULK_RESCHEDULE] originalBatchId={}, replacementBatchId={}",
+                dto.originalAvailabilityGenerationBatchId(),
+                dto.replacementAvailabilityGenerationBatchId()
+        );
+
+        AvailabilityGenerationBatch originalBatch = getBatch(dto.originalAvailabilityGenerationBatchId());
+        AvailabilityGenerationBatch replacementBatch = getBatch(dto.replacementAvailabilityGenerationBatchId());
+
+        if (originalBatch.getId().equals(replacementBatch.getId())) {
+            throw new BadRequestAlertException(
+                    "Original and replacement generation batches cannot be the same",
+                    ENTITY_NAME,
+                    "samebatch"
+            );
+        }
+
+        Instant tomorrowStart = tomorrowStartInstant();
+
+        List<AppointmentFromTemplate> oldAppointments =
+                appointmentFromTemplateRepository.findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(originalBatch.getId(), List.of(AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED), tomorrowStart);
+
+        List<AppointmentFromTemplate> newAvailableAppointments = appointmentFromTemplateRepository.findByAvailabilityGenerationBatch_IdAndStatusAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(replacementBatch.getId(), AppointmentStatus.NEW, tomorrowStart);
+
+        if (oldAppointments.size() > newAvailableAppointments.size()) {
+            List<Long> unmatchedOldAppointmentIds = oldAppointments
+                    .subList(newAvailableAppointments.size(), oldAppointments.size())
+                    .stream()
+                    .map(AppointmentFromTemplate::getId)
+                    .toList();
+
+            LOG.warn(
+                    "[BULK_RESCHEDULE] insufficient replacement slots oldCount={}, newAvailableCount={}, unmatchedCount={}",
+                    oldAppointments.size(),
+                    newAvailableAppointments.size(),
+                    unmatchedOldAppointmentIds.size()
+            );
+
+            return new BulkAppointmentRescheduleResponseVM(false, "Not enough available appointments in the selected replacement batch", unmatchedOldAppointmentIds);
+        }
+
+        for (int i = 0; i < oldAppointments.size(); i++) {
+            AppointmentFromTemplate oldAppointment = oldAppointments.get(i);
+            AppointmentFromTemplate newAppointment = newAvailableAppointments.get(i);
+
+            validateReschedule(oldAppointment, false);
+            validateFreeSlotForReschedule(oldAppointment, newAppointment);
+
+            executeSingleReschedule(oldAppointment, newAppointment, SYSTEM_RESCHEDULE_REASON + currentUsername());
+        }
+        cancelFutureFreeAppointmentsFromBatch(originalBatch.getId(), tomorrowStart);
+
+        return new BulkAppointmentRescheduleResponseVM(true, "Reschedule applied successfully", List.of());
+    }
+
+    private Instant tomorrowStartInstant() {
+        return LocalDate.now(ZoneId.systemDefault())
+                .plusDays(1)
+                .atStartOfDay(ZoneId.systemDefault())
+                .toInstant();
+    }
+
+    private void cancelFutureFreeAppointmentsFromBatch(Long availabilityGenerationBatchId, Instant tomorrowStart) {
+        List<AppointmentFromTemplate> freeAppointments =
+                appointmentFromTemplateRepository
+                        .findByAvailabilityGenerationBatch_IdAndStatusAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(
+                                availabilityGenerationBatchId,
+                                AppointmentStatus.NEW,
+                                tomorrowStart
+                        );
+
+        String username = currentUsername();
+
+        for (AppointmentFromTemplate appointment : freeAppointments) {
+            appointment.setStatus(AppointmentStatus.CANCELLED);
+            appointment.setCancelReason(SYSTEM_CANCEL_REASON);
+            appointment.setCancelledBy(username);
+        }
+
+        appointmentFromTemplateRepository.saveAll(freeAppointments);
+
+        LOG.info("[BULK_RESCHEDULE] cancelledFreeAppointmentsCount={}", freeAppointments.size());
     }
 
     private void validateDiagnosticTestFreeSlotForReschedule(AppointmentFromTemplate oldAppointment, AppointmentFromTemplate newAppointment, Long diagnosticTestId) {
@@ -920,6 +1066,7 @@ public class AppointmentFromTemplateService {
             );
         }
     }
+
     private void validatePractitionerWorkingDay(PractitionerDTO practitionerDTO) {
         if (practitionerDTO.workingDays() == null || practitionerDTO.workingDays().isEmpty()) {
             throw new BadRequestAlertException(
@@ -936,7 +1083,7 @@ public class AppointmentFromTemplateService {
 
         if (!isWorkingDay) {
             throw new BadRequestAlertException(
-                    "practitionernotworkingtoday"  ,
+                    "practitionernotworkingtoday",
                     "practitioner",
                     "Practitioner is not working today"
 

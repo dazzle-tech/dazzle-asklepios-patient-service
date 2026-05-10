@@ -11,10 +11,13 @@ import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromT
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateRescheduleDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateSearchFilterDTO;
+import com.dazzle.asklepios.service.dto.appointmentFromTemplate.BulkAppointmentRescheduleDTO;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.DiagnosticTestAppointmentRescheduleDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentResponseVM;
+import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.BulkAppointmentRescheduleResponseVM;
+import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.BulkReschedulePreviewVM;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
@@ -171,6 +174,58 @@ public class AppointmentFormTemplateController {
         AppointmentFromTemplate result = appointmentFromTemplateService.rescheduleDiagnosticTestAppointment(dto);
 
         return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/appointments/bulk-reschedule/preview/{batchId}")
+    public ResponseEntity<BulkReschedulePreviewVM> getBulkReschedulePreview(@PathVariable Long batchId) {
+        BulkReschedulePreviewVM result = appointmentFromTemplateService.getBulkReschedulePreview(batchId);
+        return ResponseEntity.ok(result);
+    }
+
+    @PutMapping("/appointments/bulk-reschedule/cancel/{batchId}")
+    public ResponseEntity<Void> cancelBulkRescheduleAppointments(@PathVariable Long batchId) {
+        appointmentFromTemplateService.cancelBulkRescheduleAppointments(batchId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/appointments/bulk-reschedule")
+    public ResponseEntity<BulkAppointmentRescheduleResponseVM> bulkReschedule(
+            @Valid @RequestBody BulkAppointmentRescheduleDTO dto
+    ) {
+        validateBulkRescheduleDto(dto);
+
+        BulkAppointmentRescheduleResponseVM result = appointmentFromTemplateService.bulkReschedule(dto);
+
+        if (result.success()) {
+            return ResponseEntity.ok(result);
+        }
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(result);
+    }
+    private void validateBulkRescheduleDto(BulkAppointmentRescheduleDTO dto) {
+        if (dto.originalAvailabilityGenerationBatchId() == null) {
+            throw new BadRequestAlertException(
+                    "Original generation batch is required",
+                    "Appointment",
+                    "originalbatch.required"
+            );
+        }
+
+        if (dto.replacementAvailabilityGenerationBatchId() == null) {
+            throw new BadRequestAlertException(
+                    "Replacement generation batch is required",
+                    "Appointment",
+                    "replacementbatch.required"
+            );
+        }
+
+        if (dto.originalAvailabilityGenerationBatchId().equals(dto.replacementAvailabilityGenerationBatchId())) {
+            throw new BadRequestAlertException(
+                    "Original and replacement generation batches cannot be the same",
+                    "Appointment",
+                    "samebatch.invalid"
+            );
+        }
     }
 
 }

@@ -25,5 +25,17 @@ public interface AppointmentFromTemplateRepository extends JpaRepository<Appoint
 
     Page<AppointmentFromTemplate> findByAvailabilityGenerationBatch_Id(Long id, Pageable pageable);
 
+    List<AppointmentFromTemplate> findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(
+            Long availabilityGenerationBatchId,
+            List<AppointmentStatus> statuses,
+            Instant startDatetime
+    );
+
+    List<AppointmentFromTemplate> findByAvailabilityGenerationBatch_IdAndStatusAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(
+            Long availabilityGenerationBatchId,
+            AppointmentStatus status,
+            Instant startDatetime
+    );
+
 }
 
