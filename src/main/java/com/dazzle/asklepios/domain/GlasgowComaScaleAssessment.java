@@ -2,6 +2,7 @@ package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.GCSEye;
 import com.dazzle.asklepios.domain.enumeration.GCSMotor;
+import com.dazzle.asklepios.domain.enumeration.GCSScoreInterpretation;
 import com.dazzle.asklepios.domain.enumeration.GCSVerbal;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -22,6 +23,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.io.Serializable;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "glasgow_coma_scale_assessment")
@@ -79,6 +81,14 @@ public class GlasgowComaScaleAssessment extends AbstractAuditingEntity<Long> imp
 
     @NotNull
     @Column(name = "score_interpretation", nullable = false, length = 255)
-    private String scoreInterpretation;
+    private GCSScoreInterpretation scoreInterpretation;
 
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
+
+    @Column(name = "cancelled_by", length = 50)
+    private String cancelledBy;
+
+    @Column(name = "cancellation_reason", length = 500)
+    private String cancellationReason;
 }

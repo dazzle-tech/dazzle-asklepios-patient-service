@@ -7,5 +7,14 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface GlasgowComaScaleAssessmentRepository extends JpaRepository<GlasgowComaScaleAssessment, Long> {
 
-    Page<GlasgowComaScaleAssessment> findAllByEncounter_Id(Long encounterId, Pageable pageable);
+    Page<GlasgowComaScaleAssessment> findAllByEncounter_Id(
+            Long encounterId,
+            Pageable pageable
+    );
+
+    Page<GlasgowComaScaleAssessment> findAllByEncounter_IdAndCancelledAtIsNull(
+            Long encounterId,
+            Pageable pageable
+    );
+
 }

@@ -3,9 +3,12 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.GlasgowComaScaleAssessment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.enumeration.GCSScoreInterpretation;
 import com.dazzle.asklepios.repository.GlasgowComaScaleAssessmentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.glasgowComaScaleAssessment.GlasgowComaScaleAssessmentCancelDTO;
 import com.dazzle.asklepios.service.dto.glasgowComaScaleAssessment.GlasgowComaScaleAssessmentCreateDTO;
 import com.dazzle.asklepios.service.dto.glasgowComaScaleAssessment.GlasgowComaScaleAssessmentUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -19,6 +22,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -39,26 +44,18 @@ public class GlasgowComaScaleAssessmentService {
         LOG.info("[CREATE] GlasgowComaScaleAssessment payload={}", createDTO);
 
         PatientEncounter encounter = patientEncounterRepository.findById(createDTO.encounterId())
-                .orElseThrow(() -> {
-                    LOG.warn("[CREATE] GlasgowComaScaleAssessment rejected: encounter not found encounterId={}",
-                            createDTO.encounterId());
-                    return new NotFoundAlertException(
-                            "Encounter not found with id " + createDTO.encounterId(),
-                            ENTITY_NAME,
-                            "encounter.notfound"
-                    );
-                });
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Encounter not found with id " + createDTO.encounterId(),
+                        ENTITY_NAME,
+                        "encounter.notfound"
+                ));
 
         Patient patient = patientRepository.findById(createDTO.patientId())
-                .orElseThrow(() -> {
-                    LOG.warn("[CREATE] GlasgowComaScaleAssessment rejected: patient not found patientId={}",
-                            createDTO.patientId());
-                    return new NotFoundAlertException(
-                            "Patient not found with id " + createDTO.patientId(),
-                            ENTITY_NAME,
-                            "patient.notfound"
-                    );
-                });
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found with id " + createDTO.patientId(),
+                        ENTITY_NAME,
+                        "patient.notfound"
+                ));
 
         validatePatientMatchesEncounter(encounter, patient);
 
@@ -81,73 +78,28 @@ public class GlasgowComaScaleAssessmentService {
                 .build();
 
         try {
-            GlasgowComaScaleAssessment saved = glasgowComaScaleAssessmentRepository.saveAndFlush(entity);
-
-            LOG.info("[CREATE] GlasgowComaScaleAssessment success id={} encounterId={} patientId={} totalScore={}",
-                    saved.getId(), createDTO.encounterId(), createDTO.patientId(), saved.getTotalScore());
-
-            return saved;
+            return glasgowComaScaleAssessmentRepository.saveAndFlush(entity);
         } catch (DataIntegrityViolationException | JpaSystemException exception) {
-            LOG.warn("[CREATE] GlasgowComaScaleAssessment failed (constraint) payload={}", createDTO, exception);
             throw handleConstraintViolation(exception);
-        } catch (RuntimeException exception) {
-            LOG.error("[CREATE] GlasgowComaScaleAssessment failed (unexpected) payload={}", createDTO, exception);
-            throw exception;
         }
     }
 
     public GlasgowComaScaleAssessment update(Long id, GlasgowComaScaleAssessmentUpdateDTO updateDTO) {
         LOG.info("[UPDATE] GlasgowComaScaleAssessment id={} payload={}", id, updateDTO);
 
-        if (!id.equals(updateDTO.id())) {
-            throw new BadRequestAlertException(
-                    "Path id does not match payload id.",
-                    ENTITY_NAME,
-                    "id.mismatch"
-            );
-        }
-
         GlasgowComaScaleAssessment existing = glasgowComaScaleAssessmentRepository.findById(id)
-                .orElseThrow(() -> {
-                    LOG.warn("[UPDATE] GlasgowComaScaleAssessment rejected: not found id={}", id);
-                    return new NotFoundAlertException(
-                            "GlasgowComaScaleAssessment not found with id " + id,
-                            ENTITY_NAME,
-                            "id.notfound"
-                    );
-                });
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "GlasgowComaScaleAssessment not found with id " + id,
+                        ENTITY_NAME,
+                        "id.notfound"
+                ));
 
-        PatientEncounter encounter = patientEncounterRepository.findById(updateDTO.encounterId())
-                .orElseThrow(() -> {
-                    LOG.warn("[UPDATE] GlasgowComaScaleAssessment rejected: encounter not found encounterId={}",
-                            updateDTO.encounterId());
-                    return new NotFoundAlertException(
-                            "Encounter not found with id " + updateDTO.encounterId(),
-                            ENTITY_NAME,
-                            "encounter.notfound"
-                    );
-                });
-
-        Patient patient = patientRepository.findById(updateDTO.patientId())
-                .orElseThrow(() -> {
-                    LOG.warn("[UPDATE] GlasgowComaScaleAssessment rejected: patient not found patientId={}",
-                            updateDTO.patientId());
-                    return new NotFoundAlertException(
-                            "Patient not found with id " + updateDTO.patientId(),
-                            ENTITY_NAME,
-                            "patient.notfound"
-                    );
-                });
-
-        validatePatientMatchesEncounter(encounter, patient);
 
         Integer eyeScore = updateDTO.eyeOpening().getScore();
         Integer verbalScore = updateDTO.verbalResponse().getScore();
         Integer motorScore = updateDTO.motorResponse().getScore();
         Integer totalScore = calculateTotalScore(eyeScore, verbalScore, motorScore);
 
-        existing.setEncounter(encounter);
-        existing.setPatient(patient);
         existing.setEyeOpening(updateDTO.eyeOpening());
         existing.setEyeOpeningScore(eyeScore);
         existing.setVerbalResponse(updateDTO.verbalResponse());
@@ -158,71 +110,51 @@ public class GlasgowComaScaleAssessmentService {
         existing.setScoreInterpretation(resolveScoreInterpretation(totalScore));
 
         try {
-            GlasgowComaScaleAssessment saved = glasgowComaScaleAssessmentRepository.saveAndFlush(existing);
-
-            LOG.info("[UPDATE] GlasgowComaScaleAssessment success id={} encounterId={} patientId={} totalScore={}",
-                    saved.getId(), updateDTO.encounterId(), updateDTO.patientId(), saved.getTotalScore());
-
-            return saved;
+            return glasgowComaScaleAssessmentRepository.saveAndFlush(existing);
         } catch (DataIntegrityViolationException | JpaSystemException exception) {
-            LOG.warn("[UPDATE] GlasgowComaScaleAssessment failed (constraint) id={} payload={}",
-                    id, updateDTO, exception);
             throw handleConstraintViolation(exception);
-        } catch (RuntimeException exception) {
-            LOG.error("[UPDATE] GlasgowComaScaleAssessment failed (unexpected) id={} payload={}",
-                    id, updateDTO, exception);
-            throw exception;
         }
     }
 
-    public void delete(Long id) {
-        LOG.info("[DELETE] GlasgowComaScaleAssessment id={}", id);
+    public GlasgowComaScaleAssessment cancel(GlasgowComaScaleAssessmentCancelDTO cancelDTO) {
+        String currentUser = SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "Current user not found",
+                        ENTITY_NAME,
+                        "user.notfound"
+                ));
 
-        GlasgowComaScaleAssessment existing = glasgowComaScaleAssessmentRepository.findById(id)
-                .orElseThrow(() -> {
-                    LOG.warn("[DELETE] GlasgowComaScaleAssessment rejected: not found id={}", id);
-                    return new NotFoundAlertException(
-                            "GlasgowComaScaleAssessment not found with id " + id,
-                            ENTITY_NAME,
-                            "id.notfound"
-                    );
-                });
+        GlasgowComaScaleAssessment existing = glasgowComaScaleAssessmentRepository.findById(cancelDTO.id())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "GlasgowComaScaleAssessment not found with id " + cancelDTO.id(),
+                        ENTITY_NAME,
+                        "id.notfound"
+                ));
+
+        existing.setCancelledAt(LocalDateTime.now());
+        existing.setCancelledBy(currentUser);
+        existing.setCancellationReason(cancelDTO.cancellationReason());
 
         try {
-            glasgowComaScaleAssessmentRepository.delete(existing);
-            glasgowComaScaleAssessmentRepository.flush();
-
-            LOG.info("[DELETE] GlasgowComaScaleAssessment success id={}", id);
+            return glasgowComaScaleAssessmentRepository.saveAndFlush(existing);
         } catch (DataIntegrityViolationException | JpaSystemException exception) {
-            LOG.warn("[DELETE] GlasgowComaScaleAssessment failed (constraint) id={}", id, exception);
             throw handleConstraintViolation(exception);
-        } catch (RuntimeException exception) {
-            LOG.error("[DELETE] GlasgowComaScaleAssessment failed (unexpected) id={}", id, exception);
-            throw exception;
         }
     }
 
     @Transactional(readOnly = true)
     public GlasgowComaScaleAssessment getById(Long id) {
-        LOG.debug("[GET_BY_ID] GlasgowComaScaleAssessment id={}", id);
-
         return glasgowComaScaleAssessmentRepository.findById(id)
-                .orElseThrow(() -> {
-                    LOG.warn("[GET_BY_ID] GlasgowComaScaleAssessment not found id={}", id);
-                    return new NotFoundAlertException(
-                            "GlasgowComaScaleAssessment not found with id " + id,
-                            ENTITY_NAME,
-                            "id.notfound"
-                    );
-                });
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "GlasgowComaScaleAssessment not found with id " + id,
+                        ENTITY_NAME,
+                        "id.notfound"
+                ));
     }
 
     @Transactional(readOnly = true)
     public Page<GlasgowComaScaleAssessment> getAllByEncounterId(Long encounterId, Pageable pageable) {
-        LOG.debug("[GET_LIST_BY_ENCOUNTER] encounterId={} pageable={}", encounterId, pageable);
-
         if (!patientEncounterRepository.existsById(encounterId)) {
-            LOG.warn("[GET_LIST_BY_ENCOUNTER] rejected: encounter not found encounterId={}", encounterId);
             throw new NotFoundAlertException(
                     "Encounter not found with id " + encounterId,
                     ENTITY_NAME,
@@ -231,6 +163,19 @@ public class GlasgowComaScaleAssessmentService {
         }
 
         return glasgowComaScaleAssessmentRepository.findAllByEncounter_Id(encounterId, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<GlasgowComaScaleAssessment> getActiveByEncounterId(Long encounterId, Pageable pageable) {
+        if (!patientEncounterRepository.existsById(encounterId)) {
+            throw new NotFoundAlertException(
+                    "Encounter not found with id " + encounterId,
+                    ENTITY_NAME,
+                    "encounter.notfound"
+            );
+        }
+
+        return glasgowComaScaleAssessmentRepository.findAllByEncounter_IdAndCancelledAtIsNull(encounterId, pageable);
     }
 
     private void validatePatientMatchesEncounter(PatientEncounter encounter, Patient patient) {
@@ -247,17 +192,18 @@ public class GlasgowComaScaleAssessmentService {
         return eyeScore + verbalScore + motorScore;
     }
 
-    private String resolveScoreInterpretation(Integer totalScore) {
+    private GCSScoreInterpretation resolveScoreInterpretation(Integer totalScore) {
+
         if (totalScore >= 13 && totalScore <= 15) {
-            return "Mild traumatic brain injury";
+            return GCSScoreInterpretation.MILD_TRAUMATIC_BRAIN_INJURY;
         }
 
         if (totalScore >= 9 && totalScore <= 12) {
-            return "Moderate traumatic brain injury";
+            return GCSScoreInterpretation.MODERATE_TRAUMATIC_BRAIN_INJURY;
         }
 
         if (totalScore >= 3 && totalScore <= 8) {
-            return "Severe traumatic brain injury (coma)";
+            return GCSScoreInterpretation.SEVERE_TRAUMATIC_BRAIN_INJURY_COMA;
         }
 
         throw new BadRequestAlertException(
@@ -266,7 +212,6 @@ public class GlasgowComaScaleAssessmentService {
                 "gcs.score.invalid"
         );
     }
-
     private RuntimeException handleConstraintViolation(Exception exception) {
         Throwable rootCause = getRootCause(exception);
         String rootMessage = rootCause != null ? rootCause.getMessage() : exception.getMessage();
@@ -274,6 +219,30 @@ public class GlasgowComaScaleAssessmentService {
 
         LOG.warn("[DB_CONSTRAINT] GlasgowComaScaleAssessment constraint violated rootMessage={}",
                 rootMessage, exception);
+
+        if (rootMessageLower.contains("ck_gcs_cancelled_fields")) {
+            return new BadRequestAlertException(
+                    "CancelledBy and cancellationReason are required when cancelling Glasgow Coma Scale assessment.",
+                    ENTITY_NAME,
+                    "gcs.cancel.invalid"
+            );
+        }
+
+        if (rootMessageLower.contains("fk_triage_gcs_patient")) {
+            return new BadRequestAlertException(
+                    "Invalid patient id.",
+                    ENTITY_NAME,
+                    "patient.invalid"
+            );
+        }
+
+        if (rootMessageLower.contains("fk_triage_gcs_encounter")) {
+            return new BadRequestAlertException(
+                    "Invalid encounter id.",
+                    ENTITY_NAME,
+                    "encounter.invalid"
+            );
+        }
 
         if (rootMessageLower.contains("fk") && rootMessageLower.contains("patient")) {
             return new NotFoundAlertException(

@@ -15,12 +15,6 @@ public record GlasgowComaScaleAssessmentUpdateDTO(
         Long id,
 
         @NotNull
-        Long encounterId,
-
-        @NotNull
-        Long patientId,
-
-        @NotNull
         GCSEye eyeOpening,
 
         @NotNull
