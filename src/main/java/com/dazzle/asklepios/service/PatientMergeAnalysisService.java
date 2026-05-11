@@ -1,9 +1,11 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientMergeFieldConfig;
 import com.dazzle.asklepios.domain.PatientMergeTableConfig;
 import com.dazzle.asklepios.domain.enumeration.MergeDecision;
 import com.dazzle.asklepios.domain.enumeration.PatientMergeCategory;
+import com.dazzle.asklepios.domain.enumeration.PatientStatus;
 import com.dazzle.asklepios.repository.PatientMergeFieldConfigRepository;
 import com.dazzle.asklepios.repository.PatientMergeTableConfigRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -43,6 +45,7 @@ public class PatientMergeAnalysisService {
             PatientMergeTableConfigRepository tableConfigRepository,
             PatientMergeFieldConfigRepository fieldConfigRepository,
             JdbcTemplate jdbcTemplate
+
     ) {
         this.patientRepository = patientRepository;
         this.tableConfigRepository = tableConfigRepository;
@@ -77,16 +80,17 @@ public class PatientMergeAnalysisService {
 
         return label.toString();
     }
+
     private List<PatientMergeFieldConfig> autoDiscoverFields(PatientMergeTableConfig tableConfig) {
 
         validateIdentifier(tableConfig.getTableName());
 
         String sql = """
-        SELECT column_name
-        FROM information_schema.columns
-        WHERE table_name = ?
-        ORDER BY ordinal_position
-        """;
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = ?
+                ORDER BY ordinal_position
+                """;
 
         List<String> columns = jdbcTemplate.queryForList(
                 sql,
@@ -124,6 +128,7 @@ public class PatientMergeAnalysisService {
 
         return result;
     }
+
     private List<PatientMergeFieldConfig> resolveFieldConfigs(PatientMergeTableConfig tableConfig) {
 
         List<PatientMergeFieldConfig> configs =
@@ -142,6 +147,7 @@ public class PatientMergeAnalysisService {
 
         return new ArrayList<>();
     }
+
     public PatientMergePreviewResponse analyze(Long fromPatientId, Long toPatientId) {
         LOG.debug("Analyzing merge from patient {} to patient {}", fromPatientId, toPatientId);
 
@@ -153,11 +159,22 @@ public class PatientMergeAnalysisService {
             throw new BadRequestAlertException("Cannot merge same patient", "PatientMerge", "same.patient");
         }
 
-        patientRepository.findById(fromPatientId)
-                .orElseThrow(() -> new NotFoundAlertException("From patient not found", "Patient", fromPatientId.toString()));
-        patientRepository.findById(toPatientId)
-                .orElseThrow(() -> new NotFoundAlertException("To patient not found", "Patient", toPatientId.toString()));
+        Patient fromPatient = patientRepository.findById(fromPatientId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "From patient not found",
+                        "Patient",
+                        fromPatientId.toString()
+                ));
 
+        Patient toPatient = patientRepository.findById(toPatientId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "To patient not found",
+                        "Patient",
+                        toPatientId.toString()
+                ));
+
+        validatePatientCanBeMerged(fromPatient, "fromPatient");
+        validatePatientCanBeMerged(toPatient, "toPatient");
         List<PatientMergeConflictDTO> conflicts = new ArrayList<>();
         List<PatientMergeAutoTransferDTO> autoTransfers = new ArrayList<>();
 
@@ -275,10 +292,10 @@ public class PatientMergeAnalysisService {
         }
         if (toEmpty && !fromEmpty) {
             // Auto-transfer: source has value, target is empty
-            addAutoTransfer(tableConfig, fieldConfig, fromRow, toRow, fromPatientId, toPatientId, fromRecordId, toRecordId, fromStr, autoTransfers);
+            addAutoTransfer(tableConfig, fieldConfig, fromRow, toRow, fromRecordId, toRecordId, fromStr, autoTransfers);
         } else if (!toEmpty && !fromEmpty && !normalize(fromStr).equals(normalize(toStr))) {
             // Conflict: both have different values
-            addConflict(tableConfig, fieldConfig, fromRow, toRow, fromPatientId, toPatientId, fromRecordId, toRecordId, fromStr, toStr, fieldConfig.getSuggestedDecision(), conflicts);
+            addConflict(tableConfig, fieldConfig, fromRow, toRow, fromRecordId, toRecordId, fromStr, toStr, fieldConfig.getSuggestedDecision(), conflicts);
         }
         // else: source empty and target has value - ignore
     }
@@ -289,8 +306,6 @@ public class PatientMergeAnalysisService {
             PatientMergeFieldConfig fieldConfig,
             Map<String, Object> fromRow,
             Map<String, Object> toRow,
-            Long fromPatientId,
-            Long toPatientId,
             Long fromRecordId,
             Long toRecordId,
             String fromStr,
@@ -313,6 +328,7 @@ public class PatientMergeAnalysisService {
                         .fieldLabel(fieldConfig.getFieldLabel())
                         .fromValue(fromStr)
                         .toValue(toStr)
+                        .fieldType(getColumnType(tableConfig.getTableName(), fieldConfig.getFieldName()))
                         .suggestedDecision(suggestedDecision)
                         .build()
         );
@@ -323,8 +339,6 @@ public class PatientMergeAnalysisService {
             PatientMergeFieldConfig fieldConfig,
             Map<String, Object> fromRow,
             Map<String, Object> toRow,
-            Long fromPatientId,
-            Long toPatientId,
             Long fromRecordId,
             Long toRecordId,
             String fromStr,
@@ -343,6 +357,7 @@ public class PatientMergeAnalysisService {
                 .fromValue(fromStr)
                 .toValue("")
                 .selectedValue(fromStr)
+                .fieldType(getColumnType(tableConfig.getTableName(), fieldConfig.getFieldName()))
                 .suggestedDecision(MergeDecision.TAKE_FROM)
                 .build());
     }
@@ -461,6 +476,7 @@ public class PatientMergeAnalysisService {
             throw new BadRequestAlertException("Invalid SQL identifier", "PatientMerge", "invalid.identifier");
         }
     }
+
     private void addMissingRecordConflict(
             PatientMergeTableConfig tableConfig,
             Long fromRecordId,
@@ -482,6 +498,32 @@ public class PatientMergeAnalysisService {
                         .suggestedDecision(MergeDecision.ADD_FROM_RECORD)
                         .build()
         );
+    }
+
+    private String getColumnType(String tableName, String columnName) {
+        return jdbcTemplate.queryForObject(
+                """
+                        SELECT data_type
+                        FROM information_schema.columns
+                        WHERE table_name = ?
+                          AND column_name = ?
+                        """,
+                String.class,
+                tableName,
+                columnName
+        );
+    }
+
+    private void validatePatientCanBeMerged(Patient patient, String role) {
+
+        if (patient.getPatientStatus() == PatientStatus.MERGED) {
+            throw new BadRequestAlertException(
+                    role + ".already.merged",
+                    "PatientMerge",
+                    role + " is already merged and cannot be used in another merge"
+
+            );
+        }
     }
 }
 

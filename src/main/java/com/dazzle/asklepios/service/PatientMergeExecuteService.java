@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.PatientMergeLog;
 import com.dazzle.asklepios.domain.PatientMergeMasterDecision;
 import com.dazzle.asklepios.domain.PatientMergeTableConfig;
 import com.dazzle.asklepios.domain.enumeration.MergeDecision;
+import com.dazzle.asklepios.domain.enumeration.PatientMergeCategory;
 import com.dazzle.asklepios.domain.enumeration.PatientStatus;
 import com.dazzle.asklepios.repository.PatientMergeLogRepository;
 import com.dazzle.asklepios.repository.PatientMergeMasterDecisionRepository;
@@ -23,14 +24,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
-import java.util.regex.Pattern;
-import com.dazzle.asklepios.domain.enumeration.PatientMergeCategory;
 import java.util.Map;
+import java.util.regex.Pattern;
+
 @Service
 @Transactional
 public class PatientMergeExecuteService {
@@ -43,6 +44,7 @@ public class PatientMergeExecuteService {
     private final PatientMergeMasterDecisionRepository patientMergeMasterDecisionRepository;
     private final PatientMergeTableConfigRepository tableConfigRepository;
     private final PatientMergeAnalysisService analysisService;
+
     private final JdbcTemplate jdbcTemplate;
 
     public PatientMergeExecuteService(
@@ -71,7 +73,6 @@ public class PatientMergeExecuteService {
 
         Patient toPatient = patientRepository.findById(request.getToPatientId())
                 .orElseThrow(() -> new NotFoundAlertException("To patient not found", "Patient", request.getToPatientId().toString()));
-
         // Get backend-calculated analysis (conflicts and autoTransfers)
         PatientMergePreviewResponse analysis = analysisService.analyze(request.getFromPatientId(), request.getToPatientId());
 
@@ -121,12 +122,12 @@ public class PatientMergeExecuteService {
 
     private PatientMergeLog createMergeLog(Patient fromPatient, Patient toPatient, String reason) {
         Instant now = Instant.now();
-
+        String username = currentUsername();
         PatientMergeLog mergeLog = PatientMergeLog.builder()
                 .fromPatient(fromPatient)
                 .toPatient(toPatient)
                 .mergeStatus("MERGED")
-                .mergedBy("system")
+                .mergedBy(username)
                 .mergedAt(now)
                 .reason(reason)
                 .build();
@@ -242,7 +243,8 @@ public class PatientMergeExecuteService {
 
                     return ps;
                 }
-        );    }
+        );
+    }
 
     private void applyFieldDecisionForAutoTransfer(PatientMergeAutoTransferDTO autoTransfer) {
         if (autoTransfer.getTableName() == null || autoTransfer.getFieldName() == null || autoTransfer.getToRecordId() == null) {
@@ -276,7 +278,8 @@ public class PatientMergeExecuteService {
 
                     return ps;
                 }
-        );    }
+        );
+    }
 
     private String resolveSelectedValue(PatientMergeDecisionDTO decision) {
         if (decision.getFinalDecision() == MergeDecision.TAKE_FROM) {
@@ -341,7 +344,7 @@ public class PatientMergeExecuteService {
         fromPatient.setPatientStatus(PatientStatus.MERGED);
         fromPatient.setMergedIntoPatientId(toPatient.getId());
         fromPatient.setMergedAt(Instant.now());
-        String username=currentUsername();
+        String username = currentUsername();
         fromPatient.setMergedBy(username);
         patientRepository.save(fromPatient);
     }
@@ -351,6 +354,7 @@ public class PatientMergeExecuteService {
             throw new BadRequestAlertException("Invalid SQL identifier", "PatientMerge", "invalid.identifier");
         }
     }
+
     private void setPreparedStatementValue(
             PreparedStatement ps,
             int index,
@@ -366,11 +370,11 @@ public class PatientMergeExecuteService {
 
         String dataType = jdbcTemplate.queryForObject(
                 """
-                SELECT data_type
-                FROM information_schema.columns
-                WHERE table_name = ?
-                  AND column_name = ?
-                """,
+                        SELECT data_type
+                        FROM information_schema.columns
+                        WHERE table_name = ?
+                          AND column_name = ?
+                        """,
                 String.class,
                 tableName,
                 columnName
@@ -410,6 +414,7 @@ public class PatientMergeExecuteService {
             default -> ps.setString(index, strValue);
         }
     }
+
     private void saveMovedItemLog(
             Long mergeLogId,
             PatientMergeTableConfig config,
@@ -443,18 +448,18 @@ public class PatientMergeExecuteService {
         }
 
         String sql = """
-        INSERT INTO patient_merge_item_logs
-        (
-            merge_log_id,
-            entity_name,
-            table_name,
-            record_id,
-            old_patient_id,
-            new_patient_id,
-            record_updated_at_at_merge
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """;
+                INSERT INTO patient_merge_item_logs
+                (
+                    merge_log_id,
+                    entity_name,
+                    table_name,
+                    record_id,
+                    old_patient_id,
+                    new_patient_id,
+                    record_updated_at_at_merge
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """;
 
         jdbcTemplate.update(
                 sql,

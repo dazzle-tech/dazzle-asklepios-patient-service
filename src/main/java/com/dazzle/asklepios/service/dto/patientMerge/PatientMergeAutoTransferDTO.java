@@ -29,4 +29,5 @@ public class PatientMergeAutoTransferDTO {
     private String selectedValue;
 
     private MergeDecision suggestedDecision;
+    private String fieldType;
 }

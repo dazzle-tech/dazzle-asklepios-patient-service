@@ -1,6 +1,9 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.enumeration.PatientStatus;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergePreviewResponse;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,4 +20,6 @@ public class PatientMergeService {
     public PatientMergePreviewResponse previewMerge(Long fromPatientId, Long toPatientId) {
         return patientMergeAnalysisService.analyze(fromPatientId, toPatientId);
     }
+
+
 }

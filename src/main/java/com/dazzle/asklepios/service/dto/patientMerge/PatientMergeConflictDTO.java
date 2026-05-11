@@ -22,4 +22,5 @@ public class PatientMergeConflictDTO {
     private String fromValue;
     private String toValue;
     private MergeDecision suggestedDecision;
+    private String fieldType;
 }
