@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.Gender;
+import com.dazzle.asklepios.domain.enumeration.PatientStatus;
 import com.dazzle.asklepios.domain.enumeration.PreferredWayOfContact;
 import com.dazzle.asklepios.domain.enumeration.SecurityLevel;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -25,6 +26,7 @@ import org.hibernate.annotations.Generated;
 import org.hibernate.annotations.GenerationTime;
 
 import java.io.Serializable;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Set;
 
@@ -168,6 +170,23 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
     @Enumerated(EnumType.STRING)
     @Column(name="security_access_level")
     private SecurityLevel securityAccessLevel;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "patient_status", length = 30, nullable = false)
+    @Builder.Default
+    private PatientStatus patientStatus = PatientStatus.ACTIVE;
+
+    @Column(name = "merged_into_patient_id")
+    private Long mergedIntoPatientId;
+
+    @Column(name = "merged_at")
+    private Instant mergedAt;
+
+    @Column(name = "merged_by", length = 50)
+    private String mergedBy;
+
+    @Column(name = "merge_note", length = 1000)
+    private String mergeNote;
 
     @AssertTrue(message = "When patient is not unknown, firstName, lastName, sexAtBirth, dateOfBirth, primaryMobileNumber and email are required")
     public boolean isValidWhenNotUnknown() {
