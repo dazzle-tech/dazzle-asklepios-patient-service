@@ -448,13 +448,13 @@ public class AppointmentFromTemplateService {
     }
 
     @Transactional(readOnly = true)
-    public BulkReschedulePreviewVM getBulkReschedulePreview(Long availabilityGenerationBatchId) {
-        LOG.debug("[BULK_RESCHEDULE_PREVIEW] batchId={}", availabilityGenerationBatchId);
+    public BulkReschedulePreviewVM getBulkReschedulePreview(Long availabilityGenerationBatchId, boolean includeFreeSlots) {
+        LOG.debug("[BULK_RESCHEDULE_PREVIEW] batchId={} includingFreeSlot={}", availabilityGenerationBatchId,includeFreeSlots);
 
         getBatch(availabilityGenerationBatchId);
 
         Instant tomorrowStart = tomorrowStartInstant();
-
+if(!includeFreeSlots){
         List<AppointmentFromTemplate> bookedOrConfirmedAppointments =
                 appointmentFromTemplateRepository
                         .findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(
@@ -463,7 +463,18 @@ public class AppointmentFromTemplateService {
                                 tomorrowStart
                         );
 
-        return new BulkReschedulePreviewVM(bookedOrConfirmedAppointments);
+        return new BulkReschedulePreviewVM(bookedOrConfirmedAppointments);}
+        else {
+            List<AppointmentFromTemplate> appointments =
+                    appointmentFromTemplateRepository
+                            .findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(
+                                    availabilityGenerationBatchId,
+                                    List.of(AppointmentStatus.NEW, AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED),
+                                    tomorrowStart
+                            );
+
+            return new BulkReschedulePreviewVM(appointments);
+        }
     }
 
     @Transactional
