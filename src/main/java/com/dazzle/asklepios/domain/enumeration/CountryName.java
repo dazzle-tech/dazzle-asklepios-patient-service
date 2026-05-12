@@ -220,5 +220,11 @@ public enum CountryName {
     WALLIS_AND_FUTUNA_ISLANDS,
     YEMEN,
     ZAMBIA,
-    ZIMBABWE
+    ZIMBABWE,
+    MARSHALL_ISLANDS,
+    MICRONESIA,
+    MONACO,
+    PALAU,
+    TURKEY,
+    DR_CONGO
 }
