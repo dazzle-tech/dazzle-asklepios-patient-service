@@ -449,22 +449,22 @@ public class AppointmentFromTemplateService {
 
     @Transactional(readOnly = true)
     public BulkReschedulePreviewVM getBulkReschedulePreview(Long availabilityGenerationBatchId, boolean includeFreeSlots) {
-        LOG.debug("[BULK_RESCHEDULE_PREVIEW] batchId={} includingFreeSlot={}", availabilityGenerationBatchId,includeFreeSlots);
+        LOG.debug("[BULK_RESCHEDULE_PREVIEW] batchId={} includingFreeSlot={}", availabilityGenerationBatchId, includeFreeSlots);
 
         getBatch(availabilityGenerationBatchId);
 
         Instant tomorrowStart = tomorrowStartInstant();
-if(!includeFreeSlots){
-        List<AppointmentFromTemplate> bookedOrConfirmedAppointments =
-                appointmentFromTemplateRepository
-                        .findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(
-                                availabilityGenerationBatchId,
-                                List.of(AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED),
-                                tomorrowStart
-                        );
+        if (!includeFreeSlots) {
+            List<AppointmentFromTemplate> bookedOrConfirmedAppointments =
+                    appointmentFromTemplateRepository
+                            .findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(
+                                    availabilityGenerationBatchId,
+                                    List.of(AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED),
+                                    tomorrowStart
+                            );
 
-        return new BulkReschedulePreviewVM(bookedOrConfirmedAppointments);}
-        else {
+            return new BulkReschedulePreviewVM(bookedOrConfirmedAppointments);
+        } else {
             List<AppointmentFromTemplate> appointments =
                     appointmentFromTemplateRepository
                             .findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(
@@ -1022,6 +1022,7 @@ if(!includeFreeSlots){
         }
 
     }
+
     private void validateFreeSlotForBulkReschedule(AppointmentFromTemplate oldAppointment, AppointmentFromTemplate newAppointment) {
         if (newAppointment.getStatus() != AppointmentStatus.NEW) {
             throw new BadRequestAlertException(

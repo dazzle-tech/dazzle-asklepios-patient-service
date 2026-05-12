@@ -15,29 +15,15 @@ import java.util.List;
 @Repository
 public interface AppointmentFromTemplateRepository extends JpaRepository<AppointmentFromTemplate, Long>, JpaSpecificationExecutor<AppointmentFromTemplate> {
 
-    Page<AppointmentFromTemplate> findByStatusInAndStartDatetimeBetween(
-            List<AppointmentStatus> status,
-            Instant startDatetime,
-            Instant endDatetime,
-            Pageable pageable
-    );
+    Page<AppointmentFromTemplate> findByStatusInAndStartDatetimeBetween(List<AppointmentStatus> status, Instant startDatetime, Instant endDatetime, Pageable pageable);
 
     Page<AppointmentFromTemplate> findByDepartmentIdAndStartDatetimeBetween(Long departmentId, Instant startDatetime, Instant endDatetime, Pageable pageable);
 
     Page<AppointmentFromTemplate> findByAvailabilityGenerationBatch_Id(Long id, Pageable pageable);
 
-    List<AppointmentFromTemplate> findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(
-            Long availabilityGenerationBatchId,
-            List<AppointmentStatus> statuses,
-            Instant startDatetime
-    );
+    List<AppointmentFromTemplate> findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(Long availabilityGenerationBatchId, List<AppointmentStatus> statuses, Instant startDatetime);
 
-    List<AppointmentFromTemplate> findByAvailabilityGenerationBatch_IdAndStatusAndStartDatetimeGreaterThanAndBookingModeInOrderByStartDatetimeAsc(
-            Long availabilityGenerationBatchId,
-            AppointmentStatus status,
-            Instant startDatetime,
-            List<BookingMode> bookingMode
-    );
+    List<AppointmentFromTemplate> findByAvailabilityGenerationBatch_IdAndStatusAndStartDatetimeGreaterThanAndBookingModeInOrderByStartDatetimeAsc(Long availabilityGenerationBatchId, AppointmentStatus status, Instant startDatetime, List<BookingMode> bookingMode);
 
 }
 
