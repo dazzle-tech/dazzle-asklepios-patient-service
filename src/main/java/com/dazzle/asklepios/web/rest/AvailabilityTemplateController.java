@@ -192,7 +192,7 @@ public class AvailabilityTemplateController {
             @RequestParam TemplateStatus status,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST request to get availability templates by status={}", status);
+        LOG.debug("REST request to get availability templates by status={} and templateType={}", status, TemplateType.DEPARTMENT);
 
         Page<AvailabilityTemplate> result =
                 availabilityTemplateService.getAllByFacilityAndStatus(status, pageable);
@@ -228,9 +228,18 @@ public class AvailabilityTemplateController {
 
     @GetMapping("/availability-templates/by-facility-and-publish-status")
     public ResponseEntity<List<AvailabilityTemplateResponseVM>> getAllByFacilityAndPublishStatus(@ParameterObject Pageable pageable) {
-        LOG.debug("REST request to get availability templates");
+        LOG.debug("REST request to get availability templates by status={}", TemplateStatus.PUBLISHED);
 
         Page<AvailabilityTemplate> result = availabilityTemplateService.getAllPublishedTemplate(pageable);
+
+        return buildPagedResponse(result);
+    }
+
+    @GetMapping("/availability-templates/by-department-and-type-and-resource-status/active")
+    public ResponseEntity<List<AvailabilityTemplateResponseVM>> getAllByDepartmentAndActive(@RequestParam Long departmentId,@RequestParam TemplateType type,@RequestParam Long resourceId, @ParameterObject Pageable pageable) {
+        LOG.debug("REST request to get availability templates by departmentId={},status={}, template type={}, resourceId={} and active", departmentId, TemplateStatus.PUBLISHED,type,resourceId);
+
+        Page<AvailabilityTemplate> result = availabilityTemplateService.getAllForDepartmentAndActiveAndPublish(departmentId,type,resourceId, pageable);
 
         return buildPagedResponse(result);
     }

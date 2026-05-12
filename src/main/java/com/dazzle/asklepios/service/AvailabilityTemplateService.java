@@ -339,9 +339,10 @@ public class AvailabilityTemplateService {
         LOG.debug("Get AvailabilityTemplate logs for templateId={}", templateId);
         return availabilityTemplateLogRepository.findAllByTemplateIdOrderByLogDateDesc(templateId);
     }
+
     @Transactional(readOnly = true)
     public Page<AvailabilityTemplate> getAllPublishedTemplate(Pageable pageable) {
-        LOG.debug("Get availability templates");
+        LOG.debug("Get availability templates by status=PUBLISHED");
         Long facilityId = getFacility();
 
         Page<AvailabilityTemplate> page =
@@ -350,6 +351,16 @@ public class AvailabilityTemplateService {
                 );
 
         page.getContent().forEach(this::initializeAllowedServices);
+        return page;
+    }
+
+    @Transactional(readOnly = true)
+    public Page<AvailabilityTemplate> getAllForDepartmentAndActiveAndPublish(Long departmentId, TemplateType type, Long resourceId, Pageable pageable) {
+        LOG.debug("get all availability templates for departmentId={}, status={}, template type={}, resourceId={} and active", departmentId, TemplateStatus.PUBLISHED, type, resourceId);
+
+        Page<AvailabilityTemplate> page = availabilityTemplateRepository.findAllByDepartmentIdAndIsActiveTrueAndStatusAndTemplateTypeAndResourceId(departmentId, TemplateStatus.PUBLISHED, type, resourceId, pageable);
+        page.getContent().forEach(this::initializeAllowedServices);
+
         return page;
     }
 

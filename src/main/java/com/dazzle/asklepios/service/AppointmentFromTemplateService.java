@@ -78,8 +78,8 @@ public class AppointmentFromTemplateService {
 
     private static final String ENTITY_NAME = "AppointmentFromTemplate";
 
-    private static final String SYSTEM_CANCEL_REASON = "cancel appointment from reschedule by ";
-    private static final String SYSTEM_RESCHEDULE_REASON = "reschedualed by ";
+    private static final String SYSTEM_CANCEL_REASON = "cancel appointment from reschedule";
+    private static final String SYSTEM_RESCHEDULE_REASON = "rescheduled due to availability change ";
 
     private static final Logger LOG = LoggerFactory.getLogger(AppointmentFromTemplateService.class);
 
@@ -490,7 +490,7 @@ public class AppointmentFromTemplateService {
 
         for (AppointmentFromTemplate appointment : appointmentsToCancel) {
             appointment.setStatus(AppointmentStatus.CANCELLED);
-            appointment.setCancelReason(SYSTEM_CANCEL_REASON + currentUsername());
+            appointment.setCancelReason(SYSTEM_CANCEL_REASON);
             appointment.setCancelledBy(username);
 
             // TODO: trigger patient notification here for booked/confirmed appointments.
@@ -552,7 +552,7 @@ public class AppointmentFromTemplateService {
             validateReschedule(oldAppointment, false);
             validateFreeSlotForReschedule(oldAppointment, newAppointment);
 
-            executeSingleReschedule(oldAppointment, newAppointment, SYSTEM_RESCHEDULE_REASON + currentUsername());
+            executeSingleReschedule(oldAppointment, newAppointment, SYSTEM_RESCHEDULE_REASON);
         }
         cancelFutureFreeAppointmentsFromBatch(originalBatch.getId(), tomorrowStart);
 

@@ -47,6 +47,9 @@ public interface AvailabilityTemplateRepository extends JpaRepository<Availabili
     boolean existsByCopyFromTemplate_Id(Long copyFromTemplateId);
 
     @EntityGraph(attributePaths = {"workingDays"})
-    Page<AvailabilityTemplate> findAllByFacilityIdAndStatus(Long facility,TemplateStatus status, Pageable pageable);
+    Page<AvailabilityTemplate> findAllByFacilityIdAndStatus(Long facility, TemplateStatus status, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"workingDays"})
+    Page<AvailabilityTemplate> findAllByDepartmentIdAndIsActiveTrueAndStatusAndTemplateTypeAndResourceId(Long departmentId,TemplateStatus status,TemplateType type,Long resourceId, Pageable pageable);
 
 }
