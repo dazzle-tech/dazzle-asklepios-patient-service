@@ -526,7 +526,7 @@ public class AppointmentFromTemplateService {
         List<AppointmentFromTemplate> oldAppointments =
                 appointmentFromTemplateRepository.findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(originalBatch.getId(), List.of(AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED), tomorrowStart);
 
-        List<AppointmentFromTemplate> newAvailableAppointments = appointmentFromTemplateRepository.findByAvailabilityGenerationBatch_IdAndStatusAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(replacementBatch.getId(), AppointmentStatus.NEW, tomorrowStart);
+        List<AppointmentFromTemplate> newAvailableAppointments = appointmentFromTemplateRepository.findByAvailabilityGenerationBatch_IdAndStatusAndStartDatetimeGreaterThanAndBookingModeInOrderByStartDatetimeAsc(replacementBatch.getId(), AppointmentStatus.NEW, tomorrowStart, List.of(BookingMode.SLOT));
 
         if (oldAppointments.size() > newAvailableAppointments.size()) {
             List<Long> unmatchedOldAppointmentIds = oldAppointments
@@ -550,7 +550,7 @@ public class AppointmentFromTemplateService {
             AppointmentFromTemplate newAppointment = newAvailableAppointments.get(i);
 
             validateReschedule(oldAppointment, false);
-            validateFreeSlotForReschedule(oldAppointment, newAppointment);
+            validateFreeSlotForBulkReschedule(oldAppointment, newAppointment);
 
             executeSingleReschedule(oldAppointment, newAppointment, SYSTEM_RESCHEDULE_REASON);
         }
@@ -569,10 +569,11 @@ public class AppointmentFromTemplateService {
     private void cancelFutureFreeAppointmentsFromBatch(Long availabilityGenerationBatchId, Instant tomorrowStart) {
         List<AppointmentFromTemplate> freeAppointments =
                 appointmentFromTemplateRepository
-                        .findByAvailabilityGenerationBatch_IdAndStatusAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(
+                        .findByAvailabilityGenerationBatch_IdAndStatusAndStartDatetimeGreaterThanAndBookingModeInOrderByStartDatetimeAsc(
                                 availabilityGenerationBatchId,
                                 AppointmentStatus.NEW,
-                                tomorrowStart
+                                tomorrowStart,
+                                List.of(BookingMode.SLOT, BookingMode.BUFFER)
                         );
 
         String username = currentUsername();
@@ -1009,6 +1010,39 @@ public class AppointmentFromTemplateService {
             );
         }
 
+    }
+    private void validateFreeSlotForBulkReschedule(AppointmentFromTemplate oldAppointment, AppointmentFromTemplate newAppointment) {
+        if (newAppointment.getStatus() != AppointmentStatus.NEW) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must be free",
+                    ENTITY_NAME,
+                    "slotnotfree"
+            );
+        }
+
+        if (newAppointment.getBookingMode() != BookingMode.SLOT) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must be a slot appointment",
+                    ENTITY_NAME,
+                    "invalidslotbookingmode"
+            );
+        }
+
+        if (!equalsNullable(oldAppointment.getFacilityId(), newAppointment.getFacilityId())) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must belong to the same facility",
+                    ENTITY_NAME,
+                    "facilitymismatch"
+            );
+        }
+
+        if (!equalsNullable(oldAppointment.getDepartmentId(), newAppointment.getDepartmentId())) {
+            throw new BadRequestAlertException(
+                    "Selected appointment must belong to the same department",
+                    ENTITY_NAME,
+                    "departmentmismatch"
+            );
+        }
     }
 
     private boolean equalsNullable(Object first, Object second) {

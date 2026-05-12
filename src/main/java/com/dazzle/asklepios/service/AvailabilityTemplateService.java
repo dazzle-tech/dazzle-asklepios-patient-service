@@ -355,10 +355,10 @@ public class AvailabilityTemplateService {
     }
 
     @Transactional(readOnly = true)
-    public Page<AvailabilityTemplate> getAllForDepartmentAndActiveAndPublish(Long departmentId, TemplateType type, Long resourceId, Pageable pageable) {
-        LOG.debug("get all availability templates for departmentId={}, status={}, template type={}, resourceId={} and active", departmentId, TemplateStatus.PUBLISHED, type, resourceId);
+    public Page<AvailabilityTemplate> getAllForDepartmentAndActiveAndPublish(Long departmentId, Pageable pageable) {
+        LOG.debug("get all availability templates for departmentId={}, status={} and active", departmentId, TemplateStatus.PUBLISHED);
 
-        Page<AvailabilityTemplate> page = availabilityTemplateRepository.findAllByDepartmentIdAndIsActiveTrueAndStatusAndTemplateTypeAndResourceId(departmentId, TemplateStatus.PUBLISHED, type, resourceId, pageable);
+        Page<AvailabilityTemplate> page = availabilityTemplateRepository.findAllByDepartmentIdAndIsActiveTrueAndStatus(departmentId, TemplateStatus.PUBLISHED, pageable);
         page.getContent().forEach(this::initializeAllowedServices);
 
         return page;
