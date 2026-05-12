@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.client.setup;
 
+import com.dazzle.asklepios.client.setup.dto.CountryDTO;
 import com.dazzle.asklepios.config.SetupServiceFeignConfig;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -9,7 +10,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 
 @FeignClient(name = "setupServiceClient",url = "${service.asklepios-setup-service-url}" , configuration = SetupServiceFeignConfig.class)
 public interface CountryClient {
+
     @GetMapping("/api/setup/country/{id}")
-    ResponseEntity<Void> existsCountry(@PathVariable("id") @NotNull Long countryId );
+    ResponseEntity<CountryDTO> getCountry(@PathVariable("id") @NotNull Long countryId);
 
 }

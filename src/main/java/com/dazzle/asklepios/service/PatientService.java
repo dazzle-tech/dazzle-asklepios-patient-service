@@ -13,6 +13,8 @@ import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -295,14 +297,14 @@ public class PatientService {
             for (String token : tokens) {
                 String pattern = "%" + token.toLowerCase() + "%";
                 tokenPredicates.add(cb.or(
-                    cb.like(cb.lower(root.get("firstName")), pattern),
-                    cb.like(cb.lower(root.get("secondName")), pattern),
-                    cb.like(cb.lower(root.get("thirdName")), pattern),
-                    cb.like(cb.lower(root.get("lastName")), pattern),
-                    cb.like(cb.lower(root.get("firstNameSecondaryLang")), pattern),
-                    cb.like(cb.lower(root.get("secondNameSecondaryLang")), pattern),
-                    cb.like(cb.lower(root.get("thirdNameSecondaryLang")), pattern),
-                    cb.like(cb.lower(root.get("lastNameSecondaryLang")), pattern)
+                        cb.like(cb.lower(root.get("firstName")), pattern),
+                        cb.like(cb.lower(root.get("secondName")), pattern),
+                        cb.like(cb.lower(root.get("thirdName")), pattern),
+                        cb.like(cb.lower(root.get("lastName")), pattern),
+                        cb.like(cb.lower(root.get("firstNameSecondaryLang")), pattern),
+                        cb.like(cb.lower(root.get("secondNameSecondaryLang")), pattern),
+                        cb.like(cb.lower(root.get("thirdNameSecondaryLang")), pattern),
+                        cb.like(cb.lower(root.get("lastNameSecondaryLang")), pattern)
                 ));
             }
             return cb.and(tokenPredicates.toArray(new Predicate[0]));
@@ -488,13 +490,17 @@ public class PatientService {
                     return criteriaBuilder.disjunction();
                 }
 
-                LOG.debug("Comparing primaryDocumentNumber with value={}",
+                LOG.debug("Comparing primary document number with value={}",
                         duplicationLookupDTO.documentNo().trim());
 
-                preds.add(criteriaBuilder.equal(
-                        patientRoot.get("primaryDocumentNumber"),
-                        duplicationLookupDTO.documentNo().trim()
-                ));
+                Subquery<Long> docSubquery = criteriaQuery.subquery(Long.class);
+                Root<PatientDocument> docRoot = docSubquery.from(PatientDocument.class);
+                docSubquery.select(docRoot.get("patient").get("id"))
+                        .where(
+                                criteriaBuilder.equal(docRoot.get("isPrimary"), Boolean.TRUE),
+                                criteriaBuilder.equal(docRoot.get("number"), duplicationLookupDTO.documentNo().trim())
+                        );
+                preds.add(patientRoot.get("id").in(docSubquery));
             }
 
             LOG.debug("Total predicates added: {}", preds.size());
