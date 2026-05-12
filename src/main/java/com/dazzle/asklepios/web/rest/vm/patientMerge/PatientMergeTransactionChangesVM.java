@@ -1,9 +1,11 @@
 package com.dazzle.asklepios.web.rest.vm.patientMerge;
 
+import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeFieldMetadataDTO;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 
 import java.util.List;
 
@@ -18,10 +20,10 @@ public class PatientMergeTransactionChangesVM {
     private List<FieldChangeVM> fieldChanges;
 
     @Data
-    @Builder
+    @SuperBuilder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class FieldChangeVM {
+    public static class FieldChangeVM extends PatientMergeFieldMetadataDTO {
         private String entityName;
         private String tableName;
         private Long fromRecordId;

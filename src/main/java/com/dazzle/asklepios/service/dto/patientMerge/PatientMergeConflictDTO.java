@@ -5,12 +5,13 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 
 @Data
-@Builder
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-public class PatientMergeConflictDTO {
+public class PatientMergeConflictDTO extends PatientMergeFieldMetadataDTO {
 
     private String entityName;
     private String tableName;
@@ -22,5 +23,5 @@ public class PatientMergeConflictDTO {
     private String fromValue;
     private String toValue;
     private MergeDecision suggestedDecision;
-    private String fieldType;
+
 }

@@ -1,13 +1,18 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientMergeFieldConfig;
 import com.dazzle.asklepios.domain.PatientMergeLog;
 import com.dazzle.asklepios.domain.PatientMergeMasterDecision;
+import com.dazzle.asklepios.domain.PatientMergeTableConfig;
 import com.dazzle.asklepios.domain.enumeration.MergeDecision;
+import com.dazzle.asklepios.repository.PatientMergeFieldConfigRepository;
 import com.dazzle.asklepios.repository.PatientMergeLogRepository;
 import com.dazzle.asklepios.repository.PatientMergeMasterDecisionRepository;
+import com.dazzle.asklepios.repository.PatientMergeTableConfigRepository;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeTransactionChangesVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeTransactionVM;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,13 +24,22 @@ public class PatientMergeTransactionService {
 
     private final PatientMergeLogRepository patientMergeLogRepository;
     private final PatientMergeMasterDecisionRepository patientMergeMasterDecisionRepository;
+    private final PatientMergeTableConfigRepository patientMergeTableConfigRepository;
+    private final PatientMergeFieldConfigRepository patientMergeFieldConfigRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     public PatientMergeTransactionService(
             PatientMergeLogRepository patientMergeLogRepository,
-            PatientMergeMasterDecisionRepository patientMergeMasterDecisionRepository
+            PatientMergeMasterDecisionRepository patientMergeMasterDecisionRepository,
+            PatientMergeTableConfigRepository patientMergeTableConfigRepository,
+            PatientMergeFieldConfigRepository patientMergeFieldConfigRepository,
+            JdbcTemplate jdbcTemplate
     ) {
         this.patientMergeLogRepository = patientMergeLogRepository;
         this.patientMergeMasterDecisionRepository = patientMergeMasterDecisionRepository;
+        this.patientMergeTableConfigRepository = patientMergeTableConfigRepository;
+        this.patientMergeFieldConfigRepository = patientMergeFieldConfigRepository;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     public List<PatientMergeTransactionVM> getTransactions(Long patientId) {
@@ -69,8 +83,10 @@ public class PatientMergeTransactionService {
                 .mergeLogId(log.getId())
                 .fromPatientId(fromPatient != null ? fromPatient.getId() : null)
                 .fromPatientName(buildPatientName(fromPatient))
+                .fromPatientMrn(fromPatient != null ? fromPatient.getMedicalRecordNumber() : null)
                 .toPatientId(toPatient != null ? toPatient.getId() : null)
                 .toPatientName(buildPatientName(toPatient))
+                .toPatientMrn(toPatient != null ? toPatient.getMedicalRecordNumber() : null)
                 .mergeStatus(log.getMergeStatus())
                 .mergedBy(log.getMergedBy())
                 .mergedAt(log.getMergedAt())
@@ -109,6 +125,11 @@ public class PatientMergeTransactionService {
     private PatientMergeTransactionChangesVM.FieldChangeVM toFieldChangeVM(
             PatientMergeMasterDecision decision
     ) {
+        PatientMergeFieldConfig fieldConfig = findFieldConfig(
+                decision.getTableName(),
+                decision.getFieldName()
+        );
+
         return PatientMergeTransactionChangesVM.FieldChangeVM.builder()
                 .entityName(decision.getEntityName())
                 .tableName(decision.getTableName())
@@ -119,7 +140,57 @@ public class PatientMergeTransactionService {
                 .oldValue(decision.getToValue())
                 .newValue(decision.getSelectedValue())
                 .decision(decision.getFinalDecision() != null ? decision.getFinalDecision().name() : null)
+                .fieldType(getColumnType(decision.getTableName(), decision.getFieldName()))
+                .inputType(fieldConfig != null ? fieldConfig.getInputType() : null)
+                .inputSource(fieldConfig != null ? fieldConfig.getInputSource() : null)
                 .build();
+    }
+
+    private PatientMergeFieldConfig findFieldConfig(String tableName, String fieldName) {
+        if (tableName == null || tableName.isBlank() || fieldName == null || fieldName.isBlank()) {
+            return null;
+        }
+
+        List<PatientMergeTableConfig> tableConfigs =
+                patientMergeTableConfigRepository.findByEnabledTrueOrderBySortOrderAscIdAsc();
+
+        PatientMergeTableConfig tableConfig = tableConfigs.stream()
+                .filter(config -> tableName.equals(config.getTableName()))
+                .findFirst()
+                .orElse(null);
+
+        if (tableConfig == null || tableConfig.getId() == null) {
+            return null;
+        }
+
+        return patientMergeFieldConfigRepository
+                .findByTableConfigIdAndEnabledTrueOrderBySortOrderAscIdAsc(tableConfig.getId())
+                .stream()
+                .filter(config -> fieldName.equals(config.getFieldName()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String getColumnType(String tableName, String fieldName) {
+        if (tableName == null || tableName.isBlank() || fieldName == null || fieldName.isBlank()) {
+            return null;
+        }
+
+        try {
+            return jdbcTemplate.queryForObject(
+                    """
+                    SELECT data_type
+                    FROM information_schema.columns
+                    WHERE table_name = ?
+                      AND column_name = ?
+                    """,
+                    String.class,
+                    tableName,
+                    fieldName
+            );
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private String buildPatientName(Patient patient) {

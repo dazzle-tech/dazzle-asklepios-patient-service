@@ -58,7 +58,11 @@ public class PatientMergeFieldConfig  implements Serializable {
 
     @Column(name = "sort_order", nullable = false)
     private Integer sortOrder;
+    @Column(name = "input_type", length = 50)
+    private String inputType;
 
+    @Column(name = "input_source", length = 100)
+    private String inputSource;
 
 
 }

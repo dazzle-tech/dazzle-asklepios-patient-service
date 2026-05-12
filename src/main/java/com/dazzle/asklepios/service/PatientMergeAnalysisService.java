@@ -329,6 +329,8 @@ public class PatientMergeAnalysisService {
                         .fromValue(fromStr)
                         .toValue(toStr)
                         .fieldType(getColumnType(tableConfig.getTableName(), fieldConfig.getFieldName()))
+                        .inputType(fieldConfig.getInputType())
+                        .inputSource(fieldConfig.getInputSource())
                         .suggestedDecision(suggestedDecision)
                         .build()
         );
@@ -358,6 +360,8 @@ public class PatientMergeAnalysisService {
                 .toValue("")
                 .selectedValue(fromStr)
                 .fieldType(getColumnType(tableConfig.getTableName(), fieldConfig.getFieldName()))
+                .inputType(fieldConfig.getInputType())
+                .inputSource(fieldConfig.getInputSource())
                 .suggestedDecision(MergeDecision.TAKE_FROM)
                 .build());
     }

@@ -17,9 +17,11 @@ public class PatientMergeTransactionVM {
 
     private Long fromPatientId;
     private String fromPatientName;
+    private String fromPatientMrn;
 
     private Long toPatientId;
     private String toPatientName;
+    private String toPatientMrn;
 
     private String mergeStatus;
     private String mergedBy;

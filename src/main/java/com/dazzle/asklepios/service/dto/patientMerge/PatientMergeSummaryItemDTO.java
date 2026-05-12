@@ -2,15 +2,15 @@ package com.dazzle.asklepios.service.dto.patientMerge;
 
 import com.dazzle.asklepios.domain.enumeration.MergeDecision;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
+import lombok.experimental.SuperBuilder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
-@Builder
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-public class PatientMergeSummaryItemDTO {
+public class PatientMergeSummaryItemDTO extends PatientMergeFieldMetadataDTO{
 
     private String entityName;
     private String tableName;
@@ -25,6 +25,5 @@ public class PatientMergeSummaryItemDTO {
 
     private String oldValue;
     private String newValue;
-
     private MergeDecision decision;
 }
