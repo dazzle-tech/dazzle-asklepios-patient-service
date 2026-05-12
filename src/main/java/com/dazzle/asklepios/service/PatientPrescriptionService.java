@@ -214,6 +214,9 @@ public class PatientPrescriptionService {
 
         if (entity.getMedications() != null) {
             for (PatientPrescriptionMedication med : entity.getMedications()) {
+                if (PrescriptionStatus.CANCELLED.equals(med.getStatus())) {
+                    continue;
+                }
                 med.setStatus(PrescriptionStatus.SUBMITTED);
                 med.setLastModifiedBy(username);
                 med.setLastModifiedDate(now);
