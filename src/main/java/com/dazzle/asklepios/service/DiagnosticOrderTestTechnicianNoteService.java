@@ -31,15 +31,30 @@ public class DiagnosticOrderTestTechnicianNoteService {
 
     public DiagnosticOrderTestTechnicianNote create(DiagnosticOrderTestTechnicianNoteDTO dto) {
         LOG.debug("[TechnicianNoteService] CREATE - start. payload={}", dto);
-        DiagnosticOrderTestTechnicianNote note = new DiagnosticOrderTestTechnicianNote();
-        DiagnosticOrder diagnosticOrder = getDiagnosticOrder(dto.orderId());
-        DiagnosticOrderTest diagnosticOrderTest = getDiagnosticOrderTest(dto.orderId());
-        note.setOrderTestId(diagnosticOrderTest.getId());
+
+        DiagnosticOrderTestTechnicianNote note =
+                new DiagnosticOrderTestTechnicianNote();
+
+        DiagnosticOrder diagnosticOrder =
+                getDiagnosticOrder(dto.orderId());
+
+        DiagnosticOrderTest diagnosticOrderTest =
+                getDiagnosticOrderTest(dto.orderTestId());
+
         note.setOrderId(diagnosticOrder.getId());
+        note.setOrderTestId(diagnosticOrderTest.getId());
         note.setNote(dto.note());
-        DiagnosticOrderTestTechnicianNote saved = noteRepository.save(note);
-        LOG.debug("[TechnicianNoteService] CREATE - done. id={} orderId={} orderTestId={}",
-                saved.getId(), saved.getOrderId(), saved.getOrderTestId());
+
+        DiagnosticOrderTestTechnicianNote saved =
+                noteRepository.save(note);
+
+        LOG.debug(
+                "[TechnicianNoteService] CREATE - done. id={} orderId={} orderTestId={}",
+                saved.getId(),
+                saved.getOrderId(),
+                saved.getOrderTestId()
+        );
+
         return saved;
     }
 
