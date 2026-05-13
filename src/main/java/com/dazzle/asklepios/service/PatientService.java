@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.gateway.InternalMailClient;
+import com.dazzle.asklepios.client.gateway.dto.PatientCreatePasswordMailDTO;
 import com.dazzle.asklepios.domain.DuplicationCandidate;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
@@ -15,6 +17,7 @@ import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -25,8 +28,10 @@ import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -42,15 +47,17 @@ public class PatientService {
     private final PatientRepository patientRepository;
     private final PatientDocumentRepository patientDocumentRepository;
     private final DuplicationCandidateRepository duplicationCandidateRepository;
+    private final InternalMailClient internalMailClient;
 
     public PatientService(
             PatientRepository patientRepository,
 
-            PatientDocumentRepository patientDocumentRepository, DuplicationCandidateRepository duplicationCandidateRepository
-    ) {
+            PatientDocumentRepository patientDocumentRepository, DuplicationCandidateRepository duplicationCandidateRepository,
+            InternalMailClient internalMailClient) {
         this.patientRepository = patientRepository;
         this.patientDocumentRepository = patientDocumentRepository;
         this.duplicationCandidateRepository = duplicationCandidateRepository;
+        this.internalMailClient = internalMailClient;
     }
 
     public Patient create(PatientCreateDTO dto) {
@@ -526,6 +533,69 @@ public class PatientService {
 
         Specification<Patient> spec = buildDuplicationSpec(duplicationCandidate.getFields(), duplicationLookupDTO);
         return patientRepository.findAll(spec, pageable);
+    }
+
+    @Transactional
+    public void sendCreatePasswordEmailToPatient(Long patientId) {
+        Patient patient = patientRepository
+                .findById(patientId)
+                .orElseThrow(() -> new BadRequestAlertException("notfound", "patient", "Patient not found"));
+
+        if (patient.getEmail() == null || patient.getEmail().trim().isEmpty()) {
+            throw new BadRequestAlertException("email.missing", "patient","Patient email is missing" );
+        }
+
+        Instant now = Instant.now();
+
+        String token = patient.getResetKey();
+
+        boolean hasValidToken =
+                token != null &&
+                        patient.getResetDate() != null &&
+                        patient.getResetDate().isAfter(now.minus(24, ChronoUnit.HOURS));
+
+        if (!hasValidToken) {
+            token = RandomUtil.generateResetKey();
+            patient.setResetKey(token);
+            patient.setResetDate(now);
+        }
+
+        patientRepository.save(patient);
+        PatientDocument primaryDoc = patientDocumentRepository.findByPatientIdAndIsPrimaryTrue(patient.getId()).orElse(null);
+       if(primaryDoc == null){
+           LOG.warn("Primary document not found for patient id={}", patient.getId());
+           throw new BadRequestAlertException("primary.document.missing", "patient", "Primary document is missing for patient");
+       }
+        PatientCreatePasswordMailDTO dto = new PatientCreatePasswordMailDTO(
+                patient.getNativeLanguage() != null ? patient.getNativeLanguage() : "en",
+                patient.getId(),
+                patient.getFirstName() + (patient.getLastName() != null ? " " + patient.getLastName() : ""),
+                primaryDoc.getNumber(),
+                patient.getEmail(),
+                token
+        );
+
+        internalMailClient.sendPatientCreatePasswordMail(dto);
+    }
+
+    public final class RandomUtil {
+        private static final int DEF_COUNT = 20;
+        private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
+        private RandomUtil() {
+        }
+
+        public static String generateRandomAlphanumericString() {
+            return RandomStringUtils.random(20, 0, 0, true, true, null, SECURE_RANDOM);
+        }
+
+        public static String generateResetKey() {
+            return generateRandomAlphanumericString();
+        }
+
+        static {
+            SECURE_RANDOM.nextBytes(new byte[64]);
+        }
     }
 
 }

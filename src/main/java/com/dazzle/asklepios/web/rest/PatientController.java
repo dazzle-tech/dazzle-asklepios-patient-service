@@ -382,6 +382,15 @@ public class PatientController {
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
 
+    @PostMapping("/{id}/send-create-password")
+    public ResponseEntity<Void> sendCreatePasswordEmailToPatient(@PathVariable Long id) {
+        LOG.debug("REST send create-password email to Patient id={}", id);
+
+        patientService.sendCreatePasswordEmailToPatient(id);
+
+        return ResponseEntity.ok().build();
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<Patient> getPatientById(@PathVariable Long id) {
         LOG.debug("REST get Patient by id={}", id);
