@@ -41,4 +41,17 @@ public class CurrentMedication extends AbstractAuditingEntity<Long>
     @Column(name = "start_date", nullable = false)
     @Temporal(TemporalType.DATE)
     private Date startDate;
+
+    @Column(name = "status", nullable = false, length = 50)
+    @Builder.Default
+    private String status = "ACTIVE";
+
+    @Column(name = "cancelled_by", length = 50)
+    private String cancelledBy;
+
+    @Column(name = "cancelled_date")
+    private Date cancelledDate;
+
+    @Column(name = "cancellation_reason", length = 500)
+    private String cancellationReason;
 }

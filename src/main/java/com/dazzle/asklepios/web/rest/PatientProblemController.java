@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemCancelDTO;
 
 @RestController
 @RequestMapping("/api/patient")
@@ -75,6 +76,21 @@ public class PatientProblemController {
         );
     }
 
+    @PutMapping("/problems/cancel")
+    public ResponseEntity<PatientProblemResponseVM> cancel(
+            @Valid @RequestBody PatientProblemCancelDTO patientProblemCancelDTO
+    ) {
+        LOG.debug("REST cancel PatientProblem payload={}", patientProblemCancelDTO);
+
+        PatientProblem cancelled =
+                patientProblemService.cancel(patientProblemCancelDTO);
+
+        LOG.info("REST cancel PatientProblem - cancelled id={}", cancelled.getId());
+
+        return ResponseEntity.ok(
+                PatientProblemResponseVM.ofEntity(cancelled)
+        );
+    }
 
     @DeleteMapping("/problems/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {

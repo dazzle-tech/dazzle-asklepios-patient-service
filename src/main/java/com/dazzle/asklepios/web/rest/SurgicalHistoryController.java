@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import java.net.URI;
 import java.util.List;
+import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryCancelDTO;
 
 @RestController
 @RequestMapping("/api/patient")
@@ -68,6 +69,14 @@ public class SurgicalHistoryController {
     ) {
         SurgicalHistory updated = service.update(dto);
         return ResponseEntity.ok(SurgicalHistoryResponseVM.ofEntity(updated));
+    }
+
+    @PutMapping("/surgical-history/cancel")
+    public ResponseEntity<SurgicalHistoryResponseVM> cancel(
+            @Valid @RequestBody SurgicalHistoryCancelDTO dto
+    ) {
+        SurgicalHistory cancelled = service.cancel(dto);
+        return ResponseEntity.ok(SurgicalHistoryResponseVM.ofEntity(cancelled));
     }
 
     @DeleteMapping("/surgical-history/{id}")

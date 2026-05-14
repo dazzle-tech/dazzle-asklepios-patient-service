@@ -19,7 +19,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.dazzle.asklepios.service.dto.currentMedication.CurrentMedicationCancelDTO;
+import java.util.Date;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
@@ -96,6 +97,47 @@ public class CurrentMedicationService {
             handleConstraints(ex);
             throw new BadRequestAlertException(
                     "Database constraint violated while updating current medication.",
+                    "currentMedication",
+                    "db.constraint"
+            );
+        }
+    }
+
+    public CurrentMedication cancel(CurrentMedicationCancelDTO currentMedicationCancelDTO) {
+        LOG.info("[CANCEL] CurrentMedication payload={}", currentMedicationCancelDTO);
+
+        CurrentMedication entity = currentMedicationRepository
+                .findById(currentMedicationCancelDTO.id())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Current medication not found with id " + currentMedicationCancelDTO.id(),
+                        "currentMedication",
+                        "notfound"
+                ));
+
+        entity.setStatus("CANCELLED");
+        entity.setCancelledBy(
+                entity.getLastModifiedBy() != null
+                        ? entity.getLastModifiedBy()
+                        : entity.getCreatedBy()
+        );
+        entity.setCancelledDate(new Date());
+        entity.setCancellationReason(
+                currentMedicationCancelDTO.cancellationReason()
+        );
+
+        try {
+            CurrentMedication cancelled =
+                    currentMedicationRepository.saveAndFlush(entity);
+
+            LOG.info("[CANCEL] CurrentMedication cancelled id={}", cancelled.getId());
+
+            return cancelled;
+
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            handleConstraints(ex);
+
+            throw new BadRequestAlertException(
+                    "Database constraint violated while cancelling current medication.",
                     "currentMedication",
                     "db.constraint"
             );

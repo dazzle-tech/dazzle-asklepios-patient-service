@@ -68,4 +68,18 @@ public class Hospitalization extends AbstractAuditingEntity<Long>
 
     @Column(name = "medical_interventions_performed", length = 1000)
     private String medicalInterventionsPerformed;
+
+    @Column(name = "status", nullable = false, length = 50)
+    @Builder.Default
+    private String status = "ACTIVE";
+
+    @Column(name = "cancelled_by", length = 50)
+    private String cancelledBy;
+
+    @Column(name = "cancelled_date")
+    private Date cancelledDate;
+
+    @Column(name = "cancellation_reason", length = 500)
+    private String cancellationReason;
+
 }

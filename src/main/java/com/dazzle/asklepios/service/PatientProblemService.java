@@ -17,7 +17,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemCancelDTO;
+import java.util.Date;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
@@ -111,6 +112,37 @@ public class PatientProblemService {
         }
     }
 
+    public PatientProblem cancel(PatientProblemCancelDTO patientProblemCancelDTO) {
+        LOG.info("[CANCEL] PatientProblem payload={}", patientProblemCancelDTO);
+
+        PatientProblem entity = patientProblemRepository.findById(patientProblemCancelDTO.id())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient problem not found with id " + patientProblemCancelDTO.id(),
+                        "patientProblem",
+                        "notfound"
+                ));
+
+        entity.setRecordStatus("CANCELLED");
+        entity.setCancelledBy(
+                entity.getLastModifiedBy() != null
+                        ? entity.getLastModifiedBy()
+                        : entity.getCreatedBy()
+        );
+        entity.setCancelledDate(new Date());
+        entity.setCancellationReason(patientProblemCancelDTO.cancellationReason());
+
+        try {
+            return patientProblemRepository.saveAndFlush(entity);
+
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            handleConstraints(ex);
+            throw new BadRequestAlertException(
+                    "Database constraint violated while cancelling patient problem.",
+                    "patientProblem",
+                    "db.constraint"
+            );
+        }
+    }
 
     public void delete(Long id) {
         LOG.info("[DELETE] PatientProblem id={}", id);

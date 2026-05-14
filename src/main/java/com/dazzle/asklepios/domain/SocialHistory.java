@@ -96,4 +96,18 @@ public class SocialHistory extends AbstractAuditingEntity<Long>
 
     @Column(name = "diagnosed_eating_disorders", length = 50)
     private String diagnosedEatingDisorders;
+    @Column(name = "status", nullable = false, length = 50)
+    @Builder.Default
+    private String status = "ACTIVE";
+
+    @Column(name = "cancelled_by", length = 50)
+    private String cancelledBy;
+
+    @Column(name = "cancelled_date")
+    @Temporal(TemporalType.TIMESTAMP)
+    private Date cancelledDate;
+
+    @Column(name = "cancellation_reason", length = 500)
+    private String cancellationReason;
 }
+

@@ -19,7 +19,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryCancelDTO;
+import java.util.Date;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
@@ -111,6 +112,35 @@ public class SurgicalHistoryService {
         }
     }
 
+    public SurgicalHistory cancel(SurgicalHistoryCancelDTO dto) {
+        LOG.info("[CANCEL] SurgicalHistory payload={}", dto);
+
+        SurgicalHistory entity = repository.findById(dto.id())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Surgical history not found with id " + dto.id(),
+                        "surgicalHistory",
+                        "notfound"
+                ));
+
+        entity.setStatus("CANCELLED");
+        entity.setCancelledBy(entity.getLastModifiedBy());
+        entity.setCancelledDate(new Date());
+        entity.setCancellationReason(dto.cancellationReason());
+
+        try {
+            SurgicalHistory cancelled = repository.saveAndFlush(entity);
+            entityManager.refresh(cancelled);
+            return cancelled;
+
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            handleConstraints(ex);
+            throw new BadRequestAlertException(
+                    "Database constraint violated while cancelling surgical history.",
+                    "surgicalHistory",
+                    "db.constraint"
+            );
+        }
+    }
 
     public void delete(Long id) {
         LOG.info("[DELETE] SurgicalHistory id={}", id);

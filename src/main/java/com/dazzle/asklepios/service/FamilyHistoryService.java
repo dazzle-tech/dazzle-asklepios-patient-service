@@ -17,7 +17,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.dazzle.asklepios.service.dto.FamilyHistory.FamilyHistoryCancelDTO;
+import java.util.Date;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
@@ -86,6 +87,38 @@ public class FamilyHistoryService {
             handleConstraints(ex);
             throw new BadRequestAlertException(
                     "Database constraint violated while updating family history.",
+                    "familyHistory",
+                    "db.constraint"
+            );
+        }
+    }
+
+    public FamilyHistory cancel(FamilyHistoryCancelDTO familyHistoryCancelDTO) {
+        LOG.info("[CANCEL] FamilyHistory payload={}", familyHistoryCancelDTO);
+
+        FamilyHistory entity = familyHistoryRepository.findById(familyHistoryCancelDTO.id())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Family history not found with id " + familyHistoryCancelDTO.id(),
+                        "familyHistory",
+                        "notfound"
+                ));
+
+        entity.setStatus("CANCELLED");
+        entity.setCancelledBy(
+                entity.getLastModifiedBy() != null
+                        ? entity.getLastModifiedBy()
+                        : entity.getCreatedBy()
+        );
+        entity.setCancelledDate(new Date());
+        entity.setCancellationReason(familyHistoryCancelDTO.cancellationReason());
+
+        try {
+            return familyHistoryRepository.saveAndFlush(entity);
+
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            handleConstraints(ex);
+            throw new BadRequestAlertException(
+                    "Database constraint violated while cancelling family history.",
                     "familyHistory",
                     "db.constraint"
             );

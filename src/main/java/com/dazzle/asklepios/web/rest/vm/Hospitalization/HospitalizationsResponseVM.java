@@ -15,8 +15,18 @@ public record HospitalizationsResponseVM(
         Integer lengthOfStayDays,
         String outcomes,
         String medicalInterventionsPerformed,
+
+        // Cancel fields
+        String status,
+        String cancelledBy,
+        Date cancelledDate,
+        String cancellationReason,
+
+        // Audit fields
         String createdBy,
-        Instant createdDate
+        Instant createdDate,
+        String lastModifiedBy,
+        Instant lastModifiedDate
 ) {
     public static HospitalizationsResponseVM ofEntity(Hospitalization entity) {
         return new HospitalizationsResponseVM(
@@ -29,8 +39,18 @@ public record HospitalizationsResponseVM(
                 entity.getLengthOfStayDays(),
                 entity.getOutcomes(),
                 entity.getMedicalInterventionsPerformed(),
+
+                // Cancel fields
+                entity.getStatus(),
+                entity.getCancelledBy(),
+                entity.getCancelledDate(),
+                entity.getCancellationReason(),
+
+                // Audit fields
                 entity.getCreatedBy(),
-                entity.getCreatedDate()
+                entity.getCreatedDate(),
+                entity.getLastModifiedBy(),
+                entity.getLastModifiedDate()
         );
     }
 }

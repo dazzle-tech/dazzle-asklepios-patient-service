@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
-
+import com.dazzle.asklepios.service.dto.socialHistory.SocialHistoryCancelDTO;
 import java.net.URI;
 import java.util.Date;
 import java.util.List;
@@ -79,6 +79,19 @@ public class SocialHistoryController {
         LOG.info("REST update SocialHistory - updated id={}", updated.getId());
 
         return ResponseEntity.ok(updated);
+    }
+
+    @PutMapping("/social-history/cancel")
+    public ResponseEntity<SocialHistory> cancel(
+            @Valid @RequestBody SocialHistoryCancelDTO cancelDTO
+    ) {
+        LOG.debug("REST cancel SocialHistory payload={}", cancelDTO);
+
+        SocialHistory cancelled = socialHistoryService.cancel(cancelDTO);
+
+        LOG.info("REST cancel SocialHistory - cancelled id={}", cancelled.getId());
+
+        return ResponseEntity.ok(cancelled);
     }
 
     @DeleteMapping("/social-history/{id}")

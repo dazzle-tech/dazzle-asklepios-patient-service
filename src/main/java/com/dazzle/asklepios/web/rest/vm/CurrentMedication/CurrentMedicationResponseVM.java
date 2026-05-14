@@ -1,41 +1,44 @@
-package com.dazzle.asklepios.web.rest.vm.FamilyHistory;
+package com.dazzle.asklepios.web.rest.vm.CurrentMedication;
 
-import com.dazzle.asklepios.domain.FamilyHistory;
-import com.dazzle.asklepios.domain.enumeration.Relations;
+import com.dazzle.asklepios.domain.CurrentMedication;
 
 import java.time.Instant;
 import java.util.Date;
 
-public record FamilyHistoryResponseVM(
+public record CurrentMedicationResponseVM(
         Long id,
         Long patientId,
-        String condition,
-        Relations relation,
-        Boolean inheritedDiseases,
+        Long activeIngredientId,
+        String instructions,
+        Date startDate,
 
+        // Cancel fields
         String status,
         String cancelledBy,
         Date cancelledDate,
         String cancellationReason,
 
+        // Audit fields
         String createdBy,
         Instant createdDate,
         String lastModifiedBy,
         Instant lastModifiedDate
 ) {
-    public static FamilyHistoryResponseVM ofEntity(FamilyHistory entity) {
-        return new FamilyHistoryResponseVM(
+    public static CurrentMedicationResponseVM ofEntity(CurrentMedication entity) {
+        return new CurrentMedicationResponseVM(
                 entity.getId(),
                 entity.getPatient().getId(),
-                entity.getCondition(),
-                entity.getRelation(),
-                entity.getInheritedDiseases(),
+                entity.getActiveIngredientId(),
+                entity.getInstructions(),
+                entity.getStartDate(),
 
+                // Cancel fields
                 entity.getStatus(),
                 entity.getCancelledBy(),
                 entity.getCancelledDate(),
                 entity.getCancellationReason(),
 
+                // Audit fields
                 entity.getCreatedBy(),
                 entity.getCreatedDate(),
                 entity.getLastModifiedBy(),

@@ -12,14 +12,24 @@ public record PatientProblemResponseVM(
         Long patientId,
         String condition,
         Date dateOfDiagnosis,
+
         @NotNull
         EncounterVaccinationStatus status,
+
         String type,
         Date dateOfResolution,
         Boolean byPatient,
         String sourceOfInformation,
+
+        String recordStatus,
+        String cancelledBy,
+        Date cancelledDate,
+        String cancellationReason,
+
         String createdBy,
-        Instant createdDate
+        Instant createdDate,
+        String lastModifiedBy,
+        Instant lastModifiedDate
 ) {
     public static PatientProblemResponseVM ofEntity(PatientProblem entity) {
         return new PatientProblemResponseVM(
@@ -27,15 +37,23 @@ public record PatientProblemResponseVM(
                 entity.getPatient().getId(),
                 entity.getCondition(),
                 entity.getDateOfDiagnosis(),
+
                 entity.getStatus(),
+
                 entity.getType(),
                 entity.getDateOfResolution(),
                 entity.getByPatient(),
                 entity.getSourceOfInformation(),
+
+                entity.getRecordStatus(),
+                entity.getCancelledBy(),
+                entity.getCancelledDate(),
+                entity.getCancellationReason(),
+
                 entity.getCreatedBy(),
-                entity.getCreatedDate()
+                entity.getCreatedDate(),
+                entity.getLastModifiedBy(),
+                entity.getLastModifiedDate()
         );
     }
 }
-
-

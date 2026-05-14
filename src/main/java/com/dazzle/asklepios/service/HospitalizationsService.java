@@ -17,7 +17,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationCancelDTO;
+import java.util.Date;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
@@ -93,6 +94,38 @@ public class HospitalizationsService {
             handleConstraints(ex);
             throw new BadRequestAlertException(
                     "Database constraint violated while updating patient admission.",
+                    "hospitalization",
+                    "db.constraint"
+            );
+        }
+    }
+
+    public Hospitalization cancel(HospitalizationCancelDTO hospitalizationCancelDTO) {
+        LOG.info("[CANCEL] Hospitalization payload={}", hospitalizationCancelDTO);
+
+        Hospitalization entity = hospitalizationRepository.findById(hospitalizationCancelDTO.id())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient admission not found with id " + hospitalizationCancelDTO.id(),
+                        "hospitalization",
+                        "notfound"
+                ));
+
+        entity.setStatus("CANCELLED");
+        entity.setCancelledBy(
+                entity.getLastModifiedBy() != null
+                        ? entity.getLastModifiedBy()
+                        : entity.getCreatedBy()
+        );
+        entity.setCancelledDate(new Date());
+        entity.setCancellationReason(hospitalizationCancelDTO.cancellationReason());
+
+        try {
+            return hospitalizationRepository.saveAndFlush(entity);
+
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            handleConstraints(ex);
+            throw new BadRequestAlertException(
+                    "Database constraint violated while cancelling patient admission.",
                     "hospitalization",
                     "db.constraint"
             );

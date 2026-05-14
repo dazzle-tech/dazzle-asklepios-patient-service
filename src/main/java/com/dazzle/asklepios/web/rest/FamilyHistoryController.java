@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+import com.dazzle.asklepios.service.dto.FamilyHistory.FamilyHistoryCancelDTO;
 
 @RestController
 @RequestMapping("/api/patient")
@@ -76,6 +77,21 @@ public class FamilyHistoryController {
         );
     }
 
+    @PutMapping("/family-history/cancel")
+    public ResponseEntity<FamilyHistoryResponseVM> cancel(
+            @Valid @RequestBody FamilyHistoryCancelDTO familyHistoryCancelDTO
+    ) {
+        LOG.debug("REST cancel FamilyHistory payload={}", familyHistoryCancelDTO);
+
+        FamilyHistory cancelled =
+                familyHistoryService.cancel(familyHistoryCancelDTO);
+
+        LOG.info("REST cancel FamilyHistory - cancelled id={}", cancelled.getId());
+
+        return ResponseEntity.ok(
+                FamilyHistoryResponseVM.ofEntity(cancelled)
+        );
+    }
 
     @DeleteMapping("/family-history/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {

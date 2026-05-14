@@ -16,8 +16,18 @@ public record SurgicalHistoryResponseVM(
         String adverseReactionsToAnesthesia,
         Boolean hasImplantsOrDevices,
         String implantsOrDevicesDescription,
+
+        // Cancel fields
+        String status,
+        String cancelledBy,
+        Date cancelledDate,
+        String cancellationReason,
+
+        // Auditing fields
         String createdBy,
-        Instant createdDate
+        Instant createdDate,
+        String lastModifiedBy,
+        Instant lastModifiedDate
 ) {
     public static SurgicalHistoryResponseVM ofEntity(SurgicalHistory entity) {
         return new SurgicalHistoryResponseVM(
@@ -31,8 +41,18 @@ public record SurgicalHistoryResponseVM(
                 entity.getAdverseReactionsToAnesthesia(),
                 entity.getHasImplantsOrDevices(),
                 entity.getImplantsOrDevicesDescription(),
+
+                // Cancel fields
+                entity.getStatus(),
+                entity.getCancelledBy(),
+                entity.getCancelledDate(),
+                entity.getCancellationReason(),
+
+                // Auditing fields
                 entity.getCreatedBy(),
-                entity.getCreatedDate()
+                entity.getCreatedDate(),
+                entity.getLastModifiedBy(),
+                entity.getLastModifiedDate()
         );
     }
 }

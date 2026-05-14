@@ -20,7 +20,7 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-
+import java.util.Date;
 import java.io.Serial;
 import java.io.Serializable;
 
@@ -58,4 +58,17 @@ public class FamilyHistory extends AbstractAuditingEntity<Long>
 
     @Column(name = "inherited_diseases")
     private Boolean inheritedDiseases;
+
+    @Column(name = "status", nullable = false, length = 50)
+    @Builder.Default
+    private String status = "ACTIVE";
+
+    @Column(name = "cancelled_by", length = 50)
+    private String cancelledBy;
+
+    @Column(name = "cancelled_date")
+    private Date cancelledDate;
+
+    @Column(name = "cancellation_reason", length = 500)
+    private String cancellationReason;
 }

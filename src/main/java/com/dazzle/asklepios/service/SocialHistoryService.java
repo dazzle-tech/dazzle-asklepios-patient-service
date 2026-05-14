@@ -17,7 +17,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.socialHistory.SocialHistoryCancelDTO;
 
+import java.util.Date;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
@@ -121,6 +124,38 @@ public class SocialHistoryService {
                     "db.constraint"
             );
         }
+    }
+
+    public SocialHistory cancel(SocialHistoryCancelDTO cancelDTO) {
+        LOG.info("[CANCEL] SocialHistory dto={}", cancelDTO);
+
+        SocialHistory socialHistory = socialHistoryRepository.findById(cancelDTO.id())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Social history not found with id " + cancelDTO.id(),
+                        "socialHistory",
+                        "notfound"
+                ));
+
+        if ("CANCELLED".equalsIgnoreCase(socialHistory.getStatus())) {
+            throw new BadRequestAlertException(
+                    "Social history is already cancelled.",
+                    "socialHistory",
+                    "already.cancelled"
+            );
+        }
+
+        socialHistory.setStatus("CANCELLED");
+        socialHistory.setCancelledBy(
+                SecurityUtils.getCurrentUserLogin().orElse("system")
+        );
+        socialHistory.setCancelledDate(new Date());
+        socialHistory.setCancellationReason(cancelDTO.cancellationReason());
+
+        SocialHistory cancelled = socialHistoryRepository.saveAndFlush(socialHistory);
+
+        LOG.info("[CANCEL] SocialHistory cancelled id={}", cancelled.getId());
+
+        return cancelled;
     }
 
     public void delete(Long id) {
