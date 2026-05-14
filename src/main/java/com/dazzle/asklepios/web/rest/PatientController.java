@@ -43,8 +43,7 @@ import java.util.List;
 @RequestMapping("/api/patient")
 public class PatientController {
 
-    private static final Logger LOG =
-            LoggerFactory.getLogger(PatientController.class);
+    private static final Logger LOG = LoggerFactory.getLogger(PatientController.class);
 
     private final PatientService patientService;
 
@@ -52,11 +51,8 @@ public class PatientController {
         this.patientService = patientService;
     }
 
-
     @PostMapping
-    public ResponseEntity<Patient> createPatient(
-            @Valid @RequestBody PatientCreateDTO patientDTO
-    ) {
+    public ResponseEntity<Patient> createPatient(@Valid @RequestBody PatientCreateDTO patientDTO) {
         LOG.debug("REST create Patient payload={}", patientDTO);
 
         if (patientDTO == null) {
@@ -67,12 +63,8 @@ public class PatientController {
         return ResponseEntity.created(URI.create("/api/patient/" + created.getId())).body(created);
     }
 
-
     @PutMapping("/{id}")
-    public ResponseEntity<Patient> updatePatient(
-            @PathVariable Long id,
-            @Valid @RequestBody PatientUpdateDTO patientDTO
-    ) {
+    public ResponseEntity<Patient> updatePatient(@PathVariable Long id, @Valid @RequestBody PatientUpdateDTO patientDTO) {
         LOG.debug("REST update Patient id={} payload={}", id, patientDTO);
 
         if (patientDTO == null) {
@@ -102,10 +94,7 @@ public class PatientController {
     }
 
     @GetMapping("/by-medicalRecordNumber/{medicalRecordNumber}")
-    public ResponseEntity<List<Patient>> getByMedicalRecordNumber(
-            @PathVariable String medicalRecordNumber,
-            @ParameterObject Pageable pageable
-    ) {
+    public ResponseEntity<List<Patient>> getByMedicalRecordNumber(@PathVariable String medicalRecordNumber, @ParameterObject Pageable pageable) {
         LOG.debug(
                 "REST list Patients by medicalRecordNumber='{}' pageable={}",
                 medicalRecordNumber,
@@ -132,10 +121,7 @@ public class PatientController {
     }
 
     @GetMapping("/by-archiving-number/{archivingNumber}")
-    public ResponseEntity<List<Patient>> getByArchivingNumber(
-            @PathVariable String archivingNumber,
-            @ParameterObject Pageable pageable
-    ) {
+    public ResponseEntity<List<Patient>> getByArchivingNumber(@PathVariable String archivingNumber, @ParameterObject Pageable pageable) {
         LOG.debug(
                 "REST list Patients by archivingNumber='{}' pageable={}",
                 archivingNumber,
@@ -162,10 +148,7 @@ public class PatientController {
     }
 
     @GetMapping("/by-primary-phone/{phone}")
-    public ResponseEntity<List<Patient>> getByPrimaryPhone(
-            @PathVariable("phone") String phone,
-            @ParameterObject Pageable pageable
-    ) {
+    public ResponseEntity<List<Patient>> getByPrimaryPhone(@PathVariable("phone") String phone, @ParameterObject Pageable pageable) {
         LOG.debug(
                 "REST list Patients by primary phone='{}' pageable={}",
                 phone,
@@ -188,14 +171,8 @@ public class PatientController {
         );
     }
 
-
     @GetMapping("/by-date-of-birth/{date}")
-    public ResponseEntity<List<Patient>> getByDateOfBirth(
-            @PathVariable("date")
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-            LocalDate dateOfBirth,
-            @ParameterObject Pageable pageable
-    ) {
+    public ResponseEntity<List<Patient>> getByDateOfBirth(@PathVariable("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateOfBirth, @ParameterObject Pageable pageable) {
         LOG.debug(
                 "REST list Patients by dateOfBirth='{}' pageable={}",
                 dateOfBirth,
@@ -219,10 +196,7 @@ public class PatientController {
     }
 
     @GetMapping("/by-full-name/{keyword}")
-    public ResponseEntity<List<Patient>> getByFullName(
-            @PathVariable("keyword") String keyword,
-            @ParameterObject Pageable pageable
-    ) {
+    public ResponseEntity<List<Patient>> getByFullName(@PathVariable("keyword") String keyword, @ParameterObject Pageable pageable) {
         LOG.debug(
                 "REST list Patients by full name keyword='{}' pageable={}",
                 keyword,
@@ -246,10 +220,7 @@ public class PatientController {
     }
 
     @GetMapping("/by-document-number")
-    public ResponseEntity<List<Patient>> getPatientsByPrimaryDocumentNumber(
-            @RequestParam("number") String numberPart,
-            @ParameterObject Pageable pageable
-    ) {
+    public ResponseEntity<List<Patient>> getPatientsByPrimaryDocumentNumber(@RequestParam("number") String numberPart, @ParameterObject Pageable pageable) {
         LOG.debug(
                 "REST search Patients by primary document number={} pageable={}",
                 numberPart,
@@ -284,10 +255,7 @@ public class PatientController {
     }
 
     @GetMapping("/by-any-document-number")
-    public ResponseEntity<List<Patient>> getPatientsByAnyDocumentNumber(
-            @RequestParam("number") String numberPart,
-            @ParameterObject Pageable pageable
-    ) {
+    public ResponseEntity<List<Patient>> getPatientsByAnyDocumentNumber(@RequestParam("number") String numberPart, @ParameterObject Pageable pageable) {
         LOG.debug(
                 "REST search Patients by ANY document number={} pageable={}",
                 numberPart,
@@ -322,9 +290,7 @@ public class PatientController {
     }
 
     @GetMapping("/unknown")
-    public ResponseEntity<Page<Patient>> getUnknownPatients(
-            @ParameterObject Pageable pageable
-    ) {
+    public ResponseEntity<Page<Patient>> getUnknownPatients(@ParameterObject Pageable pageable) {
         LOG.info("REST request to get unknown patients - page: {}, size: {}, sort: {}",
                 pageable.getPageNumber(),
                 pageable.getPageSize(),
@@ -341,9 +307,7 @@ public class PatientController {
     }
 
     @PostMapping("/bulk/basic-info")
-    public ResponseEntity<List<PatientBasicInformationResponseVM>> getBulkPatientBasicInfo(
-            @RequestBody List<Long> ids
-    ) {
+    public ResponseEntity<List<PatientBasicInformationResponseVM>> getBulkPatientBasicInfo(@RequestBody List<Long> ids) {
         LOG.debug(
                 "REST bulk Patient BASIC INFO idsCount={} ids={}",
                 ids == null ? 0 : ids.size(),
@@ -369,10 +333,7 @@ public class PatientController {
 
 
     @PostMapping("/duplication-candidates")
-    public ResponseEntity<List<PatientBasicInformationResponseVM>> getDuplicationCandidates(
-            @RequestBody PatientDuplicationLookupDTO duplicationLookupDTO,
-            @ParameterObject Pageable pageable
-    ) {
+    public ResponseEntity<List<PatientBasicInformationResponseVM>> getDuplicationCandidates(@RequestBody PatientDuplicationLookupDTO duplicationLookupDTO, @ParameterObject Pageable pageable) {
         Page<Patient> page = patientService.findDuplicationCandidates(duplicationLookupDTO, pageable);
 
         HttpHeaders headers =
@@ -391,9 +352,7 @@ public class PatientController {
     @PostMapping("/{id}/send-create-password")
     public ResponseEntity<Void> sendCreatePasswordEmailToPatient(@PathVariable Long id) {
         LOG.debug("REST send create-password email to Patient id={}", id);
-
         patientService.sendCreatePasswordEmailToPatient(id);
-
         return ResponseEntity.ok().build();
     }
 
@@ -403,12 +362,14 @@ public class PatientController {
         Patient patient = patientService.findById(id);
         return ResponseEntity.ok(patient);
     }
+
     @GetMapping("/by-ids")
     public ResponseEntity<List<Patient>> getPatientsByIds(@RequestParam List<Long> ids) {
         LOG.debug("REST get Patients by ids={}", ids);
         List<Patient> patients = patientService.findByIds(ids);
         return ResponseEntity.ok(patients);
     }
+
     @PostMapping(path = "/create-patient-password/finish")
     public ResponseEntity<Void> finishCreatePassword(@RequestBody KeyAndPasswordDTO keyAndPassword) {
         if (isPasswordLengthInvalid(keyAndPassword.getNewPassword())) {
@@ -438,7 +399,6 @@ public class PatientController {
                         password.length() > ManagedPatientVM.PASSWORD_MAX_LENGTH
         );
     }
-
 }
 
 

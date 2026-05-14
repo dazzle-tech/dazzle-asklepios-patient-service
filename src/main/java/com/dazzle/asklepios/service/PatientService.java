@@ -60,9 +60,9 @@ public class PatientService {
             "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&#_.-])[A-Za-z\\d@$!%*?&#_.-]{8,}$"
     );
 
-    public PatientService(
-            PatientRepository patientRepository, PatientDocumentRepository patientDocumentRepository, DuplicationCandidateRepository duplicationCandidateRepository,
-            InternalMailClient internalMailClient, PasswordEncoder passwordEncoder) {
+    public PatientService(PatientRepository patientRepository, PatientDocumentRepository patientDocumentRepository, DuplicationCandidateRepository duplicationCandidateRepository,
+                          InternalMailClient internalMailClient, PasswordEncoder passwordEncoder
+    ) {
         this.patientRepository = patientRepository;
         this.patientDocumentRepository = patientDocumentRepository;
         this.duplicationCandidateRepository = duplicationCandidateRepository;
@@ -124,6 +124,7 @@ public class PatientService {
                 .isVerified(verified)
                 .isCompletedPatient(completed)
                 .securityAccessLevel(dto.securityAccessLevel())
+                .activated(false)
                 .build();
 
         try {
@@ -145,6 +146,7 @@ public class PatientService {
                 .isUnknown(true)
                 .isVerified(Boolean.TRUE.equals(dto.isVerified()))
                 .isCompletedPatient(Boolean.TRUE.equals(dto.isCompletedPatient()))
+                .activated(false)
                 .build();
 
         try {
@@ -174,7 +176,6 @@ public class PatientService {
             );
         }
     }
-
 
     public Patient update(Long id, PatientUpdateDTO dto) {
         LOG.info("[UPDATE] Request to update Patient id={} payload={}", id, dto);
@@ -489,12 +490,11 @@ public class PatientService {
                 });
     }
 
-
     private static boolean isPasswordSecure(String password) {
         return password != null && STRONG_PASSWORD_PATTERN.matcher(password).matches();
     }
 
-    public final class RandomUtil {
+    private final class RandomUtil {
         private static final int DEF_COUNT = 20;
         private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
@@ -558,11 +558,7 @@ public class PatientService {
         );
     }
 
-
-    private Specification<Patient> buildDuplicationSpec(
-            Map<String, Boolean> fields,
-            PatientDuplicationLookupDTO duplicationLookupDTO
-    ) {
+    private Specification<Patient> buildDuplicationSpec(Map<String, Boolean> fields, PatientDuplicationLookupDTO duplicationLookupDTO) {
         return (patientRoot, criteriaQuery, criteriaBuilder) -> {
 
             LOG.debug("=== [DUPLICATION SPEC BUILD START] ===");
