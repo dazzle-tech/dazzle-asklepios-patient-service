@@ -8,8 +8,13 @@ import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.InvalidPasswordException;
+import com.dazzle.asklepios.web.rest.vm.patient.CreatePasswordKeyValidationVM;
+import com.dazzle.asklepios.service.dto.patient.KeyAndPasswordDTO;
+import com.dazzle.asklepios.web.rest.vm.patient.ManagedPatientVM;
 import com.dazzle.asklepios.web.rest.vm.patient.PatientBasicInformationResponseVM;
 import jakarta.validation.Valid;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
@@ -18,6 +23,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -403,6 +409,36 @@ public class PatientController {
         List<Patient> patients = patientService.findByIds(ids);
         return ResponseEntity.ok(patients);
     }
+    @PostMapping(path = "/create-patient-password/finish")
+    public ResponseEntity<Void> finishCreatePassword(@RequestBody KeyAndPasswordDTO keyAndPassword) {
+        if (isPasswordLengthInvalid(keyAndPassword.getNewPassword())) {
+            throw new InvalidPasswordException();
+        }
+
+        patientService
+                .completeCreatePassword(keyAndPassword.getNewPassword(), keyAndPassword.getKey())
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "patient",
+                        "No user was found for this create-password key"
+                ));
+
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping(value = "/create-patient-password/validate", produces = MediaType.APPLICATION_JSON_VALUE)
+    public CreatePasswordKeyValidationVM validate(@RequestParam("key") String key) {
+        return patientService.validateCreatePasswordKey(key);
+    }
+
+    private static boolean isPasswordLengthInvalid(String password) {
+        return (
+                StringUtils.isEmpty(password) ||
+                        password.length() < ManagedPatientVM.PASSWORD_MIN_LENGTH ||
+                        password.length() > ManagedPatientVM.PASSWORD_MAX_LENGTH
+        );
+    }
+
 }
 
 

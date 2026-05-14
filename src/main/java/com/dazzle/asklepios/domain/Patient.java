@@ -15,6 +15,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -178,6 +179,14 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
 
     @Column(name="reset_date")
     private Instant resetDate = null;
+
+    @JsonIgnore
+    @Size(min = 60, max = 60)
+    @Column(name="password_hash")
+    private String password;
+
+    @NotNull
+    private boolean activated = false;
 
     @AssertTrue(message = "When patient is not unknown, firstName, lastName, sexAtBirth, dateOfBirth, primaryMobileNumber and email are required")
     public boolean isValidWhenNotUnknown() {

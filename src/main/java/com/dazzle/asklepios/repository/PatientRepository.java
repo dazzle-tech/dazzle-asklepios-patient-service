@@ -25,4 +25,7 @@ public interface PatientRepository  extends JpaRepository<Patient, Long>,
     Page<Patient> findDistinctByPatientDocuments_NumberContainingIgnoreCase(String numberPart, Pageable pageable);
     Optional<Patient> findByPreviousId(String previousId);
 
+    Optional<Patient> findOneByResetKey(String resetKey);
+
+
 }
