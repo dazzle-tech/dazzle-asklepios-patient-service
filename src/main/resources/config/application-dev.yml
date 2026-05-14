@@ -14,6 +14,15 @@ management:
       probability: 1.0 # report 100% of traces
 service:
   asklepios-setup-service-url: http://localhost:8082
+
+waseel:
+    api:
+      base-url: https://api.stg-eclaims.waseel.com
+      username: ${WASEEL_USERNAME:abh706}
+      password: ${WASEEL_PASSWORD:abhclm706}
+      provider-id: ${WASEEL_PROVIDER_ID:706}
+      timeout-seconds: 30
+
 spring:
   devtools:
     restart:
@@ -26,9 +35,9 @@ spring:
       indent-output: true
   datasource:
     type: com.zaxxer.hikari.HikariDataSource
-    url: jdbc:postgresql://localhost:5432/test
+    url: jdbc:postgresql://localhost:5433/test
     username: postgres
-    password: 123456
+    password: root
     hikari:
       poolName: Hikari
       auto-commit: false
