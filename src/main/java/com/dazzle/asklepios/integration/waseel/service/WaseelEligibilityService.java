@@ -1,9 +1,8 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
-import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiInquiryResponse;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityRequest;
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityResponse;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -13,15 +12,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 @Service
-public class WaseelCchiService {
-
-    private static final Logger LOG = LogManager.getLogger(WaseelCchiService.class);
+public class WaseelEligibilityService {
 
     private final RestTemplate restTemplate;
     private final WaseelTokenService tokenService;
     private final WaseelApiProperties properties;
 
-    public WaseelCchiService(
+    public WaseelEligibilityService(
             RestTemplate restTemplate,
             WaseelTokenService tokenService,
             WaseelApiProperties properties
@@ -31,35 +28,32 @@ public class WaseelCchiService {
         this.properties = properties;
     }
 
-    public CchiInquiryResponse fetchBeneficiaryByDocumentId(String documentId) {
+    public EligibilityResponse requestEligibility(EligibilityRequest request) {
 
         String token = tokenService.getToken();
 
         String url =
                 properties.baseUrl()
-                        + "/beneficiaries/providers/"
+                        + "/eligibilities/providers/"
                         + properties.providerId()
-                        + "/patientKey/"
-                        + documentId
-                        + "/systemType/"
-                        + properties.systemType();
-
-        LOG.info("Calling Waseel URL: {}", url);
+                        + "/request";
 
         HttpHeaders headers = new HttpHeaders();
 
         headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON));
         headers.set("User-Agent", "PostmanRuntime/7.43.0");
 
-        HttpEntity<Void> entity = new HttpEntity<>(headers);
+        HttpEntity<EligibilityRequest> entity =
+                new HttpEntity<>(request, headers);
 
-        ResponseEntity<CchiInquiryResponse> response =
+        ResponseEntity<EligibilityResponse> response =
                 restTemplate.exchange(
                         url,
-                        HttpMethod.GET,
+                        HttpMethod.POST,
                         entity,
-                        CchiInquiryResponse.class
+                        EligibilityResponse.class
                 );
 
         return response.getBody();
