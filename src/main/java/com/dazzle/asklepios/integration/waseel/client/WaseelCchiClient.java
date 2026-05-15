@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 )
 public interface WaseelCchiClient {
 
-    @GetMapping("/beneficiaries/providers/{providerId}/patientKey/{documentId}")
+    @GetMapping("/beneficiaries/providers/{providerId}/patientKey/{documentId}/systemType/1")
     CchiInquiryResponse getBeneficiary(
             @RequestHeader("Authorization") String authorization,
             @PathVariable String providerId,

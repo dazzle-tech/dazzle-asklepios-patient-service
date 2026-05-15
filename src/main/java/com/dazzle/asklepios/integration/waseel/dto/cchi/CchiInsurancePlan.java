@@ -1,17 +1,21 @@
 package com.dazzle.asklepios.integration.waseel.dto.cchi;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record CchiInsurancePlan(
-        String policyNumber,
         String memberCardId,
-        String payerId,
-        String payerName,
-        String payerNphiesId,
-        String coverageType,
+        String policyNumber,
         String expiryDate,
+        String isPrimary,
+        String payerId,
         String relationWithSubscriber,
-        String patientShare,
-        String maxLimit,
+        String coverageType,
+        Integer patientShare,
+        Integer maxLimit,
         String networkId,
         String policyClassName,
-        Boolean isPrimary
+        String policyHolder,
+        String payerNphiesId,
+        Boolean newPlan
 ) {}
