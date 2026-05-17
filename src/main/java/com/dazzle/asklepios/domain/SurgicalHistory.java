@@ -72,6 +72,7 @@ public class SurgicalHistory extends AbstractAuditingEntity<Long>
     private String cancelledBy;
 
     @Column(name = "cancelled_date")
+    @Temporal(TemporalType.TIMESTAMP)
     private Date cancelledDate;
 
     @Column(name = "cancellation_reason", length = 500)
