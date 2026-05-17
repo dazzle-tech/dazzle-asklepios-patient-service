@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.web.rest.vm.surgicalHistory;
 
 import com.dazzle.asklepios.domain.SurgicalHistory;
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 
 import java.time.Instant;
 import java.util.Date;
@@ -18,7 +19,7 @@ public record SurgicalHistoryResponseVM(
         String implantsOrDevicesDescription,
 
         // Cancel fields
-        String status,
+        PatientHistoryStatus status,
         String cancelledBy,
         Date cancelledDate,
         String cancellationReason,
@@ -29,7 +30,9 @@ public record SurgicalHistoryResponseVM(
         String lastModifiedBy,
         Instant lastModifiedDate
 ) {
-    public static SurgicalHistoryResponseVM ofEntity(SurgicalHistory entity) {
+    public static SurgicalHistoryResponseVM ofEntity(
+            SurgicalHistory entity
+    ) {
         return new SurgicalHistoryResponseVM(
                 entity.getId(),
                 entity.getPatient().getId(),

@@ -2,6 +2,7 @@ package com.dazzle.asklepios.web.rest.vm.PatientProblems;
 
 import com.dazzle.asklepios.domain.PatientProblem;
 import com.dazzle.asklepios.domain.enumeration.EncounterVaccinationStatus;
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import jakarta.validation.constraints.NotNull;
 
 import java.time.Instant;
@@ -13,15 +14,17 @@ public record PatientProblemResponseVM(
         String condition,
         Date dateOfDiagnosis,
 
+
         @NotNull
-        EncounterVaccinationStatus status,
+        EncounterVaccinationStatus conditionStatus,
 
         String type,
         Date dateOfResolution,
         Boolean byPatient,
         String sourceOfInformation,
 
-        String recordStatus,
+        PatientHistoryStatus status,
+
         String cancelledBy,
         Date cancelledDate,
         String cancellationReason,
@@ -38,14 +41,15 @@ public record PatientProblemResponseVM(
                 entity.getCondition(),
                 entity.getDateOfDiagnosis(),
 
-                entity.getStatus(),
+                entity.getConditionStatus(),
 
                 entity.getType(),
                 entity.getDateOfResolution(),
                 entity.getByPatient(),
                 entity.getSourceOfInformation(),
 
-                entity.getRecordStatus(),
+                entity.getStatus(),
+
                 entity.getCancelledBy(),
                 entity.getCancelledDate(),
                 entity.getCancellationReason(),

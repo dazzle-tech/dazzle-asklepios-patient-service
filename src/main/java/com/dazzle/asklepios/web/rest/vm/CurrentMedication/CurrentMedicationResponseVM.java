@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.web.rest.vm.CurrentMedication;
 
 import com.dazzle.asklepios.domain.CurrentMedication;
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 
 import java.time.Instant;
 import java.util.Date;
@@ -12,13 +13,11 @@ public record CurrentMedicationResponseVM(
         String instructions,
         Date startDate,
 
-        // Cancel fields
-        String status,
+        PatientHistoryStatus status,
         String cancelledBy,
         Date cancelledDate,
         String cancellationReason,
 
-        // Audit fields
         String createdBy,
         Instant createdDate,
         String lastModifiedBy,
@@ -32,13 +31,11 @@ public record CurrentMedicationResponseVM(
                 entity.getInstructions(),
                 entity.getStartDate(),
 
-                // Cancel fields
                 entity.getStatus(),
                 entity.getCancelledBy(),
                 entity.getCancelledDate(),
                 entity.getCancellationReason(),
 
-                // Audit fields
                 entity.getCreatedBy(),
                 entity.getCreatedDate(),
                 entity.getLastModifiedBy(),

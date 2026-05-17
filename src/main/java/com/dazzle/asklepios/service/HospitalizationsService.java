@@ -1,9 +1,11 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.Hospitalization;
+import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.repository.HospitalizationRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationCancelDTO;
 import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationsCreateDTO;
 import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationsUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -17,8 +19,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationCancelDTO;
+
 import java.util.Date;
+
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
@@ -52,7 +55,9 @@ public class HospitalizationsService {
                 .dateOfAdmission(hospitalizationsCreateDTO.dateOfAdmission())
                 .lengthOfStayDays(hospitalizationsCreateDTO.lengthOfStayDays())
                 .outcomes(hospitalizationsCreateDTO.outcomes())
-                .medicalInterventionsPerformed(hospitalizationsCreateDTO.medicalInterventionsPerformed())
+                .medicalInterventionsPerformed(
+                        hospitalizationsCreateDTO.medicalInterventionsPerformed()
+                )
                 .build();
 
         try {
@@ -71,9 +76,12 @@ public class HospitalizationsService {
     public Hospitalization update(HospitalizationsUpdateDTO hospitalizationsUpdateDTO) {
         LOG.info("[UPDATE] Hospitalization payload={}", hospitalizationsUpdateDTO);
 
-        Hospitalization entity = hospitalizationRepository.findById(hospitalizationsUpdateDTO.id())
+        Hospitalization entity = hospitalizationRepository.findById(
+                        hospitalizationsUpdateDTO.id()
+                )
                 .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient admission not found with id " + hospitalizationsUpdateDTO.id(),
+                        "Patient admission not found with id "
+                                + hospitalizationsUpdateDTO.id(),
                         "hospitalization",
                         "notfound"
                 ));
@@ -85,7 +93,9 @@ public class HospitalizationsService {
         entity.setDateOfAdmission(hospitalizationsUpdateDTO.dateOfAdmission());
         entity.setLengthOfStayDays(hospitalizationsUpdateDTO.lengthOfStayDays());
         entity.setOutcomes(hospitalizationsUpdateDTO.outcomes());
-        entity.setMedicalInterventionsPerformed(hospitalizationsUpdateDTO.medicalInterventionsPerformed());
+        entity.setMedicalInterventionsPerformed(
+                hospitalizationsUpdateDTO.medicalInterventionsPerformed()
+        );
 
         try {
             return hospitalizationRepository.saveAndFlush(entity);
@@ -103,21 +113,26 @@ public class HospitalizationsService {
     public Hospitalization cancel(HospitalizationCancelDTO hospitalizationCancelDTO) {
         LOG.info("[CANCEL] Hospitalization payload={}", hospitalizationCancelDTO);
 
-        Hospitalization entity = hospitalizationRepository.findById(hospitalizationCancelDTO.id())
+        Hospitalization entity = hospitalizationRepository.findById(
+                        hospitalizationCancelDTO.id()
+                )
                 .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient admission not found with id " + hospitalizationCancelDTO.id(),
+                        "Patient admission not found with id "
+                                + hospitalizationCancelDTO.id(),
                         "hospitalization",
                         "notfound"
                 ));
 
-        entity.setStatus("CANCELLED");
+        entity.setStatus(PatientHistoryStatus.CANCELLED);
         entity.setCancelledBy(
                 entity.getLastModifiedBy() != null
                         ? entity.getLastModifiedBy()
                         : entity.getCreatedBy()
         );
         entity.setCancelledDate(new Date());
-        entity.setCancellationReason(hospitalizationCancelDTO.cancellationReason());
+        entity.setCancellationReason(
+                hospitalizationCancelDTO.cancellationReason()
+        );
 
         try {
             return hospitalizationRepository.saveAndFlush(entity);
@@ -146,21 +161,44 @@ public class HospitalizationsService {
     }
 
     @Transactional(readOnly = true)
-    public Page<Hospitalization> findByPatientId(Long patientId, Pageable pageable) {
-        LOG.debug("[LIST] Hospitalization patientId={} pageable={}", patientId, pageable);
-        return hospitalizationRepository.findAllByPatientId(patientId, pageable);
+    public Page<Hospitalization> findByPatientId(
+            Long patientId,
+            boolean showCancelled,
+            Pageable pageable
+    ) {
+        LOG.debug(
+                "[LIST] Hospitalization patientId={} showCancelled={} pageable={}",
+                patientId,
+                showCancelled,
+                pageable
+        );
+
+        if (showCancelled) {
+            return hospitalizationRepository.findAllByPatientId(
+                    patientId,
+                    pageable
+            );
+        }
+
+        return hospitalizationRepository.findAllByPatientIdAndStatusNot(
+                patientId,
+                PatientHistoryStatus.CANCELLED,
+                pageable
+        );
     }
 
     private void handleConstraints(RuntimeException exception) {
         Throwable root = getRootCause(exception);
-        String message = (root != null ? root.getMessage() : exception.getMessage());
+        String message =
+                (root != null ? root.getMessage() : exception.getMessage());
 
         LOG.error("DB ROOT CAUSE: {}", message, exception);
 
         String lower = (message != null ? message.toLowerCase() : "");
 
         if (lower.contains("ux_patient_admissions_patient_facility_date")
-                || (lower.contains("unique") && lower.contains("facility"))) {
+                || (lower.contains("unique")
+                && lower.contains("facility"))) {
             throw new BadRequestAlertException(
                     "Patient admission already exists for this patient, facility and admission date.",
                     "hospitalization",
@@ -169,7 +207,8 @@ public class HospitalizationsService {
         }
 
         if (lower.contains("fk_patient_admissions_patient")
-                || (lower.contains("foreign key") && lower.contains("patient"))) {
+                || (lower.contains("foreign key")
+                && lower.contains("patient"))) {
             throw new BadRequestAlertException(
                     "Invalid patient reference.",
                     "hospitalization",

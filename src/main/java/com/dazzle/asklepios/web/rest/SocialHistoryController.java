@@ -109,12 +109,22 @@ public class SocialHistoryController {
     @GetMapping("/social-history")
     public ResponseEntity<List<SocialHistory>> list(
             @RequestParam Long patientId,
+            @RequestParam(defaultValue = "false") boolean showCancelled,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST list SocialHistory patientId={} pageable={}", patientId, pageable);
+        LOG.debug(
+                "REST list SocialHistory patientId={} showCancelled={} pageable={}",
+                patientId,
+                showCancelled,
+                pageable
+        );
 
         Page<SocialHistory> page =
-                socialHistoryService.findByPatientId(patientId, pageable);
+                socialHistoryService.findByPatientId(
+                        patientId,
+                        showCancelled,
+                        pageable
+                );
 
         HttpHeaders headers =
                 PaginationUtil.generatePaginationHttpHeaders(
@@ -122,10 +132,16 @@ public class SocialHistoryController {
                         page
                 );
 
-        LOG.debug("REST list SocialHistory - returning {} records",
-                page.getContent().size());
+        LOG.debug(
+                "REST list SocialHistory - returning {} records",
+                page.getContent().size()
+        );
 
-        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+        return new ResponseEntity<>(
+                page.getContent(),
+                headers,
+                HttpStatus.OK
+        );
     }
 
     private SocialHistoryUpdateDTO sanitizeUpdateDTO(SocialHistoryUpdateDTO dto) {

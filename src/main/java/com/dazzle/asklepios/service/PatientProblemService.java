@@ -2,8 +2,10 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientProblem;
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.repository.PatientProblemRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemCancelDTO;
 import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemCreateDTO;
 import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -15,10 +17,13 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemCancelDTO;
+
 import java.util.Date;
+
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
@@ -50,7 +55,6 @@ public class PatientProblemService {
                         )));
     }
 
-
     public PatientProblem create(PatientProblemCreateDTO patientProblemCreateDTO) {
         LOG.info("[CREATE] PatientProblem payload={}", patientProblemCreateDTO);
 
@@ -58,7 +62,7 @@ public class PatientProblemService {
                 .patient(resolvePatient(patientProblemCreateDTO.patientId()))
                 .condition(patientProblemCreateDTO.condition())
                 .dateOfDiagnosis(patientProblemCreateDTO.dateOfDiagnosis())
-                .status(patientProblemCreateDTO.status())
+                .conditionStatus(patientProblemCreateDTO.conditionStatus())
                 .type(patientProblemCreateDTO.type())
                 .dateOfResolution(patientProblemCreateDTO.dateOfResolution())
                 .byPatient(patientProblemCreateDTO.byPatient())
@@ -78,7 +82,6 @@ public class PatientProblemService {
         }
     }
 
-
     public PatientProblem update(PatientProblemUpdateDTO patientProblemUpdateDTO) {
         LOG.info("[UPDATE] PatientProblem payload={}", patientProblemUpdateDTO);
 
@@ -89,11 +92,10 @@ public class PatientProblemService {
                         "notfound"
                 ));
 
-
-        entity.setPatient(resolvePatient((patientProblemUpdateDTO.patientId())));
+        entity.setPatient(resolvePatient(patientProblemUpdateDTO.patientId()));
         entity.setCondition(patientProblemUpdateDTO.condition());
         entity.setDateOfDiagnosis(patientProblemUpdateDTO.dateOfDiagnosis());
-        entity.setStatus(patientProblemUpdateDTO.status());
+        entity.setConditionStatus(patientProblemUpdateDTO.conditionStatus());
         entity.setType(patientProblemUpdateDTO.type());
         entity.setDateOfResolution(patientProblemUpdateDTO.dateOfResolution());
         entity.setByPatient(patientProblemUpdateDTO.byPatient());
@@ -113,34 +115,69 @@ public class PatientProblemService {
     }
 
     public PatientProblem cancel(PatientProblemCancelDTO patientProblemCancelDTO) {
-        LOG.info("[CANCEL] PatientProblem payload={}", patientProblemCancelDTO);
+
+        Authentication authentication =
+                SecurityContextHolder.getContext().getAuthentication();
+
+        String currentUser =
+                authentication != null && authentication.getName() != null
+                        ? authentication.getName()
+                        : "system";
+
+        LOG.info(
+                "[CANCEL] PatientProblem id={} cancelledBy={} reason={}",
+                patientProblemCancelDTO.id(),
+                currentUser,
+                patientProblemCancelDTO.cancellationReason()
+        );
 
         PatientProblem entity = patientProblemRepository.findById(patientProblemCancelDTO.id())
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient problem not found with id " + patientProblemCancelDTO.id(),
-                        "patientProblem",
-                        "notfound"
-                ));
+                .orElseThrow(() -> {
+                    LOG.warn("[CANCEL] PatientProblem not found id={}", patientProblemCancelDTO.id());
+                    return new NotFoundAlertException(
+                            "Patient problem not found with id " + patientProblemCancelDTO.id(),
+                            "patientProblem",
+                            "notfound"
+                    );
+                });
 
-        entity.setRecordStatus("CANCELLED");
-        entity.setCancelledBy(
-                entity.getLastModifiedBy() != null
-                        ? entity.getLastModifiedBy()
-                        : entity.getCreatedBy()
-        );
+        entity.setStatus(PatientHistoryStatus.CANCELLED);
+        entity.setCancelledBy(currentUser);
         entity.setCancelledDate(new Date());
         entity.setCancellationReason(patientProblemCancelDTO.cancellationReason());
 
         try {
-            return patientProblemRepository.saveAndFlush(entity);
+            PatientProblem savedEntity =
+                    patientProblemRepository.saveAndFlush(entity);
+
+            LOG.info(
+                    "[CANCEL] PatientProblem success id={} cancelledBy={}",
+                    patientProblemCancelDTO.id(),
+                    currentUser
+            );
+
+            return savedEntity;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            LOG.warn(
+                    "[CANCEL] PatientProblem failed (constraint) id={} cancelledBy={}",
+                    patientProblemCancelDTO.id(),
+                    currentUser,
+                    ex
+            );
             handleConstraints(ex);
             throw new BadRequestAlertException(
                     "Database constraint violated while cancelling patient problem.",
                     "patientProblem",
                     "db.constraint"
             );
+        } catch (RuntimeException ex) {
+            LOG.error(
+                    "[CANCEL] PatientProblem failed (unexpected) id={}",
+                    patientProblemCancelDTO.id(),
+                    ex
+            );
+            throw ex;
         }
     }
 
@@ -157,15 +194,35 @@ public class PatientProblemService {
         patientProblemRepository.delete(entity);
     }
 
-
     @Transactional(readOnly = true)
-    public Page<PatientProblem> findByPatientId(Long patientId, Pageable pageable) {
+    public Page<PatientProblem> findByPatientId(
+            Long patientId,
+            Boolean showCancelled,
+            Pageable pageable
+    ) {
         Patient patient = resolvePatient(patientId);
-        LOG.debug("[LIST] PatientProblems patientId={} resolvedId={} pageable={}",
-                patientId, patient.getId(), pageable);
-        return patientProblemRepository.findAllByPatientId(patient.getId(), pageable);
-    }
 
+        LOG.debug(
+                "[LIST] PatientProblems patientId={} resolvedId={} showCancelled={} pageable={}",
+                patientId,
+                patient.getId(),
+                showCancelled,
+                pageable
+        );
+
+        if (Boolean.TRUE.equals(showCancelled)) {
+            return patientProblemRepository.findAllByPatientId(
+                    patient.getId(),
+                    pageable
+            );
+        }
+
+        return patientProblemRepository.findAllByPatientIdAndStatus(
+                patient.getId(),
+                PatientHistoryStatus.ACTIVE,
+                pageable
+        );
+    }
 
     private void handleConstraints(RuntimeException exception) {
         Throwable root = getRootCause(exception);

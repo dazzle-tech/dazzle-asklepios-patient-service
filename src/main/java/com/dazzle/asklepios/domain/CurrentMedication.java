@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -42,9 +43,10 @@ public class CurrentMedication extends AbstractAuditingEntity<Long>
     @Temporal(TemporalType.DATE)
     private Date startDate;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
     @Builder.Default
-    private String status = "ACTIVE";
+    private PatientHistoryStatus status = PatientHistoryStatus.ACTIVE;
 
     @Column(name = "cancelled_by", length = 50)
     private String cancelledBy;

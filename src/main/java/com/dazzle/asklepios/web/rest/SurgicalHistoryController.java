@@ -88,10 +88,22 @@ public class SurgicalHistoryController {
     @GetMapping("/surgical-history")
     public ResponseEntity<List<SurgicalHistoryResponseVM>> list(
             @RequestParam Long patientId,
+            @RequestParam(defaultValue = "false") boolean showCancelled,
             @ParameterObject Pageable pageable
     ) {
+        LOG.debug(
+                "REST list SurgicalHistory patientId={} showCancelled={} pageable={}",
+                patientId,
+                showCancelled,
+                pageable
+        );
+
         Page<SurgicalHistory> page =
-                service.findByPatientId(patientId, pageable);
+                service.findByPatientId(
+                        patientId,
+                        showCancelled,
+                        pageable
+                );
 
         HttpHeaders headers =
                 com.dazzle.asklepios.web.rest.Helper.PaginationUtil
@@ -106,6 +118,10 @@ public class SurgicalHistoryController {
                         .map(SurgicalHistoryResponseVM::ofEntity)
                         .toList();
 
-        return new ResponseEntity<>(body, headers, HttpStatus.OK);
+        return new ResponseEntity<>(
+                body,
+                headers,
+                HttpStatus.OK
+        );
     }
 }

@@ -104,12 +104,27 @@ public class FamilyHistoryController {
     @GetMapping("/family-history")
     public ResponseEntity<List<FamilyHistoryResponseVM>> list(
             @RequestParam Long patientId,
+            @RequestParam(name = "showCancelled", defaultValue = "false") Boolean showCancelled,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST list FamilyHistory patientId={} pageable={}", patientId, pageable);
+        LOG.debug(
+                "REST list FamilyHistory patientId={} showCancelled={} pageable={}",
+                patientId,
+                showCancelled,
+                pageable
+        );
+
         Page<FamilyHistory> page =
-                familyHistoryService.findByPatientId(patientId, pageable);
-        LOG.info("REST list FamilyHistory - returned {} items", page.getContent().size());
+                familyHistoryService.findByPatientId(
+                        patientId,
+                        showCancelled,
+                        pageable
+                );
+
+        LOG.info(
+                "REST list FamilyHistory - returned {} items",
+                page.getContent().size()
+        );
 
         HttpHeaders headers =
                 com.dazzle.asklepios.web.rest.Helper.PaginationUtil
@@ -126,4 +141,5 @@ public class FamilyHistoryController {
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
+
 }

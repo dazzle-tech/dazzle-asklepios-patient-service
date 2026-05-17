@@ -130,17 +130,20 @@ public class CurrentMedicationController {
     @GetMapping("/current-medication")
     public ResponseEntity<List<CurrentMedicationResponseVM>> list(
             @RequestParam Long patientId,
+            @RequestParam(defaultValue = "false") boolean showCancelled,
             @ParameterObject Pageable pageable
     ) {
         LOG.debug(
-                "REST list CurrentMedication patientId={} pageable={}",
+                "REST list CurrentMedication patientId={} showCancelled={} pageable={}",
                 patientId,
+                showCancelled,
                 pageable
         );
 
         Page<CurrentMedication> page =
                 currentMedicationService.findByPatientId(
                         patientId,
+                        showCancelled,
                         pageable
                 );
 

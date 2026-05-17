@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.socialHistory.SocialHistoryCancelDTO;
-
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import java.util.Date;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -136,7 +136,7 @@ public class SocialHistoryService {
                         "notfound"
                 ));
 
-        if ("CANCELLED".equalsIgnoreCase(socialHistory.getStatus())) {
+        if (socialHistory.getStatus() == PatientHistoryStatus.CANCELLED) {
             throw new BadRequestAlertException(
                     "Social history is already cancelled.",
                     "socialHistory",
@@ -144,13 +144,12 @@ public class SocialHistoryService {
             );
         }
 
-        socialHistory.setStatus("CANCELLED");
+        socialHistory.setStatus(PatientHistoryStatus.CANCELLED);
         socialHistory.setCancelledBy(
                 SecurityUtils.getCurrentUserLogin().orElse("system")
         );
         socialHistory.setCancelledDate(new Date());
         socialHistory.setCancellationReason(cancelDTO.cancellationReason());
-
         SocialHistory cancelled = socialHistoryRepository.saveAndFlush(socialHistory);
 
         LOG.info("[CANCEL] SocialHistory cancelled id={}", cancelled.getId());
@@ -172,9 +171,30 @@ public class SocialHistoryService {
     }
 
     @Transactional(readOnly = true)
-    public Page<SocialHistory> findByPatientId(Long patientId, Pageable pageable) {
-        LOG.debug("[LIST] SocialHistory patientId={} pageable={}", patientId, pageable);
-        return socialHistoryRepository.findAllByPatientId(patientId, pageable);
+    public Page<SocialHistory> findByPatientId(
+            Long patientId,
+            boolean showCancelled,
+            Pageable pageable
+    ) {
+        LOG.debug(
+                "[LIST] SocialHistory patientId={} showCancelled={} pageable={}",
+                patientId,
+                showCancelled,
+                pageable
+        );
+
+        if (showCancelled) {
+            return socialHistoryRepository.findAllByPatientId(
+                    patientId,
+                    pageable
+            );
+        }
+
+        return socialHistoryRepository.findAllByPatientIdAndStatusNot(
+                patientId,
+                PatientHistoryStatus.CANCELLED,
+                pageable
+        );
     }
 
     private void handleConstraints(RuntimeException exception) {

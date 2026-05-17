@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryCancelDTO;
 import java.util.Date;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 
 @Service
 @RequiredArgsConstructor
@@ -122,8 +123,12 @@ public class SurgicalHistoryService {
                         "notfound"
                 ));
 
-        entity.setStatus("CANCELLED");
-        entity.setCancelledBy(entity.getLastModifiedBy());
+        entity.setStatus(PatientHistoryStatus.CANCELLED);
+        entity.setCancelledBy(
+                entity.getLastModifiedBy() != null
+                        ? entity.getLastModifiedBy()
+                        : entity.getCreatedBy()
+        );
         entity.setCancelledDate(new Date());
         entity.setCancellationReason(dto.cancellationReason());
 
@@ -157,9 +162,30 @@ public class SurgicalHistoryService {
 
 
     @Transactional(readOnly = true)
-    public Page<SurgicalHistory> findByPatientId(Long patientId, Pageable pageable) {
-        LOG.debug("[LIST] SurgicalHistory patientId={} pageable={}", patientId, pageable);
-        return repository.findAllByPatientId(patientId, pageable);
+    public Page<SurgicalHistory> findByPatientId(
+            Long patientId,
+            boolean showCancelled,
+            Pageable pageable
+    ) {
+        LOG.debug(
+                "[LIST] SurgicalHistory patientId={} showCancelled={} pageable={}",
+                patientId,
+                showCancelled,
+                pageable
+        );
+
+        if (showCancelled) {
+            return repository.findAllByPatientId(
+                    patientId,
+                    pageable
+            );
+        }
+
+        return repository.findAllByPatientIdAndStatusNot(
+                patientId,
+                PatientHistoryStatus.CANCELLED,
+                pageable
+        );
     }
 
 

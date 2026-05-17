@@ -104,12 +104,22 @@ public class PatientProblemController {
     @GetMapping("/problems")
     public ResponseEntity<List<PatientProblemResponseVM>> list(
             @RequestParam Long patientId,
+            @RequestParam(name = "showCancelled", defaultValue = "false") Boolean showCancelled,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST list PatientProblem patientId={} pageable={}", patientId, pageable);
+        LOG.debug(
+                "REST list PatientProblem patientId={} showCancelled={} pageable={}",
+                patientId,
+                showCancelled,
+                pageable
+        );
+
         Page<PatientProblem> page =
-                patientProblemService.findByPatientId(patientId, pageable);
-        LOG.info("REST list PatientProblem - returned {} items", page.getContent().size());
+                patientProblemService.findByPatientId(
+                        patientId,
+                        showCancelled,
+                        pageable
+                );
 
         HttpHeaders headers =
                 com.dazzle.asklepios.web.rest.Helper.PaginationUtil

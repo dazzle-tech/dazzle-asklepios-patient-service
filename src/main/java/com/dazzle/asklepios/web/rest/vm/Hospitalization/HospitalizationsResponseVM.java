@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.web.rest.vm.Hospitalization;
 
 import com.dazzle.asklepios.domain.Hospitalization;
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 
 import java.time.Instant;
 import java.util.Date;
@@ -17,7 +18,7 @@ public record HospitalizationsResponseVM(
         String medicalInterventionsPerformed,
 
         // Cancel fields
-        String status,
+        PatientHistoryStatus status,
         String cancelledBy,
         Date cancelledDate,
         String cancellationReason,

@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.domain.enumeration.Relations;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -20,9 +21,10 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import java.util.Date;
+
 import java.io.Serial;
 import java.io.Serializable;
+import java.util.Date;
 
 @Entity
 @Getter
@@ -44,7 +46,7 @@ public class FamilyHistory extends AbstractAuditingEntity<Long>
 
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn( name = "patient_id", nullable = false)
+    @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
     @NotBlank
@@ -59,9 +61,11 @@ public class FamilyHistory extends AbstractAuditingEntity<Long>
     @Column(name = "inherited_diseases")
     private Boolean inheritedDiseases;
 
+    @NotNull
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
     @Builder.Default
-    private String status = "ACTIVE";
+    private PatientHistoryStatus status = PatientHistoryStatus.ACTIVE;
 
     @Column(name = "cancelled_by", length = 50)
     private String cancelledBy;

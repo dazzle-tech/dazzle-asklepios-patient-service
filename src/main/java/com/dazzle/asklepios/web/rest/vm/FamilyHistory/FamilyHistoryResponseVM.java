@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.web.rest.vm.FamilyHistory;
 
 import com.dazzle.asklepios.domain.FamilyHistory;
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.domain.enumeration.Relations;
 
 import java.time.Instant;
@@ -13,7 +14,7 @@ public record FamilyHistoryResponseVM(
         Relations relation,
         Boolean inheritedDiseases,
 
-        String status,
+        PatientHistoryStatus status,
         String cancelledBy,
         Date cancelledDate,
         String cancellationReason,
