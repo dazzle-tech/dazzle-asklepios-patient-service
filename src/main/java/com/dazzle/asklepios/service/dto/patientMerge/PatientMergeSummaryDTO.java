@@ -5,16 +5,20 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class PatientMergeUndoResponse {
+public class PatientMergeSummaryDTO {
 
-    private Long mergeLogId;
     private Long fromPatientId;
     private Long toPatientId;
-    private String status;
-    private Integer restoredFieldsCount;
-    private Integer restoredRecordsCount;
+
+    private String reason;
+
+    private List<PatientMergeDecisionDTO> decisions;
+
+    private List<PatientMergeAutoTransferDTO> autoTransfers;
 }

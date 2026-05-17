@@ -1,17 +1,19 @@
-package com.dazzle.asklepios.service;
+package com.dazzle.asklepios.service.patientMerge;
 
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientMergeItemLog;
 import com.dazzle.asklepios.domain.PatientMergeLog;
 import com.dazzle.asklepios.domain.PatientMergeMasterDecision;
 import com.dazzle.asklepios.domain.enumeration.MergeDecision;
 import com.dazzle.asklepios.domain.enumeration.PatientStatus;
+import com.dazzle.asklepios.repository.PatientMergeItemLogRepository;
 import com.dazzle.asklepios.repository.PatientMergeLogRepository;
 import com.dazzle.asklepios.repository.PatientMergeMasterDecisionRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
-import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeUndoResponse;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeUndoVM;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -19,43 +21,53 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
-import java.util.regex.Pattern;
 
 @Service
 @Transactional
 public class PatientMergeUndoService {
 
-    private static final Logger LOG = LoggerFactory.getLogger(PatientMergeUndoService.class);
-    private static final Pattern IDENTIFIER_PATTERN = Pattern.compile("[a-zA-Z_][a-zA-Z0-9_]*");
+    private static final Logger LOG =
+            LoggerFactory.getLogger(PatientMergeUndoService.class);
 
     private final PatientMergeLogRepository patientMergeLogRepository;
     private final PatientMergeMasterDecisionRepository patientMergeMasterDecisionRepository;
+    private final PatientMergeItemLogRepository patientMergeItemLogRepository;
     private final PatientRepository patientRepository;
+    private final PatientMergeSupportService supportService;
     private final JdbcTemplate jdbcTemplate;
 
     public PatientMergeUndoService(
             PatientMergeLogRepository patientMergeLogRepository,
             PatientMergeMasterDecisionRepository patientMergeMasterDecisionRepository,
+            PatientMergeItemLogRepository patientMergeItemLogRepository,
             PatientRepository patientRepository,
+            PatientMergeSupportService supportService,
             JdbcTemplate jdbcTemplate
     ) {
         this.patientMergeLogRepository = patientMergeLogRepository;
         this.patientMergeMasterDecisionRepository = patientMergeMasterDecisionRepository;
+        this.patientMergeItemLogRepository = patientMergeItemLogRepository;
         this.patientRepository = patientRepository;
+        this.supportService = supportService;
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public PatientMergeUndoResponse undoMerge(Long mergeLogId) {
-        if (mergeLogId == null) {
-            throw new BadRequestAlertException("Merge log id is required", "PatientMerge", "merge.log.id.required");
-        }
+    public PatientMergeUndoVM undoMerge(Long mergeLogId) {
+        LOG.debug("Undoing patient merge. mergeLogId={}", mergeLogId);
 
-        PatientMergeLog mergeLog = patientMergeLogRepository.findById(mergeLogId)
-                .orElseThrow(() -> new NotFoundAlertException("Merge log not found", "PatientMergeLog", mergeLogId.toString()));
+        validateMergeLogId(mergeLogId);
+
+        PatientMergeLog mergeLog = patientMergeLogRepository
+                .findById(mergeLogId)
+                .orElseThrow(() ->
+                        new NotFoundAlertException(
+                                "Merge log not found",
+                                "PatientMergeLog",
+                                mergeLogId.toString()
+                        )
+                );
 
         validateUndoAllowed(mergeLog);
 
@@ -65,7 +77,14 @@ public class PatientMergeUndoService {
         restoreSourcePatient(mergeLog);
         markMergeAsUndone(mergeLog);
 
-        return PatientMergeUndoResponse.builder()
+        LOG.info(
+                "Patient merge undone successfully. mergeLogId={}, restoredFields={}, restoredRecords={}",
+                mergeLogId,
+                restoredFieldsCount,
+                restoredRecordsCount
+        );
+
+        return PatientMergeUndoVM.builder()
                 .mergeLogId(mergeLog.getId())
                 .fromPatientId(mergeLog.getFromPatient().getId())
                 .toPatientId(mergeLog.getToPatient().getId())
@@ -75,8 +94,17 @@ public class PatientMergeUndoService {
                 .build();
     }
 
-    private void validateUndoAllowed(PatientMergeLog mergeLog) {
+    private void validateMergeLogId(Long mergeLogId) {
+        if (mergeLogId == null) {
+            throw new BadRequestAlertException(
+                    "Merge log id is required",
+                    "PatientMerge",
+                    "merge.log.id.required"
+            );
+        }
+    }
 
+    private void validateUndoAllowed(PatientMergeLog mergeLog) {
         if (!"MERGED".equals(mergeLog.getMergeStatus())) {
             throw new BadRequestAlertException(
                     "Only MERGED records can be undone",
@@ -85,22 +113,16 @@ public class PatientMergeUndoService {
             );
         }
 
-        Long newerMerges = jdbcTemplate.queryForObject(
-                """
-                SELECT COUNT(*)
-                FROM patient_merge_logs
-                WHERE to_patient_id = ?
-                  AND merged_at > ?
-                  AND merge_status = 'MERGED'
-                """,
-                Long.class,
-                mergeLog.getToPatient().getId(),
-                java.sql.Timestamp.from(mergeLog.getMergedAt())
-        );
+        boolean hasNewerMerges =
+                patientMergeLogRepository.existsByToPatientIdAndMergedAtAfterAndMergeStatus(
+                        mergeLog.getToPatient().getId(),
+                        mergeLog.getMergedAt(),
+                        "MERGED"
+                );
 
-        if (newerMerges != null && newerMerges > 0) {
+        if (hasNewerMerges) {
             throw new BadRequestAlertException(
-                    "newer.merges.exist" ,
+                    "newer.merges.exist",
                     "PatientMerge",
                     "Cannot undo merge because newer merges exist on target patient"
             );
@@ -108,21 +130,21 @@ public class PatientMergeUndoService {
     }
 
     private int restoreFieldChanges(PatientMergeLog mergeLog) {
-        List<PatientMergeMasterDecision> decisions =
-                patientMergeMasterDecisionRepository.findByMergeLogId(mergeLog.getId());
+        List<PatientMergeMasterDecision> restoredDecisions =
+                patientMergeMasterDecisionRepository
+                        .findByMergeLogId(mergeLog.getId())
+                        .stream()
+                        .filter(this::shouldRestoreField)
+                        .peek(this::restoreField)
+                        .toList();
 
-        int count = 0;
+        LOG.debug(
+                "Restored {} field changes. mergeLogId={}",
+                restoredDecisions.size(),
+                mergeLog.getId()
+        );
 
-        for (PatientMergeMasterDecision decision : decisions) {
-            if (!shouldRestoreField(decision)) {
-                continue;
-            }
-
-            restoreField(decision);
-            count++;
-        }
-
-        return count;
+        return restoredDecisions.size();
     }
 
     private boolean shouldRestoreField(PatientMergeMasterDecision decision) {
@@ -139,19 +161,24 @@ public class PatientMergeUndoService {
     }
 
     private void restoreField(PatientMergeMasterDecision decision) {
-        validateIdentifier(decision.getTableName());
-        validateIdentifier(decision.getFieldName());
-
-        String primaryKeyColumn = "id";
+        supportService.validateIdentifier(decision.getTableName());
+        supportService.validateIdentifier(decision.getFieldName());
 
         String sql = "UPDATE " + decision.getTableName()
                 + " SET " + decision.getFieldName() + " = ?"
-                + " WHERE " + primaryKeyColumn + " = ?";
+                + " WHERE id = ?";
+
+        LOG.debug(
+                "Restoring field value. tableName={}, fieldName={}, recordId={}",
+                decision.getTableName(),
+                decision.getFieldName(),
+                decision.getToRecordId()
+        );
 
         jdbcTemplate.update(connection -> {
             PreparedStatement ps = connection.prepareStatement(sql);
 
-            setPreparedStatementValue(
+            supportService.setPreparedStatementValue(
                     ps,
                     1,
                     decision.getToValue(),
@@ -166,35 +193,47 @@ public class PatientMergeUndoService {
     }
 
     private int restoreMovedRecords(PatientMergeLog mergeLog) {
-        List<Map<String, Object>> movedItems = jdbcTemplate.queryForList(
-                """
-                SELECT entity_name, table_name, record_id, old_patient_id, new_patient_id
-                FROM patient_merge_item_logs
-                WHERE merge_log_id = ?
-                """,
+        List<PatientMergeItemLog> restoredItems =
+                patientMergeItemLogRepository
+                        .findByMergeLogId(mergeLog.getId())
+                        .stream()
+                        .peek(this::restoreMovedRecord)
+                        .toList();
+
+        LOG.debug(
+                "Restored {} moved records. mergeLogId={}",
+                restoredItems.size(),
                 mergeLog.getId()
         );
 
-        int count = 0;
-
-        for (Map<String, Object> item : movedItems) {
-            String tableName = String.valueOf(item.get("table_name"));
-            Long recordId = toLong(item.get("record_id"));
-            Long oldPatientId = toLong(item.get("old_patient_id"));
-
-            restoreMovedRecord(tableName, recordId, oldPatientId);
-            count++;
-        }
-
-        return count;
+        return restoredItems.size();
     }
 
-    private void restoreMovedRecord(String tableName, Long recordId, Long oldPatientId) {
-        validateIdentifier(tableName);
+    private void restoreMovedRecord(PatientMergeItemLog item) {
+        restoreMovedRecord(
+                item.getTableName(),
+                item.getRecordId(),
+                item.getOldPatientId()
+        );
+    }
+
+    private void restoreMovedRecord(
+            String tableName,
+            Long recordId,
+            Long oldPatientId
+    ) {
+        supportService.validateIdentifier(tableName);
 
         String sql = "UPDATE " + tableName
                 + " SET patient_id = ?"
                 + " WHERE id = ?";
+
+        LOG.debug(
+                "Restoring moved record. tableName={}, recordId={}, oldPatientId={}",
+                tableName,
+                recordId,
+                oldPatientId
+        );
 
         jdbcTemplate.update(sql, oldPatientId, recordId);
     }
@@ -209,6 +248,11 @@ public class PatientMergeUndoService {
         fromPatient.setMergeNote(null);
 
         patientRepository.save(fromPatient);
+
+        LOG.debug(
+                "Restored source patient status. patientId={}",
+                fromPatient.getId()
+        );
     }
 
     private void markMergeAsUndone(PatientMergeLog mergeLog) {
@@ -217,77 +261,21 @@ public class PatientMergeUndoService {
         mergeLog.setUndoneBy(currentUsername());
 
         patientMergeLogRepository.save(mergeLog);
-    }
 
-    private void setPreparedStatementValue(
-            PreparedStatement ps,
-            int index,
-            Object value,
-            String tableName,
-            String columnName
-    ) throws SQLException {
-
-        if (value == null || value.toString().isBlank()) {
-            ps.setObject(index, null);
-            return;
-        }
-
-        String dataType = jdbcTemplate.queryForObject(
-                """
-                SELECT data_type
-                FROM information_schema.columns
-                WHERE table_name = ?
-                  AND column_name = ?
-                """,
-                String.class,
-                tableName,
-                columnName
+        LOG.debug(
+                "Marked merge as undone. mergeLogId={}",
+                mergeLog.getId()
         );
-
-        String strValue = value.toString();
-
-        switch (dataType) {
-            case "date" -> ps.setDate(index, java.sql.Date.valueOf(strValue));
-
-            case "timestamp without time zone",
-                 "timestamp with time zone",
-                 "timestamp" -> ps.setTimestamp(index, java.sql.Timestamp.valueOf(strValue));
-
-            case "bigint" -> ps.setLong(index, Long.parseLong(strValue));
-
-            case "integer" -> ps.setInt(index, Integer.parseInt(strValue));
-
-            case "boolean" -> ps.setBoolean(index, Boolean.parseBoolean(strValue));
-
-            default -> ps.setString(index, strValue);
-        }
     }
-
-    private Long toLong(Object value) {
-        if (value == null) {
-            return null;
-        }
-
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
-
-        return Long.valueOf(value.toString());
-    }
-
-    private void validateIdentifier(String identifier) {
-        if (identifier == null || !IDENTIFIER_PATTERN.matcher(identifier).matches()) {
-            throw new BadRequestAlertException("Invalid SQL identifier", "PatientMerge", "invalid.identifier");
-        }
-    }
-
 
     private String currentUsername() {
         return SecurityUtils.getCurrentUserLogin()
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "unauthenticated",
-                        "diagnostic_order_tests_result",
-                        "No authenticated user"
-                ));
+                .orElseThrow(() ->
+                        new BadRequestAlertException(
+                                "unauthenticated",
+                                "diagnostic_order_tests_result",
+                                "No authenticated user"
+                        )
+                );
     }
 }

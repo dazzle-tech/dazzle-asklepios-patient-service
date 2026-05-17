@@ -1,4 +1,4 @@
-package com.dazzle.asklepios.service.dto.patientMerge;
+package com.dazzle.asklepios.web.rest.vm.patientMerge;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class PatientMergeExecuteResponse {
+public class PatientMergeExecuteVM {
 
     private Long mergeLogId;
     private Long fromPatientId;

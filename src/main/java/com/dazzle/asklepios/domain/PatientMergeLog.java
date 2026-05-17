@@ -63,4 +63,6 @@ public class PatientMergeLog  implements Serializable {
 
     @Column(name = "reason", length = 500)
     private String reason;
+    @Column(name = "transaction_number", unique = true, length = 30)
+    private String transactionNumber;
 }

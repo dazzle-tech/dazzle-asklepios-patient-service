@@ -1,5 +1,7 @@
-package com.dazzle.asklepios.service.dto.patientMerge;
+package com.dazzle.asklepios.web.rest.vm.patientMerge;
 
+import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeAutoTransferDTO;
+import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeConflictDTO;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -11,14 +13,12 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class PatientMergeSummaryRequest {
+public class PatientMergePreviewVM {
 
     private Long fromPatientId;
     private Long toPatientId;
 
-    private String reason;
-
-    private List<PatientMergeDecisionDTO> decisions;
+    private List<PatientMergeConflictDTO> conflicts;
 
     private List<PatientMergeAutoTransferDTO> autoTransfers;
 }

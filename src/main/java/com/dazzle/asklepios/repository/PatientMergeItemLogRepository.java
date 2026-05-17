@@ -10,4 +10,5 @@ public interface PatientMergeItemLogRepository extends JpaRepository<PatientMerg
         JpaSpecificationExecutor<PatientMergeItemLog> {
 
     List<PatientMergeItemLog> findByMergeLogIdOrderByIdAsc(Long mergeLogId);
+    List<PatientMergeItemLog> findByMergeLogId(Long mergeLogId);
 }

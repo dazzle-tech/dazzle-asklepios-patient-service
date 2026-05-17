@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.PatientMergeLog;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
@@ -11,12 +12,10 @@ import java.util.Optional;
 public interface PatientMergeLogRepository extends JpaRepository<PatientMergeLog, Long>,
         JpaSpecificationExecutor<PatientMergeLog> {
 
-    Optional<PatientMergeLog> findByFromPatientIdAndToPatientIdAndMergeStatus(
-            Long fromPatientId,
-            Long toPatientId,
-            String mergeStatus
-    );
-
+    @EntityGraph(attributePaths = {
+            "fromPatient",
+            "toPatient"
+    })
     List<PatientMergeLog> findByFromPatientIdOrToPatientIdOrderByMergedAtDesc(
             Long fromPatientId,
             Long toPatientId
@@ -24,9 +23,13 @@ public interface PatientMergeLogRepository extends JpaRepository<PatientMergeLog
 
     List<PatientMergeLog> findAllByOrderByMergedAtDesc();
 
+    @EntityGraph(attributePaths = {
+            "toPatient"
+    })
     boolean existsByToPatientIdAndMergedAtAfterAndMergeStatus(
             Long toPatientId,
             Instant mergedAt,
             String mergeStatus
     );
+    boolean existsByTransactionNumber(String transactionNumber);
 }

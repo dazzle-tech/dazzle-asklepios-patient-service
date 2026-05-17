@@ -11,13 +11,12 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class PatientMergeSummaryResponse {
+public class PatientMergeExecuteDTO {
 
     private Long fromPatientId;
     private Long toPatientId;
 
-    private List<PatientMergeSummaryItemDTO> fieldUpdates;
-    private List<PatientMergeSummaryItemDTO> recordsToAdd;
-    private List<PatientMergeSummaryItemDTO> ignoredItems;
-    private List<PatientMergeSummaryItemDTO> autoTransfers;
+    private String reason;
+
+    private List<PatientMergeDecisionDTO> decisions;
 }

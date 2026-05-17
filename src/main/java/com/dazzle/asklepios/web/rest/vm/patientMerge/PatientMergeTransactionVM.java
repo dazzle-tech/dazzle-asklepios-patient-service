@@ -14,6 +14,7 @@ import java.time.Instant;
 public class PatientMergeTransactionVM {
 
     private Long mergeLogId;
+    private String transactionNumber;
 
     private Long fromPatientId;
     private String fromPatientName;
