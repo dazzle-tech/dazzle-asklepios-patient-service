@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.repository.FamilyHistoryRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.FamilyHistory.FamilyHistoryCancelDTO;
 import com.dazzle.asklepios.service.dto.FamilyHistory.FamilyHistoryCreateDTO;
 import com.dazzle.asklepios.service.dto.FamilyHistory.FamilyHistoryUpdateDTO;
@@ -17,12 +18,9 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.Date;
+import java.time.Instant;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -41,6 +39,15 @@ public class FamilyHistoryService {
         return patientRepository.getReferenceById(patientId);
     }
 
+    private String currentUsername() {
+        return SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "unauthenticated",
+                        "familyHistory",
+                        "No authenticated user"
+                ));
+    }
+
     public FamilyHistory create(FamilyHistoryCreateDTO familyHistoryCreateDTO) {
         LOG.info("[CREATE] FamilyHistory payload={}", familyHistoryCreateDTO);
 
@@ -49,6 +56,9 @@ public class FamilyHistoryService {
                 .condition(familyHistoryCreateDTO.condition())
                 .relation(familyHistoryCreateDTO.relation())
                 .inheritedDiseases(familyHistoryCreateDTO.inheritedDiseases())
+
+                .status(PatientHistoryStatus.ACTIVE)
+
                 .build();
 
         try {
@@ -63,7 +73,6 @@ public class FamilyHistoryService {
             );
         }
     }
-
     public FamilyHistory update(FamilyHistoryUpdateDTO familyHistoryUpdateDTO) {
         LOG.info("[UPDATE] FamilyHistory payload={}", familyHistoryUpdateDTO);
 
@@ -94,13 +103,7 @@ public class FamilyHistoryService {
 
     public FamilyHistory cancel(FamilyHistoryCancelDTO familyHistoryCancelDTO) {
 
-        Authentication authentication =
-                SecurityContextHolder.getContext().getAuthentication();
-
-        String currentUser =
-                authentication != null && authentication.getName() != null
-                        ? authentication.getName()
-                        : "system";
+        String currentUser = currentUsername();
 
         LOG.info(
                 "[CANCEL] FamilyHistory id={} cancelledBy={} reason={}",
@@ -125,7 +128,7 @@ public class FamilyHistoryService {
         entity.setStatus(PatientHistoryStatus.CANCELLED);
 
         entity.setCancelledBy(currentUser);
-        entity.setCancelledDate(new Date());
+        entity.setCancelledDate(Instant.now());
         entity.setCancellationReason(
                 familyHistoryCancelDTO.cancellationReason()
         );
@@ -191,7 +194,6 @@ public class FamilyHistoryService {
                 pageable
         );
 
-        // إذا تم تفعيل Show Cancelled اعرض جميع السجلات
         if (Boolean.TRUE.equals(showCancelled)) {
             return familyHistoryRepository.findAllByPatientId(
                     patientId,

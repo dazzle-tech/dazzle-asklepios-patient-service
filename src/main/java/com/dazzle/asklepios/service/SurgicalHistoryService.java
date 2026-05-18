@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.SurgicalHistory;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.SurgicalHistoryRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryCreateDTO;
 import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -20,6 +21,8 @@ import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryCancelDTO;
+
+import java.time.Instant;
 import java.util.Date;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
@@ -47,31 +50,49 @@ public class SurgicalHistoryService {
                 ));
     }
 
-    public SurgicalHistory create(SurgicalHistoryCreateDTO dto) {
-        LOG.info("[CREATE] SurgicalHistory payload={}", dto);
+    private String currentUsername() {
+        return SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "unauthenticated",
+                        "surgicalHistory",
+                        "No authenticated user"
+                ));
+    }
 
+    public SurgicalHistory create(
+            SurgicalHistoryCreateDTO surgicalHistoryCreateDTO
+    ) {
+        LOG.info("[CREATE] SurgicalHistory payload={}", surgicalHistoryCreateDTO);
 
         SurgicalHistory entity = SurgicalHistory.builder()
-                .patient(refPatient(dto.patientId()))
-                .surgery(dto.surgery())
-                .dateOfSurgery(dto.dateOfSurgery())
-                .facility(dto.facility())
-                .anesthesiaType(dto.anesthesiaType())
-                .complications(dto.complications())
-                .adverseReactionsToAnesthesia(dto.adverseReactionsToAnesthesia())
-                .hasImplantsOrDevices(dto.hasImplantsOrDevices())
-                .implantsOrDevicesDescription(dto.implantsOrDevicesDescription())
+                .patient(refPatient(surgicalHistoryCreateDTO.patientId()))
+                .surgery(surgicalHistoryCreateDTO.surgery())
+                .dateOfSurgery(surgicalHistoryCreateDTO.dateOfSurgery())
+                .facility(surgicalHistoryCreateDTO.facility())
+                .anesthesiaType(surgicalHistoryCreateDTO.anesthesiaType())
+                .complications(surgicalHistoryCreateDTO.complications())
+                .adverseReactionsToAnesthesia(
+                        surgicalHistoryCreateDTO.adverseReactionsToAnesthesia()
+                )
+                .hasImplantsOrDevices(
+                        surgicalHistoryCreateDTO.hasImplantsOrDevices()
+                )
+                .implantsOrDevicesDescription(
+                        surgicalHistoryCreateDTO.implantsOrDevicesDescription()
+                )
+
+                // Default status for new records
+                .status(PatientHistoryStatus.ACTIVE)
+
                 .build();
 
         try {
-            SurgicalHistory saved = repository.saveAndFlush(entity);
-            entityManager.refresh(saved);
-            return saved;
+            return repository.saveAndFlush(entity);
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
             throw new BadRequestAlertException(
-                    "Database constraint violated while creating surgical history.",
+                    "Database constraint violated while saving surgical history.",
                     "surgicalHistory",
                     "db.constraint"
             );
@@ -124,12 +145,8 @@ public class SurgicalHistoryService {
                 ));
 
         entity.setStatus(PatientHistoryStatus.CANCELLED);
-        entity.setCancelledBy(
-                entity.getLastModifiedBy() != null
-                        ? entity.getLastModifiedBy()
-                        : entity.getCreatedBy()
-        );
-        entity.setCancelledDate(new Date());
+        entity.setCancelledBy(currentUsername());
+        entity.setCancelledDate(Instant.now());
         entity.setCancellationReason(dto.cancellationReason());
 
         try {

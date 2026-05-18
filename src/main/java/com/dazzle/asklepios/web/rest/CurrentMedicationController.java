@@ -7,8 +7,11 @@ import com.dazzle.asklepios.service.dto.currentMedication.CurrentMedicationCreat
 import com.dazzle.asklepios.service.dto.currentMedication.CurrentMedicationUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.vm.CurrentMedication.CurrentMedicationResponseVM;
 import jakarta.validation.Valid;
+
+import java.net.URI;
+import java.util.List;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
@@ -17,11 +20,16 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
-
-import java.net.URI;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/patient")
@@ -39,7 +47,7 @@ public class CurrentMedicationController {
     }
 
     @PostMapping("/current-medication")
-    public ResponseEntity<CurrentMedicationResponseVM> create(
+    public ResponseEntity<CurrentMedication> create(
             @Valid @RequestBody CurrentMedicationCreateDTO createDTO
     ) {
         LOG.debug("REST create CurrentMedication payload={}", createDTO);
@@ -67,11 +75,11 @@ public class CurrentMedicationController {
                                         + created.getId()
                         )
                 )
-                .body(CurrentMedicationResponseVM.ofEntity(created));
+                .body(created);
     }
 
     @PutMapping("/current-medication")
-    public ResponseEntity<CurrentMedicationResponseVM> update(
+    public ResponseEntity<CurrentMedication> update(
             @Valid @RequestBody CurrentMedicationUpdateDTO updateDTO
     ) {
         LOG.debug("REST update CurrentMedication payload={}", updateDTO);
@@ -84,13 +92,11 @@ public class CurrentMedicationController {
                 updated.getId()
         );
 
-        return ResponseEntity.ok(
-                CurrentMedicationResponseVM.ofEntity(updated)
-        );
+        return ResponseEntity.ok(updated);
     }
 
     @PutMapping("/current-medication/cancel")
-    public ResponseEntity<CurrentMedicationResponseVM> cancel(
+    public ResponseEntity<CurrentMedication> cancel(
             @Valid @RequestBody CurrentMedicationCancelDTO currentMedicationCancelDTO
     ) {
         LOG.debug(
@@ -108,9 +114,7 @@ public class CurrentMedicationController {
                 cancelled.getId()
         );
 
-        return ResponseEntity.ok(
-                CurrentMedicationResponseVM.ofEntity(cancelled)
-        );
+        return ResponseEntity.ok(cancelled);
     }
 
     @DeleteMapping("/current-medication/{id}")
@@ -128,7 +132,7 @@ public class CurrentMedicationController {
     }
 
     @GetMapping("/current-medication")
-    public ResponseEntity<List<CurrentMedicationResponseVM>> list(
+    public ResponseEntity<List<CurrentMedication>> list(
             @RequestParam Long patientId,
             @RequestParam(defaultValue = "false") boolean showCancelled,
             @ParameterObject Pageable pageable
@@ -158,11 +162,7 @@ public class CurrentMedicationController {
                 page.getContent().size()
         );
 
-        List<CurrentMedicationResponseVM> body =
-                page.getContent()
-                        .stream()
-                        .map(CurrentMedicationResponseVM::ofEntity)
-                        .toList();
+        List<CurrentMedication> body = page.getContent();
 
         return new ResponseEntity<>(
                 body,

@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.repository.HospitalizationRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationCancelDTO;
 import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationsCreateDTO;
 import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationsUpdateDTO;
@@ -20,6 +21,7 @@ import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.Date;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -44,20 +46,33 @@ public class HospitalizationsService {
                 ));
     }
 
-    public Hospitalization create(HospitalizationsCreateDTO hospitalizationsCreateDTO) {
-        LOG.info("[CREATE] Hospitalization payload={}", hospitalizationsCreateDTO);
+    private String currentUsername() {
+        return SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "unauthenticated",
+                        "hospitalization",
+                        "No authenticated user"
+                ));
+    }
+
+
+    public Hospitalization create(HospitalizationsCreateDTO hospitalizationCreateDTO) {
+        LOG.info("[CREATE] Hospitalization payload={}", hospitalizationCreateDTO);
 
         Hospitalization entity = Hospitalization.builder()
-                .patient(refPatient(hospitalizationsCreateDTO.patientId()))
-                .facility(hospitalizationsCreateDTO.facility())
-                .reason(hospitalizationsCreateDTO.reason())
-                .admissionType(hospitalizationsCreateDTO.admissionType())
-                .dateOfAdmission(hospitalizationsCreateDTO.dateOfAdmission())
-                .lengthOfStayDays(hospitalizationsCreateDTO.lengthOfStayDays())
-                .outcomes(hospitalizationsCreateDTO.outcomes())
+                .patient(refPatient(hospitalizationCreateDTO.patientId()))
+                .facility(hospitalizationCreateDTO.facility())
+                .reason(hospitalizationCreateDTO.reason())
+                .admissionType(hospitalizationCreateDTO.admissionType())
+                .dateOfAdmission(hospitalizationCreateDTO.dateOfAdmission())
+                .lengthOfStayDays(hospitalizationCreateDTO.lengthOfStayDays())
+                .outcomes(hospitalizationCreateDTO.outcomes())
                 .medicalInterventionsPerformed(
-                        hospitalizationsCreateDTO.medicalInterventionsPerformed()
+                        hospitalizationCreateDTO.medicalInterventionsPerformed()
                 )
+
+                .status(PatientHistoryStatus.ACTIVE)
+
                 .build();
 
         try {
@@ -66,7 +81,7 @@ public class HospitalizationsService {
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
             throw new BadRequestAlertException(
-                    "Database constraint violated while creating patient admission.",
+                    "Database constraint violated while creating hospitalization.",
                     "hospitalization",
                     "db.constraint"
             );
@@ -124,12 +139,8 @@ public class HospitalizationsService {
                 ));
 
         entity.setStatus(PatientHistoryStatus.CANCELLED);
-        entity.setCancelledBy(
-                entity.getLastModifiedBy() != null
-                        ? entity.getLastModifiedBy()
-                        : entity.getCreatedBy()
-        );
-        entity.setCancelledDate(new Date());
+        entity.setCancelledBy(currentUsername());
+        entity.setCancelledDate(Instant.now());
         entity.setCancellationReason(
                 hospitalizationCancelDTO.cancellationReason()
         );

@@ -13,6 +13,7 @@ import lombok.Setter;
 
 import java.io.Serial;
 import java.io.Serializable;
+import java.time.Instant;
 import java.util.Date;
 
 @Entity
@@ -66,16 +67,15 @@ public class Hospitalization extends AbstractAuditingEntity<Long>
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
-    @Builder.Default
+
     private PatientHistoryStatus status = PatientHistoryStatus.ACTIVE;
 
     @Column(name = "cancelled_by", length = 50)
     private String cancelledBy;
 
     @Column(name = "cancelled_date")
-    @Temporal(TemporalType.TIMESTAMP)
-    private Date cancelledDate;
+    private Instant cancelledDate;
 
-    @Column(name = "cancellation_reason", length = 500)
+    @Column(name = "cancellation_reason", columnDefinition = "text")
     private String cancellationReason;
 }

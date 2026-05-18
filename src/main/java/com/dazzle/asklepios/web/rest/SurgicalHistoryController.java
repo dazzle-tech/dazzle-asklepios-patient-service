@@ -2,11 +2,15 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.SurgicalHistory;
 import com.dazzle.asklepios.service.SurgicalHistoryService;
+import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryCancelDTO;
 import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryCreateDTO;
 import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.vm.surgicalHistory.SurgicalHistoryResponseVM;
 import jakarta.validation.Valid;
+
+import java.net.URI;
+import java.util.List;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
@@ -15,7 +19,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,9 +28,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import java.net.URI;
-import java.util.List;
-import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryCancelDTO;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 @RestController
 @RequestMapping("/api/patient")
@@ -43,7 +44,7 @@ public class SurgicalHistoryController {
     }
 
     @PostMapping("/surgical-history")
-    public ResponseEntity<SurgicalHistoryResponseVM> create(
+    public ResponseEntity<SurgicalHistory> create(
             @Valid @RequestBody SurgicalHistoryCreateDTO dto
     ) {
         LOG.debug("REST create SurgicalHistory payload={}", dto);
@@ -60,23 +61,23 @@ public class SurgicalHistoryController {
 
         return ResponseEntity
                 .created(URI.create("/api/patient/surgical-history/" + created.getId()))
-                .body(SurgicalHistoryResponseVM.ofEntity(created));
+                .body(created);
     }
 
     @PutMapping("/surgical-history")
-    public ResponseEntity<SurgicalHistoryResponseVM> update(
+    public ResponseEntity<SurgicalHistory> update(
             @Valid @RequestBody SurgicalHistoryUpdateDTO dto
     ) {
         SurgicalHistory updated = service.update(dto);
-        return ResponseEntity.ok(SurgicalHistoryResponseVM.ofEntity(updated));
+        return ResponseEntity.ok(updated);
     }
 
     @PutMapping("/surgical-history/cancel")
-    public ResponseEntity<SurgicalHistoryResponseVM> cancel(
+    public ResponseEntity<SurgicalHistory> cancel(
             @Valid @RequestBody SurgicalHistoryCancelDTO dto
     ) {
         SurgicalHistory cancelled = service.cancel(dto);
-        return ResponseEntity.ok(SurgicalHistoryResponseVM.ofEntity(cancelled));
+        return ResponseEntity.ok(cancelled);
     }
 
     @DeleteMapping("/surgical-history/{id}")
@@ -86,7 +87,7 @@ public class SurgicalHistoryController {
     }
 
     @GetMapping("/surgical-history")
-    public ResponseEntity<List<SurgicalHistoryResponseVM>> list(
+    public ResponseEntity<List<SurgicalHistory>> list(
             @RequestParam Long patientId,
             @RequestParam(defaultValue = "false") boolean showCancelled,
             @ParameterObject Pageable pageable
@@ -112,11 +113,7 @@ public class SurgicalHistoryController {
                                 page
                         );
 
-        List<SurgicalHistoryResponseVM> body =
-                page.getContent()
-                        .stream()
-                        .map(SurgicalHistoryResponseVM::ofEntity)
-                        .toList();
+        List<SurgicalHistory> body = page.getContent();
 
         return new ResponseEntity<>(
                 body,

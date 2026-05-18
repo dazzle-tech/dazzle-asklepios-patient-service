@@ -26,7 +26,7 @@ public record PatientProblemResponseVM(
         PatientHistoryStatus status,
 
         String cancelledBy,
-        Date cancelledDate,
+        Instant cancelledDate,
         String cancellationReason,
 
         String createdBy,

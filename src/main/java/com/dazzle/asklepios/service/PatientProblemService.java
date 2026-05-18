@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.PatientProblem;
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.repository.PatientProblemRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemCancelDTO;
 import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemCreateDTO;
 import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemUpdateDTO;
@@ -17,11 +18,10 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.Date;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -55,10 +55,20 @@ public class PatientProblemService {
                         )));
     }
 
+    private String currentUsername() {
+        return SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "unauthenticated",
+                        "patientProblem",
+                        "No authenticated user"
+                ));
+    }
+
     public PatientProblem create(PatientProblemCreateDTO patientProblemCreateDTO) {
         LOG.info("[CREATE] PatientProblem payload={}", patientProblemCreateDTO);
 
         PatientProblem entity = PatientProblem.builder()
+                // Use the existing resolvePatient method (not refPatient)
                 .patient(resolvePatient(patientProblemCreateDTO.patientId()))
                 .condition(patientProblemCreateDTO.condition())
                 .dateOfDiagnosis(patientProblemCreateDTO.dateOfDiagnosis())
@@ -67,6 +77,10 @@ public class PatientProblemService {
                 .dateOfResolution(patientProblemCreateDTO.dateOfResolution())
                 .byPatient(patientProblemCreateDTO.byPatient())
                 .sourceOfInformation(patientProblemCreateDTO.sourceOfInformation())
+
+                // Default status for new records
+                .status(PatientHistoryStatus.ACTIVE)
+
                 .build();
 
         try {
@@ -116,13 +130,7 @@ public class PatientProblemService {
 
     public PatientProblem cancel(PatientProblemCancelDTO patientProblemCancelDTO) {
 
-        Authentication authentication =
-                SecurityContextHolder.getContext().getAuthentication();
-
-        String currentUser =
-                authentication != null && authentication.getName() != null
-                        ? authentication.getName()
-                        : "system";
+        String currentUser = currentUsername();
 
         LOG.info(
                 "[CANCEL] PatientProblem id={} cancelledBy={} reason={}",
@@ -143,7 +151,7 @@ public class PatientProblemService {
 
         entity.setStatus(PatientHistoryStatus.CANCELLED);
         entity.setCancelledBy(currentUser);
-        entity.setCancelledDate(new Date());
+        entity.setCancelledDate(Instant.now());
         entity.setCancellationReason(patientProblemCancelDTO.cancellationReason());
 
         try {

@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.web.rest.vm.socialHistory;
 
 import com.dazzle.asklepios.domain.SocialHistory;
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 
 import java.time.Instant;
 import java.util.Date;
@@ -29,6 +30,11 @@ public record SocialHistoryResponseVM(
 
         String physicalLimitation,
         String diagnosedEatingDisorders,
+
+        PatientHistoryStatus status,
+        String cancelledBy,
+        Instant cancelledDate,
+        String cancellationReason,
 
         String createdBy,
         Instant createdDate,
@@ -61,6 +67,11 @@ public record SocialHistoryResponseVM(
 
                 entity.getPhysicalLimitation(),
                 entity.getDiagnosedEatingDisorders(),
+
+                entity.getStatus(),
+                entity.getCancelledBy(),
+                entity.getCancelledDate(),
+                entity.getCancellationReason(),
 
                 entity.getCreatedBy(),
                 entity.getCreatedDate(),

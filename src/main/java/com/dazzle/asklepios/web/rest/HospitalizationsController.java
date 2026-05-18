@@ -6,7 +6,6 @@ import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationCancelDT
 import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationsCreateDTO;
 import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationsUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.vm.Hospitalization.HospitalizationsResponseVM;
 import jakarta.validation.Valid;
 
 import java.net.URI;
@@ -45,7 +44,7 @@ public class HospitalizationsController {
     }
 
     @PostMapping("/hospitalizations")
-    public ResponseEntity<HospitalizationsResponseVM> create(
+    public ResponseEntity<Hospitalization> create(
             @Valid @RequestBody HospitalizationsCreateDTO hospitalizationsCreateDTO
     ) {
         LOG.debug("REST create Hospitalization payload={}", hospitalizationsCreateDTO);
@@ -69,11 +68,11 @@ public class HospitalizationsController {
                                 "/api/patient/hospitalizations/" + created.getId()
                         )
                 )
-                .body(HospitalizationsResponseVM.ofEntity(created));
+                .body(created);
     }
 
     @PutMapping("/hospitalizations")
-    public ResponseEntity<HospitalizationsResponseVM> update(
+    public ResponseEntity<Hospitalization> update(
             @Valid @RequestBody HospitalizationsUpdateDTO hospitalizationsUpdateDTO
     ) {
         LOG.debug("REST update Hospitalization payload={}", hospitalizationsUpdateDTO);
@@ -83,13 +82,11 @@ public class HospitalizationsController {
 
         LOG.info("REST update Hospitalization - updated id={}", updated.getId());
 
-        return ResponseEntity.ok(
-                HospitalizationsResponseVM.ofEntity(updated)
-        );
+        return ResponseEntity.ok(updated);
     }
 
     @PutMapping("/hospitalizations/cancel")
-    public ResponseEntity<HospitalizationsResponseVM> cancel(
+    public ResponseEntity<Hospitalization> cancel(
             @Valid @RequestBody HospitalizationCancelDTO hospitalizationCancelDTO
     ) {
         LOG.debug("REST cancel Hospitalization payload={}", hospitalizationCancelDTO);
@@ -99,9 +96,7 @@ public class HospitalizationsController {
 
         LOG.info("REST cancel Hospitalization - cancelled id={}", cancelled.getId());
 
-        return ResponseEntity.ok(
-                HospitalizationsResponseVM.ofEntity(cancelled)
-        );
+        return ResponseEntity.ok(cancelled);
     }
 
     @DeleteMapping("/hospitalizations/{id}")
@@ -116,7 +111,7 @@ public class HospitalizationsController {
     }
 
     @GetMapping("/hospitalizations")
-    public ResponseEntity<List<HospitalizationsResponseVM>> list(
+    public ResponseEntity<List<Hospitalization>> list(
             @RequestParam Long patientId,
             @RequestParam(defaultValue = "false") boolean showCancelled,
             @ParameterObject Pageable pageable
@@ -147,11 +142,7 @@ public class HospitalizationsController {
                                 page
                         );
 
-        List<HospitalizationsResponseVM> body =
-                page.getContent()
-                        .stream()
-                        .map(HospitalizationsResponseVM::ofEntity)
-                        .toList();
+        List<Hospitalization> body = page.getContent();
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }

@@ -20,6 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.socialHistory.SocialHistoryCancelDTO;
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
+
+import java.time.Instant;
 import java.util.Date;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -42,39 +44,52 @@ public class SocialHistoryService {
                 ));
     }
 
+    private String currentUsername() {
+        return SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "unauthenticated",
+                        "socialHistory",
+                        "No authenticated user"
+                ));
+    }
+
     public SocialHistory create(SocialHistoryCreateDTO socialHistoryCreateDTO) {
         LOG.info("[CREATE] SocialHistory dto={}", socialHistoryCreateDTO);
 
-        Patient patient = getPatientOrThrow(socialHistoryCreateDTO.patientId());
-
-        SocialHistory socialHistory = SocialHistory.builder()
-                .patient(patient)
-                .isCurrentSmoker(Boolean.TRUE.equals(socialHistoryCreateDTO.isCurrentSmoker()))
+        SocialHistory entity = SocialHistory.builder()
+                // Use the existing helper method in this service
+                .patient(getPatientOrThrow(socialHistoryCreateDTO.patientId()))
+                .isCurrentSmoker(socialHistoryCreateDTO.isCurrentSmoker())
                 .smokeStartDate(socialHistoryCreateDTO.smokeStartDate())
                 .cigaretteAmount(socialHistoryCreateDTO.cigaretteAmount())
                 .cigaretteType(socialHistoryCreateDTO.cigaretteType())
-                .isPreviousSmoker(Boolean.TRUE.equals(socialHistoryCreateDTO.isPreviousSmoker()))
+                .isPreviousSmoker(socialHistoryCreateDTO.isPreviousSmoker())
                 .smokeQuitDate(socialHistoryCreateDTO.smokeQuitDate())
-                .exposureToSecondHandSmoke(Boolean.TRUE.equals(socialHistoryCreateDTO.exposureToSecondHandSmoke()))
-                .alcoholConsumption(Boolean.TRUE.equals(socialHistoryCreateDTO.alcoholConsumption()))
+                .exposureToSecondHandSmoke(
+                        socialHistoryCreateDTO.exposureToSecondHandSmoke()
+                )
+                .alcoholConsumption(socialHistoryCreateDTO.alcoholConsumption())
                 .typeOfAlcohol(socialHistoryCreateDTO.typeOfAlcohol())
                 .alcoholSinceWhen(socialHistoryCreateDTO.alcoholSinceWhen())
-                .substanceUse(Boolean.TRUE.equals(socialHistoryCreateDTO.substanceUse()))
+                .substanceUse(socialHistoryCreateDTO.substanceUse())
                 .route(socialHistoryCreateDTO.route())
                 .frequency(socialHistoryCreateDTO.frequency())
                 .physicalLimitation(socialHistoryCreateDTO.physicalLimitation())
-                .diagnosedEatingDisorders(socialHistoryCreateDTO.diagnosedEatingDisorders())
+                .diagnosedEatingDisorders(
+                        socialHistoryCreateDTO.diagnosedEatingDisorders()
+                )
+
+                .status(PatientHistoryStatus.ACTIVE)
+
                 .build();
 
         try {
-            SocialHistory saved = socialHistoryRepository.saveAndFlush(socialHistory);
-            LOG.info("[CREATE] SocialHistory created id={}", saved.getId());
-            return saved;
+            return socialHistoryRepository.saveAndFlush(entity);
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
             throw new BadRequestAlertException(
-                    "Database constraint violated while creating social history.",
+                    "Database constraint violated while saving social history.",
                     "socialHistory",
                     "db.constraint"
             );
@@ -145,10 +160,8 @@ public class SocialHistoryService {
         }
 
         socialHistory.setStatus(PatientHistoryStatus.CANCELLED);
-        socialHistory.setCancelledBy(
-                SecurityUtils.getCurrentUserLogin().orElse("system")
-        );
-        socialHistory.setCancelledDate(new Date());
+        socialHistory.setCancelledBy(currentUsername());
+        socialHistory.setCancelledDate(Instant.now());
         socialHistory.setCancellationReason(cancelDTO.cancellationReason());
         SocialHistory cancelled = socialHistoryRepository.saveAndFlush(socialHistory);
 

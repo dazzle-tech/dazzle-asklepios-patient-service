@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.repository.CurrentMedicationRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.currentMedication.CurrentMedicationCancelDTO;
 import com.dazzle.asklepios.service.dto.currentMedication.CurrentMedicationCreateDTO;
 import com.dazzle.asklepios.service.dto.currentMedication.CurrentMedicationUpdateDTO;
@@ -21,6 +22,7 @@ import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.Date;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -43,6 +45,15 @@ public class CurrentMedicationService {
                         "Patient not found with id " + patientId,
                         "currentMedication",
                         "patient.notfound"
+                ));
+    }
+
+    private String currentUsername() {
+        return SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "unauthenticated",
+                        "currentMedication",
+                        "No authenticated user"
                 ));
     }
 
@@ -139,12 +150,8 @@ public class CurrentMedicationService {
                         ));
 
         entity.setStatus(PatientHistoryStatus.CANCELLED);
-        entity.setCancelledBy(
-                entity.getLastModifiedBy() != null
-                        ? entity.getLastModifiedBy()
-                        : entity.getCreatedBy()
-        );
-        entity.setCancelledDate(new Date());
+        entity.setCancelledBy(currentUsername());
+        entity.setCancelledDate(Instant.now());
         entity.setCancellationReason(
                 currentMedicationCancelDTO.cancellationReason()
         );

@@ -89,6 +89,6 @@ public class GlasgowComaScaleAssessment extends AbstractAuditingEntity<Long> imp
     @Column(name = "cancelled_by", length = 50)
     private String cancelledBy;
 
-    @Column(name = "cancellation_reason", length = 500)
+    @Column(name = "cancellation_reason", columnDefinition = "text")
     private String cancellationReason;
 }
