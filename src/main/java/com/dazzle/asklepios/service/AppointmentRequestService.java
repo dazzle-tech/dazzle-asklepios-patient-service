@@ -7,12 +7,10 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.AppointmentRequestStatus;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
-import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
 import com.dazzle.asklepios.repository.AppointmentRequestRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
-import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateBookPatientDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestCancelDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestCreateDTO;
@@ -77,6 +75,7 @@ public class AppointmentRequestService {
         request.setReason(dto.reason());
         request.setNote(dto.note());
         request.setStatus(AppointmentRequestStatus.REQUESTED);
+        request.setPreferredDate(dto.preferredDate());
 
         AppointmentRequest saved = appointmentRequestRepository.save(request);
         return toResponseVM(saved);
@@ -301,7 +300,7 @@ public class AppointmentRequestService {
     private AppointmentRequestResponseVM toResponseVM(AppointmentRequest entity) {
         Long patientId = entity.getPatient() != null ? entity.getPatient().getId() : null;
         String patientName = entity.getPatient() != null ? entity.getPatient().getFirstName() + "" + entity.getPatient().getLastName() : null;
-        String patientMrn =  entity.getPatient() != null ? entity.getPatient().getMedicalRecordNumber() : null ;
+        String patientMrn = entity.getPatient() != null ? entity.getPatient().getMedicalRecordNumber() : null;
         Long sourceEncounterId = entity.getSourceEncounter() != null ? entity.getSourceEncounter().getId() : null;
         Long appointmentId = entity.getAppointment() != null ? entity.getAppointment().getId() : null;
 
@@ -327,15 +326,8 @@ public class AppointmentRequestService {
                 entity.getCreatedBy(),
                 entity.getCreatedDate(),
                 entity.getLastModifiedBy(),
-                entity.getLastModifiedDate()
+                entity.getLastModifiedDate(),
+                entity.getPreferredDate()
         );
-    }
-    private String currentUsername() {
-        return SecurityUtils.getCurrentUserLogin()
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "unauthenticated",
-                        ENTITY_NAME,
-                        "user.notauthenticated"
-                ));
     }
 }
