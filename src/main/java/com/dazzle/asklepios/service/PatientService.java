@@ -125,6 +125,8 @@ public class PatientService {
                 .isCompletedPatient(completed)
                 .securityAccessLevel(dto.securityAccessLevel())
                 .activated(false)
+                .bloodGroup(dto.bloodGroup())
+                .patientConditions(dto.patientConditions())
                 .build();
 
         try {
@@ -237,6 +239,10 @@ public class PatientService {
         existing.setIsVerified(Boolean.TRUE.equals(dto.isVerified()));
         existing.setIsCompletedPatient(Boolean.TRUE.equals(dto.isCompletedPatient()));
         existing.setSecurityAccessLevel(dto.securityAccessLevel());
+        if (dto.bloodGroup() != null) {
+            existing.setBloodGroup(dto.bloodGroup());
+        }
+        existing.setPatientConditions(dto.patientConditions());
 
         existing.setLastModifiedDate(Instant.now());
 
