@@ -8,5 +8,6 @@ public record WaseelApiProperties(
         String username,
         String password,
         String providerId,
+        String systemType,
         Integer timeoutSeconds
 ) {}

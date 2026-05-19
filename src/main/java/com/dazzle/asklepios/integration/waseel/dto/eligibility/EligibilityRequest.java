@@ -1,20 +1,33 @@
 package com.dazzle.asklepios.integration.waseel.dto.eligibility;
 
-import java.util.Map;
-
 public record EligibilityRequest(
+
         Boolean isNewBorn,
-        EligibilityBeneficiary beneficiary,
+
+        EligibilityBeneficiaryDTO beneficiary,
+
         Object subscriber,
-        EligibilityInsurancePlan insurancePlan,
+
+        EligibilityInsurancePlanDTO insurancePlan,
+
         String serviceDate,
+
         String toDate,
+
         Boolean benefits,
+
         Boolean discovery,
+
         Boolean validation,
+
         Boolean transfer,
+
         Boolean isEmergency,
+
         Boolean referral,
-        Map<String, Object> referredClinic,
+
+        Object referredClinic,
+
         String destinationId
+
 ) {}

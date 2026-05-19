@@ -165,6 +165,13 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
     @Column(name = "is_completed_patient", nullable = false)
     private Boolean isCompletedPatient;
 
+    @Column(name = "is_cchi_patient", nullable = false)
+    @Builder.Default
+    private Boolean isCchiPatient = false;
+
+    @Column(name = "document_id", unique = true, length = 100)
+    private String documentId;
+
     @Enumerated(EnumType.STRING)
     @Column(name="security_access_level")
     private SecurityLevel securityAccessLevel;

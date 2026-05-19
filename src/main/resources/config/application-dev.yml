@@ -16,12 +16,14 @@ service:
   asklepios-setup-service-url: http://localhost:8082
 
 waseel:
-    api:
-      base-url: https://api.stg-eclaims.waseel.com
-      username: ${WASEEL_USERNAME:abh706}
-      password: ${WASEEL_PASSWORD:abhclm706}
-      provider-id: ${WASEEL_PROVIDER_ID:706}
-      timeout-seconds: 30
+  api:
+    base-url: https://api.stg-eclaims.waseel.com
+    username: ${WASEEL_USERNAME:abh706}
+    password: ${WASEEL_PASSWORD:abhclm706}
+    provider-id: ${WASEEL_PROVIDER_ID:706}
+    system-type: ${WASEEL_SYSTEM_TYPE:1}
+    timeout-seconds: 90
+
 
 spring:
   devtools:
@@ -35,7 +37,7 @@ spring:
       indent-output: true
   datasource:
     type: com.zaxxer.hikari.HikariDataSource
-    url: jdbc:postgresql://localhost:5433/test
+    url: jdbc:postgresql://localhost:5433/postgres
     username: postgres
     password: root
     hikari:
@@ -67,6 +69,10 @@ patient:
       host: localhost
       port: 5000
       ring-buffer-size: 512
+    level:
+      com.dazzle.asklepios.integration.waseel: DEBUG
+      feign: DEBUG
+
   attachments:
     bucket: asklepios
     region: sfo3

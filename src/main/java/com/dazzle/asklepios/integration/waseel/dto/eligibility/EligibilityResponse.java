@@ -1,23 +1,34 @@
 package com.dazzle.asklepios.integration.waseel.dto.eligibility;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import java.util.Map;
+import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record EligibilityResponse(
-        String transactionId,
-        String requestId,
-        String responseId,
+        Long transactionId,
+        Long responseId,
+        String outgoingTransactionId,
         String eligibilityRequestId,
-        String eligibilityResponseId,
-        String nphiesResponseId,
+        String beneficiaryName,
+        String subscriberName,
         String status,
         String outcome,
         String disposition,
+        String serviceDate,
+        String transactionDate,
+        String nphiesResponseId,
+        Boolean transfer,
         String siteEligibility,
-        String message,
-        String apiStatus,
-        String statusCode,
-        Map<String, Object> data,
-        Object errors
+        Boolean isNewBorn,
+        List<String> purpose,
+        List<EligibilityCoverageDTO> coverages,
+        Object errors,
+        String eligibilityIdentifierUrl,
+        String documentId,
+        String documentType,
+        String payerId,
+        Boolean isEmergency,
+        String requestBundleId,
+        String responseBundleId,
+        String tpa_Id
 ) {}

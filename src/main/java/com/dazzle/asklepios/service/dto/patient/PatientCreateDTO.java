@@ -76,6 +76,10 @@ public record PatientCreateDTO(
         Boolean isUnknown,
         Boolean isVerified,
         Boolean isCompletedPatient,
+
+        Boolean isCchiPatient,
+        String documentId,
+
         SecurityLevel securityAccessLevel)
 
      implements Serializable {

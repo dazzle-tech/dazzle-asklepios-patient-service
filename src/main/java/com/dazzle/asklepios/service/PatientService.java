@@ -99,7 +99,8 @@ public class PatientService {
                 .occupation(dto.occupation())
                 .responsibleParty(dto.responsibleParty())
                 .educationalLevel(dto.educationalLevel())
-
+                .isCchiPatient(Boolean.TRUE.equals(dto.isCchiPatient()))
+                .documentId(dto.documentId())
                 .previousId(dto.previousId())
                 .archivingNumber(dto.archivingNumber())
                 .details(dto.details())
