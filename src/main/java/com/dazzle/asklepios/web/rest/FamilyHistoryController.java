@@ -2,13 +2,15 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.FamilyHistory;
 import com.dazzle.asklepios.service.FamilyHistoryService;
+import com.dazzle.asklepios.service.dto.FamilyHistory.FamilyHistoryCancelDTO;
 import com.dazzle.asklepios.service.dto.FamilyHistory.FamilyHistoryCreateDTO;
 import com.dazzle.asklepios.service.dto.FamilyHistory.FamilyHistoryUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.vm.FamilyHistory.FamilyHistoryResponseVM;
 import jakarta.validation.Valid;
+
 import java.net.URI;
 import java.util.List;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
@@ -41,12 +43,12 @@ public class FamilyHistoryController {
         this.familyHistoryService = service;
     }
 
-
     @PostMapping("/family-history")
-    public ResponseEntity<FamilyHistoryResponseVM> create(
+    public ResponseEntity<FamilyHistory> create(
             @Valid @RequestBody FamilyHistoryCreateDTO familyHistoryCreateDTO
     ) {
         LOG.debug("REST create FamilyHistory payload={}", familyHistoryCreateDTO);
+
         if (familyHistoryCreateDTO == null) {
             throw new BadRequestAlertException(
                     "Family history payload is required",
@@ -54,46 +56,81 @@ public class FamilyHistoryController {
                     "payload.required"
             );
         }
-        FamilyHistory created = familyHistoryService.create(familyHistoryCreateDTO);
+
+        FamilyHistory created =
+                familyHistoryService.create(familyHistoryCreateDTO);
+
         LOG.info("REST create FamilyHistory - created id={}", created.getId());
 
         return ResponseEntity
                 .created(URI.create("/api/patient/family-history/" + created.getId()))
-                .body(FamilyHistoryResponseVM.ofEntity(created));
+                .body(created);
     }
 
-
     @PutMapping("/family-history")
-    public ResponseEntity<FamilyHistoryResponseVM> update(
+    public ResponseEntity<FamilyHistory> update(
             @Valid @RequestBody FamilyHistoryUpdateDTO familyHistoryUpdateDTO
     ) {
         LOG.debug("REST update FamilyHistory payload={}", familyHistoryUpdateDTO);
-        FamilyHistory updated = familyHistoryService.update(familyHistoryUpdateDTO);
+
+        FamilyHistory updated =
+                familyHistoryService.update(familyHistoryUpdateDTO);
+
         LOG.info("REST update FamilyHistory - updated id={}", updated.getId());
 
-        return ResponseEntity.ok(
-                FamilyHistoryResponseVM.ofEntity(updated)
-        );
+        return ResponseEntity.ok(updated);
     }
 
+    @PutMapping("/family-history/cancel")
+    public ResponseEntity<FamilyHistory> cancel(
+            @Valid @RequestBody FamilyHistoryCancelDTO familyHistoryCancelDTO
+    ) {
+        LOG.debug("REST cancel FamilyHistory payload={}", familyHistoryCancelDTO);
+
+        FamilyHistory cancelled =
+                familyHistoryService.cancel(familyHistoryCancelDTO);
+
+        LOG.info("REST cancel FamilyHistory - cancelled id={}", cancelled.getId());
+
+        return ResponseEntity.ok(cancelled);
+    }
 
     @DeleteMapping("/family-history/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         LOG.debug("REST delete FamilyHistory id={}", id);
+
         familyHistoryService.delete(id);
+
         LOG.info("REST delete FamilyHistory - deleted id={}", id);
+
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/family-history")
-    public ResponseEntity<List<FamilyHistoryResponseVM>> list(
+    public ResponseEntity<List<FamilyHistory>> list(
             @RequestParam Long patientId,
+            @RequestParam(name = "showCancelled", defaultValue = "false")
+            Boolean showCancelled,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST list FamilyHistory patientId={} pageable={}", patientId, pageable);
+        LOG.debug(
+                "REST list FamilyHistory patientId={} showCancelled={} pageable={}",
+                patientId,
+                showCancelled,
+                pageable
+        );
+
         Page<FamilyHistory> page =
-                familyHistoryService.findByPatientId(patientId, pageable);
-        LOG.info("REST list FamilyHistory - returned {} items", page.getContent().size());
+                familyHistoryService.findByPatientId(
+                        patientId,
+                        showCancelled,
+                        pageable
+                );
+
+        LOG.info(
+                "REST list FamilyHistory - returned {} items",
+                page.getContent().size()
+        );
 
         HttpHeaders headers =
                 com.dazzle.asklepios.web.rest.Helper.PaginationUtil
@@ -102,11 +139,7 @@ public class FamilyHistoryController {
                                 page
                         );
 
-        List<FamilyHistoryResponseVM> body =
-                page.getContent()
-                        .stream()
-                        .map(FamilyHistoryResponseVM::ofEntity)
-                        .toList();
+        List<FamilyHistory> body = page.getContent();
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }

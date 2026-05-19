@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.domain.enumeration.Relations;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -12,6 +13,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Temporal;
+import jakarta.persistence.TemporalType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -23,6 +26,8 @@ import lombok.Setter;
 
 import java.io.Serial;
 import java.io.Serializable;
+import java.time.Instant;
+import java.util.Date;
 
 @Entity
 @Getter
@@ -44,7 +49,7 @@ public class FamilyHistory extends AbstractAuditingEntity<Long>
 
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn( name = "patient_id", nullable = false)
+    @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
     @NotBlank
@@ -58,4 +63,19 @@ public class FamilyHistory extends AbstractAuditingEntity<Long>
 
     @Column(name = "inherited_diseases")
     private Boolean inheritedDiseases;
+
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 50)
+
+    private PatientHistoryStatus status = PatientHistoryStatus.ACTIVE;
+
+    @Column(name = "cancelled_by", length = 50)
+    private String cancelledBy;
+
+    @Column(name = "cancelled_date")
+    private Instant cancelledDate;
+
+    @Column(name = "cancellation_reason", columnDefinition = "text")
+    private String cancellationReason;
 }
