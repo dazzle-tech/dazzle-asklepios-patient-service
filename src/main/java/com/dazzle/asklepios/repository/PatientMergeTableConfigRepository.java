@@ -12,4 +12,6 @@ public interface PatientMergeTableConfigRepository extends JpaRepository<Patient
 
     List<PatientMergeTableConfig> findByEnabledTrueOrderBySortOrderAscIdAsc();
     Optional<PatientMergeTableConfig> findByEntityName(String entityName);
+    boolean existsByTableName(String tableName);
+    List<PatientMergeTableConfig> findAllByOrderBySortOrderAscIdAsc();
 }

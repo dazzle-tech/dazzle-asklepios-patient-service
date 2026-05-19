@@ -2,9 +2,11 @@ package com.dazzle.asklepios.service.patientMerge;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientMergeFieldConfig;
 import com.dazzle.asklepios.domain.PatientMergeTableConfig;
+import com.dazzle.asklepios.domain.enumeration.PatientMergeCategory;
 import com.dazzle.asklepios.repository.PatientMergeFieldConfigRepository;
 import com.dazzle.asklepios.repository.PatientMergeTableConfigRepository;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import jakarta.transaction.Transactional;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -255,4 +257,5 @@ public class PatientMergeSupportService {
 
         return null;
     }
+
 }

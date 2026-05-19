@@ -84,14 +84,14 @@ public class PatientMergeUndoService {
                 restoredRecordsCount
         );
 
-        return PatientMergeUndoVM.builder()
-                .mergeLogId(mergeLog.getId())
-                .fromPatientId(mergeLog.getFromPatient().getId())
-                .toPatientId(mergeLog.getToPatient().getId())
-                .status("UNDONE")
-                .restoredFieldsCount(restoredFieldsCount)
-                .restoredRecordsCount(restoredRecordsCount)
-                .build();
+        return new PatientMergeUndoVM(
+                mergeLog.getId(),
+                mergeLog.getFromPatient().getId(),
+                mergeLog.getToPatient().getId(),
+                "UNDONE",
+                restoredFieldsCount,
+                restoredRecordsCount
+        );
     }
 
     private void validateMergeLogId(Long mergeLogId) {

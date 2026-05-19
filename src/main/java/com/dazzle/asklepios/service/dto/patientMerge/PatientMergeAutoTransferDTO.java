@@ -1,33 +1,21 @@
 package com.dazzle.asklepios.service.dto.patientMerge;
 
 import com.dazzle.asklepios.domain.enumeration.MergeDecision;
-import lombok.AllArgsConstructor;
-import lombok.experimental.SuperBuilder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 
-@Data
-@SuperBuilder
-@NoArgsConstructor
-@AllArgsConstructor
-public class PatientMergeAutoTransferDTO extends PatientMergeFieldMetadataDTO {
-
-    private String entityName;
-    private String tableName;
-
-    private Long fromRecordId;
-    private Long toRecordId;
-
-    private String matchKey;
-
-    private String fieldName;
-    private String fieldLabel;
-
-    private String fromValue;
-    private String toValue;
-
-    private String selectedValue;
-
-    private MergeDecision suggestedDecision;
-
+public record PatientMergeAutoTransferDTO(
+        String entityName,
+        String tableName,
+        Long fromRecordId,
+        Long toRecordId,
+        String matchKey,
+        String fieldName,
+        String fieldLabel,
+        String fromValue,
+        String toValue,
+        String selectedValue,
+        MergeDecision suggestedDecision,
+        String fieldType,
+        String inputType,
+        String inputSource
+) {
 }

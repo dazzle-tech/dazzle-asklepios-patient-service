@@ -90,12 +90,12 @@ public class PatientMergeAnalysisService {
                 autoTransfers.size()
         );
 
-        return PatientMergePreviewVM.builder()
-                .fromPatientId(fromPatientId)
-                .toPatientId(toPatientId)
-                .conflicts(conflicts)
-                .autoTransfers(autoTransfers)
-                .build();
+        return new PatientMergePreviewVM(
+                fromPatientId,
+                toPatientId,
+                conflicts,
+                autoTransfers
+        );
     }
 
     private void analyzeTableConfig(
@@ -309,21 +309,24 @@ public class PatientMergeAnalysisService {
         );
 
         conflicts.add(
-                PatientMergeConflictDTO.builder()
-                        .entityName(tableConfig.getEntityName())
-                        .tableName(tableConfig.getTableName())
-                        .fromRecordId(fromRecordId)
-                        .toRecordId(toRecordId)
-                        .matchKey(matchKey)
-                        .fieldName(fieldConfig.getFieldName())
-                        .fieldLabel(fieldConfig.getFieldLabel())
-                        .fromValue(fromStr)
-                        .toValue(toStr)
-                        .fieldType(supportService.getColumnType(tableConfig.getTableName(), fieldConfig.getFieldName()))
-                        .inputType(fieldConfig.getInputType())
-                        .inputSource(fieldConfig.getInputSource())
-                        .suggestedDecision(suggestedDecision)
-                        .build()
+                new PatientMergeConflictDTO(
+                        tableConfig.getEntityName(),
+                        tableConfig.getTableName(),
+                        fromRecordId,
+                        toRecordId,
+                        matchKey,
+                        fieldConfig.getFieldName(),
+                        fieldConfig.getFieldLabel(),
+                        fromStr,
+                        toStr,
+                        suggestedDecision,
+                        supportService.getColumnType(
+                                tableConfig.getTableName(),
+                                fieldConfig.getFieldName()
+                        ),
+                        fieldConfig.getInputType(),
+                        fieldConfig.getInputSource()
+                )
         );
 
         LOG.trace(
@@ -351,24 +354,26 @@ public class PatientMergeAnalysisService {
         );
 
         autoTransfers.add(
-                PatientMergeAutoTransferDTO.builder()
-                        .entityName(tableConfig.getEntityName())
-                        .tableName(tableConfig.getTableName())
-                        .fromRecordId(fromRecordId)
-                        .toRecordId(toRecordId)
-                        .matchKey(matchKey)
-                        .fieldName(fieldConfig.getFieldName())
-                        .fieldLabel(fieldConfig.getFieldLabel())
-                        .fromValue(fromStr)
-                        .toValue("")
-                        .selectedValue(fromStr)
-                        .fieldType(supportService.getColumnType(tableConfig.getTableName(), fieldConfig.getFieldName()))
-                        .inputType(fieldConfig.getInputType())
-                        .inputSource(fieldConfig.getInputSource())
-                        .suggestedDecision(MergeDecision.TAKE_FROM)
-                        .build()
+                new PatientMergeAutoTransferDTO(
+                        tableConfig.getEntityName(),
+                        tableConfig.getTableName(),
+                        fromRecordId,
+                        toRecordId,
+                        matchKey,
+                        fieldConfig.getFieldName(),
+                        fieldConfig.getFieldLabel(),
+                        fromStr,
+                        "",
+                        fromStr,
+                        MergeDecision.TAKE_FROM,
+                        supportService.getColumnType(
+                                tableConfig.getTableName(),
+                                fieldConfig.getFieldName()
+                        ),
+                        fieldConfig.getInputType(),
+                        fieldConfig.getInputSource()
+                )
         );
-
         LOG.trace(
                 "Added auto-transfer. tableName={}, fieldName={}, fromRecordId={}, toRecordId={}",
                 tableConfig.getTableName(),
@@ -385,18 +390,21 @@ public class PatientMergeAnalysisService {
             List<PatientMergeConflictDTO> conflicts
     ) {
         conflicts.add(
-                PatientMergeConflictDTO.builder()
-                        .entityName(tableConfig.getEntityName())
-                        .tableName(tableConfig.getTableName())
-                        .fromRecordId(fromRecordId)
-                        .toRecordId(null)
-                        .matchKey(matchKey)
-                        .fieldName(null)
-                        .fieldLabel(tableConfig.getEntityName())
-                        .fromValue(matchKey)
-                        .toValue("")
-                        .suggestedDecision(MergeDecision.ADD_FROM_RECORD)
-                        .build()
+                new PatientMergeConflictDTO(
+                        tableConfig.getEntityName(),
+                        tableConfig.getTableName(),
+                        fromRecordId,
+                        null,
+                        matchKey,
+                        null,
+                        tableConfig.getEntityName(),
+                        matchKey,
+                        "",
+                        MergeDecision.ADD_FROM_RECORD,
+                        null,
+                        null,
+                        null
+                )
         );
 
         LOG.trace(

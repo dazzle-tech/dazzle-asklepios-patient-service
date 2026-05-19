@@ -75,35 +75,35 @@ public class PatientMergeExecuteService {
     ) {
         LOG.debug(
                 "Executing patient merge. fromPatientId={}, toPatientId={}",
-                request != null ? request.getFromPatientId() : null,
-                request != null ? request.getToPatientId() : null
+                request != null ? request.fromPatientId() : null,
+                request != null ? request.toPatientId() : null
         );
 
         validateRequest(request);
 
         Patient fromPatient = findPatientOrThrow(
-                request.getFromPatientId(),
+                request.fromPatientId(),
                 "From patient not found"
         );
 
         Patient toPatient = findPatientOrThrow(
-                request.getToPatientId(),
+                request.toPatientId(),
                 "To patient not found"
         );
 
         PatientMergePreviewVM analysis = analysisService.analyze(
-                request.getFromPatientId(),
-                request.getToPatientId()
+                request.fromPatientId(),
+                request.toPatientId()
         );
 
         PatientMergeLog mergeLog = createMergeLog(
                 fromPatient,
                 toPatient,
-                request.getReason()
+                request.reason()
         );
 
         applyUserDecisions(
-                request.getDecisions(),
+                request.decisions(),
                 toPatient.getId(),
                 mergeLog.getId(),
                 mergeLog
@@ -132,12 +132,12 @@ public class PatientMergeExecuteService {
                 toPatient.getId()
         );
 
-        return PatientMergeExecuteVM.builder()
-                .mergeLogId(mergeLog.getId())
-                .fromPatientId(fromPatient.getId())
-                .toPatientId(toPatient.getId())
-                .status("MERGED")
-                .build();
+        return new PatientMergeExecuteVM(
+                mergeLog.getId(),
+                fromPatient.getId(),
+                toPatient.getId(),
+                "MERGED"
+        );
     }
 
     private PatientMergeLog createMergeLog(
@@ -212,8 +212,8 @@ public class PatientMergeExecuteService {
             );
         }
 
-        if (request.getFromPatientId() == null
-                || request.getToPatientId() == null) {
+        if (request.fromPatientId() == null
+                || request.toPatientId() == null) {
 
             throw new BadRequestAlertException(
                     "Patient IDs are required",
@@ -222,7 +222,7 @@ public class PatientMergeExecuteService {
             );
         }
 
-        if (request.getFromPatientId().equals(request.getToPatientId())) {
+        if (request.fromPatientId().equals(request.toPatientId())) {
             throw new BadRequestAlertException(
                     "Cannot merge same patient",
                     "PatientMerge",
@@ -260,52 +260,44 @@ public class PatientMergeExecuteService {
             applyDecision(decision, toPatientId, mergeLogId);
         });
     }
-
-    private void applyAutoTransfers(
-            PatientMergePreviewVM analysis,
-            Long toPatientId,
-            Long mergeLogId,
-            PatientMergeLog mergeLog
-    ) {
-        if (analysis == null
-                || analysis.getAutoTransfers() == null
-                || analysis.getAutoTransfers().isEmpty()) {
-
-            return;
-        }
-
-        analysis.getAutoTransfers().forEach(autoTransfer -> {
-            applyAutoTransfer(autoTransfer, toPatientId, mergeLogId);
-            saveAutoTransferAudit(mergeLog, autoTransfer);
-        });
-    }
-
     private void applyDecision(
             PatientMergeDecisionDTO decision,
             Long toPatientId,
             Long mergeLogId
     ) {
-        if (decision.getFinalDecision() == null) {
+        if (decision.finalDecision() == null) {
             return;
         }
 
-        switch (decision.getFinalDecision()) {
+        switch (decision.finalDecision()) {
 
-            case KEEP_TO, IGNORE_FROM_RECORD -> {
+            case KEEP_TO -> {
+                return;
+            }
+
+            case IGNORE_FROM_RECORD -> {
+                if (shouldForceTransferRecord(decision)) {
+                    moveRecordToTarget(
+                            decision.tableName(),
+                            decision.fromRecordId(),
+                            toPatientId,
+                            mergeLogId
+                    );
+                }
             }
 
             case TAKE_FROM, MANUAL ->
                     updateFieldValue(
-                            decision.getTableName(),
-                            decision.getFieldName(),
-                            decision.getToRecordId(),
+                            decision.tableName(),
+                            decision.fieldName(),
+                            decision.toRecordId(),
                             resolveSelectedValue(decision)
                     );
 
             case ADD_FROM_RECORD ->
                     moveRecordToTarget(
-                            decision.getTableName(),
-                            decision.getFromRecordId(),
+                            decision.tableName(),
+                            decision.fromRecordId(),
                             toPatientId,
                             mergeLogId
                     );
@@ -318,18 +310,52 @@ public class PatientMergeExecuteService {
                     );
         }
     }
+    private void applyAutoTransfers(
+            PatientMergePreviewVM analysis,
+            Long toPatientId,
+            Long mergeLogId,
+            PatientMergeLog mergeLog
+    ) {
+        if (analysis == null
+                || analysis.autoTransfers() == null
+                || analysis.autoTransfers().isEmpty()) {
 
+            return;
+        }
+
+        analysis.autoTransfers().forEach(autoTransfer -> {
+            applyAutoTransfer(autoTransfer, toPatientId, mergeLogId);
+            saveAutoTransferAudit(mergeLog, autoTransfer);
+        });
+    }
+
+    private boolean shouldForceTransferRecord(
+            PatientMergeDecisionDTO decision
+    ) {
+        if (decision.tableName() == null || decision.fromRecordId() == null) {
+            return false;
+        }
+
+        if (decision.fieldName() != null && !decision.fieldName().isBlank()) {
+            return false;
+        }
+
+        PatientMergeTableConfig config =
+                supportService.findTableConfig(decision.tableName());
+
+        return config.getMergeCategory() == PatientMergeCategory.EMR;
+    }
     private void applyAutoTransfer(
             PatientMergeAutoTransferDTO autoTransfer,
             Long toPatientId,
             Long mergeLogId
     ) {
-        if (autoTransfer.getSuggestedDecision()
+        if (autoTransfer.suggestedDecision()
                 == MergeDecision.ADD_FROM_RECORD) {
 
             moveRecordToTarget(
-                    autoTransfer.getTableName(),
-                    autoTransfer.getFromRecordId(),
+                    autoTransfer.tableName(),
+                    autoTransfer.fromRecordId(),
                     toPatientId,
                     mergeLogId
             );
@@ -337,14 +363,14 @@ public class PatientMergeExecuteService {
             return;
         }
 
-        if (autoTransfer.getSuggestedDecision()
+        if (autoTransfer.suggestedDecision()
                 == MergeDecision.TAKE_FROM) {
 
             updateFieldValue(
-                    autoTransfer.getTableName(),
-                    autoTransfer.getFieldName(),
-                    autoTransfer.getToRecordId(),
-                    autoTransfer.getSelectedValue()
+                    autoTransfer.tableName(),
+                    autoTransfer.fieldName(),
+                    autoTransfer.toRecordId(),
+                    autoTransfer.selectedValue()
             );
         }
     }
@@ -406,11 +432,11 @@ public class PatientMergeExecuteService {
     private String resolveSelectedValue(
             PatientMergeDecisionDTO decision
     ) {
-        if (decision.getFinalDecision() == MergeDecision.TAKE_FROM) {
-            return decision.getFromValue();
+        if (decision.finalDecision() == MergeDecision.TAKE_FROM) {
+            return decision.fromValue();
         }
 
-        return decision.getSelectedValue();
+        return decision.selectedValue();
     }
 
     private void moveRecordToTarget(
@@ -602,18 +628,18 @@ public class PatientMergeExecuteService {
         patientMergeMasterDecisionRepository.save(
                 PatientMergeMasterDecision.builder()
                         .mergeLog(mergeLog)
-                        .entityName(dto.getEntityName())
-                        .tableName(dto.getTableName())
-                        .fromRecordId(dto.getFromRecordId())
-                        .toRecordId(dto.getToRecordId())
-                        .matchKey(dto.getMatchKey())
-                        .fieldName(dto.getFieldName())
-                        .fieldLabel(dto.getFieldLabel())
-                        .fromValue(dto.getFromValue())
-                        .toValue(dto.getToValue())
-                        .suggestedDecision(dto.getSuggestedDecision())
-                        .finalDecision(dto.getFinalDecision())
-                        .selectedValue(dto.getSelectedValue())
+                        .entityName(dto.entityName())
+                        .tableName(dto.tableName())
+                        .fromRecordId(dto.fromRecordId())
+                        .toRecordId(dto.toRecordId())
+                        .matchKey(dto.matchKey())
+                        .fieldName(dto.fieldName())
+                        .fieldLabel(dto.fieldLabel())
+                        .fromValue(dto.fromValue())
+                        .toValue(dto.toValue())
+                        .suggestedDecision(dto.suggestedDecision())
+                        .finalDecision(dto.finalDecision())
+                        .selectedValue(dto.selectedValue())
                         .build()
         );
     }
@@ -625,22 +651,30 @@ public class PatientMergeExecuteService {
         patientMergeMasterDecisionRepository.save(
                 PatientMergeMasterDecision.builder()
                         .mergeLog(mergeLog)
-                        .entityName(autoTransfer.getEntityName())
-                        .tableName(autoTransfer.getTableName())
-                        .fromRecordId(autoTransfer.getFromRecordId())
-                        .toRecordId(autoTransfer.getToRecordId())
-                        .matchKey(autoTransfer.getMatchKey())
-                        .fieldName(autoTransfer.getFieldName())
-                        .fieldLabel(autoTransfer.getFieldLabel())
-                        .fromValue(autoTransfer.getFromValue())
-                        .toValue(autoTransfer.getToValue())
-                        .suggestedDecision(autoTransfer.getSuggestedDecision())
-                        .finalDecision(autoTransfer.getSuggestedDecision())
-                        .selectedValue(autoTransfer.getSelectedValue())
+                        .entityName(autoTransfer.entityName())
+                        .tableName(autoTransfer.tableName())
+                        .fromRecordId(autoTransfer.fromRecordId())
+                        .toRecordId(autoTransfer.toRecordId())
+                        .matchKey(autoTransfer.matchKey())
+                        .fieldName(autoTransfer.fieldName())
+                        .fieldLabel(autoTransfer.fieldLabel())
+                        .fromValue(autoTransfer.fromValue())
+                        .toValue(autoTransfer.toValue())
+                        .suggestedDecision(autoTransfer.suggestedDecision())
+                        .finalDecision(autoTransfer.suggestedDecision())
+                        .selectedValue(autoTransfer.selectedValue())
                         .build()
         );
     }
+    private boolean isEmrTable(String tableName) {
+        if (tableName == null) {
+            return false;
+        }
 
+        PatientMergeTableConfig config = supportService.findTableConfig(tableName);
+
+        return config.getMergeCategory() == PatientMergeCategory.EMR;
+    }
     private String currentUsername() {
         return SecurityUtils.getCurrentUserLogin()
                 .orElseThrow(() ->

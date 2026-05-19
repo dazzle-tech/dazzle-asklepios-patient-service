@@ -1,0 +1,149 @@
+package com.dazzle.asklepios.service.patientMerge;
+
+import com.dazzle.asklepios.domain.PatientMergeTableConfig;
+import com.dazzle.asklepios.domain.enumeration.PatientMergeCategory;
+import com.dazzle.asklepios.repository.PatientMergeTableConfigRepository;
+import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeAvailableTableVM;
+import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeTableConfigVM;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+
+@Service
+public class PatientMergeConfigService {
+    private final PatientMergeTableConfigRepository tableConfigRepository;
+    private final PatientMergeSupportService supportService;
+    private final JdbcTemplate jdbcTemplate;
+
+    public PatientMergeConfigService(PatientMergeTableConfigRepository tableConfigRepository, PatientMergeSupportService supportService, JdbcTemplate jdbcTemplate) {
+        this.tableConfigRepository = tableConfigRepository;
+        this.supportService = supportService;
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
+    @Transactional(readOnly = true)
+    public List<PatientMergeTableConfigVM> getTableConfigs() {
+
+        List<PatientMergeTableConfig> configs =
+                tableConfigRepository.findAllByOrderBySortOrderAscIdAsc();
+
+        return configs.stream()
+                .map(this::toVm)
+                .toList();
+    }
+    private PatientMergeTableConfigVM toVm(
+            PatientMergeTableConfig config
+    ) {
+
+        List<String> availableColumns =
+                jdbcTemplate.queryForList(
+                        """
+                        SELECT column_name
+                        FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = ?
+                        ORDER BY ordinal_position
+                        """,
+                        String.class,
+                        config.getTableName()
+                );
+
+        return new PatientMergeTableConfigVM(
+                config.getId(),
+                config.getEntityName(),
+                config.getTableName(),
+                config.getPrimaryKeyColumnName(),
+                config.getPatientColumnName(),
+                config.getEnabled(),
+                config.getSortOrder(),
+                config.getMergeCategory() != null
+                        ? config.getMergeCategory().name()
+                        : null,
+                config.getAutoDiscoverFields(),
+                supportService.splitColumns(
+                        config.getMatchKeyColumns()
+                ),
+                supportService.splitColumns(
+                        config.getExcludedColumns()
+                ),
+                availableColumns
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public List<PatientMergeAvailableTableVM> getAvailablePatientTables() {
+
+        List<String> patientTables =
+                jdbcTemplate.queryForList(
+                        """
+                        SELECT DISTINCT table_name
+                        FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND column_name = 'patient_id'
+                        ORDER BY table_name
+                        """,
+                        String.class
+                );
+
+        List<String> configuredTables =
+                tableConfigRepository.findAll()
+                        .stream()
+                        .map(PatientMergeTableConfig::getTableName)
+                        .toList();
+
+        return patientTables.stream()
+                .map(tableName ->
+                        new PatientMergeAvailableTableVM(
+                                tableName,
+                                configuredTables.contains(tableName)
+                        )
+                )
+                .toList();
+    }
+    @jakarta.transaction.Transactional
+    public Integer syncMissingTables() {
+
+        List<String> patientTables = jdbcTemplate.queryForList(
+                """
+                SELECT DISTINCT table_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND column_name = 'patient_id'
+                """,
+                String.class
+        );
+
+        int inserted = 0;
+
+        for (String tableName : patientTables) {
+
+            boolean exists =
+                    tableConfigRepository.existsByTableName(tableName);
+
+            if (exists) {
+                continue;
+            }
+
+            PatientMergeTableConfig config =
+                    PatientMergeTableConfig.builder()
+                            .entityName(tableName.toUpperCase())
+                            .tableName(tableName)
+                            .primaryKeyColumnName("id")
+                            .patientColumnName("patient_id")
+                            .enabled(false)
+                            .sortOrder(999)
+                            .mergeCategory(PatientMergeCategory.EMR)
+                            .autoDiscoverFields(false)
+                            .build();
+
+            tableConfigRepository.save(config);
+
+            inserted++;
+        }
+
+        return inserted;
+    }
+}

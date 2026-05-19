@@ -1,15 +1,19 @@
 package com.dazzle.asklepios.web.rest;
 
-import com.dazzle.asklepios.service.patientMerge.PatientMergeAnalysisService;
-import com.dazzle.asklepios.service.patientMerge.PatientMergeExecuteService;
-import com.dazzle.asklepios.service.patientMerge.PatientMergeSummaryService;
-import com.dazzle.asklepios.service.patientMerge.PatientMergeTransactionService;
-import com.dazzle.asklepios.service.patientMerge.PatientMergeUndoService;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeExecuteDTO;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeSummaryDTO;
+import com.dazzle.asklepios.service.patientMerge.PatientMergeAnalysisService;
+import com.dazzle.asklepios.service.patientMerge.PatientMergeConfigService;
+import com.dazzle.asklepios.service.patientMerge.PatientMergeExecuteService;
+import com.dazzle.asklepios.service.patientMerge.PatientMergeSummaryService;
+import com.dazzle.asklepios.service.patientMerge.PatientMergeSupportService;
+import com.dazzle.asklepios.service.patientMerge.PatientMergeTransactionService;
+import com.dazzle.asklepios.service.patientMerge.PatientMergeUndoService;
+import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeAvailableTableVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeExecuteVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergePreviewVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeSummaryVM;
+import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeTableConfigVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeTransactionChangesVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeTransactionVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeUndoVM;
@@ -17,7 +21,13 @@ import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
@@ -33,19 +43,15 @@ public class PatientMergeController {
     private final PatientMergeExecuteService patientMergeExecuteService;
     private final PatientMergeUndoService patientMergeUndoService;
     private final PatientMergeTransactionService patientMergeTransactionService;
+    private final PatientMergeConfigService patientMergeConfigService;
 
-    public PatientMergeController(
-            PatientMergeAnalysisService patientMergeAnalysisService,
-            PatientMergeSummaryService patientMergeSummaryService,
-            PatientMergeExecuteService patientMergeExecuteService,
-            PatientMergeUndoService patientMergeUndoService,
-            PatientMergeTransactionService patientMergeTransactionService
-    ) {
+    public PatientMergeController(PatientMergeAnalysisService patientMergeAnalysisService, PatientMergeSummaryService patientMergeSummaryService, PatientMergeExecuteService patientMergeExecuteService, PatientMergeUndoService patientMergeUndoService, PatientMergeTransactionService patientMergeTransactionService, PatientMergeConfigService patientMergeConfigService) {
         this.patientMergeAnalysisService = patientMergeAnalysisService;
         this.patientMergeSummaryService = patientMergeSummaryService;
         this.patientMergeExecuteService = patientMergeExecuteService;
         this.patientMergeUndoService = patientMergeUndoService;
         this.patientMergeTransactionService = patientMergeTransactionService;
+        this.patientMergeConfigService = patientMergeConfigService;
     }
 
     @GetMapping("/preview/{fromPatientId}/{toPatientId}")
@@ -73,8 +79,8 @@ public class PatientMergeController {
     ) {
         LOG.debug(
                 "REST request to summarize patient merge. fromPatientId={}, toPatientId={}",
-                request != null ? request.getFromPatientId() : null,
-                request != null ? request.getToPatientId() : null
+                request != null ? request.fromPatientId() : null,
+                request != null ? request.toPatientId() : null
         );
 
         return ResponseEntity.ok(
@@ -88,8 +94,8 @@ public class PatientMergeController {
     ) {
         LOG.debug(
                 "REST request to execute patient merge. fromPatientId={}, toPatientId={}",
-                request != null ? request.getFromPatientId() : null,
-                request != null ? request.getToPatientId() : null
+                request != null ? request.fromPatientId() : null,
+                request != null ? request.toPatientId() : null
         );
 
         return ResponseEntity.ok(
@@ -136,6 +142,33 @@ public class PatientMergeController {
 
         return ResponseEntity.ok(
                 patientMergeTransactionService.getChanges(mergeLogId)
+        );
+    }
+
+    @PostMapping("/config/sync-missing-tables")
+    public ResponseEntity<Integer> syncMissingTables() {
+
+        Integer inserted =
+                patientMergeConfigService.syncMissingTables();
+
+        return ResponseEntity.ok(inserted);
+    }
+
+    @GetMapping("/config/available-patient-tables")
+    public ResponseEntity<List<PatientMergeAvailableTableVM>>
+    getAvailablePatientTables() {
+
+        return ResponseEntity.ok(
+                patientMergeConfigService.getAvailablePatientTables()
+        );
+    }
+
+    @GetMapping("/config/tables")
+    public ResponseEntity<List<PatientMergeTableConfigVM>>
+    getTableConfigs() {
+
+        return ResponseEntity.ok(
+                patientMergeConfigService.getTableConfigs()
         );
     }
 }

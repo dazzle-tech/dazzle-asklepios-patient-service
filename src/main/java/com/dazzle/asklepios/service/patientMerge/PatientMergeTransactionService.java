@@ -81,11 +81,10 @@ public class PatientMergeTransactionService {
                 fieldChanges.size(),
                 mergeLogId
         );
-
-        return PatientMergeTransactionChangesVM.builder()
-                .mergeLogId(mergeLogId)
-                .fieldChanges(fieldChanges)
-                .build();
+        return new PatientMergeTransactionChangesVM(
+                mergeLogId,
+                fieldChanges
+        );
     }
 
     private List<PatientMergeLog> loadMergeLogs(
@@ -108,54 +107,42 @@ public class PatientMergeTransactionService {
     ) {
         Patient fromPatient = log.getFromPatient();
         Patient toPatient = log.getToPatient();
+        return new PatientMergeTransactionVM(
 
-        return PatientMergeTransactionVM.builder()
-                .mergeLogId(log.getId())
+                log.getId(),
+                log.getTransactionNumber(),
 
-                .fromPatientId(
-                        fromPatient != null
-                                ? fromPatient.getId()
-                                : null
-                )
+                fromPatient != null
+                        ? fromPatient.getId()
+                        : null,
 
-                .fromPatientName(
-                        supportService.buildPatientName(fromPatient)
-                )
+                supportService.buildPatientName(fromPatient),
 
-                .fromPatientMrn(
-                        fromPatient != null
-                                ? fromPatient.getMedicalRecordNumber()
-                                : null
-                )
+                fromPatient != null
+                        ? fromPatient.getMedicalRecordNumber()
+                        : null,
 
-                .toPatientId(
-                        toPatient != null
-                                ? toPatient.getId()
-                                : null
-                )
+                toPatient != null
+                        ? toPatient.getId()
+                        : null,
 
-                .toPatientName(
-                        supportService.buildPatientName(toPatient)
-                )
+                supportService.buildPatientName(toPatient),
 
-                .toPatientMrn(
-                        toPatient != null
-                                ? toPatient.getMedicalRecordNumber()
-                                : null
-                )
+                toPatient != null
+                        ? toPatient.getMedicalRecordNumber()
+                        : null,
 
-                .mergeStatus(log.getMergeStatus())
-                .mergedBy(log.getMergedBy())
-                .mergedAt(log.getMergedAt())
+                log.getMergeStatus(),
+                log.getMergedBy(),
+                log.getMergedAt(),
 
-                .undoneBy(log.getUndoneBy())
-                .undoneAt(log.getUndoneAt())
+                log.getUndoneBy(),
+                log.getUndoneAt(),
 
-                .reason(log.getReason())
+                log.getReason(),
 
-                .canUndo(canUndo(log))
-                .transactionNumber(log.getTransactionNumber())
-                .build();
+                canUndo(log)
+        );
     }
 
     private Boolean canUndo(
@@ -201,45 +188,36 @@ public class PatientMergeTransactionService {
                         decision.getFieldName()
                 );
 
-        return PatientMergeTransactionChangesVM.FieldChangeVM.builder()
+        return new PatientMergeTransactionChangesVM.FieldChangeVM(
 
-                .entityName(decision.getEntityName())
-                .tableName(decision.getTableName())
+                decision.getEntityName(),
+                decision.getTableName(),
 
-                .fromRecordId(decision.getFromRecordId())
-                .toRecordId(decision.getToRecordId())
+                decision.getFromRecordId(),
+                decision.getToRecordId(),
 
-                .fieldName(decision.getFieldName())
-                .fieldLabel(decision.getFieldLabel())
+                decision.getFieldName(),
+                decision.getFieldLabel(),
 
-                .oldValue(decision.getToValue())
-                .newValue(decision.getSelectedValue())
+                decision.getToValue(),
+                decision.getSelectedValue(),
 
-                .decision(
-                        decision.getFinalDecision() != null
-                                ? decision.getFinalDecision().name()
-                                : null
-                )
+                decision.getFinalDecision() != null
+                        ? decision.getFinalDecision().name()
+                        : null,
 
-                .fieldType(
-                        supportService.getColumnType(
-                                decision.getTableName(),
-                                decision.getFieldName()
-                        )
-                )
+                supportService.getColumnType(
+                        decision.getTableName(),
+                        decision.getFieldName()
+                ),
 
-                .inputType(
-                        fieldConfig != null
-                                ? fieldConfig.getInputType()
-                                : null
-                )
+                fieldConfig != null
+                        ? fieldConfig.getInputType()
+                        : null,
 
-                .inputSource(
-                        fieldConfig != null
-                                ? fieldConfig.getInputSource()
-                                : null
-                )
-
-                .build();
+                fieldConfig != null
+                        ? fieldConfig.getInputSource()
+                        : null
+        );
     }
 }

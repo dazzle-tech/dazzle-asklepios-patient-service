@@ -1,37 +1,29 @@
 package com.dazzle.asklepios.web.rest.vm.patientMerge;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
 import java.time.Instant;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class PatientMergeTransactionVM {
+public record PatientMergeTransactionVM(
 
-    private Long mergeLogId;
-    private String transactionNumber;
+        Long mergeLogId,
+        String transactionNumber,
 
-    private Long fromPatientId;
-    private String fromPatientName;
-    private String fromPatientMrn;
+        Long fromPatientId,
+        String fromPatientName,
+        String fromPatientMrn,
 
-    private Long toPatientId;
-    private String toPatientName;
-    private String toPatientMrn;
+        Long toPatientId,
+        String toPatientName,
+        String toPatientMrn,
 
-    private String mergeStatus;
-    private String mergedBy;
-    private Instant mergedAt;
+        String mergeStatus,
+        String mergedBy,
+        Instant mergedAt,
 
-    private String undoneBy;
-    private Instant undoneAt;
+        String undoneBy,
+        Instant undoneAt,
 
-    private String reason;
+        String reason,
 
-    private Boolean canUndo;
+        Boolean canUndo
+) {
 }

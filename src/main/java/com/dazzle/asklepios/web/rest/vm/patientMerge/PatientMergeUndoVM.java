@@ -1,20 +1,11 @@
 package com.dazzle.asklepios.web.rest.vm.patientMerge;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class PatientMergeUndoVM {
-
-    private Long mergeLogId;
-    private Long fromPatientId;
-    private Long toPatientId;
-    private String status;
-    private Integer restoredFieldsCount;
-    private Integer restoredRecordsCount;
+public record PatientMergeUndoVM(
+        Long mergeLogId,
+        Long fromPatientId,
+        Long toPatientId,
+        String status,
+        Integer restoredFieldsCount,
+        Integer restoredRecordsCount
+) {
 }
