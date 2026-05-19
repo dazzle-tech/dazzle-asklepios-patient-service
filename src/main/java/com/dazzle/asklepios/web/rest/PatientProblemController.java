@@ -44,7 +44,7 @@ public class PatientProblemController {
     }
 
     @PostMapping("/problems")
-    public ResponseEntity<Object> create(
+    public ResponseEntity<PatientProblem> create(
             @Valid @RequestBody PatientProblemCreateDTO patientProblemCreateDTO
     ) {
         LOG.debug("REST create PatientProblem payload={}", patientProblemCreateDTO);
@@ -68,7 +68,7 @@ public class PatientProblemController {
     }
 
     @PutMapping("/problems")
-    public ResponseEntity<Object> update(
+    public ResponseEntity<PatientProblem> update(
             @Valid @RequestBody PatientProblemUpdateDTO patientProblemUpdateDTO
     ) {
         LOG.debug("REST update PatientProblem payload={}", patientProblemUpdateDTO);
@@ -82,7 +82,7 @@ public class PatientProblemController {
     }
 
     @PutMapping("/problems/cancel")
-    public ResponseEntity<Object> cancel(
+    public ResponseEntity<PatientProblem> cancel(
             @Valid @RequestBody PatientProblemCancelDTO patientProblemCancelDTO
     ) {
         LOG.debug("REST cancel PatientProblem payload={}", patientProblemCancelDTO);
@@ -107,7 +107,7 @@ public class PatientProblemController {
     }
 
     @GetMapping("/problems")
-    public ResponseEntity<List<Object>> list(
+    public ResponseEntity<List<PatientProblem>> list(
             @RequestParam Long patientId,
             @RequestParam(name = "showCancelled", defaultValue = "false")
             Boolean showCancelled,
@@ -134,11 +134,7 @@ public class PatientProblemController {
                                 page
                         );
 
-        List<Object> body =
-                page.getContent()
-                        .stream()
-                        .map(problem -> (Object) problem)
-                        .toList();
+        List<PatientProblem> body = page.getContent();
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
