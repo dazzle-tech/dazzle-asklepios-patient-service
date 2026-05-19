@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.gateway.InternalMailClient;
+import com.dazzle.asklepios.client.gateway.dto.PatientCreatePasswordMailDTO;
 import com.dazzle.asklepios.domain.DuplicationCandidate;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
@@ -11,10 +13,14 @@ import com.dazzle.asklepios.service.dto.patient.PatientDuplicationLookupDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.InvalidPasswordException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import com.dazzle.asklepios.web.rest.errors.PatientAlreadyActiveException;
+import com.dazzle.asklepios.web.rest.vm.patient.CreatePasswordKeyValidationVM;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -22,14 +28,19 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.orm.jpa.JpaSystemException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.regex.Pattern;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -42,15 +53,21 @@ public class PatientService {
     private final PatientRepository patientRepository;
     private final PatientDocumentRepository patientDocumentRepository;
     private final DuplicationCandidateRepository duplicationCandidateRepository;
+    private final InternalMailClient internalMailClient;
+    private static final long CREATE_PASSWORD_KEY_EXPIRATION_HOURS = 24;
+    private final PasswordEncoder passwordEncoder;
+    private static final Pattern STRONG_PASSWORD_PATTERN = Pattern.compile(
+            "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&#_.-])[A-Za-z\\d@$!%*?&#_.-]{8,}$"
+    );
 
-    public PatientService(
-            PatientRepository patientRepository,
-
-            PatientDocumentRepository patientDocumentRepository, DuplicationCandidateRepository duplicationCandidateRepository
+    public PatientService(PatientRepository patientRepository, PatientDocumentRepository patientDocumentRepository, DuplicationCandidateRepository duplicationCandidateRepository,
+                          InternalMailClient internalMailClient, PasswordEncoder passwordEncoder
     ) {
         this.patientRepository = patientRepository;
         this.patientDocumentRepository = patientDocumentRepository;
         this.duplicationCandidateRepository = duplicationCandidateRepository;
+        this.internalMailClient = internalMailClient;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public Patient create(PatientCreateDTO dto) {
@@ -107,6 +124,7 @@ public class PatientService {
                 .isVerified(verified)
                 .isCompletedPatient(completed)
                 .securityAccessLevel(dto.securityAccessLevel())
+                .activated(false)
                 .bloodGroup(dto.bloodGroup())
                 .patientConditions(dto.patientConditions())
                 .build();
@@ -130,6 +148,7 @@ public class PatientService {
                 .isUnknown(true)
                 .isVerified(Boolean.TRUE.equals(dto.isVerified()))
                 .isCompletedPatient(Boolean.TRUE.equals(dto.isCompletedPatient()))
+                .activated(false)
                 .build();
 
         try {
@@ -159,7 +178,6 @@ public class PatientService {
             );
         }
     }
-
 
     public Patient update(Long id, PatientUpdateDTO dto) {
         LOG.info("[UPDATE] Request to update Patient id={} payload={}", id, dto);
@@ -364,6 +382,144 @@ public class PatientService {
                 .findDistinctByPatientDocuments_NumberContainingIgnoreCase(numberPart, pageable);
     }
 
+    public Page<Patient> findDuplicationCandidates(PatientDuplicationLookupDTO duplicationLookupDTO, Pageable pageable) {
+        if (duplicationLookupDTO == null || duplicationLookupDTO.ruleId() == null) {
+            return Page.empty(pageable);
+        }
+
+        DuplicationCandidate duplicationCandidate = duplicationCandidateRepository
+                .findByIdAndIsActiveTrue(duplicationLookupDTO.ruleId())
+                .orElse(null);
+
+        if (duplicationCandidate == null || duplicationCandidate.getFields() == null || duplicationCandidate.getFields().isEmpty()) {
+            return Page.empty(pageable);
+        }
+
+        Specification<Patient> spec = buildDuplicationSpec(duplicationCandidate.getFields(), duplicationLookupDTO);
+        return patientRepository.findAll(spec, pageable);
+    }
+
+    @Transactional
+    public void sendCreatePasswordEmailToPatient(Long patientId) {
+        Patient patient = patientRepository
+                .findById(patientId)
+                .orElseThrow(() -> new BadRequestAlertException("notfound", "patient", "Patient not found"));
+
+        if (patient.getEmail() == null || patient.getEmail().trim().isEmpty()) {
+            throw new BadRequestAlertException("email.missing", "patient", "Patient email is missing");
+        }
+
+        Instant now = Instant.now();
+
+        String token = patient.getResetKey();
+
+        boolean hasValidToken =
+                token != null &&
+                        patient.getResetDate() != null &&
+                        patient.getResetDate().isAfter(now.minus(24, ChronoUnit.HOURS));
+
+        if (!hasValidToken) {
+            token = RandomUtil.generateResetKey();
+            patient.setResetKey(token);
+            patient.setResetDate(now);
+        }
+
+        patientRepository.save(patient);
+        PatientDocument primaryDoc = patientDocumentRepository.findByPatientIdAndIsPrimaryTrue(patient.getId()).orElse(null);
+        if (primaryDoc == null) {
+            LOG.warn("Primary document not found for patient id={}", patient.getId());
+            throw new BadRequestAlertException("primary.document.missing", "patient", "Primary document is missing for patient");
+        }
+        PatientCreatePasswordMailDTO dto = new PatientCreatePasswordMailDTO(
+                patient.getNativeLanguage() != null ? patient.getNativeLanguage() : "en",
+                patient.getId(),
+                patient.getFirstName() + (patient.getLastName() != null ? " " + patient.getLastName() : ""),
+                primaryDoc.getNumber(),
+                patient.getEmail(),
+                token
+        );
+
+        internalMailClient.sendPatientCreatePasswordMail(dto);
+    }
+
+    @Transactional(readOnly = true)
+    public CreatePasswordKeyValidationVM validateCreatePasswordKey(String key) {
+        return patientRepository
+                .findOneByResetKey(key)
+                .map(patient -> {
+                    boolean activated = Boolean.TRUE.equals(patient.isActivated());
+                    boolean passwordAlreadySet = patient.getPassword() != null;
+
+                    boolean notExpired =
+                            patient.getResetDate() != null &&
+                                    patient.getResetDate().isAfter(
+                                            Instant.now().minus(CREATE_PASSWORD_KEY_EXPIRATION_HOURS, ChronoUnit.HOURS)
+                                    );
+
+                    boolean valid = notExpired && !activated;
+
+                    String message;
+                    if (!notExpired) message = "TOKEN_INVALID_OR_EXPIRED";
+                    else if (activated) message = "PATIENT_ALREADY_ACTIVE";
+                    else message = "OK";
+
+                    return new CreatePasswordKeyValidationVM(valid, activated, passwordAlreadySet, message);
+                })
+                .orElse(new CreatePasswordKeyValidationVM(false, false, false, "TOKEN_NOT_FOUND"));
+    }
+
+    @Transactional
+    public Optional<Patient> completeCreatePassword(String newPassword, String key) {
+        if (!isPasswordSecure(newPassword)) {
+            throw new InvalidPasswordException();
+        }
+
+        return patientRepository
+                .findOneByResetKey(key)
+                .filter(patient -> patient.getResetDate() != null)
+                .filter(patient -> patient.getResetDate().isAfter(
+                        Instant.now().minus(CREATE_PASSWORD_KEY_EXPIRATION_HOURS, ChronoUnit.HOURS)
+                ))
+                .map(patient -> {
+                    if (Boolean.TRUE.equals(patient.isActivated())) {
+                        throw new PatientAlreadyActiveException();
+                    }
+
+                    patient.setPassword(passwordEncoder.encode(newPassword));
+                    patient.setActivated(true);
+
+                    // one-time use
+                    patient.setResetKey(null);
+                    patient.setResetDate(null);
+
+                    return patientRepository.save(patient);
+                });
+    }
+
+    private static boolean isPasswordSecure(String password) {
+        return password != null && STRONG_PASSWORD_PATTERN.matcher(password).matches();
+    }
+
+    private final class RandomUtil {
+        private static final int DEF_COUNT = 20;
+        private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
+        private RandomUtil() {
+        }
+
+        public static String generateRandomAlphanumericString() {
+            return RandomStringUtils.random(20, 0, 0, true, true, null, SECURE_RANDOM);
+        }
+
+        public static String generateResetKey() {
+            return generateRandomAlphanumericString();
+        }
+
+        static {
+            SECURE_RANDOM.nextBytes(new byte[64]);
+        }
+    }
+
     private void handleConstraintsOnCreateOrUpdate(RuntimeException exception) {
         Throwable root = getRootCause(exception);
         String message = (root != null ? root.getMessage() : exception.getMessage());
@@ -408,11 +564,7 @@ public class PatientService {
         );
     }
 
-
-    private Specification<Patient> buildDuplicationSpec(
-            Map<String, Boolean> fields,
-            PatientDuplicationLookupDTO duplicationLookupDTO
-    ) {
+    private Specification<Patient> buildDuplicationSpec(Map<String, Boolean> fields, PatientDuplicationLookupDTO duplicationLookupDTO) {
         return (patientRoot, criteriaQuery, criteriaBuilder) -> {
 
             LOG.debug("=== [DUPLICATION SPEC BUILD START] ===");
@@ -515,23 +667,4 @@ public class PatientService {
             return criteriaBuilder.and(preds.toArray(new Predicate[0]));
         };
     }
-
-
-    public Page<Patient> findDuplicationCandidates(PatientDuplicationLookupDTO duplicationLookupDTO, Pageable pageable) {
-        if (duplicationLookupDTO == null || duplicationLookupDTO.ruleId() == null) {
-            return Page.empty(pageable);
-        }
-
-        DuplicationCandidate duplicationCandidate = duplicationCandidateRepository
-                .findByIdAndIsActiveTrue(duplicationLookupDTO.ruleId())
-                .orElse(null);
-
-        if (duplicationCandidate == null || duplicationCandidate.getFields() == null || duplicationCandidate.getFields().isEmpty()) {
-            return Page.empty(pageable);
-        }
-
-        Specification<Patient> spec = buildDuplicationSpec(duplicationCandidate.getFields(), duplicationLookupDTO);
-        return patientRepository.findAll(spec, pageable);
-    }
-
 }

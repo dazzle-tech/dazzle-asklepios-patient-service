@@ -8,8 +8,13 @@ import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.InvalidPasswordException;
+import com.dazzle.asklepios.web.rest.vm.patient.CreatePasswordKeyValidationVM;
+import com.dazzle.asklepios.service.dto.patient.KeyAndPasswordDTO;
+import com.dazzle.asklepios.web.rest.vm.patient.ManagedPatientVM;
 import com.dazzle.asklepios.web.rest.vm.patient.PatientBasicInformationResponseVM;
 import jakarta.validation.Valid;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
@@ -18,6 +23,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -37,8 +43,7 @@ import java.util.List;
 @RequestMapping("/api/patient")
 public class PatientController {
 
-    private static final Logger LOG =
-            LoggerFactory.getLogger(PatientController.class);
+    private static final Logger LOG = LoggerFactory.getLogger(PatientController.class);
 
     private final PatientService patientService;
 
@@ -46,11 +51,8 @@ public class PatientController {
         this.patientService = patientService;
     }
 
-
     @PostMapping
-    public ResponseEntity<Patient> createPatient(
-            @Valid @RequestBody PatientCreateDTO patientDTO
-    ) {
+    public ResponseEntity<Patient> createPatient(@Valid @RequestBody PatientCreateDTO patientDTO) {
         LOG.debug("REST create Patient payload={}", patientDTO);
 
         if (patientDTO == null) {
@@ -61,12 +63,8 @@ public class PatientController {
         return ResponseEntity.created(URI.create("/api/patient/" + created.getId())).body(created);
     }
 
-
     @PutMapping("/{id}")
-    public ResponseEntity<Patient> updatePatient(
-            @PathVariable Long id,
-            @Valid @RequestBody PatientUpdateDTO patientDTO
-    ) {
+    public ResponseEntity<Patient> updatePatient(@PathVariable Long id, @Valid @RequestBody PatientUpdateDTO patientDTO) {
         LOG.debug("REST update Patient id={} payload={}", id, patientDTO);
 
         if (patientDTO == null) {
@@ -96,10 +94,7 @@ public class PatientController {
     }
 
     @GetMapping("/by-medicalRecordNumber/{medicalRecordNumber}")
-    public ResponseEntity<List<Patient>> getByMedicalRecordNumber(
-            @PathVariable String medicalRecordNumber,
-            @ParameterObject Pageable pageable
-    ) {
+    public ResponseEntity<List<Patient>> getByMedicalRecordNumber(@PathVariable String medicalRecordNumber, @ParameterObject Pageable pageable) {
         LOG.debug(
                 "REST list Patients by medicalRecordNumber='{}' pageable={}",
                 medicalRecordNumber,
@@ -126,10 +121,7 @@ public class PatientController {
     }
 
     @GetMapping("/by-archiving-number/{archivingNumber}")
-    public ResponseEntity<List<Patient>> getByArchivingNumber(
-            @PathVariable String archivingNumber,
-            @ParameterObject Pageable pageable
-    ) {
+    public ResponseEntity<List<Patient>> getByArchivingNumber(@PathVariable String archivingNumber, @ParameterObject Pageable pageable) {
         LOG.debug(
                 "REST list Patients by archivingNumber='{}' pageable={}",
                 archivingNumber,
@@ -156,10 +148,7 @@ public class PatientController {
     }
 
     @GetMapping("/by-primary-phone/{phone}")
-    public ResponseEntity<List<Patient>> getByPrimaryPhone(
-            @PathVariable("phone") String phone,
-            @ParameterObject Pageable pageable
-    ) {
+    public ResponseEntity<List<Patient>> getByPrimaryPhone(@PathVariable("phone") String phone, @ParameterObject Pageable pageable) {
         LOG.debug(
                 "REST list Patients by primary phone='{}' pageable={}",
                 phone,
@@ -182,14 +171,8 @@ public class PatientController {
         );
     }
 
-
     @GetMapping("/by-date-of-birth/{date}")
-    public ResponseEntity<List<Patient>> getByDateOfBirth(
-            @PathVariable("date")
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-            LocalDate dateOfBirth,
-            @ParameterObject Pageable pageable
-    ) {
+    public ResponseEntity<List<Patient>> getByDateOfBirth(@PathVariable("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateOfBirth, @ParameterObject Pageable pageable) {
         LOG.debug(
                 "REST list Patients by dateOfBirth='{}' pageable={}",
                 dateOfBirth,
@@ -213,10 +196,7 @@ public class PatientController {
     }
 
     @GetMapping("/by-full-name/{keyword}")
-    public ResponseEntity<List<Patient>> getByFullName(
-            @PathVariable("keyword") String keyword,
-            @ParameterObject Pageable pageable
-    ) {
+    public ResponseEntity<List<Patient>> getByFullName(@PathVariable("keyword") String keyword, @ParameterObject Pageable pageable) {
         LOG.debug(
                 "REST list Patients by full name keyword='{}' pageable={}",
                 keyword,
@@ -240,10 +220,7 @@ public class PatientController {
     }
 
     @GetMapping("/by-document-number")
-    public ResponseEntity<List<Patient>> getPatientsByPrimaryDocumentNumber(
-            @RequestParam("number") String numberPart,
-            @ParameterObject Pageable pageable
-    ) {
+    public ResponseEntity<List<Patient>> getPatientsByPrimaryDocumentNumber(@RequestParam("number") String numberPart, @ParameterObject Pageable pageable) {
         LOG.debug(
                 "REST search Patients by primary document number={} pageable={}",
                 numberPart,
@@ -278,10 +255,7 @@ public class PatientController {
     }
 
     @GetMapping("/by-any-document-number")
-    public ResponseEntity<List<Patient>> getPatientsByAnyDocumentNumber(
-            @RequestParam("number") String numberPart,
-            @ParameterObject Pageable pageable
-    ) {
+    public ResponseEntity<List<Patient>> getPatientsByAnyDocumentNumber(@RequestParam("number") String numberPart, @ParameterObject Pageable pageable) {
         LOG.debug(
                 "REST search Patients by ANY document number={} pageable={}",
                 numberPart,
@@ -316,9 +290,7 @@ public class PatientController {
     }
 
     @GetMapping("/unknown")
-    public ResponseEntity<Page<Patient>> getUnknownPatients(
-            @ParameterObject Pageable pageable
-    ) {
+    public ResponseEntity<Page<Patient>> getUnknownPatients(@ParameterObject Pageable pageable) {
         LOG.info("REST request to get unknown patients - page: {}, size: {}, sort: {}",
                 pageable.getPageNumber(),
                 pageable.getPageSize(),
@@ -335,9 +307,7 @@ public class PatientController {
     }
 
     @PostMapping("/bulk/basic-info")
-    public ResponseEntity<List<PatientBasicInformationResponseVM>> getBulkPatientBasicInfo(
-            @RequestBody List<Long> ids
-    ) {
+    public ResponseEntity<List<PatientBasicInformationResponseVM>> getBulkPatientBasicInfo(@RequestBody List<Long> ids) {
         LOG.debug(
                 "REST bulk Patient BASIC INFO idsCount={} ids={}",
                 ids == null ? 0 : ids.size(),
@@ -363,10 +333,7 @@ public class PatientController {
 
 
     @PostMapping("/duplication-candidates")
-    public ResponseEntity<List<PatientBasicInformationResponseVM>> getDuplicationCandidates(
-            @RequestBody PatientDuplicationLookupDTO duplicationLookupDTO,
-            @ParameterObject Pageable pageable
-    ) {
+    public ResponseEntity<List<PatientBasicInformationResponseVM>> getDuplicationCandidates(@RequestBody PatientDuplicationLookupDTO duplicationLookupDTO, @ParameterObject Pageable pageable) {
         Page<Patient> page = patientService.findDuplicationCandidates(duplicationLookupDTO, pageable);
 
         HttpHeaders headers =
@@ -382,17 +349,55 @@ public class PatientController {
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
 
+    @PostMapping("/{id}/send-create-password")
+    public ResponseEntity<Void> sendCreatePasswordEmailToPatient(@PathVariable Long id) {
+        LOG.debug("REST send create-password email to Patient id={}", id);
+        patientService.sendCreatePasswordEmailToPatient(id);
+        return ResponseEntity.ok().build();
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<Patient> getPatientById(@PathVariable Long id) {
         LOG.debug("REST get Patient by id={}", id);
         Patient patient = patientService.findById(id);
         return ResponseEntity.ok(patient);
     }
+
     @GetMapping("/by-ids")
     public ResponseEntity<List<Patient>> getPatientsByIds(@RequestParam List<Long> ids) {
         LOG.debug("REST get Patients by ids={}", ids);
         List<Patient> patients = patientService.findByIds(ids);
         return ResponseEntity.ok(patients);
+    }
+
+    @PostMapping(path = "/create-patient-password/finish")
+    public ResponseEntity<Void> finishCreatePassword(@RequestBody KeyAndPasswordDTO keyAndPassword) {
+        if (isPasswordLengthInvalid(keyAndPassword.getNewPassword())) {
+            throw new InvalidPasswordException();
+        }
+
+        patientService
+                .completeCreatePassword(keyAndPassword.getNewPassword(), keyAndPassword.getKey())
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "patient",
+                        "No user was found for this create-password key"
+                ));
+
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping(value = "/create-patient-password/validate", produces = MediaType.APPLICATION_JSON_VALUE)
+    public CreatePasswordKeyValidationVM validate(@RequestParam("key") String key) {
+        return patientService.validateCreatePasswordKey(key);
+    }
+
+    private static boolean isPasswordLengthInvalid(String password) {
+        return (
+                StringUtils.isEmpty(password) ||
+                        password.length() < ManagedPatientVM.PASSWORD_MIN_LENGTH ||
+                        password.length() > ManagedPatientVM.PASSWORD_MAX_LENGTH
+        );
     }
 }
 
