@@ -252,6 +252,9 @@ public class AppointmentFromTemplateService {
         if (appointment.getPatient() == null) {
             throw new BadRequestAlertException("patientrequired", ENTITY_NAME, "Cannot check in appointment without patient");
         }
+        if(!appointment.getPatient().getIsCompletedPatient()){
+            throw new BadRequestAlertException("notcompletedpatient", ENTITY_NAME, "Cannot check in appointment for not completed patient");
+        }
 
         appointment.setStatus(AppointmentStatus.CHECKED_IN);
         appointment.setCheckedInAt(Instant.now());
