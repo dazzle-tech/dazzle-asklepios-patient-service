@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service.dto.patient;
 
+import com.dazzle.asklepios.domain.enumeration.BloodGroup;
 import com.dazzle.asklepios.domain.enumeration.Gender;
 import com.dazzle.asklepios.domain.enumeration.PreferredWayOfContact;
 import com.dazzle.asklepios.domain.enumeration.SecurityLevel;
@@ -76,7 +77,9 @@ public record PatientCreateDTO(
         Boolean isUnknown,
         Boolean isVerified,
         Boolean isCompletedPatient,
-        SecurityLevel securityAccessLevel)
+        SecurityLevel securityAccessLevel,
+        BloodGroup bloodGroup,
+        String patientConditions)
 
      implements Serializable {
 

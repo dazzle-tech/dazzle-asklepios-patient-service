@@ -155,7 +155,15 @@ public class AvailabilityGenerationBatchService {
             throw ex;
         }
     }
-
+    @Transactional(readOnly = true)
+    public Page<AvailabilityGenerationBatch> getListByTemplateExcludingBatch(
+            Long templateId,
+            Long batchId,
+            Pageable pageable
+    ) {
+        return availabilityGenerationBatchRepository
+                .findAllByTemplate_IdAndIdNotOrderByApplyStartDateTimeDesc(templateId, batchId, pageable);
+    }
     private List<AppointmentFromTemplate> generateAppointments(AvailabilityTemplate template, AvailabilityGenerationBatch batch, Instant startDate, Instant endDate, boolean deferred, Instant deferredAt, HolidayHandlingMode holidayHandlingMode, List<OrganizationHolidayDTO> holidays) {
         LOG.info("[GENERATE TEMPLATE] templateId={}, batchId={},startDate={}, endDate={}, deferred={}, deferredAt={}, holidayHandlingMode={}", template.getId(), batch.getId(), startDate, endDate, deferred, deferredAt, holidayHandlingMode);
 

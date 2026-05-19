@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.BloodGroup;
 import com.dazzle.asklepios.domain.enumeration.Gender;
 import com.dazzle.asklepios.domain.enumeration.PreferredWayOfContact;
 import com.dazzle.asklepios.domain.enumeration.SecurityLevel;
@@ -187,6 +188,13 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
 
     @NotNull
     private boolean activated = false;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "blood_group", length = 20)
+    private BloodGroup bloodGroup;
+
+    @Column(name = "patient_conditions", columnDefinition = "text")
+    private String patientConditions;
 
     @AssertTrue(message = "When patient is not unknown, firstName, lastName, sexAtBirth, dateOfBirth, primaryMobileNumber and email are required")
     public boolean isValidWhenNotUnknown() {
