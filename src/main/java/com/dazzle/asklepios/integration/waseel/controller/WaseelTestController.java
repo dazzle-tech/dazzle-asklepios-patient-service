@@ -1,21 +1,18 @@
 package com.dazzle.asklepios.integration.waseel.controller;
 
+import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalCancelRequest;
+import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalRequest;
+import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalResponse;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiInquiryResponse;
+import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiMappedPatientResponse;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityRequest;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityResponse;
+import com.dazzle.asklepios.integration.waseel.service.WaseelApprovalService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelCchiService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelEligibilityService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelTokenService;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalRequest;
-import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalResponse;
-import com.dazzle.asklepios.integration.waseel.service.WaseelApprovalService;
-import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalCancelRequest;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/patient")
@@ -25,9 +22,12 @@ public class WaseelTestController {
     private final WaseelCchiService waseelCchiService;
     private final WaseelEligibilityService waseelEligibilityService;
     private final WaseelApprovalService waseelApprovalService;
+
     public WaseelTestController(
             WaseelTokenService waseelTokenService,
-            WaseelCchiService waseelCchiService, WaseelEligibilityService waseelEligibilityService, WaseelApprovalService waseelApprovalService
+            WaseelCchiService waseelCchiService,
+            WaseelEligibilityService waseelEligibilityService,
+            WaseelApprovalService waseelApprovalService
     ) {
         this.waseelTokenService = waseelTokenService;
         this.waseelCchiService = waseelCchiService;
@@ -45,28 +45,34 @@ public class WaseelTestController {
         return waseelCchiService.fetchBeneficiaryByDocumentId(documentId);
     }
 
+    @GetMapping("/internal/waseel/cchi/{documentId}/patient")
+    public Patient getMappedPatientFromCchi(@PathVariable String documentId) {
+        return waseelCchiService.fetchPatientByDocumentId(documentId);
+    }
+
     @PostMapping("/internal/waseel/eligibility")
-    public EligibilityResponse requestEligibility(
-            @RequestBody EligibilityRequest request
-    ) {
+    public EligibilityResponse requestEligibility(@RequestBody EligibilityRequest request) {
         return waseelEligibilityService.requestEligibility(request);
     }
+
     @PostMapping("/internal/waseel/approval")
     public ApprovalResponse requestApproval(@RequestBody ApprovalRequest request) {
         return waseelApprovalService.requestApproval(request);
     }
 
     @GetMapping("/internal/waseel/approval/{requestId}")
-    public ApprovalResponse getExternalApproval(
-            @PathVariable String requestId
-    ) {
+    public ApprovalResponse getExternalApproval(@PathVariable String requestId) {
         return waseelApprovalService.getExternalApproval(requestId);
     }
+
     @PostMapping("/internal/waseel/approval/cancel")
-    public ApprovalResponse cancelApproval(
-            @RequestBody ApprovalCancelRequest request
-    ) {
+    public ApprovalResponse cancelApproval(@RequestBody ApprovalCancelRequest request) {
         return waseelApprovalService.cancelApproval(request);
     }
-
+    @GetMapping("/internal/waseel/cchi/{documentId}/mapped")
+    public CchiMappedPatientResponse getMappedPatientWithAddressFromCchi(
+            @PathVariable String documentId
+    ) {
+        return waseelCchiService.fetchMappedPatientByDocumentId(documentId);
+    }
 }
