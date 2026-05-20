@@ -3,6 +3,8 @@ package com.dazzle.asklepios.service.patientMerge;
 import com.dazzle.asklepios.domain.PatientMergeTableConfig;
 import com.dazzle.asklepios.domain.enumeration.PatientMergeCategory;
 import com.dazzle.asklepios.repository.PatientMergeTableConfigRepository;
+import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeTableConfigSaveDTO;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeAvailableTableVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeTableConfigVM;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -145,5 +147,64 @@ public class PatientMergeConfigService {
         }
 
         return inserted;
+    }
+
+    @Transactional
+    public PatientMergeTableConfigVM saveTableConfig(PatientMergeTableConfigSaveDTO dto) {
+
+        PatientMergeTableConfig config =
+                dto.id() != null
+                        ? tableConfigRepository.findById(dto.id())
+                        .orElseThrow(() -> new BadRequestAlertException(
+                                "Table config not found",
+                                "PatientMerge",
+                                "table.config.notfound"
+                        ))
+                        : new PatientMergeTableConfig();
+
+        config.setEntityName(dto.entityName());
+        config.setTableName(dto.tableName());
+        config.setPrimaryKeyColumnName(dto.primaryKeyColumnName());
+        config.setPatientColumnName(dto.patientColumnName());
+        config.setEnabled(Boolean.TRUE.equals(dto.enabled()));
+        config.setSortOrder(dto.sortOrder() != null ? dto.sortOrder() : 999);
+        config.setMergeCategory(PatientMergeCategory.valueOf(dto.mergeCategory()));
+        config.setAutoDiscoverFields(Boolean.TRUE.equals(dto.autoDiscoverFields()));
+
+        config.setMatchKeyColumns(joinColumns(dto.matchKeyColumns()));
+        config.setExcludedColumns(joinColumns(dto.excludedColumns()));
+
+        return toVm(tableConfigRepository.save(config));
+    }
+
+    private String joinColumns(List<String> columns) {
+        if (columns == null || columns.isEmpty()) {
+            return null;
+        }
+
+        return columns.stream()
+                .filter(column -> column != null && !column.isBlank())
+                .map(String::trim)
+                .distinct()
+                .reduce((a, b) -> a + "," + b)
+                .orElse(null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> getTableColumns(String tableName) {
+
+        supportService.validateIdentifier(tableName);
+
+        return jdbcTemplate.queryForList(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = ?
+                ORDER BY ordinal_position
+                """,
+                String.class,
+                tableName
+        );
     }
 }

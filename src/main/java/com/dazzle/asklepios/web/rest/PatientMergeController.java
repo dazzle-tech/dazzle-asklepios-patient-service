@@ -2,6 +2,7 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeExecuteDTO;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeSummaryDTO;
+import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeTableConfigSaveDTO;
 import com.dazzle.asklepios.service.patientMerge.PatientMergeAnalysisService;
 import com.dazzle.asklepios.service.patientMerge.PatientMergeConfigService;
 import com.dazzle.asklepios.service.patientMerge.PatientMergeExecuteService;
@@ -169,6 +170,24 @@ public class PatientMergeController {
 
         return ResponseEntity.ok(
                 patientMergeConfigService.getTableConfigs()
+        );
+    }
+    @PostMapping("/config/tables")
+    public ResponseEntity<PatientMergeTableConfigVM> saveTableConfig(
+            @RequestBody PatientMergeTableConfigSaveDTO dto
+    ) {
+        return ResponseEntity.ok(
+                patientMergeConfigService.saveTableConfig(dto)
+        );
+    }
+
+    @GetMapping("/config/table-columns/{tableName}")
+    public ResponseEntity<List<String>> getTableColumns(
+            @PathVariable String tableName
+    ) {
+
+        return ResponseEntity.ok(
+                patientMergeConfigService.getTableColumns(tableName)
         );
     }
 }
