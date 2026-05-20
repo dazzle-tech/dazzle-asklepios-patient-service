@@ -663,14 +663,6 @@ public class PatientEncounterService {
             );
         }
 
-        if (messageLower.contains("unique_patient_department_date_encounter")) {
-            return new BadRequestAlertException(
-                    "Patient already has same department encounter Today",
-                    "patientEncounter",
-                    "patient.department.date.duplicate"
-            );
-        }
-
         if (messageLower.contains("unique_department_date_sequence_number")) {
             return new BadRequestAlertException(
                     "Department daily sequence number already exists for this date.",
