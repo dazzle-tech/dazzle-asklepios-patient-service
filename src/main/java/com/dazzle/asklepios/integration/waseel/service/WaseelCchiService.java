@@ -1,19 +1,36 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
+import com.dazzle.asklepios.client.setup.dto.PayorDTO;
+import com.dazzle.asklepios.client.setup.dto.PayorPlanDTO;
 import com.dazzle.asklepios.domain.Address;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientDocument;
+import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiBeneficiaryData;
+import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiCoverageClass;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiInquiryResponse;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiInsurancePlan;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiMappedPatientResponse;
 import com.dazzle.asklepios.integration.waseel.service.mapper.CchiBeneficiaryAddressMapper;
+import com.dazzle.asklepios.integration.waseel.service.mapper.CchiBeneficiaryPatientDocumentMapper;
+import com.dazzle.asklepios.integration.waseel.service.mapper.CchiBeneficiaryPatientInsuranceMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.CchiBeneficiaryPatientMapper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import com.dazzle.asklepios.domain.PatientDocument;
-import com.dazzle.asklepios.integration.waseel.service.mapper.CchiBeneficiaryPatientDocumentMapper;import org.springframework.stereotype.Service;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 public class WaseelCchiService {
@@ -26,12 +43,18 @@ public class WaseelCchiService {
     private final CchiBeneficiaryPatientMapper patientMapper;
     private final CchiBeneficiaryAddressMapper addressMapper;
     private final CchiBeneficiaryPatientDocumentMapper patientDocumentMapper;
+    private final CchiBeneficiaryPatientInsuranceMapper insuranceMapper;
+    private final SetupInsuranceLookupService setupInsuranceLookupService;
+
     public WaseelCchiService(
             RestTemplate restTemplate,
             WaseelTokenService tokenService,
             WaseelApiProperties properties,
             CchiBeneficiaryPatientMapper patientMapper,
-            CchiBeneficiaryAddressMapper addressMapper, CchiBeneficiaryPatientDocumentMapper patientDocumentMapper
+            CchiBeneficiaryAddressMapper addressMapper,
+            CchiBeneficiaryPatientDocumentMapper patientDocumentMapper,
+            CchiBeneficiaryPatientInsuranceMapper insuranceMapper,
+            SetupInsuranceLookupService setupInsuranceLookupService
     ) {
         this.restTemplate = restTemplate;
         this.tokenService = tokenService;
@@ -39,40 +62,46 @@ public class WaseelCchiService {
         this.patientMapper = patientMapper;
         this.addressMapper = addressMapper;
         this.patientDocumentMapper = patientDocumentMapper;
+        this.insuranceMapper = insuranceMapper;
+        this.setupInsuranceLookupService = setupInsuranceLookupService;
     }
 
     public CchiInquiryResponse fetchBeneficiaryByDocumentId(String documentId) {
+        // For local testing only.
+        // Comment this line when you want to call the real Waseel API.
         return mockCchiInquiryResponse();
 
-////        String token = tokenService.getToken();
-//
-////        String url =
-////                properties.baseUrl()
-////                        + "/beneficiaries/providers/"
-////                        + properties.providerId()
-////                        + "/patientKey/"
-////                        + documentId
-////                        + "/systemType/"
-////                        + properties.systemType();
-//
-//        LOG.info("Calling Waseel URL: {}", url);
-//
-//        HttpHeaders headers = new HttpHeaders();
-////        headers.setBearerAuth(token);
-//        headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON));
-//        headers.set("User-Agent", "PostmanRuntime/7.43.0");
-//
-//        HttpEntity<Void> entity = new HttpEntity<>(headers);
-//
-//        ResponseEntity<CchiInquiryResponse> response =
-//                restTemplate.exchange(
-//                        url,
-//                        HttpMethod.GET,
-//                        entity,
-//                        CchiInquiryResponse.class
-//                );
+        /*
+        String token = tokenService.getToken();
 
-//        return response.getBody();
+        String url =
+                properties.baseUrl()
+                        + "/beneficiaries/providers/"
+                        + properties.providerId()
+                        + "/patientKey/"
+                        + documentId
+                        + "/systemType/"
+                        + properties.systemType();
+
+        LOG.info("Calling Waseel URL: {}", url);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+        headers.set("User-Agent", "PostmanRuntime/7.43.0");
+
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        ResponseEntity<CchiInquiryResponse> response =
+                restTemplate.exchange(
+                        url,
+                        HttpMethod.GET,
+                        entity,
+                        CchiInquiryResponse.class
+                );
+
+        return response.getBody();
+        */
     }
 
     public Patient fetchPatientByDocumentId(String documentId) {
@@ -97,12 +126,115 @@ public class WaseelCchiService {
         PatientDocument document =
                 patientDocumentMapper.toPatientDocument(beneficiary);
 
+        List<PatientInsurance> insurances = mapPatientInsurances(
+                patient,
+                beneficiary.insurancePlans()
+        );
+
         return new CchiMappedPatientResponse(
                 patient,
                 address,
-                document
+                document,
+                insurances
         );
-    }    private CchiInquiryResponse mockCchiInquiryResponse() {
+    }
+
+    private List<PatientInsurance> mapPatientInsurances(
+            Patient patient,
+            List<CchiInsurancePlan> insurancePlans
+    ) {
+        if (insurancePlans == null || insurancePlans.isEmpty()) {
+            return List.of();
+        }
+
+        List<PatientInsurance> result = new ArrayList<>();
+
+        for (CchiInsurancePlan insurancePlan : insurancePlans) {
+            PayorDTO payor = resolvePayor(insurancePlan);
+
+            PayorPlanDTO payorPlan = resolvePayorPlan(
+                    payor,
+                    insurancePlan
+            );
+
+            PatientInsurance insurance = insuranceMapper.toPatientInsurance(
+                    insurancePlan,
+                    patient,
+                    payor,
+                    payorPlan
+            );
+
+            result.add(insurance);
+        }
+
+        return result;
+    }
+
+    private PayorDTO resolvePayor(CchiInsurancePlan insurancePlan) {
+        String payerNphiesId = clean(insurancePlan.payerNphiesId());
+
+        if (isBlank(payerNphiesId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Payer NPHIES ID is missing from CCHI insurance plan"
+            );
+        }
+
+        return setupInsuranceLookupService
+                .findPayorByNphiesId(payerNphiesId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Payer returned from CCHI is not configured. NPHIES ID: " + payerNphiesId
+                ));
+    }
+
+    private PayorPlanDTO resolvePayorPlan(
+            PayorDTO payor,
+            CchiInsurancePlan insurancePlan
+    ) {
+        String coverageType = clean(insurancePlan.coverageType());
+        String networkId = clean(insurancePlan.networkId());
+        String policyClassName = clean(insurancePlan.policyClassName());
+
+        if (isBlank(coverageType) && isBlank(networkId) && isBlank(policyClassName)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Cannot resolve CCHI payor plan because coverageType, networkId, and policyClassName are missing"
+            );
+        }
+
+        return setupInsuranceLookupService
+                .findPayorPlanByCchiMatch(
+                payor.id(),
+                insurancePlan.coverageType(),
+                insurancePlan.networkId(),
+                insurancePlan.policyClassName()
+        )
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Payor plan returned from CCHI is not configured. "
+                                + "payorId=" + payor.id()
+                                + ", coverageType=" + coverageType
+                                + ", networkId=" + networkId
+                                + ", policyClassName=" + policyClassName
+                ));
+    }
+
+    private String clean(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        String text = value.trim();
+
+        return text.isEmpty() ? null : text;
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    private CchiInquiryResponse mockCchiInquiryResponse() {
         CchiBeneficiaryData data = new CchiBeneficiaryData(
                 "1093772497",                 // documentId
                 "NI",                         // documentType
@@ -149,23 +281,37 @@ public class WaseelCchiService {
                 "501",                        // providerId
                 false,                        // isNewBorn
 
-                java.util.List.of(
+                List.of(
                         new CchiInsurancePlan(
-                                "001093772497001",              // memberCardId
-                                "48095070",                     // policyNumber
-                                "2026-08-21T21:00:00.000+0000", // expiryDate
-                                "true",                         // isPrimary
-                                null,                           // payerId
-                                "SELF",                         // relationWithSubscriber
-                                "EHCPOL",                       // coverageType
-                                20,                             // patientShare
-                                100,                            // maxLimit
-                                "12",                           // networkId
-                                "a",                            // policyClassName
+                                null,                               // planId
+                                "001093772497001",                  // memberCardId
+                                "48095070",                         // policyNumber
+                                null,                               // groupNumber
+                                "2026-08-21T21:00:00.000+0000",     // expiryDate
+                                "2025-08-22T21:00:00.000+0000",     // issueDate
+                                "true",                             // isPrimary
+                                null,                               // payerId
+                                null,                               // payerName
+                                "7000911508",                       // payerNphiesId
+                                null,                               // tpaNphiesId
+                                "SELF",                             // relationWithSubscriber
+                                "EHCPOL",                           // coverageType
+                                BigDecimal.valueOf(20),             // patientShare
+                                BigDecimal.valueOf(100),            // maxLimit
+                                "12",                               // networkId
+                                "7001454136",                       // sponsorNumber
+                                "a",                                // policyClassName
                                 "waseel application service prov.", // policyHolder
-                                "7000911508",                   // payerNphiesId
-                                false                           // newPlan
-                        )          )
+                                List.of(
+                                        new CchiCoverageClass(
+                                                "plan",
+                                                "a",
+                                                ""
+                                        )
+                                ),                         // coverageClassList
+                                false                               // newPlan
+                        )
+                )
         );
 
         return new CchiInquiryResponse(

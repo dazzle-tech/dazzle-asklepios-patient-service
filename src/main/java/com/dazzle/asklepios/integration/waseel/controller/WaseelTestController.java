@@ -6,10 +6,13 @@ import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalRequest;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalResponse;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiInquiryResponse;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiMappedPatientResponse;
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityCheckRequest;
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityCheckResult;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityRequest;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityResponse;
 import com.dazzle.asklepios.integration.waseel.service.WaseelApprovalService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelCchiService;
+import com.dazzle.asklepios.integration.waseel.service.WaseelEligibilityCheckService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelEligibilityService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelTokenService;
 import org.springframework.web.bind.annotation.*;
@@ -22,17 +25,19 @@ public class WaseelTestController {
     private final WaseelCchiService waseelCchiService;
     private final WaseelEligibilityService waseelEligibilityService;
     private final WaseelApprovalService waseelApprovalService;
+    private final WaseelEligibilityCheckService waseelEligibilityCheckService;
 
     public WaseelTestController(
             WaseelTokenService waseelTokenService,
             WaseelCchiService waseelCchiService,
             WaseelEligibilityService waseelEligibilityService,
-            WaseelApprovalService waseelApprovalService
-    ) {
+            WaseelApprovalService waseelApprovalService,
+            WaseelEligibilityCheckService waseelEligibilityCheckService) {
         this.waseelTokenService = waseelTokenService;
         this.waseelCchiService = waseelCchiService;
         this.waseelEligibilityService = waseelEligibilityService;
         this.waseelApprovalService = waseelApprovalService;
+        this.waseelEligibilityCheckService = waseelEligibilityCheckService;
     }
 
     @GetMapping("/internal/waseel/token-test")
@@ -74,5 +79,12 @@ public class WaseelTestController {
             @PathVariable String documentId
     ) {
         return waseelCchiService.fetchMappedPatientByDocumentId(documentId);
+    }
+
+    @PostMapping("/internal/waseel/eligibility/check")
+    public EligibilityCheckResult checkEligibility(
+            @RequestBody EligibilityCheckRequest request
+    ) {
+        return waseelEligibilityCheckService.checkEligibility(request);
     }
 }
