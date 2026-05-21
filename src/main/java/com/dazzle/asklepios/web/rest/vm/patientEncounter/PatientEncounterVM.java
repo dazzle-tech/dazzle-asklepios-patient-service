@@ -11,6 +11,7 @@ import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 public record PatientEncounterVM(
 
@@ -34,7 +35,7 @@ public record PatientEncounterVM(
 
         Integer departmentDailySequenceNumber,
         LocalDate encounterDate,
-
+        LocalTime encounterTime,
         Instant startedDate,
         String startedBy,
 
@@ -73,6 +74,7 @@ public record PatientEncounterVM(
 
                 encounter.getDepartmentDailySequenceNumber(),
                 encounter.getEncounterDate(),
+                encounter.getEncounterTime(),
                 encounter.getStartedDate(),
                 encounter.getStartedBy(),
                 encounter.getChiefComplaint(),

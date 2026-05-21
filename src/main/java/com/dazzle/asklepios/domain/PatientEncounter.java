@@ -28,6 +28,7 @@ import java.io.Serializable;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 @Entity
 @Table(name = "patient_encounters")
@@ -102,7 +103,9 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @Column(name = "encounter_date", updatable = false)
     private LocalDate encounterDate;
-
+    @NotNull
+    @Column(name = "encounter_time", nullable = false)
+    private LocalTime encounterTime;
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)

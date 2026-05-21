@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 
 import java.io.Serializable;
 import java.time.LocalDate;
+import java.time.LocalTime;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record PatientEncounterCreateDTO(
@@ -45,6 +46,7 @@ public record PatientEncounterCreateDTO(
         String notes,
 
         LocalDate encounterDate,
+        LocalTime encounterTime,
 
         @NotNull
         EncounterStatus status,
