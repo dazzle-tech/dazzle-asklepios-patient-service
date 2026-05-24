@@ -161,14 +161,24 @@ public class AvailabilityTemplateService {
 
     public AvailabilityTemplate cloneTemplate(Long sourceTemplateId) {
         LOG.debug("clone availability template sourceTemplateId={}", sourceTemplateId);
+        try {
+            AvailabilityTemplate source = getAvailabilityTemplate(sourceTemplateId);
 
-        AvailabilityTemplate source = getAvailabilityTemplate(sourceTemplateId);
+            AvailabilityTemplate savedClone = cloneSingleTemplate(source, null, resolveCloneName(source));
 
-        AvailabilityTemplate savedClone = cloneSingleTemplate(source, null, resolveCloneName(source));
+            cloneResourceTemplates(source, savedClone);
 
-        cloneResourceTemplates(source, savedClone);
+            return savedClone;
+        }
+        catch (DataIntegrityViolationException | JpaSystemException constraintException) {
+            handleConstraintsOnCreateOrUpdate(constraintException);
 
-        return savedClone;
+            throw new BadRequestAlertException(
+                    "db.constraint",
+                    ENTITY_NAME,
+                    "Database constraint violated while saving availability template (check required fields or unique constraints)."
+            );
+        }
     }
 
 
