@@ -984,14 +984,6 @@ public class AppointmentFromTemplateService {
             );
         }
 
-        if (appointment.getBookingMode() != BookingMode.SLOT) {
-            throw new BadRequestAlertException(
-                    "Only slot appointments can be rescheduled",
-                    ENTITY_NAME,
-                    "invalidbookingmode"
-            );
-        }
-
         if (appointment.getPatient() == null || appointment.getPatient().getId() == null) {
             throw new BadRequestAlertException(
                     "Cannot reschedule appointment without patient",
