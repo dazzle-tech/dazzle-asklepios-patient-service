@@ -1,4 +1,4 @@
-package com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate;
+package com.dazzle.asklepios.web.rest.vm.appointment;
 
 import java.util.List;
 

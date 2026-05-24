@@ -47,7 +47,7 @@ public class AppointmentRequest extends AbstractAuditingEntity<Long> implements 
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "appointment_id")
-    private AppointmentFromTemplate appointment;
+    private Appointment appointment;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "requested_resource_type", length = 30)

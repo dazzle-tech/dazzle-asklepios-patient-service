@@ -26,7 +26,7 @@ import java.time.Instant;
 @Table(name = "appointment")
 @Getter
 @Setter
-public class AppointmentFromTemplate extends AbstractAuditingEntity<Long> implements Serializable{
+public class Appointment extends AbstractAuditingEntity<Long> implements Serializable{
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

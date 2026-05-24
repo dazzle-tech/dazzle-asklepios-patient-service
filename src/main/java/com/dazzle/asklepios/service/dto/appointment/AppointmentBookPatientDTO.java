@@ -1,11 +1,11 @@
-package com.dazzle.asklepios.service.dto.appointmentFromTemplate;
+package com.dazzle.asklepios.service.dto.appointment;
 
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import jakarta.validation.constraints.NotNull;
 
-public record AppointmentFromTemplateBookPatientDTO(
+public record AppointmentBookPatientDTO(
 
         @NotNull(message = "appointmentId is required")
         Long id,

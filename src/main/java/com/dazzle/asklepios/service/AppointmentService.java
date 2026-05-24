@@ -3,7 +3,7 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.client.setup.dto.DiagnosticTestSetupDTO;
 import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
-import com.dazzle.asklepios.domain.AppointmentFromTemplate;
+import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.AppointmentLog;
 import com.dazzle.asklepios.domain.AppointmentReschedule;
 import com.dazzle.asklepios.domain.AvailabilityGenerationBatch;
@@ -21,7 +21,7 @@ import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import com.dazzle.asklepios.domain.enumeration.TestType;
-import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
+import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.AppointmentLogRepository;
 import com.dazzle.asklepios.repository.AppointmentRescheduleRepository;
 import com.dazzle.asklepios.repository.AvailabilityGenerationBatchRepository;
@@ -30,14 +30,14 @@ import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
-import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateBookPatientDTO;
-import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateCancelDTO;
-import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateNoShowDTO;
-import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentDTO;
-import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateRescheduleDTO;
-import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateSearchFilterDTO;
-import com.dazzle.asklepios.service.dto.appointmentFromTemplate.BulkAppointmentRescheduleDTO;
-import com.dazzle.asklepios.service.dto.appointmentFromTemplate.DiagnosticTestAppointmentRescheduleDTO;
+import com.dazzle.asklepios.service.dto.appointment.AppointmentBookPatientDTO;
+import com.dazzle.asklepios.service.dto.appointment.AppointmentCancelDTO;
+import com.dazzle.asklepios.service.dto.appointment.AppointmentNoShowDTO;
+import com.dazzle.asklepios.service.dto.appointment.AppointmentQuickAppointmentDTO;
+import com.dazzle.asklepios.service.dto.appointment.AppointmentRescheduleDTO;
+import com.dazzle.asklepios.service.dto.appointment.AppointmentSearchFilterDTO;
+import com.dazzle.asklepios.service.dto.appointment.BulkAppointmentRescheduleDTO;
+import com.dazzle.asklepios.service.dto.appointment.DiagnosticTestAppointmentRescheduleDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestCreateDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
@@ -47,9 +47,9 @@ import com.dazzle.asklepios.service.helper.DiagnosticTestHelper;
 import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.AppointmentFromTemplateQuickAppointmentResponseVM;
-import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.BulkAppointmentRescheduleResponseVM;
-import com.dazzle.asklepios.web.rest.vm.appointmentFromTemplate.BulkReschedulePreviewVM;
+import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentQuickAppointmentResponseVM;
+import com.dazzle.asklepios.web.rest.vm.appointment.BulkAppointmentRescheduleResponseVM;
+import com.dazzle.asklepios.web.rest.vm.appointment.BulkReschedulePreviewVM;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
@@ -71,17 +71,17 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class AppointmentFromTemplateService {
+public class AppointmentService {
 
-    private final AppointmentFromTemplateRepository appointmentFromTemplateRepository;
+    private final AppointmentRepository appointmentRepository;
     private final AppointmentLogRepository appointmentLogRepository;
 
-    private static final String ENTITY_NAME = "AppointmentFromTemplate";
+    private static final String ENTITY_NAME = "Appointment";
 
     private static final String SYSTEM_CANCEL_REASON = "cancel appointment from reschedule";
     private static final String SYSTEM_RESCHEDULE_REASON = "rescheduled due to availability change ";
 
-    private static final Logger LOG = LoggerFactory.getLogger(AppointmentFromTemplateService.class);
+    private static final Logger LOG = LoggerFactory.getLogger(AppointmentService.class);
 
     private final PatientRepository patientRepository;
     private final DepartmentHelper departmentHelper;
@@ -98,14 +98,14 @@ public class AppointmentFromTemplateService {
     private final PractitionerHelper practitionerHelper;
 
     public List<AppointmentLog> getAppointmentLogs(Long appointmentId) {
-        LOG.debug("Request to get AppointmentFromTemplate Log id={}", appointmentId);
+        LOG.debug("Request to get Appointment Log id={}", appointmentId);
         return appointmentLogRepository.findAllByAppointmentIdOrderByLogDateDesc(appointmentId);
     }
 
-    public AppointmentFromTemplate bookPatientAppointment(AppointmentFromTemplateBookPatientDTO dto) {
-        LOG.debug("Request to update AppointmentFromTemplate dto={}", dto);
+    public Appointment bookPatientAppointment(AppointmentBookPatientDTO dto) {
+        LOG.debug("Request to update Appointment dto={}", dto);
 
-        AppointmentFromTemplate appointment = appointmentFromTemplateRepository.findById(dto.id())
+        Appointment appointment = appointmentRepository.findById(dto.id())
                 .orElseThrow(() -> new BadRequestAlertException("notfound", ENTITY_NAME, "Appointment not found with id: " + dto.id()));
         if (dto.patientId() != null) {
             Patient patient = patientRepository.findById(dto.patientId())
@@ -146,16 +146,16 @@ public class AppointmentFromTemplateService {
 
             appointment.setFollowUpEncounter(followUpEncounter);
         }
-        return appointmentFromTemplateRepository.save(appointment);
+        return appointmentRepository.save(appointment);
     }
 
-    public Page<AppointmentFromTemplate> getAppointmentsByStatusBetweenDates(List<AppointmentStatus> status, Instant startDatetime, Instant endDatetime, Pageable pageable) {
+    public Page<Appointment> getAppointmentsByStatusBetweenDates(List<AppointmentStatus> status, Instant startDatetime, Instant endDatetime, Pageable pageable) {
         LOG.debug("Request to get appointments with patient not null between startDatetime={} and endDatetime={}", startDatetime, endDatetime);
 
-        return appointmentFromTemplateRepository.findByStatusInAndStartDatetimeBetween(status, startDatetime, endDatetime, pageable);
+        return appointmentRepository.findByStatusInAndStartDatetimeBetween(status, startDatetime, endDatetime, pageable);
     }
 
-    public Page<AppointmentFromTemplate> filterAppointment(AppointmentFromTemplateSearchFilterDTO filter, Pageable pageable) {
+    public Page<Appointment> filterAppointment(AppointmentSearchFilterDTO filter, Pageable pageable) {
 
         LOG.debug("Service filter Appointments filter={} pageable={}", filter, pageable);
 
@@ -163,7 +163,7 @@ public class AppointmentFromTemplateService {
             throw new BadRequestAlertException("facility", ENTITY_NAME, "Facility is required");
         }
 
-        Specification<AppointmentFromTemplate> appointmentFilterSpec = (root, query, cb) -> {
+        Specification<Appointment> appointmentFilterSpec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
             query.distinct(true);
@@ -199,7 +199,7 @@ public class AppointmentFromTemplateService {
             return cb.and(predicates.toArray(new Predicate[0]));
         };
 
-        Page<AppointmentFromTemplate> result = appointmentFromTemplateRepository.findAll(appointmentFilterSpec, pageable);
+        Page<Appointment> result = appointmentRepository.findAll(appointmentFilterSpec, pageable);
 
         LOG.debug("[FILTER] Appointments result totalElements={} totalPages={} pageNumber={} pageSize={}",
                 result.getTotalElements(), result.getTotalPages(), result.getNumber(), result.getSize());
@@ -207,30 +207,30 @@ public class AppointmentFromTemplateService {
         return result;
     }
 
-    public AppointmentFromTemplate cancel(AppointmentFromTemplateCancelDTO dto) {
-        AppointmentFromTemplate appointment = getAppointment(dto.id());
+    public Appointment cancel(AppointmentCancelDTO dto) {
+        Appointment appointment = getAppointment(dto.id());
 
         validateCancelable(appointment);
 
         appointment.setStatus(AppointmentStatus.CANCELLED);
         appointment.setCancelReason(dto.cancelReason());
         appointment.setCancelledBy(currentUsername());
-        return appointmentFromTemplateRepository.save(appointment);
+        return appointmentRepository.save(appointment);
     }
 
-    public AppointmentFromTemplate noShow(AppointmentFromTemplateNoShowDTO dto) {
-        AppointmentFromTemplate appointment = getAppointment(dto.id());
+    public Appointment noShow(AppointmentNoShowDTO dto) {
+        Appointment appointment = getAppointment(dto.id());
 
         validateNoShow(appointment);
 
         appointment.setStatus(AppointmentStatus.NO_SHOW);
         appointment.setNoShowReason(dto.noShowReason());
-        return appointmentFromTemplateRepository.save(appointment);
+        return appointmentRepository.save(appointment);
     }
 
     @Transactional
-    public AppointmentFromTemplate confirm(Long id) {
-        AppointmentFromTemplate appointment = getAppointment(id);
+    public Appointment confirm(Long id) {
+        Appointment appointment = getAppointment(id);
 
         validateConfirmable(appointment);
 
@@ -240,12 +240,12 @@ public class AppointmentFromTemplateService {
         appointment.setConfirmedAt(Instant.now());
         appointment.setStatus(AppointmentStatus.CONFIRMED);
 
-        return appointmentFromTemplateRepository.save(appointment);
+        return appointmentRepository.save(appointment);
     }
 
     @Transactional
-    public AppointmentFromTemplate checkIn(Long id) {
-        AppointmentFromTemplate appointment = getAppointment(id);
+    public Appointment checkIn(Long id) {
+        Appointment appointment = getAppointment(id);
 
         validateCheckIn(appointment);
 
@@ -259,7 +259,7 @@ public class AppointmentFromTemplateService {
         appointment.setStatus(AppointmentStatus.CHECKED_IN);
         appointment.setCheckedInAt(Instant.now());
 
-        AppointmentFromTemplate savedAppointment = appointmentFromTemplateRepository.save(appointment);
+        Appointment savedAppointment = appointmentRepository.save(appointment);
 
         DepartmentDTO department = departmentHelper.getDepartment(savedAppointment.getDepartmentId());
 
@@ -276,7 +276,7 @@ public class AppointmentFromTemplateService {
         return savedAppointment;
     }
 
-    public AppointmentFromTemplateQuickAppointmentResponseVM createQuickAppointment(AppointmentFromTemplateQuickAppointmentDTO appointmentDTO) {
+    public AppointmentQuickAppointmentResponseVM createQuickAppointment(AppointmentQuickAppointmentDTO appointmentDTO) {
         LOG.info("[CREATE QUICK APPOINTMENT] facilityId={}, departmentId={}, resourceType={}, resourceId={}, patientId={}",
                 appointmentDTO.facilityId(),
                 appointmentDTO.departmentId(),
@@ -311,7 +311,7 @@ public class AppointmentFromTemplateService {
         Instant startDateTime = Instant.now();
         Instant endDateTime = startDateTime.plusSeconds(department.defaultDurationMinutes() * 60L);
 
-        AppointmentFromTemplate appointment = new AppointmentFromTemplate();
+        Appointment appointment = new Appointment();
         appointment.setFacilityId(appointmentDTO.facilityId());
         appointment.setDepartmentId(appointmentDTO.departmentId());
         appointment.setResourceType(appointmentDTO.resourceType());
@@ -337,31 +337,31 @@ public class AppointmentFromTemplateService {
             appointment.setFollowUpEncounter(followUpEncounter);
         }
         appointment.setCapacityIndex(1);
-        AppointmentFromTemplate quickAppointment = appointmentFromTemplateRepository.save(appointment);
+        Appointment quickAppointment = appointmentRepository.save(appointment);
         PatientEncounter encounter = createEncounter(quickAppointment, department);
 
-        return new AppointmentFromTemplateQuickAppointmentResponseVM(quickAppointment, encounter);
+        return new AppointmentQuickAppointmentResponseVM(quickAppointment, encounter);
     }
 
-    public Page<AppointmentFromTemplate> getAppointmentByAvailabilityGenerationBatch(Long availabilityGenerationId, Pageable pageable) {
+    public Page<Appointment> getAppointmentByAvailabilityGenerationBatch(Long availabilityGenerationId, Pageable pageable) {
         LOG.debug("Request to get appointments for availability generation batch availabilityGenerationBatchId={}", availabilityGenerationId);
 
         AvailabilityGenerationBatch batch = getBatch(availabilityGenerationId);
 
-        return appointmentFromTemplateRepository.findByAvailabilityGenerationBatch_Id(batch.getId(), pageable);
+        return appointmentRepository.findByAvailabilityGenerationBatch_Id(batch.getId(), pageable);
     }
 
-    public Page<AppointmentFromTemplate> getAppointmentsByDepartmentBetweenDates(Long departmentId, Instant startDatetime, Instant endDatetime, Pageable pageable) {
+    public Page<Appointment> getAppointmentsByDepartmentBetweenDates(Long departmentId, Instant startDatetime, Instant endDatetime, Pageable pageable) {
         LOG.debug("Request to get appointments for the department between startDatetime={} and endDatetime={}", startDatetime, endDatetime);
 
 
-        return appointmentFromTemplateRepository.findByDepartmentIdAndStartDatetimeBetween(departmentId, startDatetime, endDatetime, pageable);
+        return appointmentRepository.findByDepartmentIdAndStartDatetimeBetween(departmentId, startDatetime, endDatetime, pageable);
     }
 
-    public AppointmentFromTemplate getById(Long appointmentId) {
+    public Appointment getById(Long appointmentId) {
         LOG.debug("[GET_BY_ID] appointmentId={}", appointmentId);
 
-        return appointmentFromTemplateRepository.findById(appointmentId)
+        return appointmentRepository.findById(appointmentId)
                 .orElseThrow(() -> {
                     LOG.warn("[GET_BY_ID] appointment not found id={}", appointmentId);
                     return new BadRequestAlertException(
@@ -373,9 +373,9 @@ public class AppointmentFromTemplateService {
     }
 
     @Transactional
-    public AppointmentFromTemplate reschedule(AppointmentFromTemplateRescheduleDTO dto) {
-        AppointmentFromTemplate oldAppointment = getAppointment(dto.oldAppointmentId());
-        AppointmentFromTemplate newAppointment = getAppointment(dto.newAppointmentId());
+    public Appointment reschedule(AppointmentRescheduleDTO dto) {
+        Appointment oldAppointment = getAppointment(dto.oldAppointmentId());
+        Appointment newAppointment = getAppointment(dto.newAppointmentId());
 
         validateReschedule(oldAppointment, false);
         validateFreeSlotForReschedule(oldAppointment, newAppointment);
@@ -384,7 +384,7 @@ public class AppointmentFromTemplateService {
     }
 
     @Transactional
-    public AppointmentFromTemplate rescheduleDiagnosticTestAppointment(DiagnosticTestAppointmentRescheduleDTO dto) {
+    public Appointment rescheduleDiagnosticTestAppointment(DiagnosticTestAppointmentRescheduleDTO dto) {
         LOG.debug("[RESCHEDULE_DIAGNOSTIC_TEST_APPOINTMENT] orderTestId={}, newAppointmentId={}", dto.orderTestId(), dto.newAppointmentId());
 
         DiagnosticOrderTest orderTest = diagnosticOrderTestRepository.findById(dto.orderTestId())
@@ -434,15 +434,15 @@ public class AppointmentFromTemplateService {
             );
         }
 
-        AppointmentFromTemplate oldAppointment = getAppointment(encounter.getAppointment().getId());
+        Appointment oldAppointment = getAppointment(encounter.getAppointment().getId());
         LOG.debug("[RESCHEDULE_DIAGNOSTIC_TEST_APPOINTMENT] oldAppointment loaded id={}, status={}", oldAppointment.getId(), oldAppointment.getStatus());
-        AppointmentFromTemplate newAppointment = getAppointment(dto.newAppointmentId());
+        Appointment newAppointment = getAppointment(dto.newAppointmentId());
 
         validateReschedule(oldAppointment, true);
 
         validateDiagnosticTestFreeSlotForReschedule(oldAppointment, newAppointment, orderTest.getTestId());
 
-        AppointmentFromTemplate savedNewAppointment = executeSingleReschedule(oldAppointment, newAppointment, dto.rescheduleReason());
+        Appointment savedNewAppointment = executeSingleReschedule(oldAppointment, newAppointment, dto.rescheduleReason());
 
         orderTest.setStatus(DiagnosticOrderTestStatus.RESCHEDULED);
         diagnosticOrderTestRepository.save(orderTest);
@@ -458,8 +458,8 @@ public class AppointmentFromTemplateService {
 
         Instant tomorrowStart = tomorrowStartInstant();
         if (!includeFreeSlots) {
-            List<AppointmentFromTemplate> bookedOrConfirmedAppointments =
-                    appointmentFromTemplateRepository
+            List<Appointment> bookedOrConfirmedAppointments =
+                    appointmentRepository
                             .findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(
                                     availabilityGenerationBatchId,
                                     List.of(AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED),
@@ -468,8 +468,8 @@ public class AppointmentFromTemplateService {
 
             return new BulkReschedulePreviewVM(bookedOrConfirmedAppointments);
         } else {
-            List<AppointmentFromTemplate> appointments =
-                    appointmentFromTemplateRepository
+            List<Appointment> appointments =
+                    appointmentRepository
                             .findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(
                                     availabilityGenerationBatchId,
                                     List.of(AppointmentStatus.NEW, AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED),
@@ -488,8 +488,8 @@ public class AppointmentFromTemplateService {
 
         Instant tomorrowStart = tomorrowStartInstant();
 
-        List<AppointmentFromTemplate> appointmentsToCancel =
-                appointmentFromTemplateRepository
+        List<Appointment> appointmentsToCancel =
+                appointmentRepository
                         .findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(
                                 availabilityGenerationBatchId,
                                 List.of(
@@ -502,7 +502,7 @@ public class AppointmentFromTemplateService {
 
         String username = currentUsername();
 
-        for (AppointmentFromTemplate appointment : appointmentsToCancel) {
+        for (Appointment appointment : appointmentsToCancel) {
             appointment.setStatus(AppointmentStatus.CANCELLED);
             appointment.setCancelReason(SYSTEM_CANCEL_REASON);
             appointment.setCancelledBy(username);
@@ -511,7 +511,7 @@ public class AppointmentFromTemplateService {
 
         }
 
-        appointmentFromTemplateRepository.saveAll(appointmentsToCancel);
+        appointmentRepository.saveAll(appointmentsToCancel);
 
         LOG.info("[BULK_RESCHEDULE_CANCEL] cancelledCount={}", appointmentsToCancel.size());
     }
@@ -537,16 +537,16 @@ public class AppointmentFromTemplateService {
 
         Instant tomorrowStart = tomorrowStartInstant();
 
-        List<AppointmentFromTemplate> oldAppointments =
-                appointmentFromTemplateRepository.findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(originalBatch.getId(), List.of(AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED), tomorrowStart);
+        List<Appointment> oldAppointments =
+                appointmentRepository.findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(originalBatch.getId(), List.of(AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED), tomorrowStart);
 
-        List<AppointmentFromTemplate> newAvailableAppointments = appointmentFromTemplateRepository.findByAvailabilityGenerationBatch_IdAndStatusAndStartDatetimeGreaterThanAndBookingModeInOrderByStartDatetimeAsc(replacementBatch.getId(), AppointmentStatus.NEW, tomorrowStart, List.of(BookingMode.SLOT));
+        List<Appointment> newAvailableAppointments = appointmentRepository.findByAvailabilityGenerationBatch_IdAndStatusAndStartDatetimeGreaterThanAndBookingModeInOrderByStartDatetimeAsc(replacementBatch.getId(), AppointmentStatus.NEW, tomorrowStart, List.of(BookingMode.SLOT));
 
         if (oldAppointments.size() > newAvailableAppointments.size()) {
             List<Long> unmatchedOldAppointmentIds = oldAppointments
                     .subList(newAvailableAppointments.size(), oldAppointments.size())
                     .stream()
-                    .map(AppointmentFromTemplate::getId)
+                    .map(Appointment::getId)
                     .toList();
 
             LOG.warn(
@@ -560,8 +560,8 @@ public class AppointmentFromTemplateService {
         }
 
         for (int i = 0; i < oldAppointments.size(); i++) {
-            AppointmentFromTemplate oldAppointment = oldAppointments.get(i);
-            AppointmentFromTemplate newAppointment = newAvailableAppointments.get(i);
+            Appointment oldAppointment = oldAppointments.get(i);
+            Appointment newAppointment = newAvailableAppointments.get(i);
 
             validateReschedule(oldAppointment, false);
             validateFreeSlotForBulkReschedule(oldAppointment, newAppointment);
@@ -581,8 +581,8 @@ public class AppointmentFromTemplateService {
     }
 
     private void cancelFutureFreeAppointmentsFromBatch(Long availabilityGenerationBatchId, Instant tomorrowStart) {
-        List<AppointmentFromTemplate> freeAppointments =
-                appointmentFromTemplateRepository
+        List<Appointment> freeAppointments =
+                appointmentRepository
                         .findByAvailabilityGenerationBatch_IdAndStatusAndStartDatetimeGreaterThanAndBookingModeInOrderByStartDatetimeAsc(
                                 availabilityGenerationBatchId,
                                 AppointmentStatus.NEW,
@@ -592,18 +592,18 @@ public class AppointmentFromTemplateService {
 
         String username = currentUsername();
 
-        for (AppointmentFromTemplate appointment : freeAppointments) {
+        for (Appointment appointment : freeAppointments) {
             appointment.setStatus(AppointmentStatus.CANCELLED);
             appointment.setCancelReason(SYSTEM_CANCEL_REASON);
             appointment.setCancelledBy(username);
         }
 
-        appointmentFromTemplateRepository.saveAll(freeAppointments);
+        appointmentRepository.saveAll(freeAppointments);
 
         LOG.info("[BULK_RESCHEDULE] cancelledFreeAppointmentsCount={}", freeAppointments.size());
     }
 
-    private void validateDiagnosticTestFreeSlotForReschedule(AppointmentFromTemplate oldAppointment, AppointmentFromTemplate newAppointment, Long diagnosticTestId) {
+    private void validateDiagnosticTestFreeSlotForReschedule(Appointment oldAppointment, Appointment newAppointment, Long diagnosticTestId) {
         if (newAppointment.getStatus() != AppointmentStatus.NEW) {
             throw new BadRequestAlertException(
                     "Selected appointment must be free",
@@ -645,7 +645,7 @@ public class AppointmentFromTemplateService {
         }
     }
 
-    private AppointmentFromTemplate executeSingleReschedule(AppointmentFromTemplate oldAppointment, AppointmentFromTemplate newAppointment, String rescheduleReason) {
+    private Appointment executeSingleReschedule(Appointment oldAppointment, Appointment newAppointment, String rescheduleReason) {
         if (oldAppointment.getId().equals(newAppointment.getId())) {
             throw new BadRequestAlertException(
                     "Old appointment and new appointment cannot be the same",
@@ -681,8 +681,8 @@ public class AppointmentFromTemplateService {
         newAppointment.setEndDatetime(newEndDatetime);
         newAppointment.setStatus(AppointmentStatus.BOOKED);
 
-        AppointmentFromTemplate savedOldAppointment = appointmentFromTemplateRepository.save(oldAppointment);
-        AppointmentFromTemplate savedNewAppointment = appointmentFromTemplateRepository.save(newAppointment);
+        Appointment savedOldAppointment = appointmentRepository.save(oldAppointment);
+        Appointment savedNewAppointment = appointmentRepository.save(newAppointment);
 
         AppointmentReschedule appointmentReschedule = new AppointmentReschedule();
         appointmentReschedule.setOldAppointmentId(savedOldAppointment.getId());
@@ -695,7 +695,7 @@ public class AppointmentFromTemplateService {
         return savedNewAppointment;
     }
 
-    private void createAndSubmitDiagnosticOrderFlow(AppointmentFromTemplate appointment, PatientEncounter encounter) {
+    private void createAndSubmitDiagnosticOrderFlow(Appointment appointment, PatientEncounter encounter) {
         if (appointment.getResourceId() == null) {
             throw new BadRequestAlertException("resourceidrequired", ENTITY_NAME, "Diagnostic test appointment must have resourceId");
         }
@@ -741,7 +741,7 @@ public class AppointmentFromTemplateService {
         diagnosticOrderService.submit(diagnosticOrder, currentUsername());
     }
 
-    private void createAndSubmitCatalogOrderFlow(AppointmentFromTemplate appointment, PatientEncounter encounter) {
+    private void createAndSubmitCatalogOrderFlow(Appointment appointment, PatientEncounter encounter) {
         if (appointment.getResourceId() == null) {
             throw new BadRequestAlertException("resourceidrequired", ENTITY_NAME, "Catalog appointment must have resourceId");
         }
@@ -831,7 +831,7 @@ public class AppointmentFromTemplateService {
     }
 
     private PatientEncounter createEncounter(
-            AppointmentFromTemplate savedAppointment,
+            Appointment savedAppointment,
             DepartmentDTO department
     ) {
 
@@ -881,12 +881,12 @@ public class AppointmentFromTemplateService {
 
         return patientEncounterService.create(encounterCreateDTO);
     }
-    private AppointmentFromTemplate getAppointment(Long id) {
-        return appointmentFromTemplateRepository.findById(id)
+    private Appointment getAppointment(Long id) {
+        return appointmentRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException("Appointment not found: " + id, ENTITY_NAME, "notfound"));
     }
 
-    private void validateCancelable(AppointmentFromTemplate appointment) {
+    private void validateCancelable(Appointment appointment) {
         if (appointment.getStatus() == AppointmentStatus.CANCELLED) {
             throw new BadRequestAlertException("alreadycancelled", ENTITY_NAME, "Appointment already cancelled");
         } else if (appointment.getStatus() == AppointmentStatus.CHECKED_IN) {
@@ -899,7 +899,7 @@ public class AppointmentFromTemplateService {
 
     }
 
-    private void validateNoShow(AppointmentFromTemplate appointment) {
+    private void validateNoShow(Appointment appointment) {
         if (appointment.getStatus() == AppointmentStatus.CANCELLED) {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Cancelled appointment cannot be marked as no-show");
         }
@@ -912,14 +912,14 @@ public class AppointmentFromTemplateService {
         }
     }
 
-    private void validateConfirmable(AppointmentFromTemplate appointment) {
+    private void validateConfirmable(Appointment appointment) {
         if (appointment.getStatus() != AppointmentStatus.BOOKED) {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Only booked appointments can be confirmed");
         }
     }
 
 
-    private void validateCheckIn(AppointmentFromTemplate appointment) {
+    private void validateCheckIn(Appointment appointment) {
         boolean requireConfirmation = !Boolean.FALSE.equals(appointment.getRequireConfirmation());
         boolean eligibleStatus =
                 appointment.getStatus() == AppointmentStatus.BOOKED ||
@@ -969,7 +969,7 @@ public class AppointmentFromTemplateService {
 
     //Reschedule Helper
 
-    private void validateReschedule(AppointmentFromTemplate appointment, boolean allowReschedulingOfInServiceAppointments) {
+    private void validateReschedule(Appointment appointment, boolean allowReschedulingOfInServiceAppointments) {
         if (!allowReschedulingOfInServiceAppointments && appointment.getStatus() != AppointmentStatus.BOOKED && appointment.getStatus() != AppointmentStatus.CONFIRMED) {
             throw new BadRequestAlertException(
                     "Only booked or confirmed appointments can be rescheduled",
@@ -993,7 +993,7 @@ public class AppointmentFromTemplateService {
         }
     }
 
-    private void validateFreeSlotForReschedule(AppointmentFromTemplate oldAppointment, AppointmentFromTemplate newAppointment) {
+    private void validateFreeSlotForReschedule(Appointment oldAppointment, Appointment newAppointment) {
         if (newAppointment.getStatus() != AppointmentStatus.NEW) {
             throw new BadRequestAlertException(
                     "Selected appointment must be free",
@@ -1044,7 +1044,7 @@ public class AppointmentFromTemplateService {
 
     }
 
-    private void validateFreeSlotForBulkReschedule(AppointmentFromTemplate oldAppointment, AppointmentFromTemplate newAppointment) {
+    private void validateFreeSlotForBulkReschedule(Appointment oldAppointment, Appointment newAppointment) {
         if (newAppointment.getStatus() != AppointmentStatus.NEW) {
             throw new BadRequestAlertException(
                     "Selected appointment must be free",
@@ -1082,7 +1082,7 @@ public class AppointmentFromTemplateService {
         return first == null ? second == null : first.equals(second);
     }
 
-    private void copyAppointmentDataForReschedule(AppointmentFromTemplate oldAppointment, AppointmentFromTemplate newAppointment) {
+    private void copyAppointmentDataForReschedule(Appointment oldAppointment, Appointment newAppointment) {
         newAppointment.setPatient(oldAppointment.getPatient());
 
         newAppointment.setFacilityId(oldAppointment.getFacilityId());

@@ -1,6 +1,6 @@
 package com.dazzle.asklepios.web.rest.vm.patientEncounter;
 
-import com.dazzle.asklepios.domain.AppointmentFromTemplate;
+import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
@@ -22,7 +22,7 @@ public record PatientEncounterVM(
         Long departmentId,
         Long practitionerId,
 
-        AppointmentFromTemplate appointment,
+        Appointment appointment,
 
         EncounterType encounterType,
         EncounterReason encounterReason,

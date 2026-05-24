@@ -1,7 +1,7 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.dto.OrganizationHolidayDTO;
-import com.dazzle.asklepios.domain.AppointmentFromTemplate;
+import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.AvailabilityGenerationBatch;
 import com.dazzle.asklepios.domain.AvailabilityTemplate;
 import com.dazzle.asklepios.domain.AvailabilityTemplateInterval;
@@ -11,13 +11,12 @@ import com.dazzle.asklepios.domain.enumeration.BookingMode;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.HolidayHandlingMode;
 import com.dazzle.asklepios.domain.enumeration.TemplateStatus;
-import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
+import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.AvailabilityGenerationBatchRepository;
 import com.dazzle.asklepios.repository.AvailabilityTemplateRepository;
 import com.dazzle.asklepios.service.dto.availabilityGenerationBatch.AvailabilityGenerationBatchApplyDTO;
 import com.dazzle.asklepios.service.helper.OrganizationHolidayHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.availabilityGenerationBatch.ApplyAvailabilityTemplateResponseVM;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -44,7 +43,7 @@ public class AvailabilityGenerationBatchService {
 
     private final AvailabilityTemplateRepository availabilityTemplateRepository;
     private final AvailabilityGenerationBatchRepository availabilityGenerationBatchRepository;
-    private final AppointmentFromTemplateRepository appointmentFromTemplateRepository;
+    private final AppointmentRepository appointmentRepository;
     private final OrganizationHolidayHelper organizationHolidayHelper;
 
     @Transactional(readOnly = true)
@@ -121,9 +120,9 @@ public class AvailabilityGenerationBatchService {
         batch = availabilityGenerationBatchRepository.save(batch);
 
         try {
-            List<AppointmentFromTemplate> generatedAppointments = generateAppointments(template, batch, request.startDate(), request.endDate(), request.deferred(), request.deferredAt(), request.holidayHandlingMode(), holidays);
+            List<Appointment> generatedAppointments = generateAppointments(template, batch, request.startDate(), request.endDate(), request.deferred(), request.deferredAt(), request.holidayHandlingMode(), holidays);
 
-            appointmentFromTemplateRepository.saveAll(generatedAppointments);
+            appointmentRepository.saveAll(generatedAppointments);
 
             int totalSlots = generatedAppointments.size();
             int days = (int) (endDate.toEpochDay() - startDate.toEpochDay()) + 1;
@@ -164,11 +163,11 @@ public class AvailabilityGenerationBatchService {
         return availabilityGenerationBatchRepository
                 .findAllByTemplate_IdAndIdNotOrderByApplyStartDateTimeDesc(templateId, batchId, pageable);
     }
-    private List<AppointmentFromTemplate> generateAppointments(AvailabilityTemplate template, AvailabilityGenerationBatch batch, Instant startDate, Instant endDate, boolean deferred, Instant deferredAt, HolidayHandlingMode holidayHandlingMode, List<OrganizationHolidayDTO> holidays) {
+    private List<Appointment> generateAppointments(AvailabilityTemplate template, AvailabilityGenerationBatch batch, Instant startDate, Instant endDate, boolean deferred, Instant deferredAt, HolidayHandlingMode holidayHandlingMode, List<OrganizationHolidayDTO> holidays) {
         LOG.info("[GENERATE TEMPLATE] templateId={}, batchId={},startDate={}, endDate={}, deferred={}, deferredAt={}, holidayHandlingMode={}", template.getId(), batch.getId(), startDate, endDate, deferred, deferredAt, holidayHandlingMode);
 
 
-        List<AppointmentFromTemplate> appointments = new ArrayList<>();
+        List<Appointment> appointments = new ArrayList<>();
         ZoneId zone = ZoneId.systemDefault();
         Instant current = startDate;
         while (!current.isAfter(endDate)) {
@@ -204,7 +203,7 @@ public class AvailabilityGenerationBatchService {
         return appointments;
     }
 
-    private List<AppointmentFromTemplate> generateAppointmentsForInterval(
+    private List<Appointment> generateAppointmentsForInterval(
             AvailabilityTemplate template,
             AvailabilityGenerationBatch batch,
             Instant currentDate,
@@ -214,7 +213,7 @@ public class AvailabilityGenerationBatchService {
             boolean deferred,
             Instant deferredAt
     ) {
-        List<AppointmentFromTemplate> appointments = new ArrayList<>();
+        List<Appointment> appointments = new ArrayList<>();
 
         int slotDuration = interval.getSlotDurationMinutes() != null
                 ? interval.getSlotDurationMinutes()
@@ -308,8 +307,8 @@ public class AvailabilityGenerationBatchService {
         return appointments;
     }
 
-    private AppointmentFromTemplate buildAppointment(AvailabilityTemplate template, AvailabilityGenerationBatch batch, boolean deferred, Instant deferredAt, int capacityIndex, LocalDateTime start, LocalDateTime end, BookingMode bookingMode) {
-        AppointmentFromTemplate appointment = new AppointmentFromTemplate();
+    private Appointment buildAppointment(AvailabilityTemplate template, AvailabilityGenerationBatch batch, boolean deferred, Instant deferredAt, int capacityIndex, LocalDateTime start, LocalDateTime end, BookingMode bookingMode) {
+        Appointment appointment = new Appointment();
         appointment.setFacilityId(template.getFacilityId());
         appointment.setDepartmentId(template.getDepartmentId());
         appointment.setAvailabilityGenerationBatch(batch);
