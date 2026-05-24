@@ -1,4 +1,4 @@
-package com.dazzle.asklepios.service.dto.appointmentFromTemplate;
+package com.dazzle.asklepios.service.dto.appointment;
 
 import jakarta.validation.constraints.NotNull;
 

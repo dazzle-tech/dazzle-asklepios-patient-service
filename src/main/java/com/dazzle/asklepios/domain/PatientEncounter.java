@@ -67,7 +67,7 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "appointment_id", nullable = false)
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-    private AppointmentFromTemplate appointment;
+    private Appointment appointment;
 
     @NotNull
     @Enumerated(EnumType.STRING)

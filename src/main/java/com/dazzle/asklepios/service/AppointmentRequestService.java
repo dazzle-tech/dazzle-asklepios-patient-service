@@ -1,17 +1,17 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.domain.AppointmentFromTemplate;
+import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.AppointmentRequest;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.AppointmentRequestStatus;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
-import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
+import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.AppointmentRequestRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
-import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateBookPatientDTO;
+import com.dazzle.asklepios.service.dto.appointment.AppointmentBookPatientDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestCancelDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestCreateDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestUpdateDTO;
@@ -39,8 +39,8 @@ public class AppointmentRequestService {
     private final AppointmentRequestRepository appointmentRequestRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
-    private final AppointmentFromTemplateRepository appointmentFromTemplateRepository;
-    private final AppointmentFromTemplateService appointmentFromTemplateService;
+    private final AppointmentRepository appointmentRepository;
+    private final AppointmentService appointmentService;
     private final FacilityHelper facilityHelper;
     private final DepartmentHelper departmentHelper;
 
@@ -129,14 +129,14 @@ public class AppointmentRequestService {
                         "sourceEncounter.notfound"
                 ));
 
-        AppointmentFromTemplate appointment = appointmentFromTemplateRepository.findById(dto.appointmentId())
+        Appointment appointment = appointmentRepository.findById(dto.appointmentId())
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Appointment not found with id: " + dto.appointmentId(),
                         ENTITY_NAME,
                         "appointment.notfound"
                 ));
 
-        AppointmentFromTemplateBookPatientDTO bookDto = new AppointmentFromTemplateBookPatientDTO(
+        AppointmentBookPatientDTO bookDto = new AppointmentBookPatientDTO(
                 appointment.getId(),
                 patient.getId(),
                 appointment.getDefaultServiceId(),
@@ -151,7 +151,7 @@ public class AppointmentRequestService {
                 sourceEncounter.getId()
         );
 
-        AppointmentFromTemplate bookedAppointment = appointmentFromTemplateService.bookPatientAppointment(bookDto);
+        Appointment bookedAppointment = appointmentService.bookPatientAppointment(bookDto);
 
         request.setPatient(patient);
         request.setFacilityId(dto.facilityId());

@@ -1,11 +1,11 @@
-package com.dazzle.asklepios.service.dto.appointmentFromTemplate;
+package com.dazzle.asklepios.service.dto.appointment;
 
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import jakarta.validation.constraints.NotNull;
 
-public record AppointmentFromTemplateQuickAppointmentDTO(
+public record AppointmentQuickAppointmentDTO(
         @NotNull(message = "facilityId is required") Long facilityId,
         @NotNull(message = "departmentId is required") Long departmentId,
         @NotNull(message = "resourceType is required") TemplateType resourceType,
