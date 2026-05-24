@@ -128,6 +128,7 @@ public class PatientEncounterService {
                 .chiefComplaint(createDTO.chiefComplaint())
                 .status(EncounterStatus.PENDING_PAYMENT)
                 .encounterDate(createDTO.encounterDate())
+                .encounterTime(createDTO.encounterTime())
                 .build();
 
         try {

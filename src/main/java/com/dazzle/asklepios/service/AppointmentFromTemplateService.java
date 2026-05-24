@@ -830,31 +830,57 @@ public class AppointmentFromTemplateService {
                 .orElseThrow(() -> new BadRequestAlertException("Batch not found: " + id, ENTITY_NAME, "notfound"));
     }
 
-    private PatientEncounter createEncounter(AppointmentFromTemplate savedAppointment, DepartmentDTO department) {
-        PatientEncounterCreateDTO encounterCreateDTO = new PatientEncounterCreateDTO(
-                savedAppointment.getPatient() != null ? savedAppointment.getPatient().getId() : null,
-                savedAppointment.getFacilityId(),
-                savedAppointment.getDepartmentId(),
-                savedAppointment.getDefaultPractitionerId(),
-                savedAppointment.getId(),
-                department.encounterType(),
-                savedAppointment.getService(),
-                savedAppointment.getFollowUpEncounter() != null ? savedAppointment.getFollowUpEncounter().getId() : null,
-                savedAppointment.getPriority(),
-                savedAppointment.getOriginType(),
-                savedAppointment.getOriginName(),
-                savedAppointment.getNote(),
-                savedAppointment.getStartDatetime()
-                        .atZone(java.time.ZoneId.systemDefault())
-                        .toLocalDate(),
-                EncounterStatus.NEW,
-                savedAppointment.getReason()
+    private PatientEncounter createEncounter(
+            AppointmentFromTemplate savedAppointment,
+            DepartmentDTO department
+    ) {
 
-        );
+        PatientEncounterCreateDTO encounterCreateDTO =
+                new PatientEncounterCreateDTO(
+                        savedAppointment.getPatient() != null
+                                ? savedAppointment.getPatient().getId()
+                                : null,
+
+                        savedAppointment.getFacilityId(),
+
+                        savedAppointment.getDepartmentId(),
+
+                        savedAppointment.getDefaultPractitionerId(),
+
+                        savedAppointment.getId(),
+
+                        department.encounterType(),
+
+                        savedAppointment.getService(),
+
+                        savedAppointment.getFollowUpEncounter() != null
+                                ? savedAppointment.getFollowUpEncounter().getId()
+                                : null,
+
+                        savedAppointment.getPriority(),
+
+                        savedAppointment.getOriginType(),
+
+                        savedAppointment.getOriginName(),
+
+                        savedAppointment.getNote(),
+
+                        savedAppointment.getStartDatetime()
+                                .atZone(java.time.ZoneId.systemDefault())
+                                .toLocalDate(),
+
+                        savedAppointment.getStartDatetime()
+                                .atZone(java.time.ZoneId.systemDefault())
+                                .toLocalTime(),
+
+                        EncounterStatus.NEW,
+
+                        savedAppointment.getReason()
+
+                );
 
         return patientEncounterService.create(encounterCreateDTO);
     }
-
     private AppointmentFromTemplate getAppointment(Long id) {
         return appointmentFromTemplateRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException("Appointment not found: " + id, ENTITY_NAME, "notfound"));
