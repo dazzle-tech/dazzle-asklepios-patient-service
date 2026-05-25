@@ -4,5 +4,9 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 
-public record PolicyDefinitionDTO(Long id) {
+public record PolicyDefinitionDTO(
+        Long id,
+        String name,
+        String code
+) {
 }
