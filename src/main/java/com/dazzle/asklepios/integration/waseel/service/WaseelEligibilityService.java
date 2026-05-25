@@ -1,8 +1,8 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
-import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityRequest;
-import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityResponse;
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.request.EligibilityRequest;
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityResponse;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;

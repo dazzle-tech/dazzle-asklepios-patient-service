@@ -1,4 +1,7 @@
-package com.dazzle.asklepios.integration.waseel.dto.eligibility;
+package com.dazzle.asklepios.integration.waseel.dto.eligibility.request;
+
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityBeneficiaryDTO;
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityInsurancePlanDTO;
 
 public record EligibilityRequest(
 
