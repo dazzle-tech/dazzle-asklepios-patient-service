@@ -228,4 +228,42 @@ public class AppointmentController {
         }
     }
 
+    @GetMapping("/appointments/by-status-and-dates/without-pagination")
+    public ResponseEntity<List<Appointment>> getAppointmentsByStatusBetweenDatesWithoutPagination(
+            @RequestParam("status") List<AppointmentStatus> status,
+            @RequestParam("startDatetime") Instant startDatetime,
+            @RequestParam("endDatetime") Instant endDatetime
+    ) {
+
+        if (startDatetime == null || endDatetime == null) {
+            throw new BadRequestAlertException(
+                    "startDatetime and endDatetime are required",
+                    "appointment",
+                    "payload.required"
+            );
+        }
+
+        if (startDatetime.isAfter(endDatetime)) {
+            throw new BadRequestAlertException(
+                    "startDatetime must be before or equal to endDatetime",
+                    "appointment",
+                    "payload.required"
+            );
+        }
+
+        List<Appointment> result =
+                appointmentService.getAppointmentsByStatusBetweenDatesWithoutPagination(status, startDatetime, endDatetime);
+
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/appointments/search/without-pagination")
+    public ResponseEntity<List<Appointment>> filterAppointmentsWithoutPagination(
+            @Valid @RequestBody AppointmentSearchFilterDTO filter
+    ) {
+        List<Appointment> appointments = appointmentService.filterAppointmentWithoutPagination(filter);
+
+        return ResponseEntity.ok(appointments);
+    }
+
 }
