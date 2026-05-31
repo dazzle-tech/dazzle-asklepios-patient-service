@@ -935,7 +935,7 @@ public class AppointmentService {
 
 
         if (requireConfirmation && appointment.getStatus() != AppointmentStatus.CONFIRMED) {
-            throw new BadRequestAlertException("Only confirmed appointments can be checked in", ENTITY_NAME, "invalidstatus");
+            throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Only confirmed appointments can be checked in");
         }
         if (appointment.getStartDatetime() == null) {
             throw new BadRequestAlertException(
