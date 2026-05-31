@@ -1,7 +1,5 @@
 package com.dazzle.asklepios.web.rest.vm.appointmentPolicyAssignment;
 
-import com.dazzle.asklepios.domain.AppointmentPolicyAssignment;
-
 public record AppointmentPolicyAssignmentResponseVM(
         Long id,
         Long appointmentId,
