@@ -206,7 +206,75 @@ public class AppointmentService {
 
         return result;
     }
+    public List<Appointment> getAppointmentsByStatusBetweenDatesWithoutPagination(
+            List<AppointmentStatus> status,
+            Instant startDatetime,
+            Instant endDatetime
+    ) {
+        LOG.debug(
+                "Request to get appointments by status={} between startDatetime={} and endDatetime={}",
+                status,
+                startDatetime,
+                endDatetime
+        );
 
+        return appointmentRepository.findByStatusInAndStartDatetimeBetween(
+                status,
+                startDatetime,
+                endDatetime
+        );
+    }
+
+    public List<Appointment> filterAppointmentWithoutPagination(AppointmentSearchFilterDTO filter) {
+
+        LOG.debug("Service filter Appointments filter={}", filter);
+
+        if (filter.facility() == null) {
+            throw new BadRequestAlertException("facility", ENTITY_NAME, "Facility is required");
+        }
+
+        Specification<Appointment> appointmentFilterSpec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            query.distinct(true);
+
+            predicates.add(cb.equal(root.get("facilityId"), filter.facility()));
+
+            if (filter.department() != null) {
+                predicates.add(cb.equal(root.get("departmentId"), filter.department()));
+            }
+
+            if (filter.resourceType() != null) {
+                predicates.add(cb.equal(root.get("resourceType"), filter.resourceType()));
+            }
+
+            if (filter.resourceId() != null) {
+                predicates.add(cb.equal(root.get("resourceId"), filter.resourceId()));
+            }
+
+            if (filter.status() != null) {
+                predicates.add(cb.equal(root.get("status"), filter.status()));
+            }
+
+            if (filter.bookingMode() != null && !filter.bookingMode().isEmpty()) {
+                predicates.add(root.get("bookingMode").in(filter.bookingMode()));
+            } else {
+                predicates.add(cb.notEqual(root.get("bookingMode"), BookingMode.BUFFER));
+            }
+
+            if (filter.patientId() != null) {
+                predicates.add(cb.equal(root.join("patient", JoinType.LEFT).get("id"), filter.patientId()));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        List<Appointment> result = appointmentRepository.findAll(appointmentFilterSpec);
+
+        LOG.debug("[FILTER] Appointments result size={}", result.size());
+
+        return result;
+    }
     public Appointment cancel(AppointmentCancelDTO dto) {
         Appointment appointment = getAppointment(dto.id());
 
