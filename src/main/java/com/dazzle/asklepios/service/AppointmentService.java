@@ -252,7 +252,7 @@ public class AppointmentService {
         if (appointment.getPatient() == null) {
             throw new BadRequestAlertException("patientrequired", ENTITY_NAME, "Cannot check in appointment without patient");
         }
-        if(!appointment.getPatient().getIsCompletedPatient()){
+        if (!appointment.getPatient().getIsCompletedPatient()) {
             throw new BadRequestAlertException("notcompletedpatient", ENTITY_NAME, "Cannot check in appointment for not completed patient");
         }
 
@@ -830,10 +830,7 @@ public class AppointmentService {
                 .orElseThrow(() -> new BadRequestAlertException("Batch not found: " + id, ENTITY_NAME, "notfound"));
     }
 
-    private PatientEncounter createEncounter(
-            Appointment savedAppointment,
-            DepartmentDTO department
-    ) {
+    private PatientEncounter createEncounter(Appointment savedAppointment, DepartmentDTO department) {
 
         PatientEncounterCreateDTO encounterCreateDTO =
                 new PatientEncounterCreateDTO(
@@ -881,6 +878,7 @@ public class AppointmentService {
 
         return patientEncounterService.create(encounterCreateDTO);
     }
+
     private Appointment getAppointment(Long id) {
         return appointmentRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException("Appointment not found: " + id, ENTITY_NAME, "notfound"));
@@ -917,7 +915,6 @@ public class AppointmentService {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Only booked appointments can be confirmed");
         }
     }
-
 
     private void validateCheckIn(Appointment appointment) {
         boolean requireConfirmation = !Boolean.FALSE.equals(appointment.getRequireConfirmation());

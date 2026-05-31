@@ -60,11 +60,11 @@ public class AppointmentController {
     public ResponseEntity<List<Appointment>> getAppointmentsByStatusBetweenDates(@RequestParam("status") List<AppointmentStatus> status, @RequestParam("startDatetime") Instant startDatetime, @RequestParam("endDatetime") Instant endDatetime, Pageable pageable) {
 
         if (startDatetime == null || endDatetime == null) {
-            throw new BadRequestAlertException("startDatetime and endDatetime are required", "appointmentFormTemplate", "payload.required");
+            throw new BadRequestAlertException("startDatetime and endDatetime are required", "appointment", "payload.required");
         }
 
         if (startDatetime.isAfter(endDatetime)) {
-            throw new BadRequestAlertException("startDatetime must be before or equal to endDatetime", "appointmentFormTemplate", "payload.required");
+            throw new BadRequestAlertException("startDatetime must be before or equal to endDatetime", "appointment", "payload.required");
         }
 
         Page<Appointment> result = appointmentService.getAppointmentsByStatusBetweenDates(status, startDatetime, endDatetime, pageable);
@@ -134,11 +134,11 @@ public class AppointmentController {
     @GetMapping("/appointments/by-department-and-dates")
     public ResponseEntity<List<Appointment>> getAppointmentsByDepartmentBetweenDates(@RequestParam("departmentId") Long departmentId, @RequestParam("startDatetime") Instant startDatetime, @RequestParam("endDatetime") Instant endDatetime, Pageable pageable) {
         if (startDatetime == null || endDatetime == null) {
-            throw new BadRequestAlertException("startDatetime and endDatetime are required", "appointmentFormTemplate", "payload.required");
+            throw new BadRequestAlertException("startDatetime and endDatetime are required", "appointment", "payload.required");
         }
 
         if (startDatetime.isAfter(endDatetime)) {
-            throw new BadRequestAlertException("startDatetime must be before or equal to endDatetime", "appointmentFormTemplate", "payload.required");
+            throw new BadRequestAlertException("startDatetime must be before or equal to endDatetime", "appointment", "payload.required");
         }
         Page<Appointment> result = appointmentService.getAppointmentsByDepartmentBetweenDates(departmentId, startDatetime, endDatetime, pageable);
 
