@@ -17,6 +17,7 @@ management:
 service:
   asklepios-setup-service-url: http://asklepios-api-setup-service:8082
   asklepios-gateway-service-url: http://asklepios-api-gateway
+
 spring:
   devtools:
     restart:
