@@ -38,7 +38,7 @@ public class Appointment extends AbstractAuditingEntity<Long> implements Seriali
     @Column(name = "department_id", nullable = false)
     private Long departmentId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne
     @JoinColumn(name = "availability_generation_batch_id")
     private AvailabilityGenerationBatch availabilityGenerationBatch;
 
