@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.setup.PayorPlanItemClient;
 import com.dazzle.asklepios.client.setup.ProcedureClient;
 import com.dazzle.asklepios.client.setup.ServiceClient;
 import com.dazzle.asklepios.client.setup.dto.ProcedureSetupDTO;
@@ -10,6 +11,8 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationSubmissionService;
 import com.dazzle.asklepios.repository.DentalProcedureRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -53,6 +56,8 @@ public class DentalProcedureService {
     private final CDTCodeHelper cdtCodeHelper;
     private final ProcedureClient procedureClient;
     private final ServiceClient serviceClient;
+    private final PayorPlanItemClient payorPlanItemClient;
+    private final PreAuthorizationSubmissionService preAuthorizationSubmissionService;
 
     public DentalProcedureService(
             DentalProcedureRepository dentalProcedureRepository,
@@ -63,7 +68,9 @@ public class DentalProcedureService {
             ProcedureHelper procedureHelper,
             CDTCodeHelper cdtCodeHelper,
             ProcedureClient procedureClient,
-            ServiceClient serviceClient
+            ServiceClient serviceClient,
+            PayorPlanItemClient payorPlanItemClient,
+            PreAuthorizationSubmissionService preAuthorizationSubmissionService
     ) {
         this.dentalProcedureRepository = dentalProcedureRepository;
         this.patientRepository = patientRepository;
@@ -74,11 +81,19 @@ public class DentalProcedureService {
         this.cdtCodeHelper = cdtCodeHelper;
         this.procedureClient = procedureClient;
         this.serviceClient = serviceClient;
+        this.payorPlanItemClient = payorPlanItemClient;
+        this.preAuthorizationSubmissionService = preAuthorizationSubmissionService;
     }
 
     public DentalProcedure create(DentalProcedureCreateDTO dto) {
-        LOG.info("Create DentalProcedure started. patientId={}, encounterId={}, procedureId={}, serviceId={}, cdtCodeId={}",
-                dto.patientId(), dto.encounterId(), dto.procedureId(), dto.serviceId(), dto.cdtCodeId());
+        LOG.info(
+                "Create DentalProcedure started. patientId={}, encounterId={}, procedureId={}, serviceId={}, cdtCodeId={}",
+                dto.patientId(),
+                dto.encounterId(),
+                dto.procedureId(),
+                dto.serviceId(),
+                dto.cdtCodeId()
+        );
 
         Patient patient = getPatient(dto.patientId());
         PatientEncounter encounter = getEncounter(dto.encounterId());
@@ -89,10 +104,7 @@ public class DentalProcedureService {
 
         ServiceSetupDTO setupService = null;
         if (dto.serviceId() != null) {
-            LOG.info("DentalProcedure has serviceId. Fetching service setup. serviceId={}", dto.serviceId());
             setupService = fetchServiceSetup(dto.serviceId());
-        } else {
-            LOG.info("DentalProcedure has no serviceId. Service billing item will not be created.");
         }
 
         DentalProcedure entity = buildDentalProcedure(dto, patient, encounter);
@@ -100,13 +112,26 @@ public class DentalProcedureService {
         try {
             DentalProcedure saved = dentalProcedureRepository.saveAndFlush(entity);
 
-            LOG.info("DentalProcedure saved. dentalProcedureId={}, procedureId={}, serviceId={}",
-                    saved.getId(), saved.getProcedureId(), saved.getServiceId());
+            boolean hasPendingPreAuthorization = false;
 
-            createProcedureBillingItem(saved, setupProcedure, dto.notes(), dto.surface());
-            createServiceBillingItemIfExists(saved, setupService, dto.notes(), dto.surface());
+            PatientServiceAndProduct procedureBillingItem =
+                    createProcedureBillingItem(saved, setupProcedure, dto.notes(), dto.surface());
 
-            LOG.info("Create DentalProcedure completed. dentalProcedureId={}", saved.getId());
+            if (isPendingPreAuthorization(procedureBillingItem)) {
+                hasPendingPreAuthorization = true;
+            }
+
+            PatientServiceAndProduct serviceBillingItem =
+                    createServiceBillingItemIfExists(saved, setupService, dto.notes(), dto.surface());
+
+            if (isPendingPreAuthorization(serviceBillingItem)) {
+                hasPendingPreAuthorization = true;
+            }
+
+            if (hasPendingPreAuthorization) {
+                preAuthorizationSubmissionService.submitIfRequired(encounter.getId());
+            }
+
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException e) {
             throw handleConstraintViolation(e);
@@ -115,19 +140,12 @@ public class DentalProcedureService {
 
     @Transactional(readOnly = true)
     public Page<DentalProcedure> findAllByPatientId(Long patientId, boolean showCancelled, Pageable pageable) {
-        if (showCancelled) {
-            LOG.debug("Fetch DentalProcedures with cancelled. patientId={}", patientId);
-            return dentalProcedureRepository.findByPatientId(patientId, pageable);
-        }
-
-        LOG.debug("Fetch DentalProcedures without cancelled. patientId={}", patientId);
-        return dentalProcedureRepository.findByPatientIdAndCancelledFalse(patientId, pageable);
+        return showCancelled
+                ? dentalProcedureRepository.findByPatientId(patientId, pageable)
+                : dentalProcedureRepository.findByPatientIdAndCancelledFalse(patientId, pageable);
     }
 
     public DentalProcedure update(DentalProcedureUpdateDTO dto) {
-        LOG.info("Update DentalProcedure started. dentalProcedureId={}, procedureId={}, serviceId={}, cdtCodeId={}",
-                dto.id(), dto.procedureId(), dto.serviceId(), dto.cdtCodeId());
-
         DentalProcedure entity = getDentalProcedure(dto.id());
 
         if (entity.isCancelled()) {
@@ -166,27 +184,37 @@ public class DentalProcedureService {
 
         ServiceSetupDTO setupService = null;
         if (dto.serviceId() != null) {
-            LOG.info("DentalProcedure update has serviceId. Fetching service setup. serviceId={}", dto.serviceId());
             setupService = fetchServiceSetup(dto.serviceId());
-        } else {
-            LOG.info("DentalProcedure update has no serviceId. Existing non-billed service billing item will be deleted if exists.");
         }
 
-        deleteBillingItemIfNotBilled(procedureBillingItem, entity.getId(), BillingItemTypes.PROCEDURE);
-        deleteBillingItemIfNotBilled(serviceBillingItem, entity.getId(), BillingItemTypes.SERVICE);
+        deleteBillingItemIfNotBilled(procedureBillingItem);
+        deleteBillingItemIfNotBilled(serviceBillingItem);
 
         updateDentalProcedureFields(entity, dto);
 
         try {
             DentalProcedure updated = dentalProcedureRepository.saveAndFlush(entity);
 
-            LOG.info("DentalProcedure updated. dentalProcedureId={}, procedureId={}, serviceId={}",
-                    updated.getId(), updated.getProcedureId(), updated.getServiceId());
+            boolean hasPendingPreAuthorization = false;
 
-            createProcedureBillingItem(updated, setupProcedure, dto.notes(), dto.surface());
-            createServiceBillingItemIfExists(updated, setupService, dto.notes(), dto.surface());
+            PatientServiceAndProduct newProcedureBillingItem =
+                    createProcedureBillingItem(updated, setupProcedure, dto.notes(), dto.surface());
 
-            LOG.info("Update DentalProcedure completed. dentalProcedureId={}", updated.getId());
+            if (isPendingPreAuthorization(newProcedureBillingItem)) {
+                hasPendingPreAuthorization = true;
+            }
+
+            PatientServiceAndProduct newServiceBillingItem =
+                    createServiceBillingItemIfExists(updated, setupService, dto.notes(), dto.surface());
+
+            if (isPendingPreAuthorization(newServiceBillingItem)) {
+                hasPendingPreAuthorization = true;
+            }
+
+            if (hasPendingPreAuthorization) {
+                preAuthorizationSubmissionService.submitIfRequired(updated.getEncounter().getId());
+            }
+
             return updated;
         } catch (DataIntegrityViolationException | JpaSystemException e) {
             throw handleConstraintViolation(e);
@@ -194,8 +222,6 @@ public class DentalProcedureService {
     }
 
     public DentalProcedure cancel(Long id) {
-        LOG.info("Cancel DentalProcedure started. dentalProcedureId={}", id);
-
         SecurityUtils.getCurrentUserLogin()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated."));
 
@@ -231,20 +257,15 @@ public class DentalProcedureService {
             );
         }
 
-        deleteBillingItemIfNotBilled(procedureBillingItem, entity.getId(), BillingItemTypes.PROCEDURE);
-        deleteBillingItemIfNotBilled(serviceBillingItem, entity.getId(), BillingItemTypes.SERVICE);
+        deleteBillingItemIfNotBilled(procedureBillingItem);
+        deleteBillingItemIfNotBilled(serviceBillingItem);
 
         entity.setCancelled(true);
 
-        DentalProcedure cancelled = dentalProcedureRepository.saveAndFlush(entity);
-
-        LOG.info("Cancel DentalProcedure completed. dentalProcedureId={}", cancelled.getId());
-        return cancelled;
+        return dentalProcedureRepository.saveAndFlush(entity);
     }
 
     private Patient getPatient(Long patientId) {
-        LOG.debug("Fetching patient. patientId={}", patientId);
-
         return patientRepository.findById(patientId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "patientNotFound",
@@ -254,8 +275,6 @@ public class DentalProcedureService {
     }
 
     private PatientEncounter getEncounter(Long encounterId) {
-        LOG.debug("Fetching encounter. encounterId={}", encounterId);
-
         return patientEncounterRepository.findById(encounterId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "encounterNotFound",
@@ -265,8 +284,6 @@ public class DentalProcedureService {
     }
 
     private DentalProcedure getDentalProcedure(Long id) {
-        LOG.debug("Fetching DentalProcedure. dentalProcedureId={}", id);
-
         return dentalProcedureRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "idNotFound",
@@ -276,9 +293,6 @@ public class DentalProcedureService {
     }
 
     private void validateCreateReferences(DentalProcedureCreateDTO dto) {
-        LOG.debug("Validating create references. procedureId={}, serviceId={}, cdtCodeId={}",
-                dto.procedureId(), dto.serviceId(), dto.cdtCodeId());
-
         procedureHelper.validateProcedureExists(dto.procedureId());
 
         if (dto.serviceId() != null) {
@@ -291,9 +305,6 @@ public class DentalProcedureService {
     }
 
     private void validateUpdateReferences(DentalProcedureUpdateDTO dto) {
-        LOG.debug("Validating update references. procedureId={}, serviceId={}, cdtCodeId={}",
-                dto.procedureId(), dto.serviceId(), dto.cdtCodeId());
-
         procedureHelper.validateProcedureExists(dto.procedureId());
 
         if (dto.serviceId() != null) {
@@ -306,16 +317,10 @@ public class DentalProcedureService {
     }
 
     private ProcedureSetupDTO fetchProcedureSetup(Long procedureId) {
-        LOG.info("Fetching procedure setup. procedureId={}", procedureId);
-
         try {
             ProcedureSetupDTO setupProcedure = procedureClient.getProcedure(procedureId);
 
-            LOG.debug("Procedure setup response. procedureId={}, response={}", procedureId, setupProcedure);
-
             if (setupProcedure == null || setupProcedure.id() == null) {
-                LOG.error("Procedure setup response is null or invalid. procedureId={}, response={}", procedureId, setupProcedure);
-
                 throw new BadRequestAlertException(
                         "procedureSetupNotFound",
                         "dentalProcedure",
@@ -323,22 +328,14 @@ public class DentalProcedureService {
                 );
             }
 
-            LOG.info("Procedure setup fetched. procedureId={}, price={}, currency={}",
-                    setupProcedure.id(), setupProcedure.price(), setupProcedure.currency());
-
             return setupProcedure;
         } catch (FeignException.NotFound e) {
-            LOG.error("Procedure setup not found. procedureId={}, status={}", procedureId, e.status(), e);
-
             throw new BadRequestAlertException(
                     "procedureSetupNotFound",
                     "dentalProcedure",
                     "Procedure setup not found with id " + procedureId
             );
         } catch (FeignException e) {
-            LOG.error("Failed to fetch procedure setup. procedureId={}, status={}, body={}",
-                    procedureId, e.status(), e.contentUTF8(), e);
-
             throw new BadRequestAlertException(
                     "procedureSetupUnreachable",
                     "dentalProcedure",
@@ -348,21 +345,14 @@ public class DentalProcedureService {
     }
 
     private ServiceSetupDTO fetchServiceSetup(Long serviceId) {
-        LOG.info("Fetching service setup. serviceId={}", serviceId);
-
         if (serviceId == null) {
-            LOG.debug("serviceId is null. Skip fetching service setup.");
             return null;
         }
 
         try {
             ServiceSetupDTO setupService = serviceClient.getServiceDetails(serviceId);
 
-            LOG.debug("Service setup response. serviceId={}, response={}", serviceId, setupService);
-
             if (setupService == null || setupService.id() == null) {
-                LOG.error("Service setup response is null or invalid. serviceId={}, response={}", serviceId, setupService);
-
                 throw new BadRequestAlertException(
                         "serviceSetupNotFound",
                         "dentalProcedure",
@@ -370,22 +360,14 @@ public class DentalProcedureService {
                 );
             }
 
-            LOG.info("Service setup fetched. serviceId={}, price={}, currency={}",
-                    setupService.id(), setupService.price(), setupService.currency());
-
             return setupService;
         } catch (FeignException.NotFound e) {
-            LOG.error("Service setup not found. serviceId={}, status={}", serviceId, e.status(), e);
-
             throw new BadRequestAlertException(
                     "serviceSetupNotFound",
                     "dentalProcedure",
                     "Service setup not found with id " + serviceId
             );
         } catch (FeignException e) {
-            LOG.error("Failed to fetch service setup. serviceId={}, status={}, body={}",
-                    serviceId, e.status(), e.contentUTF8(), e);
-
             throw new BadRequestAlertException(
                     "serviceSetupUnreachable",
                     "dentalProcedure",
@@ -429,15 +411,12 @@ public class DentalProcedureService {
         entity.setNotes(dto.notes());
     }
 
-    private void createProcedureBillingItem(
+    private PatientServiceAndProduct createProcedureBillingItem(
             DentalProcedure dentalProcedure,
             ProcedureSetupDTO setupProcedure,
             String notes,
             String surface
     ) {
-        LOG.info("Creating PROCEDURE billing item. dentalProcedureId={}, procedureId={}",
-                dentalProcedure.getId(), setupProcedure.id());
-
         PatientServiceAndProduct billingItem = buildProcedureBillingItem(
                 dentalProcedure,
                 setupProcedure,
@@ -445,26 +424,18 @@ public class DentalProcedureService {
                 surface
         );
 
-        PatientServiceAndProduct saved = patientServiceAndProductRepository.saveAndFlush(billingItem);
-
-        LOG.info("PROCEDURE billing item created. dentalProcedureId={}, billingItemId={}, procedureId={}, totalAmount={}",
-                dentalProcedure.getId(), saved.getId(), saved.getProcedureId(), saved.getTotalAmount());
+        return patientServiceAndProductRepository.saveAndFlush(billingItem);
     }
 
-    private void createServiceBillingItemIfExists(
+    private PatientServiceAndProduct createServiceBillingItemIfExists(
             DentalProcedure dentalProcedure,
             ServiceSetupDTO setupService,
             String notes,
             String surface
     ) {
         if (setupService == null) {
-            LOG.warn("Skip creating SERVICE billing item because setupService is null. dentalProcedureId={}, serviceId={}",
-                    dentalProcedure.getId(), dentalProcedure.getServiceId());
-            return;
+            return null;
         }
-
-        LOG.info("Creating SERVICE billing item. dentalProcedureId={}, serviceId={}",
-                dentalProcedure.getId(), setupService.id());
 
         PatientServiceAndProduct billingItem = buildServiceBillingItem(
                 dentalProcedure,
@@ -473,10 +444,7 @@ public class DentalProcedureService {
                 surface
         );
 
-        PatientServiceAndProduct saved = patientServiceAndProductRepository.saveAndFlush(billingItem);
-
-        LOG.info("SERVICE billing item created. dentalProcedureId={}, billingItemId={}, serviceId={}, totalAmount={}",
-                dentalProcedure.getId(), saved.getId(), saved.getServiceId(), saved.getTotalAmount());
+        return patientServiceAndProductRepository.saveAndFlush(billingItem);
     }
 
     private PatientServiceAndProduct buildProcedureBillingItem(
@@ -489,6 +457,8 @@ public class DentalProcedureService {
         Long quantity = 1L;
         BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
         String billingNotes = buildBillingNotesValue(notes, surface);
+
+        boolean requiresPreAuth = requiresPreAuthorizationForProcedure(setupProcedure.id());
 
         return PatientServiceAndProduct.builder()
                 .patientId(dentalProcedure.getPatient().getId())
@@ -505,6 +475,11 @@ public class DentalProcedureService {
                 .taxAmount(BigDecimal.ZERO)
                 .totalAmount(totalAmount)
                 .currency(setupProcedure.currency())
+                .preAuthorizationStatus(
+                        requiresPreAuth
+                                ? PreAuthorizationStatus.PENDING_APPROVAL
+                                : PreAuthorizationStatus.NOT_REQUIRED
+                )
                 .isBilled(Boolean.FALSE)
                 .billingInvoiceId(null)
                 .billingInvoiceItemId(null)
@@ -523,6 +498,8 @@ public class DentalProcedureService {
         BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
         String billingNotes = buildBillingNotesValue(notes, surface);
 
+        boolean requiresPreAuth = requiresPreAuthorizationForService(setupService.id());
+
         return PatientServiceAndProduct.builder()
                 .patientId(dentalProcedure.getPatient().getId())
                 .encounterId(dentalProcedure.getEncounter().getId())
@@ -538,6 +515,11 @@ public class DentalProcedureService {
                 .taxAmount(BigDecimal.ZERO)
                 .totalAmount(totalAmount)
                 .currency(setupService.currency())
+                .preAuthorizationStatus(
+                        requiresPreAuth
+                                ? PreAuthorizationStatus.PENDING_APPROVAL
+                                : PreAuthorizationStatus.NOT_REQUIRED
+                )
                 .isBilled(Boolean.FALSE)
                 .billingInvoiceId(null)
                 .billingInvoiceItemId(null)
@@ -545,14 +527,59 @@ public class DentalProcedureService {
                 .build();
     }
 
+    private boolean requiresPreAuthorizationForProcedure(Long procedureId) {
+        if (procedureId == null) {
+            return false;
+        }
+
+        try {
+            return Boolean.TRUE.equals(
+                    payorPlanItemClient.requiresPreAuthorizationForProcedure(procedureId)
+            );
+        } catch (FeignException ex) {
+            LOG.error(
+                    "[SETUP_SERVICE] Failed to check dental procedure pre-authorization. procedureId={} status={} body={}",
+                    procedureId,
+                    ex.status(),
+                    ex.contentUTF8(),
+                    ex
+            );
+
+            return false;
+        }
+    }
+
+    private boolean requiresPreAuthorizationForService(Long serviceId) {
+        if (serviceId == null) {
+            return false;
+        }
+
+        try {
+            return Boolean.TRUE.equals(
+                    payorPlanItemClient.requiresPreAuthorizationForService(serviceId)
+            );
+        } catch (FeignException ex) {
+            LOG.error(
+                    "[SETUP_SERVICE] Failed to check dental service pre-authorization. serviceId={} status={} body={}",
+                    serviceId,
+                    ex.status(),
+                    ex.contentUTF8(),
+                    ex
+            );
+
+            return false;
+        }
+    }
+
+    private boolean isPendingPreAuthorization(PatientServiceAndProduct item) {
+        return item != null
+                && item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL;
+    }
 
     private Optional<PatientServiceAndProduct> findBillingItem(
             Long dentalProcedureId,
             BillingItemTypes billingItemType
     ) {
-        LOG.debug("Finding billing item. dentalProcedureId={}, billingItemType={}",
-                dentalProcedureId, billingItemType);
-
         return patientServiceAndProductRepository.findByServiceSourceAndSourceIdAndBillingItemType(
                 ServiceSource.DENTAL_PROCEDURE,
                 dentalProcedureId,
@@ -561,29 +588,20 @@ public class DentalProcedureService {
     }
 
     private void deleteBillingItemIfNotBilled(
-            Optional<PatientServiceAndProduct> billingItemOptional,
-            Long dentalProcedureId,
-            BillingItemTypes billingItemType
+            Optional<PatientServiceAndProduct> billingItemOptional
     ) {
         if (billingItemOptional.isEmpty()) {
-            LOG.debug("No billing item to delete. dentalProcedureId={}, billingItemType={}",
-                    dentalProcedureId, billingItemType);
             return;
         }
 
         PatientServiceAndProduct billingItem = billingItemOptional.get();
 
         if (Boolean.TRUE.equals(billingItem.getIsBilled())) {
-            LOG.warn("Billing item already billed. Skip delete. dentalProcedureId={}, billingItemId={}, billingItemType={}",
-                    dentalProcedureId, billingItem.getId(), billingItemType);
             return;
         }
 
         patientServiceAndProductRepository.delete(billingItem);
         patientServiceAndProductRepository.flush();
-
-        LOG.info("Billing item deleted. dentalProcedureId={}, billingItemId={}, billingItemType={}",
-                dentalProcedureId, billingItem.getId(), billingItemType);
     }
 
     private String buildBillingNotesValue(String notesValue, String surface) {
@@ -603,8 +621,6 @@ public class DentalProcedureService {
         Throwable root = getRootCause(e);
         String message = root != null ? root.getMessage() : e.getMessage();
         String msgLower = message != null ? message.toLowerCase() : "";
-
-        LOG.error("DB constraint violation while saving DentalProcedure. message={}", message, e);
 
         if (msgLower.contains("fk_dental_procedure_procedure")) {
             return new BadRequestAlertException(

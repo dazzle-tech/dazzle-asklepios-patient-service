@@ -4,17 +4,22 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalCancelRequest;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalRequest;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalResponse;
+import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalEligibilitySnapshot;
+import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalRequest;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiInquiryResponse;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiMappedPatientResponse;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityCheckRequest;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityCheckResult;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityRequest;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityResponse;
+import com.dazzle.asklepios.integration.waseel.service.ApprovalEligibilitySnapshotService;
+import com.dazzle.asklepios.integration.waseel.service.ApprovalRequestBuilderService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelApprovalService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelCchiService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelEligibilityCheckService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelEligibilityService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelTokenService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -26,18 +31,22 @@ public class WaseelTestController {
     private final WaseelEligibilityService waseelEligibilityService;
     private final WaseelApprovalService waseelApprovalService;
     private final WaseelEligibilityCheckService waseelEligibilityCheckService;
+    private final ApprovalEligibilitySnapshotService snapshotService;
+    private final ApprovalRequestBuilderService builderService;
 
     public WaseelTestController(
             WaseelTokenService waseelTokenService,
             WaseelCchiService waseelCchiService,
             WaseelEligibilityService waseelEligibilityService,
             WaseelApprovalService waseelApprovalService,
-            WaseelEligibilityCheckService waseelEligibilityCheckService) {
+            WaseelEligibilityCheckService waseelEligibilityCheckService, ApprovalEligibilitySnapshotService snapshotService, ApprovalRequestBuilderService builderService) {
         this.waseelTokenService = waseelTokenService;
         this.waseelCchiService = waseelCchiService;
         this.waseelEligibilityService = waseelEligibilityService;
         this.waseelApprovalService = waseelApprovalService;
         this.waseelEligibilityCheckService = waseelEligibilityCheckService;
+        this.snapshotService = snapshotService;
+        this.builderService = builderService;
     }
 
     @GetMapping("/internal/waseel/token-test")
@@ -87,4 +96,22 @@ public class WaseelTestController {
     ) {
         return waseelEligibilityCheckService.checkEligibility(request);
     }
+
+
+    @GetMapping("/eligibility/{eligibilityRequestId}/snapshot")
+    public ResponseEntity<WaseelApprovalEligibilitySnapshot> getSnapshot(
+            @PathVariable Long eligibilityRequestId
+    ) {
+        return ResponseEntity.ok(snapshotService.buildSnapshot(eligibilityRequestId));
+    }
+    @GetMapping("/build")
+    public ResponseEntity<WaseelApprovalRequest> buildRequest(
+            @RequestParam Long eligibilityRequestId,
+            @RequestParam Long encounterId
+    ) {
+        return ResponseEntity.ok(
+                builderService.buildRequest(eligibilityRequestId, encounterId)
+        );
+    }
+
 }

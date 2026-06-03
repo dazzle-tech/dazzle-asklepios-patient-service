@@ -20,6 +20,10 @@ public interface PayorPlanClient {
             @PathVariable String waseelPlanId
     );
 
+
+    @GetMapping("/api/setup/payor-plan/{id}")
+    PayorPlanDTO getPayorPlanById(@PathVariable("id") @NotNull Long payorPlanId);
+
     @GetMapping("/api/setup/payor-plan/cchi/by-payor/{payorId}/match")
     PayorPlanDTO getPayorPlanByCchiMatch(
             @PathVariable("payorId") Long payorId,

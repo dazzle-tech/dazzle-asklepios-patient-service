@@ -4,6 +4,7 @@ import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalCancelRequest;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalRequest;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalResponse;
+import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalRequest;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -109,6 +110,31 @@ public class WaseelApprovalService {
                         entity,
                         ApprovalResponse.class
                 );
+
+        return response.getBody();
+    }
+    public ApprovalResponse requestApproval(WaseelApprovalRequest request) {
+        String token = tokenService.getToken();
+
+        String url = properties.baseUrl()
+                + "/approvals/providers/"
+                + properties.providerId()
+                + "/approval/request";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON));
+        headers.set("User-Agent", "PostmanRuntime/7.43.0");
+
+        HttpEntity<WaseelApprovalRequest> entity = new HttpEntity<>(request, headers);
+
+        ResponseEntity<ApprovalResponse> response = restTemplate.exchange(
+                url,
+                HttpMethod.POST,
+                entity,
+                ApprovalResponse.class
+        );
 
         return response.getBody();
     }

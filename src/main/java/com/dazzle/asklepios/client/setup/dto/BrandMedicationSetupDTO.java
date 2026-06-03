@@ -2,16 +2,14 @@ package com.dazzle.asklepios.client.setup.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
+import java.math.BigDecimal;
+
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record PayorPlanDTO(
+public record BrandMedicationSetupDTO(
         Long id,
-        Long payorId,
         String name,
-
-        String networkId,
-        String coverageType,
-        String payerNphiesId,
-        String waseelPlanId,
-
+        String code,
+        BigDecimal price,
+        String currency,
         Boolean isActive
 ) {}

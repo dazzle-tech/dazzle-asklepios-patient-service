@@ -13,8 +13,9 @@ public interface PayorClient {
     @GetMapping("/api/setup/payor/{id}")
     ResponseEntity<Void> existsPayor(@PathVariable("id") @NotNull Long payorId );
 
+    @GetMapping("/api/setup/payor/{id}")
+    PayorDTO getPayorById(@PathVariable("id") @NotNull Long payorId);
+
     @GetMapping("/api/setup/payor/cchi/by-nphies/{nphiesId}")
     PayorDTO getPayorByNphiesId(@PathVariable String nphiesId);
-
-
 }

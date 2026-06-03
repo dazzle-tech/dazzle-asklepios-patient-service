@@ -1,0 +1,30 @@
+package com.dazzle.asklepios.integration.waseel.dto.approval;
+
+public record WaseelApprovalBeneficiary(
+        String firstName,
+        String secondName,
+        String thirdName,
+        String familyName,
+        String fullName,
+        String fileId,
+        String dob,
+        String gender,
+        String documentType,
+        String documentId,
+        String eHealthId,
+        String nationality,
+        String residencyType,
+        String contactNumber,
+        String maritalStatus,
+        String occupation,
+        String bloodGroup,
+        String preferredLanguage,
+        String emergencyPhoneNumber,
+        String email,
+        String addressLine,
+        String streetLine,
+        String city,
+        String state,
+        String country,
+        String postalCode
+) {}

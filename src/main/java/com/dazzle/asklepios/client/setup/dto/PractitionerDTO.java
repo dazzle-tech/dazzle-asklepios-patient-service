@@ -8,8 +8,14 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record PractitionerDTO(
         Long id,
+        String firstName,
+        String lastName,
+        String email,
+        String specialty,
+        String subSpecialty,
+        String defaultMedicalLicense,
+        String secondaryMedicalLicense,
+        String educationalLevel,
+        String jobRole,
         List<WorkingDayJson> workingDays
-
-) {
-
-}
+) {}

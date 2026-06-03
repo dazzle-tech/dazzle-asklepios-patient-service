@@ -3,15 +3,11 @@ package com.dazzle.asklepios.client.setup.dto;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record PayorPlanDTO(
+public record PayorPlanCoverageClassDTO(
         Long id,
-        Long payorId,
-        String name,
-
-        String networkId,
-        String coverageType,
-        String payerNphiesId,
-        String waseelPlanId,
-
+        Long planId,
+        String coverageClassType,
+        String coverageClassValue,
+        String coverageClassName,
         Boolean isActive
 ) {}
