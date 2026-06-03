@@ -1,5 +1,6 @@
-package com.dazzle.asklepios.integration.waseel.dto.eligibility;
+package com.dazzle.asklepios.integration.waseel.dto.eligibility.response;
 
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityCoverageDTO;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 

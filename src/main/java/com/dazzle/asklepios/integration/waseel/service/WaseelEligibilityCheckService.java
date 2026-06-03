@@ -6,11 +6,11 @@ import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.CoverageClassDTO;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityBeneficiaryDTO;
-import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityCheckRequest;
-import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityCheckResult;
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.request.EligibilityCheckRequest;
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityCheckResponse;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityInsurancePlanDTO;
-import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityRequest;
-import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityResponse;
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.request.EligibilityRequest;
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityResponse;
 import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -36,7 +36,7 @@ public class WaseelEligibilityCheckService {
     private final ObjectMapper objectMapper;
 
     @Transactional
-    public EligibilityCheckResult checkEligibility(EligibilityCheckRequest request) {
+    public EligibilityCheckResponse checkEligibility(EligibilityCheckRequest request) {
         if (request == null) {
             throw new IllegalArgumentException("Eligibility check request is required");
         }
@@ -154,14 +154,14 @@ public class WaseelEligibilityCheckService {
                 null,
                 insurancePlan,
                 serviceDate.toString(),
-                serviceDate.toString(),
+                null,
                 Boolean.TRUE.equals(request.benefits()),
                 Boolean.TRUE.equals(request.discovery()),
                 Boolean.TRUE.equals(request.validation()),
                 Boolean.TRUE.equals(request.transfer()),
                 Boolean.TRUE.equals(request.emergency()),
                 false,
-                null,
+                java.util.Map.of(),
                 clean(request.destinationId())
         );
     }
@@ -174,7 +174,7 @@ public class WaseelEligibilityCheckService {
                 clean(insurance.getMemberCardId()),
                 clean(insurance.getPolicyNumber()),
                 clean(insurance.getPayerNphiesId()),
-                null,
+                "-1",
                 insurance.getExpirationDate() == null ? null : insurance.getExpirationDate().toString(),
                 clean(insurance.getRelationWithSubscriber()),
                 clean(insurance.getCoverageType()),
@@ -202,8 +202,8 @@ public class WaseelEligibilityCheckService {
         );
     }
 
-    private EligibilityCheckResult toResult(WaseelEligibilityRequest log) {
-        return new EligibilityCheckResult(
+    private EligibilityCheckResponse toResult(WaseelEligibilityRequest log) {
+        return new EligibilityCheckResponse(
                 log.getId(),
                 log.getApiStatus(),
                 log.getStatusCode(),

@@ -8,10 +8,10 @@ import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalEligib
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalRequest;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiInquiryResponse;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiMappedPatientResponse;
-import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityCheckRequest;
-import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityCheckResult;
-import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityRequest;
-import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityResponse;
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.request.EligibilityCheckRequest;
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityCheckResponse;
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.request.EligibilityRequest;
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityResponse;
 import com.dazzle.asklepios.integration.waseel.service.ApprovalEligibilitySnapshotService;
 import com.dazzle.asklepios.integration.waseel.service.ApprovalRequestBuilderService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelApprovalService;
@@ -91,7 +91,7 @@ public class WaseelTestController {
     }
 
     @PostMapping("/internal/waseel/eligibility/check")
-    public EligibilityCheckResult checkEligibility(
+    public EligibilityCheckResponse checkEligibility(
             @RequestBody EligibilityCheckRequest request
     ) {
         return waseelEligibilityCheckService.checkEligibility(request);
