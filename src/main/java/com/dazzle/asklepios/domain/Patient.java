@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.BloodGroup;
 import com.dazzle.asklepios.domain.enumeration.Gender;
 import com.dazzle.asklepios.domain.enumeration.PreferredWayOfContact;
 import com.dazzle.asklepios.domain.enumeration.SecurityLevel;
@@ -15,7 +16,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PastOrPresent;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -25,6 +28,7 @@ import org.hibernate.annotations.Generated;
 import org.hibernate.annotations.GenerationTime;
 
 import java.io.Serializable;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Set;
 
@@ -166,8 +170,31 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
     private Boolean isCompletedPatient;
 
     @Enumerated(EnumType.STRING)
-    @Column(name="security_access_level")
+    @Column(name = "security_access_level")
     private SecurityLevel securityAccessLevel;
+
+    @Size(max = 20)
+    @Column(name = "reset_key")
+    @JsonIgnore
+    private String resetKey;
+
+    @Column(name = "reset_date")
+    private Instant resetDate = null;
+
+    @JsonIgnore
+    @Size(min = 60, max = 60)
+    @Column(name = "password_hash")
+    private String password;
+
+    @NotNull
+    private boolean activated = false;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "blood_group", length = 20)
+    private BloodGroup bloodGroup;
+
+    @Column(name = "patient_conditions", columnDefinition = "text")
+    private String patientConditions;
 
     @AssertTrue(message = "When patient is not unknown, firstName, lastName, sexAtBirth, dateOfBirth, primaryMobileNumber and email are required")
     public boolean isValidWhenNotUnknown() {

@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.EncounterVaccinationStatus;
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -20,8 +21,10 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
 import java.io.Serial;
 import java.io.Serializable;
+import java.time.Instant;
 import java.util.Date;
 
 @Entity
@@ -44,7 +47,7 @@ public class PatientProblem extends AbstractAuditingEntity<Long>
 
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn( name = "patient_id", nullable = false)
+    @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
     @NotBlank
@@ -56,11 +59,11 @@ public class PatientProblem extends AbstractAuditingEntity<Long>
     private Date dateOfDiagnosis;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false)
-    private EncounterVaccinationStatus status;
+    @Column(name = "condition_status", nullable = false)
+    private EncounterVaccinationStatus conditionStatus;
 
     @NotNull
-    @Column(name = "type")
+    @Column(name = "type", nullable = false)
     private String type;
 
     @Column(name = "date_of_resolution")
@@ -72,4 +75,18 @@ public class PatientProblem extends AbstractAuditingEntity<Long>
 
     @Column(name = "source_of_information")
     private String sourceOfInformation;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 50)
+
+    private PatientHistoryStatus status = PatientHistoryStatus.ACTIVE;
+
+    @Column(name = "cancelled_by", length = 50)
+    private String cancelledBy;
+
+    @Column(name = "cancelled_date")
+    private Instant cancelledDate;
+
+    @Column(name = "cancellation_reason", columnDefinition = "text")
+    private String cancellationReason;
 }

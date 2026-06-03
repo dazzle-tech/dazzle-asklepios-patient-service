@@ -1,6 +1,6 @@
 package com.dazzle.asklepios.web.rest.vm.patientEncounter;
 
-import com.dazzle.asklepios.domain.AppointmentFromTemplate;
+import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
@@ -11,6 +11,7 @@ import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 public record PatientEncounterVM(
 
@@ -21,7 +22,7 @@ public record PatientEncounterVM(
         Long departmentId,
         Long practitionerId,
 
-        AppointmentFromTemplate appointment,
+        Appointment appointment,
 
         EncounterType encounterType,
         EncounterReason encounterReason,
@@ -34,7 +35,7 @@ public record PatientEncounterVM(
 
         Integer departmentDailySequenceNumber,
         LocalDate encounterDate,
-
+        LocalTime encounterTime,
         Instant startedDate,
         String startedBy,
 
@@ -73,6 +74,7 @@ public record PatientEncounterVM(
 
                 encounter.getDepartmentDailySequenceNumber(),
                 encounter.getEncounterDate(),
+                encounter.getEncounterTime(),
                 encounter.getStartedDate(),
                 encounter.getStartedBy(),
                 encounter.getChiefComplaint(),

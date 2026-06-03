@@ -28,6 +28,7 @@ import java.io.Serializable;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 @Entity
 @Table(name = "patient_encounters")
@@ -66,7 +67,7 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "appointment_id", nullable = false)
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-    private AppointmentFromTemplate appointment;
+    private Appointment appointment;
 
     @NotNull
     @Enumerated(EnumType.STRING)
@@ -102,7 +103,9 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @Column(name = "encounter_date", updatable = false)
     private LocalDate encounterDate;
-
+    @NotNull
+    @Column(name = "encounter_time", nullable = false)
+    private LocalTime encounterTime;
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)

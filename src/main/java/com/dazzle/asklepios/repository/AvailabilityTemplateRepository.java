@@ -40,7 +40,16 @@ public interface AvailabilityTemplateRepository extends JpaRepository<Availabili
 
     List<AvailabilityTemplate> findAllByParentTemplateId(Long parentTemplateId);
 
+    List<AvailabilityTemplate> findByCopyFromTemplate_IdOrderByVersionNoDesc(Long copyFromTemplateId);
+
     boolean existsByParentTemplate_Id(Long parentTemplateId);
 
     boolean existsByCopyFromTemplate_Id(Long copyFromTemplateId);
+
+    @EntityGraph(attributePaths = {"workingDays"})
+    Page<AvailabilityTemplate> findAllByFacilityIdAndStatus(Long facility, TemplateStatus status, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"workingDays"})
+    Page<AvailabilityTemplate> findAllByDepartmentIdAndIsActiveTrueAndStatus(Long departmentId,TemplateStatus status, Pageable pageable);
+
 }

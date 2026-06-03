@@ -1,11 +1,14 @@
 package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
 
 @Repository
 public interface PatientServiceAndProductRepository extends JpaRepository<PatientServiceAndProduct, Long> {
@@ -31,5 +34,10 @@ public interface PatientServiceAndProductRepository extends JpaRepository<Patien
             ServiceSource serviceSource,
             Long sourceId,
             Pageable pageable
+    );
+    Optional<PatientServiceAndProduct> findByServiceSourceAndSourceIdAndBillingItemType(
+            ServiceSource serviceSource,
+            Long sourceId,
+            BillingItemTypes billingItemType
     );
 }

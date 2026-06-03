@@ -192,7 +192,7 @@ public class AvailabilityTemplateController {
             @RequestParam TemplateStatus status,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST request to get availability templates by status={}", status);
+        LOG.debug("REST request to get availability templates by status={} and templateType={}", status, TemplateType.DEPARTMENT);
 
         Page<AvailabilityTemplate> result =
                 availabilityTemplateService.getAllByFacilityAndStatus(status, pageable);
@@ -209,6 +209,37 @@ public class AvailabilityTemplateController {
 
         Page<AvailabilityTemplate> result =
                 availabilityTemplateService.getAllActiveByFacilityAndStatusAndTemplateTypeDepartment(status, pageable);
+
+        return buildPagedResponse(result);
+    }
+
+    @PostMapping("/availability-templates/{id}/clone")
+    public ResponseEntity<AvailabilityTemplateResponseVM> cloneAvailabilityTemplate(
+            @PathVariable Long id
+    ) {
+        LOG.debug("REST request to clone AvailabilityTemplate : {}", id);
+
+        AvailabilityTemplate result = availabilityTemplateService.cloneTemplate(id);
+
+        return ResponseEntity
+                .created(URI.create("/api/patient/availability-templates/" + result.getId()))
+                .body(toResponseVM(result));
+    }
+
+    @GetMapping("/availability-templates/by-facility-and-publish-status")
+    public ResponseEntity<List<AvailabilityTemplateResponseVM>> getAllByFacilityAndPublishStatus(@ParameterObject Pageable pageable) {
+        LOG.debug("REST request to get availability templates by status={}", TemplateStatus.PUBLISHED);
+
+        Page<AvailabilityTemplate> result = availabilityTemplateService.getAllPublishedTemplate(pageable);
+
+        return buildPagedResponse(result);
+    }
+
+    @GetMapping("/availability-templates/by-department-and-status/active")
+    public ResponseEntity<List<AvailabilityTemplateResponseVM>> getAllByDepartmentAndActive(@RequestParam Long departmentId, @ParameterObject Pageable pageable) {
+        LOG.debug("REST request to get availability templates by departmentId={},status={} and active", departmentId, TemplateStatus.PUBLISHED);
+
+        Page<AvailabilityTemplate> result = availabilityTemplateService.getAllForDepartmentAndActiveAndPublish(departmentId,pageable);
 
         return buildPagedResponse(result);
     }

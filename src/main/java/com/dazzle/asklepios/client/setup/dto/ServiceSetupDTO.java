@@ -1,0 +1,23 @@
+package com.dazzle.asklepios.client.setup.dto;
+
+import com.dazzle.asklepios.domain.enumeration.Currency;
+
+import java.io.Serializable;
+
+public record ServiceSetupDTO(
+        Long id,
+        String name,
+        String abbreviation,
+        String code,
+        String category,
+        Long price,
+        Currency currency,
+        Boolean isActive,
+        Long facilityId,
+        Boolean appointable,
+        Integer parallelCapacityValue,
+        Integer defaultDurationMinutes,
+        Integer defaultBufferBeforeMinutes,
+        Integer defaultBufferAfterMinutes
+) implements Serializable {
+}

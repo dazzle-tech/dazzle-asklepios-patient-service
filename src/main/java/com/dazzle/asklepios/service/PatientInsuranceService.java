@@ -55,7 +55,7 @@ public class PatientInsuranceService {
                 .patient(refPatient(dto.patientId()))
                 .payorId(dto.payorId())
                 .planId(dto.planId())
-                .policyHolderId(refPatient(dto.policyHolderId()).getId())
+                .policyHolderId(dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId()).getId())
                 .policyNumber(dto.policyNumber())
                 .groupNumber(dto.groupNumber())
                 .expirationDate(dto.expirationDate())
@@ -94,7 +94,7 @@ public class PatientInsuranceService {
         existing.setPatient(refPatient(dto.patientId()));
         existing.setPayorId(dto.payorId());
         existing.setPlanId(dto.planId());
-        existing.setPolicyHolderId(refPatient(dto.policyHolderId()).getId());
+        existing.setPolicyHolderId(dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId()).getId());
         existing.setPolicyNumber(dto.policyNumber());
         existing.setGroupNumber(dto.groupNumber());
         existing.setExpirationDate(dto.expirationDate());

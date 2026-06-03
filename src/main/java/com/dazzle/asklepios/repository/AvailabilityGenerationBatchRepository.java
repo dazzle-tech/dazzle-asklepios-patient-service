@@ -11,4 +11,6 @@ import java.util.List;
 @Repository
 public interface AvailabilityGenerationBatchRepository extends JpaRepository<AvailabilityGenerationBatch, Long> {
     Page<AvailabilityGenerationBatch> findAllByTemplate_IdInOrderByApplyStartDateTimeDesc(List<Long> templateIds, Pageable pageable);
+
+    Page<AvailabilityGenerationBatch> findAllByTemplate_IdAndIdNotOrderByApplyStartDateTimeDesc(Long templateId, Long batchId, Pageable pageable);
 }
