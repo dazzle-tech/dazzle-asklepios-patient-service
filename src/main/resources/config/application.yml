@@ -192,4 +192,9 @@ patient:
         description: "Main server"
       - url: "https://backup.asklepios.com/api"
         description: "Backup server"
+  appointment:
+    auto-no-show:
+      job-zone: Asia/Hebron
+      system-job-user: SYSTEM_JOB
+      no-show-reason: Not Specified
   security:

@@ -27,9 +27,9 @@ spring:
       indent-output: true
   datasource:
     type: com.zaxxer.hikari.HikariDataSource
-    url: jdbc:postgresql://localhost:5432/test
+    url: jdbc:postgresql://localhost:5432/postgres
     username: postgres
-    password: 123456
+    password: Iwid@123
     hikari:
       poolName: Hikari
       auto-commit: false
@@ -68,6 +68,11 @@ patient:
     presignExpirySeconds: 300
     maxBytes: 52428800
     allowed: application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png,text/plain
+  appointment:
+    auto-no-show:
+      job-zone: Asia/Hebron
+      system-job-user: SYSTEM_JOB
+      no-show-reason: Not Specified
 
     springdoc:
       pre-loading-enabled: true

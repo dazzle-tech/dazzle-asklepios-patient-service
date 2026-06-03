@@ -26,5 +26,10 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
     List<Appointment> findByAvailabilityGenerationBatch_IdAndStatusAndStartDatetimeGreaterThanAndBookingModeInOrderByStartDatetimeAsc(Long availabilityGenerationBatchId, AppointmentStatus status, Instant startDatetime, List<BookingMode> bookingMode);
 
     List<Appointment> findByStatusInAndStartDatetimeBetween(List<AppointmentStatus> status, Instant startDatetime, Instant endDatetime);
+
+    List<Appointment> findByStatusInAndStartDatetimeBefore(
+            List<AppointmentStatus> statuses,
+            Instant cutoff
+    );
 }
 
