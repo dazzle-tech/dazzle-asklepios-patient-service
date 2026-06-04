@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.domain;
-
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import java.time.Instant;
 import com.dazzle.asklepios.domain.enumeration.Gender;
 import com.dazzle.asklepios.domain.enumeration.PreferredWayOfContact;
 import com.dazzle.asklepios.domain.enumeration.SecurityLevel;
@@ -171,6 +173,22 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
 
     @Column(name = "document_id", unique = true, length = 100)
     private String documentId;
+
+    @Size(max = 20)
+    @Column(name = "reset_key")
+    @JsonIgnore
+    private String resetKey;
+
+    @Column(name = "reset_date")
+    private Instant resetDate = null;
+
+    @JsonIgnore
+    @Size(min = 60, max = 60)
+    @Column(name = "password_hash")
+    private String password;
+
+    @NotNull
+    private boolean activated = false;
 
     @Enumerated(EnumType.STRING)
     @Column(name="security_access_level")
