@@ -8,9 +8,10 @@ public record PayorPlanDTO(
         Long id,
         Long payorId,
         String name,
-        String waseelPlanId,
-        PayorPlanType coverageType,
+        String planType,
         String networkId,
-        String policyClassName
-) {
-}
+        String coverageType,
+        String payerNphiesId,
+        String waseelPlanId,
+        Boolean isActive
+) {}
