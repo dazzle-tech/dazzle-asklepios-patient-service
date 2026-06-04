@@ -11,6 +11,8 @@ import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.Eligibil
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityInsurancePlanDTO;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.request.EligibilityRequest;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityResponse;
+import com.dazzle.asklepios.integration.waseel.service.mapper.ApLovMapperService;
+import com.dazzle.asklepios.integration.waseel.service.mapper.AsklepiosLovCodes;
 import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -34,6 +36,7 @@ public class WaseelEligibilityCheckService {
     private final WaseelEligibilityService waseelEligibilityService;
     private final WaseelApiProperties properties;
     private final ObjectMapper objectMapper;
+    private final ApLovMapperService apLovMapperService;
 
     @Transactional
     public EligibilityCheckResponse checkEligibility(EligibilityCheckRequest request) {
@@ -117,7 +120,7 @@ public class WaseelEligibilityCheckService {
                 patient.getId(),
                 buildFullName(patient),
                 patient.getDocumentId(),
-                null,
+                resolveDocumentType(patient),
                 clean(patient.getFirstName()),
                 clean(patient.getSecondName()),
                 clean(patient.getThirdName()),
@@ -133,9 +136,9 @@ public class WaseelEligibilityCheckService {
                 null,
                 null,
                 null,
-                clean(patient.getMaritalStatus()),
-                null,
-                null,
+                apLovMapperService.mapMaritalStatusKeyToNphies(patient.getMaritalStatus()),
+                clean(patient.getReligion()),
+                apLovMapperService.mapOccupationKeyToNphies(patient.getOccupation()),
                 clean(patient.getPreferredLanguage()),
                 null,
                 null,
@@ -169,7 +172,7 @@ public class WaseelEligibilityCheckService {
     private EligibilityInsurancePlanDTO buildInsurancePlan(PatientInsurance insurance) {
         return new EligibilityInsurancePlanDTO(
                 insurance.getPlanId() == null ? null : insurance.getPlanId().toString(),
-                insurance.getPayorId() == null ? null : insurance.getPayorId().toString(),
+                clean(insurance.getPayerNphiesId()),
                 null,
                 clean(insurance.getMemberCardId()),
                 clean(insurance.getPolicyNumber()),
@@ -212,6 +215,27 @@ public class WaseelEligibilityCheckService {
                 log.getEligibilityResponseUrl(),
                 log.getRequestStatus()
         );
+    }
+
+    private String resolveDocumentType(Patient patient) {
+        String documentId = clean(patient.getDocumentId());
+
+        if (documentId == null) {
+            return null;
+        }
+
+        // Saudi National ID usually starts with 1
+        if (documentId.startsWith("1")) {
+            return "NI";
+        }
+
+        // Saudi Iqama / resident ID usually starts with 2
+        if (documentId.startsWith("2")) {
+            return "PRC";
+        }
+
+        // Passport / other document
+        return "PPN";
     }
 
     private LocalDate resolveServiceDate(LocalDate serviceDate) {

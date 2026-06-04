@@ -51,11 +51,14 @@ public class PatientInsuranceService {
         payorHelper.validatePayorExists(dto.payorId());
         payorPlanHelper.validatePayorPlanExists(dto.planId());
 
+        Patient policyHolder = dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId());
+
         PatientInsurance entity = PatientInsurance.builder()
                 .patient(refPatient(dto.patientId()))
                 .payorId(dto.payorId())
                 .planId(dto.planId())
-                .policyHolderId(dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId()).getId())
+                .policyHolderId(policyHolder == null ? null : policyHolder.getId())
+                .policyHolderName(policyHolder == null ? null : buildFullName(policyHolder))
                 .policyNumber(dto.policyNumber())
                 .groupNumber(dto.groupNumber())
                 .expirationDate(dto.expirationDate())
@@ -94,8 +97,11 @@ public class PatientInsuranceService {
         existing.setPatient(refPatient(dto.patientId()));
         existing.setPayorId(dto.payorId());
         existing.setPlanId(dto.planId());
-        existing.setPolicyHolderId(dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId()).getId());
-        existing.setPolicyNumber(dto.policyNumber());
+//        existing.setPolicyHolderId(dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId()).getId());
+        Patient policyHolder = dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId());
+
+        existing.setPolicyHolderId(policyHolder == null ? null : policyHolder.getId());
+        existing.setPolicyHolderName(policyHolder == null ? null : buildFullName(policyHolder));
         existing.setGroupNumber(dto.groupNumber());
         existing.setExpirationDate(dto.expirationDate());
         existing.setRemainingBenefits(dto.remainingBenefits());
@@ -185,6 +191,26 @@ public class PatientInsuranceService {
                         "patient",
                         "notfound"
                 ));
+    }
+
+    private String buildFullName(Patient patient) {
+        if (patient == null) {
+            return null;
+        }
+
+        String fullName = String.join(
+                " ",
+                nullToEmpty(patient.getFirstName()),
+                nullToEmpty(patient.getSecondName()),
+                nullToEmpty(patient.getThirdName()),
+                nullToEmpty(patient.getLastName())
+        ).trim();
+
+        return fullName.isEmpty() ? null : fullName;
+    }
+
+    private String nullToEmpty(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private RuntimeException handleConstraintViolation(Exception exception) {

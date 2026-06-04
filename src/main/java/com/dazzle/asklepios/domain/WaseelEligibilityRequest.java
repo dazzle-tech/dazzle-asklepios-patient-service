@@ -32,6 +32,9 @@ public class WaseelEligibilityRequest extends AbstractAuditingEntity<Long> imple
     @Column(name = "patient_id", nullable = false)
     private Long patientId;
 
+    @Column(name = "encounter_id")
+    private Long encounterId;
+
     @Column(name = "patient_insurance_id", nullable = false)
     private Long patientInsuranceId;
 
