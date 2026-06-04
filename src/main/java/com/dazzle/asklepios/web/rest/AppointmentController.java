@@ -45,6 +45,7 @@ import java.util.List;
 public class AppointmentController {
 
     private final AppointmentService appointmentService;
+    private static final String ENTITY_NAME = "Appointment";
 
     @PutMapping("/appointments/book-patient")
     public ResponseEntity<Appointment> bookPatientAppointment(@Valid @RequestBody AppointmentBookPatientDTO dto) {
@@ -202,6 +203,7 @@ public class AppointmentController {
 
         return ResponseEntity.status(HttpStatus.CONFLICT).body(result);
     }
+
     private void validateBulkRescheduleDto(BulkAppointmentRescheduleDTO dto) {
         if (dto.originalAvailabilityGenerationBatchId() == null) {
             throw new BadRequestAlertException(
@@ -264,6 +266,27 @@ public class AppointmentController {
         List<Appointment> appointments = appointmentService.filterAppointmentWithoutPagination(filter);
 
         return ResponseEntity.ok(appointments);
+    }
+
+    @GetMapping("/appointments/cancelled")
+    public ResponseEntity<List<Appointment>> getCancelledAppointments(@RequestParam Instant startDatetime, @RequestParam Instant endDatetime, @RequestParam(required = false) Long departmentId, Pageable pageable) {
+        if (startDatetime == null) {
+            throw new BadRequestAlertException("Start datetime is required", ENTITY_NAME, "startdatetimerequired");
+        }
+
+        if (endDatetime == null) {
+            throw new BadRequestAlertException("End datetime is required", ENTITY_NAME, "enddatetimerequired");
+        }
+        Page<Appointment> page = appointmentService.getCancelledAppointmentsBetweenDates(startDatetime, endDatetime, departmentId, pageable);
+
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                page
+        );
+
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body(page.getContent());
     }
 
 }

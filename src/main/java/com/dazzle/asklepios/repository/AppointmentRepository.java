@@ -54,5 +54,19 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
             Long departmentId,
             String templateName
     );
+    Page<Appointment> findByStatusAndStartDatetimeBetweenOrderByStartDatetimeAsc(
+            AppointmentStatus status,
+            Instant startDatetime,
+            Instant endDatetime,
+            Pageable pageable
+    );
+
+    Page<Appointment> findByStatusAndStartDatetimeBetweenAndDepartmentIdOrderByStartDatetimeAsc(
+            AppointmentStatus status,
+            Instant startDatetime,
+            Instant endDatetime,
+            Long departmentId,
+            Pageable pageable
+    );
 }
 
