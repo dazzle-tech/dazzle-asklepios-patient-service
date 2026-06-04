@@ -519,33 +519,72 @@ public class AppointmentService {
     }
 
     @Transactional(readOnly = true)
-    public BulkReschedulePreviewVM getBulkReschedulePreview(Long availabilityGenerationBatchId, boolean includeFreeSlots) {
-        LOG.debug("[BULK_RESCHEDULE_PREVIEW] batchId={} includingFreeSlot={}", availabilityGenerationBatchId, includeFreeSlots);
+    public BulkReschedulePreviewVM getBulkReschedulePreview(
+            Long availabilityGenerationBatchId,
+            boolean includeFreeSlots,
+            Long departmentId,
+            String templateName
+    ) {
+        LOG.debug(
+                "[BULK_RESCHEDULE_PREVIEW] batchId={} includingFreeSlot={} departmentId={} templateName={}",
+                availabilityGenerationBatchId,
+                includeFreeSlots,
+                departmentId,
+                templateName
+        );
 
         getBatch(availabilityGenerationBatchId);
 
         Instant tomorrowStart = tomorrowStartInstant();
-        if (!includeFreeSlots) {
-            List<Appointment> bookedOrConfirmedAppointments =
-                    appointmentRepository
-                            .findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(
-                                    availabilityGenerationBatchId,
-                                    List.of(AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED),
-                                    tomorrowStart
-                            );
 
-            return new BulkReschedulePreviewVM(bookedOrConfirmedAppointments);
+        List<AppointmentStatus> statuses = includeFreeSlots
+                ? List.of(AppointmentStatus.NEW, AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED)
+                : List.of(AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED);
+
+        boolean hasDepartment = departmentId != null;
+        boolean hasTemplateName = templateName != null && !templateName.trim().isEmpty();
+
+        List<Appointment> appointments;
+
+        if (hasDepartment && hasTemplateName) {
+            appointments =
+                    appointmentRepository
+                            .findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanAndDepartmentIdAndAvailabilityGenerationBatch_Template_TemplateNameContainingIgnoreCaseOrderByStartDatetimeAsc(
+                                    availabilityGenerationBatchId,
+                                    statuses,
+                                    tomorrowStart,
+                                    departmentId,
+                                    templateName.trim()
+                            );
+        } else if (hasDepartment) {
+            appointments =
+                    appointmentRepository
+                            .findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanAndDepartmentIdOrderByStartDatetimeAsc(
+                                    availabilityGenerationBatchId,
+                                    statuses,
+                                    tomorrowStart,
+                                    departmentId
+                            );
+        } else if (hasTemplateName) {
+            appointments =
+                    appointmentRepository
+                            .findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanAndAvailabilityGenerationBatch_Template_TemplateNameContainingIgnoreCaseOrderByStartDatetimeAsc(
+                                    availabilityGenerationBatchId,
+                                    statuses,
+                                    tomorrowStart,
+                                    templateName.trim()
+                            );
         } else {
-            List<Appointment> appointments =
+            appointments =
                     appointmentRepository
                             .findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(
                                     availabilityGenerationBatchId,
-                                    List.of(AppointmentStatus.NEW, AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED),
+                                    statuses,
                                     tomorrowStart
                             );
-
-            return new BulkReschedulePreviewVM(appointments);
         }
+
+        return new BulkReschedulePreviewVM(appointments);
     }
 
     @Transactional
