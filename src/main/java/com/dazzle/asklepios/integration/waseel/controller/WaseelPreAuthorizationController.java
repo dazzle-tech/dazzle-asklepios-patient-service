@@ -1,11 +1,14 @@
 package com.dazzle.asklepios.integration.waseel.controller;
 
 
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityCheckResponse;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.PreAuthorizationCancelRequest;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.PreAuthorizationCommunicationRequest;
+import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelPreAuthorizationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -18,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class WaseelPreAuthorizationController {
 
     private final WaseelPreAuthorizationService service;
+    private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
 
     @GetMapping("/internal/waseel/pre-authorizations/search")
     public Object search(@RequestParam("requestId") Long requestId) {
@@ -32,5 +36,11 @@ public class WaseelPreAuthorizationController {
     @PostMapping("/internal/waseel/pre-authorizations/cancel")
     public Object cancel(@RequestBody PreAuthorizationCancelRequest request) {
         return service.cancel(request);
+    }
+
+
+    @PostMapping("/internal/waseel/encounters/{encounterId}/eligibility")
+    public EligibilityCheckResponse checkEncounterEligibility(@PathVariable Long encounterId) {
+        return encounterInsuranceEligibilityService.checkEncounterEligibility(encounterId);
     }
 }
