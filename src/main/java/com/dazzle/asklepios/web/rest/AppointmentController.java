@@ -177,8 +177,8 @@ public class AppointmentController {
     }
 
     @GetMapping("/appointments/bulk-reschedule/preview/{batchId}")
-    public ResponseEntity<BulkReschedulePreviewVM> getBulkReschedulePreview(@PathVariable Long batchId, @RequestParam boolean includeFreeSlots) {
-        BulkReschedulePreviewVM result = appointmentService.getBulkReschedulePreview(batchId, includeFreeSlots);
+    public ResponseEntity<BulkReschedulePreviewVM> getBulkReschedulePreview(@PathVariable Long batchId, @RequestParam boolean includeFreeSlots, @RequestParam(required = false) Long departmentId, @RequestParam(required = false) String templateName) {
+        BulkReschedulePreviewVM result = appointmentService.getBulkReschedulePreview(batchId, includeFreeSlots, departmentId, templateName);
         return ResponseEntity.ok(result);
     }
 

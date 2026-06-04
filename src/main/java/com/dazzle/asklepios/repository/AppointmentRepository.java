@@ -31,5 +31,28 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
             List<AppointmentStatus> statuses,
             Instant cutoff
     );
+
+
+    List<Appointment> findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanAndDepartmentIdOrderByStartDatetimeAsc(
+            Long availabilityGenerationBatchId,
+            List<AppointmentStatus> statuses,
+            Instant startDatetime,
+            Long departmentId
+    );
+
+    List<Appointment> findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanAndAvailabilityGenerationBatch_Template_TemplateNameContainingIgnoreCaseOrderByStartDatetimeAsc(
+            Long availabilityGenerationBatchId,
+            List<AppointmentStatus> statuses,
+            Instant startDatetime,
+            String templateName
+    );
+
+    List<Appointment> findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanAndDepartmentIdAndAvailabilityGenerationBatch_Template_TemplateNameContainingIgnoreCaseOrderByStartDatetimeAsc(
+            Long availabilityGenerationBatchId,
+            List<AppointmentStatus> statuses,
+            Instant startDatetime,
+            Long departmentId,
+            String templateName
+    );
 }
 
