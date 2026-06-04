@@ -12,4 +12,6 @@ public final class AsklepiosLovCodes {
     public static final String RELIGION = "REL";
 
     public static final String OCCUPATION = "OCCP";
+
+    public static final String LANG = "LANG";
 }

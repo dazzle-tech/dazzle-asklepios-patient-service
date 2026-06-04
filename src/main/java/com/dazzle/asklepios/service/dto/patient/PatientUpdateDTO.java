@@ -58,7 +58,7 @@ public record PatientUpdateDTO(
         Boolean receiveEmail,
         PreferredWayOfContact preferredWayOfContact,
 
-        String nativeLanguage,
+        String preferredLanguage,
         String emergencyContactName,
         String emergencyContactRelation,
         String emergencyContactPhone,

@@ -5,6 +5,12 @@ public record WaseelApprovalEligibilitySnapshot(
         Boolean isNewBorn,
         WaseelApprovalBeneficiary beneficiary,
         WaseelApprovalInsurancePlan insurancePlan,
+        String memberId,
+        Long patientInsuranceId,
+        Long payorId,
+        Long payorPlanId,
+        String providerId,
+        String destinationId,
         String eligibilityResponseId,
         String eligibilityResponseUrl
 ) {}

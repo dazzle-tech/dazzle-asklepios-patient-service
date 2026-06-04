@@ -136,7 +136,7 @@ public class WaseelEligibilityCheckService {
                 clean(patient.getMaritalStatus()),
                 null,
                 null,
-                clean(patient.getNativeLanguage()),
+                clean(patient.getPreferredLanguage()),
                 null,
                 null,
                 null,

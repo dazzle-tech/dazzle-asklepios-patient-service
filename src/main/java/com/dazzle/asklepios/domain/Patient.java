@@ -113,8 +113,8 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
     @Column(name = "preferred_way_of_contact", length = 50)
     private PreferredWayOfContact preferredWayOfContact;
 
-    @Column(name = "native_language", length = 100)
-    private String nativeLanguage;
+    @Column(name = "preferred_language", length = 100)
+    private String preferredLanguage;
 
     @Column(name = "emergency_contact_name", length = 150)
     private String emergencyContactName;

@@ -86,7 +86,7 @@ public class PatientService {
                 .receiveEmail(dto.receiveEmail())
                 .preferredWayOfContact(dto.preferredWayOfContact())
 
-                .nativeLanguage(dto.nativeLanguage())
+                .preferredLanguage(dto.preferredLanguage())
                 .emergencyContactName(dto.emergencyContactName())
                 .emergencyContactRelation(dto.emergencyContactRelation())
                 .emergencyContactPhone(dto.emergencyContactPhone())
@@ -198,7 +198,7 @@ public class PatientService {
         existing.setReceiveEmail(dto.receiveEmail());
         existing.setPreferredWayOfContact(dto.preferredWayOfContact());
 
-        existing.setNativeLanguage(dto.nativeLanguage());
+        existing.setPreferredLanguage(dto.preferredLanguage());
         existing.setEmergencyContactName(dto.emergencyContactName());
         existing.setEmergencyContactRelation(dto.emergencyContactRelation());
         existing.setEmergencyContactPhone(dto.emergencyContactPhone());

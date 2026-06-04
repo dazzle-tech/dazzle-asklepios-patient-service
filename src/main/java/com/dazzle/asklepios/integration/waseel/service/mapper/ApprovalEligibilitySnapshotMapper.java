@@ -65,6 +65,15 @@ public class ApprovalEligibilitySnapshotMapper {
                 toBeneficiary(beneficiaryNode),
                 toInsurancePlan(insurancePlanNode),
                 firstNonBlank(
+                        text(insurancePlanNode, "memberCardId"),
+                        text(root, "memberId")
+                ),
+                eligibilityRequest.getPatientInsuranceId(),
+                eligibilityRequest.getPayorId(),
+                eligibilityRequest.getPlanId(),
+                eligibilityRequest.getProviderId(),
+                eligibilityRequest.getDestinationId(),
+                firstNonBlank(
                         eligibilityRequest.getEligibilityResponseId(),
                         text(root, "eligibilityResponseId")
                 ),
@@ -72,8 +81,7 @@ public class ApprovalEligibilitySnapshotMapper {
                         eligibilityRequest.getEligibilityResponseUrl(),
                         text(root, "eligibilityResponseUrl")
                 )
-        );
-    }
+        );}
 
     private WaseelApprovalBeneficiary toBeneficiary(JsonNode node) {
         return new WaseelApprovalBeneficiary(

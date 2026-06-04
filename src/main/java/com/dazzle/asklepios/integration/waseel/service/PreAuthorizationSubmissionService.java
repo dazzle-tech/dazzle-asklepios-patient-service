@@ -13,6 +13,7 @@ import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalResponse;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalCareTeam;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalDiagnosis;
+import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalEligibilitySnapshot;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalItem;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalRequest;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalSupportingInfo;
@@ -42,6 +43,7 @@ import java.util.List;
 public class PreAuthorizationSubmissionService {
 
     private final ApprovalRequestBuilderService approvalRequestBuilderService;
+    private final ApprovalEligibilitySnapshotService snapshotService;
     private final WaseelApprovalService waseelApprovalService;
     private final EligibilityRequestResolverService eligibilityRequestResolverService;
 
@@ -93,10 +95,20 @@ public class PreAuthorizationSubmissionService {
         WaseelApprovalRequest request =
                 approvalRequestBuilderService.buildRequest(eligibilityRequestId, encounterId);
 
+        WaseelApprovalEligibilitySnapshot snapshot =
+                snapshotService.buildSnapshot(eligibilityRequestId);
+
+        validateSnapshot(snapshot);
+
         String requestJson = toJson(request);
 
         PreAuthorizationRequest preAuthorization =
-                savePreAuthorizationRequest(encounter, request, requestJson);
+                savePreAuthorizationRequest(
+                        encounter,
+                        request,
+                        snapshot,
+                        requestJson
+                );
 
         saveDetails(preAuthorization, request, pendingItems);
 
@@ -122,19 +134,40 @@ public class PreAuthorizationSubmissionService {
         }
     }
 
+    private void validateSnapshot(WaseelApprovalEligibilitySnapshot snapshot) {
+        if (snapshot == null) {
+            throw new BadRequestAlertException(
+                    "Eligibility snapshot not found",
+                    "preAuthorization",
+                    "eligibility.snapshotNotFound"
+            );
+        }
+
+        if (snapshot.patientInsuranceId() == null) {
+            throw new BadRequestAlertException(
+                    "Patient insurance not found in eligibility",
+                    "preAuthorization",
+                    "patientInsurance.notFound"
+            );
+        }
+    }
+
     private PreAuthorizationRequest savePreAuthorizationRequest(
             PatientEncounter encounter,
             WaseelApprovalRequest request,
+            WaseelApprovalEligibilitySnapshot snapshot,
             String requestJson
     ) {
         PreAuthorizationRequest preAuthorization = PreAuthorizationRequest.builder()
                 .patientId(encounter.getPatient().getId())
                 .encounterId(encounter.getId())
-                .patientInsuranceId(0L)
-                .providerId(waseelApiProperties.providerId())
-                .providerNphiesId(waseelApiProperties.providerId())
-                .eligibilityResponseId(request.preAuthorizationInfo().eligibilityResponseId())
-                .eligibilityResponseUrl(request.preAuthorizationInfo().eligibilityResponseUrl())
+                .patientInsuranceId(snapshot.patientInsuranceId())
+                .payorId(snapshot.payorId())
+                .payorPlanId(snapshot.payorPlanId())
+                .providerId(firstNonBlank(snapshot.providerId(), waseelApiProperties.providerId()))
+                .providerNphiesId(firstNonBlank(snapshot.providerId(), waseelApiProperties.providerId()))
+                .eligibilityResponseId(firstNonBlank(snapshot.eligibilityResponseId(), request.preAuthorizationInfo().eligibilityResponseId()))
+                .eligibilityResponseUrl(firstNonBlank(snapshot.eligibilityResponseUrl(), request.preAuthorizationInfo().eligibilityResponseUrl()))
                 .eligibilityOfflineId(request.preAuthorizationInfo().eligibilityOfflineId())
                 .eligibilityOfflineDate(request.preAuthorizationInfo().eligibilityOfflineDate())
                 .dateOrdered(request.preAuthorizationInfo().dateOrdered())
@@ -146,7 +179,7 @@ public class PreAuthorizationSubmissionService {
                 .prescription(request.preAuthorizationInfo().prescription())
                 .transfer(Boolean.TRUE.equals(request.transfer()))
                 .isNewBorn(Boolean.TRUE.equals(request.isNewBorn()))
-                .destinationId(request.destinationId())
+                .destinationId(firstNonBlank(snapshot.destinationId(), request.destinationId()))
                 .encounterStatus(request.encounter().status())
                 .encounterClass(request.encounter().encounterClass())
                 .serviceType(request.encounter().serviceType())
@@ -158,7 +191,6 @@ public class PreAuthorizationSubmissionService {
                 .status("SUBMITTING")
                 .requestJson(requestJson)
                 .build();
-
         return preAuthorizationRequestRepository.saveAndFlush(preAuthorization);
     }
 
@@ -450,5 +482,19 @@ public class PreAuthorizationSubmissionService {
 
     private String safe(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+
+        return "";
     }
 }
