@@ -206,6 +206,7 @@ public class AppointmentService {
 
         return result;
     }
+
     public List<Appointment> getAppointmentsByStatusBetweenDatesWithoutPagination(
             List<AppointmentStatus> status,
             Instant startDatetime,
@@ -275,6 +276,7 @@ public class AppointmentService {
 
         return result;
     }
+
     public Appointment cancel(AppointmentCancelDTO dto) {
         Appointment appointment = getAppointment(dto.id());
 
@@ -283,6 +285,14 @@ public class AppointmentService {
         appointment.setStatus(AppointmentStatus.CANCELLED);
         appointment.setCancelReason(dto.cancelReason());
         appointment.setCancelledBy(currentUsername());
+        appointment.setService(null);
+        appointment.setPatient(null);
+        appointment.setReason(null);
+        appointment.setNote(null);
+        appointment.setPriority(EncounterPriority.NORMAL);
+        appointment.setOriginName(null);
+        appointment.setOriginType(null);
+        appointment.setFollowUpEncounter(null);
         return appointmentRepository.save(appointment);
     }
 
@@ -678,6 +688,35 @@ public class AppointmentService {
         cancelFutureFreeAppointmentsFromBatch(originalBatch.getId(), tomorrowStart);
 
         return new BulkAppointmentRescheduleResponseVM(true, "Reschedule applied successfully", List.of());
+    }
+
+    @Transactional(readOnly = true)
+    public Page<Appointment> getCancelledAppointmentsBetweenDates(Instant startDatetime, Instant endDatetime, Long departmentId, Pageable pageable) {
+        LOG.debug("[CANCELLED_APPOINTMENTS] startDatetime={} endDatetime={} departmentId={} pageable={}",
+                startDatetime,
+                endDatetime,
+                departmentId,
+                pageable
+        );
+
+        if (departmentId != null) {
+            return appointmentRepository
+                    .findByStatusAndStartDatetimeBetweenAndDepartmentIdOrderByStartDatetimeAsc(
+                            AppointmentStatus.CANCELLED,
+                            startDatetime,
+                            endDatetime,
+                            departmentId,
+                            pageable
+                    );
+        }
+
+        return appointmentRepository
+                .findByStatusAndStartDatetimeBetweenOrderByStartDatetimeAsc(
+                        AppointmentStatus.CANCELLED,
+                        startDatetime,
+                        endDatetime,
+                        pageable
+                );
     }
 
     private Instant tomorrowStartInstant() {
