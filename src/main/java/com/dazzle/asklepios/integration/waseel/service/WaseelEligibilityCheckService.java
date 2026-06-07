@@ -63,6 +63,8 @@ public class WaseelEligibilityCheckService {
                 serviceDate
         );
 
+        System.out.println("WASEEL REQUEST JSON = " + toJson(waseelRequest));
+
         WaseelEligibilityRequest log = WaseelEligibilityRequest.builder()
                 .patientId(patient.getId())
                 .patientInsuranceId(insurance.getId())
@@ -128,7 +130,10 @@ public class WaseelEligibilityCheckService {
                 buildFullName(patient),
                 patient.getDateOfBirth() == null ? null : patient.getDateOfBirth().toString(),
                 patient.getSexAtBirth() == null ? null : patient.getSexAtBirth().name(),
-                clean(patient.getNationality()),
+                apLovMapperService.getCleanValueCodeByLovCodeAndKey(
+                        AsklepiosLovCodes.NATIONALITY,
+                        patient.getNationality()
+                ),
                 clean(patient.getPrimaryMobileNumber()),
                 clean(patient.getEmail()),
                 clean(patient.getEmergencyContactPhone()),
@@ -137,9 +142,15 @@ public class WaseelEligibilityCheckService {
                 null,
                 null,
                 apLovMapperService.mapMaritalStatusKeyToNphies(patient.getMaritalStatus()),
-                clean(patient.getReligion()),
+                apLovMapperService.getCleanValueCodeByLovCodeAndKey(
+                        AsklepiosLovCodes.RELIGION,
+                        patient.getReligion()
+                ),
                 apLovMapperService.mapOccupationKeyToNphies(patient.getOccupation()),
-                clean(patient.getPreferredLanguage()),
+                apLovMapperService.getCleanValueCodeByLovCodeAndKey(
+                        AsklepiosLovCodes.LANG,
+                        patient.getPreferredLanguage()
+                ),
                 null,
                 null,
                 null,
@@ -165,8 +176,13 @@ public class WaseelEligibilityCheckService {
                 Boolean.TRUE.equals(request.emergency()),
                 false,
                 java.util.Map.of(),
-                clean(request.destinationId())
+                resolveDestinationId(request.destinationId())
         );
+    }
+
+    private String resolveDestinationId(String destinationId) {
+        String cleaned = clean(destinationId);
+        return cleaned != null ? cleaned : "-1";
     }
 
     private EligibilityInsurancePlanDTO buildInsurancePlan(PatientInsurance insurance) {
@@ -184,9 +200,23 @@ public class WaseelEligibilityCheckService {
                 toInteger(insurance.getPatientShare()),
                 toInteger(insurance.getMaxLimit()),
                 buildCoverageClassList(insurance),
-                clean(insurance.getPolicyHolderName()),
+                resolvePolicyHolderName(insurance),
                 Boolean.TRUE.equals(insurance.getIsPrimary())
         );
+    }
+
+    private String resolvePolicyHolderName(PatientInsurance insurance) {
+        String policyHolderName = clean(insurance.getPolicyHolderName());
+
+        if (policyHolderName != null) {
+            return policyHolderName;
+        }
+
+        if (insurance.getPatient() != null) {
+            return buildFullName(insurance.getPatient());
+        }
+
+        return null;
     }
 
     private List<CoverageClassDTO> buildCoverageClassList(PatientInsurance insurance) {

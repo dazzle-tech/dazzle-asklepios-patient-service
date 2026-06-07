@@ -131,6 +131,18 @@ public class ApLovMapperService {
                 .toUpperCase(Locale.ROOT);
     }
 
+    public String getCleanValueCodeByLovCodeAndKey(String lovCode, String key) {
+        String valueCode = getValueCodeByLovCodeAndKey(lovCode, key);
+
+        if (valueCode == null || valueCode.trim().isEmpty()) {
+            return null;
+        }
+
+        return valueCode.trim()
+                .replace("NAT_", "")
+                .replace("LANG_", "");
+    }
+
     private String normalizeKey(String value) {
         return value == null ? "" : value.trim();
     }

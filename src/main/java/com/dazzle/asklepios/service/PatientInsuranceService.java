@@ -57,13 +57,29 @@ public class PatientInsuranceService {
                 .patient(refPatient(dto.patientId()))
                 .payorId(dto.payorId())
                 .planId(dto.planId())
+
                 .policyHolderId(policyHolder == null ? null : policyHolder.getId())
                 .policyHolderName(policyHolder == null ? null : buildFullName(policyHolder))
+
                 .policyNumber(dto.policyNumber())
                 .groupNumber(dto.groupNumber())
                 .expirationDate(dto.expirationDate())
+
                 .remainingBenefits(dto.remainingBenefits())
                 .remainingDeductibles(dto.remainingDeductibles())
+
+                .memberCardId(dto.memberCardId())
+                .payerNphiesId(dto.payerNphiesId())
+                .networkId(dto.networkId())
+                .sponsorNumber(dto.sponsorNumber())
+                .coverageType(dto.coverageType())
+                .relationWithSubscriber(dto.relationWithSubscriber())
+                .policyClassName(dto.policyClassName())
+                .issueDate(dto.issueDate())
+                .patientShare(dto.patientShare())
+                .maxLimit(dto.maxLimit())
+                .waseelNewPlan(dto.waseelNewPlan())
+
                 .isPrimary(Boolean.TRUE.equals(dto.isPrimary()))
                 .build();
 

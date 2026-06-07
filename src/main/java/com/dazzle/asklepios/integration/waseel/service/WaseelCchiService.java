@@ -16,6 +16,9 @@ import com.dazzle.asklepios.integration.waseel.service.mapper.CchiBeneficiaryAdd
 import com.dazzle.asklepios.integration.waseel.service.mapper.CchiBeneficiaryPatientDocumentMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.CchiBeneficiaryPatientInsuranceMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.CchiBeneficiaryPatientMapper;
+import com.dazzle.asklepios.repository.PatientInsuranceRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
+import jakarta.transaction.Transactional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.http.HttpEntity;
@@ -29,6 +32,8 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -45,6 +50,8 @@ public class WaseelCchiService {
     private final CchiBeneficiaryPatientDocumentMapper patientDocumentMapper;
     private final CchiBeneficiaryPatientInsuranceMapper insuranceMapper;
     private final SetupInsuranceLookupService setupInsuranceLookupService;
+    private final PatientRepository patientRepository;
+    private final PatientInsuranceRepository patientInsuranceRepository;
 
     public WaseelCchiService(
             RestTemplate restTemplate,
@@ -54,8 +61,8 @@ public class WaseelCchiService {
             CchiBeneficiaryAddressMapper addressMapper,
             CchiBeneficiaryPatientDocumentMapper patientDocumentMapper,
             CchiBeneficiaryPatientInsuranceMapper insuranceMapper,
-            SetupInsuranceLookupService setupInsuranceLookupService
-    ) {
+            SetupInsuranceLookupService setupInsuranceLookupService,
+            PatientRepository patientRepository, PatientInsuranceRepository patientInsuranceRepository) {
         this.restTemplate = restTemplate;
         this.tokenService = tokenService;
         this.properties = properties;
@@ -64,6 +71,8 @@ public class WaseelCchiService {
         this.patientDocumentMapper = patientDocumentMapper;
         this.insuranceMapper = insuranceMapper;
         this.setupInsuranceLookupService = setupInsuranceLookupService;
+        this.patientRepository = patientRepository;
+        this.patientInsuranceRepository = patientInsuranceRepository;
     }
 
     public CchiInquiryResponse fetchBeneficiaryByDocumentId(String documentId) {
@@ -156,6 +165,7 @@ public class WaseelCchiService {
                     payor,
                     insurancePlan
             );
+
 
             PatientInsurance insurance = insuranceMapper.toPatientInsurance(
                     insurancePlan,

@@ -12,10 +12,13 @@ import java.util.Optional;
 public interface PatientInsuranceRepository extends JpaRepository<PatientInsurance, Long> {
     Page<PatientInsurance> findByPatientId(Long patientId, Pageable pageable);
 
-    Optional<PatientInsurance> findFirstByPatient_IdAndPayorIdAndPlanIdAndPolicyNumber(
+    Optional<PatientInsurance> findFirstByPatientIdAndPayerNphiesIdAndMemberCardId(
             Long patientId,
-            Long payorId,
-            Long planId,
-            String policyNumber
+            String payerNphiesId,
+            String memberCardId
     );
+
+    Optional<PatientInsurance> findFirstByPatientIdAndIsPrimaryTrue(Long patientId);
+
+    Optional<PatientInsurance> findFirstByPatientId(Long patientId);
 }

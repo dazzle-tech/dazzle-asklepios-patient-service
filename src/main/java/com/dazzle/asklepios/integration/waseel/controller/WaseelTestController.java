@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.integration.waseel.controller;
 
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalCancelRequest;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalRequest;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalResponse;
@@ -21,6 +22,8 @@ import com.dazzle.asklepios.integration.waseel.service.WaseelEligibilityService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelTokenService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/patient")
