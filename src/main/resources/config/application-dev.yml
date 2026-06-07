@@ -14,7 +14,6 @@ management:
       probability: 1.0 # report 100% of traces
 service:
   asklepios-setup-service-url: http://localhost:8082
-  asklepios-gateway-service-url: http://localhost:8080
 spring:
   devtools:
     restart:
@@ -27,9 +26,9 @@ spring:
       indent-output: true
   datasource:
     type: com.zaxxer.hikari.HikariDataSource
-    url: jdbc:postgresql://localhost:5432/postgres
+    url: jdbc:postgresql://localhost:5432/asklepios
     username: postgres
-    password: Iwid@123
+    password: 147741
     hikari:
       poolName: Hikari
       auto-commit: false
@@ -68,11 +67,6 @@ patient:
     presignExpirySeconds: 300
     maxBytes: 52428800
     allowed: application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png,text/plain
-  appointment:
-    auto-no-show:
-      job-zone: Asia/Hebron
-      system-job-user: SYSTEM_JOB
-      no-show-reason: Not Specified
 
     springdoc:
       pre-loading-enabled: true
