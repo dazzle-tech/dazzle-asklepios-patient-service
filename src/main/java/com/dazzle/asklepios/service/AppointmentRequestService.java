@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.AppointmentRequest;
 import com.dazzle.asklepios.domain.Patient;
@@ -11,6 +12,7 @@ import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.AppointmentRequestRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentBookPatientDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestCancelDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestCreateDTO;
@@ -26,6 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 
 @Service
@@ -204,10 +207,26 @@ public class AppointmentRequestService {
     }
 
     @Transactional(readOnly = true)
-    public List<AppointmentRequestResponseVM> getByFacilityId(Long facilityId) {
+    public List<AppointmentRequestResponseVM> getByFacilityIdAndBookableDepartment(Long facilityId) {
         log.debug("Request to get AppointmentRequests by facilityId={}", facilityId);
 
-        return appointmentRequestRepository.findByFacilityId(facilityId)
+        String login = SecurityUtils
+                .getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "user",
+                        ENTITY_NAME,
+                        "Current user is required"
+                ));
+
+        List<Long> bookableDepartmentIds =departmentHelper.getBookableDepartment().stream().map(DepartmentDTO::id).toList();
+
+        if (bookableDepartmentIds == null || bookableDepartmentIds.isEmpty()) {
+            log.debug("[APPOINTMENT_REQUEST] No bookable departments found for logged-in user={}", login);
+            return Collections.emptyList();
+        }
+
+        return appointmentRequestRepository
+                .findByFacilityIdAndDepartmentIdIn(facilityId, bookableDepartmentIds)
                 .stream()
                 .map(this::toResponseVM)
                 .toList();

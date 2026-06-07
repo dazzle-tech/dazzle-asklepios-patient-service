@@ -10,7 +10,7 @@ import com.dazzle.asklepios.service.dto.appointment.AppointmentCancelDTO;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentNoShowDTO;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentQuickAppointmentDTO;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentRescheduleDTO;
-import com.dazzle.asklepios.service.dto.appointment.AppointmentSearchFilterDTO;
+import com.dazzle.asklepios.service.dto.appointment.AppointmentSearchFilterMultiDepartmentDTO;
 import com.dazzle.asklepios.service.dto.appointment.BulkAppointmentRescheduleDTO;
 import com.dazzle.asklepios.service.dto.appointment.DiagnosticTestAppointmentRescheduleDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
@@ -78,7 +78,7 @@ public class AppointmentController {
     }
 
     @PostMapping("/appointments/search")
-    public ResponseEntity<List<Appointment>> filterAppointments(@Valid @RequestBody AppointmentSearchFilterDTO filter, Pageable pageable) {
+    public ResponseEntity<List<Appointment>> filterAppointments(@Valid @RequestBody AppointmentSearchFilterMultiDepartmentDTO filter, Pageable pageable) {
         Page<Appointment> appointment = appointmentService.filterAppointment(filter, pageable);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
@@ -261,7 +261,7 @@ public class AppointmentController {
 
     @PostMapping("/appointments/search/without-pagination")
     public ResponseEntity<List<Appointment>> filterAppointmentsWithoutPagination(
-            @Valid @RequestBody AppointmentSearchFilterDTO filter
+            @Valid @RequestBody AppointmentSearchFilterMultiDepartmentDTO filter
     ) {
         List<Appointment> appointments = appointmentService.filterAppointmentWithoutPagination(filter);
 

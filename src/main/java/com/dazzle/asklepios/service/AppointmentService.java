@@ -21,8 +21,8 @@ import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import com.dazzle.asklepios.domain.enumeration.TestType;
-import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.AppointmentLogRepository;
+import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.AppointmentRescheduleRepository;
 import com.dazzle.asklepios.repository.AvailabilityGenerationBatchRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
@@ -35,7 +35,7 @@ import com.dazzle.asklepios.service.dto.appointment.AppointmentCancelDTO;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentNoShowDTO;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentQuickAppointmentDTO;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentRescheduleDTO;
-import com.dazzle.asklepios.service.dto.appointment.AppointmentSearchFilterDTO;
+import com.dazzle.asklepios.service.dto.appointment.AppointmentSearchFilterMultiDepartmentDTO;
 import com.dazzle.asklepios.service.dto.appointment.BulkAppointmentRescheduleDTO;
 import com.dazzle.asklepios.service.dto.appointment.DiagnosticTestAppointmentRescheduleDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderCreateDTO;
@@ -66,6 +66,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 @Service
@@ -155,13 +156,28 @@ public class AppointmentService {
         return appointmentRepository.findByStatusInAndStartDatetimeBetween(status, startDatetime, endDatetime, pageable);
     }
 
-    public Page<Appointment> filterAppointment(AppointmentSearchFilterDTO filter, Pageable pageable) {
+    @Transactional(readOnly = true)
+    public Page<Appointment> filterAppointment(AppointmentSearchFilterMultiDepartmentDTO filter, Pageable pageable) {
 
         LOG.debug("Service filter Appointments filter={} pageable={}", filter, pageable);
 
         if (filter.facility() == null) {
             throw new BadRequestAlertException("facility", ENTITY_NAME, "Facility is required");
         }
+
+        List<Long> departmentIds = filter.departmentIds();
+
+        if (departmentIds == null || departmentIds.isEmpty()) {
+            String login = currentUsername();
+            departmentIds = departmentHelper.getBookableDepartment().stream().map(DepartmentDTO::id).toList();
+
+            if (departmentIds == null || departmentIds.isEmpty()) {
+                LOG.debug("[FILTER] No bookable departments found for logged-in user={}", login);
+                return Page.empty(pageable);
+            }
+        }
+
+        List<Long> finalDepartmentIds = departmentIds;
 
         Specification<Appointment> appointmentFilterSpec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -170,9 +186,7 @@ public class AppointmentService {
 
             predicates.add(cb.equal(root.get("facilityId"), filter.facility()));
 
-            if (filter.department() != null) {
-                predicates.add(cb.equal(root.get("departmentId"), filter.department()));
-            }
+            predicates.add(root.get("departmentId").in(finalDepartmentIds));
 
             if (filter.resourceType() != null) {
                 predicates.add(cb.equal(root.get("resourceType"), filter.resourceType()));
@@ -201,12 +215,16 @@ public class AppointmentService {
 
         Page<Appointment> result = appointmentRepository.findAll(appointmentFilterSpec, pageable);
 
-        LOG.debug("[FILTER] Appointments result totalElements={} totalPages={} pageNumber={} pageSize={}",
-                result.getTotalElements(), result.getTotalPages(), result.getNumber(), result.getSize());
+        LOG.debug(
+                "[FILTER] Appointments result totalElements={} totalPages={} pageNumber={} pageSize={}",
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.getNumber(),
+                result.getSize()
+        );
 
         return result;
     }
-
     public List<Appointment> getAppointmentsByStatusBetweenDatesWithoutPagination(
             List<AppointmentStatus> status,
             Instant startDatetime,
@@ -226,13 +244,28 @@ public class AppointmentService {
         );
     }
 
-    public List<Appointment> filterAppointmentWithoutPagination(AppointmentSearchFilterDTO filter) {
+    @Transactional(readOnly = true)
+    public List<Appointment> filterAppointmentWithoutPagination(AppointmentSearchFilterMultiDepartmentDTO filter) {
 
         LOG.debug("Service filter Appointments filter={}", filter);
 
         if (filter.facility() == null) {
             throw new BadRequestAlertException("facility", ENTITY_NAME, "Facility is required");
         }
+
+        List<Long> departmentIds = filter.departmentIds();
+
+        if (departmentIds == null || departmentIds.isEmpty()) {
+            String login = currentUsername();
+            departmentIds = departmentHelper.getBookableDepartment().stream().map(DepartmentDTO::id).toList();
+
+            if (departmentIds == null || departmentIds.isEmpty()) {
+                LOG.debug("[FILTER] No bookable departments found for logged-in user={}", login);
+                return Collections.emptyList();
+            }
+        }
+
+        List<Long> finalDepartmentIds = departmentIds;
 
         Specification<Appointment> appointmentFilterSpec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -241,9 +274,7 @@ public class AppointmentService {
 
             predicates.add(cb.equal(root.get("facilityId"), filter.facility()));
 
-            if (filter.department() != null) {
-                predicates.add(cb.equal(root.get("departmentId"), filter.department()));
-            }
+            predicates.add(root.get("departmentId").in(finalDepartmentIds));
 
             if (filter.resourceType() != null) {
                 predicates.add(cb.equal(root.get("resourceType"), filter.resourceType()));
@@ -276,7 +307,6 @@ public class AppointmentService {
 
         return result;
     }
-
     public Appointment cancel(AppointmentCancelDTO dto) {
         Appointment appointment = getAppointment(dto.id());
 

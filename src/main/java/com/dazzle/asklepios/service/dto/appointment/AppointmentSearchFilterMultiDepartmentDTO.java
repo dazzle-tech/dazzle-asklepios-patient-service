@@ -6,9 +6,9 @@ import com.dazzle.asklepios.domain.enumeration.TemplateType;
 
 import java.util.List;
 
-public record AppointmentSearchFilterDTO(
+public record AppointmentSearchFilterMultiDepartmentDTO(
         Long facility,
-        Long department,
+        List<Long> departmentIds,
         TemplateType resourceType,
         Long resourceId,
         AppointmentStatus status,
