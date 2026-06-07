@@ -226,8 +226,8 @@ public class AvailabilityTemplateController {
                 .body(toResponseVM(result));
     }
 
-    @GetMapping("/availability-templates/by-facility-and-publish-status")
-    public ResponseEntity<List<AvailabilityTemplateResponseVM>> getAllByFacilityAndPublishStatus(@ParameterObject Pageable pageable) {
+    @GetMapping("/availability-templates/by-facility-and-publish-status-and-bookable-department")
+    public ResponseEntity<List<AvailabilityTemplateResponseVM>> getAllByFacilityAndPublishStatusAndBookableDepartment(@ParameterObject Pageable pageable) {
         LOG.debug("REST request to get availability templates by status={}", TemplateStatus.PUBLISHED);
 
         Page<AvailabilityTemplate> result = availabilityTemplateService.getAllPublishedTemplate(pageable);

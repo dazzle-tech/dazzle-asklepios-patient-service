@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.AvailabilityTemplate;
 import com.dazzle.asklepios.domain.AvailabilityTemplateAllowedService;
 import com.dazzle.asklepios.domain.AvailabilityTemplateInterval;
@@ -169,8 +170,7 @@ public class AvailabilityTemplateService {
             cloneResourceTemplates(source, savedClone);
 
             return savedClone;
-        }
-        catch (DataIntegrityViolationException | JpaSystemException constraintException) {
+        } catch (DataIntegrityViolationException | JpaSystemException constraintException) {
             handleConstraintsOnCreateOrUpdate(constraintException);
 
             throw new BadRequestAlertException(
@@ -353,14 +353,32 @@ public class AvailabilityTemplateService {
     @Transactional(readOnly = true)
     public Page<AvailabilityTemplate> getAllPublishedTemplate(Pageable pageable) {
         LOG.debug("Get availability templates by status=PUBLISHED");
+
         Long facilityId = getFacility();
 
+        String login = SecurityUtils
+                .getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException("user", ENTITY_NAME, "Current user is required"));
+
+        List<Long> bookableDepartmentIds = departmentHelper.getBookableDepartment().stream()
+                .map(DepartmentDTO::id)
+                .toList();
+
+        if (bookableDepartmentIds == null || bookableDepartmentIds.isEmpty()) {
+            LOG.debug("[PUBLISHED_TEMPLATE] No bookable departments found for logged-in user={}", login);
+            return Page.empty(pageable);
+        }
+
         Page<AvailabilityTemplate> page =
-                availabilityTemplateRepository.findAllByFacilityIdAndStatus(
-                        facilityId, TemplateStatus.PUBLISHED, pageable
+                availabilityTemplateRepository.findAllByFacilityIdAndStatusAndDepartmentIdIn(
+                        facilityId,
+                        TemplateStatus.PUBLISHED,
+                        bookableDepartmentIds,
+                        pageable
                 );
 
         page.getContent().forEach(this::initializeAllowedServices);
+
         return page;
     }
 
