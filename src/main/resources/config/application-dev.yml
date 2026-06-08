@@ -21,6 +21,7 @@ waseel:
     username: ${WASEEL_USERNAME:abh706}
     password: ${WASEEL_PASSWORD:abhclm706}
     provider-id: ${WASEEL_PROVIDER_ID:706}
+    nphies-id: ${WASEEL_NPHIES_ID:10000000003170}
     system-type: ${WASEEL_SYSTEM_TYPE:1}
     timeout-seconds: 90
 

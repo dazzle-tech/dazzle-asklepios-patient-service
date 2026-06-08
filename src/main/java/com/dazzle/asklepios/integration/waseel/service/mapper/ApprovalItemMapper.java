@@ -51,7 +51,7 @@ public class ApprovalItemMapper {
             return buildItem(
                     item,
                     sequence,
-                    "procedure",
+                    "services",
                     safe(procedure.code()),
                     safe(procedure.name())
             );
@@ -98,9 +98,9 @@ public class ApprovalItemMapper {
         return buildItem(
                 item,
                 sequence,
-                type == null ? "" : type.name().toLowerCase(),
-                "",
-                ""
+                "services",
+                null,
+                null
         );
     }
 
@@ -120,16 +120,16 @@ public class ApprovalItemMapper {
         return new WaseelApprovalItem(
                 sequence,
                 type,
-                itemCode,
-                itemDescription,
-                "",
-                "",
+                emptyToNull(itemCode),
+                emptyToNull(itemDescription),
+                null,
+                null,
                 false,
                 false,
-                "",
-                "",
+                null,
+                null,
                 quantity,
-                "",
+                null,
                 unitPrice,
                 discount,
                 BigDecimal.ONE,
@@ -142,11 +142,11 @@ public class ApprovalItemMapper {
                 LocalDate.now(),
                 LocalDate.now(),
                 List.of(),
-                List.of(1),
                 List.of(),
+                List.of(1),
                 null,
                 List.of(),
-                item.getNotes()
+                emptyToNull(item.getNotes())
         );
     }
 
@@ -169,13 +169,13 @@ public class ApprovalItemMapper {
             return new ProcedureSetupDTO(
                     procedureId,
                     "Procedure not found",
-                    "",
-                    "",
+                    null,
+                    null,
                     false,
-                    "",
-                    "",
-                    "",
-                    "",
+                    null,
+                    null,
+                    null,
+                    null,
                     false,
                     null,
                     null,
@@ -191,9 +191,9 @@ public class ApprovalItemMapper {
             return new ServiceSetupDTO(
                     serviceId,
                     "Service not found",
-                    "",
-                    "",
-                    "",
+                    null,
+                    null,
+                    null,
                     0L,
                     null,
                     false,
@@ -215,7 +215,7 @@ public class ApprovalItemMapper {
                     diagnosticTestId,
                     null,
                     "Diagnostic test not found",
-                    "",
+                    null,
                     BigDecimal.ZERO,
                     null,
                     false
@@ -230,9 +230,9 @@ public class ApprovalItemMapper {
             return new BrandMedicationSetupDTO(
                     brandMedicationId,
                     "Medication not found",
-                    "",
+                    null,
                     BigDecimal.ZERO,
-                    "",
+                    null,
                     false
             );
         }
@@ -243,6 +243,10 @@ public class ApprovalItemMapper {
     }
 
     private String safe(String value) {
-        return value == null ? "" : value;
+        return value == null ? null : value;
+    }
+
+    private String emptyToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 }

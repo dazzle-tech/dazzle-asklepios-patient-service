@@ -4,7 +4,7 @@ import java.time.LocalDate;
 
 public record WaseelApprovalPreAuthorizationInfo(
         LocalDate dateOrdered,
-        String payeeId,
+        Long payeeId,
         String payeeType,
         String type,
         String subType,

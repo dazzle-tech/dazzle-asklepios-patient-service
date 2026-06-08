@@ -12,6 +12,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import jakarta.validation.constraints.NotNull;
 
 import java.time.LocalDate;
 
@@ -83,8 +84,8 @@ public class PreAuthorizationRequest extends AbstractAuditingEntity<Long> implem
     @Column(name = "date_ordered", nullable = false)
     private LocalDate dateOrdered;
 
-    @Column(name = "payee_id", nullable = false, length = 100)
-    private String payeeId;
+    @Column(name = "payee_id", nullable = false)
+    private Long payeeId;
 
     @Column(name = "payee_type", nullable = false, length = 50)
     private String payeeType = "provider";
@@ -122,8 +123,8 @@ public class PreAuthorizationRequest extends AbstractAuditingEntity<Long> implem
     @Column(name = "service_event_type", length = 50)
     private String serviceEventType;
 
-    @Column(name = "service_provider", length = 100)
-    private String serviceProvider;
+    @Column(name = "service_provider")
+    private Long serviceProvider;
 
     @Column(name = "encounter_start_date")
     private LocalDate encounterStartDate;
@@ -149,8 +150,10 @@ public class PreAuthorizationRequest extends AbstractAuditingEntity<Long> implem
     @Column(name = "status_reason", length = 1000)
     private String statusReason;
 
+    @NotNull
     @Column(name = "is_cancelled", nullable = false)
-    private Boolean isCancelled = false;
+    @Builder.Default
+    private Boolean isCancelled = Boolean.FALSE;
 
     @Column(name = "cancel_reason", length = 50)
     private String cancelReason;

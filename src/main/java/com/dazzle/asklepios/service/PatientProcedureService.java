@@ -61,9 +61,9 @@ public class PatientProcedureService {
         String username = SecurityUtils.getCurrentUserLogin().orElse(null);
         if (username == null) {
             throw new BadRequestAlertException(
-                    "unauthenticated",
+                    "No authenticated user",
                     "procedure",
-                    "No authenticated user"
+                    "unauthenticated"
             );
         }
         return username;
@@ -85,6 +85,7 @@ public class PatientProcedureService {
                 ));
 
         ProcedureSetupDTO setupProcedure = fetchProcedureSetup(procedureCreateDTO.procedureId());
+        validateProcedureSetupForBilling(setupProcedure);
 
         facilityHelper.validateFacilityExists(procedureCreateDTO.fromFacilityId());
         facilityHelper.validateFacilityExists(procedureCreateDTO.toFacilityId());
@@ -120,6 +121,8 @@ public class PatientProcedureService {
                     setupProcedure,
                     procedureCreateDTO.notes()
             );
+
+            logBillingItemBeforeSave(billingItem);
 
             PatientServiceAndProduct savedBillingItem =
                     patientServiceAndProductRepository.saveAndFlush(billingItem);
@@ -259,6 +262,32 @@ public class PatientProcedureService {
         }
     }
 
+    private void validateProcedureSetupForBilling(ProcedureSetupDTO setupProcedure) {
+        if (setupProcedure == null || setupProcedure.id() == null) {
+            throw new BadRequestAlertException(
+                    "Procedure setup is required.",
+                    "procedure",
+                    "procedureSetup.required"
+            );
+        }
+
+        if (setupProcedure.price() == null) {
+            throw new BadRequestAlertException(
+                    "Procedure price is required.",
+                    "procedure",
+                    "price.required"
+            );
+        }
+
+        if (setupProcedure.currency() == null) {
+            throw new BadRequestAlertException(
+                    "Procedure currency is required.",
+                    "procedure",
+                    "currency.required"
+            );
+        }
+    }
+
     private PatientServiceAndProduct buildProcedureBillingItem(
             Long patientId,
             Long encounterId,
@@ -266,12 +295,18 @@ public class PatientProcedureService {
             ProcedureSetupDTO setupProcedure,
             String notes
     ) {
-        BigDecimal unitPrice = BigDecimal.valueOf(
-                setupProcedure.price() == null ? 0L : setupProcedure.price()
-        );
-
+        BigDecimal unitPrice = BigDecimal.valueOf(setupProcedure.price());
         Long quantity = 1L;
-        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
+
+        BigDecimal discountAmount = BigDecimal.ZERO;
+        BigDecimal exemptionAmount = BigDecimal.ZERO;
+        BigDecimal taxAmount = BigDecimal.ZERO;
+
+        BigDecimal totalAmount = unitPrice
+                .multiply(BigDecimal.valueOf(quantity))
+                .subtract(discountAmount)
+                .subtract(exemptionAmount)
+                .add(taxAmount);
 
         boolean requiresPreAuth = requiresPreAuthorizationForProcedure(setupProcedure.id());
 
@@ -279,21 +314,30 @@ public class PatientProcedureService {
                 .patientId(patientId)
                 .encounterId(encounterId)
                 .billingItemType(BillingItemTypes.PROCEDURE)
+
+                .brandMedicationId(null)
+                .diagnosticTestId(null)
+                .serviceId(null)
                 .procedureId(setupProcedure.id())
+
                 .serviceSource(ServiceSource.PROCEDURE)
                 .sourceId(sourceId)
+
                 .quantity(quantity)
                 .unitPrice(unitPrice)
-                .discountAmount(BigDecimal.ZERO)
-                .exemptionAmount(BigDecimal.ZERO)
-                .taxAmount(BigDecimal.ZERO)
+                .discountAmount(discountAmount)
+                .exemptionAmount(exemptionAmount)
+                .taxAmount(taxAmount)
                 .totalAmount(totalAmount)
+
                 .currency(setupProcedure.currency())
+
                 .preAuthorizationStatus(
                         requiresPreAuth
                                 ? PreAuthorizationStatus.PENDING_APPROVAL
                                 : PreAuthorizationStatus.NOT_REQUIRED
                 )
+
                 .isBilled(Boolean.FALSE)
                 .billingInvoiceId(null)
                 .billingInvoiceItemId(null)
@@ -302,17 +346,18 @@ public class PatientProcedureService {
     }
 
     private boolean requiresPreAuthorizationForProcedure(Long procedureId) {
-        if (procedureId == null) {
-            return false;
-        }
+        LOG.info("Checking PreAuth for procedure {}", procedureId);
 
         try {
-            return Boolean.TRUE.equals(
-                    payorPlanItemClient.requiresPreAuthorizationForProcedure(procedureId)
-            );
+            Boolean result = payorPlanItemClient.requiresPreAuthorizationForProcedure(procedureId);
+
+            LOG.info("PreAuth result for procedure {} = {}", procedureId, result);
+
+            return Boolean.TRUE.equals(result);
+
         } catch (FeignException ex) {
             LOG.error(
-                    "[SETUP_SERVICE] Failed to check procedure pre-authorization. procedureId={} status={} body={}",
+                    "PreAuth endpoint failed. procedureId={} status={} body={}",
                     procedureId,
                     ex.status(),
                     ex.contentUTF8(),
@@ -323,10 +368,94 @@ public class PatientProcedureService {
         }
     }
 
+    private void logBillingItemBeforeSave(PatientServiceAndProduct billingItem) {
+        LOG.error("========== PROCEDURE BILLING ITEM BEFORE SAVE ==========");
+        LOG.error("patientId={}", billingItem.getPatientId());
+        LOG.error("encounterId={}", billingItem.getEncounterId());
+        LOG.error("billingItemType={}", billingItem.getBillingItemType());
+        LOG.error("procedureId={}", billingItem.getProcedureId());
+        LOG.error("serviceSource={}", billingItem.getServiceSource());
+        LOG.error("sourceId={}", billingItem.getSourceId());
+        LOG.error("quantity={}", billingItem.getQuantity());
+        LOG.error("unitPrice={}", billingItem.getUnitPrice());
+        LOG.error("discountAmount={}", billingItem.getDiscountAmount());
+        LOG.error("exemptionAmount={}", billingItem.getExemptionAmount());
+        LOG.error("taxAmount={}", billingItem.getTaxAmount());
+        LOG.error("totalAmount={}", billingItem.getTotalAmount());
+        LOG.error("currency={}", billingItem.getCurrency());
+        LOG.error("preAuthorizationStatus={}", billingItem.getPreAuthorizationStatus());
+        LOG.error("isBilled={}", billingItem.getIsBilled());
+        LOG.error("=======================================================");
+    }
+
     private RuntimeException handleConstraintViolation(Exception exception) {
         Throwable root = getRootCause(exception);
-        String msg = root != null ? root.getMessage() : exception.getMessage();
+
+        String msg = root != null
+                ? root.getMessage()
+                : exception.getMessage();
+
         String m = msg != null ? msg.toLowerCase() : "";
+
+        LOG.error("========== REAL DATABASE ERROR ==========");
+        LOG.error("{}", msg);
+        LOG.error("=========================================", exception);
+
+        if (m.contains("patient_services_and_products") && m.contains("currency")) {
+            return new BadRequestAlertException(
+                    "Procedure currency is required or invalid.",
+                    "procedure",
+                    "currency.required"
+            );
+        }
+
+        if (m.contains("patient_services_and_products") && m.contains("unit_price")) {
+            return new BadRequestAlertException(
+                    "Procedure price is required.",
+                    "procedure",
+                    "price.required"
+            );
+        }
+
+        if (m.contains("patient_services_and_products") && m.contains("service_source")) {
+            return new BadRequestAlertException(
+                    "Service source is required.",
+                    "procedure",
+                    "serviceSource.required"
+            );
+        }
+
+        if (m.contains("patient_services_and_products") && m.contains("billing_item_type")) {
+            return new BadRequestAlertException(
+                    "Billing item type is required.",
+                    "procedure",
+                    "billingItemType.required"
+            );
+        }
+
+        if (m.contains("patient_services_and_products") && m.contains("patient_id")) {
+            return new BadRequestAlertException(
+                    "Invalid patient id for billing item.",
+                    "procedure",
+                    "patient.invalid"
+            );
+        }
+
+        if (m.contains("patient_services_and_products") && m.contains("encounter_id")) {
+            return new BadRequestAlertException(
+                    "Invalid encounter id for billing item.",
+                    "procedure",
+                    "encounter.invalid"
+            );
+        }
+
+        if (m.contains("fk_psp_procedure")) {
+            return new BadRequestAlertException(
+                    "Procedure setup does not exist in billing table reference.",
+                    "procedure",
+                    "procedure.invalid"
+            );
+        }
 
         if (m.contains("uk_procedure_unique_context_active")) {
             return new BadRequestAlertException(
@@ -378,7 +507,7 @@ public class PatientProcedureService {
 
         if (m.contains("fk_procedure_indication_icd")) {
             return new BadRequestAlertException(
-                    "Invalid indication (ICD) id.",
+                    "Invalid indication ICD id.",
                     "procedure",
                     "indication.invalid"
             );
@@ -425,7 +554,7 @@ public class PatientProcedureService {
         }
 
         return new BadRequestAlertException(
-                "Database constraint violated while saving procedure.",
+                msg != null ? msg : "Database constraint violated while saving procedure.",
                 "procedure",
                 "db.constraint"
         );

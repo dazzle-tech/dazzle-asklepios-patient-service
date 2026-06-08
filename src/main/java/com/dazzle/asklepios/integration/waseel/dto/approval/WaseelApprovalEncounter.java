@@ -8,7 +8,7 @@ public record WaseelApprovalEncounter(
         String serviceType,
         LocalDate startDate,
         String serviceEventType,
-        String serviceProvider,
+        Long serviceProvider,
         LocalDate periodEnd,
         String causeOfDeath
 ) {}

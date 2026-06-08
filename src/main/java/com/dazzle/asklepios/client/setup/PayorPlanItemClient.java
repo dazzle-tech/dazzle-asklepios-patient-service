@@ -12,16 +12,17 @@ import org.springframework.web.bind.annotation.PathVariable;
 )
 public interface PayorPlanItemClient {
 
-    @GetMapping("/api/setup/payor-plan-items/procedure/{procedureId}/requires-pre-authorization")
+    @GetMapping("/api/setup/payor-plan-items/procedure/{procedureId}/pre-authorization-required")
     Boolean requiresPreAuthorizationForProcedure(@PathVariable("procedureId") Long procedureId);
 
-    @GetMapping("/api/setup/payor-plan-items/service/{serviceId}/requires-pre-authorization")
+    @GetMapping("/api/setup/payor-plan-items/service/{serviceId}/pre-authorization-required")
     Boolean requiresPreAuthorizationForService(@PathVariable("serviceId") Long serviceId);
 
     @GetMapping("/api/setup/payor-plan-items/diagnostic-test/{diagnosticTestId}/pre-authorization-required")
     Boolean requiresPreAuthorizationForDiagnosticTest(
             @PathVariable("diagnosticTestId") Long diagnosticTestId
     );
+
     @GetMapping("/api/setup/payor-plan-items/brand-medication/{brandMedicationId}/pre-authorization-required")
     Boolean requiresPreAuthorizationForMedication(
             @PathVariable("brandMedicationId") Long brandMedicationId

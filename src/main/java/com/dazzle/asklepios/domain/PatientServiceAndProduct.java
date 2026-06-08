@@ -93,6 +93,8 @@ public class PatientServiceAndProduct extends AbstractAuditingEntity<Long> imple
     @Builder.Default
     private BigDecimal totalAmount = BigDecimal.ZERO;
 
+    @NotNull
+    @Enumerated(EnumType.STRING)
     @Column(name = "currency", nullable = false, length = 10)
     private Currency currency;
 

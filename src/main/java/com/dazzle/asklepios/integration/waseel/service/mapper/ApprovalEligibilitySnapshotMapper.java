@@ -30,7 +30,7 @@ public class ApprovalEligibilitySnapshotMapper {
             );
         }
 
-        if (eligibilityRequest.getResponseJson() == null || eligibilityRequest.getResponseJson().isBlank()) {
+        if (isBlank(eligibilityRequest.getResponseJson())) {
             throw new BadRequestAlertException(
                     "Eligibility response JSON is required before pre-authorization",
                     "preAuthorization",
@@ -38,35 +38,63 @@ public class ApprovalEligibilitySnapshotMapper {
             );
         }
 
-        JsonNode root = parseJson(eligibilityRequest.getResponseJson());
+        JsonNode responseRoot = parseJson(
+                eligibilityRequest.getResponseJson(),
+                "Invalid eligibility response JSON",
+                "eligibility.response.invalid"
+        );
 
-        JsonNode beneficiaryNode = findNode(root, "beneficiary");
-        JsonNode insurancePlanNode = findNode(root, "insurancePlan");
+        JsonNode requestRoot = null;
+        if (!isBlank(eligibilityRequest.getRequestJson())) {
+            requestRoot = parseJson(
+                    eligibilityRequest.getRequestJson(),
+                    "Invalid eligibility request JSON",
+                    "eligibility.request.invalid"
+            );
+        }
 
-        if (beneficiaryNode == null || beneficiaryNode.isMissingNode() || beneficiaryNode.isNull()) {
+        JsonNode beneficiaryNode = findNode(requestRoot, "beneficiary");
+        JsonNode insurancePlanNode = findNode(requestRoot, "insurancePlan");
+
+        if (isMissing(beneficiaryNode)) {
+            beneficiaryNode = findNode(responseRoot, "beneficiary");
+        }
+
+        if (isMissing(insurancePlanNode)) {
+            insurancePlanNode = findNode(responseRoot, "insurancePlan");
+        }
+
+        if (isMissing(beneficiaryNode)) {
             throw new BadRequestAlertException(
-                    "Beneficiary data not found in eligibility response",
+                    "Beneficiary data not found in eligibility request/response",
                     "preAuthorization",
                     "eligibility.beneficiary.notFound"
             );
         }
 
-        if (insurancePlanNode == null || insurancePlanNode.isMissingNode() || insurancePlanNode.isNull()) {
+        if (isMissing(insurancePlanNode)) {
             throw new BadRequestAlertException(
-                    "Insurance plan data not found in eligibility response",
+                    "Insurance plan data not found in eligibility request/response",
                     "preAuthorization",
                     "eligibility.insurancePlan.notFound"
             );
         }
 
         return new WaseelApprovalEligibilitySnapshot(
-                eligibilityRequest.getTransfer() != null ? eligibilityRequest.getTransfer() : bool(root, "transfer"),
-                bool(root, "isNewBorn"),
+                eligibilityRequest.getTransfer() != null
+                        ? eligibilityRequest.getTransfer()
+                        : bool(responseRoot, "transfer"),
+                firstBoolean(
+                        bool(responseRoot, "isNewBorn"),
+                        bool(requestRoot, "isNewBorn"),
+                        bool(beneficiaryNode, "isNewBorn")
+                ),
                 toBeneficiary(beneficiaryNode),
                 toInsurancePlan(insurancePlanNode),
                 firstNonBlank(
                         text(insurancePlanNode, "memberCardId"),
-                        text(root, "memberId")
+                        text(responseRoot, "memberId"),
+                        text(requestRoot, "memberId")
                 ),
                 eligibilityRequest.getPatientInsuranceId(),
                 eligibilityRequest.getPayorId(),
@@ -75,13 +103,18 @@ public class ApprovalEligibilitySnapshotMapper {
                 eligibilityRequest.getDestinationId(),
                 firstNonBlank(
                         eligibilityRequest.getEligibilityResponseId(),
-                        text(root, "eligibilityResponseId")
+                        text(responseRoot, "eligibilityResponseId"),
+                        text(responseRoot, "nphiesResponseId"),
+                        text(requestRoot, "eligibilityResponseId")
                 ),
                 firstNonBlank(
                         eligibilityRequest.getEligibilityResponseUrl(),
-                        text(root, "eligibilityResponseUrl")
+                        text(responseRoot, "eligibilityResponseUrl"),
+                        text(responseRoot, "eligibilityIdentifierUrl"),
+                        text(requestRoot, "eligibilityResponseUrl")
                 )
-        );}
+        );
+    }
 
     private WaseelApprovalBeneficiary toBeneficiary(JsonNode node) {
         return new WaseelApprovalBeneficiary(
@@ -152,14 +185,14 @@ public class ApprovalEligibilitySnapshotMapper {
         return result;
     }
 
-    private JsonNode parseJson(String json) {
+    private JsonNode parseJson(String json, String title, String messageKey) {
         try {
             return objectMapper.readTree(json);
         } catch (Exception e) {
             throw new BadRequestAlertException(
-                    "Invalid eligibility response JSON",
+                    title,
                     "preAuthorization",
-                    "eligibility.response.invalid"
+                    messageKey
             );
         }
     }
@@ -202,6 +235,20 @@ public class ApprovalEligibilitySnapshotMapper {
         }
 
         return node.get(fieldName).asBoolean(false);
+    }
+
+    private Boolean firstBoolean(Boolean... values) {
+        if (values == null) {
+            return false;
+        }
+
+        for (Boolean value : values) {
+            if (Boolean.TRUE.equals(value)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private BigDecimal decimal(JsonNode node, String fieldName) {
@@ -250,5 +297,13 @@ public class ApprovalEligibilitySnapshotMapper {
         }
 
         return "";
+    }
+
+    private boolean isMissing(JsonNode node) {
+        return node == null || node.isMissingNode() || node.isNull();
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 }

@@ -113,6 +113,10 @@ public class PreAuthorizationSubmissionService {
         saveDetails(preAuthorization, request, pendingItems);
 
         try {
+            System.out.println("============== REQUEST JSON ==============");
+            System.out.println(requestJson);
+            System.out.println("=========================================");
+
             ApprovalResponse response = waseelApprovalService.requestApproval(request);
             String responseJson = toJson(response);
 
@@ -165,9 +169,13 @@ public class PreAuthorizationSubmissionService {
                 .payorId(snapshot.payorId())
                 .payorPlanId(snapshot.payorPlanId())
                 .providerId(firstNonBlank(snapshot.providerId(), waseelApiProperties.providerId()))
-                .providerNphiesId(firstNonBlank(snapshot.providerId(), waseelApiProperties.providerId()))
-                .eligibilityResponseId(firstNonBlank(snapshot.eligibilityResponseId(), request.preAuthorizationInfo().eligibilityResponseId()))
-                .eligibilityResponseUrl(firstNonBlank(snapshot.eligibilityResponseUrl(), request.preAuthorizationInfo().eligibilityResponseUrl()))
+                .providerNphiesId(firstNonBlank(waseelApiProperties.nphiesId(), snapshot.providerId()))
+                .eligibilityResponseId(firstNonBlank(
+                        snapshot.eligibilityResponseId(),
+                        request.preAuthorizationInfo().eligibilityResponseId()))
+                .eligibilityResponseUrl(firstNonBlank(
+                        snapshot.eligibilityResponseUrl(),
+                        request.preAuthorizationInfo().eligibilityResponseUrl()))
                 .eligibilityOfflineId(request.preAuthorizationInfo().eligibilityOfflineId())
                 .eligibilityOfflineDate(request.preAuthorizationInfo().eligibilityOfflineDate())
                 .dateOrdered(request.preAuthorizationInfo().dateOrdered())
@@ -179,6 +187,7 @@ public class PreAuthorizationSubmissionService {
                 .prescription(request.preAuthorizationInfo().prescription())
                 .transfer(Boolean.TRUE.equals(request.transfer()))
                 .isNewBorn(Boolean.TRUE.equals(request.isNewBorn()))
+                .isCancelled(Boolean.FALSE)
                 .destinationId(firstNonBlank(snapshot.destinationId(), request.destinationId()))
                 .encounterStatus(request.encounter().status())
                 .encounterClass(request.encounter().encounterClass())
@@ -191,6 +200,7 @@ public class PreAuthorizationSubmissionService {
                 .status("SUBMITTING")
                 .requestJson(requestJson)
                 .build();
+
         return preAuthorizationRequestRepository.saveAndFlush(preAuthorization);
     }
 

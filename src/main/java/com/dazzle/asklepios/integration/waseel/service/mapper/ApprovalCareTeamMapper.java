@@ -8,9 +8,7 @@ import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
 @RequiredArgsConstructor
@@ -19,52 +17,15 @@ public class ApprovalCareTeamMapper {
     private final PractitionerClient practitionerClient;
 
     public List<WaseelApprovalCareTeam> toWaseelCareTeam(PatientEncounter encounter) {
-        if (encounter == null) {
+        if (encounter == null || encounter.getPractitionerId() == null) {
             return List.of();
         }
 
-        List<WaseelApprovalCareTeam> careTeam = new ArrayList<>();
-        AtomicInteger sequence = new AtomicInteger(1);
+        PractitionerDTO practitioner = getPractitioner(encounter.getPractitionerId());
 
-        if (isNotBlank(encounter.getStartedBy())) {
-            careTeam.add(new WaseelApprovalCareTeam(
-                    sequence.getAndIncrement(),
-                    encounter.getStartedBy(),
-                    encounter.getStartedBy(),
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "started_by"
-            ));
-        }
-
-        if (isNotBlank(encounter.getCompletedBy())) {
-            careTeam.add(new WaseelApprovalCareTeam(
-                    sequence.getAndIncrement(),
-                    encounter.getCompletedBy(),
-                    encounter.getCompletedBy(),
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "completed_by"
-            ));
-        }
-
-        if (encounter.getPractitionerId() != null) {
-            PractitionerDTO practitioner = getPractitioner(encounter.getPractitionerId());
-
-            careTeam.add(buildPractitionerCareTeam(
-                    sequence.getAndIncrement(),
-                    encounter.getPractitionerId(),
-                    practitioner
-            ));
-        }
-
-        return careTeam;
+        return List.of(
+                buildPractitionerCareTeam(1, encounter.getPractitionerId(), practitioner)
+        );
     }
 
     private WaseelApprovalCareTeam buildPractitionerCareTeam(
@@ -77,11 +38,11 @@ public class ApprovalCareTeamMapper {
                     sequence,
                     String.valueOf(practitionerId),
                     String.valueOf(practitionerId),
-                    "",
+                    null,
                     "primary",
-                    "",
-                    "",
-                    "",
+                    null,
+                    null,
+                    null,
                     "practitioner"
             );
         }
@@ -91,21 +52,19 @@ public class ApprovalCareTeamMapper {
                 fullName(practitioner),
                 firstNonBlank(
                         practitioner.defaultMedicalLicense(),
-                        practitioner.secondaryMedicalLicense(),
-                        practitioner.email(),
-                        String.valueOf(practitioner.id())
+                        practitioner.secondaryMedicalLicense()
                 ),
-                safe(practitioner.jobRole()),
+                emptyToNull(practitioner.jobRole()),
                 "primary",
-                firstNonBlank(
+                emptyToNull(firstNonBlank(
                         practitioner.subSpecialty(),
                         practitioner.specialty()
-                ),
-                safe(practitioner.specialty()),
-                firstNonBlank(
+                )),
+                emptyToNull(practitioner.specialty()),
+                emptyToNull(firstNonBlank(
                         practitioner.educationalLevel(),
                         practitioner.specialty()
-                ),
+                )),
                 "practitioner"
         );
     }
@@ -127,16 +86,14 @@ public class ApprovalCareTeamMapper {
     }
 
     private String join(String first, String second) {
-        String firstValue = safe(first);
-        String secondValue = safe(second);
-
-        String joined = (firstValue + " " + secondValue).trim();
-        return joined;
+        String firstValue = first == null ? "" : first;
+        String secondValue = second == null ? "" : second;
+        return (firstValue + " " + secondValue).trim();
     }
 
     private String firstNonBlank(String... values) {
         if (values == null) {
-            return "";
+            return null;
         }
 
         for (String value : values) {
@@ -145,14 +102,10 @@ public class ApprovalCareTeamMapper {
             }
         }
 
-        return "";
+        return null;
     }
 
-    private String safe(String value) {
-        return value == null ? "" : value;
-    }
-
-    private boolean isNotBlank(String value) {
-        return value != null && !value.isBlank();
+    private String emptyToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 }
