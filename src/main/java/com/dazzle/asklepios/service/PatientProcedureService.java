@@ -302,27 +302,33 @@ public class PatientProcedureService {
     }
 
     private boolean requiresPreAuthorizationForProcedure(Long procedureId) {
-        if (procedureId == null) {
-            return false;
-        }
+
+        LOG.info("Checking PreAuth for procedure {}", procedureId);
 
         try {
-            return Boolean.TRUE.equals(
-                    payorPlanItemClient.requiresPreAuthorizationForProcedure(procedureId)
-            );
-        } catch (FeignException ex) {
-            LOG.error(
-                    "[SETUP_SERVICE] Failed to check procedure pre-authorization. procedureId={} status={} body={}",
+
+            Boolean result =
+                    payorPlanItemClient.requiresPreAuthorizationForProcedure(procedureId);
+
+            LOG.info(
+                    "PreAuth result for procedure {} = {}",
                     procedureId,
-                    ex.status(),
-                    ex.contentUTF8(),
-                    ex
+                    result
+            );
+
+            return Boolean.TRUE.equals(result);
+
+        } catch (FeignException ex) {
+
+            LOG.error(
+                    "PreAuth endpoint failed. procedureId={} body={}",
+                    procedureId,
+                    ex.contentUTF8()
             );
 
             return false;
         }
     }
-
     private RuntimeException handleConstraintViolation(Exception exception) {
         Throwable root = getRootCause(exception);
         String msg = root != null ? root.getMessage() : exception.getMessage();

@@ -141,12 +141,12 @@ public class WaseelEligibilityCheckService {
                 null,
                 null,
                 null,
-                apLovMapperService.mapMaritalStatusKeyToNphies(patient.getMaritalStatus()),
+                resolveMaritalStatusForWaseel(patient),
                 apLovMapperService.getCleanValueCodeByLovCodeAndKey(
                         AsklepiosLovCodes.RELIGION,
                         patient.getReligion()
                 ),
-                apLovMapperService.mapOccupationKeyToNphies(patient.getOccupation()),
+                resolveOccupationForWaseel(patient),
                 apLovMapperService.getCleanValueCodeByLovCodeAndKey(
                         AsklepiosLovCodes.LANG,
                         patient.getPreferredLanguage()
@@ -309,4 +309,52 @@ public class WaseelEligibilityCheckService {
             return null;
         }
     }
-}
+
+    private String resolveMaritalStatusForWaseel(Patient patient) {
+        String value = apLovMapperService.mapMaritalStatusKeyToNphies(
+                patient.getMaritalStatus()
+        );
+
+        if (value == null || value.isBlank()) {
+            return "U";
+        }
+
+        return switch (value.trim().toUpperCase()) {
+            case "M", "MARRIED" -> "M";
+            case "D", "DIVORCED" -> "D";
+            case "W", "WIDOWED" -> "W";
+            case "U", "SINGLE", "UNMARRIED" -> "U";
+            case "L", "LEGALY SEPARATED", "LEGALLY SEPARATED" -> "L";
+            default -> "U";
+        };
+    }
+
+    private String resolveOccupationForWaseel(Patient patient) {
+        String value = apLovMapperService.mapOccupationKeyToNphies(
+                patient.getOccupation()
+        );
+
+        if (value == null || value.isBlank()) {
+            return "unknown";
+        }
+
+        String normalized = value.trim().toLowerCase();
+
+        return switch (normalized) {
+            case "administration",
+                 "agriculture",
+                 "business",
+                 "education",
+                 "housewife",
+                 "marine",
+                 "medical field",
+                 "military",
+                 "skilled worker",
+                 "student",
+                 "oil industries",
+                 "unemployed",
+                 "others",
+                 "unknown" -> normalized;
+            default -> "unknown";
+        };
+    }}

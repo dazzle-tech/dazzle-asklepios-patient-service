@@ -30,6 +30,8 @@ import java.util.List;
 public class ApprovalRequestBuilderService {
 
     private final ApprovalEligibilitySnapshotService snapshotService;
+    private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
+
     private final PatientEncounterRepository encounterRepository;
     private final PatientDiagnosisRepository patientDiagnosisRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
@@ -45,6 +47,8 @@ public class ApprovalRequestBuilderService {
 
     @Transactional(readOnly = true)
     public WaseelApprovalRequest buildRequest(Long eligibilityRequestId, Long encounterId) {
+        encounterInsuranceEligibilityService.getValidatedInsuranceForPreAuthorization(encounterId);
+
         WaseelApprovalEligibilitySnapshot snapshot =
                 snapshotService.buildSnapshot(eligibilityRequestId);
 
