@@ -15,16 +15,23 @@ public class ApprovalPreAuthorizationInfoMapper {
     ) {
         return new WaseelApprovalPreAuthorizationInfo(
                 LocalDate.now(),
-                providerId,
+                toLong(providerId),   // <-- FIX
                 "provider",
                 "professional",
                 "op",
-                "",
                 null,
-                "",
+                null,
+                null,
                 snapshot.eligibilityResponseId(),
                 snapshot.eligibilityResponseUrl(),
                 null
         );
+    }
+
+    private Long toLong(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return Long.valueOf(value);
     }
 }

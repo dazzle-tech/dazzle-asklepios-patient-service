@@ -2,7 +2,6 @@ package com.dazzle.asklepios.integration.waseel.dto.approval;
 
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
-import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalEncounter;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import org.springframework.stereotype.Component;
 
@@ -26,31 +25,30 @@ public class ApprovalEncounterMapper {
                 "acute-care",
                 encounter.getEncounterDate() != null ? encounter.getEncounterDate() : LocalDate.now(),
                 "ICSE",
-                providerId,
+                toLong(providerId),
                 null,
-                ""
+                null
         );
     }
 
     private String resolveEncounterClass(EncounterType encounterType) {
-
         if (encounterType == null) {
             return "AMB";
         }
 
         return switch (encounterType) {
-
-            case EMERGENCY ->
-                    "EMER";
-
-            case INPATIENT ->
-                    "IMP";
-
-            case DAYCASE ->
-                    "DC";
-
-            case CLINIC ->
-                    "AMB";
+            case EMERGENCY -> "EMER";
+            case INPATIENT -> "IMP";
+            case DAYCASE -> "DC";
+            case CLINIC -> "AMB";
         };
+    }
+
+    private Long toLong(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        return Long.valueOf(value);
     }
 }

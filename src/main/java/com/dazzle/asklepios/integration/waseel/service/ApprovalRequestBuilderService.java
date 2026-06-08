@@ -52,6 +52,16 @@ public class ApprovalRequestBuilderService {
         WaseelApprovalEligibilitySnapshot snapshot =
                 snapshotService.buildSnapshot(eligibilityRequestId);
 
+        if (snapshot == null) {
+            throw new BadRequestAlertException(
+                    "Eligibility snapshot not found",
+                    "preAuthorization",
+                    "eligibility.snapshotNotFound"
+            );
+        }
+
+        String nphiesId = resolveNphiesId();
+
         PatientEncounter encounter = encounterRepository.findById(encounterId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "Encounter not found",
@@ -61,6 +71,14 @@ public class ApprovalRequestBuilderService {
 
         List<PatientDiagnosis> diagnoses =
                 patientDiagnosisRepository.findByEncounterId(encounterId);
+
+        if (diagnoses == null || diagnoses.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "Diagnosis is required before submitting pre-authorization",
+                    "preAuthorization",
+                    "diagnosis.required"
+            );
+        }
 
         List<PatientServiceAndProduct> items =
                 patientServiceAndProductRepository.findByEncounterIdAndPreAuthorizationStatus(
@@ -76,31 +94,73 @@ public class ApprovalRequestBuilderService {
             );
         }
 
+        validateItems(items);
+
         return new WaseelApprovalRequest(
-                snapshot.transfer(),
-                snapshot.isNewBorn(),
+                Boolean.TRUE.equals(snapshot.transfer()),
+                Boolean.TRUE.equals(snapshot.isNewBorn()),
                 snapshot.beneficiary(),
                 null,
                 null,
                 snapshot.insurancePlan(),
                 preAuthorizationInfoMapper.toPreAuthorizationInfo(
                         snapshot,
-                        waseelApiProperties.providerId()
+                        nphiesId
                 ),
                 approvalSupportingInfoMapper.toSupportingInfo(encounter),
                 approvalDiagnosisMapper.toWaseelDiagnosisList(diagnoses),
                 approvalCareTeamMapper.toWaseelCareTeam(encounter),
-                "",
-                "",
+                null,
+                null,
                 null,
                 null,
                 encounterMapper.toWaseelEncounter(
                         encounter,
-                        waseelApiProperties.providerId()
+                        nphiesId
                 ),
                 approvalItemMapper.toWaseelItems(items),
                 calculateTotalNet(items)
         );
+    }
+
+    private String resolveNphiesId() {
+        if (waseelApiProperties.nphiesId() != null && !waseelApiProperties.nphiesId().isBlank()) {
+            return waseelApiProperties.nphiesId();
+        }
+
+        throw new BadRequestAlertException(
+                "Waseel NPHIES ID is required. Please configure waseel.api.nphies-id.",
+                "preAuthorization",
+                "waseel.nphiesId.required"
+        );
+    }
+
+    private void validateItems(List<PatientServiceAndProduct> items) {
+        for (PatientServiceAndProduct item : items) {
+            if (item.getTotalAmount() == null) {
+                throw new BadRequestAlertException(
+                        "Item total amount is required",
+                        "preAuthorization",
+                        "item.totalAmount.required"
+                );
+            }
+
+            if (item.getUnitPrice() == null) {
+                throw new BadRequestAlertException(
+                        "Item unit price is required",
+                        "preAuthorization",
+                        "item.unitPrice.required"
+                );
+            }
+
+            if (item.getQuantity() == null || item.getQuantity() <= 0) {
+                throw new BadRequestAlertException(
+                        "Item quantity is required",
+                        "preAuthorization",
+                        "item.quantity.required"
+                );
+            }
+        }
     }
 
     private BigDecimal calculateTotalNet(List<PatientServiceAndProduct> items) {
