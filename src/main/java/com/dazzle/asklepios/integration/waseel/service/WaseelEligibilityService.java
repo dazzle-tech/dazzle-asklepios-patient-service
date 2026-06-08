@@ -9,6 +9,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 @Service
@@ -27,10 +28,16 @@ public class WaseelEligibilityService {
         this.tokenService = tokenService;
         this.properties = properties;
     }
-
     public EligibilityResponse requestEligibility(EligibilityRequest request) {
+        try {
+            return doRequestEligibility(request, tokenService.getToken());
+        } catch (HttpClientErrorException.Unauthorized ex) {
+            tokenService.clearToken();
+            return doRequestEligibility(request, tokenService.getToken());
+        }
+    }
 
-        String token = tokenService.getToken();
+    private EligibilityResponse doRequestEligibility(EligibilityRequest request, String token) {
 
         String url =
                 properties.baseUrl()
@@ -38,8 +45,11 @@ public class WaseelEligibilityService {
                         + properties.providerId()
                         + "/request";
 
-        HttpHeaders headers = new HttpHeaders();
+        if (token != null && token.toLowerCase().startsWith("bearer ")) {
+            token = token.substring(7).trim();
+        }
 
+        HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON));
@@ -59,3 +69,4 @@ public class WaseelEligibilityService {
         return response.getBody();
     }
 }
+
