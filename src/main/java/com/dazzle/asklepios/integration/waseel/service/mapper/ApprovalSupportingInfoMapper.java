@@ -2,29 +2,49 @@ package com.dazzle.asklepios.integration.waseel.service.mapper;
 
 import com.dazzle.asklepios.domain.BodyMeasurements;
 import com.dazzle.asklepios.domain.ChiefComplain;
+import com.dazzle.asklepios.domain.EncounterAssessment;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientObservationsComplaints;
+import com.dazzle.asklepios.domain.PatientProblem;
+import com.dazzle.asklepios.domain.ProgressNote;
+import com.dazzle.asklepios.domain.SocialHistory;
+import com.dazzle.asklepios.domain.SurgicalHistory;
 import com.dazzle.asklepios.domain.VitalSigns;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalSupportingInfo;
 import com.dazzle.asklepios.repository.BodyMeasurementsRepository;
 import com.dazzle.asklepios.repository.ChiefComplainRepository;
+import com.dazzle.asklepios.repository.EncounterAssessmentRepository;
+import com.dazzle.asklepios.repository.PatientObservationsComplaintsRepository;
+import com.dazzle.asklepios.repository.PatientProblemRepository;
+import com.dazzle.asklepios.repository.ProgressNoteRepository;
+import com.dazzle.asklepios.repository.SocialHistoryRepository;
+import com.dazzle.asklepios.repository.SurgicalHistoryRepository;
 import com.dazzle.asklepios.repository.VitalSignsRepository;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
 public class ApprovalSupportingInfoMapper {
 
+    private static final String ACTIVE = "ACTIVE";
+
     private final ChiefComplainRepository chiefComplainRepository;
     private final VitalSignsRepository vitalSignsRepository;
     private final BodyMeasurementsRepository bodyMeasurementsRepository;
-    private final JdbcTemplate jdbcTemplate;
+    private final PatientObservationsComplaintsRepository patientObservationsComplaintsRepository;
+    private final ProgressNoteRepository progressNoteRepository;
+    private final EncounterAssessmentRepository encounterAssessmentRepository;
+    private final PatientProblemRepository patientProblemRepository;
+    private final SurgicalHistoryRepository surgicalHistoryRepository;
+    private final SocialHistoryRepository socialHistoryRepository;
 
     public List<WaseelApprovalSupportingInfo> toSupportingInfo(PatientEncounter encounter) {
         if (encounter == null || encounter.getId() == null) {
@@ -56,89 +76,64 @@ public class ApprovalSupportingInfoMapper {
             Long encounterId,
             Long patientId
     ) {
-        String reasonOfVisit = latestValue(
-                """
-                select reason_of_visit
-                from patient_observations_complaints
-                where encounter_id = ?
-                  and is_active = true
-                  and reason_of_visit is not null
-                  and trim(reason_of_visit) <> ''
-                order by id desc
-                limit 1
-                """,
-                encounterId
-        );
+        String reasonOfVisit = patientObservationsComplaintsRepository
+                .findFirstByEncounterIdAndIsActiveTrueOrderByCreatedDateDesc(encounterId)
+                .map(PatientObservationsComplaints::getReasonOfVisit)
+                .filter(this::isNotBlank)
+                .map(String::trim)
+                .orElse(null);
 
-        String progressNote = latestValue(
-                """
-                select note_text
-                from progress_notes
-                where encounter_id = ?
-                  and note_text is not null
-                  and trim(note_text) <> ''
-                  and cancelled_date is null
-                order by id desc
-                limit 1
-                """,
-                encounterId
-        );
+        String progressNote = progressNoteRepository
+                .findByEncounterIdAndCancelledDateIsNull(encounterId, PageRequest.of(0, 1))
+                .stream()
+                .map(ProgressNote::getNoteText)
+                .filter(this::isNotBlank)
+                .map(String::trim)
+                .findFirst()
+                .orElse(null);
 
-        String assessment = latestValue(
-                """
-                select assessment
-                from encounter_assessments
-                where encounter_id = ?
-                  and assessment is not null
-                  and trim(assessment) <> ''
-                order by id desc
-                limit 1
-                """,
-                encounterId
-        );
+        String assessment = encounterAssessmentRepository
+                .findTopByEncounterIdOrderByCreatedDateDesc(encounterId)
+                .map(EncounterAssessment::getAssessment)
+                .filter(this::isNotBlank)
+                .map(String::trim)
+                .orElse(null);
 
-        String patientProblems = latestValue(
-                """
-                select string_agg(condition, ', ')
-                from patient_problems
-                where patient_id = ?
-                  and status = 'ACTIVE'
-                  and condition is not null
-                  and trim(condition) <> ''
-                """,
-                patientId
-        );
+        String patientProblems = patientId == null
+                ? null
+                : patientProblemRepository
+                .findAllByPatientId(patientId, PageRequest.of(0, 100))
+                .stream()
+                .filter(problem -> problem.getStatus() != null)
+                .filter(problem -> ACTIVE.equalsIgnoreCase(problem.getStatus().name()))
+                .map(PatientProblem::getCondition)
+                .filter(this::isNotBlank)
+                .map(String::trim)
+                .collect(Collectors.joining(", "));
 
-        String surgicalHistory = latestValue(
-                """
-                select string_agg(surgery, ', ')
-                from surgical_history
-                where patient_id = ?
-                  and status = 'ACTIVE'
-                  and surgery is not null
-                  and trim(surgery) <> ''
-                """,
-                patientId
-        );
+        String surgicalHistory = patientId == null
+                ? null
+                : surgicalHistoryRepository
+                .findAllByPatientId(patientId, PageRequest.of(0, 100))
+                .stream()
+                .map(SurgicalHistory::getSurgery)
+                .filter(this::isNotBlank)
+                .map(String::trim)
+                .collect(Collectors.joining(", "));
 
-        String socialHistory = latestValue(
-                """
-                select concat_ws(', ',
-                    case when is_current_smoker = true then 'Current smoker' end,
-                    case when is_previous_smoker = true then 'Previous smoker' end,
-                    case when alcohol_consumption = true then 'Alcohol consumption' end,
-                    case when substance_use = true then 'Substance use' end,
-                    nullif(physical_limitation, ''),
-                    nullif(diagnosed_eating_disorders, '')
-                )
-                from social_history
-                where patient_id = ?
-                  and status = 'ACTIVE'
-                order by id desc
-                limit 1
-                """,
-                patientId
-        );
+        String socialHistory = patientId == null
+                ? null
+                : socialHistoryRepository
+                .findAllByPatientId(patientId, PageRequest.of(0, 1))
+                .stream()
+                .map(this::mapSocialHistory)
+                .filter(this::isNotBlank)
+                .map(String::trim)
+                .findFirst()
+                .orElse(null);
+
+        patientProblems = blankToNull(patientProblems);
+        surgicalHistory = blankToNull(surgicalHistory);
 
         String chiefComplaint = required(
                 firstNonBlank(
@@ -199,6 +194,40 @@ public class ApprovalSupportingInfoMapper {
         result.add(textInfo(sequence, "physical-examination", physicalExamination));
         result.add(textInfo(sequence, "investigation-result", investigationResult));
         result.add(textInfo(sequence, "treatment-plan", treatmentPlan));
+    }
+
+    private String mapSocialHistory(SocialHistory source) {
+        if (source == null) {
+            return null;
+        }
+
+        List<String> values = new ArrayList<>();
+
+        if (Boolean.TRUE.equals(source.getIsCurrentSmoker())) {
+            values.add("Current smoker");
+        }
+
+        if (Boolean.TRUE.equals(source.getIsPreviousSmoker())) {
+            values.add("Previous smoker");
+        }
+
+        if (Boolean.TRUE.equals(source.getAlcoholConsumption())) {
+            values.add("Alcohol consumption");
+        }
+
+        if (Boolean.TRUE.equals(source.getSubstanceUse())) {
+            values.add("Substance use");
+        }
+
+        if (isNotBlank(source.getPhysicalLimitation())) {
+            values.add(source.getPhysicalLimitation().trim());
+        }
+
+        if (isNotBlank(source.getDiagnosedEatingDisorders())) {
+            values.add(source.getDiagnosedEatingDisorders().trim());
+        }
+
+        return values.isEmpty() ? null : String.join(", ", values);
     }
 
     private void addVitalSigns(
@@ -314,26 +343,6 @@ public class ApprovalSupportingInfoMapper {
         );
     }
 
-    private String latestValue(String sql, Object... args) {
-        if (args == null) {
-            return null;
-        }
-
-        for (Object arg : args) {
-            if (arg == null) {
-                return null;
-            }
-        }
-
-        List<String> values = jdbcTemplate.queryForList(sql, String.class, args);
-
-        return values.stream()
-                .filter(this::isNotBlank)
-                .map(String::trim)
-                .findFirst()
-                .orElse(null);
-    }
-
     private String required(String value, String message) {
         if (value == null || value.isBlank()) {
             throw requiredField(message);
@@ -362,6 +371,10 @@ public class ApprovalSupportingInfoMapper {
         }
 
         return null;
+    }
+
+    private String blankToNull(String value) {
+        return isNotBlank(value) ? value.trim() : null;
     }
 
     private boolean isNotBlank(String value) {

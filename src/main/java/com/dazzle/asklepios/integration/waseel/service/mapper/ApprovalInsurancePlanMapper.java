@@ -1,44 +1,25 @@
 package com.dazzle.asklepios.integration.waseel.service.mapper;
 
-import com.dazzle.asklepios.client.setup.PayorClient;
-import com.dazzle.asklepios.client.setup.PayorPlanClient;
-import com.dazzle.asklepios.client.setup.PayorPlanCoverageClassClient;
 import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.client.setup.dto.PayorPlanCoverageClassDTO;
 import com.dazzle.asklepios.client.setup.dto.PayorPlanDTO;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalCoverageClassDTO;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalInsurancePlanDTO;
-import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import feign.FeignException;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Component;
 
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
-@Component
-@RequiredArgsConstructor
 public class ApprovalInsurancePlanMapper {
 
-    private final PayorClient payorClient;
-    private final PayorPlanClient payorPlanClient;
-    private final PayorPlanCoverageClassClient coverageClassClient;
+    private ApprovalInsurancePlanMapper() {}
 
-    public ApprovalInsurancePlanDTO buildInsurancePlan(PatientInsurance insurance) {
-        if (insurance == null) {
-            throw new BadRequestAlertException(
-                    "Patient insurance is required",
-                    "preAuthorization",
-                    "insurance.required"
-            );
-        }
-
-        PayorDTO payor = getPayor(insurance.getPayorId());
-        PayorPlanDTO plan = getPayorPlan(insurance.getPlanId());
-
-        List<ApprovalCoverageClassDTO> coverageClasses = getCoverageClasses(plan.id());
-
+    public static ApprovalInsurancePlanDTO buildInsurancePlan(
+            PatientInsurance insurance,
+            PayorDTO payor,
+            PayorPlanDTO plan,
+            List<ApprovalCoverageClassDTO> coverageClasses
+    ) {
         return new ApprovalInsurancePlanDTO(
                 resolvePlanId(plan),
                 firstNonBlank(
@@ -72,104 +53,54 @@ public class ApprovalInsurancePlanMapper {
         );
     }
 
-    private PayorDTO getPayor(Long payorId) {
-        if (payorId == null) {
-            throw new BadRequestAlertException(
-                    "Payor is required",
-                    "preAuthorization",
-                    "payor.required"
-            );
-        }
-
-        try {
-            return payorClient.getPayorById(payorId);
-        } catch (FeignException.NotFound e) {
-            throw new BadRequestAlertException(
-                    "Payor not found in setup",
-                    "preAuthorization",
-                    "payor.notFound"
-            );
-        }
+    public static List<ApprovalCoverageClassDTO> mapCoverageClasses(
+            List<PayorPlanCoverageClassDTO> classes
+    ) {
+        if (classes == null) return List.of();
+        return classes.stream()
+                .map(c -> new ApprovalCoverageClassDTO(
+                        normalizeCoverageClassType(c.coverageClassType()),
+                        safe(c.coverageClassValue()),
+                        safe(c.coverageClassName())
+                ))
+                .toList();
     }
 
-    private PayorPlanDTO getPayorPlan(Long planId) {
-        if (planId == null) {
-            throw new BadRequestAlertException(
-                    "Payor plan is required",
-                    "preAuthorization",
-                    "plan.required"
-            );
-        }
-
-        try {
-            return payorPlanClient.getPayorPlanById(planId);
-        } catch (FeignException.NotFound e) {
-            throw new BadRequestAlertException(
-                    "Payor plan not found in setup",
-                    "preAuthorization",
-                    "plan.notFound"
-            );
-        }
-    }
-
-    private List<ApprovalCoverageClassDTO> getCoverageClasses(Long planId) {
-        if (planId == null) {
-            return List.of();
-        }
-
-        try {
-            return coverageClassClient.getActiveCoverageClassesByPlan(planId)
-                    .stream()
-                    .map(c -> new ApprovalCoverageClassDTO(
-                            normalizeCoverageClassType(c.coverageClassType()),
-                            safe(c.coverageClassValue()),
-                            safe(c.coverageClassName())
-                    ))
-                    .toList();
-        } catch (FeignException.NotFound e) {
-            return List.of();
-        }
-    }
-
-    private Object resolvePlanId(PayorPlanDTO plan) {
-        if (plan.waseelPlanId() != null && !plan.waseelPlanId().isBlank()) {
-            return plan.waseelPlanId();
-        }
-
-        return plan.id();
-    }
-
-    private String resolvePolicyHolder(PatientInsurance insurance) {
+    // ─── الإصلاح الرئيسي ───────────────────────────────────────────────
+    private static String resolvePolicyHolder(PatientInsurance insurance) {
+        // أولاً: استخدم policyHolderId لو موجود
         if (insurance.getPolicyHolderId() != null) {
             return insurance.getPolicyHolderId().toString();
         }
-
-        return safe(insurance.getPolicyHolderName());
+        // ثانياً: استخدم policyNumber كـ fallback (مو الاسم!)
+        if (insurance.getPolicyNumber() != null && !insurance.getPolicyNumber().isBlank()) {
+            return insurance.getPolicyNumber();
+        }
+        // أخيراً: memberCardId
+        return safe(insurance.getMemberCardId());
     }
 
-    private String normalizeCoverageClassType(String type) {
-        if (type == null || type.isBlank()) {
-            return "";
+    private static Object resolvePlanId(PayorPlanDTO plan) {
+        if (plan.waseelPlanId() != null && !plan.waseelPlanId().isBlank()) {
+            return plan.waseelPlanId();
         }
+        return plan.id();
+    }
 
+    private static String normalizeCoverageClassType(String type) {
+        if (type == null || type.isBlank()) return "";
         return type.trim().toLowerCase().replace("_", "-");
     }
 
-    private String firstNonBlank(String... values) {
-        if (values == null) {
-            return "";
-        }
-
+    private static String firstNonBlank(String... values) {
+        if (values == null) return "";
         for (String value : values) {
-            if (value != null && !value.isBlank()) {
-                return value.trim();
-            }
+            if (value != null && !value.isBlank()) return value.trim();
         }
-
         return "";
     }
 
-    private String safe(String value) {
+    private static String safe(String value) {
         return value == null ? "" : value;
     }
 }

@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
+import com.dazzle.asklepios.client.setup.PayorClient;
+import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
@@ -17,6 +19,7 @@ import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +40,7 @@ public class WaseelEligibilityCheckService {
     private final WaseelApiProperties properties;
     private final ObjectMapper objectMapper;
     private final ApLovMapperService apLovMapperService;
+    private final PayorClient payorClient;
 
     @Transactional
     public EligibilityCheckResponse checkEligibility(EligibilityCheckRequest request) {
@@ -186,10 +190,16 @@ public class WaseelEligibilityCheckService {
     }
 
     private EligibilityInsurancePlanDTO buildInsurancePlan(PatientInsurance insurance) {
+        String payerName = null;
+        try {
+            PayorDTO payor = payorClient.getPayorById(insurance.getPayorId());
+            payerName = payor != null ? clean(payor.name()) : null;
+        } catch (FeignException ignored) {}
+
         return new EligibilityInsurancePlanDTO(
                 insurance.getPlanId() == null ? null : insurance.getPlanId().toString(),
                 clean(insurance.getPayerNphiesId()),
-                null,
+                payerName,
                 clean(insurance.getMemberCardId()),
                 clean(insurance.getPolicyNumber()),
                 clean(insurance.getPayerNphiesId()),
@@ -197,26 +207,25 @@ public class WaseelEligibilityCheckService {
                 insurance.getExpirationDate() == null ? null : insurance.getExpirationDate().toString(),
                 clean(insurance.getRelationWithSubscriber()),
                 clean(insurance.getCoverageType()),
-                toInteger(insurance.getPatientShare()),
-                toInteger(insurance.getMaxLimit()),
+                null,
+                null,
                 buildCoverageClassList(insurance),
-                resolvePolicyHolderName(insurance),
+                resolvePolicyHolder(insurance),
                 Boolean.TRUE.equals(insurance.getIsPrimary())
         );
     }
 
-    private String resolvePolicyHolderName(PatientInsurance insurance) {
-        String policyHolderName = clean(insurance.getPolicyHolderName());
-
-        if (policyHolderName != null) {
-            return policyHolderName;
+    private String resolvePolicyHolder(PatientInsurance insurance) {
+        if (insurance.getPolicyHolderId() != null) {
+            return insurance.getPolicyHolderId().toString();
         }
 
-        if (insurance.getPatient() != null) {
-            return buildFullName(insurance.getPatient());
+        String policyNumber = clean(insurance.getPolicyNumber());
+        if (policyNumber != null) {
+            return policyNumber;
         }
 
-        return null;
+        return clean(insurance.getMemberCardId());
     }
 
     private List<CoverageClassDTO> buildCoverageClassList(PatientInsurance insurance) {
@@ -254,17 +263,14 @@ public class WaseelEligibilityCheckService {
             return null;
         }
 
-        // Saudi National ID usually starts with 1
         if (documentId.startsWith("1")) {
             return "NI";
         }
 
-        // Saudi Iqama / resident ID usually starts with 2
         if (documentId.startsWith("2")) {
             return "PRC";
         }
 
-        // Passport / other document
         return "PPN";
     }
 
@@ -361,4 +367,5 @@ public class WaseelEligibilityCheckService {
                  "unknown" -> normalized;
             default -> "unknown";
         };
-    }}
+    }
+}

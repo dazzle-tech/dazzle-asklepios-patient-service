@@ -197,80 +197,80 @@ public class WaseelCchiService {
 
     private CchiInquiryResponse mockCchiInquiryResponse() {
         CchiBeneficiaryData data = new CchiBeneficiaryData(
-                "11111111",
-                "PPN",
+                "1093772497",
+                "NI",
 
-                "Akhil Nair",
-                "Akhil",
-                null,
-                "Nair",
-                "Nair",
-
-                "BEN-AKHIL-001",
-                "NPHIES",
-                "11111111",
-                null,
+                "JAWAD JASIM AL SAEED",
                 null,
                 null,
                 null,
                 null,
 
-                "1990-01-01",
                 null,
-                "356",
-                "RESIDENT",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
 
-                "966500000000",
-                "akhil.nair@test.com",
-                "966511111111",
+                null,
+                null,
+                "113",
+                null,
 
-                "Test Address",
-                "Test Street",
-                "Riyadh",
-                "Riyadh",
-                "SAU",
-                "12345",
+                null,
+                null,
+                null,
 
-                "U",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+
+                null,
                 "MALE",
-                "O+",
-                "EN",
                 null,
-                "unknown",
+                null,
+                null,
+                null,
 
-                10000000097830L,
-                "706",
-                false,
+                null,
+                null,
+                null,
 
                 List.of(
                         new CchiInsurancePlan(
-                                "4",
-                                "12121212",
-                                "357159456",
-                                null,
-                                "2028-09-27T21:00:00.000+0000",
-                                "2021-09-27T21:00:00.000+0000",
-                                "true",
-                                "INS-FHIR",
-                                "INS-FHIR Test Payer",
-                                "INS-FHIR",
-                                null,
-                                "SELF",
-                                "EHCPOL",
-                                BigDecimal.valueOf(20),
-                                BigDecimal.valueOf(1000),
-                                "12",
-                                null,
-                                "a",
-                                "Akhil Nair",
+                                null,                           // planId
+                                "001093772497001",              // memberCardId
+                                "48095070",                     // policyNumber
+                                null,                           // groupNumber
+                                "2026-08-21T21:00:00.000+0000", // expiryDate
+                                "2025-08-22T21:00:00.000+0000", // issueDate
+                                "true",                         // isPrimary
+                                null,                           // payerId
+                                "Waseel payor test",            // payerName
+                                "7000911508",                   // payerNphiesId
+                                null,                           // tpaNphiesId
+                                "SELF",                         // relationWithSubscriber
+                                "EHCPOL",                       // coverageType
+                                BigDecimal.valueOf(20),         // patientShare
+                                BigDecimal.valueOf(100),        // maxLimit
+                                "12",                           // networkId
+                                "7001454136",                   // sponsorNumber
+                                "a",                            // policyClassName
+                                "waseel application service prov.", // policyHolder
                                 List.of(
                                         new CchiCoverageClass(
-                                                "plan",
+                                                "PLAN",
                                                 "a",
                                                 "a"
                                         )
                                 ),
-                                false
+                                false                           // newPlan
                         )
                 )
         );
@@ -282,5 +282,4 @@ public class WaseelCchiService {
                 false,
                 data
         );
-    }
-}
+    }}
