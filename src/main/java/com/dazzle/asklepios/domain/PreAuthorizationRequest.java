@@ -141,15 +141,6 @@ public class PreAuthorizationRequest extends AbstractAuditingEntity<Long> implem
     @Column(name = "outcome", length = 100)
     private String outcome;
 
-    @Column(name = "message", length = 1000)
-    private String message;
-
-    @Column(name = "disposition", length = 1000)
-    private String disposition;
-
-    @Column(name = "status_reason", length = 1000)
-    private String statusReason;
-
     @NotNull
     @Column(name = "is_cancelled", nullable = false)
     @Builder.Default
@@ -164,9 +155,17 @@ public class PreAuthorizationRequest extends AbstractAuditingEntity<Long> implem
     @Column(name = "cancel_outcome", length = 100)
     private String cancelOutcome;
 
-    @Column(name = "cancel_message", length = 1000)
-    private String cancelMessage;
+    @Column(name = "message", columnDefinition = "TEXT")
+    private String message;
 
+    @Column(name = "disposition", columnDefinition = "TEXT")
+    private String disposition;
+
+    @Column(name = "status_reason", columnDefinition = "TEXT")
+    private String statusReason;
+
+    @Column(name = "cancel_message", columnDefinition = "TEXT")
+    private String cancelMessage;
     @Column(name = "request_json", columnDefinition = "TEXT")
     private String requestJson;
 

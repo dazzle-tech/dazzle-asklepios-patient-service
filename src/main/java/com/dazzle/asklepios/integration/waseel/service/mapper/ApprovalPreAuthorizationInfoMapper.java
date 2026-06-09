@@ -15,7 +15,7 @@ public class ApprovalPreAuthorizationInfoMapper {
     ) {
         return new WaseelApprovalPreAuthorizationInfo(
                 LocalDate.now(),
-                toLong(providerId),   // <-- FIX
+                toLong(providerId),
                 "provider",
                 "professional",
                 "op",
@@ -32,6 +32,7 @@ public class ApprovalPreAuthorizationInfoMapper {
         if (value == null || value.isBlank()) {
             return null;
         }
-        return Long.valueOf(value);
+
+        return Long.valueOf(value.trim());
     }
 }

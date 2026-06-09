@@ -15,7 +15,7 @@ public record WaseelApprovalItem(
         Boolean isMaternity,
         String bodySite,
         String subSite,
-        BigDecimal quantity,
+        Integer quantity,
         String quantityCode,
         BigDecimal unitPrice,
         BigDecimal discount,
@@ -32,6 +32,5 @@ public record WaseelApprovalItem(
         List<Integer> careTeamSequence,
         List<Integer> diagnosisSequence,
         String invoiceNo,
-        List<Object> itemDetails,
-        String notes
+        List<Object> itemDetails
 ) {}

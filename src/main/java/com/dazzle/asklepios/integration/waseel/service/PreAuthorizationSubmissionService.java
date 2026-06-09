@@ -29,6 +29,7 @@ import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClientException;
@@ -37,6 +38,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -113,9 +115,7 @@ public class PreAuthorizationSubmissionService {
         saveDetails(preAuthorization, request, pendingItems);
 
         try {
-            System.out.println("============== REQUEST JSON ==============");
-            System.out.println(requestJson);
-            System.out.println("=========================================");
+            logPreAuthorizationRequest(request, requestJson);
 
             ApprovalResponse response = waseelApprovalService.requestApproval(request);
             String responseJson = toJson(response);
@@ -136,6 +136,52 @@ public class PreAuthorizationSubmissionService {
                     "waseel.submit.failed"
             );
         }
+    }
+
+    private void logPreAuthorizationRequest(
+            WaseelApprovalRequest request,
+            String requestJson
+    ) {
+        log.info("============== PRE AUTH CARE TEAM ==============");
+
+        if (request.careTeam() != null && !request.careTeam().isEmpty()) {
+            request.careTeam().forEach(careTeam -> {
+                log.info("practitionerName={}", careTeam.practitionerName());
+                log.info("physicianCode={}", careTeam.physicianCode());
+                log.info("practitionerRole={}", careTeam.practitionerRole());
+                log.info("careTeamRole={}", careTeam.careTeamRole());
+                log.info("speciality={}", careTeam.speciality());
+                log.info("specialityCode={}", careTeam.specialityCode());
+                log.info("qualificationCode={}", careTeam.qualificationCode());
+            });
+        } else {
+            log.info("careTeam is empty");
+        }
+
+        log.info("============== PRE AUTH ITEMS ==============");
+
+        if (request.items() != null && !request.items().isEmpty()) {
+            request.items().forEach(item -> {
+                log.info("sequence={}", item.sequence());
+                log.info("type={}", item.type());
+                log.info("itemCode={}", item.itemCode());
+                log.info("itemDescription={}", item.itemDescription());
+                log.info("quantity={}", item.quantity());
+                log.info("unitPrice={}", item.unitPrice());
+                log.info("net={}", item.net());
+                log.info("patientShare={}", item.patientShare());
+                log.info("payerShare={}", item.payerShare());
+                log.info("careTeamSequence={}", item.careTeamSequence());
+                log.info("diagnosisSequence={}", item.diagnosisSequence());
+            });
+        } else {
+            log.info("items is empty");
+        }
+
+        System.out.println("WASEEL REQUEST JSON for PRE-AUth = " + requestJson);
+        log.info("============== REQUEST JSON ==============");
+        log.info(requestJson);
+        log.info("=========================================");
     }
 
     private void validateSnapshot(WaseelApprovalEligibilitySnapshot snapshot) {
@@ -179,8 +225,7 @@ public class PreAuthorizationSubmissionService {
                 .eligibilityOfflineId(request.preAuthorizationInfo().eligibilityOfflineId())
                 .eligibilityOfflineDate(request.preAuthorizationInfo().eligibilityOfflineDate())
                 .dateOrdered(request.preAuthorizationInfo().dateOrdered())
-                .payeeId(request.preAuthorizationInfo().payeeId())
-                .payeeType(request.preAuthorizationInfo().payeeType())
+                .payeeId(request.preAuthorizationInfo().payeeId())                .payeeType(request.preAuthorizationInfo().payeeType())
                 .preauthType(request.preAuthorizationInfo().type())
                 .preauthSubType(request.preAuthorizationInfo().subType())
                 .episodeId(request.preAuthorizationInfo().episodeId())
@@ -194,8 +239,7 @@ public class PreAuthorizationSubmissionService {
                 .serviceType(request.encounter().serviceType())
                 .serviceEventType(request.encounter().serviceEventType())
                 .serviceProvider(request.encounter().serviceProvider())
-                .encounterStartDate(request.encounter().startDate())
-                .encounterEndDate(request.encounter().periodEnd())
+                .encounterStartDate(request.encounter().startDate())                .encounterEndDate(request.encounter().periodEnd())
                 .totalNet(request.totalNet() == null ? BigDecimal.ZERO : request.totalNet())
                 .status("SUBMITTING")
                 .requestJson(requestJson)
@@ -300,9 +344,15 @@ public class PreAuthorizationSubmissionService {
             return;
         }
 
+        List<PatientServiceAndProduct> filteredSourceItems = sourceItems == null
+                ? List.of()
+                : sourceItems.stream()
+                .filter(item -> Boolean.FALSE.equals(item.getIsBilled()))
+                .toList();
+
         List<PreAuthorizationItem> entities = items.stream()
                 .map(item -> {
-                    PatientServiceAndProduct source = findSourceItem(item.sequence(), sourceItems);
+                    PatientServiceAndProduct source = findSourceItem(item.sequence(), filteredSourceItems);
 
                     return PreAuthorizationItem.builder()
                             .preAuthorizationId(preAuthorization.getId())
@@ -316,7 +366,11 @@ public class PreAuthorizationSubmissionService {
                             .isMaternity(Boolean.TRUE.equals(item.isMaternity()))
                             .bodySite(item.bodySite())
                             .subSite(item.subSite())
-                            .quantity(item.quantity())
+                            .quantity(
+                                    item.quantity() == null
+                                            ? BigDecimal.ZERO
+                                            : BigDecimal.valueOf(item.quantity())
+                            )
                             .quantityCode(item.quantityCode())
                             .unitPrice(item.unitPrice())
                             .discount(item.discount())
@@ -351,7 +405,12 @@ public class PreAuthorizationSubmissionService {
         }
 
         int index = sequence - 1;
-        return index >= 0 && index < sourceItems.size() ? sourceItems.get(index) : null;
+
+        if (index < 0 || index >= sourceItems.size()) {
+            return null;
+        }
+
+        return sourceItems.get(index);
     }
 
     private void updatePreAuthorizationSuccess(

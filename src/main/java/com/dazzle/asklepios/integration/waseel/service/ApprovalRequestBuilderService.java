@@ -118,7 +118,11 @@ public class ApprovalRequestBuilderService {
                         encounter,
                         nphiesId
                 ),
-                approvalItemMapper.toWaseelItems(items),
+                approvalItemMapper.toWaseelItems(
+                        items,
+                        snapshot.insurancePlan() == null ? null : snapshot.insurancePlan().patientShare(),
+                        encounter
+                ),
                 calculateTotalNet(items)
         );
     }

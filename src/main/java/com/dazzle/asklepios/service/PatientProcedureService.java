@@ -349,13 +349,19 @@ public class PatientProcedureService {
         LOG.info("Checking PreAuth for procedure {}", procedureId);
 
         try {
-            Boolean result = payorPlanItemClient.requiresPreAuthorizationForProcedure(procedureId);
+            Boolean result =
+                    payorPlanItemClient.requiresPreAuthorizationForProcedure(procedureId);
 
-            LOG.info("PreAuth result for procedure {} = {}", procedureId, result);
+            LOG.info(
+                    "PreAuth result for procedure {} = {}",
+                    procedureId,
+                    result
+            );
 
             return Boolean.TRUE.equals(result);
 
         } catch (FeignException ex) {
+
             LOG.error(
                     "PreAuth endpoint failed. procedureId={} status={} body={}",
                     procedureId,
@@ -364,10 +370,13 @@ public class PatientProcedureService {
                     ex
             );
 
-            return false;
+            throw new BadRequestAlertException(
+                    "Failed to call setup-service: " + ex.contentUTF8(),
+                    "procedure",
+                    "preauth.endpoint.failed"
+            );
         }
     }
-
     private void logBillingItemBeforeSave(PatientServiceAndProduct billingItem) {
         LOG.error("========== PROCEDURE BILLING ITEM BEFORE SAVE ==========");
         LOG.error("patientId={}", billingItem.getPatientId());

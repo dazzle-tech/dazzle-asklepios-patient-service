@@ -269,7 +269,11 @@ public class WaseelEligibilityCheckService {
     }
 
     private LocalDate resolveServiceDate(LocalDate serviceDate) {
-        return serviceDate != null ? serviceDate : LocalDate.now();
+        LocalDate today = LocalDate.now();
+
+        return serviceDate == null || serviceDate.isBefore(today)
+                ? today
+                : serviceDate;
     }
 
     private Integer toInteger(BigDecimal value) {

@@ -8,6 +8,7 @@ import com.dazzle.asklepios.client.setup.dto.BrandMedicationSetupDTO;
 import com.dazzle.asklepios.client.setup.dto.DiagnosticTestSetupDTO;
 import com.dazzle.asklepios.client.setup.dto.ProcedureSetupDTO;
 import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalItem;
@@ -16,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -29,20 +31,38 @@ public class ApprovalItemMapper {
     private final DiagnosticTestClient diagnosticTestClient;
     private final BrandMedicationClient brandMedicationClient;
 
-    public List<WaseelApprovalItem> toWaseelItems(List<PatientServiceAndProduct> items) {
+    public List<WaseelApprovalItem> toWaseelItems(
+            List<PatientServiceAndProduct> items,
+            BigDecimal patientSharePercent,
+            PatientEncounter encounter
+    ) {
         if (items == null || items.isEmpty()) {
             return List.of();
         }
 
         AtomicInteger sequence = new AtomicInteger(1);
 
+        LocalDate itemDate = encounter != null && encounter.getEncounterDate() != null
+                ? encounter.getEncounterDate()
+                : LocalDate.now();
+
         return items.stream()
                 .filter(item -> Boolean.FALSE.equals(item.getIsBilled()))
-                .map(item -> toWaseelItem(item, sequence.getAndIncrement()))
+                .map(item -> toWaseelItem(
+                        item,
+                        sequence.getAndIncrement(),
+                        patientSharePercent,
+                        itemDate
+                ))
                 .toList();
     }
 
-    private WaseelApprovalItem toWaseelItem(PatientServiceAndProduct item, Integer sequence) {
+    private WaseelApprovalItem toWaseelItem(
+            PatientServiceAndProduct item,
+            Integer sequence,
+            BigDecimal patientSharePercent,
+            LocalDate itemDate
+    ) {
         BillingItemTypes type = item.getBillingItemType();
 
         if (type == BillingItemTypes.PROCEDURE) {
@@ -53,7 +73,9 @@ public class ApprovalItemMapper {
                     sequence,
                     "services",
                     safe(procedure.code()),
-                    safe(procedure.name())
+                    safe(procedure.name()),
+                    patientSharePercent,
+                    itemDate
             );
         }
 
@@ -65,7 +87,9 @@ public class ApprovalItemMapper {
                     sequence,
                     "services",
                     safe(service.code()),
-                    safe(service.name())
+                    safe(service.name()),
+                    patientSharePercent,
+                    itemDate
             );
         }
 
@@ -79,7 +103,9 @@ public class ApprovalItemMapper {
                     sequence,
                     mapDiagnosticType(type),
                     safe(diagnosticTest.internalCode()),
-                    safe(diagnosticTest.name())
+                    safe(diagnosticTest.name()),
+                    patientSharePercent,
+                    itemDate
             );
         }
 
@@ -91,7 +117,9 @@ public class ApprovalItemMapper {
                     sequence,
                     "medication",
                     safe(medication.code()),
-                    safe(medication.name())
+                    safe(medication.name()),
+                    patientSharePercent,
+                    itemDate
             );
         }
 
@@ -99,8 +127,10 @@ public class ApprovalItemMapper {
                 item,
                 sequence,
                 "services",
-                null,
-                null
+                "",
+                "",
+                patientSharePercent,
+                itemDate
         );
     }
 
@@ -109,27 +139,39 @@ public class ApprovalItemMapper {
             Integer sequence,
             String type,
             String itemCode,
-            String itemDescription
+            String itemDescription,
+            BigDecimal patientSharePercent,
+            LocalDate itemDate
     ) {
-        BigDecimal quantity = BigDecimal.valueOf(item.getQuantity() == null ? 1L : item.getQuantity());
-        BigDecimal unitPrice = safe(item.getUnitPrice());
-        BigDecimal discount = safe(item.getDiscountAmount());
-        BigDecimal tax = safe(item.getTaxAmount());
-        BigDecimal net = safe(item.getTotalAmount());
+        Integer quantity = item.getQuantity() == null
+                ? 1
+                : item.getQuantity().intValue();
 
+        BigDecimal unitPrice = money(item.getUnitPrice());
+        BigDecimal discount = money(item.getDiscountAmount());
+        BigDecimal tax = money(item.getTaxAmount());
+        BigDecimal net = money(item.getTotalAmount());
+
+        /*
+         * Matching Waseel collection behavior:
+         * patientSharePercent = 0
+         * patientShare = 0
+         * payerShare = 0
+         * diagnosisSequence = []
+         */
         return new WaseelApprovalItem(
                 sequence,
-                type,
-                emptyToNull(itemCode),
-                emptyToNull(itemDescription),
-                null,
-                null,
+                emptyToEmpty(type),
+                emptyToEmpty(itemCode),
+                emptyToEmpty(itemDescription),
+                "",
+                "",
                 false,
                 false,
-                null,
-                null,
+                "",
+                "",
                 quantity,
-                null,
+                "",
                 unitPrice,
                 discount,
                 BigDecimal.ONE,
@@ -138,25 +180,20 @@ public class ApprovalItemMapper {
                 net,
                 tax,
                 BigDecimal.ZERO,
-                net,
-                LocalDate.now(),
-                LocalDate.now(),
-                List.of(),
+                BigDecimal.ZERO,
+                itemDate,
+                itemDate,
                 List.of(),
                 List.of(1),
+                List.of(1),
                 null,
-                List.of(),
-                emptyToNull(item.getNotes())
+                List.of()
         );
     }
 
     private String mapDiagnosticType(BillingItemTypes type) {
         if (type == BillingItemTypes.RADIOLOGY) {
-            return "radiology";
-        }
-
-        if (type == BillingItemTypes.PATHOLOGY) {
-            return "pathology";
+            return "imaging";
         }
 
         return "laboratory";
@@ -169,7 +206,7 @@ public class ApprovalItemMapper {
             return new ProcedureSetupDTO(
                     procedureId,
                     "Procedure not found",
-                    null,
+                    "",
                     null,
                     false,
                     null,
@@ -191,7 +228,7 @@ public class ApprovalItemMapper {
             return new ServiceSetupDTO(
                     serviceId,
                     "Service not found",
-                    null,
+                    "",
                     null,
                     null,
                     0L,
@@ -215,7 +252,7 @@ public class ApprovalItemMapper {
                     diagnosticTestId,
                     null,
                     "Diagnostic test not found",
-                    null,
+                    "",
                     BigDecimal.ZERO,
                     null,
                     false
@@ -230,7 +267,7 @@ public class ApprovalItemMapper {
             return new BrandMedicationSetupDTO(
                     brandMedicationId,
                     "Medication not found",
-                    null,
+                    "",
                     BigDecimal.ZERO,
                     null,
                     false
@@ -238,15 +275,17 @@ public class ApprovalItemMapper {
         }
     }
 
-    private BigDecimal safe(BigDecimal value) {
-        return value == null ? BigDecimal.ZERO : value;
+    private BigDecimal money(BigDecimal value) {
+        return value == null
+                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                : value.setScale(2, RoundingMode.HALF_UP);
     }
 
     private String safe(String value) {
-        return value == null ? null : value;
+        return value == null ? "" : value.trim();
     }
 
-    private String emptyToNull(String value) {
-        return value == null || value.isBlank() ? null : value;
+    private String emptyToEmpty(String value) {
+        return value == null || value.isBlank() ? "" : value.trim();
     }
 }

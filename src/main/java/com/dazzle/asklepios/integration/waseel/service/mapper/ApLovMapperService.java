@@ -150,4 +150,19 @@ public class ApLovMapperService {
     private boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
     }
+    public String getDisplayValueByLovCodeAndValueCode(String lovCode, String valueCode) {
+        if (isBlank(lovCode) || isBlank(valueCode)) {
+            return null;
+        }
+
+        List<ApLovValue> values = apLovValueRepository.findByLovCodeAndIsValidTrue(lovCode);
+        String normalizedValueCode = normalizeKey(valueCode);
+
+        return values.stream()
+                .filter(v -> normalizeKey(v.getValueCode()).equals(normalizedValueCode))
+                .map(ApLovValue::getLovDisplayVale)
+                .findFirst()
+                .orElse(null);
+    }
+
 }
