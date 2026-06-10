@@ -334,6 +334,12 @@ public class DiagnosticOrderTestResultController {
             @RequestParam(name = "mrn", required = false)
             String mrn,
 
+            @RequestParam(name = "patientIdIn", required = false)
+            List<Long> patientIdIn,
+
+            @RequestParam(name = "orderNumber", required = false)
+            Long orderNumber,
+
             @ParameterObject Pageable pageable
     ) {
         Specification<DiagnosticOrderTestResult> resultSpecification =
@@ -347,12 +353,22 @@ public class DiagnosticOrderTestResultController {
                     boolean needOrderFilter =
                             fromDepartmentIn != null && !fromDepartmentIn.isEmpty();
 
+                    boolean needOrderNumberFilter =
+                            orderNumber != null;
+
+                    boolean needPatientIdFilter =
+                            patientIdIn != null && !patientIdIn.isEmpty();
+
                     boolean needPatientFilter =
                             (patientName != null && !patientName.isBlank()) ||
                                     (mrn != null && !mrn.isBlank());
 
                     boolean needSubquery =
-                            needOrderIdFilter || needOrderFilter || needPatientFilter;
+                            needOrderIdFilter ||
+                                    needOrderFilter ||
+                                    needOrderNumberFilter ||
+                                    needPatientIdFilter ||
+                                    needPatientFilter;
 
                     if (needSubquery) {
                         var subQuery = criteriaQuery.subquery(Long.class);
@@ -378,6 +394,17 @@ public class DiagnosticOrderTestResultController {
 
                         if (needOrderFilter) {
                             subPredicates.add(orderRoot.get("fromDepartmentId").in(fromDepartmentIn));
+                        }
+
+                        if (needOrderNumberFilter) {
+                            subPredicates.add(criteriaBuilder.equal(
+                                    orderRoot.get("orderNumber"),
+                                    orderNumber
+                            ));
+                        }
+
+                        if (needPatientIdFilter) {
+                            subPredicates.add(orderRoot.get("patientId").in(patientIdIn));
                         }
 
                         if (needPatientFilter) {
