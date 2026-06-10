@@ -8,6 +8,5 @@ public record WaseelApprovalCareTeam(
         String careTeamRole,
         String speciality,
         String specialityCode,
-        String qualificationCode,
-        String role
+        String qualificationCode
 ) {}

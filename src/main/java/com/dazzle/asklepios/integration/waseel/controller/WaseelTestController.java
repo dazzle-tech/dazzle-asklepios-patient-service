@@ -72,15 +72,7 @@ public class WaseelTestController {
         return waseelEligibilityService.requestEligibility(request);
     }
 
-    @PostMapping("/internal/waseel/approval")
-    public ApprovalResponse requestApproval(@RequestBody ApprovalRequest request) {
-        return waseelApprovalService.requestApproval(request);
-    }
 
-    @GetMapping("/internal/waseel/approval/{requestId}")
-    public ApprovalResponse getExternalApproval(@PathVariable String requestId) {
-        return waseelApprovalService.getExternalApproval(requestId);
-    }
 
     @PostMapping("/internal/waseel/approval/cancel")
     public ApprovalResponse cancelApproval(@RequestBody ApprovalCancelRequest request) {

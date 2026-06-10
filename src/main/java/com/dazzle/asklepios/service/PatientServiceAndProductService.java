@@ -377,19 +377,42 @@ public class PatientServiceAndProductService {
     }
 
     private boolean requiresPreAuthorizationForProcedure(Long procedureId) {
+
+        LOG.info(
+                "Checking procedure pre-authorization. procedureId={}",
+                procedureId
+        );
+
         try {
-            return Boolean.TRUE.equals(
-                    payorPlanItemClient.requiresPreAuthorizationForProcedure(procedureId)
+
+            Boolean result =
+                    payorPlanItemClient.requiresPreAuthorizationForProcedure(
+                            procedureId
+                    );
+
+            LOG.info(
+                    "Procedure pre-authorization result. procedureId={} result={}",
+                    procedureId,
+                    result
             );
+
+            return Boolean.TRUE.equals(result);
+
         } catch (FeignException ex) {
+
             LOG.error(
-                    "[SETUP_SERVICE] Failed to check procedure pre-authorization. procedureId={} status={} body={}",
+                    "Procedure pre-authorization endpoint failed. procedureId={} status={} body={}",
                     procedureId,
                     ex.status(),
                     ex.contentUTF8(),
                     ex
             );
-            return false;
+
+            throw new BadRequestAlertException(
+                    "Failed to call setup-service: " + ex.contentUTF8(),
+                    "patientServiceAndProduct",
+                    "preauth.endpoint.failed"
+            );
         }
     }
 
