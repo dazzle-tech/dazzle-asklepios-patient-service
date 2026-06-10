@@ -1,8 +1,10 @@
 package com.dazzle.asklepios.web.rest;
 
+import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.LabResultLog;
+import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import com.dazzle.asklepios.security.SecurityUtils;
@@ -290,7 +292,6 @@ public class DiagnosticOrderTestResultController {
             @RequestParam(name = "excludeMarkerIn", required = false)
             List<TestResultMarker> excludeMarkerInFilter,
 
-
             @RequestParam(name = "processingStatus", required = false)
             DiagnosticStatus processingStatusFilter,
 
@@ -324,6 +325,15 @@ public class DiagnosticOrderTestResultController {
             @RequestParam(name = "reviewed", required = false)
             Boolean reviewed,
 
+            @RequestParam(name = "fromDepartmentIn", required = false)
+            List<Long> fromDepartmentIn,
+
+            @RequestParam(name = "patientName", required = false)
+            String patientName,
+
+            @RequestParam(name = "mrn", required = false)
+            String mrn,
+
             @ParameterObject Pageable pageable
     ) {
         Specification<DiagnosticOrderTestResult> resultSpecification =
@@ -331,55 +341,128 @@ public class DiagnosticOrderTestResultController {
 
                     List<Predicate> predicates = new ArrayList<>();
 
-                    if (orderIdInFilter != null && !orderIdInFilter.isEmpty()) {
+                    boolean needOrderIdFilter =
+                            orderIdInFilter != null && !orderIdInFilter.isEmpty();
+
+                    boolean needOrderFilter =
+                            fromDepartmentIn != null && !fromDepartmentIn.isEmpty();
+
+                    boolean needPatientFilter =
+                            (patientName != null && !patientName.isBlank()) ||
+                                    (mrn != null && !mrn.isBlank());
+
+                    boolean needSubquery =
+                            needOrderIdFilter || needOrderFilter || needPatientFilter;
+
+                    if (needSubquery) {
                         var subQuery = criteriaQuery.subquery(Long.class);
+
                         var testRoot = subQuery.from(DiagnosticOrderTest.class);
+                        var orderRoot = subQuery.from(DiagnosticOrder.class);
+
+                        List<Predicate> subPredicates = new ArrayList<>();
+
+                        subPredicates.add(criteriaBuilder.equal(
+                                testRoot.get("id"),
+                                testResultRoot.get("orderTestId")
+                        ));
+
+                        subPredicates.add(criteriaBuilder.equal(
+                                orderRoot.get("id"),
+                                testRoot.get("orderId")
+                        ));
+
+                        if (needOrderIdFilter) {
+                            subPredicates.add(orderRoot.get("id").in(orderIdInFilter));
+                        }
+
+                        if (needOrderFilter) {
+                            subPredicates.add(orderRoot.get("fromDepartmentId").in(fromDepartmentIn));
+                        }
+
+                        if (needPatientFilter) {
+                            var patientRoot = subQuery.from(Patient.class);
+
+                            subPredicates.add(criteriaBuilder.equal(
+                                    patientRoot.get("id"),
+                                    orderRoot.get("patientId")
+                            ));
+
+                            if (mrn != null && !mrn.isBlank()) {
+                                subPredicates.add(criteriaBuilder.like(
+                                        criteriaBuilder.lower(patientRoot.get("medicalRecordNumber")),
+                                        "%" + mrn.trim().toLowerCase() + "%"
+                                ));
+                            }
+
+                            if (patientName != null && !patientName.isBlank()) {
+                                String like = "%" + patientName.trim().toLowerCase() + "%";
+
+                                subPredicates.add(criteriaBuilder.or(
+                                        criteriaBuilder.like(criteriaBuilder.lower(patientRoot.get("firstName")), like),
+                                        criteriaBuilder.like(criteriaBuilder.lower(patientRoot.get("secondName")), like),
+                                        criteriaBuilder.like(criteriaBuilder.lower(patientRoot.get("thirdName")), like),
+                                        criteriaBuilder.like(criteriaBuilder.lower(patientRoot.get("lastName")), like)
+                                ));
+                            }
+                        }
 
                         subQuery.select(testRoot.get("id"))
-                                .where(testRoot.get("orderId").in(orderIdInFilter));
+                                .where(subPredicates.toArray(new Predicate[0]));
 
-                        predicates.add(testResultRoot.get("orderTestId").in(subQuery));
+                        predicates.add(criteriaBuilder.exists(subQuery));
                     }
 
                     if (orderTestIdFilter != null) {
-                        predicates.add(criteriaBuilder.equal(testResultRoot.get("orderTestId"), orderTestIdFilter));
+                        predicates.add(criteriaBuilder.equal(
+                                testResultRoot.get("orderTestId"),
+                                orderTestIdFilter
+                        ));
                     }
 
                     if (profileTestIdFilter != null) {
-                        predicates.add(criteriaBuilder.equal(testResultRoot.get("profileTestId"), profileTestIdFilter));
+                        predicates.add(criteriaBuilder.equal(
+                                testResultRoot.get("profileTestId"),
+                                profileTestIdFilter
+                        ));
                     }
 
                     if (processingStatusFilter != null) {
-                        predicates.add(criteriaBuilder.equal(testResultRoot.get("processingStatus"), processingStatusFilter));
+                        predicates.add(criteriaBuilder.equal(
+                                testResultRoot.get("processingStatus"),
+                                processingStatusFilter
+                        ));
                     }
 
-                    // marker IN
                     if (markerInFilter != null && !markerInFilter.isEmpty()) {
-                        predicates.add(
-                                testResultRoot.get("marker").in(markerInFilter)
-                        );
+                        predicates.add(testResultRoot.get("marker").in(markerInFilter));
                     }
 
-// marker NOT IN
                     if (excludeMarkerInFilter != null && !excludeMarkerInFilter.isEmpty()) {
-                        predicates.add(
-                                criteriaBuilder.not(
-                                        testResultRoot.get("marker").in(excludeMarkerInFilter)
-                                )
-                        );
+                        predicates.add(criteriaBuilder.not(
+                                testResultRoot.get("marker").in(excludeMarkerInFilter)
+                        ));
                     }
 
-
-                    if (approvedByFilter != null) {
-                        predicates.add(criteriaBuilder.equal(testResultRoot.get("approvedBy"), approvedByFilter));
+                    if (approvedByFilter != null && !approvedByFilter.isBlank()) {
+                        predicates.add(criteriaBuilder.equal(
+                                testResultRoot.get("approvedBy"),
+                                approvedByFilter
+                        ));
                     }
 
-                    if (rejectedByFilter != null) {
-                        predicates.add(criteriaBuilder.equal(testResultRoot.get("rejectedBy"), rejectedByFilter));
+                    if (rejectedByFilter != null && !rejectedByFilter.isBlank()) {
+                        predicates.add(criteriaBuilder.equal(
+                                testResultRoot.get("rejectedBy"),
+                                rejectedByFilter
+                        ));
                     }
 
-                    if (reviewByFilter != null) {
-                        predicates.add(criteriaBuilder.equal(testResultRoot.get("reviewBy"), reviewByFilter));
+                    if (reviewByFilter != null && !reviewByFilter.isBlank()) {
+                        predicates.add(criteriaBuilder.equal(
+                                testResultRoot.get("reviewBy"),
+                                reviewByFilter
+                        ));
                     }
 
                     if (approvedDateFromFilter != null) {
@@ -444,7 +527,6 @@ public class DiagnosticOrderTestResultController {
 
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
-
     // =========================================================
     // INTERNAL ENDPOINTS
     // =========================================================
