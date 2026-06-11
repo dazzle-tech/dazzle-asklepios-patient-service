@@ -285,6 +285,7 @@ public class DiagnosticOrderService {
     @Transactional(readOnly = true)
     public Page<DiagnosticOrder> filter(
             Long patientId,
+            List<Long> patientIdIn,
             Long encounterId,
             DiagnosticStatus status,
             List<DiagnosticStatus> statusIn,
@@ -297,6 +298,7 @@ public class DiagnosticOrderService {
             Instant submittedDateFrom,
             Instant submittedDateTo,
             Long departmentId,
+            List<Long> fromDepartmentIdIn,
             TestType testType,
             String orderNumber,
             Pageable pageable
@@ -312,53 +314,103 @@ public class DiagnosticOrderService {
         Specification<DiagnosticOrder> filterSpec = (orderRoot, criteriaQuery, criteriaBuilder) -> {
             List<Predicate> filterPredicates = new ArrayList<>();
 
-            if (patientId != null)
+            if (patientId != null) {
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("patientId"), patientId));
-            if (encounterId != null)
+            }
+
+            if (patientIdIn != null && !patientIdIn.isEmpty()) {
+                filterPredicates.add(orderRoot.get("patientId").in(patientIdIn));
+            }
+
+            if (encounterId != null) {
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("encounterId"), encounterId));
+            }
 
-            if (status != null)
+            if (status != null) {
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("status"), status));
-            if (statusIn != null && !statusIn.isEmpty())
+            }
+
+            if (statusIn != null && !statusIn.isEmpty()) {
                 filterPredicates.add(orderRoot.get("status").in(statusIn));
-            if (excludeStatus != null)
+            }
+
+            if (excludeStatus != null) {
                 filterPredicates.add(criteriaBuilder.notEqual(orderRoot.get("status"), excludeStatus));
-            if (statusNotIn != null && !statusNotIn.isEmpty())
+            }
+
+            if (statusNotIn != null && !statusNotIn.isEmpty()) {
                 filterPredicates.add(criteriaBuilder.not(orderRoot.get("status").in(statusNotIn)));
+            }
 
-            if (saveDraft != null)
+            if (saveDraft != null) {
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("saveDraft"), saveDraft));
-            if (isUrgent != null)
+            }
+
+            if (isUrgent != null) {
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("isUrgent"), isUrgent));
+            }
 
-            if (labStatus != null && !labStatus.isBlank())
+            if (labStatus != null && !labStatus.isBlank()) {
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("labStatus"), labStatus));
-            if (radStatus != null && !radStatus.isBlank())
+            }
+
+            if (radStatus != null && !radStatus.isBlank()) {
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("radStatus"), radStatus));
+            }
 
-            if (submittedDateFrom != null)
-                filterPredicates.add(criteriaBuilder.greaterThanOrEqualTo(orderRoot.get("submittedDate"), submittedDateFrom));
-            if (submittedDateTo != null)
-                filterPredicates.add(criteriaBuilder.lessThanOrEqualTo(orderRoot.get("submittedDate"), submittedDateTo));
+            if (submittedDateFrom != null) {
+                filterPredicates.add(criteriaBuilder.greaterThanOrEqualTo(
+                        orderRoot.get("submittedDate"),
+                        submittedDateFrom
+                ));
+            }
 
-            if (orderNumber != null && !orderNumber.isBlank())
+            if (submittedDateTo != null) {
+                filterPredicates.add(criteriaBuilder.lessThanOrEqualTo(
+                        orderRoot.get("submittedDate"),
+                        submittedDateTo
+                ));
+            }
+
+            if (fromDepartmentIdIn != null && !fromDepartmentIdIn.isEmpty()) {
+                filterPredicates.add(orderRoot.get("fromDepartmentId").in(fromDepartmentIdIn));
+            }
+
+            if (orderNumber != null && !orderNumber.isBlank()) {
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("orderNumber"), orderNumber));
+            }
 
             if (departmentId != null) {
                 Subquery<Long> orderTestSubquery = criteriaQuery.subquery(Long.class);
                 Root<DiagnosticOrderTest> orderTestRoot = orderTestSubquery.from(DiagnosticOrderTest.class);
 
                 List<Predicate> subqueryPredicates = new ArrayList<>();
-                subqueryPredicates.add(criteriaBuilder.equal(orderTestRoot.get("orderId"), orderRoot.get("id")));
-                subqueryPredicates.add(criteriaBuilder.equal(orderTestRoot.get("receivedDepartmentId"), departmentId));
-                subqueryPredicates.add(criteriaBuilder.notEqual(orderTestRoot.get("status"), DiagnosticOrderTestStatus.CANCELLED));
+
+                subqueryPredicates.add(criteriaBuilder.equal(
+                        orderTestRoot.get("orderId"),
+                        orderRoot.get("id")
+                ));
+
+                subqueryPredicates.add(criteriaBuilder.equal(
+                        orderTestRoot.get("receivedDepartmentId"),
+                        departmentId
+                ));
+
+                subqueryPredicates.add(criteriaBuilder.notEqual(
+                        orderTestRoot.get("status"),
+                        DiagnosticOrderTestStatus.CANCELLED
+                ));
 
                 if (testType != null) {
-                    subqueryPredicates.add(criteriaBuilder.equal(orderTestRoot.get("orderType"), testType));
+                    subqueryPredicates.add(criteriaBuilder.equal(
+                            orderTestRoot.get("orderType"),
+                            testType
+                    ));
                 }
 
                 orderTestSubquery.select(orderTestRoot.get("id"))
                         .where(subqueryPredicates.toArray(new Predicate[0]));
+
                 filterPredicates.add(criteriaBuilder.exists(orderTestSubquery));
             }
 
