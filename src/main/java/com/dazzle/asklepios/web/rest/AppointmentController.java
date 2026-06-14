@@ -15,6 +15,7 @@ import com.dazzle.asklepios.service.dto.appointment.BulkAppointmentRescheduleDTO
 import com.dazzle.asklepios.service.dto.appointment.DiagnosticTestAppointmentRescheduleDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentLogResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentQuickAppointmentResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.BulkAppointmentRescheduleResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.BulkReschedulePreviewVM;
@@ -152,8 +153,8 @@ public class AppointmentController {
     }
 
     @GetMapping("/appointments/{appointmentId}/logs")
-    public ResponseEntity<List<AppointmentLog>> getAppointmentLogs(@PathVariable Long appointmentId) {
-        List<AppointmentLog> logs = appointmentService.getAppointmentLogs(appointmentId);
+    public ResponseEntity<List<AppointmentLogResponseVM>> getAppointmentLogs(@PathVariable Long appointmentId) {
+        List<AppointmentLogResponseVM> logs = appointmentService.getAppointmentLogs(appointmentId);
         return ResponseEntity.ok(logs);
     }
 

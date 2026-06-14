@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.client.setup;
 
+import com.dazzle.asklepios.client.setup.dto.CatalogDTO;
 import com.dazzle.asklepios.client.setup.dto.DiagnosticTestSetupDTO;
 import com.dazzle.asklepios.config.SetupServiceFeignConfig;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -14,5 +15,8 @@ public interface CatalogClient {
 
     @GetMapping("api/setup/catalog/diagnostic-test/{catalogId}")
    List<DiagnosticTestSetupDTO> listAllTestByCatalog(@PathVariable Long catalogId);
+
+    @GetMapping("api/setup/catalog/{id}")
+    CatalogDTO getCatalog(@PathVariable Long id);
 
 }
