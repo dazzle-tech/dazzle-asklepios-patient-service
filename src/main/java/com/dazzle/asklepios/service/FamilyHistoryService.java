@@ -2,8 +2,11 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.FamilyHistory;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.repository.FamilyHistoryRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.FamilyHistory.FamilyHistoryCancelDTO;
 import com.dazzle.asklepios.service.dto.FamilyHistory.FamilyHistoryCreateDTO;
 import com.dazzle.asklepios.service.dto.FamilyHistory.FamilyHistoryUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -17,6 +20,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.Instant;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -31,11 +35,18 @@ public class FamilyHistoryService {
     private final FamilyHistoryRepository familyHistoryRepository;
     private final PatientRepository patientRepository;
 
-
     private Patient refPatient(Long patientId) {
         return patientRepository.getReferenceById(patientId);
     }
 
+    private String currentUsername() {
+        return SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "unauthenticated",
+                        "familyHistory",
+                        "No authenticated user"
+                ));
+    }
 
     public FamilyHistory create(FamilyHistoryCreateDTO familyHistoryCreateDTO) {
         LOG.info("[CREATE] FamilyHistory payload={}", familyHistoryCreateDTO);
@@ -45,12 +56,13 @@ public class FamilyHistoryService {
                 .condition(familyHistoryCreateDTO.condition())
                 .relation(familyHistoryCreateDTO.relation())
                 .inheritedDiseases(familyHistoryCreateDTO.inheritedDiseases())
+
+                .status(PatientHistoryStatus.ACTIVE)
+
                 .build();
 
         try {
-            FamilyHistory saved = familyHistoryRepository.saveAndFlush(entity);
-
-            return saved;
+            return familyHistoryRepository.saveAndFlush(entity);
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
@@ -61,8 +73,6 @@ public class FamilyHistoryService {
             );
         }
     }
-
-
     public FamilyHistory update(FamilyHistoryUpdateDTO familyHistoryUpdateDTO) {
         LOG.info("[UPDATE] FamilyHistory payload={}", familyHistoryUpdateDTO);
 
@@ -79,8 +89,7 @@ public class FamilyHistoryService {
         entity.setInheritedDiseases(familyHistoryUpdateDTO.inheritedDiseases());
 
         try {
-            FamilyHistory updated = familyHistoryRepository.saveAndFlush(entity);
-            return updated;
+            return familyHistoryRepository.saveAndFlush(entity);
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
@@ -92,6 +101,72 @@ public class FamilyHistoryService {
         }
     }
 
+    public FamilyHistory cancel(FamilyHistoryCancelDTO familyHistoryCancelDTO) {
+
+        String currentUser = currentUsername();
+
+        LOG.info(
+                "[CANCEL] FamilyHistory id={} cancelledBy={} reason={}",
+                familyHistoryCancelDTO.id(),
+                currentUser,
+                familyHistoryCancelDTO.cancellationReason()
+        );
+
+        FamilyHistory entity = familyHistoryRepository.findById(familyHistoryCancelDTO.id())
+                .orElseThrow(() -> {
+                    LOG.warn(
+                            "[CANCEL] FamilyHistory not found id={}",
+                            familyHistoryCancelDTO.id()
+                    );
+                    return new NotFoundAlertException(
+                            "Family history not found with id " + familyHistoryCancelDTO.id(),
+                            "familyHistory",
+                            "notfound"
+                    );
+                });
+
+        entity.setStatus(PatientHistoryStatus.CANCELLED);
+
+        entity.setCancelledBy(currentUser);
+        entity.setCancelledDate(Instant.now());
+        entity.setCancellationReason(
+                familyHistoryCancelDTO.cancellationReason()
+        );
+
+        try {
+            FamilyHistory savedEntity =
+                    familyHistoryRepository.saveAndFlush(entity);
+
+            LOG.info(
+                    "[CANCEL] FamilyHistory success id={} cancelledBy={}",
+                    familyHistoryCancelDTO.id(),
+                    currentUser
+            );
+
+            return savedEntity;
+
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            LOG.warn(
+                    "[CANCEL] FamilyHistory failed (constraint) id={} cancelledBy={}",
+                    familyHistoryCancelDTO.id(),
+                    currentUser,
+                    ex
+            );
+            handleConstraints(ex);
+            throw new BadRequestAlertException(
+                    "Database constraint violated while cancelling family history.",
+                    "familyHistory",
+                    "db.constraint"
+            );
+        } catch (RuntimeException ex) {
+            LOG.error(
+                    "[CANCEL] FamilyHistory failed (unexpected) id={}",
+                    familyHistoryCancelDTO.id(),
+                    ex
+            );
+            throw ex;
+        }
+    }
 
     public void delete(Long id) {
         LOG.info("[DELETE] FamilyHistory id={}", id);
@@ -106,13 +181,32 @@ public class FamilyHistoryService {
         familyHistoryRepository.delete(entity);
     }
 
-
     @Transactional(readOnly = true)
-    public Page<FamilyHistory> findByPatientId(Long patientId, Pageable pageable) {
-        LOG.debug("[LIST] FamilyHistory patientId={} pageable={}", patientId, pageable);
-        return familyHistoryRepository.findAllByPatientId(patientId, pageable);
-    }
+    public Page<FamilyHistory> findByPatientId(
+            Long patientId,
+            Boolean showCancelled,
+            Pageable pageable
+    ) {
+        LOG.debug(
+                "[LIST] FamilyHistory patientId={} showCancelled={} pageable={}",
+                patientId,
+                showCancelled,
+                pageable
+        );
 
+        if (Boolean.TRUE.equals(showCancelled)) {
+            return familyHistoryRepository.findAllByPatientId(
+                    patientId,
+                    pageable
+            );
+        }
+
+        return familyHistoryRepository.findAllByPatientIdAndStatus(
+                patientId,
+                PatientHistoryStatus.ACTIVE,
+                pageable
+        );
+    }
 
     private void handleConstraints(RuntimeException exception) {
         Throwable root = getRootCause(exception);

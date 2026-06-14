@@ -16,6 +16,8 @@ management:
       probability: 1.0 # report 100% of traces
 service:
   asklepios-setup-service-url: http://asklepios-api-setup-service:8082
+  asklepios-gateway-service-url: http://asklepios-api-gateway
+
 spring:
   devtools:
     restart:
@@ -83,3 +85,8 @@ patient:
       host: localhost
       port: 5000
       ring-buffer-size: 512
+  appointment:
+    auto-no-show:
+      job-zone: Asia/Hebron
+      system-job-user: SYSTEM_JOB
+      no-show-reason: Not Specified

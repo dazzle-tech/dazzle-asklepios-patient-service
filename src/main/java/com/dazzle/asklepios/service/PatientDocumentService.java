@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
+import com.dazzle.asklepios.domain.enumeration.CountryName;
 import com.dazzle.asklepios.domain.enumeration.DocumentType;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -41,7 +42,8 @@ public class PatientDocumentService {
 
     public PatientDocumentService(
             PatientDocumentRepository patientDocumentRepository,
-            PatientRepository patientRepository, CountryHelper countryHelper) {
+            PatientRepository patientRepository,
+            CountryHelper countryHelper) {
         this.patientDocumentRepository = patientDocumentRepository;
         this.patientRepository = patientRepository;
         this.countryHelper = countryHelper;
@@ -49,7 +51,11 @@ public class PatientDocumentService {
 
     public PatientDocument create(PatientDocumentCreateDTO dto) {
         LOG.info("[CREATE] Request to create PatientDocument payload={}", dto);
-        countryHelper.validateCountryExists(dto.countryId());
+
+        if (dto.countryId() != null) {
+            CountryName countryName = countryHelper.getCountryName(dto.countryId());
+            validateDocumentNumber(dto.type(), countryName, dto.number());
+        }
 
         PatientDocument entity = PatientDocument.builder()
                 .patient(refPatient(dto.patientId()))
@@ -100,13 +106,17 @@ public class PatientDocumentService {
     public PatientDocument update(Long id, PatientDocumentUpdateDTO dto) {
         LOG.info("[UPDATE] Request to update PatientDocument id={} payload={}", id, dto);
 
+        if (dto.countryId() != null) {
+            CountryName countryName = countryHelper.getCountryName(dto.countryId());
+            validateDocumentNumber(dto.type(), countryName, dto.number());
+        }
+
         PatientDocument existing = patientDocumentRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException(
                         "PatientDocument not found with id " + id,
                         "patientDocument",
                         "notfound"
                 ));
-        countryHelper.validateCountryExists(dto.countryId());
 
         existing.setPatient(refPatient(dto.patientId()));
         existing.setCountryId(dto.countryId());
@@ -151,6 +161,51 @@ public class PatientDocumentService {
         } catch (Exception ex) {
             LOG.error("Error deleting PatientDocument id={}", id, ex);
             return false;
+        }
+    }
+
+    // ─── Private Helpers ───────────────────────────────────────────────────────
+
+    private void validateDocumentNumber(DocumentType type, CountryName countryCode, String number) {
+        if (type == null || type == DocumentType.NO_DOCUMENT) return;
+        if (countryCode != CountryName.SAUDI_ARABIA) return;
+
+        String num = (number == null) ? "" : number.trim();
+
+        switch (type) {
+            case NATIONAL_ID -> {
+                if (!num.startsWith("1")) {
+                    throw new BadRequestAlertException(
+                            "Saudi National ID number must start with 1.",
+                            "patientDocument",
+                            "number.invalid.start"
+                    );
+                }
+                if (num.length() < 10) {
+                    throw new BadRequestAlertException(
+                            "ID number should not be less than 10 digits.",
+                            "patientDocument",
+                            "number.invalid.length"
+                    );
+                }
+            }
+            case IQAMA, BORDER_NUMBER -> {
+                if (!num.startsWith("2")) {
+                    throw new BadRequestAlertException(
+                            "Saudi " + type.name() + " number must start with 2.",
+                            "patientDocument",
+                            "number.invalid.start"
+                    );
+                }
+                if (num.length() < 10) {
+                    throw new BadRequestAlertException(
+                            "ID number should not be less than 10 digits.",
+                            "patientDocument",
+                            "number.invalid.length"
+                    );
+                }
+            }
+            default -> { }
         }
     }
 

@@ -546,10 +546,12 @@ public class DiagnosticOrderTestReportService {
             List<Long> fromDepartmentIn,
             String patientName,
             String mrn,
+            List<Long> patientIdIn,
+            Long orderNumber,
             Pageable pageable
     ) {
-        LOG.debug("[DiagnosticOrderTestReportService] FILTER_REPORTS - start. id={} orderIdIn={} orderTestId={} severity={} approvedBy={} rejectedBy={} reviewBy={} reviewed={} pageable={}",
-                id, orderIdIn, orderTestId, severity, approvedBy, rejectedBy, reviewBy, reviewed, pageable);
+        LOG.debug("[DiagnosticOrderTestReportService] FILTER_REPORTS - start. id={} orderIdIn={} orderTestId={} severity={} approvedBy={} rejectedBy={} reviewBy={} reviewed={} patientIdIn={} orderNumber={} pageable={}",
+                id, orderIdIn, orderTestId, severity, approvedBy, rejectedBy, reviewBy, reviewed, patientIdIn, orderNumber, pageable);
 
         Specification<DiagnosticOrderTestReport> spec = (reportRoot, criteriaQuery, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -642,12 +644,28 @@ public class DiagnosticOrderTestReportService {
                 predicates.add(criteriaBuilder.lessThanOrEqualTo(reportRoot.get("lastModifiedDate"), lastModifiedDateTo));
             }
 
-            boolean needOrderFilter = fromDepartmentIn != null && !fromDepartmentIn.isEmpty();
+            boolean needOrderFilter =
+                    fromDepartmentIn != null && !fromDepartmentIn.isEmpty();
+
+            boolean needOrderNumberFilter =
+                    orderNumber != null;
+
+            boolean needPatientIdFilter =
+                    patientIdIn != null && !patientIdIn.isEmpty();
+
             boolean needPatientFilter =
                     (patientName != null && !patientName.isBlank()) ||
                             (mrn != null && !mrn.isBlank());
-            boolean needOrderIdFilter = orderIdIn != null && !orderIdIn.isEmpty();
-            boolean needSubquery = needOrderFilter || needPatientFilter || needOrderIdFilter;
+
+            boolean needOrderIdFilter =
+                    orderIdIn != null && !orderIdIn.isEmpty();
+
+            boolean needSubquery =
+                    needOrderFilter ||
+                            needOrderNumberFilter ||
+                            needPatientIdFilter ||
+                            needPatientFilter ||
+                            needOrderIdFilter;
 
             if (needSubquery) {
                 var subquery = criteriaQuery.subquery(Long.class);
@@ -657,13 +675,11 @@ public class DiagnosticOrderTestReportService {
 
                 List<Predicate> subPredicates = new ArrayList<>();
 
-                // ربط التقرير مع orderTest
                 subPredicates.add(criteriaBuilder.equal(
                         testRoot.get("id"),
                         reportRoot.get("orderTestId")
                 ));
 
-                // ربط orderTest مع order
                 subPredicates.add(criteriaBuilder.equal(
                         orderRoot.get("id"),
                         testRoot.get("orderId")
@@ -675,6 +691,17 @@ public class DiagnosticOrderTestReportService {
 
                 if (needOrderFilter) {
                     subPredicates.add(orderRoot.get("fromDepartmentId").in(fromDepartmentIn));
+                }
+
+                if (needOrderNumberFilter) {
+                    subPredicates.add(criteriaBuilder.equal(
+                            orderRoot.get("orderNumber"),
+                            orderNumber
+                    ));
+                }
+
+                if (needPatientIdFilter) {
+                    subPredicates.add(orderRoot.get("patientId").in(patientIdIn));
                 }
 
                 if (needPatientFilter) {
@@ -694,6 +721,7 @@ public class DiagnosticOrderTestReportService {
 
                     if (patientName != null && !patientName.isBlank()) {
                         String like = "%" + patientName.trim().toLowerCase() + "%";
+
                         subPredicates.add(criteriaBuilder.or(
                                 criteriaBuilder.like(criteriaBuilder.lower(patientRoot.get("firstName")), like),
                                 criteriaBuilder.like(criteriaBuilder.lower(patientRoot.get("secondName")), like),
@@ -712,7 +740,8 @@ public class DiagnosticOrderTestReportService {
             return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
         };
 
-        Page<DiagnosticOrderTestReport> page = diagnosticOrderTestReportRepository.findAll(spec, pageable);
+        Page<DiagnosticOrderTestReport> page =
+                diagnosticOrderTestReportRepository.findAll(spec, pageable);
 
         List<Long> reportIds = page.getContent()
                 .stream()

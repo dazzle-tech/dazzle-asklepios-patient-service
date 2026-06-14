@@ -106,11 +106,13 @@ public class DiagnosticOrderTestReportController {
             @RequestParam(name = "fromDepartmentIn", required = false) List<Long> fromDepartmentIn,
             @RequestParam(name = "patientName", required = false) String patientName,
             @RequestParam(name = "mrn", required = false) String mrn,
+            @RequestParam(name = "patientIdIn", required = false) List<Long> patientIdIn,
+            @RequestParam(name = "orderNumber", required = false) Long orderNumber,
 
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("[RadiologyReport] FILTER orderIdIn={} orderTestId={} fromDepartmentIn={} patientName={} mrn={}",
-                orderIdIn, orderTestId, fromDepartmentIn, patientName, mrn);
+        LOG.debug("[RadiologyReport] FILTER orderIdIn={} orderTestId={} fromDepartmentIn={} patientName={} mrn={} patientIdIn={} orderNumber={}",
+                orderIdIn, orderTestId, fromDepartmentIn, patientName, mrn, patientIdIn, orderNumber);
 
         Page<DiagnosticOrderTestReportResponseVM> page = reportService.filterReports(
                 id,
@@ -138,6 +140,8 @@ public class DiagnosticOrderTestReportController {
                 fromDepartmentIn,
                 patientName,
                 mrn,
+                patientIdIn,
+                orderNumber,
                 pageable
         );
 
@@ -146,7 +150,6 @@ public class DiagnosticOrderTestReportController {
         );
 
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
-
     }
 
     @GetMapping("/radiology/reports/by-test/{orderTestId}")

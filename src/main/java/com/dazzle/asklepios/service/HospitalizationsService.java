@@ -1,9 +1,12 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.Hospitalization;
+import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.repository.HospitalizationRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationCancelDTO;
 import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationsCreateDTO;
 import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationsUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -17,6 +20,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.Date;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -40,18 +46,33 @@ public class HospitalizationsService {
                 ));
     }
 
-    public Hospitalization create(HospitalizationsCreateDTO hospitalizationsCreateDTO) {
-        LOG.info("[CREATE] Hospitalization payload={}", hospitalizationsCreateDTO);
+    private String currentUsername() {
+        return SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "unauthenticated",
+                        "hospitalization",
+                        "No authenticated user"
+                ));
+    }
+
+
+    public Hospitalization create(HospitalizationsCreateDTO hospitalizationCreateDTO) {
+        LOG.info("[CREATE] Hospitalization payload={}", hospitalizationCreateDTO);
 
         Hospitalization entity = Hospitalization.builder()
-                .patient(refPatient(hospitalizationsCreateDTO.patientId()))
-                .facility(hospitalizationsCreateDTO.facility())
-                .reason(hospitalizationsCreateDTO.reason())
-                .admissionType(hospitalizationsCreateDTO.admissionType())
-                .dateOfAdmission(hospitalizationsCreateDTO.dateOfAdmission())
-                .lengthOfStayDays(hospitalizationsCreateDTO.lengthOfStayDays())
-                .outcomes(hospitalizationsCreateDTO.outcomes())
-                .medicalInterventionsPerformed(hospitalizationsCreateDTO.medicalInterventionsPerformed())
+                .patient(refPatient(hospitalizationCreateDTO.patientId()))
+                .facility(hospitalizationCreateDTO.facility())
+                .reason(hospitalizationCreateDTO.reason())
+                .admissionType(hospitalizationCreateDTO.admissionType())
+                .dateOfAdmission(hospitalizationCreateDTO.dateOfAdmission())
+                .lengthOfStayDays(hospitalizationCreateDTO.lengthOfStayDays())
+                .outcomes(hospitalizationCreateDTO.outcomes())
+                .medicalInterventionsPerformed(
+                        hospitalizationCreateDTO.medicalInterventionsPerformed()
+                )
+
+                .status(PatientHistoryStatus.ACTIVE)
+
                 .build();
 
         try {
@@ -60,7 +81,7 @@ public class HospitalizationsService {
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
             throw new BadRequestAlertException(
-                    "Database constraint violated while creating patient admission.",
+                    "Database constraint violated while creating hospitalization.",
                     "hospitalization",
                     "db.constraint"
             );
@@ -70,9 +91,12 @@ public class HospitalizationsService {
     public Hospitalization update(HospitalizationsUpdateDTO hospitalizationsUpdateDTO) {
         LOG.info("[UPDATE] Hospitalization payload={}", hospitalizationsUpdateDTO);
 
-        Hospitalization entity = hospitalizationRepository.findById(hospitalizationsUpdateDTO.id())
+        Hospitalization entity = hospitalizationRepository.findById(
+                        hospitalizationsUpdateDTO.id()
+                )
                 .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient admission not found with id " + hospitalizationsUpdateDTO.id(),
+                        "Patient admission not found with id "
+                                + hospitalizationsUpdateDTO.id(),
                         "hospitalization",
                         "notfound"
                 ));
@@ -84,7 +108,9 @@ public class HospitalizationsService {
         entity.setDateOfAdmission(hospitalizationsUpdateDTO.dateOfAdmission());
         entity.setLengthOfStayDays(hospitalizationsUpdateDTO.lengthOfStayDays());
         entity.setOutcomes(hospitalizationsUpdateDTO.outcomes());
-        entity.setMedicalInterventionsPerformed(hospitalizationsUpdateDTO.medicalInterventionsPerformed());
+        entity.setMedicalInterventionsPerformed(
+                hospitalizationsUpdateDTO.medicalInterventionsPerformed()
+        );
 
         try {
             return hospitalizationRepository.saveAndFlush(entity);
@@ -93,6 +119,39 @@ public class HospitalizationsService {
             handleConstraints(ex);
             throw new BadRequestAlertException(
                     "Database constraint violated while updating patient admission.",
+                    "hospitalization",
+                    "db.constraint"
+            );
+        }
+    }
+
+    public Hospitalization cancel(HospitalizationCancelDTO hospitalizationCancelDTO) {
+        LOG.info("[CANCEL] Hospitalization payload={}", hospitalizationCancelDTO);
+
+        Hospitalization entity = hospitalizationRepository.findById(
+                        hospitalizationCancelDTO.id()
+                )
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient admission not found with id "
+                                + hospitalizationCancelDTO.id(),
+                        "hospitalization",
+                        "notfound"
+                ));
+
+        entity.setStatus(PatientHistoryStatus.CANCELLED);
+        entity.setCancelledBy(currentUsername());
+        entity.setCancelledDate(Instant.now());
+        entity.setCancellationReason(
+                hospitalizationCancelDTO.cancellationReason()
+        );
+
+        try {
+            return hospitalizationRepository.saveAndFlush(entity);
+
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            handleConstraints(ex);
+            throw new BadRequestAlertException(
+                    "Database constraint violated while cancelling patient admission.",
                     "hospitalization",
                     "db.constraint"
             );
@@ -113,21 +172,44 @@ public class HospitalizationsService {
     }
 
     @Transactional(readOnly = true)
-    public Page<Hospitalization> findByPatientId(Long patientId, Pageable pageable) {
-        LOG.debug("[LIST] Hospitalization patientId={} pageable={}", patientId, pageable);
-        return hospitalizationRepository.findAllByPatientId(patientId, pageable);
+    public Page<Hospitalization> findByPatientId(
+            Long patientId,
+            boolean showCancelled,
+            Pageable pageable
+    ) {
+        LOG.debug(
+                "[LIST] Hospitalization patientId={} showCancelled={} pageable={}",
+                patientId,
+                showCancelled,
+                pageable
+        );
+
+        if (showCancelled) {
+            return hospitalizationRepository.findAllByPatientId(
+                    patientId,
+                    pageable
+            );
+        }
+
+        return hospitalizationRepository.findAllByPatientIdAndStatusNot(
+                patientId,
+                PatientHistoryStatus.CANCELLED,
+                pageable
+        );
     }
 
     private void handleConstraints(RuntimeException exception) {
         Throwable root = getRootCause(exception);
-        String message = (root != null ? root.getMessage() : exception.getMessage());
+        String message =
+                (root != null ? root.getMessage() : exception.getMessage());
 
         LOG.error("DB ROOT CAUSE: {}", message, exception);
 
         String lower = (message != null ? message.toLowerCase() : "");
 
         if (lower.contains("ux_patient_admissions_patient_facility_date")
-                || (lower.contains("unique") && lower.contains("facility"))) {
+                || (lower.contains("unique")
+                && lower.contains("facility"))) {
             throw new BadRequestAlertException(
                     "Patient admission already exists for this patient, facility and admission date.",
                     "hospitalization",
@@ -136,7 +218,8 @@ public class HospitalizationsService {
         }
 
         if (lower.contains("fk_patient_admissions_patient")
-                || (lower.contains("foreign key") && lower.contains("patient"))) {
+                || (lower.contains("foreign key")
+                && lower.contains("patient"))) {
             throw new BadRequestAlertException(
                     "Invalid patient reference.",
                     "hospitalization",
