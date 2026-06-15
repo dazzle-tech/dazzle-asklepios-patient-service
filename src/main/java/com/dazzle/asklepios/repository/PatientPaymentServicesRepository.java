@@ -11,4 +11,5 @@ public interface PatientPaymentServicesRepository extends JpaRepository<PatientP
 
     List<PatientPaymentServices> findByPayment_Id(Long paymentId);
 
+
 }

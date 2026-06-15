@@ -46,4 +46,5 @@ public record PatientPaymentCreateDTO(
 
         @NotNull List<PatientPaymentServiceItemDTO> services
 
+
 ) implements Serializable { }

@@ -41,4 +41,5 @@ public interface PatientChargeRepository extends JpaRepository<PatientCharge, Lo
     BigDecimal sumOpenRemainingByPatient(@Param("patientId") Long patientId);
 
 
+
 }

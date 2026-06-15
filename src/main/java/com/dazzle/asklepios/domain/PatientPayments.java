@@ -160,4 +160,5 @@ public class PatientPayments extends AbstractAuditingEntity<Long> implements Ser
         }
         return this.plan == null;
     }
+
 }

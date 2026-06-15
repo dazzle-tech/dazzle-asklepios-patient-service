@@ -48,6 +48,6 @@ public class PatientPaymentAllocation implements Serializable {
     private BigDecimal paidFromBalance = BigDecimal.ZERO;
 
     @Column(name = "last_modified_date", nullable = false)
-    @Builder.Default
-    private Instant lastModifiedDate = Instant.now();
+    private Instant lastModifiedDate;
+
 }

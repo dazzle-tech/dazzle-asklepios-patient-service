@@ -48,4 +48,5 @@ public class PatientPaymentServices extends AbstractAuditingEntity<Long> impleme
     @NotNull
     @Column(name = "is_exempted", nullable = false)
     private Boolean isExempted;
+
 }

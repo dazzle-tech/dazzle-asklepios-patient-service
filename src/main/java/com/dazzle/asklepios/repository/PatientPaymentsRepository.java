@@ -11,4 +11,5 @@ public interface PatientPaymentsRepository extends JpaRepository<PatientPayments
 
     Optional<PatientPayments> findByEncounter_Id(Long encounterId);
 
+
 }

@@ -42,11 +42,11 @@ public class PatientCharge implements Serializable {
     @Column(name = "plan_id")
     private Long planId;
 
-    @Column(name = "due_amount", nullable = false, precision = 19, scale = 2)
+    @Column(name = "due_amount", nullable = false, precision = 19, scale = 4)
     @Builder.Default
     private BigDecimal dueAmount = BigDecimal.ZERO;
 
-    @Column(name = "remaining", nullable = false, precision = 19, scale = 2)
+    @Column(name = "remaining", nullable = false, precision = 19, scale = 4)
     @Builder.Default
     private BigDecimal remaining = BigDecimal.ZERO;
 
@@ -61,6 +61,5 @@ public class PatientCharge implements Serializable {
     private Instant createdDate = Instant.now();
 
     @Column(name = "last_modified_date", nullable = false)
-    @Builder.Default
-    private Instant lastModifiedDate = Instant.now();
+    private Instant lastModifiedDate;
 }

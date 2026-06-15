@@ -31,6 +31,5 @@ public class PatientWallet implements Serializable {
     private BigDecimal balance = BigDecimal.ZERO;
 
     @Column(name = "last_modified_date", nullable = false)
-    @Builder.Default
-    private Instant lastModifiedDate = Instant.now();
+    private Instant lastModifiedDate;
 }

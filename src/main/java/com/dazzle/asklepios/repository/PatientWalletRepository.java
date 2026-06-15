@@ -13,4 +13,5 @@ public interface PatientWalletRepository extends JpaRepository<PatientWallet, Lo
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<PatientWallet> findByPatientId(Long patientId);
+
 }
