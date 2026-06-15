@@ -15,6 +15,7 @@ management:
 service:
   asklepios-setup-service-url: http://localhost:8082
   asklepios-gateway-service-url: http://localhost:8080
+  asklepios-notification-service-url: http://localhost:8090
 spring:
   devtools:
     restart:
@@ -27,9 +28,9 @@ spring:
       indent-output: true
   datasource:
     type: com.zaxxer.hikari.HikariDataSource
-    url: jdbc:postgresql://localhost:5432/asklepios
+    url: jdbc:postgresql://localhost:5432/test
     username: postgres
-    password: 147741
+    password: 123456
     hikari:
       poolName: Hikari
       auto-commit: false

@@ -1,7 +1,8 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.gateway.InternalMailClient;
-import com.dazzle.asklepios.client.gateway.dto.PatientCreatePasswordMailDTO;
+import com.dazzle.asklepios.client.notification.NotificationClient;
+import com.dazzle.asklepios.client.notification.dto.NotificationCreateDTO;
+import com.dazzle.asklepios.client.notification.dto.NotificationRecipientDTO;
 import com.dazzle.asklepios.domain.DuplicationCandidate;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
@@ -20,9 +21,11 @@ import com.dazzle.asklepios.web.rest.vm.patient.CreatePasswordKeyValidationVM;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
+import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -37,6 +40,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -46,6 +50,7 @@ import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class PatientService {
 
     private static final Logger LOG = LoggerFactory.getLogger(PatientService.class);
@@ -53,22 +58,16 @@ public class PatientService {
     private final PatientRepository patientRepository;
     private final PatientDocumentRepository patientDocumentRepository;
     private final DuplicationCandidateRepository duplicationCandidateRepository;
-    private final InternalMailClient internalMailClient;
     private static final long CREATE_PASSWORD_KEY_EXPIRATION_HOURS = 24;
     private final PasswordEncoder passwordEncoder;
     private static final Pattern STRONG_PASSWORD_PATTERN = Pattern.compile(
             "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&#_.-])[A-Za-z\\d@$!%*?&#_.-]{8,}$"
     );
+    private final NotificationClient notificationClient;
 
-    public PatientService(PatientRepository patientRepository, PatientDocumentRepository patientDocumentRepository, DuplicationCandidateRepository duplicationCandidateRepository,
-                          InternalMailClient internalMailClient, PasswordEncoder passwordEncoder
-    ) {
-        this.patientRepository = patientRepository;
-        this.patientDocumentRepository = patientDocumentRepository;
-        this.duplicationCandidateRepository = duplicationCandidateRepository;
-        this.internalMailClient = internalMailClient;
-        this.passwordEncoder = passwordEncoder;
-    }
+    @Value("${service.asklepios-gateway-service-url}")
+    private String patientPortalUrl;
+
 
     public Patient create(PatientCreateDTO dto) {
         LOG.info("[CREATE] Request to create Patient payload={}", dto);
@@ -424,24 +423,62 @@ public class PatientService {
             patient.setResetDate(now);
         }
 
-        patientRepository.save(patient);
-        PatientDocument primaryDoc = patientDocumentRepository.findByPatientIdAndIsPrimaryTrue(patient.getId()).orElse(null);
+        patientRepository.saveAndFlush(patient);
+
+        PatientDocument primaryDoc = patientDocumentRepository
+                .findByPatientIdAndIsPrimaryTrue(patient.getId())
+                .orElse(null);
+
         if (primaryDoc == null) {
             LOG.warn("Primary document not found for patient id={}", patient.getId());
-            throw new BadRequestAlertException("primary.document.missing", "patient", "Primary document is missing for patient");
+            throw new BadRequestAlertException(
+                    "primary.document.missing",
+                    "patient",
+                    "Primary document is missing for patient"
+            );
         }
-        PatientCreatePasswordMailDTO dto = new PatientCreatePasswordMailDTO(
-                patient.getNativeLanguage() != null ? patient.getNativeLanguage() : "en",
+
+        String language = patient.getNativeLanguage() != null
+                ? patient.getNativeLanguage()
+                : "en";
+
+        String patientName =
+                patient.getFirstName() +
+                        (patient.getLastName() != null ? " " + patient.getLastName() : "");
+
+        String createPasswordUrl =
+                patientPortalUrl + "/account/create-password/finish?key=" + token;
+
+        NotificationRecipientDTO recipient = new NotificationRecipientDTO(
+                "PATIENT",
                 patient.getId(),
-                patient.getFirstName() + (patient.getLastName() != null ? " " + patient.getLastName() : ""),
-                primaryDoc.getNumber(),
+                patientName,
                 patient.getEmail(),
-                token
+                patient.getPrimaryMobileNumber(),
+                null
         );
 
-        internalMailClient.sendPatientCreatePasswordMail(dto);
-    }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("patientName", patientName);
+        data.put("documentNumber", primaryDoc.getNumber());
+        data.put("patientEmail", patient.getEmail());
+        data.put("token", token);
+        data.put("createPasswordUrl", createPasswordUrl);
 
+        NotificationCreateDTO notificationDTO = new NotificationCreateDTO(
+                null,
+                "PATIENT_CREATE_PASSWORD",
+                "EMAIL",
+                language,
+                recipient,
+                null,
+                data,
+                "PATIENT",
+                patient.getId()
+        );
+
+        notificationClient.createNotification(notificationDTO);
+    }
     @Transactional(readOnly = true)
     public CreatePasswordKeyValidationVM validateCreatePasswordKey(String key) {
         return patientRepository
