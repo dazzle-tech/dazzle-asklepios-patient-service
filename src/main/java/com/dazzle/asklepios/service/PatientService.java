@@ -3,9 +3,11 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.client.notification.NotificationClient;
 import com.dazzle.asklepios.client.notification.dto.NotificationCreateDTO;
 import com.dazzle.asklepios.client.notification.dto.NotificationRecipientDTO;
+import com.dazzle.asklepios.client.setup.SystemConfigurationClient;
 import com.dazzle.asklepios.domain.DuplicationCandidate;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
+import com.dazzle.asklepios.domain.enumeration.SystemConfigKey;
 import com.dazzle.asklepios.repository.DuplicationCandidateRepository;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -64,9 +66,10 @@ public class PatientService {
             "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&#_.-])[A-Za-z\\d@$!%*?&#_.-]{8,}$"
     );
     private final NotificationClient notificationClient;
+    private final SystemConfigurationClient systemConfigurationClient;
 
-    @Value("${service.asklepios-gateway-service-url}")
-    private String patientPortalUrl;
+    @Value("${application.asklepios-application-url}")
+    private String asklepiosApplicationlUrl;
 
 
     public Patient create(PatientCreateDTO dto) {
@@ -447,7 +450,7 @@ public class PatientService {
                         (patient.getLastName() != null ? " " + patient.getLastName() : "");
 
         String createPasswordUrl =
-                patientPortalUrl + "/account/create-password/finish?key=" + token;
+                asklepiosApplicationlUrl + "/account/create-password/finish?key=" + token;
 
         NotificationRecipientDTO recipient = new NotificationRecipientDTO(
                 "PATIENT",
@@ -464,6 +467,9 @@ public class PatientService {
         data.put("patientEmail", patient.getEmail());
         data.put("token", token);
         data.put("createPasswordUrl", createPasswordUrl);
+        data.put("title", "CMS | Set your password");
+        String logoUrl = systemConfigurationClient.getResolvedValue(SystemConfigKey.SYSTEM_LOGO);
+        data.put("logoUrl", logoUrl);
 
         NotificationCreateDTO notificationDTO = new NotificationCreateDTO(
                 null,
