@@ -48,9 +48,6 @@ public class PatientInsuranceService {
     public PatientInsurance create(PatientInsuranceCreateDTO dto) {
         LOG.info("[CREATE] PatientInsurance payload={}", dto);
 
-        payorHelper.validatePayorExists(dto.payorId());
-        payorPlanHelper.validatePayorPlanExists(dto.planId());
-
         Patient policyHolder = dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId());
 
         PatientInsurance entity = PatientInsurance.builder()
@@ -107,8 +104,6 @@ public class PatientInsuranceService {
                         "patientInsurance",
                         "notfound"
                 ));
-        payorHelper.validatePayorExists(dto.payorId());
-        payorPlanHelper.validatePayorPlanExists(dto.planId());
 
         existing.setPatient(refPatient(dto.patientId()));
         existing.setPayorId(dto.payorId());

@@ -37,11 +37,9 @@ public class PatientInsurance extends AbstractAuditingEntity<Long> {
     @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
-    @NotNull
     @Column(name = "payor_id", nullable = false)
     private Long payorId;
 
-    @NotNull
     @Column(name = "plan_id")
     private Long planId;
 
@@ -100,6 +98,15 @@ public class PatientInsurance extends AbstractAuditingEntity<Long> {
 
     @Column(name = "waseel_new_plan")
     private Boolean waseelNewPlan;
+
+    @Column(name = "payer_name", length = 255)
+    private String payerName;
+
+    @Column(name = "tpa_nphies_id", length = 100)
+    private String tpaNphiesId;
+
+    @Column(name = "tpa_name", length = 255)
+    private String tpaName;
 
     @Column(name = "is_primary", nullable = false)
     private Boolean isPrimary = false;

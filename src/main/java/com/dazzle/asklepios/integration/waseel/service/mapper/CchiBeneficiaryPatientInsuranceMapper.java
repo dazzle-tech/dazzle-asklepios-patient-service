@@ -1,7 +1,5 @@
 package com.dazzle.asklepios.integration.waseel.service.mapper;
 
-import com.dazzle.asklepios.client.setup.dto.PayorDTO;
-import com.dazzle.asklepios.client.setup.dto.PayorPlanDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiCoverageClass;
@@ -20,9 +18,7 @@ public class CchiBeneficiaryPatientInsuranceMapper {
 
     public PatientInsurance toPatientInsurance(
             CchiInsurancePlan source,
-            Patient patient,
-            PayorDTO payor,
-            PayorPlanDTO payorPlan
+            Patient patient
     ) {
         if (source == null) {
             return null;
@@ -33,9 +29,7 @@ public class CchiBeneficiaryPatientInsuranceMapper {
         mapToExistingPatientInsurance(
                 insurance,
                 source,
-                patient,
-                payor,
-                payorPlan
+                patient
         );
 
         return insurance;
@@ -44,9 +38,7 @@ public class CchiBeneficiaryPatientInsuranceMapper {
     public void mapToExistingPatientInsurance(
             PatientInsurance insurance,
             CchiInsurancePlan source,
-            Patient patient,
-            PayorDTO payor,
-            PayorPlanDTO payorPlan
+            Patient patient
     ) {
         if (insurance == null || source == null) {
             return;
@@ -60,25 +52,10 @@ public class CchiBeneficiaryPatientInsuranceMapper {
             );
         }
 
-        if (payor == null || payor.id() == null) {
-            throw new BadRequestAlertException(
-                    "Configured payor is required before mapping patient insurance",
-                    ENTITY_NAME,
-                    "payor.required"
-            );
-        }
-
-        if (payorPlan == null || payorPlan.id() == null) {
-            throw new BadRequestAlertException(
-                    "Configured payor plan is required before mapping patient insurance",
-                    ENTITY_NAME,
-                    "payorPlan.required"
-            );
-        }
-
         insurance.setPatient(patient);
-        insurance.setPayorId(payor.id());
-        insurance.setPlanId(payorPlan.id());
+
+        insurance.setPayorId(null);
+        insurance.setPlanId(null);
 
         insurance.setMemberCardId(clean(source.memberCardId()));
         insurance.setPolicyNumber(requiredString(source.policyNumber(), "policyNumber"));
