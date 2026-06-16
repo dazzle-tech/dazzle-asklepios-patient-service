@@ -52,16 +52,28 @@ public class CchiBeneficiaryPatientInsuranceMapper {
             return;
         }
 
-        if (patient == null ) {
-            throw new BadRequestAlertException("Patient is required before mapping patient insurance",ENTITY_NAME, "patient.required");
+        if (patient == null) {
+            throw new BadRequestAlertException(
+                    "Patient is required before mapping patient insurance",
+                    ENTITY_NAME,
+                    "patient.required"
+            );
         }
 
         if (payor == null || payor.id() == null) {
-            throw new BadRequestAlertException("Configured payor is required before mapping patient insurance", ENTITY_NAME, "payor.required");
+            throw new BadRequestAlertException(
+                    "Configured payor is required before mapping patient insurance",
+                    ENTITY_NAME,
+                    "payor.required"
+            );
         }
 
         if (payorPlan == null || payorPlan.id() == null) {
-            throw new BadRequestAlertException("Configured payor plan is required before mapping patient insurance", ENTITY_NAME, "payorPlan.required");
+            throw new BadRequestAlertException(
+                    "Configured payor plan is required before mapping patient insurance",
+                    ENTITY_NAME,
+                    "payorPlan.required"
+            );
         }
 
         insurance.setPatient(patient);
@@ -69,7 +81,6 @@ public class CchiBeneficiaryPatientInsuranceMapper {
         insurance.setPlanId(payorPlan.id());
 
         insurance.setMemberCardId(clean(source.memberCardId()));
-
         insurance.setPolicyNumber(requiredString(source.policyNumber(), "policyNumber"));
         insurance.setGroupNumber(clean(source.groupNumber()));
 
@@ -82,15 +93,20 @@ public class CchiBeneficiaryPatientInsuranceMapper {
         insurance.setRelationWithSubscriber(clean(source.relationWithSubscriber()));
 
         insurance.setPolicyClassName(getPolicyClassName(source));
-
         insurance.setPolicyHolderName(clean(source.policyHolder()));
 
         insurance.setIssueDate(parseDate(source.issueDate()));
 
         LocalDate expiryDate = parseDate(source.expiryDate());
+
         if (expiryDate == null) {
-            throw new BadRequestAlertException("Missing or invalid expiryDate from Waseel insurance plan", ENTITY_NAME, "expiryDate.invalid");
+            throw new BadRequestAlertException(
+                    "Missing or invalid expiryDate from Waseel insurance plan",
+                    ENTITY_NAME,
+                    "expiryDate.invalid"
+            );
         }
+
         insurance.setExpirationDate(expiryDate);
 
         insurance.setPatientShare(toBigDecimal(source.patientShare()));
@@ -197,7 +213,11 @@ public class CchiBeneficiaryPatientInsuranceMapper {
         String text = clean(value);
 
         if (isBlank(text)) {
-            throw new BadRequestAlertException("Missing required Waseel field: " + fieldName , ENTITY_NAME, fieldName + ".required");
+            throw new BadRequestAlertException(
+                    "Missing required Waseel field: " + fieldName,
+                    ENTITY_NAME,
+                    fieldName + ".required"
+            );
         }
 
         return text;

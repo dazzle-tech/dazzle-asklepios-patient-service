@@ -18,8 +18,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class CchiBeneficiaryAddressMapper {
 
-    private final CountrySetupClient countrySetupClient;
     private static final PageRequest FIRST_PAGE = PageRequest.of(0, 1);
+
+    private final CountrySetupClient countrySetupClient;
 
     public Address toAddress(CchiBeneficiaryData b) {
         if (b == null || !hasAnyAddressData(b)) {
@@ -89,7 +90,11 @@ public class CchiBeneficiaryAddressMapper {
         }
 
         List<CountryDistrictResponseVM> districts =
-                countrySetupClient.getDistrictByName(countryId, clean(waseelState), FIRST_PAGE);
+                countrySetupClient.getDistrictByName(
+                        countryId,
+                        clean(waseelState),
+                        FIRST_PAGE
+                );
 
         CountryDistrictResponseVM district = districts.stream()
                 .filter(d -> Boolean.TRUE.equals(d.isActive()))
@@ -113,7 +118,11 @@ public class CchiBeneficiaryAddressMapper {
         }
 
         List<DistrictCommunityResponseVM> communities =
-                countrySetupClient.getCommunityByName(districtId, clean(waseelCity), FIRST_PAGE);
+                countrySetupClient.getCommunityByName(
+                        districtId,
+                        clean(waseelCity),
+                        FIRST_PAGE
+                );
 
         DistrictCommunityResponseVM community = communities.stream()
                 .filter(c -> Boolean.TRUE.equals(c.isActive()))
@@ -136,25 +145,71 @@ public class CchiBeneficiaryAddressMapper {
         }
 
         return switch (value.trim().toUpperCase()) {
-            case "SAU", "113", "SAUDI", "SAUDI ARABIA", "SAUDI_ARABIA" -> CountryName.SAUDI_ARABIA;
-            case "JOR", "JORDAN" -> CountryName.JORDAN;
-            case "PSE", "PALESTINE" -> CountryName.PALESTINE;
-            case "EGY", "EGYPT" -> CountryName.EGYPT;
-            case "ARE", "UAE", "UNITED ARAB EMIRATES", "UNITED_ARAB_EMIRATES" -> CountryName.UNITED_ARAB_EMIRATES;
-            case "KWT", "KUWAIT" -> CountryName.KUWAIT;
-            case "QAT", "QATAR" -> CountryName.QATAR;
-            case "BHR", "BAHRAIN" -> CountryName.BAHRAIN;
-            case "OMN", "OMAN" -> CountryName.OMAN;
-            case "YEM", "YEMEN" -> CountryName.YEMEN;
-            case "IND", "INDIA" -> CountryName.INDIA;
-            case "PAK", "PAKISTAN" -> CountryName.PAKISTAN;
-            case "BGD", "BANGLADESH" -> CountryName.BANGLADESH;
-            case "PHL", "PHILIPPINES" -> CountryName.PHILIPPINES;
-            case "LBN", "LEBANON" -> CountryName.LEBANON;
-            case "SYR", "SYRIA" -> CountryName.SYRIA;
-            case "IRQ", "IRAQ" -> CountryName.IRAQ;
-            case "USA", "UNITED STATES", "UNITED STATES OF AMERICA", "UNITED_STATES_OF_AMERICA" -> CountryName.UNITED_STATES_OF_AMERICA;
-            case "GBR", "UNITED KINGDOM", "UNITED_KINGDOM" -> CountryName.UNITED_KINGDOM;
+            case "SAU",
+                 "113",
+                 "SAUDI",
+                 "SAUDI ARABIA",
+                 "SAUDI_ARABIA" -> CountryName.SAUDI_ARABIA;
+
+            case "JOR",
+                 "JORDAN" -> CountryName.JORDAN;
+
+            case "PSE",
+                 "PALESTINE" -> CountryName.PALESTINE;
+
+            case "EGY",
+                 "EGYPT" -> CountryName.EGYPT;
+
+            case "ARE",
+                 "UAE",
+                 "UNITED ARAB EMIRATES",
+                 "UNITED_ARAB_EMIRATES" -> CountryName.UNITED_ARAB_EMIRATES;
+
+            case "KWT",
+                 "KUWAIT" -> CountryName.KUWAIT;
+
+            case "QAT",
+                 "QATAR" -> CountryName.QATAR;
+
+            case "BHR",
+                 "BAHRAIN" -> CountryName.BAHRAIN;
+
+            case "OMN",
+                 "OMAN" -> CountryName.OMAN;
+
+            case "YEM",
+                 "YEMEN" -> CountryName.YEMEN;
+
+            case "IND",
+                 "INDIA" -> CountryName.INDIA;
+
+            case "PAK",
+                 "PAKISTAN" -> CountryName.PAKISTAN;
+
+            case "BGD",
+                 "BANGLADESH" -> CountryName.BANGLADESH;
+
+            case "PHL",
+                 "PHILIPPINES" -> CountryName.PHILIPPINES;
+
+            case "LBN",
+                 "LEBANON" -> CountryName.LEBANON;
+
+            case "SYR",
+                 "SYRIA" -> CountryName.SYRIA;
+
+            case "IRQ",
+                 "IRAQ" -> CountryName.IRAQ;
+
+            case "USA",
+                 "UNITED STATES",
+                 "UNITED STATES OF AMERICA",
+                 "UNITED_STATES_OF_AMERICA" -> CountryName.UNITED_STATES_OF_AMERICA;
+
+            case "GBR",
+                 "UNITED KINGDOM",
+                 "UNITED_KINGDOM" -> CountryName.UNITED_KINGDOM;
+
             default -> tryEnum(value);
         };
     }
