@@ -450,7 +450,7 @@ public class PatientService {
                         (patient.getLastName() != null ? " " + patient.getLastName() : "");
 
         String createPasswordUrl =
-                asklepiosApplicationlUrl + "/account/create-password/finish?key=" + token;
+                asklepiosApplicationlUrl + "/create-patient-password?key=" + token;
 
         NotificationRecipientDTO recipient = new NotificationRecipientDTO(
                 "PATIENT",
@@ -470,6 +470,7 @@ public class PatientService {
         data.put("title", "CMS | Set your password");
         String logoUrl = systemConfigurationClient.getResolvedValue(SystemConfigKey.SYSTEM_LOGO);
         data.put("logoUrl", logoUrl);
+        LOG.debug("Prepared notification data for patient id={}: {}", patient.getId(), data);
 
         NotificationCreateDTO notificationDTO = new NotificationCreateDTO(
                 null,
