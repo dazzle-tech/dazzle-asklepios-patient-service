@@ -13,8 +13,8 @@ import java.time.LocalDate;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record PatientInsuranceCreateDTO(
         @NotNull Long patientId,
-        @NotNull Long payorId,
-        @NotNull Long planId,
+         Long payorId,
+         Long planId,
 
         Long policyHolderId,
 

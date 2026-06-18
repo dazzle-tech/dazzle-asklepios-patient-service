@@ -121,16 +121,6 @@ public class ApLovMapperService {
         );
     }
 
-    private String normalize(String value) {
-        return value == null
-                ? ""
-                : value.trim()
-                .replace("_", " ")
-                .replace("-", " ")
-                .replaceAll("\\s+", " ")
-                .toUpperCase(Locale.ROOT);
-    }
-
     public String getCleanValueCodeByLovCodeAndKey(String lovCode, String key) {
         String valueCode = getValueCodeByLovCodeAndKey(lovCode, key);
 
@@ -143,13 +133,6 @@ public class ApLovMapperService {
                 .replace("LANG_", "");
     }
 
-    private String normalizeKey(String value) {
-        return value == null ? "" : value.trim();
-    }
-
-    private boolean isBlank(String value) {
-        return value == null || value.trim().isEmpty();
-    }
     public String getDisplayValueByLovCodeAndValueCode(String lovCode, String valueCode) {
         if (isBlank(lovCode) || isBlank(valueCode)) {
             return null;
@@ -165,4 +148,21 @@ public class ApLovMapperService {
                 .orElse(null);
     }
 
+    private String normalize(String value) {
+        return value == null
+                ? ""
+                : value.trim()
+                .replace("_", " ")
+                .replace("-", " ")
+                .replaceAll("\\s+", " ")
+                .toUpperCase(Locale.ROOT);
+    }
+
+    private String normalizeKey(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
 }

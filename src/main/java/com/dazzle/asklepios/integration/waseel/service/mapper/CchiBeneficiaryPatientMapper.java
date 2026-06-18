@@ -26,6 +26,7 @@ public class CchiBeneficiaryPatientMapper {
 
         patient.setId(null);
         patient.setDocumentId(clean(b.documentId()));
+
         mapName(patient, b);
 
         patient.setSexAtBirth(mapGender(b.gender()));
@@ -36,8 +37,10 @@ public class CchiBeneficiaryPatientMapper {
 
         patient.setMaritalStatus(mapMaritalStatus(b.martialStatus()));
         patient.setNationality(mapNationality(b.nationality()));
+        patient.setReligion(mapReligion(b.religion()));
+        patient.setPreferredLanguage(mapPreferredLanguage(b.preferredLanguage()));
 
-        patient.setPreferredLanguage(mapPreferredLanguage(b.preferredLanguage()));        patient.setEmergencyContactPhone(clean(b.emergencyNumber()));
+        patient.setEmergencyContactPhone(clean(b.emergencyNumber()));
 
         patient.setPatientClasses("");
         patient.setIsPrivatePatient(false);
@@ -66,7 +69,8 @@ public class CchiBeneficiaryPatientMapper {
     }
 
     private String mapMaritalStatus(String waseelValue) {
-        String valueCode = switchValue(waseelValue,
+        String valueCode = switchValue(
+                waseelValue,
                 "MARRIED", "MARRIED",
                 "M", "MARRIED",
                 "SINGLE", "SINGLE",
@@ -85,7 +89,8 @@ public class CchiBeneficiaryPatientMapper {
     }
 
     private String mapNationality(String waseelValue) {
-        String valueCode = switchValue(waseelValue,
+        String valueCode = switchValue(
+                waseelValue,
                 "113", "NAT_001",
                 "SAUDI", "NAT_001",
                 "SAUDI ARABIAN", "NAT_001"
@@ -98,7 +103,8 @@ public class CchiBeneficiaryPatientMapper {
     }
 
     private String mapReligion(String waseelValue) {
-        String valueCode = switchValue(waseelValue,
+        String valueCode = switchValue(
+                waseelValue,
                 "1", "MUS",
                 "MUS", "MUS",
                 "MUSLIM", "MUS",
@@ -116,141 +122,6 @@ public class CchiBeneficiaryPatientMapper {
                 AsklepiosLovCodes.RELIGION,
                 valueCode
         );
-    }
-
-    private String mapOccupation(String waseelValue) {
-        String valueCode = switchValue(waseelValue,
-                "NURSE", "NURSE",
-                "DOCTOR", "DOCTOR",
-                "ENGINEER", "ENGINEER",
-                "PHARMACIST", "PHAR",
-                "PHAR", "PHAR",
-                "TECHNICIAN", "TECH",
-                "TECH", "TECH",
-                "DENTIST", "DEN",
-                "DEN", "DEN",
-                "RADIOLOGIST", "RAD",
-                "RAD", "RAD",
-                "SOFTWARE DEVELOPER", "DEV",
-                "DEV", "DEV",
-                "EDUCATION", "EDU",
-                "EDU", "EDU",
-                "FINANCE", "FIN",
-                "FIN", "FIN",
-                "BUSINESS", "BUSI",
-                "BUSI", "BUSI",
-                "TRADES", "TRAD",
-                "TRAD", "TRAD",
-                "RETAIL", "RET",
-                "RET", "RET"
-        );
-
-        return lovMapperService.getKeyByLovCodeAndValueCode(
-                AsklepiosLovCodes.OCCUPATION,
-                valueCode
-        );
-    }
-
-    private Gender mapGender(String value) {
-        if (isBlank(value)) {
-            return null;
-        }
-
-        return switch (value.trim().toUpperCase()) {
-            case "MALE", "M" -> Gender.MALE;
-            case "FEMALE", "F" -> Gender.FEMALE;
-            default -> null;
-        };
-    }
-
-    private void mapName(Patient patient, CchiBeneficiaryData b) {
-        String firstName = clean(b.firstName());
-        String middleName = clean(b.middleName());
-        String lastName = clean(b.lastName());
-        String familyName = clean(b.familyName());
-        String fullName = clean(b.fullName());
-
-        if (
-                isBlank(firstName)
-                        && isBlank(middleName)
-                        && isBlank(lastName)
-                        && isBlank(familyName)
-                        && !isBlank(fullName)
-        ) {
-            mapFullName(patient, fullName);
-            return;
-        }
-
-        patient.setFirstName(firstName);
-        patient.setSecondName(middleName);
-        patient.setThirdName("");
-        patient.setLastName(!isBlank(familyName) ? familyName : lastName);
-    }
-
-    private void mapFullName(Patient patient, String fullName) {
-        String[] parts = fullName.trim().split("\\s+");
-
-        patient.setFirstName("");
-        patient.setSecondName("");
-        patient.setThirdName("");
-        patient.setLastName("");
-
-        if (parts.length == 1) {
-            patient.setFirstName(parts[0]);
-        } else if (parts.length == 2) {
-            patient.setFirstName(parts[0]);
-            patient.setLastName(parts[1]);
-        } else if (parts.length == 3) {
-            patient.setFirstName(parts[0]);
-            patient.setSecondName(parts[1]);
-            patient.setLastName(parts[2]);
-        } else {
-            patient.setFirstName(parts[0]);
-            patient.setSecondName(parts[1]);
-            patient.setThirdName(parts[2]);
-            patient.setLastName(String.join(" ", Arrays.copyOfRange(parts, 3, parts.length)));
-        }
-    }
-
-    private LocalDate parseDate(String value) {
-        if (isBlank(value)) {
-            return null;
-        }
-
-        String date = value.trim();
-
-        try {
-            return LocalDate.parse(date);
-        } catch (Exception ignored) {
-        }
-
-        try {
-            return LocalDate.parse(date, DateTimeFormatter.ofPattern("dd/MM/yyyy"));
-        } catch (Exception ignored) {
-        }
-
-        try {
-            return LocalDate.parse(date, DateTimeFormatter.ofPattern("MM/dd/yyyy"));
-        } catch (Exception ignored) {
-        }
-
-        return null;
-    }
-
-    private String switchValue(String input, String... pairs) {
-        if (isBlank(input)) {
-            return "";
-        }
-
-        String normalized = input.trim().toUpperCase();
-
-        for (int i = 0; i < pairs.length; i += 2) {
-            if (normalized.equals(pairs[i])) {
-                return pairs[i + 1];
-            }
-        }
-
-        return normalized;
     }
 
     private String mapPreferredLanguage(String waseelValue) {
@@ -339,6 +210,115 @@ public class CchiBeneficiaryPatientMapper {
                 AsklepiosLovCodes.LANG,
                 valueCode
         );
+    }
+
+    private Gender mapGender(String value) {
+        if (isBlank(value)) {
+            return null;
+        }
+
+        return switch (value.trim().toUpperCase()) {
+            case "MALE", "M" -> Gender.MALE;
+            case "FEMALE", "F" -> Gender.FEMALE;
+            default -> null;
+        };
+    }
+
+    private void mapName(Patient patient, CchiBeneficiaryData b) {
+        String firstName = clean(b.firstName());
+        String middleName = clean(b.middleName());
+        String lastName = clean(b.lastName());
+        String familyName = clean(b.familyName());
+        String fullName = clean(b.fullName());
+
+        if (isBlank(firstName)
+                && isBlank(middleName)
+                && isBlank(lastName)
+                && isBlank(familyName)
+                && !isBlank(fullName)) {
+
+            mapFullName(patient, fullName);
+            return;
+        }
+
+        patient.setFirstName(firstName);
+        patient.setSecondName(middleName);
+        patient.setThirdName("");
+        patient.setLastName(!isBlank(familyName) ? familyName : lastName);
+    }
+
+    private void mapFullName(Patient patient, String fullName) {
+        String[] parts = fullName.trim().split("\\s+");
+
+        patient.setFirstName("");
+        patient.setSecondName("");
+        patient.setThirdName("");
+        patient.setLastName("");
+
+        if (parts.length == 1) {
+            patient.setFirstName(parts[0]);
+        } else if (parts.length == 2) {
+            patient.setFirstName(parts[0]);
+            patient.setLastName(parts[1]);
+        } else if (parts.length == 3) {
+            patient.setFirstName(parts[0]);
+            patient.setSecondName(parts[1]);
+            patient.setLastName(parts[2]);
+        } else {
+            patient.setFirstName(parts[0]);
+            patient.setSecondName(parts[1]);
+            patient.setThirdName(parts[2]);
+            patient.setLastName(
+                    String.join(" ", Arrays.copyOfRange(parts, 3, parts.length))
+            );
+        }
+    }
+
+    private LocalDate parseDate(String value) {
+        if (isBlank(value)) {
+            return null;
+        }
+
+        String date = value.trim();
+
+        try {
+            return LocalDate.parse(date);
+        } catch (Exception ignored) {
+        }
+
+        try {
+            return LocalDate.parse(
+                    date,
+                    DateTimeFormatter.ofPattern("dd/MM/yyyy")
+            );
+        } catch (Exception ignored) {
+        }
+
+        try {
+            return LocalDate.parse(
+                    date,
+                    DateTimeFormatter.ofPattern("MM/dd/yyyy")
+            );
+        } catch (Exception ignored) {
+        }
+
+        return null;
+    }
+
+    private String switchValue(String input, String... pairs) {
+        if (isBlank(input)) {
+            return "";
+        }
+
+        String normalized = input.trim().toUpperCase();
+
+        for (int i = 0; i < pairs.length; i += 2) {
+            if (normalized.equals(pairs[i])) {
+                return pairs[i + 1];
+            }
+        }
+
+        return normalized;
     }
 
     private String clean(String value) {

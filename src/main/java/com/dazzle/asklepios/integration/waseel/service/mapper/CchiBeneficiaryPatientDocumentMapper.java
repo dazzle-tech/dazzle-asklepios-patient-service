@@ -41,10 +41,13 @@ public class CchiBeneficiaryPatientDocumentMapper {
     }
 
     private String clean(String value) {
-        return value == null ? "" : value.trim();
+        return value == null
+                ? ""
+                : value.trim();
     }
 
     private boolean isBlank(String value) {
-        return value == null || value.trim().isEmpty();
+        return value == null
+                || value.trim().isEmpty();
     }
 }

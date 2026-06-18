@@ -179,7 +179,6 @@ public final class WaseelPracticeCodeMapper {
     public static String mapSubSpecialtyDisplay(String subSpecialty) {
         String value = clean(subSpecialty);
         String display = SUB_SPECIALTY_TO_DISPLAY.get(value);
-
         if (display == null) {
             throw new BadRequestAlertException(
                     "No Waseel display mapping found for practitioner sub specialty: " + subSpecialty,

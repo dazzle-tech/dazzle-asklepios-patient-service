@@ -1,7 +1,5 @@
 package com.dazzle.asklepios.integration.waseel.service.mapper;
 
-import com.dazzle.asklepios.client.setup.dto.PayorDTO;
-import com.dazzle.asklepios.client.setup.dto.PayorPlanDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiCoverageClass;
@@ -20,9 +18,7 @@ public class CchiBeneficiaryPatientInsuranceMapper {
 
     public PatientInsurance toPatientInsurance(
             CchiInsurancePlan source,
-            Patient patient,
-            PayorDTO payor,
-            PayorPlanDTO payorPlan
+            Patient patient
     ) {
         if (source == null) {
             return null;
@@ -33,9 +29,7 @@ public class CchiBeneficiaryPatientInsuranceMapper {
         mapToExistingPatientInsurance(
                 insurance,
                 source,
-                patient,
-                payor,
-                payorPlan
+                patient
         );
 
         return insurance;
@@ -44,32 +38,26 @@ public class CchiBeneficiaryPatientInsuranceMapper {
     public void mapToExistingPatientInsurance(
             PatientInsurance insurance,
             CchiInsurancePlan source,
-            Patient patient,
-            PayorDTO payor,
-            PayorPlanDTO payorPlan
+            Patient patient
     ) {
         if (insurance == null || source == null) {
             return;
         }
 
-        if (patient == null ) {
-            throw new BadRequestAlertException("Patient is required before mapping patient insurance",ENTITY_NAME, "patient.required");
-        }
-
-        if (payor == null || payor.id() == null) {
-            throw new BadRequestAlertException("Configured payor is required before mapping patient insurance", ENTITY_NAME, "payor.required");
-        }
-
-        if (payorPlan == null || payorPlan.id() == null) {
-            throw new BadRequestAlertException("Configured payor plan is required before mapping patient insurance", ENTITY_NAME, "payorPlan.required");
+        if (patient == null) {
+            throw new BadRequestAlertException(
+                    "Patient is required before mapping patient insurance",
+                    ENTITY_NAME,
+                    "patient.required"
+            );
         }
 
         insurance.setPatient(patient);
-        insurance.setPayorId(payor.id());
-        insurance.setPlanId(payorPlan.id());
+
+        insurance.setPayorId(null);
+        insurance.setPlanId(null);
 
         insurance.setMemberCardId(clean(source.memberCardId()));
-
         insurance.setPolicyNumber(requiredString(source.policyNumber(), "policyNumber"));
         insurance.setGroupNumber(clean(source.groupNumber()));
 
@@ -82,15 +70,20 @@ public class CchiBeneficiaryPatientInsuranceMapper {
         insurance.setRelationWithSubscriber(clean(source.relationWithSubscriber()));
 
         insurance.setPolicyClassName(getPolicyClassName(source));
-
         insurance.setPolicyHolderName(clean(source.policyHolder()));
 
         insurance.setIssueDate(parseDate(source.issueDate()));
 
         LocalDate expiryDate = parseDate(source.expiryDate());
+
         if (expiryDate == null) {
-            throw new BadRequestAlertException("Missing or invalid expiryDate from Waseel insurance plan", ENTITY_NAME, "expiryDate.invalid");
+            throw new BadRequestAlertException(
+                    "Missing or invalid expiryDate from Waseel insurance plan",
+                    ENTITY_NAME,
+                    "expiryDate.invalid"
+            );
         }
+
         insurance.setExpirationDate(expiryDate);
 
         insurance.setPatientShare(toBigDecimal(source.patientShare()));
@@ -197,7 +190,11 @@ public class CchiBeneficiaryPatientInsuranceMapper {
         String text = clean(value);
 
         if (isBlank(text)) {
-            throw new BadRequestAlertException("Missing required Waseel field: " + fieldName , ENTITY_NAME, fieldName + ".required");
+            throw new BadRequestAlertException(
+                    "Missing required Waseel field: " + fieldName,
+                    ENTITY_NAME,
+                    fieldName + ".required"
+            );
         }
 
         return text;

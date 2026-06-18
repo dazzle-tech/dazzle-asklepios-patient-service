@@ -1,7 +1,5 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
-import com.dazzle.asklepios.client.setup.dto.PayorDTO;
-import com.dazzle.asklepios.client.setup.dto.PayorPlanDTO;
 import com.dazzle.asklepios.domain.Address;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
@@ -20,10 +18,8 @@ import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -37,11 +33,12 @@ public class WaseelCchiService {
     private final RestTemplate restTemplate;
     private final WaseelTokenService tokenService;
     private final WaseelApiProperties properties;
+
     private final CchiBeneficiaryPatientMapper patientMapper;
     private final CchiBeneficiaryAddressMapper addressMapper;
     private final CchiBeneficiaryPatientDocumentMapper patientDocumentMapper;
     private final CchiBeneficiaryPatientInsuranceMapper insuranceMapper;
-    private final SetupInsuranceLookupService setupInsuranceLookupService;
+
     private final PatientRepository patientRepository;
     private final PatientInsuranceRepository patientInsuranceRepository;
 
@@ -53,7 +50,6 @@ public class WaseelCchiService {
             CchiBeneficiaryAddressMapper addressMapper,
             CchiBeneficiaryPatientDocumentMapper patientDocumentMapper,
             CchiBeneficiaryPatientInsuranceMapper insuranceMapper,
-            SetupInsuranceLookupService setupInsuranceLookupService,
             PatientRepository patientRepository,
             PatientInsuranceRepository patientInsuranceRepository
     ) {
@@ -64,17 +60,18 @@ public class WaseelCchiService {
         this.addressMapper = addressMapper;
         this.patientDocumentMapper = patientDocumentMapper;
         this.insuranceMapper = insuranceMapper;
-        this.setupInsuranceLookupService = setupInsuranceLookupService;
         this.patientRepository = patientRepository;
         this.patientInsuranceRepository = patientInsuranceRepository;
     }
 
     public CchiInquiryResponse fetchBeneficiaryByDocumentId(String documentId) {
+        // TODO: Replace mock response with real Waseel CCHI API call when integration is ready.
         return mockCchiInquiryResponse();
     }
 
     public Patient fetchPatientByDocumentId(String documentId) {
         CchiMappedPatientResponse mapped = fetchMappedPatientByDocumentId(documentId);
+
         return mapped == null ? null : mapped.patient();
     }
 
@@ -115,15 +112,9 @@ public class WaseelCchiService {
         List<PatientInsurance> result = new ArrayList<>();
 
         for (CchiInsurancePlan insurancePlan : insurancePlans) {
-            PayorDTO payor = resolvePayor(insurancePlan);
-
-            PayorPlanDTO payorPlan = resolvePayorPlan(payor, insurancePlan);
-
             PatientInsurance insurance = insuranceMapper.toPatientInsurance(
                     insurancePlan,
-                    patient,
-                    payor,
-                    payorPlan
+                    patient
             );
 
             result.add(insurance);
@@ -132,68 +123,11 @@ public class WaseelCchiService {
         return result;
     }
 
-    private PayorDTO resolvePayor(CchiInsurancePlan insurancePlan) {
-        String payerNphiesId = clean(insurancePlan.payerNphiesId());
-
-        if (isBlank(payerNphiesId)) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Payer NPHIES ID is missing from CCHI insurance plan"
-            );
-        }
-
-        return setupInsuranceLookupService
-                .findPayorByNphiesId(payerNphiesId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST,
-                        "Payer returned from CCHI is not configured. NPHIES ID: " + payerNphiesId
-                ));
-    }
-
-    private PayorPlanDTO resolvePayorPlan(
-            PayorDTO payor,
-            CchiInsurancePlan insurancePlan
-    ) {
-        String coverageType = clean(insurancePlan.coverageType());
-        String networkId = clean(insurancePlan.networkId());
-        String policyClassName = clean(insurancePlan.policyClassName());
-
-        if (isBlank(coverageType) && isBlank(networkId) && isBlank(policyClassName)) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Cannot resolve CCHI payor plan because coverageType, networkId, and policyClassName are missing"
-            );
-        }
-
-        return setupInsuranceLookupService
-                .findPayorPlanByCchiMatch(
-                        payor.id(),
-                        coverageType,
-                        networkId,
-                        policyClassName
-                )
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST,
-                        "Payor plan returned from CCHI is not configured. "
-                                + "payorId=" + payor.id()
-                                + ", coverageType=" + coverageType
-                                + ", networkId=" + networkId
-                                + ", policyClassName=" + policyClassName
-                ));
-    }
-
-    private String clean(String value) {
-        if (value == null) {
-            return null;
-        }
-
-        String text = value.trim();
-        return text.isEmpty() ? null : text;
-    }
-
-    private boolean isBlank(String value) {
-        return value == null || value.trim().isEmpty();
-    }
+    // =========================================================
+    // TEST MOCK DATA
+    // Temporary mock response used during development/testing.
+    // Keep until real Waseel CCHI API integration is completed.
+    // =========================================================
 
     private CchiInquiryResponse mockCchiInquiryResponse() {
         CchiBeneficiaryData data = new CchiBeneficiaryData(
@@ -282,4 +216,5 @@ public class WaseelCchiService {
                 false,
                 data
         );
-    }}
+    }
+}

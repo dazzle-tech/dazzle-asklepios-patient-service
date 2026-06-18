@@ -15,8 +15,8 @@ public record PatientInsuranceUpdateDTO(
         @NotNull Long id,
 
         @NotNull Long patientId,
-        @NotNull Long payorId,
-        @NotNull Long planId,
+        Long payorId,
+        Long planId,
 
         Long policyHolderId,
 
