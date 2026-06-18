@@ -2,7 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.notification.NotificationClient;
 import com.dazzle.asklepios.client.notification.dto.NotificationCreateDTO;
-import com.dazzle.asklepios.client.notification.dto.NotificationRecipientDTO;
+import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.setup.SystemConfigurationClient;
 import com.dazzle.asklepios.domain.DuplicationCandidate;
 import com.dazzle.asklepios.domain.Patient;
@@ -445,21 +445,12 @@ public class PatientService {
                 ? patient.getNativeLanguage()
                 : "en";
 
-        String patientName =
-                patient.getFirstName() +
-                        (patient.getLastName() != null ? " " + patient.getLastName() : "");
+        String patientName = getPatientName(patient);
 
         String createPasswordUrl =
                 asklepiosApplicationlUrl + "/create-patient-password?key=" + token;
 
-        NotificationRecipientDTO recipient = new NotificationRecipientDTO(
-                "PATIENT",
-                patient.getId(),
-                patientName,
-                patient.getEmail(),
-                patient.getPrimaryMobileNumber(),
-                null
-        );
+        String logoUrl = systemConfigurationClient.getResolvedValue(SystemConfigKey.SYSTEM_LOGO);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("patientName", patientName);
@@ -468,23 +459,48 @@ public class PatientService {
         data.put("token", token);
         data.put("createPasswordUrl", createPasswordUrl);
         data.put("title", "CMS | Set your password");
-        String logoUrl = systemConfigurationClient.getResolvedValue(SystemConfigKey.SYSTEM_LOGO);
         data.put("logoUrl", logoUrl);
-        LOG.debug("Prepared notification data for patient id={}: {}", patient.getId(), data);
+
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
+
+        recipientsByRule.put(
+                "PATIENT_EMAIL",
+                List.of(
+                        NotificationResolvedRecipientDTO.builder()
+                                .recipientType("PATIENT")
+                                .recipientId(patient.getId())
+                                .recipientName(patientName)
+                                .recipientEmail(patient.getEmail())
+                                .recipientPhone(patient.getPrimaryMobileNumber())
+                                .toEmails(List.of(patient.getEmail()))
+                                .recipientData(Map.of(
+                                        "patientId", patient.getId(),
+                                        "documentNumber", primaryDoc.getNumber()
+                                ))
+                                .build()
+                )
+        );
 
         NotificationCreateDTO notificationDTO = new NotificationCreateDTO(
                 null,
                 "PATIENT_CREATE_PASSWORD",
-                "EMAIL",
                 language,
-                recipient,
                 null,
+                recipientsByRule,
                 data,
                 "PATIENT",
                 patient.getId()
         );
 
-        notificationClient.createNotification(notificationDTO);
+        try {
+            notificationClient.createNotification(notificationDTO);
+        } catch (Exception e) {
+            LOG.warn(
+                    "Failed to create patient create-password notification. patientId={}, error={}",
+                    patient.getId(),
+                    e.getMessage()
+            );
+        }
     }
     @Transactional(readOnly = true)
     public CreatePasswordKeyValidationVM validateCreatePasswordKey(String key) {
@@ -711,4 +727,29 @@ public class PatientService {
             return criteriaBuilder.and(preds.toArray(new Predicate[0]));
         };
     }
+    private String getPatientName(Patient patient) {
+        if (patient == null) {
+            return "";
+        }
+
+        String firstName = patient.getFirstName() != null ? patient.getFirstName() : "";
+        String secondName = patient.getSecondName() != null ? patient.getSecondName() : "";
+        String thirdName = patient.getThirdName() != null ? patient.getThirdName() : "";
+        String lastName = patient.getLastName() != null ? patient.getLastName() : "";
+
+        String fullName = (firstName + " " + secondName + " " + thirdName + " " + lastName)
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        if (!fullName.isBlank()) {
+            return fullName;
+        }
+
+        if (patient.getEmail() != null && !patient.getEmail().isBlank()) {
+            return patient.getEmail();
+        }
+
+        return patient.getId() != null ? String.valueOf(patient.getId()) : "";
+    }
+
 }

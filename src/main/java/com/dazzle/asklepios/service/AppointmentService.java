@@ -1,8 +1,12 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.notification.NotificationClient;
+import com.dazzle.asklepios.client.notification.dto.NotificationCreateDTO;
+import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.client.setup.dto.DiagnosticTestSetupDTO;
 import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
+import com.dazzle.asklepios.client.setup.dto.UserDTO;
 import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.AppointmentLog;
 import com.dazzle.asklepios.domain.AppointmentReschedule;
@@ -45,6 +49,7 @@ import com.dazzle.asklepios.service.helper.CatalogHelper;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.DiagnosticTestHelper;
 import com.dazzle.asklepios.service.helper.PractitionerHelper;
+import com.dazzle.asklepios.service.helper.UserDepartmentHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentQuickAppointmentResponseVM;
@@ -67,7 +72,9 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -97,6 +104,8 @@ public class AppointmentService {
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
     private final DiagnosticOrderRepository diagnosticOrderRepository;
     private final PractitionerHelper practitionerHelper;
+    private final NotificationClient notificationClient;
+    private final UserDepartmentHelper userDepartmentHelper;
 
     public List<AppointmentLog> getAppointmentLogs(Long appointmentId) {
         LOG.debug("Request to get Appointment Log id={}", appointmentId);
@@ -225,6 +234,7 @@ public class AppointmentService {
 
         return result;
     }
+
     public List<Appointment> getAppointmentsByStatusBetweenDatesWithoutPagination(
             List<AppointmentStatus> status,
             Instant startDatetime,
@@ -307,6 +317,7 @@ public class AppointmentService {
 
         return result;
     }
+
     public Appointment cancel(AppointmentCancelDTO dto) {
         Appointment appointment = getAppointment(dto.id());
 
@@ -347,7 +358,7 @@ public class AppointmentService {
         }
         appointment.setConfirmedAt(Instant.now());
         appointment.setStatus(AppointmentStatus.CONFIRMED);
-
+        notifyAppointmentConfirmed(appointment);
         return appointmentRepository.save(appointment);
     }
 
@@ -1331,4 +1342,263 @@ public class AppointmentService {
         }
     }
 
+    //Notification helper
+    private void notifyAppointmentConfirmed(Appointment appointment) {
+        if (appointment == null) {
+            return;
+        }
+
+        DepartmentDTO department = appointment.getDepartmentId() != null
+                ? departmentHelper.getDepartment(appointment.getDepartmentId())
+                : null;
+
+        Map<String, Object> data = buildAppointmentConfirmedData(appointment, department);
+
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
+                buildAppointmentConfirmedRecipientsByRule(appointment, department);
+
+        NotificationCreateDTO dto = new NotificationCreateDTO(
+                appointment.getFacilityId(),
+                "APPOINTMENT_CONFIRMED",
+                "en",
+                null,
+                recipientsByRule,
+                data,
+                "APPOINTMENT",
+                appointment.getId()
+        );
+
+        try {
+            LOG.debug(
+                    "Creating appointment confirmed notifications. appointmentId={}, recipientsByRule={}, dto={}",
+                    appointment.getId(),
+                    recipientsByRule, dto
+            );
+            notificationClient.createNotification(dto);
+        } catch (Exception e) {
+            LOG.warn(
+                    "Failed to create appointment confirmed notifications. appointmentId={}, error={}",
+                    appointment.getId(),
+                    e.getMessage()
+            );
+        }
+    }
+
+    private Map<String, List<NotificationResolvedRecipientDTO>> buildAppointmentConfirmedRecipientsByRule(
+            Appointment appointment,
+            DepartmentDTO department
+    ) {
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
+
+        NotificationResolvedRecipientDTO patientEmailRecipient = buildPatientEmailRecipient(appointment);
+        if (patientEmailRecipient != null) {
+            recipientsByRule.put("PATIENT_EMAIL", List.of(patientEmailRecipient));
+        }
+
+        NotificationResolvedRecipientDTO patientPhoneRecipient = buildPatientPhoneRecipient(appointment);
+        if (patientPhoneRecipient != null) {
+            recipientsByRule.put("PATIENT_PHONE", List.of(patientPhoneRecipient));
+        }
+
+        List<NotificationResolvedRecipientDTO> departmentUsers =
+                buildDepartmentUserRecipients(appointment, department);
+
+        if (!departmentUsers.isEmpty()) {
+            recipientsByRule.put("DEPARTMENT_USERS", departmentUsers);
+        }
+
+        NotificationResolvedRecipientDTO practitionerUser =
+                buildPractitionerUserRecipient(appointment);
+
+        if (practitionerUser != null) {
+            recipientsByRule.put("PRACTITIONER_USER", List.of(practitionerUser));
+        }
+        NotificationResolvedRecipientDTO practitionerEmail =
+                buildPractitionerEmailRecipient(appointment);
+
+        if (practitionerEmail != null) {
+            recipientsByRule.put("PRACTITIONER_EMAIL", List.of(practitionerEmail));
+        }
+        return recipientsByRule;
+    }
+
+    private Map<String, Object> buildAppointmentConfirmedData(
+            Appointment appointment,
+            DepartmentDTO department
+    ) {
+        Map<String, Object> data = new LinkedHashMap<>();
+
+        data.put("appointmentId", appointment.getId());
+        data.put("appointmentNumber", appointment.getId());
+        data.put("departmentId", appointment.getDepartmentId());
+        data.put("departmentName", department != null ? department.name() : "");
+        data.put("patientName", appointment.getPatient() != null ? getPatientName(appointment.getPatient()) : "");
+        data.put(
+                "appointmentDate",
+                appointment.getStartDatetime() != null ? appointment.getStartDatetime().toString() : ""
+        );
+
+        return data;
+    }
+
+    private NotificationResolvedRecipientDTO buildPatientEmailRecipient(Appointment appointment) {
+        if (appointment == null || appointment.getPatient() == null) {
+            return null;
+        }
+
+        Patient patient = appointment.getPatient();
+
+        if (patient.getEmail() == null || patient.getEmail().isBlank()) {
+            return null;
+        }
+
+        return NotificationResolvedRecipientDTO.builder()
+                .recipientType("PATIENT")
+                .recipientId(patient.getId())
+                .recipientName(getPatientName(patient))
+                .recipientEmail(patient.getEmail())
+                .toEmails(List.of(patient.getEmail()))
+                .build();
+    }
+
+    private NotificationResolvedRecipientDTO buildPractitionerEmailRecipient(Appointment appointment) {
+        if (appointment == null) {
+            return null;
+        }
+
+        if (appointment.getDefaultPractitionerId() == null) {
+            return null;
+        }
+        PractitionerDTO practitionerDTO = practitionerHelper.getPractitioner(appointment.getDefaultPractitionerId());
+
+        return NotificationResolvedRecipientDTO.builder()
+                .recipientType("PRACTITIONER")
+                .recipientId(appointment.getDefaultPractitionerId())
+                .recipientName(practitionerDTO.firstName() + " " + practitionerDTO.lastName())
+                .recipientEmail(practitionerDTO.email())
+                .toEmails(List.of(practitionerDTO.email()))
+                .build();
+    }
+
+    private NotificationResolvedRecipientDTO buildPatientPhoneRecipient(Appointment appointment) {
+        if (appointment == null || appointment.getPatient() == null) {
+            return null;
+        }
+
+        Patient patient = appointment.getPatient();
+
+        if (patient.getPrimaryMobileNumber() == null || patient.getPrimaryMobileNumber().isBlank()) {
+            return null;
+        }
+
+        return NotificationResolvedRecipientDTO.builder()
+                .recipientType("PATIENT")
+                .recipientId(patient.getId())
+                .recipientName(getPatientName(patient))
+                .recipientPhone(patient.getPrimaryMobileNumber())
+                .toPhone(patient.getPrimaryMobileNumber())
+                .build();
+    }
+
+    private List<NotificationResolvedRecipientDTO> buildDepartmentUserRecipients(
+            Appointment appointment,
+            DepartmentDTO department
+    ) {
+        if (appointment == null || appointment.getDepartmentId() == null) {
+            return List.of();
+        }
+
+        Long departmentId = appointment.getDepartmentId();
+
+        List<UserDTO> users = userDepartmentHelper.getUsersForDepartment(departmentId);
+
+        if (users == null || users.isEmpty()) {
+            return List.of();
+        }
+
+        return users.stream()
+                .filter(user -> user != null && user.id() != null)
+                .map(user -> NotificationResolvedRecipientDTO.builder()
+                        .recipientType("USER")
+                        .recipientId(user.id())
+                        .recipientName(getUserDisplayName(user))
+                        .recipientEmail(user.email())
+                        .recipientData(Map.of(
+                                "departmentId", departmentId,
+                                "departmentName", department != null ? department.name() : ""
+                        ))
+                        .build()
+                )
+                .toList();
+    }
+
+    private NotificationResolvedRecipientDTO buildPractitionerUserRecipient(Appointment appointment) {
+        if (appointment == null || appointment.getDefaultPractitionerId() == null) {
+            return null;
+        }
+        PractitionerDTO practitioner = practitionerHelper.getPractitioner(appointment.getDefaultPractitionerId());
+
+        return NotificationResolvedRecipientDTO.builder()
+                .recipientType("USER")
+                .recipientId(appointment.getDefaultPractitionerId())
+                .recipientName(practitioner.firstName() + " " + practitioner.lastName())
+                .recipientEmail(practitioner.email())
+                .recipientData(Map.of(
+                        "practitionerId", appointment.getDefaultPractitionerId() != null ? appointment.getDefaultPractitionerId().toString() : "",
+                        "practitionerName", practitioner != null ? practitioner.firstName() : ""
+                ))
+                .build();
+    }
+
+    private String getPatientName(Patient patient) {
+        if (patient == null) {
+            return "";
+        }
+
+        String firstName = patient.getFirstName() != null ? patient.getFirstName() : "";
+        String secondName = patient.getSecondName() != null ? patient.getSecondName() : "";
+        String thirdName = patient.getThirdName() != null ? patient.getThirdName() : "";
+        String lastName = patient.getLastName() != null ? patient.getLastName() : "";
+
+        String fullName = (firstName + " " + secondName + " " + thirdName + " " + lastName)
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        if (!fullName.isBlank()) {
+            return fullName;
+        }
+
+        if (patient.getEmail() != null && !patient.getEmail().isBlank()) {
+            return patient.getEmail();
+        }
+
+        return patient.getId() != null ? String.valueOf(patient.getId()) : "";
+    }
+
+    private String getUserDisplayName(UserDTO user) {
+        if (user == null) {
+            return "";
+        }
+
+        String firstName = user.firstName() != null ? user.firstName() : "";
+        String lastName = user.lastName() != null ? user.lastName() : "";
+
+        String fullName = (firstName + " " + lastName)
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        if (!fullName.isBlank()) {
+            return fullName;
+        }
+
+        if (user.login() != null && !user.login().isBlank()) {
+            return user.login();
+        }
+
+        if (user.email() != null && !user.email().isBlank()) {
+            return user.email();
+        }
+
+        return user.id() != null ? String.valueOf(user.id()) : "";
+    }
 }
