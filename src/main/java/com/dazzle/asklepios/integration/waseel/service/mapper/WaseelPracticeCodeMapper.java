@@ -11,7 +11,7 @@ public final class WaseelPracticeCodeMapper {
 
     private static final Map<String, String> SUB_SPECIALTY_TO_WASEEL_CODE = Map.ofEntries(
             Map.entry("SUB_SPC_001", "06.01"),
-            Map.entry("SUB_SPC_002", "08.00"),
+            Map.entry("SUB_SPC_002", "08.26"),
             Map.entry("SUB_SPC_003", "14.00"),
             Map.entry("SUB_SPC_004", "08.06"),
             Map.entry("SUB_SPC_005", "19.08"),
@@ -68,10 +68,9 @@ public final class WaseelPracticeCodeMapper {
             Map.entry("SUB_SPC_061", "11.07"),
             Map.entry("SUB_SPC_063", "01.00"),
 
-            // aliases للتست أو القيم المخزنة كنص
-            Map.entry("GENERAL_MEDICINE", "06.01"),
+            Map.entry("GENERAL_MEDICINE", "08.26"),
             Map.entry("FAMILY_MEDICINE", "06.01"),
-            Map.entry("INTERNAL_MEDICINE", "08.00"),
+            Map.entry("INTERNAL_MEDICINE", "08.26"),
             Map.entry("PEDIATRICS", "14.00"),
             Map.entry("GENERAL_SURGERY", "19.08"),
             Map.entry("ANESTHESIOLOGY", "01.00")
@@ -79,91 +78,73 @@ public final class WaseelPracticeCodeMapper {
 
     private static final Map<String, String> SUB_SPECIALTY_TO_DISPLAY = Map.ofEntries(
             Map.entry("SUB_SPC_001", "Family Medicine"),
-            Map.entry("SUB_SPC_002", "Internal Medicine"),
-            Map.entry("SUB_SPC_003", "Pediatrics"),
+            Map.entry("SUB_SPC_002", "General Medicine"),
+            Map.entry("SUB_SPC_003", "Pediatric Specialty"),
             Map.entry("SUB_SPC_004", "Geriatrics"),
             Map.entry("SUB_SPC_005", "General Surgery"),
             Map.entry("SUB_SPC_006", "Cardiothoracic Surgery"),
-            Map.entry("SUB_SPC_007", "Neurosurgery"),
+            Map.entry("SUB_SPC_007", "Neurosurgery (Spinal Surgery)"),
             Map.entry("SUB_SPC_008", "Orthopedic Surgery"),
-            Map.entry("SUB_SPC_009", "Plastic and Reconstructive Surgery"),
+            Map.entry("SUB_SPC_009", "Plastic Surgery & Reconstruction"),
             Map.entry("SUB_SPC_010", "Vascular Surgery"),
-            Map.entry("SUB_SPC_011", "Urology"),
-            Map.entry("SUB_SPC_012", "ENT"),
-            Map.entry("SUB_SPC_013", "Oral and Maxillofacial Surgery"),
+            Map.entry("SUB_SPC_011", "Urology Specialty"),
+            Map.entry("SUB_SPC_012", "Otolaryngology"),
+            Map.entry("SUB_SPC_013", "Oral & Maxillofacial Surgery"),
             Map.entry("SUB_SPC_014", "Cardiology"),
             Map.entry("SUB_SPC_015", "Endocrinology"),
-            Map.entry("SUB_SPC_016", "Gastroenterology"),
+            Map.entry("SUB_SPC_016", "Gastrology/Gastroenterology"),
             Map.entry("SUB_SPC_017", "Hematology"),
-            Map.entry("SUB_SPC_018", "Infectious Disease"),
+            Map.entry("SUB_SPC_018", "Infectious Diseases"),
             Map.entry("SUB_SPC_019", "Nephrology"),
             Map.entry("SUB_SPC_020", "Neurology"),
             Map.entry("SUB_SPC_021", "Oncology"),
-            Map.entry("SUB_SPC_022", "Pulmonology"),
+            Map.entry("SUB_SPC_022", "Pulmonology/Chest Medicine"),
             Map.entry("SUB_SPC_023", "Rheumatology"),
-            Map.entry("SUB_SPC_024", "Pathology"),
-            Map.entry("SUB_SPC_025", "Radiology"),
+            Map.entry("SUB_SPC_024", "Pathology Specialty"),
+            Map.entry("SUB_SPC_025", "Radiology Specialty"),
             Map.entry("SUB_SPC_026", "Nuclear Medicine"),
-            Map.entry("SUB_SPC_028", "Emergency Medicine"),
+            Map.entry("SUB_SPC_028", "Emergency Medicine Specialty"),
             Map.entry("SUB_SPC_029", "Critical Care"),
             Map.entry("SUB_SPC_030", "Trauma Surgery"),
             Map.entry("SUB_SPC_031", "Psychiatry"),
-            Map.entry("SUB_SPC_032", "Child and Adolescent Psychiatry"),
+            Map.entry("SUB_SPC_032", "Child / Adolescent Psychiatry"),
             Map.entry("SUB_SPC_033", "Forensic Psychiatry"),
-            Map.entry("SUB_SPC_034", "Physical Medicine and Rehabilitation"),
-            Map.entry("SUB_SPC_036", "OB/GYN"),
-            Map.entry("SUB_SPC_037", "Maternal-Fetal Medicine"),
-            Map.entry("SUB_SPC_038", "Reproductive Endocrinology and Infertility"),
-            Map.entry("SUB_SPC_039", "Gynecologic Oncology"),
+            Map.entry("SUB_SPC_034", "Physical Medicine & Rehabilitation"),
+            Map.entry("SUB_SPC_036", "Obstetrics & Gynecology Specialty"),
+            Map.entry("SUB_SPC_037", "Maternal Fetal Medicine"),
+            Map.entry("SUB_SPC_038", "Reproductive Endocrinology & Infertility"),
+            Map.entry("SUB_SPC_039", "Gynecology Oncology"),
             Map.entry("SUB_SPC_040", "Pediatric Cardiology"),
-            Map.entry("SUB_SPC_041", "Pediatric Endocrinology"),
-            Map.entry("SUB_SPC_042", "Pediatric Gastroenterology"),
-            Map.entry("SUB_SPC_043", "Pediatric Hematology/Oncology"),
-            Map.entry("SUB_SPC_044", "Pediatric Nephrology"),
+            Map.entry("SUB_SPC_041", "Pediatrics Endocrinology"),
+            Map.entry("SUB_SPC_042", "Pediatrics Gastroenterology"),
+            Map.entry("SUB_SPC_043", "Pediatrics Hematology/Oncology"),
+            Map.entry("SUB_SPC_044", "Pediatrics Nephrology"),
             Map.entry("SUB_SPC_045", "Pediatric Neurology"),
-            Map.entry("SUB_SPC_046", "Pediatric Pulmonology"),
-            Map.entry("SUB_SPC_047", "Pediatric Infectious Disease"),
-            Map.entry("SUB_SPC_048", "Public Health Medicine"),
+            Map.entry("SUB_SPC_046", "Pediatrics Pulmonary Diseases"),
+            Map.entry("SUB_SPC_047", "Pediatrics Infectious Diseases"),
+            Map.entry("SUB_SPC_048", "Community Health"),
             Map.entry("SUB_SPC_049", "Occupational Medicine"),
             Map.entry("SUB_SPC_051", "Bariatric Surgery"),
             Map.entry("SUB_SPC_052", "Colorectal Surgery"),
             Map.entry("SUB_SPC_053", "Transplant Surgery"),
-            Map.entry("SUB_SPC_054", "Sports Medicine"),
+            Map.entry("SUB_SPC_054", "Sport Medicine"),
             Map.entry("SUB_SPC_055", "Sleep Medicine"),
             Map.entry("SUB_SPC_056", "Geriatric Psychiatry"),
-            Map.entry("SUB_SPC_058", "Hospice and Palliative Medicine"),
-            Map.entry("SUB_SPC_060", "Dermatology"),
+            Map.entry("SUB_SPC_058", "Palliative Medicine"),
+            Map.entry("SUB_SPC_060", "Dermatology Specialty"),
             Map.entry("SUB_SPC_061", "Ophthalmology"),
-            Map.entry("SUB_SPC_063", "Anesthesiology"),
+            Map.entry("SUB_SPC_063", "Anesthesiology Specialty"),
 
-            // aliases للتست أو القيم المخزنة كنص
-            Map.entry("GENERAL_MEDICINE", "Family Medicine"),
+            Map.entry("GENERAL_MEDICINE", "General Medicine"),
             Map.entry("FAMILY_MEDICINE", "Family Medicine"),
-            Map.entry("INTERNAL_MEDICINE", "Internal Medicine"),
-            Map.entry("PEDIATRICS", "Pediatrics"),
+            Map.entry("INTERNAL_MEDICINE", "General Medicine"),
+            Map.entry("PEDIATRICS", "Pediatric Specialty"),
             Map.entry("GENERAL_SURGERY", "General Surgery"),
-            Map.entry("ANESTHESIOLOGY", "Anesthesiology")
-    );
-
-    private static final Map<String, String> EDU_LEVEL_TO_WASEEL_CODE = Map.ofEntries(
-            Map.entry("NO_EDU", "08.26"),
-            Map.entry("PRIMARY_EDU", "08.26"),
-            Map.entry("SECONDARY_EDU", "08.26"),
-            Map.entry("TECH_EDU", "08.26"),
-            Map.entry("BACHELOR_EDU", "08.26"),
-            Map.entry("MASTER_EDU", "08.26"),
-            Map.entry("PHD_EDU", "08.26"),
-
-            // aliases للتست
-            Map.entry("MBBS", "08.26"),
-            Map.entry("BACHELOR", "08.26"),
-            Map.entry("MASTER", "08.26"),
-            Map.entry("PHD", "08.26")
+            Map.entry("ANESTHESIOLOGY", "Anesthesiology Specialty")
     );
 
     public static String mapSubSpecialtyCode(String subSpecialty) {
-        String value = clean(subSpecialty);
-        String code = SUB_SPECIALTY_TO_WASEEL_CODE.get(value);
+        String code = SUB_SPECIALTY_TO_WASEEL_CODE.get(clean(subSpecialty));
 
         if (code == null) {
             throw new BadRequestAlertException(
@@ -177,34 +158,18 @@ public final class WaseelPracticeCodeMapper {
     }
 
     public static String mapSubSpecialtyDisplay(String subSpecialty) {
-        String value = clean(subSpecialty);
-        String display = SUB_SPECIALTY_TO_DISPLAY.get(value);
-        if (display == null) {
-            throw new BadRequestAlertException(
-                    "No Waseel display mapping found for practitioner sub specialty: " + subSpecialty,
-                    "preAuthorization",
-                    "practitioner.subSpecialty.displayMapping.notFound"
-            );
-        }
-
-        return display;
+        return SUB_SPECIALTY_TO_DISPLAY.get(clean(subSpecialty));
     }
 
     public static String mapEducationCode(String educationalLevel, String fallbackSpecialityCode) {
-        String code = EDU_LEVEL_TO_WASEEL_CODE.get(clean(educationalLevel));
-
-        if (code != null) {
-            return code;
-        }
-
         if (fallbackSpecialityCode != null && !fallbackSpecialityCode.isBlank()) {
-            return fallbackSpecialityCode;
+            return fallbackSpecialityCode.trim();
         }
 
         throw new BadRequestAlertException(
-                "No Waseel mapping found for practitioner educational level: " + educationalLevel,
+                "Practitioner qualification code is required",
                 "preAuthorization",
-                "practitioner.educationalLevel.waseelMapping.notFound"
+                "practitioner.qualificationCode.required"
         );
     }
 

@@ -34,7 +34,7 @@ public class EncounterInsuranceEligibilityService {
                 insurance.getId(),
                 payment.getEncounter().getId(),
                 LocalDate.now(),
-                null,
+                resolveDestinationId(insurance),
                 true,
                 false,
                 true,
@@ -84,6 +84,14 @@ public class EncounterInsuranceEligibilityService {
     }
 
     private void validateInsuranceBeforeEligibility(PatientInsurance insurance) {
+        if (insurance == null) {
+            throw new BadRequestAlertException(
+                    "Insurance is required.",
+                    ENTITY_NAME,
+                    "insurance.required"
+            );
+        }
+
         if (insurance.getExpirationDate() == null ||
                 insurance.getExpirationDate().isBefore(LocalDate.now())) {
             throw new BadRequestAlertException(
@@ -101,6 +109,14 @@ public class EncounterInsuranceEligibilityService {
             );
         }
 
+        if (isBlank(insurance.getPolicyNumber())) {
+            throw new BadRequestAlertException(
+                    "policyNumber is required for eligibility.",
+                    ENTITY_NAME,
+                    "policyNumber.required"
+            );
+        }
+
         if (isBlank(insurance.getPayerNphiesId())) {
             throw new BadRequestAlertException(
                     "payerNphiesId is required for eligibility.",
@@ -109,21 +125,29 @@ public class EncounterInsuranceEligibilityService {
             );
         }
 
-        if (insurance.getPayorId() == null) {
+        if (isBlank(resolveDestinationId(insurance))) {
             throw new BadRequestAlertException(
-                    "payorId is required for eligibility.",
+                    "Destination ID is required for eligibility.",
                     ENTITY_NAME,
-                    "payorId.required"
+                    "destinationId.required"
             );
+        }
+    }
+
+    private String resolveDestinationId(PatientInsurance insurance) {
+        if (insurance == null) {
+            return null;
         }
 
-        if (insurance.getPlanId() == null) {
-            throw new BadRequestAlertException(
-                    "planId is required for eligibility.",
-                    ENTITY_NAME,
-                    "planId.required"
-            );
+        if (!isBlank(insurance.getTpaNphiesId())) {
+            return insurance.getTpaNphiesId().trim();
         }
+
+        if (!isBlank(insurance.getPayerNphiesId())) {
+            return insurance.getPayerNphiesId().trim();
+        }
+
+        return null;
     }
 
     private boolean isBlank(String value) {

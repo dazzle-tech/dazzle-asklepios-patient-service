@@ -1,25 +1,22 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
-import com.dazzle.asklepios.client.setup.PayorClient;
-import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientInsurance;
-import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
+import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.CoverageClassDTO;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityBeneficiaryDTO;
-import com.dazzle.asklepios.integration.waseel.dto.eligibility.request.EligibilityCheckRequest;
-import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityCheckResponse;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityInsurancePlanDTO;
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.request.EligibilityCheckRequest;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.request.EligibilityRequest;
+import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityCheckResponse;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityResponse;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApLovMapperService;
 import com.dazzle.asklepios.integration.waseel.service.mapper.AsklepiosLovCodes;
-import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,7 +37,6 @@ public class WaseelEligibilityCheckService {
     private final WaseelApiProperties properties;
     private final ObjectMapper objectMapper;
     private final ApLovMapperService apLovMapperService;
-    private final PayorClient payorClient;
 
     @Transactional
     public EligibilityCheckResponse checkEligibility(EligibilityCheckRequest request) {
@@ -72,10 +68,10 @@ public class WaseelEligibilityCheckService {
         WaseelEligibilityRequest log = WaseelEligibilityRequest.builder()
                 .patientId(patient.getId())
                 .patientInsuranceId(insurance.getId())
-                .payorId(insurance.getPayorId())
-                .planId(insurance.getPlanId())
+                .payorId(null)
+                .planId(null)
                 .providerId(properties.providerId())
-                .destinationId(request.destinationId())
+                .destinationId(resolveDestinationId(request.destinationId(), insurance))
                 .serviceDate(serviceDate)
                 .benefits(Boolean.TRUE.equals(request.benefits()))
                 .discovery(Boolean.TRUE.equals(request.discovery()))
@@ -180,30 +176,19 @@ public class WaseelEligibilityCheckService {
                 Boolean.TRUE.equals(request.emergency()),
                 false,
                 java.util.Map.of(),
-                resolveDestinationId(request.destinationId())
+                resolveDestinationId(request.destinationId(), insurance)
         );
     }
 
-    private String resolveDestinationId(String destinationId) {
-        String cleaned = clean(destinationId);
-        return cleaned != null ? cleaned : "-1";
-    }
-
     private EligibilityInsurancePlanDTO buildInsurancePlan(PatientInsurance insurance) {
-        String payerName = null;
-        try {
-            PayorDTO payor = payorClient.getPayorById(insurance.getPayorId());
-            payerName = payor != null ? clean(payor.name()) : null;
-        } catch (FeignException ignored) {}
-
         return new EligibilityInsurancePlanDTO(
-                insurance.getPlanId() == null ? null : insurance.getPlanId().toString(),
+                null,
                 clean(insurance.getPayerNphiesId()),
-                payerName,
+                clean(insurance.getPayerName()),
                 clean(insurance.getMemberCardId()),
                 clean(insurance.getPolicyNumber()),
                 clean(insurance.getPayerNphiesId()),
-                "-1",
+                clean(insurance.getTpaNphiesId()),
                 insurance.getExpirationDate() == null ? null : insurance.getExpirationDate().toString(),
                 clean(insurance.getRelationWithSubscriber()),
                 clean(insurance.getCoverageType()),
@@ -215,9 +200,29 @@ public class WaseelEligibilityCheckService {
         );
     }
 
+    private String resolveDestinationId(String requestDestinationId, PatientInsurance insurance) {
+        String destinationId = clean(requestDestinationId);
+        if (destinationId != null) {
+            return destinationId;
+        }
+
+        String tpaNphiesId = clean(insurance.getTpaNphiesId());
+        if (tpaNphiesId != null) {
+            return tpaNphiesId;
+        }
+
+        String payerNphiesId = clean(insurance.getPayerNphiesId());
+        if (payerNphiesId != null) {
+            return payerNphiesId;
+        }
+
+        return "-1";
+    }
+
     private String resolvePolicyHolder(PatientInsurance insurance) {
-        if (insurance.getPolicyHolderId() != null) {
-            return insurance.getPolicyHolderId().toString();
+        String policyHolderName = clean(insurance.getPolicyHolderName());
+        if (policyHolderName != null) {
+            return policyHolderName;
         }
 
         String policyNumber = clean(insurance.getPolicyNumber());

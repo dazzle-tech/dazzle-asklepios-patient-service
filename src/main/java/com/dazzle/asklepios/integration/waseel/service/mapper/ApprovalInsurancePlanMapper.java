@@ -1,8 +1,5 @@
 package com.dazzle.asklepios.integration.waseel.service.mapper;
 
-import com.dazzle.asklepios.client.setup.dto.PayorDTO;
-import com.dazzle.asklepios.client.setup.dto.PayorPlanCoverageClassDTO;
-import com.dazzle.asklepios.client.setup.dto.PayorPlanDTO;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalCoverageClassDTO;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalInsurancePlanDTO;
@@ -16,91 +13,70 @@ public class ApprovalInsurancePlanMapper {
 
     public static ApprovalInsurancePlanDTO buildInsurancePlan(
             PatientInsurance insurance,
-            PayorDTO payor,
-            PayorPlanDTO plan,
             List<ApprovalCoverageClassDTO> coverageClasses
     ) {
+        if (insurance == null) {
+            return null;
+        }
+
         return new ApprovalInsurancePlanDTO(
-                resolvePlanId(plan),
-                firstNonBlank(
-                        insurance.getPayerNphiesId(),
-                        plan.payerNphiesId(),
-                        payor.nphiesId(),
-                        payor.waseelPayerId()
-                ),
-                safe(insurance.getMemberCardId()),
-                safe(insurance.getPolicyNumber()),
+                null,
+                clean(insurance.getPayerNphiesId()),
+                clean(insurance.getMemberCardId()),
+                clean(insurance.getPolicyNumber()),
                 resolvePolicyHolder(insurance),
                 insurance.getMaxLimit(),
                 insurance.getPatientShare(),
-                firstNonBlank(
-                        insurance.getCoverageType(),
-                        plan.coverageType()
-                ),
-                coverageClasses,
-                safe(insurance.getRelationWithSubscriber()),
+                clean(insurance.getCoverageType()),
+                coverageClasses == null ? List.of() : coverageClasses,
+                clean(insurance.getRelationWithSubscriber()),
                 insurance.getExpirationDate() != null
                         ? insurance.getExpirationDate().format(DateTimeFormatter.ISO_DATE)
                         : null,
-                safe(payor.name()),
-                firstNonBlank(
-                        insurance.getPayerNphiesId(),
-                        plan.payerNphiesId(),
-                        payor.nphiesId()
-                ),
+                clean(insurance.getPayerName()),
+                clean(insurance.getPayerNphiesId()),
                 Boolean.TRUE.equals(insurance.getIsPrimary()),
-                safe(payor.tpaNphiesId())
+                clean(insurance.getTpaNphiesId())
         );
     }
 
-    public static List<ApprovalCoverageClassDTO> mapCoverageClasses(
-            List<PayorPlanCoverageClassDTO> classes
-    ) {
-        if (classes == null) return List.of();
-        return classes.stream()
-                .map(c -> new ApprovalCoverageClassDTO(
-                        normalizeCoverageClassType(c.coverageClassType()),
-                        safe(c.coverageClassValue()),
-                        safe(c.coverageClassName())
-                ))
-                .toList();
+    public static List<ApprovalCoverageClassDTO> mapCoverageClasses(PatientInsurance insurance) {
+        if (insurance == null || isBlank(insurance.getPolicyClassName())) {
+            return List.of();
+        }
+
+        String policyClassName = insurance.getPolicyClassName().trim();
+
+        return List.of(
+                new ApprovalCoverageClassDTO(
+                        "plan",
+                        policyClassName,
+                        policyClassName
+                )
+        );
     }
 
-    // ─── الإصلاح الرئيسي ───────────────────────────────────────────────
     private static String resolvePolicyHolder(PatientInsurance insurance) {
-        // أولاً: استخدم policyHolderId لو موجود
-        if (insurance.getPolicyHolderId() != null) {
-            return insurance.getPolicyHolderId().toString();
+        if (!isBlank(insurance.getPolicyHolderName())) {
+            return insurance.getPolicyHolderName().trim();
         }
-        // ثانياً: استخدم policyNumber كـ fallback (مو الاسم!)
-        if (insurance.getPolicyNumber() != null && !insurance.getPolicyNumber().isBlank()) {
-            return insurance.getPolicyNumber();
+
+        if (!isBlank(insurance.getPolicyNumber())) {
+            return insurance.getPolicyNumber().trim();
         }
-        // أخيراً: memberCardId
-        return safe(insurance.getMemberCardId());
+
+        return clean(insurance.getMemberCardId());
     }
 
-    private static Object resolvePlanId(PayorPlanDTO plan) {
-        if (plan.waseelPlanId() != null && !plan.waseelPlanId().isBlank()) {
-            return plan.waseelPlanId();
+    private static String clean(String value) {
+        if (value == null) {
+            return "";
         }
-        return plan.id();
+
+        return value.trim();
     }
 
-    private static String normalizeCoverageClassType(String type) {
-        if (type == null || type.isBlank()) return "";
-        return type.trim().toLowerCase().replace("_", "-");
-    }
-
-    private static String firstNonBlank(String... values) {
-        if (values == null) return "";
-        for (String value : values) {
-            if (value != null && !value.isBlank()) return value.trim();
-        }
-        return "";
-    }
-
-    private static String safe(String value) {
-        return value == null ? "" : value;
+    private static boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 }
