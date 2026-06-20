@@ -1,13 +1,7 @@
 package com.dazzle.asklepios.integration.waseel.service.mapper;
 
-import com.dazzle.asklepios.client.setup.BrandMedicationClient;
-import com.dazzle.asklepios.client.setup.DiagnosticTestClient;
-import com.dazzle.asklepios.client.setup.ProcedureClient;
-import com.dazzle.asklepios.client.setup.ServiceClient;
-import com.dazzle.asklepios.client.setup.dto.BrandMedicationSetupDTO;
-import com.dazzle.asklepios.client.setup.dto.DiagnosticTestSetupDTO;
-import com.dazzle.asklepios.client.setup.dto.ProcedureSetupDTO;
-import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
+import com.dazzle.asklepios.integration.waseel.client.WaseelItemMappingClient;
+import com.dazzle.asklepios.integration.waseel.client.dto.WaseelItemMappingSetupDTO;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
@@ -26,10 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @RequiredArgsConstructor
 public class ApprovalItemMapper {
 
-    private final ProcedureClient procedureClient;
-    private final ServiceClient serviceClient;
-    private final DiagnosticTestClient diagnosticTestClient;
-    private final BrandMedicationClient brandMedicationClient;
+    private final WaseelItemMappingClient waseelItemMappingClient;
 
     public List<WaseelApprovalItem> toWaseelItems(
             List<PatientServiceAndProduct> items,
@@ -63,75 +54,100 @@ public class ApprovalItemMapper {
             BigDecimal patientSharePercent,
             LocalDate itemDate
     ) {
-        BillingItemTypes type = item.getBillingItemType();
+        BillingItemTypes billingType = item.getBillingItemType();
 
-        if (type == BillingItemTypes.PROCEDURE) {
-            ProcedureSetupDTO procedure = getProcedure(item.getProcedureId());
+        String mappingItemType = getMappingItemType(billingType);
+        Long sourceId = getSourceId(item, billingType);
 
-            return buildItem(
-                    item,
-                    sequence,
-                    "services",
-                    safe(procedure.code()),
-                    safe(procedure.name()),
-                    patientSharePercent,
-                    itemDate
+        WaseelItemMappingSetupDTO mapping = getWaseelMapping(mappingItemType, sourceId);
+
+        String waseelType = getWaseelItemType(billingType);
+
+        return buildItem(
+                item,
+                sequence,
+                waseelType,
+                safe(mapping.sbsCode()),
+                safe(mapping.sbsDescription()),
+                patientSharePercent,
+                itemDate
+        );
+    }
+
+    private WaseelItemMappingSetupDTO getWaseelMapping(String itemType, Long sourceId) {
+        if (itemType == null || sourceId == null) {
+            throw new RuntimeException("Cannot map Waseel item. Item type or source ID is missing.");
+        }
+
+        try {
+            return waseelItemMappingClient.getMappingByItem(itemType, sourceId);
+        } catch (FeignException.NotFound ex) {
+            throw new RuntimeException(
+                    "Missing Waseel SBS mapping for item type: " + itemType + ", source ID: " + sourceId
             );
+        }
+    }
+
+    private String getMappingItemType(BillingItemTypes type) {
+        if (type == BillingItemTypes.PROCEDURE) {
+            return "PROCEDURE";
         }
 
         if (type == BillingItemTypes.SERVICE) {
-            ServiceSetupDTO service = getService(item.getServiceId());
+            return "SERVICE";
+        }
 
-            return buildItem(
-                    item,
-                    sequence,
-                    "services",
-                    safe(service.code()),
-                    safe(service.name()),
-                    patientSharePercent,
-                    itemDate
-            );
+        if (type == BillingItemTypes.LABORATORY || type == BillingItemTypes.PATHOLOGY) {
+            return "LABORATORY";
+        }
+
+        if (type == BillingItemTypes.RADIOLOGY) {
+            return "RADIOLOGY";
+        }
+
+        if (type == BillingItemTypes.MEDICATION) {
+            return "MEDICATION";
+        }
+
+        throw new RuntimeException("Unsupported billing item type for Waseel mapping: " + type);
+    }
+
+    private Long getSourceId(PatientServiceAndProduct item, BillingItemTypes type) {
+        if (type == BillingItemTypes.PROCEDURE) {
+            return item.getProcedureId();
+        }
+
+        if (type == BillingItemTypes.SERVICE) {
+            return item.getServiceId();
         }
 
         if (type == BillingItemTypes.LABORATORY
                 || type == BillingItemTypes.RADIOLOGY
                 || type == BillingItemTypes.PATHOLOGY) {
-            DiagnosticTestSetupDTO diagnosticTest = getDiagnosticTest(item.getDiagnosticTestId());
-
-            return buildItem(
-                    item,
-                    sequence,
-                    mapDiagnosticType(type),
-                    safe(diagnosticTest.internalCode()),
-                    safe(diagnosticTest.name()),
-                    patientSharePercent,
-                    itemDate
-            );
+            return item.getDiagnosticTestId();
         }
 
         if (type == BillingItemTypes.MEDICATION) {
-            BrandMedicationSetupDTO medication = getBrandMedication(item.getBrandMedicationId());
-
-            return buildItem(
-                    item,
-                    sequence,
-                    "medication",
-                    safe(medication.code()),
-                    safe(medication.name()),
-                    patientSharePercent,
-                    itemDate
-            );
+            return item.getBrandMedicationId();
         }
 
-        return buildItem(
-                item,
-                sequence,
-                "services",
-                "",
-                "",
-                patientSharePercent,
-                itemDate
-        );
+        return null;
+    }
+
+    private String getWaseelItemType(BillingItemTypes type) {
+        if (type == BillingItemTypes.RADIOLOGY) {
+            return "imaging";
+        }
+
+        if (type == BillingItemTypes.LABORATORY || type == BillingItemTypes.PATHOLOGY) {
+            return "laboratory";
+        }
+
+        if (type == BillingItemTypes.MEDICATION) {
+            return "medication";
+        }
+
+        return "services";
     }
 
     private WaseelApprovalItem buildItem(
@@ -152,13 +168,6 @@ public class ApprovalItemMapper {
         BigDecimal tax = money(item.getTaxAmount());
         BigDecimal net = money(item.getTotalAmount());
 
-        /*
-         * Matching Waseel collection behavior:
-         * patientSharePercent = 0
-         * patientShare = 0
-         * payerShare = 0
-         * diagnosisSequence = []
-         */
         return new WaseelApprovalItem(
                 sequence,
                 emptyToEmpty(type),
@@ -189,90 +198,6 @@ public class ApprovalItemMapper {
                 null,
                 List.of()
         );
-    }
-
-    private String mapDiagnosticType(BillingItemTypes type) {
-        if (type == BillingItemTypes.RADIOLOGY) {
-            return "imaging";
-        }
-
-        return "laboratory";
-    }
-
-    private ProcedureSetupDTO getProcedure(Long procedureId) {
-        try {
-            return procedureClient.getProcedure(procedureId);
-        } catch (FeignException.NotFound ex) {
-            return new ProcedureSetupDTO(
-                    procedureId,
-                    "Procedure not found",
-                    "",
-                    null,
-                    false,
-                    null,
-                    null,
-                    null,
-                    null,
-                    false,
-                    null,
-                    null,
-                    0L
-            );
-        }
-    }
-
-    private ServiceSetupDTO getService(Long serviceId) {
-        try {
-            return serviceClient.getServiceDetails(serviceId);
-        } catch (FeignException.NotFound ex) {
-            return new ServiceSetupDTO(
-                    serviceId,
-                    "Service not found",
-                    "",
-                    null,
-                    null,
-                    0L,
-                    null,
-                    false,
-                    null,
-                    false,
-                    1,
-                    null,
-                    0,
-                    0
-            );
-        }
-    }
-
-    private DiagnosticTestSetupDTO getDiagnosticTest(Long diagnosticTestId) {
-        try {
-            return diagnosticTestClient.getDiagnosticTest(diagnosticTestId);
-        } catch (FeignException.NotFound ex) {
-            return new DiagnosticTestSetupDTO(
-                    diagnosticTestId,
-                    null,
-                    "Diagnostic test not found",
-                    "",
-                    BigDecimal.ZERO,
-                    null,
-                    false
-            );
-        }
-    }
-
-    private BrandMedicationSetupDTO getBrandMedication(Long brandMedicationId) {
-        try {
-            return brandMedicationClient.getBrandMedication(brandMedicationId);
-        } catch (FeignException.NotFound ex) {
-            return new BrandMedicationSetupDTO(
-                    brandMedicationId,
-                    "Medication not found",
-                    "",
-                    BigDecimal.ZERO,
-                    null,
-                    false
-            );
-        }
     }
 
     private BigDecimal money(BigDecimal value) {
