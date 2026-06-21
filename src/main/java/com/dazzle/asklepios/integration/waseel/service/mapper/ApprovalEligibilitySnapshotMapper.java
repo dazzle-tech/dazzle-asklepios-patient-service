@@ -56,7 +56,7 @@ public class ApprovalEligibilitySnapshotMapper {
 
         JsonNode beneficiaryNode = findNode(requestRoot, "beneficiary");
         JsonNode insurancePlanNode = findNode(requestRoot, "insurancePlan");
-
+        JsonNode coverageNode = firstCoverageNode(responseRoot);
         if (isMissing(beneficiaryNode)) {
             beneficiaryNode = findNode(responseRoot, "beneficiary");
         }
@@ -91,7 +91,7 @@ public class ApprovalEligibilitySnapshotMapper {
                         bool(beneficiaryNode, "isNewBorn")
                 ),
                 toBeneficiary(beneficiaryNode),
-                toInsurancePlan(insurancePlanNode),
+                toInsurancePlan(insurancePlanNode, coverageNode),
                 firstNonBlank(
                         text(insurancePlanNode, "memberCardId"),
                         text(responseRoot, "memberId"),
@@ -115,6 +115,16 @@ public class ApprovalEligibilitySnapshotMapper {
                         text(requestRoot, "eligibilityResponseUrl")
                 )
         );
+    }
+
+    private JsonNode firstCoverageNode(JsonNode responseRoot) {
+        JsonNode coverages = findNode(responseRoot, "coverages");
+
+        if (coverages != null && coverages.isArray() && !coverages.isEmpty()) {
+            return coverages.get(0);
+        }
+
+        return null;
     }
 
     private WaseelApprovalBeneficiary toBeneficiary(JsonNode node) {
@@ -246,33 +256,96 @@ public class ApprovalEligibilitySnapshotMapper {
         return null;
     }
 
-    private WaseelApprovalInsurancePlan toInsurancePlan(JsonNode node) {
-        String tpaNphiesId = text(node, "tpaNphiesId");
-        // Convert "-1" to null as Waseel doesn't accept this value
+    private WaseelApprovalInsurancePlan toInsurancePlan(JsonNode requestPlanNode, JsonNode coverageNode) {
+        String tpaNphiesId = firstNonBlank(
+                text(requestPlanNode, "tpaNphiesId"),
+                text(coverageNode, "tpaNphiesId")
+        );
+
         if (tpaNphiesId != null && (tpaNphiesId.equals("-1") || tpaNphiesId.isBlank())) {
             tpaNphiesId = null;
         }
-        
-        // Handle planId - convert invalid types to string or null
-        Object planId = safePlanId(node, "planId");
+
+        String memberCardId = firstNonBlank(
+                text(coverageNode, "memberId"),
+                text(requestPlanNode, "memberCardId")
+        );
+
+        String policyNumber = firstNonBlank(
+                text(coverageNode, "policyNumber"),
+                text(requestPlanNode, "policyNumber")
+        );
+
+        String policyHolder = firstNonBlank(
+                text(coverageNode, "policyHolder"),
+                text(requestPlanNode, "policyHolder"),
+                text(requestPlanNode, "policyHolderName")
+        );
 
         return new WaseelApprovalInsurancePlan(
-                planId,
-                firstNonBlank(text(node, "payerId"), text(node, "payerNphiesId"), "INS-FHIR"),
-                text(node, "memberCardId"),
-                text(node, "policyNumber"),
-                firstNonBlank(text(node, "policyHolder"), text(node, "policyHolderName"), text(node, "policyNumber")),
-                decimal(node, "maxLimit"),
-                decimal(node, "patientShare"),
-                firstNonBlank(text(node, "coverageType"), "EHCPOL"),
-                coverageClassOrDefault(node),
+                safePlanId(requestPlanNode, "planId"),
+                firstNonBlank(text(requestPlanNode, "payerId"), text(requestPlanNode, "payerNphiesId"), "INS-FHIR"),
+                memberCardId,
+                policyNumber,
+                policyHolder,
+                decimal(requestPlanNode, "maxLimit"),
+                decimal(requestPlanNode, "patientShare"),
+                firstNonBlank(text(requestPlanNode, "coverageType"), "EHCPOL"),
+                coverageClassFromResponseOrDefault(coverageNode, policyNumber),
                 "self",
-                text(node, "expiryDate"),
-                firstNonBlank(text(node, "payerName"), "Insurance Company Testing Payer"),
-                firstNonBlank(text(node, "payerNphiesId"), text(node, "payerId"), "INS-FHIR"),
+                firstNonBlank(
+                        dateOnly(text(coverageNode, "benefitEndDate")),
+                        text(requestPlanNode, "expiryDate")
+                ),
+                firstNonBlank(text(requestPlanNode, "payerName"), "Insurance Company Testing Payer"),
+                firstNonBlank(text(requestPlanNode, "payerNphiesId"), text(requestPlanNode, "payerId"), "INS-FHIR"),
                 true,
                 tpaNphiesId
         );
+    }
+
+    private List<WaseelApprovalCoverageClass> coverageClassFromResponseOrDefault(
+            JsonNode coverageNode,
+            String policyNumber
+    ) {
+        List<WaseelApprovalCoverageClass> classes = new ArrayList<>();
+
+        JsonNode classList = coverageNode == null ? null : coverageNode.get("classList");
+
+        if (classList != null && classList.isArray()) {
+            for (JsonNode item : classList) {
+                classes.add(new WaseelApprovalCoverageClass(
+                        text(item, "classType"),
+                        text(item, "classValue"),
+                        text(item, "className")
+                ));
+            }
+        }
+
+        if (!classes.isEmpty()) {
+            return classes;
+        }
+
+        return List.of(
+                new WaseelApprovalCoverageClass(
+                        "plan",
+                        policyNumber,
+                        null
+                )
+        );
+    }
+
+    private String dateOnly(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+
+        int index = value.indexOf("T");
+        if (index > 0) {
+            return value.substring(0, index);
+        }
+
+        return value;
     }
 
     private List<WaseelApprovalCoverageClass> coverageClassOrDefault(JsonNode node) {
