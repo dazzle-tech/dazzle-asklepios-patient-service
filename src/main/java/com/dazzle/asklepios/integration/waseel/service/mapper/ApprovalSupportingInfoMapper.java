@@ -209,15 +209,15 @@ public class ApprovalSupportingInfoMapper {
                 .findTopByEncounterIdAndIsActiveTrueOrderByIdDesc(encounterId)
                 .ifPresent(vital -> {
                     if (vital.getBloodPressureSystolic() != null) {
-                        result.add(valueInfo(sequence, "vital-sign-systolic", String.valueOf(vital.getBloodPressureSystolic()), "mmHg"));
+                        result.add(valueInfo(sequence, "vital-sign-systolic", String.valueOf(vital.getBloodPressureSystolic()), "mm[Hg]"));
                     }
 
                     if (vital.getBloodPressureDiastolic() != null) {
-                        result.add(valueInfo(sequence, "vital-sign-diastolic", String.valueOf(vital.getBloodPressureDiastolic()), "mmHg"));
+                        result.add(valueInfo(sequence, "vital-sign-diastolic", String.valueOf(vital.getBloodPressureDiastolic()), "mm[Hg]"));
                     }
 
                     if (vital.getHeartRate() != null) {
-                        result.add(valueInfo(sequence, "pulse", String.valueOf(vital.getHeartRate()), "beats/min"));
+                        result.add(valueInfo(sequence, "pulse", String.valueOf(vital.getHeartRate()), "/min"));
                     }
 
                     if (vital.getTemperature() != null) {
@@ -229,7 +229,7 @@ public class ApprovalSupportingInfoMapper {
                     }
 
                     if (vital.getRespiratoryRate() != null) {
-                        result.add(valueInfo(sequence, "respiratory-rate", String.valueOf(vital.getRespiratoryRate()), "breaths/min"));
+                        result.add(valueInfo(sequence, "respiratory-rate", String.valueOf(vital.getRespiratoryRate()), "/min"));
                     }
                 });
     }
