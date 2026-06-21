@@ -103,16 +103,12 @@ public class ApprovalItemMapper {
         BigDecimal discount = money(item.getDiscountAmount());
         BigDecimal tax = money(item.getTaxAmount());
         BigDecimal net = money(item.getTotalAmount());
-
+        BigDecimal patientShare = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal payerShare = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         BigDecimal sharePercent = patientSharePercent == null
                 ? BigDecimal.ZERO
                 : patientSharePercent;
 
-        BigDecimal patientShare = net
-                .multiply(sharePercent)
-                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-
-        BigDecimal payerShare = net.subtract(patientShare).setScale(2, RoundingMode.HALF_UP);
 
         return new WaseelApprovalItem(
                 sequence,
@@ -131,7 +127,7 @@ public class ApprovalItemMapper {
                 discount,
                 BigDecimal.ONE,
                 BigDecimal.ZERO,
-                sharePercent,
+                BigDecimal.ZERO,
                 net,
                 tax,
                 patientShare,
