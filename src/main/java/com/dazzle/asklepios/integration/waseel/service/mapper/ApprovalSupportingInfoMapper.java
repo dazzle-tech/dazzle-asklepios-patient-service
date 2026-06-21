@@ -20,7 +20,6 @@ import com.dazzle.asklepios.repository.ProgressNoteRepository;
 import com.dazzle.asklepios.repository.SocialHistoryRepository;
 import com.dazzle.asklepios.repository.SurgicalHistoryRepository;
 import com.dazzle.asklepios.repository.VitalSignsRepository;
-import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
@@ -61,14 +60,14 @@ public class ApprovalSupportingInfoMapper {
                 .findTopByEncounter_IdOrderByIdDesc(encounterId)
                 .orElse(null);
 
-        addRequiredClinicalText(result, sequence, encounter, chief, encounterId, patientId);
-        addVitalSigns(result, sequence, encounterId);
-        addBodyMeasurements(result, sequence, encounterId);
+        addClinicalTextIfExists(result, sequence, encounter, chief, encounterId, patientId);
+        addVitalSignsIfExists(result, sequence, encounterId);
+        addBodyMeasurementsIfExists(result, sequence, encounterId);
 
         return result;
     }
 
-    private void addRequiredClinicalText(
+    private void addClinicalTextIfExists(
             List<WaseelApprovalSupportingInfo> result,
             AtomicInteger sequence,
             PatientEncounter encounter,
@@ -135,65 +134,122 @@ public class ApprovalSupportingInfoMapper {
         patientProblems = blankToNull(patientProblems);
         surgicalHistory = blankToNull(surgicalHistory);
 
-        String chiefComplaint = required(
+        addTextIfExists(
+                result,
+                sequence,
+                "chief-complaint",
                 firstNonBlank(
                         encounter.getChiefComplaint(),
                         chief == null ? null : chief.getChiefComplaint(),
                         reasonOfVisit
-                ),
-                "Chief Complaint is required before Waseel pre-authorization"
+                )
         );
 
-        String historyOfPresentIllness = required(
+        addTextIfExists(
+                result,
+                sequence,
+                "history-of-present-illness",
                 firstNonBlank(
                         chief == null ? null : chief.getCaseUnderstanding(),
                         progressNote,
                         reasonOfVisit,
-                        chiefComplaint
-                ),
-                "History of Present Illness is required before Waseel pre-authorization"
+                        encounter.getChiefComplaint()
+                )
         );
 
-        String patientHistory = required(
+        addTextIfExists(
+                result,
+                sequence,
+                "patient-history",
                 firstNonBlank(
                         encounter.getNotes(),
                         patientProblems,
                         socialHistory,
                         surgicalHistory
-                ),
-                "Patient History is required before Waseel pre-authorization"
+                )
         );
 
-        String physicalExamination = required(
+        addTextIfExists(
+                result,
+                sequence,
+                "physical-examination",
                 firstNonBlank(
                         encounter.getPhysicalExaminationSummery(),
                         assessment
-                ),
-                "Physical Examination is required before Waseel pre-authorization"
+                )
         );
 
-        String investigationResult = required(
+        addTextIfExists(
+                result,
+                sequence,
+                "investigation-result",
                 firstNonBlank(
                         progressNote,
                         assessment
-                ),
-                "Investigation Result is required before Waseel pre-authorization"
+                )
         );
 
-        String treatmentPlan = required(
+        addTextIfExists(
+                result,
+                sequence,
+                "treatment-plan",
                 firstNonBlank(
                         assessment,
                         progressNote
-                ),
-                "Treatment Plan is required before Waseel pre-authorization"
+                )
         );
+    }
 
-        result.add(textInfo(sequence, "chief-complaint", chiefComplaint));
-        result.add(textInfo(sequence, "history-of-present-illness", historyOfPresentIllness));
-        result.add(textInfo(sequence, "patient-history", patientHistory));
-        result.add(textInfo(sequence, "physical-examination", physicalExamination));
-        result.add(textInfo(sequence, "investigation-result", investigationResult));
-        result.add(textInfo(sequence, "treatment-plan", treatmentPlan));
+    private void addVitalSignsIfExists(
+            List<WaseelApprovalSupportingInfo> result,
+            AtomicInteger sequence,
+            Long encounterId
+    ) {
+        vitalSignsRepository
+                .findTopByEncounterIdAndIsActiveTrueOrderByIdDesc(encounterId)
+                .ifPresent(vital -> {
+                    if (vital.getBloodPressureSystolic() != null) {
+                        result.add(valueInfo(sequence, "vital-sign-systolic", String.valueOf(vital.getBloodPressureSystolic()), "mmHg"));
+                    }
+
+                    if (vital.getBloodPressureDiastolic() != null) {
+                        result.add(valueInfo(sequence, "vital-sign-diastolic", String.valueOf(vital.getBloodPressureDiastolic()), "mmHg"));
+                    }
+
+                    if (vital.getHeartRate() != null) {
+                        result.add(valueInfo(sequence, "pulse", String.valueOf(vital.getHeartRate()), "beats/min"));
+                    }
+
+                    if (vital.getTemperature() != null) {
+                        result.add(valueInfo(sequence, "temperature", vital.getTemperature().stripTrailingZeros().toPlainString(), "Cel"));
+                    }
+
+                    if (vital.getOxygenSaturation() != null) {
+                        result.add(valueInfo(sequence, "oxygen-saturation", vital.getOxygenSaturation().stripTrailingZeros().toPlainString(), "%"));
+                    }
+
+                    if (vital.getRespiratoryRate() != null) {
+                        result.add(valueInfo(sequence, "respiratory-rate", String.valueOf(vital.getRespiratoryRate()), "breaths/min"));
+                    }
+                });
+    }
+
+    private void addBodyMeasurementsIfExists(
+            List<WaseelApprovalSupportingInfo> result,
+            AtomicInteger sequence,
+            Long encounterId
+    ) {
+        bodyMeasurementsRepository
+                .findTopByEncounterIdAndIsActiveTrueOrderByIdDesc(encounterId)
+                .ifPresent(body -> {
+                    if (body.getWeight() != null) {
+                        result.add(valueInfo(sequence, "vital-sign-weight", body.getWeight().stripTrailingZeros().toPlainString(), "kg"));
+                    }
+
+                    if (body.getHeight() != null) {
+                        result.add(valueInfo(sequence, "vital-sign-height", body.getHeight().stripTrailingZeros().toPlainString(), "cm"));
+                    }
+                });
     }
 
     private String mapSocialHistory(SocialHistory source) {
@@ -230,74 +286,15 @@ public class ApprovalSupportingInfoMapper {
         return values.isEmpty() ? null : String.join(", ", values);
     }
 
-    private void addVitalSigns(
+    private void addTextIfExists(
             List<WaseelApprovalSupportingInfo> result,
             AtomicInteger sequence,
-            Long encounterId
+            String category,
+            String value
     ) {
-        VitalSigns vital = vitalSignsRepository
-                .findTopByEncounterIdAndIsActiveTrueOrderByIdDesc(encounterId)
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "Vital signs are required before Waseel pre-authorization",
-                        "preAuthorization",
-                        "waseel.vitalSigns.required"
-                ));
-
-        if (vital.getBloodPressureSystolic() == null) {
-            throw requiredField("Blood Pressure Systolic is required before Waseel pre-authorization");
+        if (isNotBlank(value)) {
+            result.add(textInfo(sequence, category, value));
         }
-
-        if (vital.getBloodPressureDiastolic() == null) {
-            throw requiredField("Blood Pressure Diastolic is required before Waseel pre-authorization");
-        }
-
-        if (vital.getHeartRate() == null) {
-            throw requiredField("Heart Rate is required before Waseel pre-authorization");
-        }
-
-        if (vital.getTemperature() == null) {
-            throw requiredField("Temperature is required before Waseel pre-authorization");
-        }
-
-        if (vital.getOxygenSaturation() == null) {
-            throw requiredField("Oxygen Saturation is required before Waseel pre-authorization");
-        }
-
-        if (vital.getRespiratoryRate() == null) {
-            throw requiredField("Respiratory Rate is required before Waseel pre-authorization");
-        }
-
-        result.add(valueInfo(sequence, "vital-sign-systolic", String.valueOf(vital.getBloodPressureSystolic()), "mmHg"));
-        result.add(valueInfo(sequence, "vital-sign-diastolic", String.valueOf(vital.getBloodPressureDiastolic()), "mmHg"));
-        result.add(valueInfo(sequence, "pulse", String.valueOf(vital.getHeartRate()), "beats/min"));
-        result.add(valueInfo(sequence, "temperature", vital.getTemperature().stripTrailingZeros().toPlainString(), "Cel"));
-        result.add(valueInfo(sequence, "oxygen-saturation", vital.getOxygenSaturation().stripTrailingZeros().toPlainString(), "%"));
-        result.add(valueInfo(sequence, "respiratory-rate", String.valueOf(vital.getRespiratoryRate()), "breaths/min"));
-    }
-
-    private void addBodyMeasurements(
-            List<WaseelApprovalSupportingInfo> result,
-            AtomicInteger sequence,
-            Long encounterId
-    ) {
-        BodyMeasurements body = bodyMeasurementsRepository
-                .findTopByEncounterIdAndIsActiveTrueOrderByIdDesc(encounterId)
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "Body measurements are required before Waseel pre-authorization",
-                        "preAuthorization",
-                        "waseel.bodyMeasurements.required"
-                ));
-
-        if (body.getWeight() == null) {
-            throw requiredField("Weight is required before Waseel pre-authorization");
-        }
-
-        if (body.getHeight() == null) {
-            throw requiredField("Height is required before Waseel pre-authorization");
-        }
-
-        result.add(valueInfo(sequence, "vital-sign-weight", body.getWeight().stripTrailingZeros().toPlainString(), "kg"));
-        result.add(valueInfo(sequence, "vital-sign-height", body.getHeight().stripTrailingZeros().toPlainString(), "cm"));
     }
 
     private WaseelApprovalSupportingInfo textInfo(
@@ -340,22 +337,6 @@ public class ApprovalSupportingInfoMapper {
                 null,
                 clean(unit),
                 null
-        );
-    }
-
-    private String required(String value, String message) {
-        if (value == null || value.isBlank()) {
-            throw requiredField(message);
-        }
-
-        return value.trim();
-    }
-
-    private BadRequestAlertException requiredField(String message) {
-        return new BadRequestAlertException(
-                message,
-                "preAuthorization",
-                "waseel.supportingInfo.required"
         );
     }
 

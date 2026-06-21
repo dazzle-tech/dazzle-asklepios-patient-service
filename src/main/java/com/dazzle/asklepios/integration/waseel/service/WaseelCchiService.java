@@ -131,81 +131,98 @@ public class WaseelCchiService {
 
     private CchiInquiryResponse mockCchiInquiryResponse() {
         CchiBeneficiaryData data = new CchiBeneficiaryData(
-                "1093772497",
-                "NI",
+                "1254562145",
+                "National Card",
 
-                "JAWAD JASIM AL SAEED",
-                null,
-                null,
-                null,
-                null,
+                "Thmd Adel Ramy Sami",
+                "",
+                "",
+                "",
+                "",
 
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
+                "240600003",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
 
-                null,
-                null,
-                "113",
-                null,
+                "2020-02-05",
+                "",
+                "",
+                "",
 
-                null,
-                null,
-                null,
+                "",
+                "",
+                "",
 
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
 
-                null,
-                "MALE",
-                null,
-                null,
-                null,
-                null,
+                "Unmarried",
+                "male",
+                "",
+                "",
+                "",
+                "Business",
 
-                null,
-                null,
-                null,
+                0L,
+                "",
+                false,
 
                 List.of(
                         new CchiInsurancePlan(
-                                null,                           // planId
-                                "001093772497001",              // memberCardId
-                                "48095070",                     // policyNumber
-                                null,                           // groupNumber
-                                "2026-08-21T21:00:00.000+0000", // expiryDate
-                                "2025-08-22T21:00:00.000+0000", // issueDate
-                                "true",                         // isPrimary
-                                null,                           // payerId
-                                "Waseel payor test",            // payerName
-                                "7000911508",                   // payerNphiesId
-                                null,                           // tpaNphiesId
-                                "SELF",                         // relationWithSubscriber
-                                "EHCPOL",                       // coverageType
-                                BigDecimal.valueOf(20),         // patientShare
-                                BigDecimal.valueOf(100),        // maxLimit
-                                "12",                           // networkId
-                                "7001454136",                   // sponsorNumber
-                                "a",                            // policyClassName
-                                "waseel application service prov.", // policyHolder
-                                List.of(
-                                        new CchiCoverageClass(
-                                                "PLAN",
-                                                "a",
-                                                "a"
-                                        )
-                                ),
-                                false                           // newPlan
+
+                                null,
+
+                                "74915036",
+
+                                "17452394",
+
+                                null,
+
+                                "2028-03-16",
+
+                                null,
+
+                                "false",
+
+                                null,
+
+                                "Insurance Company Testing Payer",
+
+                                "INS-FHIR",
+
+                                null,
+
+                                "self",
+
+                                "EHCPOL",
+
+                                BigDecimal.ZERO,
+
+                                BigDecimal.ZERO,
+
+                                null,
+
+                                null,
+
+                                null,
+
+                                "ELAL CONSTRUCTION",
+
+                                List.of(),
+
+                                false
+
                         )
+
                 )
         );
 
@@ -216,5 +233,4 @@ public class WaseelCchiService {
                 false,
                 data
         );
-    }
-}
+    }}

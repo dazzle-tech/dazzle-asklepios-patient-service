@@ -19,12 +19,23 @@ public class ApprovalCareTeamMapper {
 
     private static final String PRACT_SUB_SPECIALTY = "PRACT_SUB_SPECIALTY";
     private static final Logger log = LoggerFactory.getLogger(ApprovalCareTeamMapper.class);
+
     private final PractitionerClient practitionerClient;
     private final ApLovMapperService apLovMapperService;
 
     public List<WaseelApprovalCareTeam> toWaseelCareTeam(PatientEncounter encounter) {
-        if (encounter == null || encounter.getPractitionerId() == null) {
-            return List.of();
+        if (encounter == null) {
+            throw badRequest(
+                    "Encounter is required to build care team",
+                    "careTeam.encounter.required"
+            );
+        }
+
+        if (encounter.getPractitionerId() == null) {
+            throw badRequest(
+                    "Practitioner is required before Waseel pre-authorization",
+                    "careTeam.practitioner.required"
+            );
         }
 
         PractitionerDTO practitioner = getPractitioner(encounter.getPractitionerId());
@@ -72,6 +83,11 @@ public class ApprovalCareTeamMapper {
                 "practitioner.subSpecialty.required"
         );
 
+        String specialityCode = required(
+                WaseelPracticeCodeMapper.mapSubSpecialtyCode(subSpecialtyValueCode),
+                "Practitioner specialty code is required",
+                "practitioner.specialityCode.required"
+        );
 
         String specialityDisplay =
                 apLovMapperService.getDisplayValueByLovCodeAndValueCode(
@@ -79,25 +95,27 @@ public class ApprovalCareTeamMapper {
                         subSpecialtyValueCode
                 );
 
-        if (specialityDisplay == null || specialityDisplay.isBlank()) {
+        if (isBlank(specialityDisplay)) {
             specialityDisplay = WaseelPracticeCodeMapper.mapSubSpecialtyDisplay(subSpecialtyValueCode);
         }
 
-        // If LOV doesn't contain a display value for this sub-specialty, don't fail the whole request.
-        // Fall back to the raw subSpecialtyValueCode and log a warning so the data issue can be fixed
-        // in the LOV configuration later.
-        if (specialityDisplay == null || specialityDisplay.isBlank()) {
-            log.warn("No display value found for LOV '{}' value code '{}'. Falling back to value code as display.", PRACT_SUB_SPECIALTY, subSpecialtyValueCode);
-            specialityDisplay = subSpecialtyValueCode;
+        if (isBlank(specialityDisplay)) {
+            log.warn(
+                    "No display value found for LOV '{}' value code '{}'. Falling back to specialty code '{}'.",
+                    PRACT_SUB_SPECIALTY,
+                    subSpecialtyValueCode,
+                    specialityCode
+            );
+            specialityDisplay = specialityCode;
         }
 
-        String specialityCode = WaseelPracticeCodeMapper.mapSubSpecialtyCode(
-                subSpecialtyValueCode
-        );
-
-        String qualificationCode = WaseelPracticeCodeMapper.mapEducationCode(
-                practitioner.educationalLevel(),
-                specialityCode
+        String qualificationCode = required(
+                WaseelPracticeCodeMapper.mapEducationCode(
+                        practitioner.educationalLevel(),
+                        specialityCode
+                ),
+                "Practitioner qualification code is required",
+                "practitioner.qualificationCode.required"
         );
 
         return new WaseelApprovalCareTeam(
@@ -106,7 +124,7 @@ public class ApprovalCareTeamMapper {
                 physicianCode,
                 practitionerRole,
                 "primary",
-                specialityDisplay,
+                specialityDisplay.trim(),
                 specialityCode,
                 qualificationCode
         );
@@ -117,11 +135,16 @@ public class ApprovalCareTeamMapper {
             return practitionerClient.getPractitioner(practitionerId);
         } catch (FeignException.NotFound ex) {
             return null;
+        } catch (FeignException ex) {
+            throw badRequest(
+                    "Unable to fetch practitioner from setup service",
+                    "practitioner.fetch.failed"
+            );
         }
     }
 
     private String mapPractitionerRole(String jobRole) {
-        String value = jobRole.trim();
+        String value = jobRole.trim().toUpperCase();
 
         return switch (value) {
             case "PHYSICIAN",
@@ -145,6 +168,10 @@ public class ApprovalCareTeamMapper {
     }
 
     private String fullName(PractitionerDTO practitioner) {
+        if (practitioner == null) {
+            return null;
+        }
+
         return firstNonBlank(
                 join(practitioner.firstName(), practitioner.lastName()),
                 practitioner.email(),
@@ -156,11 +183,13 @@ public class ApprovalCareTeamMapper {
     private String join(String first, String second) {
         String firstValue = first == null ? "" : first.trim();
         String secondValue = second == null ? "" : second.trim();
-        return (firstValue + " " + secondValue).trim();
+        String value = (firstValue + " " + secondValue).trim();
+
+        return value.isBlank() ? null : value;
     }
 
     private String required(String value, String message, String errorKey) {
-        if (value == null || value.isBlank()) {
+        if (isBlank(value)) {
             throw badRequest(message, errorKey);
         }
 
@@ -173,12 +202,16 @@ public class ApprovalCareTeamMapper {
         }
 
         for (String value : values) {
-            if (value != null && !value.isBlank()) {
+            if (!isBlank(value)) {
                 return value.trim();
             }
         }
 
         return null;
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private BadRequestAlertException badRequest(String message, String errorKey) {

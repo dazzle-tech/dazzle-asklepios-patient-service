@@ -42,7 +42,7 @@ public class PreAuthorizationTrack extends AbstractAuditingEntity<Long> {
 
     private String outcome;
 
-    @Column(length = 1000)
+    @Column(columnDefinition = "TEXT")
     private String message;
 
     @Column(length = 1000)
