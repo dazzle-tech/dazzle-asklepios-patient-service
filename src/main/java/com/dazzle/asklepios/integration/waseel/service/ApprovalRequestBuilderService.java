@@ -124,6 +124,15 @@ public class ApprovalRequestBuilderService {
                 ""
         );
 
+        var supportingInfo = approvalSupportingInfoMapper.toSupportingInfo(encounter);
+
+        var waseelItems = approvalItemMapper.toWaseelItems(
+                items,
+                snapshot.insurancePlan() == null ? null : snapshot.insurancePlan().patientShare(),
+                encounter,
+                supportingInfo
+        );
+
         return new WaseelApprovalRequest(
                 Boolean.TRUE.equals(snapshot.transfer()),
                 Boolean.TRUE.equals(snapshot.isNewBorn()),
@@ -132,7 +141,7 @@ public class ApprovalRequestBuilderService {
                 null,
                 snapshot.insurancePlan(),
                 preAuthorizationInfoMapper.toPreAuthorizationInfo(snapshot, nphiesId),
-                approvalSupportingInfoMapper.toSupportingInfo(encounter),
+                supportingInfo,
                 approvalDiagnosisMapper.toWaseelDiagnosisList(diagnoses),
                 approvalCareTeamMapper.toWaseelCareTeam(encounter),
                 null,
@@ -140,11 +149,7 @@ public class ApprovalRequestBuilderService {
                 null,
                 null,
                 waseelEncounter,
-                approvalItemMapper.toWaseelItems(
-                        items,
-                        snapshot.insurancePlan() == null ? null : snapshot.insurancePlan().patientShare(),
-                        encounter
-                ),
+                waseelItems,
                 calculateTotalNet(items)
         );
     }

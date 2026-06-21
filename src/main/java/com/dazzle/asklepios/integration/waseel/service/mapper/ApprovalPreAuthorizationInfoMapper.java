@@ -22,8 +22,8 @@ public class ApprovalPreAuthorizationInfoMapper {
                 null,
                 null,
                 null,
-                snapshot.eligibilityResponseId(),
-                snapshot.eligibilityResponseUrl(),
+                null,
+                null,
                 null
         );
     }
