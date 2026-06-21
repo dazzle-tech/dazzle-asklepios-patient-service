@@ -9,6 +9,7 @@ public record WaseelApprovalEncounter(
         LocalDate startDate,
         String serviceEventType,
         Long serviceProvider,
+        Long facility,
         LocalDate periodEnd,
         String causeOfDeath
 ) {}

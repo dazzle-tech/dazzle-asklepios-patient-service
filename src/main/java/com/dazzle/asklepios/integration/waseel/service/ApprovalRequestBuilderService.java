@@ -25,6 +25,7 @@ import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalEncounter;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -109,6 +110,20 @@ public class ApprovalRequestBuilderService {
 
         validateItems(items);
 
+        Long providerNphiesId = Long.valueOf(nphiesId);
+
+        WaseelApprovalEncounter waseelEncounter = new WaseelApprovalEncounter(
+                "planned",
+                "AMB",
+                "acute-care",
+                encounter.getEncounterDate() == null ? java.time.LocalDate.now() : encounter.getEncounterDate(),
+                "ICSE",
+                providerNphiesId,
+                providerNphiesId,
+                null,
+                ""
+        );
+
         return new WaseelApprovalRequest(
                 Boolean.TRUE.equals(snapshot.transfer()),
                 Boolean.TRUE.equals(snapshot.isNewBorn()),
@@ -124,7 +139,7 @@ public class ApprovalRequestBuilderService {
                 null,
                 null,
                 null,
-                null,
+                waseelEncounter,
                 approvalItemMapper.toWaseelItems(
                         items,
                         snapshot.insurancePlan() == null ? null : snapshot.insurancePlan().patientShare(),

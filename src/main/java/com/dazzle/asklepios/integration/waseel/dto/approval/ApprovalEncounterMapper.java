@@ -74,14 +74,17 @@ public class ApprovalEncounterMapper {
         }
 
         return new WaseelApprovalEncounter(
-                "planned",
-                "HH",
-                "acute-care",
-                encounter.getEncounterDate() != null ? encounter.getEncounterDate() : LocalDate.now(),
-                "ICSE",
-                toLong(providerId),
-                null,
-                ""
+                "planned",                                           // status
+                "HH",                                                // encounterClass
+                "acute-care",                                        // serviceType
+                encounter.getEncounterDate() != null
+                        ? encounter.getEncounterDate()
+                        : LocalDate.now(),                           // startDate
+                "ICSE",                                              // serviceEventType
+                toLong(providerId),                                  // serviceProvider
+                toLong(providerId),                                  // facility
+                null,                                                // periodEnd
+                ""                                                   // causeOfDeath
         );
     }
 
