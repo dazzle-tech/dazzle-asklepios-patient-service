@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service.helper;
 
 import com.dazzle.asklepios.client.setup.CatalogClient;
+import com.dazzle.asklepios.client.setup.dto.CatalogDTO;
 import com.dazzle.asklepios.client.setup.dto.DiagnosticTestSetupDTO;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,18 @@ public class CatalogHelper {
             throw new NotFoundAlertException(
                     "tests by Catalog not found: " + catalogId,
                     "Catalog",
+                    "notfound"
+            );
+        }
+    }
+
+    public CatalogDTO getCatalog(Long catalogId) {
+        try {
+            return catalogClient.getCatalog(catalogId);
+        } catch (feign.FeignException.NotFound ex) {
+            throw new NotFoundAlertException(
+                    "Catalog not found: " + catalogId,
+                    "catalog",
                     "notfound"
             );
         }

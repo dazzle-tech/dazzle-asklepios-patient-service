@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service.helper;
 
 import com.dazzle.asklepios.client.setup.RoomClient;
+import com.dazzle.asklepios.client.setup.dto.RoomDTO;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.springframework.stereotype.Service;
 
@@ -19,6 +20,18 @@ public class RoomHelper {
         } catch (feign.FeignException.NotFound ex) {
             throw new NotFoundAlertException(
                     "Room not found: " + bedId,
+                    "room",
+                    "notfound"
+            );
+        }
+    }
+
+    public RoomDTO getRoom(Long roomId) {
+        try {
+            return roomClient.getRoom(roomId);
+        } catch (feign.FeignException.NotFound ex) {
+            throw new NotFoundAlertException(
+                    "Room not found: " + roomId,
                     "room",
                     "notfound"
             );

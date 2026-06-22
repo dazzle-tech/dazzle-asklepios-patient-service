@@ -1,8 +1,12 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.setup.dto.CatalogDTO;
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.client.setup.dto.DiagnosticTestSetupDTO;
+import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
 import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
+import com.dazzle.asklepios.client.setup.dto.RoomDTO;
+import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
 import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.AppointmentLog;
 import com.dazzle.asklepios.domain.AppointmentReschedule;
@@ -44,9 +48,13 @@ import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateD
 import com.dazzle.asklepios.service.helper.CatalogHelper;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.DiagnosticTestHelper;
+import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.service.helper.PractitionerHelper;
+import com.dazzle.asklepios.service.helper.RoomHelper;
+import com.dazzle.asklepios.service.helper.ServiceHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentLogResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentQuickAppointmentResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.BulkAppointmentRescheduleResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.BulkReschedulePreviewVM;
@@ -86,6 +94,9 @@ public class AppointmentService {
 
     private final PatientRepository patientRepository;
     private final DepartmentHelper departmentHelper;
+    private final FacilityHelper facilityHelper;
+    private final ServiceHelper serviceHelper;
+    private final RoomHelper roomHelper;
     private final PatientEncounterService patientEncounterService;
     private final PatientEncounterRepository patientEncounterRepository;
     private final AvailabilityGenerationBatchRepository availabilityGenerationBatchRepository;
@@ -98,9 +109,137 @@ public class AppointmentService {
     private final DiagnosticOrderRepository diagnosticOrderRepository;
     private final PractitionerHelper practitionerHelper;
 
-    public List<AppointmentLog> getAppointmentLogs(Long appointmentId) {
+    public List<AppointmentLogResponseVM> getAppointmentLogs(Long appointmentId) {
         LOG.debug("Request to get Appointment Log id={}", appointmentId);
-        return appointmentLogRepository.findAllByAppointmentIdOrderByLogDateDesc(appointmentId);
+
+        return appointmentLogRepository
+                .findAllByAppointmentIdOrderByLogDateDesc(appointmentId)
+                .stream()
+                .map(log -> {
+
+                    FacilityDTO facility = log.getFacilityId() == null
+                            ? null
+                            : facilityHelper.getFacility(log.getFacilityId());
+
+                    String facilityName = facility == null ? null : facility.name();
+
+                    DepartmentDTO department = log.getDepartmentId() == null
+                            ? null
+                            : departmentHelper.getDepartment(log.getDepartmentId());
+
+                    String departmentName = department == null ? null : department.name();
+
+                    ServiceSetupDTO service = log.getDefaultServiceId() == null
+                            ? null
+                            : serviceHelper.getService(log.getDefaultServiceId());
+
+                    String serviceName = service == null ? null : service.name();
+
+                    PractitionerDTO practitioner = log.getDefaultPractitionerId() == null
+                            ? null
+                            : practitionerHelper.getPractitioner(log.getDefaultPractitionerId());
+
+                    String practitionerName = practitioner == null
+                            ? null
+                            : practitioner.firstName() + " " + practitioner.lastName();
+
+                    Patient patient = log.getPatientId() == null
+                            ? null
+                            : patientRepository.findById(log.getPatientId()).orElse(null);
+
+                    String patientName = patient == null
+                            ? null
+                            : patient.getFirstName() + " " + patient.getLastName();
+                    String resourceName = null;
+
+                    if (log.getResourceId() != null && log.getResourceType() != null) {
+
+                        switch (log.getResourceType().name()) {
+
+                            case "SERVICE" -> {
+                                ServiceSetupDTO r = serviceHelper.getService(log.getResourceId());
+                                resourceName = r == null ? null : r.name();
+                            }
+
+                            case "ROOM" -> {
+                                RoomDTO r = roomHelper.getRoom(log.getResourceId());
+                                resourceName = r == null ? null : r.name();
+                            }
+
+                            case "PRACTITIONER" -> {
+                                PractitionerDTO r = practitionerHelper.getPractitioner(log.getResourceId());
+                                resourceName = r == null
+                                        ? null
+                                        : r.firstName() + " " + r.lastName();
+                            }
+
+                            case "DIAGNOSTIC_TEST" -> {
+                                DiagnosticTestSetupDTO r = diagnosticTestHelper.getDiagnosticTest(log.getResourceId());
+                                resourceName = r == null ? null : r.name();
+                            }
+
+                            case "CATALOG" -> {
+                                CatalogDTO r = catalogHelper.getCatalog(log.getResourceId());
+                                resourceName = r == null ? null : r.name();
+                            }
+                            case "DEPARTMENT" -> {
+                                resourceName = departmentName;
+                            }
+
+                            default -> resourceName = null;
+                        }
+                    }
+
+                    return new AppointmentLogResponseVM(
+                            log.getId(),
+                            log.getAppointmentId(),
+                            log.getOperationType(),
+                            log.getLogDate(),
+                            log.getLogBy(),
+
+                            log.getFacilityId(),
+                            facilityName,
+
+                            log.getDepartmentId(),
+                            departmentName,
+
+                            log.getAvailabilityGenerationBatchId(),
+                            log.getResourceType(),
+                            log.getResourceId(),
+                            resourceName,
+
+                            log.getCapacityIndex(),
+                            log.getStartDatetime(),
+                            log.getEndDatetime(),
+
+                            log.getPatientId(),
+                            patientName,
+
+                            log.getDefaultServiceId(),
+                            serviceName,
+
+                            log.getDefaultPractitionerId(),
+                            practitionerName,
+
+                            log.getReason(),
+                            log.getBookingMode(),
+                            log.getStatus(),
+                            log.getService(),
+                            log.getServiceGroupId(),
+                            log.getDeferred(),
+                            log.getDeferredAt(),
+                            log.getRequireConfirmation(),
+                            log.getNoShowReason(),
+                            log.getCancelReason(),
+                            log.getCancelledBy(),
+                            log.getPriority(),
+                            log.getOriginType(),
+                            log.getOriginName(),
+                            log.getNote(),
+                            log.getFollowUpEncounterId()
+                    );
+                })
+                .toList();
     }
 
     public Appointment bookPatientAppointment(AppointmentBookPatientDTO dto) {
