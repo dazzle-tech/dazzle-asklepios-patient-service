@@ -78,11 +78,7 @@ public class PainAssessmentService {
             PainAssessment saved = painAssessmentRepository.saveAndFlush(entity);
 
 
-            notifyDepartmentUsersForSeverePain(
-                    saved,
-                    patient,
-                    encounter
-            );
+            notifyDepartmentUsersForSeverePain(saved, patient, encounter);
 
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -119,11 +115,7 @@ public class PainAssessmentService {
             try {
                 PainAssessment saved = painAssessmentRepository.saveAndFlush(entity);
 
-                notifyDepartmentUsersForSeverePain(
-                        saved,
-                        patient,
-                        encounter
-                );
+                notifyDepartmentUsersForSeverePain(saved, patient, encounter);
 
                 return saved;
             } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -199,11 +191,7 @@ public class PainAssessmentService {
         };
     }
 
-    private void notifyDepartmentUsersForSeverePain(
-            PainAssessment painAssessment,
-            Patient patient,
-            PatientEncounter encounter
-    ) {
+    private void notifyDepartmentUsersForSeverePain(PainAssessment painAssessment, Patient patient, PatientEncounter encounter) {
         if (painAssessment == null || patient == null || encounter == null) {
             return;
         }
@@ -215,22 +203,14 @@ public class PainAssessmentService {
         Long departmentId = encounter.getDepartmentId();
 
         if (departmentId == null) {
-            LOG.warn(
-                    "Skip severe pain notification because encounter department is missing. painAssessmentId={}, encounterId={}",
-                    painAssessment.getId(),
-                    encounter.getId()
-            );
+            LOG.warn("Skip severe pain notification because encounter department is missing. painAssessmentId={}, encounterId={}", painAssessment.getId(), encounter.getId());
             return;
         }
 
         List<NotificationResolvedRecipientDTO> departmentUsers = buildDepartmentUserRecipients(departmentId);
 
         if (departmentUsers.isEmpty()) {
-            LOG.warn(
-                    "Skip severe pain notification because no department users found. painAssessmentId={}, departmentId={}",
-                    painAssessment.getId(),
-                    departmentId
-            );
+            LOG.warn("Skip severe pain notification because no department users found. painAssessmentId={}, departmentId={}", painAssessment.getId(), departmentId);
             return;
         }
 
@@ -261,11 +241,7 @@ public class PainAssessmentService {
 
             notificationClient.createNotification(dto);
         } catch (Exception e) {
-            LOG.warn(
-                    "Failed to create severe pain in-app notification. painAssessmentId={}, error={}",
-                    painAssessment.getId(),
-                    e.getMessage()
-            );
+            LOG.warn("Failed to create severe pain in-app notification. painAssessmentId={}, error={}", painAssessment.getId(), e.getMessage());
         }
     }
 
