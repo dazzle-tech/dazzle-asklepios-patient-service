@@ -24,6 +24,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -61,8 +63,8 @@ public class ApprovalSupportingInfoMapper {
                 .orElse(null);
 
         addClinicalTextIfExists(result, sequence, encounter, chief, encounterId, patientId);
-        addVitalSignsIfExists(result, sequence, encounterId);
-        addBodyMeasurementsIfExists(result, sequence, encounterId);
+        addVitalSignsIfExists(result, sequence, encounter);
+        addBodyMeasurementsIfExists(result, sequence, encounter);
 
         return result;
     }
@@ -179,15 +181,7 @@ public class ApprovalSupportingInfoMapper {
                 )
         );
 
-        addTextIfExists(
-                result,
-                sequence,
-                "investigation-result",
-                firstNonBlank(
-                        progressNote,
-                        assessment
-                )
-        );
+        addInvestigationResult(result, sequence, progressNote, assessment);
 
         addTextIfExists(
                 result,
@@ -200,56 +194,84 @@ public class ApprovalSupportingInfoMapper {
         );
     }
 
+    private void addInvestigationResult(
+            List<WaseelApprovalSupportingInfo> result,
+            AtomicInteger sequence,
+            String progressNote,
+            String assessment
+    ) {
+        String investigationResult = firstNonBlank(progressNote, assessment);
+
+        if (isNotBlank(investigationResult)) {
+            result.add(textInfo(sequence, "investigation-result", investigationResult));
+            return;
+        }
+
+        result.add(codeInfo(sequence, "investigation-result", "NA"));
+    }
+
     private void addVitalSignsIfExists(
             List<WaseelApprovalSupportingInfo> result,
             AtomicInteger sequence,
-            Long encounterId
+            PatientEncounter encounter
     ) {
+        if (encounter == null || encounter.getId() == null) {
+            return;
+        }
+
+        LocalDate date = resolveDate(encounter);
+
         vitalSignsRepository
-                .findTopByEncounterIdAndIsActiveTrueOrderByIdDesc(encounterId)
+                .findTopByEncounterIdAndIsActiveTrueOrderByIdDesc(encounter.getId())
                 .ifPresent(vital -> {
-                    if (vital.getBloodPressureSystolic() != null) {
-                        result.add(valueInfo(sequence, "vital-sign-systolic", String.valueOf(vital.getBloodPressureSystolic()), "mm[Hg]"));
-                    }
-
-                    if (vital.getBloodPressureDiastolic() != null) {
-                        result.add(valueInfo(sequence, "vital-sign-diastolic", String.valueOf(vital.getBloodPressureDiastolic()), "mm[Hg]"));
-                    }
-
-                    if (vital.getHeartRate() != null) {
-                        result.add(valueInfo(sequence, "pulse", String.valueOf(vital.getHeartRate()), "/min"));
-                    }
-
-                    if (vital.getTemperature() != null) {
-                        result.add(valueInfo(sequence, "temperature", vital.getTemperature().stripTrailingZeros().toPlainString(), "Cel"));
-                    }
-
-                    if (vital.getOxygenSaturation() != null) {
-                        result.add(valueInfo(sequence, "oxygen-saturation", vital.getOxygenSaturation().stripTrailingZeros().toPlainString(), "%"));
-                    }
-
-                    if (vital.getRespiratoryRate() != null) {
-                        result.add(valueInfo(sequence, "respiratory-rate", String.valueOf(vital.getRespiratoryRate()), "/min"));
-                    }
+                    addNumberIfExists(result, sequence, "pulse", vital.getHeartRate(), "/min", date);
+                    addNumberIfExists(result, sequence, "temperature", vital.getTemperature(), "Cel", date);
+                    addNumberIfExists(result, sequence, "respiratory-rate", vital.getRespiratoryRate(), "/min", date);
+                    addNumberIfExists(result, sequence, "oxygen-saturation", vital.getOxygenSaturation(), "%", date);
+                    addNumberIfExists(result, sequence, "vital-sign-systolic", vital.getBloodPressureSystolic(), "mm[Hg]", date);
+                    addNumberIfExists(result, sequence, "vital-sign-diastolic", vital.getBloodPressureDiastolic(), "mm[Hg]", date);
                 });
     }
 
     private void addBodyMeasurementsIfExists(
             List<WaseelApprovalSupportingInfo> result,
             AtomicInteger sequence,
-            Long encounterId
+            PatientEncounter encounter
     ) {
-        bodyMeasurementsRepository
-                .findTopByEncounterIdAndIsActiveTrueOrderByIdDesc(encounterId)
-                .ifPresent(body -> {
-                    if (body.getWeight() != null) {
-                        result.add(valueInfo(sequence, "vital-sign-weight", body.getWeight().stripTrailingZeros().toPlainString(), "kg"));
-                    }
+        if (encounter == null || encounter.getId() == null) {
+            return;
+        }
 
-                    if (body.getHeight() != null) {
-                        result.add(valueInfo(sequence, "vital-sign-height", body.getHeight().stripTrailingZeros().toPlainString(), "cm"));
-                    }
+        LocalDate date = resolveDate(encounter);
+
+        bodyMeasurementsRepository
+                .findTopByEncounterIdAndIsActiveTrueOrderByIdDesc(encounter.getId())
+                .ifPresent(body -> {
+                    addNumberIfExists(result, sequence, "vital-sign-height", body.getHeight(), "cm", date);
+                    addNumberIfExists(result, sequence, "vital-sign-weight", body.getWeight(), "kg", date);
                 });
+    }
+
+    private void addNumberIfExists(
+            List<WaseelApprovalSupportingInfo> result,
+            AtomicInteger sequence,
+            String category,
+            Number value,
+            String unit,
+            LocalDate date
+    ) {
+        if (value == null) {
+            return;
+        }
+
+        result.add(valueInfo(
+                sequence,
+                category,
+                cleanNumber(value),
+                unit,
+                date,
+                date
+        ));
     }
 
     private String mapSocialHistory(SocialHistory source) {
@@ -318,18 +340,41 @@ public class ApprovalSupportingInfoMapper {
         );
     }
 
+    private WaseelApprovalSupportingInfo codeInfo(
+            AtomicInteger sequence,
+            String category,
+            String code
+    ) {
+        return new WaseelApprovalSupportingInfo(
+                sequence.getAndIncrement(),
+                category,
+                clean(code),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
     private WaseelApprovalSupportingInfo valueInfo(
             AtomicInteger sequence,
             String category,
             String value,
-            String unit
+            String unit,
+            LocalDate fromDate,
+            LocalDate toDate
     ) {
         return new WaseelApprovalSupportingInfo(
                 sequence.getAndIncrement(),
                 category,
                 null,
-                null,
-                null,
+                fromDate == null ? null : fromDate.toString(),
+                toDate == null ? null : toDate.toString(),
                 clean(value),
                 null,
                 null,
@@ -338,6 +383,23 @@ public class ApprovalSupportingInfoMapper {
                 clean(unit),
                 null
         );
+    }
+    private LocalDate resolveDate(PatientEncounter encounter) {
+        return encounter != null && encounter.getEncounterDate() != null
+                ? encounter.getEncounterDate()
+                : LocalDate.now();
+    }
+
+    private String cleanNumber(Number value) {
+        if (value == null) {
+            return null;
+        }
+
+        if (value instanceof BigDecimal bigDecimal) {
+            return bigDecimal.stripTrailingZeros().toPlainString();
+        }
+
+        return String.valueOf(value);
     }
 
     private String firstNonBlank(String... values) {

@@ -73,12 +73,10 @@ public class ApprovalItemMapper {
 
         WaseelItemMappingSetupDTO mapping = getWaseelMapping(mappingItemType, sourceId);
 
-        String waseelType = getWaseelItemType(billingType);
-
         return buildItem(
                 item,
                 sequence,
-                waseelType,
+                safe(mapping.waseelItemType()),
                 safe(mapping.sbsCode()),
                 safe(mapping.sbsDescription()),
                 patientSharePercent,
@@ -97,18 +95,25 @@ public class ApprovalItemMapper {
             LocalDate itemDate,
             List<Integer> supportingInfoSequences
     ) {
-        Integer quantity = item.getQuantity() == null ? 1 : item.getQuantity().intValue();
+        Integer quantity = item.getQuantity() == null
+                ? 1
+                : item.getQuantity().intValue();
 
         BigDecimal unitPrice = money(item.getUnitPrice());
         BigDecimal discount = money(item.getDiscountAmount());
         BigDecimal tax = money(item.getTaxAmount());
         BigDecimal net = money(item.getTotalAmount());
+
         BigDecimal patientShare = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         BigDecimal payerShare = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-        BigDecimal sharePercent = patientSharePercent == null
-                ? BigDecimal.ZERO
-                : patientSharePercent;
+        BigDecimal patientSharePercentValue = patientSharePercent == null
+                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                : patientSharePercent.setScale(2, RoundingMode.HALF_UP);
 
+        List<Integer> safeSupportingInfoSequences =
+                supportingInfoSequences == null || supportingInfoSequences.isEmpty()
+                        ? List.of()
+                        : supportingInfoSequences;
 
         return new WaseelApprovalItem(
                 sequence,
@@ -127,14 +132,14 @@ public class ApprovalItemMapper {
                 discount,
                 BigDecimal.ONE,
                 BigDecimal.ZERO,
-                BigDecimal.ZERO,
+                patientSharePercentValue,
                 net,
                 tax,
                 patientShare,
                 payerShare,
                 itemDate,
                 itemDate,
-                supportingInfoSequences,
+                safeSupportingInfoSequences,
                 List.of(1),
                 List.of(1),
                 null,
@@ -143,12 +148,32 @@ public class ApprovalItemMapper {
     }
 
     private WaseelItemMappingSetupDTO getWaseelMapping(String itemType, Long sourceId) {
-        if (itemType == null || sourceId == null) {
+        if (itemType == null || itemType.isBlank() || sourceId == null) {
             throw new RuntimeException("Cannot map Waseel item. Item type or source ID is missing.");
         }
 
         try {
-            return waseelItemMappingClient.getMappingByItem(itemType, sourceId);
+            WaseelItemMappingSetupDTO mapping = waseelItemMappingClient.getMappingByItem(itemType, sourceId);
+
+            if (mapping == null) {
+                throw new RuntimeException(
+                        "Missing Waseel SBS mapping for item type: " + itemType + ", source ID: " + sourceId
+                );
+            }
+
+            if (mapping.waseelItemType() == null || mapping.waseelItemType().isBlank()) {
+                throw new RuntimeException(
+                        "Missing Waseel item type in mapping for item type: " + itemType + ", source ID: " + sourceId
+                );
+            }
+
+            if (mapping.sbsCode() == null || mapping.sbsCode().isBlank()) {
+                throw new RuntimeException(
+                        "Missing Waseel SBS code in mapping for item type: " + itemType + ", source ID: " + sourceId
+                );
+            }
+
+            return mapping;
         } catch (FeignException.NotFound ex) {
             throw new RuntimeException(
                     "Missing Waseel SBS mapping for item type: " + itemType + ", source ID: " + sourceId
@@ -157,32 +182,49 @@ public class ApprovalItemMapper {
     }
 
     private String getMappingItemType(BillingItemTypes type) {
-        if (type == BillingItemTypes.PROCEDURE) return "PROCEDURE";
-        if (type == BillingItemTypes.SERVICE) return "SERVICE";
-        if (type == BillingItemTypes.LABORATORY || type == BillingItemTypes.PATHOLOGY) return "LABORATORY";
-        if (type == BillingItemTypes.RADIOLOGY) return "RADIOLOGY";
-        if (type == BillingItemTypes.MEDICATION) return "MEDICATION";
+        if (type == BillingItemTypes.PROCEDURE) {
+            return "PROCEDURE";
+        }
+
+        if (type == BillingItemTypes.SERVICE) {
+            return "SERVICE";
+        }
+
+        if (type == BillingItemTypes.LABORATORY || type == BillingItemTypes.PATHOLOGY) {
+            return "LABORATORY";
+        }
+
+        if (type == BillingItemTypes.RADIOLOGY) {
+            return "RADIOLOGY";
+        }
+
+        if (type == BillingItemTypes.MEDICATION) {
+            return "MEDICATION";
+        }
 
         throw new RuntimeException("Unsupported billing item type for Waseel mapping: " + type);
     }
 
     private Long getSourceId(PatientServiceAndProduct item, BillingItemTypes type) {
-        if (type == BillingItemTypes.PROCEDURE) return item.getProcedureId();
-        if (type == BillingItemTypes.SERVICE) return item.getServiceId();
-        if (type == BillingItemTypes.LABORATORY || type == BillingItemTypes.RADIOLOGY || type == BillingItemTypes.PATHOLOGY) {
+        if (type == BillingItemTypes.PROCEDURE) {
+            return item.getProcedureId();
+        }
+
+        if (type == BillingItemTypes.SERVICE) {
+            return item.getServiceId();
+        }
+
+        if (type == BillingItemTypes.LABORATORY
+                || type == BillingItemTypes.RADIOLOGY
+                || type == BillingItemTypes.PATHOLOGY) {
             return item.getDiagnosticTestId();
         }
-        if (type == BillingItemTypes.MEDICATION) return item.getBrandMedicationId();
+
+        if (type == BillingItemTypes.MEDICATION) {
+            return item.getBrandMedicationId();
+        }
 
         return null;
-    }
-
-    private String getWaseelItemType(BillingItemTypes type) {
-        if (type == BillingItemTypes.RADIOLOGY) return "imaging";
-        if (type == BillingItemTypes.LABORATORY || type == BillingItemTypes.PATHOLOGY) return "laboratory";
-        if (type == BillingItemTypes.MEDICATION) return "medication";
-
-        return "services";
     }
 
     private BigDecimal money(BigDecimal value) {
