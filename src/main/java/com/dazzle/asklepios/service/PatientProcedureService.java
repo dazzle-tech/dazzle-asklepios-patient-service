@@ -12,6 +12,7 @@ import com.dazzle.asklepios.domain.enumeration.ProcStatus;
 import com.dazzle.asklepios.domain.enumeration.ProcedureLevel;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.integration.waseel.client.WaseelItemMappingClient;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationSubmissionService;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientProcedureRepository;
@@ -56,6 +57,7 @@ public class PatientProcedureService {
     private final DepartmentHelper departmentHelper;
     private final PayorPlanItemClient payorPlanItemClient;
     private final PreAuthorizationSubmissionService preAuthorizationSubmissionService;
+    private final WaseelItemMappingClient waseelItemMappingClient;
 
     private String currentUsername() {
         String username = SecurityUtils.getCurrentUserLogin().orElse(null);
@@ -308,7 +310,10 @@ public class PatientProcedureService {
                 .subtract(exemptionAmount)
                 .add(taxAmount);
 
-        boolean requiresPreAuth = requiresPreAuthorizationForProcedure(setupProcedure.id());
+        Boolean requiresPreAuth = waseelItemMappingClient.requiresPreauth(
+                BillingItemTypes.PROCEDURE,
+                setupProcedure.id()
+        );
 
         return PatientServiceAndProduct.builder()
                 .patientId(patientId)
@@ -345,38 +350,6 @@ public class PatientProcedureService {
                 .build();
     }
 
-    private boolean requiresPreAuthorizationForProcedure(Long procedureId) {
-        LOG.info("Checking PreAuth for procedure {}", procedureId);
-
-        try {
-            Boolean result =
-                    payorPlanItemClient.requiresPreAuthorizationForProcedure(procedureId);
-
-            LOG.info(
-                    "PreAuth result for procedure {} = {}",
-                    procedureId,
-                    result
-            );
-
-            return Boolean.TRUE.equals(result);
-
-        } catch (FeignException ex) {
-
-            LOG.error(
-                    "PreAuth endpoint failed. procedureId={} status={} body={}",
-                    procedureId,
-                    ex.status(),
-                    ex.contentUTF8(),
-                    ex
-            );
-
-            throw new BadRequestAlertException(
-                    "Failed to call setup-service: " + ex.contentUTF8(),
-                    "procedure",
-                    "preauth.endpoint.failed"
-            );
-        }
-    }
     private void logBillingItemBeforeSave(PatientServiceAndProduct billingItem) {
         LOG.error("========== PROCEDURE BILLING ITEM BEFORE SAVE ==========");
         LOG.error("patientId={}", billingItem.getPatientId());

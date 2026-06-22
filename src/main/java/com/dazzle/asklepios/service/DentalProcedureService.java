@@ -12,6 +12,7 @@ import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.integration.waseel.client.WaseelItemMappingClient;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationSubmissionService;
 import com.dazzle.asklepios.repository.DentalProcedureRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
@@ -58,6 +59,7 @@ public class DentalProcedureService {
     private final ServiceClient serviceClient;
     private final PayorPlanItemClient payorPlanItemClient;
     private final PreAuthorizationSubmissionService preAuthorizationSubmissionService;
+    private final WaseelItemMappingClient waseelItemMappingClient;
 
     public DentalProcedureService(
             DentalProcedureRepository dentalProcedureRepository,
@@ -70,8 +72,8 @@ public class DentalProcedureService {
             ProcedureClient procedureClient,
             ServiceClient serviceClient,
             PayorPlanItemClient payorPlanItemClient,
-            PreAuthorizationSubmissionService preAuthorizationSubmissionService
-    ) {
+            PreAuthorizationSubmissionService preAuthorizationSubmissionService,
+            WaseelItemMappingClient waseelItemMappingClient) {
         this.dentalProcedureRepository = dentalProcedureRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
@@ -83,6 +85,7 @@ public class DentalProcedureService {
         this.serviceClient = serviceClient;
         this.payorPlanItemClient = payorPlanItemClient;
         this.preAuthorizationSubmissionService = preAuthorizationSubmissionService;
+        this.waseelItemMappingClient = waseelItemMappingClient;
     }
 
     public DentalProcedure create(DentalProcedureCreateDTO dto) {
@@ -458,8 +461,10 @@ public class DentalProcedureService {
         BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
         String billingNotes = buildBillingNotesValue(notes, surface);
 
-        boolean requiresPreAuth = requiresPreAuthorizationForProcedure(setupProcedure.id());
-
+        Boolean requiresPreAuth = waseelItemMappingClient.requiresPreauth(
+                        BillingItemTypes.PROCEDURE,
+                         setupProcedure.id()
+                );
         return PatientServiceAndProduct.builder()
                 .patientId(dentalProcedure.getPatient().getId())
                 .encounterId(dentalProcedure.getEncounter().getId())
@@ -527,27 +532,6 @@ public class DentalProcedureService {
                 .build();
     }
 
-    private boolean requiresPreAuthorizationForProcedure(Long procedureId) {
-        if (procedureId == null) {
-            return false;
-        }
-
-        try {
-            return Boolean.TRUE.equals(
-                    payorPlanItemClient.requiresPreAuthorizationForProcedure(procedureId)
-            );
-        } catch (FeignException ex) {
-            LOG.error(
-                    "[SETUP_SERVICE] Failed to check dental procedure pre-authorization. procedureId={} status={} body={}",
-                    procedureId,
-                    ex.status(),
-                    ex.contentUTF8(),
-                    ex
-            );
-
-            return false;
-        }
-    }
 
     private boolean requiresPreAuthorizationForService(Long serviceId) {
         if (serviceId == null) {
