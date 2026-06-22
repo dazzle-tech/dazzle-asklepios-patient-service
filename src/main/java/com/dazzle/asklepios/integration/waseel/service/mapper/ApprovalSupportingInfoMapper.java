@@ -181,7 +181,7 @@ public class ApprovalSupportingInfoMapper {
                 )
         );
 
-        addInvestigationResult(result, sequence, progressNote, assessment);
+        addInvestigationResult(result, sequence);
 
         addTextIfExists(
                 result,
@@ -194,19 +194,26 @@ public class ApprovalSupportingInfoMapper {
         );
     }
 
+//    private void addInvestigationResult(
+//            List<WaseelApprovalSupportingInfo> result,
+//            AtomicInteger sequence,
+//            String progressNote,
+//            String assessment
+//    ) {
+//        String investigationResult = firstNonBlank(progressNote, assessment);
+//
+//        if (isNotBlank(investigationResult)) {
+//            result.add(textInfo(sequence, "investigation-result", investigationResult));
+//            return;
+//        }
+//
+//        result.add(codeInfo(sequence, "investigation-result", "NA"));
+//    }
+
     private void addInvestigationResult(
             List<WaseelApprovalSupportingInfo> result,
-            AtomicInteger sequence,
-            String progressNote,
-            String assessment
+            AtomicInteger sequence
     ) {
-        String investigationResult = firstNonBlank(progressNote, assessment);
-
-        if (isNotBlank(investigationResult)) {
-            result.add(textInfo(sequence, "investigation-result", investigationResult));
-            return;
-        }
-
         result.add(codeInfo(sequence, "investigation-result", "NA"));
     }
 
