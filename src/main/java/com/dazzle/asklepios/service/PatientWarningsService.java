@@ -1,15 +1,21 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.notification.NotificationClient;
+import com.dazzle.asklepios.client.notification.dto.NotificationCreateDTO;
+import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
+import com.dazzle.asklepios.client.setup.dto.UserDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientWarnings;
 import com.dazzle.asklepios.domain.enumeration.PatientWarningStatus;
+import com.dazzle.asklepios.domain.enumeration.Severity;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientWarningsRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.PatientWarningCreateDTO;
 import com.dazzle.asklepios.service.dto.PatientWarningUpdateDTO;
+import com.dazzle.asklepios.service.helper.UserDepartmentHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
@@ -24,6 +30,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -36,11 +45,15 @@ public class PatientWarningsService {
     private final PatientWarningsRepository patientWarningsRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final NotificationClient notificationClient;
+    private final UserDepartmentHelper userDepartmentHelper;
 
-    public PatientWarningsService(PatientWarningsRepository patientWarningsRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository) {
+    public PatientWarningsService(PatientWarningsRepository patientWarningsRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository, NotificationClient notificationClient, UserDepartmentHelper userDepartmentHelper) {
         this.patientWarningsRepository = patientWarningsRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
+        this.notificationClient = notificationClient;
+        this.userDepartmentHelper = userDepartmentHelper;
     }
 
     public PatientWarnings create(PatientWarningCreateDTO patientWarningCreateDTO) {
@@ -129,11 +142,13 @@ public class PatientWarningsService {
 
         try {
             PatientWarnings saved = patientWarningsRepository.save(entity);
+
+            notifyDepartmentUsersForSevereCriticalWarning(saved, patient, encounter);
+
             LOG.debug("Created Patient Warning: {}", saved);
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException constraintException) {
             throw handleConstraintViolation(constraintException);
-
         }
     }
 
@@ -323,6 +338,25 @@ public class PatientWarningsService {
 
         try {
             PatientWarnings updated = patientWarningsRepository.saveAndFlush(patientWarningObj);
+            Patient patient = patientRepository.findById(updated.getPatientId())
+                    .orElseThrow(() ->
+                            new NotFoundAlertException(
+                                    "Patient not found with id " + updated.getPatientId(),
+                                    "procedure",
+                                    "patient.notfound"
+                            )
+                    );
+
+            PatientEncounter encounter = patientEncounterRepository.findById(updated.getEncounterId())
+                    .orElseThrow(() ->
+                            new NotFoundAlertException(
+                                    "Encounter not found with id " + updated.getEncounterId(),
+                                    "PatientWarnings",
+                                    "encounter.notfound"
+                            )
+                    );
+            notifyDepartmentUsersForSevereCriticalWarning(updated, patient, encounter);
+
             LOG.debug("Updated Patient Warning: {}", updated);
             return updated;
         } catch (DataIntegrityViolationException | JpaSystemException constraintException) {
@@ -372,5 +406,142 @@ public class PatientWarningsService {
                 "patient_allergies",
                 "Database constraint violated while saving patient warning"
         );
+    }
+
+    private void notifyDepartmentUsersForSevereCriticalWarning(PatientWarnings warning, Patient patient, PatientEncounter encounter) {
+        if (warning == null || patient == null || encounter == null) {
+            return;
+        }
+
+        if (!isSevereOrCritical(warning.getSeverity())) {
+            return;
+        }
+
+        Long departmentId = encounter.getDepartmentId();
+
+        if (departmentId == null) {
+            LOG.warn("Skip medical warning notification because encounter department is missing. warningId={}, encounterId={}", warning.getId(), encounter.getId());
+            return;
+        }
+
+        List<NotificationResolvedRecipientDTO> departmentUsers = buildDepartmentUserRecipients(departmentId);
+
+        if (departmentUsers.isEmpty()) {
+            LOG.warn("Skip medical warning notification because no department users found. warningId={}, departmentId={}", warning.getId(), departmentId);
+            return;
+        }
+
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
+        recipientsByRule.put("DEPARTMENT_USERS", departmentUsers);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("patientId", patient.getId());
+        data.put("patientName", getPatientName(patient));
+        data.put("encounterId", encounter.getId());
+        data.put("departmentId", departmentId);
+        data.put("warningId", warning.getId());
+        data.put("warningType", warning.getWarningType() != null ? warning.getWarningType().toString() : "");
+        data.put("warning", warning.getWarning() != null ? warning.getWarning() : "");
+        data.put("severity", warning.getSeverity() != null ? warning.getSeverity().toString() : "");
+        data.put("onsetDate", warning.getOnsetDate() != null ? warning.getOnsetDate().toString() : "");
+        data.put("status", warning.getStatus() != null ? warning.getStatus().toString() : "");
+
+        NotificationCreateDTO dto = new NotificationCreateDTO(null, "MEDICAL_WARNING_SEVERE_CRITICAL", "en", null, recipientsByRule, data, "PATIENT_WARNING", warning.getId());
+
+        try {
+            LOG.debug("Creating severe/critical medical warning notification. warningId={}, patientId={}, departmentId={}, recipientsByRule={}", warning.getId(), patient.getId(), departmentId, recipientsByRule);
+
+            notificationClient.createNotification(dto);
+        } catch (Exception e) {
+            LOG.warn(
+                    "Failed to create severe/critical medical warning notification. warningId={}, error={}",
+                    warning.getId(),
+                    e.getMessage()
+            );
+        }
+    }
+
+    private boolean isSevereOrCritical(Severity severity) {
+        if (severity == null) {
+            return false;
+        }
+
+        return Severity.SEVERE == severity || Severity.CRITICAL == severity;
+    }
+
+    private List<NotificationResolvedRecipientDTO> buildDepartmentUserRecipients(Long departmentId) {
+        if (departmentId == null) {
+            return List.of();
+        }
+
+        List<UserDTO> users = userDepartmentHelper.getUsersForDepartment(departmentId);
+
+        if (users == null || users.isEmpty()) {
+            return List.of();
+        }
+
+        return users.stream()
+                .filter(user -> user != null && user.id() != null)
+                .map(user -> NotificationResolvedRecipientDTO.builder()
+                        .recipientType("USER")
+                        .recipientId(user.id())
+                        .recipientName(getUserDisplayName(user))
+                        .recipientEmail(user.email())
+                        .recipientData(Map.of("departmentId", departmentId))
+                        .build()
+                )
+                .toList();
+    }
+
+    private String getPatientName(Patient patient) {
+        if (patient == null) {
+            return "";
+        }
+
+        String firstName = patient.getFirstName() != null ? patient.getFirstName() : "";
+        String secondName = patient.getSecondName() != null ? patient.getSecondName() : "";
+        String thirdName = patient.getThirdName() != null ? patient.getThirdName() : "";
+        String lastName = patient.getLastName() != null ? patient.getLastName() : "";
+
+        String fullName = (firstName + " " + secondName + " " + thirdName + " " + lastName)
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        if (!fullName.isBlank()) {
+            return fullName;
+        }
+
+        if (patient.getEmail() != null && !patient.getEmail().isBlank()) {
+            return patient.getEmail();
+        }
+
+        return patient.getId() != null ? String.valueOf(patient.getId()) : "";
+    }
+
+    private String getUserDisplayName(UserDTO user) {
+        if (user == null) {
+            return "";
+        }
+
+        String firstName = user.firstName() != null ? user.firstName() : "";
+        String lastName = user.lastName() != null ? user.lastName() : "";
+
+        String fullName = (firstName + " " + lastName)
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        if (!fullName.isBlank()) {
+            return fullName;
+        }
+
+        if (user.login() != null && !user.login().isBlank()) {
+            return user.login();
+        }
+
+        if (user.email() != null && !user.email().isBlank()) {
+            return user.email();
+        }
+
+        return user.id() != null ? String.valueOf(user.id()) : "";
     }
 }

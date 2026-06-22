@@ -318,10 +318,26 @@ public class AppointmentService {
         return result;
     }
 
+    @Transactional
     public Appointment cancel(AppointmentCancelDTO dto) {
         Appointment appointment = getAppointment(dto.id());
 
         validateCancelable(appointment);
+
+        DepartmentDTO department = appointment.getDepartmentId() != null
+                ? departmentHelper.getDepartment(appointment.getDepartmentId())
+                : null;
+
+        Map<String, Object> notificationData =
+                buildAppointmentNotificationData(appointment, department);
+
+        notificationData.put(
+                "cancelReason",
+                dto.cancelReason() != null ? dto.cancelReason() : ""
+        );
+
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
+                buildAppointmentRecipientsByRule(appointment, department);
 
         appointment.setStatus(AppointmentStatus.CANCELLED);
         appointment.setCancelReason(dto.cancelReason());
@@ -334,9 +350,18 @@ public class AppointmentService {
         appointment.setOriginName(null);
         appointment.setOriginType(null);
         appointment.setFollowUpEncounter(null);
-        return appointmentRepository.save(appointment);
-    }
 
+        Appointment savedAppointment = appointmentRepository.save(appointment);
+
+        createAppointmentNotification(
+                savedAppointment,
+                "APPOINTMENT_CANCELLED",
+                notificationData,
+                recipientsByRule
+        );
+
+        return savedAppointment;
+    }
     public Appointment noShow(AppointmentNoShowDTO dto) {
         Appointment appointment = getAppointment(dto.id());
 
@@ -358,8 +383,11 @@ public class AppointmentService {
         }
         appointment.setConfirmedAt(Instant.now());
         appointment.setStatus(AppointmentStatus.CONFIRMED);
-        notifyAppointmentConfirmed(appointment);
-        return appointmentRepository.save(appointment);
+        Appointment savedAppointment = appointmentRepository.save(appointment);
+
+        notifyAppointmentEvent(savedAppointment, "APPOINTMENT_CONFIRMED", null);
+
+        return savedAppointment;
     }
 
     @Transactional
@@ -458,6 +486,8 @@ public class AppointmentService {
         appointment.setCapacityIndex(1);
         Appointment quickAppointment = appointmentRepository.save(appointment);
         PatientEncounter encounter = createEncounter(quickAppointment, department);
+
+        notifyAppointmentEvent(quickAppointment, "QUICK_APPOINTMENT_CREATED", Map.of("quickAppointment", true));
 
         return new AppointmentQuickAppointmentResponseVM(quickAppointment, encounter);
     }
@@ -570,12 +600,7 @@ public class AppointmentService {
     }
 
     @Transactional(readOnly = true)
-    public BulkReschedulePreviewVM getBulkReschedulePreview(
-            Long availabilityGenerationBatchId,
-            boolean includeFreeSlots,
-            Long departmentId,
-            String templateName
-    ) {
+    public BulkReschedulePreviewVM getBulkReschedulePreview(Long availabilityGenerationBatchId, boolean includeFreeSlots, Long departmentId, String templateName) {
         LOG.debug(
                 "[BULK_RESCHEDULE_PREVIEW] batchId={} includingFreeSlot={} departmentId={} templateName={}",
                 availabilityGenerationBatchId,
@@ -853,6 +878,9 @@ public class AppointmentService {
         }
         copyAppointmentDataForReschedule(oldAppointment, newAppointment);
 
+        Instant oldStartDatetime = oldAppointment.getStartDatetime();
+        Instant oldEndDatetime = oldAppointment.getEndDatetime();
+
         oldAppointment.setStatus(AppointmentStatus.RESCHEDULED);
         oldAppointment.setPatient(null);
         oldAppointment.setReason(null);
@@ -879,6 +907,17 @@ public class AppointmentService {
 
         appointmentRescheduleRepository.save(appointmentReschedule);
 
+        notifyAppointmentEvent(savedNewAppointment, "APPOINTMENT_RESCHEDULED",
+                Map.of(
+                        "oldAppointmentId", savedOldAppointment.getId(),
+                        "newAppointmentId", savedNewAppointment.getId(),
+                        "oldAppointmentDate", oldStartDatetime != null ? oldStartDatetime.toString() : "",
+                        "oldAppointmentEndDate", oldEndDatetime != null ? oldEndDatetime.toString() : "",
+                        "newAppointmentDate", savedNewAppointment.getStartDatetime() != null ? savedNewAppointment.getStartDatetime().toString() : "",
+                        "newAppointmentEndDate", savedNewAppointment.getEndDatetime() != null ? savedNewAppointment.getEndDatetime().toString() : "",
+                        "rescheduleReason", rescheduleReason != null ? rescheduleReason : ""
+                )
+        );
         return savedNewAppointment;
     }
 
@@ -1343,8 +1382,8 @@ public class AppointmentService {
     }
 
     //Notification helper
-    private void notifyAppointmentConfirmed(Appointment appointment) {
-        if (appointment == null) {
+    private void notifyAppointmentEvent(Appointment appointment, String notificationCode, Map<String, Object> extraData) {
+        if (appointment == null || notificationCode == null || notificationCode.isBlank()) {
             return;
         }
 
@@ -1352,42 +1391,44 @@ public class AppointmentService {
                 ? departmentHelper.getDepartment(appointment.getDepartmentId())
                 : null;
 
-        Map<String, Object> data = buildAppointmentConfirmedData(appointment, department);
+        Map<String, Object> data = buildAppointmentNotificationData(appointment, department);
 
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
-                buildAppointmentConfirmedRecipientsByRule(appointment, department);
+        if (extraData != null && !extraData.isEmpty()) {
+            data.putAll(extraData);
+        }
 
-        NotificationCreateDTO dto = new NotificationCreateDTO(
-                appointment.getFacilityId(),
-                "APPOINTMENT_CONFIRMED",
-                "en",
-                null,
-                recipientsByRule,
-                data,
-                "APPOINTMENT",
-                appointment.getId()
-        );
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = buildAppointmentRecipientsByRule(appointment, department);
+
+        if (recipientsByRule.isEmpty()) {
+            LOG.warn("Skip appointment notification because no recipients were resolved. appointmentId={}, code={}", appointment.getId(), notificationCode);
+            return;
+        }
+
+        NotificationCreateDTO dto = new NotificationCreateDTO(appointment.getFacilityId(), notificationCode, "en", null, recipientsByRule, data, "APPOINTMENT", appointment.getId());
 
         try {
-            LOG.debug(
-                    "Creating appointment confirmed notifications. appointmentId={}, recipientsByRule={}, dto={}",
-                    appointment.getId(),
-                    recipientsByRule, dto
-            );
+            LOG.debug("Creating appointment notification. appointmentId={}, code={}, recipientsByRule={}, dto={}", appointment.getId(), notificationCode, recipientsByRule, dto);
+
             notificationClient.createNotification(dto);
         } catch (Exception e) {
-            LOG.warn(
-                    "Failed to create appointment confirmed notifications. appointmentId={}, error={}",
-                    appointment.getId(),
-                    e.getMessage()
-            );
+            LOG.warn("Failed to create appointment notification. appointmentId={}, code={}, error={}", appointment.getId(), notificationCode, e.getMessage());
         }
     }
 
-    private Map<String, List<NotificationResolvedRecipientDTO>> buildAppointmentConfirmedRecipientsByRule(
-            Appointment appointment,
-            DepartmentDTO department
-    ) {
+    private Map<String, Object> buildAppointmentNotificationData(Appointment appointment, DepartmentDTO department) {
+        Map<String, Object> data = new LinkedHashMap<>();
+
+        data.put("appointmentId", appointment.getId());
+        data.put("appointmentNumber", appointment.getId());
+        data.put("departmentId", appointment.getDepartmentId());
+        data.put("departmentName", department != null ? department.name() : "");
+        data.put("patientName", appointment.getPatient() != null ? getPatientName(appointment.getPatient()) : "");
+        data.put("appointmentDate", appointment.getStartDatetime() != null ? appointment.getStartDatetime().toString() : "");
+
+        return data;
+    }
+
+    private Map<String, List<NotificationResolvedRecipientDTO>> buildAppointmentRecipientsByRule(Appointment appointment, DepartmentDTO department) {
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
 
         NotificationResolvedRecipientDTO patientEmailRecipient = buildPatientEmailRecipient(appointment);
@@ -1413,32 +1454,14 @@ public class AppointmentService {
         if (practitionerUser != null) {
             recipientsByRule.put("PRACTITIONER_USER", List.of(practitionerUser));
         }
-        NotificationResolvedRecipientDTO practitionerEmail =
-                buildPractitionerEmailRecipient(appointment);
+
+        NotificationResolvedRecipientDTO practitionerEmail = buildPractitionerEmailRecipient(appointment);
 
         if (practitionerEmail != null) {
             recipientsByRule.put("PRACTITIONER_EMAIL", List.of(practitionerEmail));
         }
+
         return recipientsByRule;
-    }
-
-    private Map<String, Object> buildAppointmentConfirmedData(
-            Appointment appointment,
-            DepartmentDTO department
-    ) {
-        Map<String, Object> data = new LinkedHashMap<>();
-
-        data.put("appointmentId", appointment.getId());
-        data.put("appointmentNumber", appointment.getId());
-        data.put("departmentId", appointment.getDepartmentId());
-        data.put("departmentName", department != null ? department.name() : "");
-        data.put("patientName", appointment.getPatient() != null ? getPatientName(appointment.getPatient()) : "");
-        data.put(
-                "appointmentDate",
-                appointment.getStartDatetime() != null ? appointment.getStartDatetime().toString() : ""
-        );
-
-        return data;
     }
 
     private NotificationResolvedRecipientDTO buildPatientEmailRecipient(Appointment appointment) {
@@ -1500,10 +1523,7 @@ public class AppointmentService {
                 .build();
     }
 
-    private List<NotificationResolvedRecipientDTO> buildDepartmentUserRecipients(
-            Appointment appointment,
-            DepartmentDTO department
-    ) {
+    private List<NotificationResolvedRecipientDTO> buildDepartmentUserRecipients(Appointment appointment, DepartmentDTO department) {
         if (appointment == null || appointment.getDepartmentId() == null) {
             return List.of();
         }
@@ -1536,16 +1556,21 @@ public class AppointmentService {
         if (appointment == null || appointment.getDefaultPractitionerId() == null) {
             return null;
         }
+
         PractitionerDTO practitioner = practitionerHelper.getPractitioner(appointment.getDefaultPractitionerId());
+
+        if (practitioner == null || practitioner.userId() == null) {
+            return null;
+        }
 
         return NotificationResolvedRecipientDTO.builder()
                 .recipientType("USER")
-                .recipientId(appointment.getDefaultPractitionerId())
-                .recipientName(practitioner.firstName() + " " + practitioner.lastName())
+                .recipientId(practitioner.userId())
+                .recipientName((safe(practitioner.firstName()) + " " + safe(practitioner.lastName())).trim())
                 .recipientEmail(practitioner.email())
                 .recipientData(Map.of(
-                        "practitionerId", appointment.getDefaultPractitionerId() != null ? appointment.getDefaultPractitionerId().toString() : "",
-                        "practitionerName", practitioner != null ? practitioner.firstName() : ""
+                        "practitionerId", appointment.getDefaultPractitionerId().toString(),
+                        "practitionerName", (safe(practitioner.firstName()) + " " + safe(practitioner.lastName())).trim()
                 ))
                 .build();
     }
@@ -1600,5 +1625,58 @@ public class AppointmentService {
         }
 
         return user.id() != null ? String.valueOf(user.id()) : "";
+    }
+
+    private String safe(String value) {
+        return value != null ? value : "";
+    }
+    private void createAppointmentNotification(
+            Appointment appointment,
+            String notificationCode,
+            Map<String, Object> data,
+            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule
+    ) {
+        if (appointment == null || notificationCode == null || notificationCode.isBlank()) {
+            return;
+        }
+
+        if (recipientsByRule == null || recipientsByRule.isEmpty()) {
+            LOG.warn(
+                    "Skip appointment notification because no recipients were resolved. appointmentId={}, code={}",
+                    appointment.getId(),
+                    notificationCode
+            );
+            return;
+        }
+
+        NotificationCreateDTO dto = new NotificationCreateDTO(
+                appointment.getFacilityId(),
+                notificationCode,
+                "en",
+                null,
+                recipientsByRule,
+                data,
+                "APPOINTMENT",
+                appointment.getId()
+        );
+
+        try {
+            LOG.debug(
+                    "Creating appointment notification. appointmentId={}, code={}, recipientsByRule={}, dto={}",
+                    appointment.getId(),
+                    notificationCode,
+                    recipientsByRule,
+                    dto
+            );
+
+            notificationClient.createNotification(dto);
+        } catch (Exception e) {
+            LOG.warn(
+                    "Failed to create appointment notification. appointmentId={}, code={}, error={}",
+                    appointment.getId(),
+                    notificationCode,
+                    e.getMessage()
+            );
+        }
     }
 }
