@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -21,6 +22,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Component
 @RequiredArgsConstructor
 public class ApprovalItemMapper {
+
+    private static final String WASEEL_MEDICATION_CODES = "medication-codes";
 
     private final WaseelItemMappingClient waseelItemMappingClient;
 
@@ -34,27 +37,31 @@ public class ApprovalItemMapper {
             return List.of();
         }
 
-        AtomicInteger sequence = new AtomicInteger(1);
+        AtomicInteger itemSequence = new AtomicInteger(1);
+
+        Integer nextSupportingInfoSequence = supportingInfo == null
+                ? 1
+                : supportingInfo.stream()
+                .map(WaseelApprovalSupportingInfo::sequence)
+                .filter(Objects::nonNull)
+                .max(Integer::compareTo)
+                .orElse(0) + 1;
+
+        AtomicInteger supportingInfoSequence = new AtomicInteger(nextSupportingInfoSequence);
 
         LocalDate itemDate = encounter != null && encounter.getEncounterDate() != null
                 ? encounter.getEncounterDate()
                 : LocalDate.now();
 
-        List<Integer> supportingInfoSequences = supportingInfo == null
-                ? List.of()
-                : supportingInfo.stream()
-                .map(WaseelApprovalSupportingInfo::sequence)
-                .filter(Objects::nonNull)
-                .toList();
-
         return items.stream()
                 .filter(item -> Boolean.FALSE.equals(item.getIsBilled()))
                 .map(item -> toWaseelItem(
                         item,
-                        sequence.getAndIncrement(),
+                        itemSequence.getAndIncrement(),
                         patientSharePercent,
                         itemDate,
-                        supportingInfoSequences
+                        supportingInfo,
+                        supportingInfoSequence
                 ))
                 .toList();
     }
@@ -64,7 +71,8 @@ public class ApprovalItemMapper {
             Integer sequence,
             BigDecimal patientSharePercent,
             LocalDate itemDate,
-            List<Integer> supportingInfoSequences
+            List<WaseelApprovalSupportingInfo> supportingInfo,
+            AtomicInteger supportingInfoSequence
     ) {
         BillingItemTypes billingType = item.getBillingItemType();
 
@@ -73,15 +81,33 @@ public class ApprovalItemMapper {
 
         WaseelItemMappingSetupDTO mapping = getWaseelMapping(mappingItemType, sourceId);
 
+        String waseelItemType = safe(mapping.waseelItemType());
+
+        List<Integer> itemSupportingInfoSequences = new ArrayList<>();
+
+        if (isMedicationCode(waseelItemType)) {
+            Integer daysSupply = resolveMedicationDaysSupply(item);
+
+            Integer daysSupplySequence = addDaysSupply(
+                    supportingInfo,
+                    supportingInfoSequence,
+                    daysSupply
+            );
+
+            if (daysSupplySequence != null) {
+                itemSupportingInfoSequences.add(daysSupplySequence);
+            }
+        }
+
         return buildItem(
                 item,
                 sequence,
-                safe(mapping.waseelItemType()),
+                waseelItemType,
                 safe(mapping.sbsCode()),
                 safe(mapping.sbsDescription()),
                 patientSharePercent,
                 itemDate,
-                supportingInfoSequences
+                itemSupportingInfoSequences
         );
     }
 
@@ -106,14 +132,10 @@ public class ApprovalItemMapper {
 
         BigDecimal patientShare = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         BigDecimal payerShare = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+
         BigDecimal patientSharePercentValue = patientSharePercent == null
                 ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
                 : patientSharePercent.setScale(2, RoundingMode.HALF_UP);
-
-        List<Integer> safeSupportingInfoSequences =
-                supportingInfoSequences == null || supportingInfoSequences.isEmpty()
-                        ? List.of()
-                        : supportingInfoSequences;
 
         return new WaseelApprovalItem(
                 sequence,
@@ -139,12 +161,58 @@ public class ApprovalItemMapper {
                 payerShare,
                 itemDate,
                 itemDate,
-                safeSupportingInfoSequences,
+                supportingInfoSequences == null || supportingInfoSequences.isEmpty()
+                        ? List.of()
+                        : supportingInfoSequences,
                 List.of(1),
                 List.of(1),
                 null,
                 List.of()
         );
+    }
+
+    private Integer addDaysSupply(
+            List<WaseelApprovalSupportingInfo> supportingInfo,
+            AtomicInteger sequence,
+            Integer daysSupply
+    ) {
+        if (supportingInfo == null) {
+            return null;
+        }
+
+        if (daysSupply == null || daysSupply <= 0) {
+            throw new RuntimeException(
+                    "Days of Supply is required for medication-codes item."
+            );
+        }
+
+        Integer currentSequence = sequence.getAndIncrement();
+
+        supportingInfo.add(new WaseelApprovalSupportingInfo(
+                currentSequence,
+                "days-supply",
+                null,
+                null,
+                null,
+                String.valueOf(daysSupply),
+                null,
+                null,
+                null,
+                null,
+                "d",
+                null
+        ));
+
+        return currentSequence;
+    }
+
+    private Integer resolveMedicationDaysSupply(PatientServiceAndProduct item) {
+        return 30;
+        //        return item.getDaysSupply();
+    }
+
+    private boolean isMedicationCode(String waseelItemType) {
+        return WASEEL_MEDICATION_CODES.equalsIgnoreCase(waseelItemType);
     }
 
     private WaseelItemMappingSetupDTO getWaseelMapping(String itemType, Long sourceId) {

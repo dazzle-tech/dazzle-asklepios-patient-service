@@ -259,6 +259,55 @@ public class ApprovalSupportingInfoMapper {
                 });
     }
 
+    public Integer addMedicationDaysSupply(
+            List<WaseelApprovalSupportingInfo> result,
+            AtomicInteger sequence,
+            Integer daysSupply
+    ) {
+        if (daysSupply == null || daysSupply <= 0) {
+            return null;
+        }
+
+        return addValueAndReturnSequence(
+                result,
+                sequence,
+                "days-supply",
+                String.valueOf(daysSupply),
+                "d",
+                null,
+                null
+        );
+    }
+
+    private Integer addValueAndReturnSequence(
+            List<WaseelApprovalSupportingInfo> result,
+            AtomicInteger sequence,
+            String category,
+            String value,
+            String unit,
+            LocalDate fromDate,
+            LocalDate toDate
+    ) {
+        Integer currentSequence = sequence.getAndIncrement();
+
+        result.add(new WaseelApprovalSupportingInfo(
+                currentSequence,
+                category,
+                null,
+                fromDate == null ? null : fromDate.toString(),
+                toDate == null ? null : toDate.toString(),
+                clean(value),
+                null,
+                null,
+                null,
+                null,
+                clean(unit),
+                null
+        ));
+
+        return currentSequence;
+    }
+
     private void addNumberIfExists(
             List<WaseelApprovalSupportingInfo> result,
             AtomicInteger sequence,
