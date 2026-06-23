@@ -1,13 +1,11 @@
 package com.dazzle.asklepios.service.patientMerge;
 
 import com.dazzle.asklepios.domain.Patient;
-import com.dazzle.asklepios.domain.PatientMergeDuplicateRule;
 import com.dazzle.asklepios.domain.PatientMergeFieldConfig;
 import com.dazzle.asklepios.domain.PatientMergeTableConfig;
 import com.dazzle.asklepios.domain.enumeration.MergeDecision;
 import com.dazzle.asklepios.domain.enumeration.PatientMergeCategory;
 import com.dazzle.asklepios.domain.enumeration.PatientStatus;
-import com.dazzle.asklepios.repository.PatientMergeDuplicateRuleRepository;
 import com.dazzle.asklepios.repository.PatientMergeFieldConfigRepository;
 import com.dazzle.asklepios.repository.PatientMergeTableConfigRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -40,21 +38,20 @@ public class PatientMergeAnalysisService {
     private final PatientMergeFieldConfigRepository fieldConfigRepository;
     private final PatientMergeSupportService supportService;
     private final JdbcTemplate jdbcTemplate;
-    private final PatientMergeDuplicateRuleRepository duplicateRuleRepository;
 
     public PatientMergeAnalysisService(
             PatientRepository patientRepository,
             PatientMergeTableConfigRepository tableConfigRepository,
             PatientMergeFieldConfigRepository fieldConfigRepository,
             PatientMergeSupportService supportService,
-            JdbcTemplate jdbcTemplate, PatientMergeDuplicateRuleRepository duplicateRuleRepository
+            JdbcTemplate jdbcTemplate
     ) {
         this.patientRepository = patientRepository;
         this.tableConfigRepository = tableConfigRepository;
         this.fieldConfigRepository = fieldConfigRepository;
         this.supportService = supportService;
         this.jdbcTemplate = jdbcTemplate;
-        this.duplicateRuleRepository = duplicateRuleRepository;
+
     }
     /**
      * Builds a merge preview between two patients.
