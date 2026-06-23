@@ -148,22 +148,7 @@ public class PatientMergeTransactionService {
     private Boolean canUndo(
             PatientMergeLog log
     ) {
-        if (!"MERGED".equals(log.getMergeStatus())) {
-            return false;
-        }
-
-        if (log.getToPatient() == null
-                || log.getMergedAt() == null) {
-
-            return false;
-        }
-
-        return !patientMergeLogRepository
-                .existsByToPatientIdAndMergedAtAfterAndMergeStatus(
-                        log.getToPatient().getId(),
-                        log.getMergedAt(),
-                        "MERGED"
-                );
+        return "MERGED".equals(log.getMergeStatus());
     }
 
     private boolean isFieldChange(

@@ -4,6 +4,7 @@ public record PatientMergeExecuteVM(
         Long mergeLogId,
         Long fromPatientId,
         Long toPatientId,
-        String status
+        String status,
+        String transactionNumber
 ) {
 }

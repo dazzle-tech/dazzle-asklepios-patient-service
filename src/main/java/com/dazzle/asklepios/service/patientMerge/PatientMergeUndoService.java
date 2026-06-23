@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientMergeItemLog;
 import com.dazzle.asklepios.domain.PatientMergeLog;
 import com.dazzle.asklepios.domain.PatientMergeMasterDecision;
+import com.dazzle.asklepios.domain.PatientMergeTableConfig;
 import com.dazzle.asklepios.domain.enumeration.MergeDecision;
 import com.dazzle.asklepios.domain.enumeration.PatientStatus;
 import com.dazzle.asklepios.repository.PatientMergeItemLogRepository;
@@ -113,20 +114,6 @@ public class PatientMergeUndoService {
             );
         }
 
-        boolean hasNewerMerges =
-                patientMergeLogRepository.existsByToPatientIdAndMergedAtAfterAndMergeStatus(
-                        mergeLog.getToPatient().getId(),
-                        mergeLog.getMergedAt(),
-                        "MERGED"
-                );
-
-        if (hasNewerMerges) {
-            throw new BadRequestAlertException(
-                    "newer.merges.exist",
-                    "PatientMerge",
-                    "Cannot undo merge because newer merges exist on target patient"
-            );
-        }
     }
 
     private int restoreFieldChanges(PatientMergeLog mergeLog) {
@@ -152,28 +139,55 @@ public class PatientMergeUndoService {
             return false;
         }
 
-        if (!"PATIENT".equals(decision.getEntityName())) {
+        if (decision.getTableName() == null || decision.getTableName().isBlank()) {
+            return false;
+        }
+
+        if (decision.getToRecordId() == null) {
             return false;
         }
 
         return decision.getFinalDecision() == MergeDecision.TAKE_FROM
                 || decision.getFinalDecision() == MergeDecision.MANUAL;
     }
-
     private void restoreField(PatientMergeMasterDecision decision) {
         supportService.validateIdentifier(decision.getTableName());
         supportService.validateIdentifier(decision.getFieldName());
 
+        var config =
+                supportService.findTableConfig(decision.getTableName());
+
+        supportService.validateIdentifier(config.getPrimaryKeyColumnName());
+
+        Object currentValue =
+                jdbcTemplate.queryForObject(
+                        "SELECT " + decision.getFieldName()
+                                + " FROM " + decision.getTableName()
+                                + " WHERE " + config.getPrimaryKeyColumnName() + " = ?",
+                        Object.class,
+                        decision.getToRecordId()
+                );
+
+        String currentStr = currentValue == null ? "" : currentValue.toString();
+        String mergeValueStr = decision.getSelectedValue() == null
+                ? ""
+                : decision.getSelectedValue();
+
+        if (!currentStr.equals(mergeValueStr)) {
+            LOG.debug(
+                    "Skipping field restore because value changed after merge. tableName={}, fieldName={}, recordId={}, currentValue={}, mergeValue={}",
+                    decision.getTableName(),
+                    decision.getFieldName(),
+                    decision.getToRecordId(),
+                    currentStr,
+                    mergeValueStr
+            );
+            return;
+        }
+
         String sql = "UPDATE " + decision.getTableName()
                 + " SET " + decision.getFieldName() + " = ?"
-                + " WHERE id = ?";
-
-        LOG.debug(
-                "Restoring field value. tableName={}, fieldName={}, recordId={}",
-                decision.getTableName(),
-                decision.getFieldName(),
-                decision.getToRecordId()
-        );
+                + " WHERE " + config.getPrimaryKeyColumnName() + " = ?";
 
         jdbcTemplate.update(connection -> {
             PreparedStatement ps = connection.prepareStatement(sql);
@@ -191,7 +205,6 @@ public class PatientMergeUndoService {
             return ps;
         });
     }
-
     private int restoreMovedRecords(PatientMergeLog mergeLog) {
         List<PatientMergeItemLog> restoredItems =
                 patientMergeItemLogRepository
@@ -224,9 +237,13 @@ public class PatientMergeUndoService {
     ) {
         supportService.validateIdentifier(tableName);
 
-        String sql = "UPDATE " + tableName
-                + " SET patient_id = ?"
-                + " WHERE id = ?";
+        PatientMergeTableConfig config =
+                supportService.findTableConfig(tableName);
+
+        String sql =
+                "UPDATE " + tableName
+                        + " SET " + config.getPatientColumnName() + " = ?"
+                        + " WHERE " + config.getPrimaryKeyColumnName() + " = ?";
 
         LOG.debug(
                 "Restoring moved record. tableName={}, recordId={}, oldPatientId={}",

@@ -1,11 +1,13 @@
 package com.dazzle.asklepios.service.patientMerge;
 
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientMergeDuplicateRule;
 import com.dazzle.asklepios.domain.PatientMergeFieldConfig;
 import com.dazzle.asklepios.domain.PatientMergeTableConfig;
 import com.dazzle.asklepios.domain.enumeration.MergeDecision;
 import com.dazzle.asklepios.domain.enumeration.PatientMergeCategory;
 import com.dazzle.asklepios.domain.enumeration.PatientStatus;
+import com.dazzle.asklepios.repository.PatientMergeDuplicateRuleRepository;
 import com.dazzle.asklepios.repository.PatientMergeFieldConfigRepository;
 import com.dazzle.asklepios.repository.PatientMergeTableConfigRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -38,21 +40,32 @@ public class PatientMergeAnalysisService {
     private final PatientMergeFieldConfigRepository fieldConfigRepository;
     private final PatientMergeSupportService supportService;
     private final JdbcTemplate jdbcTemplate;
+    private final PatientMergeDuplicateRuleRepository duplicateRuleRepository;
 
     public PatientMergeAnalysisService(
             PatientRepository patientRepository,
             PatientMergeTableConfigRepository tableConfigRepository,
             PatientMergeFieldConfigRepository fieldConfigRepository,
             PatientMergeSupportService supportService,
-            JdbcTemplate jdbcTemplate
+            JdbcTemplate jdbcTemplate, PatientMergeDuplicateRuleRepository duplicateRuleRepository
     ) {
         this.patientRepository = patientRepository;
         this.tableConfigRepository = tableConfigRepository;
         this.fieldConfigRepository = fieldConfigRepository;
         this.supportService = supportService;
         this.jdbcTemplate = jdbcTemplate;
+        this.duplicateRuleRepository = duplicateRuleRepository;
     }
-
+    /**
+     * Builds a merge preview between two patients.
+     *
+     * Preview includes:
+     * - Demographic field conflicts (patient master record)
+     * - Automatic field transfers when target values are empty
+     * - Automatic child record transfers when no matching target record exists
+     *
+     * Matching child records are skipped and do not generate conflicts.
+     */
     public PatientMergePreviewVM analyze(Long fromPatientId, Long toPatientId) {
         LOG.debug("Starting patient merge analysis. fromPatientId={}, toPatientId={}", fromPatientId, toPatientId);
 
@@ -98,6 +111,7 @@ public class PatientMergeAnalysisService {
         );
     }
 
+
     private void analyzeTableConfig(
             PatientMergeTableConfig tableConfig,
             Long fromPatientId,
@@ -105,47 +119,47 @@ public class PatientMergeAnalysisService {
             List<PatientMergeConflictDTO> conflicts,
             List<PatientMergeAutoTransferDTO> autoTransfers
     ) {
-        if (tableConfig.getMergeCategory() != PatientMergeCategory.MASTER) {
-            LOG.trace("Skipping non-master table config. tableName={}", tableConfig.getTableName());
-            return;
-        }
+        List<PatientMergeFieldConfig> fieldConfigs =
+                resolveFieldConfigs(tableConfig);
 
-        List<PatientMergeFieldConfig> fieldConfigs = resolveFieldConfigs(tableConfig);
+        if (tableConfig.getMergeCategory() == PatientMergeCategory.MASTER) {
 
-        if (fieldConfigs.isEmpty()) {
-            LOG.debug("Skipping table config with no fields. tableName={}", tableConfig.getTableName());
-            return;
-        }
+            if (fieldConfigs.isEmpty()) {
+                LOG.debug(
+                        "Skipping master table config with no fields. tableName={}",
+                        tableConfig.getTableName()
+                );
+                return;
+            }
 
-        LOG.debug(
-                "Analyzing table config. tableName={}, entityName={}, fields={}",
-                tableConfig.getTableName(),
-                tableConfig.getEntityName(),
-                fieldConfigs.size()
-        );
+            if (isPatientMasterTable(tableConfig)) {
+                analyzePatientMasterTable(
+                        tableConfig,
+                        fieldConfigs,
+                        fromPatientId,
+                        toPatientId,
+                        conflicts,
+                        autoTransfers
+                );
+                return;
+            }
 
-        if (isPatientMasterTable(tableConfig)) {
-            analyzePatientMasterTable(
+            analyzeChildTable(
                     tableConfig,
                     fieldConfigs,
                     fromPatientId,
                     toPatientId,
-                    conflicts,
+
                     autoTransfers
             );
-            return;
         }
-
-        analyzeChildTable(
-                tableConfig,
-                fieldConfigs,
-                fromPatientId,
-                toPatientId,
-                conflicts,
-                autoTransfers
-        );
     }
-
+    /**
+     * Analyzes patient demographic fields.
+     *
+     * Differences are reported as conflicts.
+     * Empty target values are reported as automatic transfers.
+     */
     private void analyzePatientMasterTable(
             PatientMergeTableConfig tableConfig,
             List<PatientMergeFieldConfig> fieldConfigs,
@@ -182,13 +196,20 @@ public class PatientMergeAnalysisService {
             );
         }
     }
-
+    /**
+     * Analyzes child records using configured match keys.
+     *
+     * Rules:
+     * - No matching target record -> auto transfer record.
+     * - Matching target record exists -> skip source record.
+     *
+     * Child tables do not generate field-level conflicts.
+     */
     private void analyzeChildTable(
             PatientMergeTableConfig tableConfig,
             List<PatientMergeFieldConfig> fieldConfigs,
             Long fromPatientId,
             Long toPatientId,
-            List<PatientMergeConflictDTO> conflicts,
             List<PatientMergeAutoTransferDTO> autoTransfers
     ) {
         List<Map<String, Object>> fromRows = loadRows(tableConfig, fromPatientId);
@@ -213,24 +234,23 @@ public class PatientMergeAnalysisService {
                     : null;
 
             if (toRow == null) {
-                addMissingRecordConflict(tableConfig, fromRecordId, matchKey, conflicts);
+                addMissingRecordAutoTransfer(
+                        tableConfig,
+                        fromRecordId,
+                        matchKey,
+                        autoTransfers
+                );
                 continue;
             }
 
-            for (PatientMergeFieldConfig fieldConfig : fieldConfigs) {
-                analyzeField(
-                        tableConfig,
-                        fieldConfig,
-                        fromRow,
-                        toRow,
-                        fromPatientId,
-                        toPatientId,
-                        fromRecordId,
-                        toRecordId,
-                        conflicts,
-                        autoTransfers
-                );
-            }
+            LOG.debug(
+                    "Skipping child record because matching target record exists. tableName={}, fromRecordId={}, toRecordId={}, matchKey={}",
+                    tableConfig.getTableName(),
+                    fromRecordId,
+                    toRecordId,
+                    matchKey
+            );
+
         }
     }
 
@@ -383,38 +403,10 @@ public class PatientMergeAnalysisService {
         );
     }
 
-    private void addMissingRecordConflict(
-            PatientMergeTableConfig tableConfig,
-            Long fromRecordId,
-            String matchKey,
-            List<PatientMergeConflictDTO> conflicts
-    ) {
-        conflicts.add(
-                new PatientMergeConflictDTO(
-                        tableConfig.getEntityName(),
-                        tableConfig.getTableName(),
-                        fromRecordId,
-                        null,
-                        matchKey,
-                        null,
-                        tableConfig.getEntityName(),
-                        matchKey,
-                        "",
-                        MergeDecision.ADD_FROM_RECORD,
-                        null,
-                        null,
-                        null
-                )
-        );
-
-        LOG.trace(
-                "Added missing record conflict. tableName={}, fromRecordId={}, matchKey={}",
-                tableConfig.getTableName(),
-                fromRecordId,
-                matchKey
-        );
-    }
-
+    /**
+     * Resolves configured fields and optionally appends
+     * auto-discovered fields based on table configuration.
+     */
     private List<PatientMergeFieldConfig> resolveFieldConfigs(PatientMergeTableConfig tableConfig) {
         List<PatientMergeFieldConfig> configuredFields =
                 fieldConfigRepository.findByTableConfigIdAndEnabledTrueOrderBySortOrderAscIdAsc(
@@ -451,6 +443,10 @@ public class PatientMergeAnalysisService {
 
         return mergedFields;
     }
+    /**
+     * Creates temporary field definitions from database metadata
+     * for tables configured with auto-discovery enabled.
+     */
     private List<PatientMergeFieldConfig> autoDiscoverFields(PatientMergeTableConfig tableConfig) {
         supportService.validateIdentifier(tableConfig.getTableName());
 
@@ -487,7 +483,7 @@ public class PatientMergeAnalysisService {
                     PatientMergeFieldConfig.builder()
                             .fieldName(column)
                             .fieldLabel(toLabel(column))
-                            .suggestedDecision(MergeDecision.MANUAL)
+                            .suggestedDecision(MergeDecision.KEEP_TO)
                             .enabled(true)
                             .build()
             );
@@ -510,18 +506,39 @@ public class PatientMergeAnalysisService {
                 + " WHERE " + config.getPrimaryKeyColumnName() + " = ?";
 
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, patientId);
+        if (rows.isEmpty()) {
+            LOG.debug(
+                    "Patient row not found. tableName={}, patientId={}",
+                    config.getTableName(),
+                    patientId
+            );
+            return null;
+        }
 
         return rows.isEmpty() ? null : rows.get(0);
     }
 
-    private List<Map<String, Object>> loadRows(PatientMergeTableConfig config, Long patientId) {
+    private List<Map<String, Object>> loadRows(
+            PatientMergeTableConfig config,
+            Long patientId
+    ) {
         supportService.validateIdentifier(config.getTableName());
         supportService.validateIdentifier(config.getPatientColumnName());
 
         String sql = "SELECT * FROM " + config.getTableName()
                 + " WHERE " + config.getPatientColumnName() + " = ?";
 
-        return jdbcTemplate.queryForList(sql, patientId);
+        List<Map<String, Object>> rows =
+                jdbcTemplate.queryForList(sql, patientId);
+
+        LOG.debug(
+                "Loaded patient records. tableName={}, patientId={}, records={}",
+                config.getTableName(),
+                patientId,
+                rows.size()
+        );
+
+        return rows;
     }
 
     private Patient findPatientOrThrow(Long patientId, String message) {
@@ -604,7 +621,9 @@ public class PatientMergeAnalysisService {
 
         return key.toString();
     }
-
+    /**
+     * Finds a target record with the same configured match key.
+     */
     private Map<String, Object> findMatchingRow(
             List<Map<String, Object>> rows,
             String matchKey,
@@ -624,6 +643,10 @@ public class PatientMergeAnalysisService {
 
         return null;
     }
+    /**
+     * Converts database column names to user-friendly labels.
+     * Example: first_name -> First Name
+     */
 
     private String toLabel(String fieldName) {
         if (fieldName == null || fieldName.isBlank()) {
@@ -674,5 +697,42 @@ public class PatientMergeAnalysisService {
 
     private String normalize(String value) {
         return value == null ? "" : value.trim();
+    }
+
+
+
+
+
+    private void addMissingRecordAutoTransfer(
+            PatientMergeTableConfig tableConfig,
+            Long fromRecordId,
+            String matchKey,
+            List<PatientMergeAutoTransferDTO> autoTransfers
+    ) {
+        autoTransfers.add(
+                new PatientMergeAutoTransferDTO(
+                        tableConfig.getEntityName(),
+                        tableConfig.getTableName(),
+                        fromRecordId,
+                        null,
+                        matchKey,
+                        null,
+                        tableConfig.getEntityName(),
+                        matchKey,
+                        "",
+                        matchKey,
+                        MergeDecision.ADD_FROM_RECORD,
+                        null,
+                        null,
+                        null
+                )
+        );
+
+        LOG.debug(
+                "Auto-transfer child record. tableName={}, fromRecordId={}, matchKey={}",
+                tableConfig.getTableName(),
+                fromRecordId,
+                matchKey
+        );
     }
 }

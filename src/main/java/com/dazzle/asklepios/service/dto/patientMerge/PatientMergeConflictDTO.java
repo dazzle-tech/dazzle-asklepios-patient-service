@@ -16,5 +16,6 @@ public record PatientMergeConflictDTO(
         String fieldType,
         String inputType,
         String inputSource
+
 ) {
 }

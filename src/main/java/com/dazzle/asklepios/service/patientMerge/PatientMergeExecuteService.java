@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.security.SecureRandom;
 import java.sql.PreparedStatement;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -136,7 +137,8 @@ public class PatientMergeExecuteService {
                 mergeLog.getId(),
                 fromPatient.getId(),
                 toPatient.getId(),
-                "MERGED"
+                "MERGED",
+                mergeLog.getTransactionNumber()
         );
     }
 
@@ -260,6 +262,7 @@ public class PatientMergeExecuteService {
             applyDecision(decision, toPatientId, mergeLogId);
         });
     }
+
     private void applyDecision(
             PatientMergeDecisionDTO decision,
             Long toPatientId,
@@ -275,41 +278,29 @@ public class PatientMergeExecuteService {
                 return;
             }
 
-            case IGNORE_FROM_RECORD -> {
-                if (shouldForceTransferRecord(decision)) {
-                    moveRecordToTarget(
-                            decision.tableName(),
-                            decision.fromRecordId(),
-                            toPatientId,
-                            mergeLogId
-                    );
-                }
-            }
 
-            case TAKE_FROM, MANUAL ->
-                    updateFieldValue(
-                            decision.tableName(),
-                            decision.fieldName(),
-                            decision.toRecordId(),
-                            resolveSelectedValue(decision)
-                    );
+            case TAKE_FROM, MANUAL -> updateFieldValue(
+                    decision.tableName(),
+                    decision.fieldName(),
+                    decision.toRecordId(),
+                    resolveSelectedValue(decision)
+            );
 
-            case ADD_FROM_RECORD ->
-                    moveRecordToTarget(
-                            decision.tableName(),
-                            decision.fromRecordId(),
-                            toPatientId,
-                            mergeLogId
-                    );
+            case ADD_FROM_RECORD -> moveRecordToTarget(
+                    decision.tableName(),
+                    decision.fromRecordId(),
+                    toPatientId,
+                    mergeLogId
+            );
 
-            default ->
-                    throw new BadRequestAlertException(
-                            "Unsupported merge decision",
-                            "PatientMerge",
-                            "unsupported.decision"
-                    );
+            default -> throw new BadRequestAlertException(
+                    "Unsupported merge decision",
+                    "PatientMerge",
+                    "unsupported.decision"
+            );
         }
     }
+
     private void applyAutoTransfers(
             PatientMergePreviewVM analysis,
             Long toPatientId,
@@ -329,22 +320,7 @@ public class PatientMergeExecuteService {
         });
     }
 
-    private boolean shouldForceTransferRecord(
-            PatientMergeDecisionDTO decision
-    ) {
-        if (decision.tableName() == null || decision.fromRecordId() == null) {
-            return false;
-        }
 
-        if (decision.fieldName() != null && !decision.fieldName().isBlank()) {
-            return false;
-        }
-
-        PatientMergeTableConfig config =
-                supportService.findTableConfig(decision.tableName());
-
-        return config.getMergeCategory() == PatientMergeCategory.EMR;
-    }
     private void applyAutoTransfer(
             PatientMergeAutoTransferDTO autoTransfer,
             Long toPatientId,
@@ -455,6 +431,15 @@ public class PatientMergeExecuteService {
         supportService.validateIdentifier(config.getTableName());
         supportService.validateIdentifier(config.getPrimaryKeyColumnName());
         supportService.validateIdentifier(config.getPatientColumnName());
+
+        if (shouldSkipTransfer(config, fromRecordId, toPatientId)) {
+            LOG.debug(
+                    "Skipping duplicate record transfer. tableName={}, recordId={}",
+                    config.getTableName(),
+                    fromRecordId
+            );
+            return;
+        }
 
         saveMovedItemLog(
                 mergeLogId,
@@ -575,7 +560,7 @@ public class PatientMergeExecuteService {
         supportService.validateIdentifier(config.getPrimaryKeyColumnName());
         supportService.validateIdentifier(config.getPatientColumnName());
 
-        List<Map<String, Object>> records =
+        List<Map<String, Object>> fromRecords =
                 jdbcTemplate.queryForList(
                         "SELECT " + config.getPrimaryKeyColumnName()
                                 + " FROM " + config.getTableName()
@@ -583,30 +568,23 @@ public class PatientMergeExecuteService {
                         fromPatientId
                 );
 
-        records.stream()
-                .map(record ->
-                        supportService.toLong(
-                                record.get(config.getPrimaryKeyColumnName())
-                        )
-                )
-                .filter(recordId -> recordId != null)
-                .forEach(recordId -> {
-
-                    saveMovedItemLog(
-                            mergeLogId,
-                            config,
-                            recordId,
-                            toPatientId
+        for (Map<String, Object> fromRecord : fromRecords) {
+            Long recordId =
+                    supportService.toLong(
+                            fromRecord.get(config.getPrimaryKeyColumnName())
                     );
 
-                    jdbcTemplate.update(
-                            "UPDATE " + config.getTableName()
-                                    + " SET " + config.getPatientColumnName() + " = ?"
-                                    + " WHERE " + config.getPrimaryKeyColumnName() + " = ?",
-                            toPatientId,
-                            recordId
-                    );
-                });
+            if (recordId == null) {
+                continue;
+            }
+
+            moveRecordToTarget(
+                    config.getTableName(),
+                    recordId,
+                    toPatientId,
+                    mergeLogId
+            );
+        }
     }
 
     private void markSourcePatientAsMerged(
@@ -666,15 +644,7 @@ public class PatientMergeExecuteService {
                         .build()
         );
     }
-    private boolean isEmrTable(String tableName) {
-        if (tableName == null) {
-            return false;
-        }
 
-        PatientMergeTableConfig config = supportService.findTableConfig(tableName);
-
-        return config.getMergeCategory() == PatientMergeCategory.EMR;
-    }
     private String currentUsername() {
         return SecurityUtils.getCurrentUserLogin()
                 .orElseThrow(() ->
@@ -684,5 +654,108 @@ public class PatientMergeExecuteService {
                                 "No authenticated user"
                         )
                 );
+    }
+
+
+    private List<String> splitColumns(String columns) {
+        if (columns == null || columns.isBlank()) {
+            return List.of();
+        }
+
+        List<String> result = new ArrayList<>();
+
+        for (String column : columns.split(",")) {
+            String trimmed = column.trim();
+
+            if (!trimmed.isBlank()) {
+                supportService.validateIdentifier(trimmed);
+                result.add(trimmed);
+            }
+        }
+
+        return result;
+    }
+
+    private String buildMatchKey(
+            Map<String, Object> row,
+            List<String> columns
+    ) {
+        if (row == null || columns == null || columns.isEmpty()) {
+            return "";
+        }
+
+        return columns.stream()
+                .map(column -> {
+                    Object value =
+                            getValueIgnoreCase(row, column);
+
+                    return value == null
+                            ? ""
+                            : value.toString().trim();
+                })
+                .reduce((a, b) -> a + "|" + b)
+                .orElse("");
+    }
+
+    private Object getValueIgnoreCase(
+            Map<String, Object> row,
+            String column
+    ) {
+        if (row == null || column == null) {
+            return null;
+        }
+
+        if (row.containsKey(column)) {
+            return row.get(column);
+        }
+
+        for (String key : row.keySet()) {
+            if (key.equalsIgnoreCase(column)) {
+                return row.get(key);
+            }
+        }
+
+        return null;
+    }
+
+    private boolean shouldSkipTransfer(
+            PatientMergeTableConfig config,
+            Long fromRecordId,
+            Long toPatientId
+    ) {
+        List<String> matchKeyColumns =
+                splitColumns(config.getMatchKeyColumns());
+
+        if (matchKeyColumns.isEmpty()) {
+            return false;
+        }
+
+        Map<String, Object> fromRecord =
+                jdbcTemplate.queryForMap(
+                        "SELECT * FROM " + config.getTableName()
+                                + " WHERE " + config.getPrimaryKeyColumnName() + " = ?",
+                        fromRecordId
+                );
+
+        List<Map<String, Object>> toRecords =
+                jdbcTemplate.queryForList(
+                        "SELECT * FROM " + config.getTableName()
+                                + " WHERE " + config.getPatientColumnName() + " = ?",
+                        toPatientId
+                );
+
+        String fromMatchKey =
+                buildMatchKey(fromRecord, matchKeyColumns);
+
+        for (Map<String, Object> toRecord : toRecords) {
+            String toMatchKey =
+                    buildMatchKey(toRecord, matchKeyColumns);
+
+            if (fromMatchKey.equals(toMatchKey)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
