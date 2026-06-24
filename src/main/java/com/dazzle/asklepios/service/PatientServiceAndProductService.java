@@ -1,12 +1,12 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.setup.PayorPlanItemClient;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.integration.waseel.client.WaseelItemMappingClient;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationSubmissionService;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -47,7 +47,7 @@ public class PatientServiceAndProductService {
     private final ServiceHelper serviceHelper;
     private final ProcedureHelper procedureHelper;
     private final BrandMedicationHelper brandMedicationHelper;
-    private final PayorPlanItemClient payorPlanItemClient;
+    private final WaseelItemMappingClient waseelItemMappingClient;
     private final PreAuthorizationSubmissionService preAuthorizationSubmissionService;
 
     public PatientServiceAndProductService(
@@ -58,7 +58,7 @@ public class PatientServiceAndProductService {
             ServiceHelper serviceHelper,
             ProcedureHelper procedureHelper,
             BrandMedicationHelper brandMedicationHelper,
-            PayorPlanItemClient payorPlanItemClient,
+            WaseelItemMappingClient waseelItemMappingClient,
             PreAuthorizationSubmissionService preAuthorizationSubmissionService
     ) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
@@ -68,7 +68,7 @@ public class PatientServiceAndProductService {
         this.serviceHelper = serviceHelper;
         this.procedureHelper = procedureHelper;
         this.brandMedicationHelper = brandMedicationHelper;
-        this.payorPlanItemClient = payorPlanItemClient;
+        this.waseelItemMappingClient = waseelItemMappingClient;
         this.preAuthorizationSubmissionService = preAuthorizationSubmissionService;
     }
 
@@ -347,13 +347,13 @@ public class PatientServiceAndProductService {
             Long brandMedicationId
     ) {
         if (billingItemType == BillingItemTypes.PROCEDURE && procedureId != null) {
-            return requiresPreAuthorizationForProcedure(procedureId)
+            return requiresPreAuthorization(billingItemType, procedureId)
                     ? PreAuthorizationStatus.PENDING_APPROVAL
                     : PreAuthorizationStatus.NOT_REQUIRED;
         }
 
         if (billingItemType == BillingItemTypes.SERVICE && serviceId != null) {
-            return requiresPreAuthorizationForService(serviceId)
+            return requiresPreAuthorization(billingItemType, serviceId)
                     ? PreAuthorizationStatus.PENDING_APPROVAL
                     : PreAuthorizationStatus.NOT_REQUIRED;
         }
@@ -362,13 +362,13 @@ public class PatientServiceAndProductService {
                 || billingItemType == BillingItemTypes.RADIOLOGY
                 || billingItemType == BillingItemTypes.PATHOLOGY)
                 && diagnosticTestId != null) {
-            return requiresPreAuthorizationForDiagnosticTest(diagnosticTestId)
+            return requiresPreAuthorization(billingItemType, diagnosticTestId)
                     ? PreAuthorizationStatus.PENDING_APPROVAL
                     : PreAuthorizationStatus.NOT_REQUIRED;
         }
 
         if (billingItemType == BillingItemTypes.MEDICATION && brandMedicationId != null) {
-            return requiresPreAuthorizationForMedication(brandMedicationId)
+            return requiresPreAuthorization(billingItemType, brandMedicationId)
                     ? PreAuthorizationStatus.PENDING_APPROVAL
                     : PreAuthorizationStatus.NOT_REQUIRED;
         }
@@ -376,93 +376,46 @@ public class PatientServiceAndProductService {
         return PreAuthorizationStatus.NOT_REQUIRED;
     }
 
-    private boolean requiresPreAuthorizationForProcedure(Long procedureId) {
+    private boolean requiresPreAuthorization(
+            BillingItemTypes billingItemType,
+            Long itemId
+    ) {
+        if (billingItemType == null || itemId == null) {
+            return false;
+        }
 
         LOG.info(
-                "Checking procedure pre-authorization. procedureId={}",
-                procedureId
+                "Checking pre-authorization from Waseel mapping. billingItemType={}, itemId={}",
+                billingItemType,
+                itemId
         );
 
         try {
-
-            Boolean result =
-                    payorPlanItemClient.requiresPreAuthorizationForProcedure(
-                            procedureId
+            Boolean requiresPreAuth =
+                    waseelItemMappingClient.requiresPreauth(
+                            billingItemType,
+                            itemId
                     );
 
             LOG.info(
-                    "Procedure pre-authorization result. procedureId={} result={}",
-                    procedureId,
-                    result
+                    "Pre-authorization result from Waseel mapping. billingItemType={}, itemId={}, result={}",
+                    billingItemType,
+                    itemId,
+                    requiresPreAuth
             );
 
-            return Boolean.TRUE.equals(result);
+            return Boolean.TRUE.equals(requiresPreAuth);
 
         } catch (FeignException ex) {
-
             LOG.error(
-                    "Procedure pre-authorization endpoint failed. procedureId={} status={} body={}",
-                    procedureId,
+                    "[WASEEL_MAPPING] Failed to check pre-authorization. billingItemType={}, itemId={}, status={}, body={}",
+                    billingItemType,
+                    itemId,
                     ex.status(),
                     ex.contentUTF8(),
                     ex
             );
 
-            throw new BadRequestAlertException(
-                    "Failed to call setup-service: " + ex.contentUTF8(),
-                    "patientServiceAndProduct",
-                    "preauth.endpoint.failed"
-            );
-        }
-    }
-
-    private boolean requiresPreAuthorizationForService(Long serviceId) {
-        try {
-            return Boolean.TRUE.equals(
-                    payorPlanItemClient.requiresPreAuthorizationForService(serviceId)
-            );
-        } catch (FeignException ex) {
-            LOG.error(
-                    "[SETUP_SERVICE] Failed to check service pre-authorization. serviceId={} status={} body={}",
-                    serviceId,
-                    ex.status(),
-                    ex.contentUTF8(),
-                    ex
-            );
-            return false;
-        }
-    }
-
-    private boolean requiresPreAuthorizationForDiagnosticTest(Long diagnosticTestId) {
-        try {
-            return Boolean.TRUE.equals(
-                    payorPlanItemClient.requiresPreAuthorizationForDiagnosticTest(diagnosticTestId)
-            );
-        } catch (FeignException ex) {
-            LOG.error(
-                    "[SETUP_SERVICE] Failed to check diagnostic test pre-authorization. diagnosticTestId={} status={} body={}",
-                    diagnosticTestId,
-                    ex.status(),
-                    ex.contentUTF8(),
-                    ex
-            );
-            return false;
-        }
-    }
-
-    private boolean requiresPreAuthorizationForMedication(Long brandMedicationId) {
-        try {
-            return Boolean.TRUE.equals(
-                    payorPlanItemClient.requiresPreAuthorizationForMedication(brandMedicationId)
-            );
-        } catch (FeignException ex) {
-            LOG.error(
-                    "[SETUP_SERVICE] Failed to check medication pre-authorization. brandMedicationId={} status={} body={}",
-                    brandMedicationId,
-                    ex.status(),
-                    ex.contentUTF8(),
-                    ex
-            );
             return false;
         }
     }

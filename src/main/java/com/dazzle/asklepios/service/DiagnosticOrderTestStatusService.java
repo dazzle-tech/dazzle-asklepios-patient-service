@@ -1,7 +1,6 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.DiagnosticTestClient;
-import com.dazzle.asklepios.client.setup.PayorPlanItemClient;
 import com.dazzle.asklepios.client.setup.dto.DiagnosticTestSetupDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
@@ -12,6 +11,7 @@ import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.integration.waseel.client.WaseelItemMappingClient;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationSubmissionService;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
@@ -43,7 +43,7 @@ public class DiagnosticOrderTestStatusService {
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final DiagnosticTestClient diagnosticTestClient;
-    private final PayorPlanItemClient payorPlanItemClient;
+    private final WaseelItemMappingClient waseelItemMappingClient;
     private final PreAuthorizationSubmissionService preAuthorizationSubmissionService;
 
     public DiagnosticOrderTestStatusService(
@@ -52,7 +52,7 @@ public class DiagnosticOrderTestStatusService {
             DiagnosticOrderStatusService diagnosticOrderStatusService,
             PatientServiceAndProductRepository patientServiceAndProductRepository,
             DiagnosticTestClient diagnosticTestClient,
-            PayorPlanItemClient payorPlanItemClient,
+            WaseelItemMappingClient waseelItemMappingClient,
             PreAuthorizationSubmissionService preAuthorizationSubmissionService
     ) {
         this.diagnosticOrderRepository = diagnosticOrderRepository;
@@ -60,7 +60,7 @@ public class DiagnosticOrderTestStatusService {
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.diagnosticTestClient = diagnosticTestClient;
-        this.payorPlanItemClient = payorPlanItemClient;
+        this.waseelItemMappingClient = waseelItemMappingClient;
         this.preAuthorizationSubmissionService = preAuthorizationSubmissionService;
     }
 
@@ -354,7 +354,7 @@ public class DiagnosticOrderTestStatusService {
         BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
 
         boolean requiresPreAuth =
-                requiresPreAuthorizationForDiagnosticTest(setupDiagnostic.id());
+                requiresPreAuthorization(billingItemType, setupDiagnostic.id());
 
         return PatientServiceAndProduct.builder()
                 .patientId(order.getPatientId())
@@ -381,19 +381,41 @@ public class DiagnosticOrderTestStatusService {
                 .build();
     }
 
-    private boolean requiresPreAuthorizationForDiagnosticTest(Long diagnosticTestId) {
-        if (diagnosticTestId == null) {
+    private boolean requiresPreAuthorization(
+            BillingItemTypes billingItemType,
+            Long itemId
+    ) {
+        if (billingItemType == null || itemId == null) {
             return false;
         }
 
+        LOG.info(
+                "Checking diagnostic pre-authorization from Waseel mapping. billingItemType={}, itemId={}",
+                billingItemType,
+                itemId
+        );
+
         try {
-            return Boolean.TRUE.equals(
-                    payorPlanItemClient.requiresPreAuthorizationForDiagnosticTest(diagnosticTestId)
+            Boolean requiresPreAuth =
+                    waseelItemMappingClient.requiresPreauth(
+                            billingItemType,
+                            itemId
+                    );
+
+            LOG.info(
+                    "Diagnostic pre-authorization result from Waseel mapping. billingItemType={}, itemId={}, result={}",
+                    billingItemType,
+                    itemId,
+                    requiresPreAuth
             );
+
+            return Boolean.TRUE.equals(requiresPreAuth);
+
         } catch (FeignException ex) {
             LOG.error(
-                    "[SETUP_SERVICE] Failed to check diagnostic test pre-authorization. diagnosticTestId={} status={} body={}",
-                    diagnosticTestId,
+                    "[WASEEL_MAPPING] Failed to check diagnostic pre-authorization. billingItemType={}, itemId={}, status={}, body={}",
+                    billingItemType,
+                    itemId,
                     ex.status(),
                     ex.contentUTF8(),
                     ex
