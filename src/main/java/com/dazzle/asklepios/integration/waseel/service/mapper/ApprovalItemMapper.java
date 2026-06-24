@@ -91,12 +91,10 @@ public class ApprovalItemMapper {
         List<Integer> itemSupportingInfoSequences = new ArrayList<>(supportingInfoSequences);
 
         if (isMedicationCode(waseelItemType)) {
-            Integer daysSupply = resolveMedicationDaysSupply(item);
-
             Integer daysSupplySequence = addDaysSupply(
                     supportingInfo,
                     supportingInfoSequence,
-                    daysSupply
+                    resolveMedicationDaysSupply(item)
             );
 
             if (daysSupplySequence != null) {
@@ -134,10 +132,11 @@ public class ApprovalItemMapper {
         BigDecimal unitPrice = money(item.getUnitPrice());
         BigDecimal discount = money(item.getDiscountAmount());
         BigDecimal tax = money(item.getTaxAmount());
-        BigDecimal factor = BigDecimal.ONE.setScale(2, RoundingMode.HALF_UP);
 
-        BigDecimal net = quantityValue
-                .multiply(unitPrice)
+        BigDecimal gross = quantityValue.multiply(unitPrice);
+        BigDecimal factor = calculateFactor(gross, discount);
+
+        BigDecimal net = gross
                 .multiply(factor)
                 .add(tax)
                 .setScale(2, RoundingMode.HALF_UP);
@@ -171,7 +170,7 @@ public class ApprovalItemMapper {
                 null,
                 null,
                 quantity,
-                null,
+                isMedicationCode(type) ? "package" : null,
                 unitPrice,
                 discount,
                 factor,
@@ -226,7 +225,22 @@ public class ApprovalItemMapper {
 
     private Integer resolveMedicationDaysSupply(PatientServiceAndProduct item) {
         return 30;
-        // return item.getDaysSupply();
+    }
+
+    private BigDecimal calculateFactor(BigDecimal gross, BigDecimal discount) {
+        if (gross == null || gross.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ONE.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        if (discount == null || discount.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ONE.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        BigDecimal discountPercent = discount.divide(gross, 6, RoundingMode.HALF_UP);
+
+        return BigDecimal.ONE
+                .subtract(discountPercent)
+                .setScale(6, RoundingMode.HALF_UP);
     }
 
     private boolean isMedicationCode(String waseelItemType) {
@@ -268,37 +282,18 @@ public class ApprovalItemMapper {
     }
 
     private String getMappingItemType(BillingItemTypes type) {
-        if (type == BillingItemTypes.PROCEDURE) {
-            return "PROCEDURE";
-        }
-
-        if (type == BillingItemTypes.SERVICE) {
-            return "SERVICE";
-        }
-
-        if (type == BillingItemTypes.LABORATORY || type == BillingItemTypes.PATHOLOGY) {
-            return "LABORATORY";
-        }
-
-        if (type == BillingItemTypes.RADIOLOGY) {
-            return "RADIOLOGY";
-        }
-
-        if (type == BillingItemTypes.MEDICATION) {
-            return "MEDICATION";
-        }
+        if (type == BillingItemTypes.PROCEDURE) return "PROCEDURE";
+        if (type == BillingItemTypes.SERVICE) return "SERVICE";
+        if (type == BillingItemTypes.LABORATORY || type == BillingItemTypes.PATHOLOGY) return "LABORATORY";
+        if (type == BillingItemTypes.RADIOLOGY) return "RADIOLOGY";
+        if (type == BillingItemTypes.MEDICATION) return "MEDICATION";
 
         throw new RuntimeException("Unsupported billing item type for Waseel mapping: " + type);
     }
 
     private Long getSourceId(PatientServiceAndProduct item, BillingItemTypes type) {
-        if (type == BillingItemTypes.PROCEDURE) {
-            return item.getProcedureId();
-        }
-
-        if (type == BillingItemTypes.SERVICE) {
-            return item.getServiceId();
-        }
+        if (type == BillingItemTypes.PROCEDURE) return item.getProcedureId();
+        if (type == BillingItemTypes.SERVICE) return item.getServiceId();
 
         if (type == BillingItemTypes.LABORATORY
                 || type == BillingItemTypes.RADIOLOGY
@@ -306,9 +301,7 @@ public class ApprovalItemMapper {
             return item.getDiagnosticTestId();
         }
 
-        if (type == BillingItemTypes.MEDICATION) {
-            return item.getBrandMedicationId();
-        }
+        if (type == BillingItemTypes.MEDICATION) return item.getBrandMedicationId();
 
         return null;
     }
