@@ -22,7 +22,7 @@ public class ApprovalEncounterMapper {
 
         return new WaseelApprovalEncounter(
                 "planned",
-                "AMB",
+                "HH",
                 "acute-care",
                 encounter.getEncounterDate() != null
                         ? encounter.getEncounterDate()
