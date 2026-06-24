@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.PatientMergeLog;
 import com.dazzle.asklepios.domain.PatientMergeMasterDecision;
 import com.dazzle.asklepios.domain.PatientMergeTableConfig;
 import com.dazzle.asklepios.domain.enumeration.MergeDecision;
+import com.dazzle.asklepios.domain.enumeration.MergedStatus;
 import com.dazzle.asklepios.domain.enumeration.PatientMergeCategory;
 import com.dazzle.asklepios.domain.enumeration.PatientStatus;
 import com.dazzle.asklepios.repository.PatientMergeLogRepository;
@@ -154,7 +155,7 @@ public class PatientMergeExecuteService {
                 .transactionNumber(generateTransactionNumber())
                 .fromPatient(fromPatient)
                 .toPatient(toPatient)
-                .mergeStatus("MERGED")
+                .mergeStatus(MergedStatus.MERGED)
                 .mergedBy(username)
                 .mergedAt(now)
                 .reason(reason)

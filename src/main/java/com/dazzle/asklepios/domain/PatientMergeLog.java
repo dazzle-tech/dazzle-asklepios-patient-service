@@ -1,7 +1,10 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.MergedStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -45,8 +48,9 @@ public class PatientMergeLog  implements Serializable {
     @JoinColumn(name = "to_patient_id", nullable = false)
     private Patient toPatient;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "merge_status", nullable = false, length = 50)
-    private String mergeStatus;
+    private MergedStatus mergeStatus;
 
     @Column(name = "merged_by", nullable = false, length = 50)
     private String mergedBy;

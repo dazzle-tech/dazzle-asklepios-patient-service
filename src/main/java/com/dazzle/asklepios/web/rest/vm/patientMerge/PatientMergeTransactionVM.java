@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.web.rest.vm.patientMerge;
 
+import com.dazzle.asklepios.domain.enumeration.MergedStatus;
+
 import java.time.Instant;
 
 public record PatientMergeTransactionVM(
@@ -15,7 +17,7 @@ public record PatientMergeTransactionVM(
         String toPatientName,
         String toPatientMrn,
 
-        String mergeStatus,
+        MergedStatus mergeStatus,
         String mergedBy,
         Instant mergedAt,
 

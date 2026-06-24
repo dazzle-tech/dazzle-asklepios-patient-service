@@ -1,10 +1,7 @@
 package com.dazzle.asklepios.domain;
 
-import com.dazzle.asklepios.domain.enumeration.MergeDecision;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.EnumType;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -31,7 +28,7 @@ import java.io.Serializable;
 @Builder
 @EqualsAndHashCode(callSuper = false)
 @Table(name = "patient_merge_field_configs")
-public class PatientMergeFieldConfig  implements Serializable {
+public class PatientMergeFieldConfig implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 1L;

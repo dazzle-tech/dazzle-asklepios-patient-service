@@ -46,7 +46,5 @@ public class PatientMergeItemLog implements Serializable {
     @Column(name = "new_patient_id", nullable = false)
     private Long newPatientId;
 
-    @Column(name = "moved_at")
-    private Instant movedAt;
 
 }

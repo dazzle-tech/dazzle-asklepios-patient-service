@@ -6,6 +6,7 @@ import com.dazzle.asklepios.domain.PatientMergeLog;
 import com.dazzle.asklepios.domain.PatientMergeMasterDecision;
 import com.dazzle.asklepios.domain.PatientMergeTableConfig;
 import com.dazzle.asklepios.domain.enumeration.MergeDecision;
+import com.dazzle.asklepios.domain.enumeration.MergedStatus;
 import com.dazzle.asklepios.domain.enumeration.PatientStatus;
 import com.dazzle.asklepios.repository.PatientMergeItemLogRepository;
 import com.dazzle.asklepios.repository.PatientMergeLogRepository;
@@ -273,7 +274,7 @@ public class PatientMergeUndoService {
     }
 
     private void markMergeAsUndo(PatientMergeLog mergeLog) {
-        mergeLog.setMergeStatus("UNDO");
+        mergeLog.setMergeStatus(MergedStatus.UNDO);
         mergeLog.setUndoAt(Instant.now());
         mergeLog.setUndoBy(currentUsername());
 

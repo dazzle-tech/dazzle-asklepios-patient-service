@@ -50,7 +50,7 @@ public class PatientMergeMasterDecision extends AbstractAuditingEntity implement
     @Column(name = "table_name", nullable = false, length = 100)
     private String tableName;
 
-    @NotNull
+
     @Column(name = "from_record_id")
     private Long fromRecordId;
 
