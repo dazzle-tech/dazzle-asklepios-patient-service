@@ -10,8 +10,7 @@ import java.util.Optional;
 public interface PatientMergeTableConfigRepository extends JpaRepository<PatientMergeTableConfig, Long>,
         JpaSpecificationExecutor<PatientMergeTableConfig> {
 
-    List<PatientMergeTableConfig> findByEnabledTrueOrderBySortOrderAscIdAsc();
-    Optional<PatientMergeTableConfig> findByEntityName(String entityName);
+    List<PatientMergeTableConfig> findByEnabledTrue();
     boolean existsByTableName(String tableName);
-    List<PatientMergeTableConfig> findAllByOrderBySortOrderAscIdAsc();
+    List<PatientMergeTableConfig> findAll();
 }

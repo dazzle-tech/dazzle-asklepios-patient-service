@@ -12,6 +12,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
@@ -49,6 +50,7 @@ public class PatientMergeMasterDecision extends AbstractAuditingEntity implement
     @Column(name = "table_name", nullable = false, length = 100)
     private String tableName;
 
+    @NotNull
     @Column(name = "from_record_id")
     private Long fromRecordId;
 
@@ -58,22 +60,21 @@ public class PatientMergeMasterDecision extends AbstractAuditingEntity implement
     @Column(name = "match_key", length = 255)
     private String matchKey;
 
+
     @Column(name = "field_name", length = 100)
     private String fieldName;
 
     @Column(name = "field_label", length = 150)
     private String fieldLabel;
 
+    @NotNull
     @Column(name = "from_value", length = 2000)
     private String fromValue;
-
+    @NotNull
     @Column(name = "to_value", length = 2000)
     private String toValue;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "suggested_decision", nullable = false, length = 50)
-    private MergeDecision suggestedDecision;
-
+    @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "final_decision", length = 50)
     private MergeDecision finalDecision;

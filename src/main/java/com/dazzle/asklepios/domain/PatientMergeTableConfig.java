@@ -56,10 +56,6 @@ public class PatientMergeTableConfig  implements Serializable {
     @Column(name = "enabled", nullable = false)
     private Boolean enabled;
 
-    @Column(name = "sort_order", nullable = false)
-    private Integer sortOrder;
-    @Column(name = "auto_discover_fields", nullable = false)
-    private Boolean autoDiscoverFields;
 
     @Column(name = "excluded_columns", length = 1000)
     private String excludedColumns;

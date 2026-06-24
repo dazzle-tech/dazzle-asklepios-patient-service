@@ -481,10 +481,9 @@ public class PatientMergeExecuteService {
                     table_name,
                     record_id,
                     old_patient_id,
-                    new_patient_id,
-                    record_updated_at_at_merge
+                    new_patient_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """;
 
         jdbcTemplate.update(
@@ -494,8 +493,8 @@ public class PatientMergeExecuteService {
                 config.getTableName(),
                 recordId,
                 oldPatientId,
-                newPatientId,
-                recordUpdatedAt
+                newPatientId
+
         );
     }
 
@@ -533,7 +532,7 @@ public class PatientMergeExecuteService {
     ) {
         List<PatientMergeTableConfig> configs =
                 tableConfigRepository
-                        .findByEnabledTrueOrderBySortOrderAscIdAsc();
+                        .findByEnabledTrue();
 
         configs.stream()
                 .filter(config ->
@@ -615,7 +614,6 @@ public class PatientMergeExecuteService {
                         .fieldLabel(dto.fieldLabel())
                         .fromValue(dto.fromValue())
                         .toValue(dto.toValue())
-                        .suggestedDecision(dto.suggestedDecision())
                         .finalDecision(dto.finalDecision())
                         .selectedValue(dto.selectedValue())
                         .build()
@@ -638,7 +636,6 @@ public class PatientMergeExecuteService {
                         .fieldLabel(autoTransfer.fieldLabel())
                         .fromValue(autoTransfer.fromValue())
                         .toValue(autoTransfer.toValue())
-                        .suggestedDecision(autoTransfer.suggestedDecision())
                         .finalDecision(autoTransfer.suggestedDecision())
                         .selectedValue(autoTransfer.selectedValue())
                         .build()

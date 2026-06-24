@@ -9,5 +9,5 @@ import java.util.List;
 public interface PatientMergeFieldConfigRepository extends JpaRepository<PatientMergeFieldConfig, Long>,
         JpaSpecificationExecutor<PatientMergeFieldConfig> {
 
-    List<PatientMergeFieldConfig> findByTableConfigIdAndEnabledTrueOrderBySortOrderAscIdAsc(Long tableConfigId);
+    List<PatientMergeFieldConfig> findByTableConfigIdAndEnabledTrue(Long tableConfigId);
 }

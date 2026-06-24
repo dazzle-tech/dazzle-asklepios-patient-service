@@ -51,7 +51,7 @@ public class PatientMergeSupportService {
         validateIdentifier(tableName);
 
         List<PatientMergeTableConfig> configs =
-                tableConfigRepository.findByEnabledTrueOrderBySortOrderAscIdAsc();
+                tableConfigRepository.findByEnabledTrue();
 
         return configs.stream()
                 .filter(config -> tableName.equals(config.getTableName()))
@@ -84,7 +84,7 @@ public class PatientMergeSupportService {
         }
 
         return fieldConfigRepository
-                .findByTableConfigIdAndEnabledTrueOrderBySortOrderAscIdAsc(
+                .findByTableConfigIdAndEnabledTrue(
                         tableConfig.getId()
                 )
                 .stream()

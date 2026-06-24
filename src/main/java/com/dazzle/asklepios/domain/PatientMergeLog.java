@@ -55,11 +55,11 @@ public class PatientMergeLog  implements Serializable {
     private Instant mergedAt;
 
 
-    @Column(name = "undone_by", length = 50)
-    private String undoneBy;
+    @Column(name = "undo_by", length = 50)
+    private String undoBy;
 
-    @Column(name = "undone_at")
-    private Instant undoneAt;
+    @Column(name = "undo_at")
+    private Instant undoAt;
 
     @Column(name = "reason", length = 500)
     private String reason;

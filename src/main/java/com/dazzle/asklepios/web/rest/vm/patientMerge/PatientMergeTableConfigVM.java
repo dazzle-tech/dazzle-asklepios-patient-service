@@ -16,11 +16,8 @@ public record PatientMergeTableConfigVM(
 
         Boolean enabled,
 
-        Integer sortOrder,
 
         String mergeCategory,
-
-        Boolean autoDiscoverFields,
 
         List<String> matchKeyColumns,
 

@@ -76,10 +76,10 @@ public class PatientMergeUndoService {
         int restoredRecordsCount = restoreMovedRecords(mergeLog);
 
         restoreSourcePatient(mergeLog);
-        markMergeAsUndone(mergeLog);
+        markMergeAsUndo(mergeLog);
 
         LOG.info(
-                "Patient merge undone successfully. mergeLogId={}, restoredFields={}, restoredRecords={}",
+                "Patient merge undo successfully. mergeLogId={}, restoredFields={}, restoredRecords={}",
                 mergeLogId,
                 restoredFieldsCount,
                 restoredRecordsCount
@@ -89,7 +89,7 @@ public class PatientMergeUndoService {
                 mergeLog.getId(),
                 mergeLog.getFromPatient().getId(),
                 mergeLog.getToPatient().getId(),
-                "UNDONE",
+                "UNDO",
                 restoredFieldsCount,
                 restoredRecordsCount
         );
@@ -108,7 +108,7 @@ public class PatientMergeUndoService {
     private void validateUndoAllowed(PatientMergeLog mergeLog) {
         if (!"MERGED".equals(mergeLog.getMergeStatus())) {
             throw new BadRequestAlertException(
-                    "Only MERGED records can be undone",
+                    "Only MERGED records can be undo",
                     "PatientMerge",
                     "merge.not.active"
             );
@@ -272,15 +272,15 @@ public class PatientMergeUndoService {
         );
     }
 
-    private void markMergeAsUndone(PatientMergeLog mergeLog) {
-        mergeLog.setMergeStatus("UNDONE");
-        mergeLog.setUndoneAt(Instant.now());
-        mergeLog.setUndoneBy(currentUsername());
+    private void markMergeAsUndo(PatientMergeLog mergeLog) {
+        mergeLog.setMergeStatus("UNDO");
+        mergeLog.setUndoAt(Instant.now());
+        mergeLog.setUndoBy(currentUsername());
 
         patientMergeLogRepository.save(mergeLog);
 
         LOG.debug(
-                "Marked merge as undone. mergeLogId={}",
+                "Marked merge as undo. mergeLogId={}",
                 mergeLog.getId()
         );
     }

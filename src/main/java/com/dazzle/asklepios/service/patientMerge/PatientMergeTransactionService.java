@@ -136,8 +136,8 @@ public class PatientMergeTransactionService {
                 log.getMergedBy(),
                 log.getMergedAt(),
 
-                log.getUndoneBy(),
-                log.getUndoneAt(),
+                log.getUndoBy(),
+                log.getUndoAt(),
 
                 log.getReason(),
 

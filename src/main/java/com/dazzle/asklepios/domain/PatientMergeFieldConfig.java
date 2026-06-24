@@ -18,6 +18,7 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.wildfly.common.annotation.NotNull;
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -49,15 +50,11 @@ public class PatientMergeFieldConfig  implements Serializable {
     @Column(name = "field_label", nullable = false, length = 150)
     private String fieldLabel;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "suggested_decision", nullable = false, length = 50)
-    private MergeDecision suggestedDecision;
 
     @Column(name = "enabled", nullable = false)
     private Boolean enabled;
 
-    @Column(name = "sort_order", nullable = false)
-    private Integer sortOrder;
+    @NotNull
     @Column(name = "input_type", length = 50)
     private String inputType;
 

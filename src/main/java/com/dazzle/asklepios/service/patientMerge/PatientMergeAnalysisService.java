@@ -78,7 +78,7 @@ public class PatientMergeAnalysisService {
         List<PatientMergeAutoTransferDTO> autoTransfers = new ArrayList<>();
 
         List<PatientMergeTableConfig> tableConfigs =
-                tableConfigRepository.findByEnabledTrueOrderBySortOrderAscIdAsc();
+                tableConfigRepository.findByEnabledTrue();
 
         LOG.debug("Loaded {} enabled merge table configs", tableConfigs.size());
 
@@ -186,8 +186,6 @@ public class PatientMergeAnalysisService {
                     toRow,
                     fromPatientId,
                     toPatientId,
-                    fromPatientId,
-                    toPatientId,
                     conflicts,
                     autoTransfers
             );
@@ -256,8 +254,6 @@ public class PatientMergeAnalysisService {
             PatientMergeFieldConfig fieldConfig,
             Map<String, Object> fromRow,
             Map<String, Object> toRow,
-            Long fromPatientId,
-            Long toPatientId,
             Long fromRecordId,
             Long toRecordId,
             List<PatientMergeConflictDTO> conflicts,
@@ -302,7 +298,7 @@ public class PatientMergeAnalysisService {
                     toRecordId,
                     fromStr,
                     toStr,
-                    fieldConfig.getSuggestedDecision(),
+                    MergeDecision.KEEP_TO,
                     conflicts
             );
         }
@@ -406,13 +402,11 @@ public class PatientMergeAnalysisService {
      */
     private List<PatientMergeFieldConfig> resolveFieldConfigs(PatientMergeTableConfig tableConfig) {
         List<PatientMergeFieldConfig> configuredFields =
-                fieldConfigRepository.findByTableConfigIdAndEnabledTrueOrderBySortOrderAscIdAsc(
+                fieldConfigRepository.findByTableConfigIdAndEnabledTrue(
                         tableConfig.getId()
                 );
 
-        if (!Boolean.TRUE.equals(tableConfig.getAutoDiscoverFields())) {
-            return configuredFields;
-        }
+
 
         List<PatientMergeFieldConfig> autoDiscoveredFields =
                 autoDiscoverFields(tableConfig);
@@ -480,7 +474,6 @@ public class PatientMergeAnalysisService {
                     PatientMergeFieldConfig.builder()
                             .fieldName(column)
                             .fieldLabel(toLabel(column))
-                            .suggestedDecision(MergeDecision.KEEP_TO)
                             .enabled(true)
                             .build()
             );

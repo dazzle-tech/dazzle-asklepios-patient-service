@@ -30,7 +30,7 @@ public class PatientMergeConfigService {
     public List<PatientMergeTableConfigVM> getTableConfigs() {
 
         List<PatientMergeTableConfig> configs =
-                tableConfigRepository.findAllByOrderBySortOrderAscIdAsc();
+                tableConfigRepository.findAll();
 
         return configs.stream()
                 .map(this::toVm)
@@ -60,11 +60,9 @@ public class PatientMergeConfigService {
                 config.getPrimaryKeyColumnName(),
                 config.getPatientColumnName(),
                 config.getEnabled(),
-                config.getSortOrder(),
                 config.getMergeCategory() != null
                         ? config.getMergeCategory().name()
                         : null,
-                config.getAutoDiscoverFields(),
                 supportService.splitColumns(
                         config.getMatchKeyColumns()
                 ),
@@ -136,9 +134,7 @@ public class PatientMergeConfigService {
                             .primaryKeyColumnName("id")
                             .patientColumnName("patient_id")
                             .enabled(false)
-                            .sortOrder(999)
                             .mergeCategory(PatientMergeCategory.EMR)
-                            .autoDiscoverFields(false)
                             .build();
 
             tableConfigRepository.save(config);
@@ -167,9 +163,7 @@ public class PatientMergeConfigService {
         config.setPrimaryKeyColumnName(dto.primaryKeyColumnName());
         config.setPatientColumnName(dto.patientColumnName());
         config.setEnabled(Boolean.TRUE.equals(dto.enabled()));
-        config.setSortOrder(dto.sortOrder() != null ? dto.sortOrder() : 999);
         config.setMergeCategory(PatientMergeCategory.valueOf(dto.mergeCategory()));
-        config.setAutoDiscoverFields(Boolean.TRUE.equals(dto.autoDiscoverFields()));
 
         config.setMatchKeyColumns(joinColumns(dto.matchKeyColumns()));
         config.setExcludedColumns(joinColumns(dto.excludedColumns()));

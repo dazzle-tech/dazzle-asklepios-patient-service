@@ -19,8 +19,8 @@ public record PatientMergeTransactionVM(
         String mergedBy,
         Instant mergedAt,
 
-        String undoneBy,
-        Instant undoneAt,
+        String undoBy,
+        Instant undoAt,
 
         String reason,
 
