@@ -39,19 +39,22 @@ public class ApprovalItemMapper {
 
         AtomicInteger itemSequence = new AtomicInteger(1);
 
-        Integer nextSupportingInfoSequence = supportingInfo == null
-                ? 1
+        LocalDate itemDate = encounter != null && encounter.getEncounterDate() != null
+                ? encounter.getEncounterDate()
+                : LocalDate.now();
+
+        List<Integer> existingSupportingInfoSequences = supportingInfo == null
+                ? List.of()
                 : supportingInfo.stream()
                 .map(WaseelApprovalSupportingInfo::sequence)
                 .filter(Objects::nonNull)
+                .toList();
+
+        Integer nextSupportingInfoSequence = existingSupportingInfoSequences.stream()
                 .max(Integer::compareTo)
                 .orElse(0) + 1;
 
         AtomicInteger supportingInfoSequence = new AtomicInteger(nextSupportingInfoSequence);
-
-        LocalDate itemDate = encounter != null && encounter.getEncounterDate() != null
-                ? encounter.getEncounterDate()
-                : LocalDate.now();
 
         return items.stream()
                 .filter(item -> Boolean.FALSE.equals(item.getIsBilled()))
@@ -60,6 +63,7 @@ public class ApprovalItemMapper {
                         itemSequence.getAndIncrement(),
                         patientSharePercent,
                         itemDate,
+                        existingSupportingInfoSequences,
                         supportingInfo,
                         supportingInfoSequence
                 ))
@@ -71,6 +75,7 @@ public class ApprovalItemMapper {
             Integer sequence,
             BigDecimal patientSharePercent,
             LocalDate itemDate,
+            List<Integer> existingSupportingInfoSequences,
             List<WaseelApprovalSupportingInfo> supportingInfo,
             AtomicInteger supportingInfoSequence
     ) {
@@ -83,7 +88,7 @@ public class ApprovalItemMapper {
 
         String waseelItemType = safe(mapping.waseelItemType());
 
-        List<Integer> itemSupportingInfoSequences = new ArrayList<>();
+        List<Integer> itemSupportingInfoSequences = new ArrayList<>(existingSupportingInfoSequences);
 
         if (isMedicationCode(waseelItemType)) {
             Integer daysSupply = resolveMedicationDaysSupply(item);
@@ -125,17 +130,31 @@ public class ApprovalItemMapper {
                 ? 1
                 : item.getQuantity().intValue();
 
+        BigDecimal quantityValue = BigDecimal.valueOf(quantity);
         BigDecimal unitPrice = money(item.getUnitPrice());
         BigDecimal discount = money(item.getDiscountAmount());
         BigDecimal tax = money(item.getTaxAmount());
-        BigDecimal net = money(item.getTotalAmount());
 
-        BigDecimal patientShare = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-        BigDecimal payerShare = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal gross = quantityValue.multiply(unitPrice);
+
+        BigDecimal factor = calculateFactor(gross, discount);
+
+        BigDecimal net = gross
+                .multiply(factor)
+                .add(tax)
+                .setScale(2, RoundingMode.HALF_UP);
 
         BigDecimal patientSharePercentValue = patientSharePercent == null
                 ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
                 : patientSharePercent.setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal patientShare = net
+                .multiply(patientSharePercentValue)
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+        BigDecimal payerShare = net
+                .subtract(patientShare)
+                .setScale(2, RoundingMode.HALF_UP);
 
         return new WaseelApprovalItem(
                 sequence,
@@ -149,11 +168,11 @@ public class ApprovalItemMapper {
                 null,
                 null,
                 quantity,
-                null,
+                isMedicationCode(type) ? "package" : null,
                 unitPrice,
                 discount,
-                BigDecimal.ONE,
-                BigDecimal.ZERO,
+                factor,
+                BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),
                 patientSharePercentValue,
                 net,
                 tax,
@@ -181,9 +200,7 @@ public class ApprovalItemMapper {
         }
 
         if (daysSupply == null || daysSupply <= 0) {
-            throw new RuntimeException(
-                    "Days of Supply is required for medication-codes item."
-            );
+            throw new RuntimeException("Days of Supply is required for medication-codes item.");
         }
 
         Integer currentSequence = sequence.getAndIncrement();
@@ -208,7 +225,22 @@ public class ApprovalItemMapper {
 
     private Integer resolveMedicationDaysSupply(PatientServiceAndProduct item) {
         return 30;
-        //        return item.getDaysSupply();
+    }
+
+    private BigDecimal calculateFactor(BigDecimal gross, BigDecimal discount) {
+        if (gross == null || gross.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ONE.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        if (discount == null || discount.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ONE.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        BigDecimal discountPercent = discount.divide(gross, 6, RoundingMode.HALF_UP);
+
+        return BigDecimal.ONE
+                .subtract(discountPercent)
+                .setScale(6, RoundingMode.HALF_UP);
     }
 
     private boolean isMedicationCode(String waseelItemType) {

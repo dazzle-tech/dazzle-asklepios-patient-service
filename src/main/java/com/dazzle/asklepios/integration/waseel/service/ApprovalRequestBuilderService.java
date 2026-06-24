@@ -9,6 +9,7 @@ import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizatio
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalEncounterMapper;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalEligibilitySnapshot;
+import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalItem;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalRequest;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalSubscriber;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalCareTeamMapper;
@@ -28,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalEncounter;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 
 @Service
@@ -110,19 +112,8 @@ public class ApprovalRequestBuilderService {
 
         validateItems(items);
 
-        Long providerNphiesId = Long.valueOf(nphiesId);
-
-        WaseelApprovalEncounter waseelEncounter = new WaseelApprovalEncounter(
-                "planned",
-                "AMB",
-                "acute-care",
-                encounter.getEncounterDate() == null ? java.time.LocalDate.now() : encounter.getEncounterDate(),
-                "ICSE",
-                providerNphiesId,
-                providerNphiesId,
-                null,
-                ""
-        );
+        WaseelApprovalEncounter waseelEncounter =
+                encounterMapper.toWaseelEncounter(encounter, nphiesId);
 
         var supportingInfo = approvalSupportingInfoMapper.toSupportingInfo(encounter);
 
@@ -132,6 +123,8 @@ public class ApprovalRequestBuilderService {
                 encounter,
                 supportingInfo
         );
+
+        BigDecimal totalNet = calculateTotalNet(waseelItems);
 
         return new WaseelApprovalRequest(
                 Boolean.TRUE.equals(snapshot.transfer()),
@@ -150,7 +143,7 @@ public class ApprovalRequestBuilderService {
                 null,
                 waseelEncounter,
                 waseelItems,
-                calculateTotalNet(items)
+                totalNet
         );
     }
 
@@ -253,14 +246,15 @@ public class ApprovalRequestBuilderService {
         }
     }
 
-    private BigDecimal calculateTotalNet(List<PatientServiceAndProduct> items) {
+    private BigDecimal calculateTotalNet(List<WaseelApprovalItem> items) {
         if (items == null || items.isEmpty()) {
-            return BigDecimal.ZERO;
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         }
 
         return items.stream()
-                .map(PatientServiceAndProduct::getTotalAmount)
+                .map(WaseelApprovalItem::net)
                 .filter(value -> value != null)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
     }
 }
