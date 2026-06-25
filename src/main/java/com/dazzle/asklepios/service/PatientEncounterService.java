@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.setup.PractitionerClient;
+import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
 import com.dazzle.asklepios.domain.AdditionalMeasurements;
 import com.dazzle.asklepios.domain.AppointmentFromTemplate;
 import com.dazzle.asklepios.domain.BodyMeasurements;
@@ -28,6 +30,7 @@ import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import feign.FeignException;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Expression;
@@ -79,6 +82,7 @@ public class PatientEncounterService {
     private final FacilityHelper facilityHelper;
     private final DepartmentHelper departmentHelper;
     private final PractitionerHelper practitionerHelper;
+    private final PractitionerClient practitionerClient;
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
         LOG.info("[CREATE] PatientEncounter payload={}", createDTO);
@@ -371,8 +375,11 @@ public class PatientEncounterService {
             );
         }
 
+        String username = currentUsername();
+        validateStartedByIsDoctor(username);
+
         encounter.setStatus(EncounterStatus.ONGOING);
-        encounter.setStartedBy(currentUsername());
+        encounter.setStartedBy(username);
         encounter.setStartedDate(Instant.now());
 
         try {
@@ -387,6 +394,59 @@ public class PatientEncounterService {
             LOG.warn("[START] failed (constraint) id={}", encounterId, ex);
             throw handleConstraintViolation(ex);
         }
+    }
+
+    private void validateStartedByIsDoctor(String login) {
+        PractitionerDTO practitioner;
+
+        try {
+            practitioner = practitionerClient.resolvePractitioner(null, login);
+        } catch (FeignException.NotFound ex) {
+            throw new BadRequestAlertException(
+                    "Current user is not linked to a practitioner",
+                    "patientEncounter",
+                    "startedBy.practitioner.notFound"
+            );
+        } catch (FeignException ex) {
+            throw new BadRequestAlertException(
+                    "Unable to validate current user practitioner",
+                    "patientEncounter",
+                    "startedBy.practitioner.validationFailed"
+            );
+        }
+
+        if (practitioner == null || isBlank(practitioner.jobRole())) {
+            throw new BadRequestAlertException(
+                    "Current user is not a doctor",
+                    "patientEncounter",
+                    "startedBy.notDoctor"
+            );
+        }
+
+        String jobRole = practitioner.jobRole().trim().toUpperCase();
+
+        boolean isDoctor = switch (jobRole) {
+            case "PHYSICIAN",
+                 "GENERAL_PRACTITIONER",
+                 "SPECIALIST",
+                 "ANESTHESIOLOGIST",
+                 "RADIOLOGIST",
+                 "PATHOLOGIST",
+                 "PSYCHIATRIST" -> true;
+            default -> false;
+        };
+
+        if (!isDoctor) {
+            throw new BadRequestAlertException(
+                    "Current user is not a doctor",
+                    "patientEncounter",
+                    "startedBy.notDoctor"
+            );
+        }
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     public PatientEncounter cancelEncounter(Long encounterId) {

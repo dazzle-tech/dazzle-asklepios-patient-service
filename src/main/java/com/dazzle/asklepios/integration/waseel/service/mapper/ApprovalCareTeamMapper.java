@@ -31,14 +31,14 @@ public class ApprovalCareTeamMapper {
             );
         }
 
-        if (encounter.getPractitionerId() == null) {
+        if (encounter.getPractitionerId() == null && isBlank(encounter.getStartedBy())) {
             throw badRequest(
-                    "Practitioner is required before Waseel pre-authorization",
+                    "Practitioner id or startedBy is required before Waseel pre-authorization",
                     "careTeam.practitioner.required"
             );
         }
 
-        PractitionerDTO practitioner = getPractitioner(encounter.getPractitionerId());
+        PractitionerDTO practitioner = resolvePractitioner(encounter);
 
         if (practitioner == null) {
             throw badRequest(
@@ -48,6 +48,23 @@ public class ApprovalCareTeamMapper {
         }
 
         return List.of(buildPractitionerCareTeam(1, practitioner));
+    }
+
+    private PractitionerDTO resolvePractitioner(PatientEncounter encounter) {
+        try {
+            Long practitionerId = encounter.getPractitionerId();
+            String login = normalizeBlankToNull(encounter.getStartedBy());
+
+            return practitionerClient.resolvePractitioner(practitionerId, login);
+
+        } catch (FeignException.NotFound ex) {
+            return null;
+        } catch (FeignException ex) {
+            throw badRequest(
+                    "Unable to fetch practitioner from setup service",
+                    "practitioner.fetch.failed"
+            );
+        }
     }
 
     private WaseelApprovalCareTeam buildPractitionerCareTeam(
@@ -130,19 +147,6 @@ public class ApprovalCareTeamMapper {
         );
     }
 
-    private PractitionerDTO getPractitioner(Long practitionerId) {
-        try {
-            return practitionerClient.getPractitioner(practitionerId);
-        } catch (FeignException.NotFound ex) {
-            return null;
-        } catch (FeignException ex) {
-            throw badRequest(
-                    "Unable to fetch practitioner from setup service",
-                    "practitioner.fetch.failed"
-            );
-        }
-    }
-
     private String mapPractitionerRole(String jobRole) {
         String value = jobRole.trim().toUpperCase();
 
@@ -186,6 +190,10 @@ public class ApprovalCareTeamMapper {
         String value = (firstValue + " " + secondValue).trim();
 
         return value.isBlank() ? null : value;
+    }
+
+    private String normalizeBlankToNull(String value) {
+        return isBlank(value) ? null : value.trim();
     }
 
     private String required(String value, String message, String errorKey) {
