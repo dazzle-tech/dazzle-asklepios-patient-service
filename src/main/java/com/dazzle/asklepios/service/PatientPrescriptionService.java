@@ -14,6 +14,7 @@ import com.dazzle.asklepios.domain.PatientPrescription;
 import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionUrgencyLevel;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientPrescriptionMedicationRepository;
 import com.dazzle.asklepios.repository.PatientPrescriptionRepository;
@@ -335,7 +336,7 @@ public class PatientPrescriptionService {
         data.put("highAlertMedications", String.join(", ", highAlertMedications));
         data.put("highAlertMedicationCount", highAlertMedications.size());
 
-        NotificationCreateDTO dto = new NotificationCreateDTO(null, "PRESCRIPTION_HIGH_ALERT_MEDICATION_SUBMITTED", "en", null, recipientsByRule, data, "PRESCRIPTION", prescription.getId());
+        NotificationCreateDTO dto = new NotificationCreateDTO(null, NotificationCode.PRESCRIPTION_HIGH_ALERT_MEDICATION_SUBMITTED, "en", null, recipientsByRule, data, "PRESCRIPTION", prescription.getId());
 
         try {
             LOG.debug("Creating high alert medication in-app notification. prescriptionId={}, departmentId={}, medications={}, recipientsByRule={}", prescription.getId(), departmentId, highAlertMedications, recipientsByRule);

@@ -9,6 +9,7 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.PainLevel;
 import com.dazzle.asklepios.domain.enumeration.Severity;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.PainAssessmentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -228,7 +229,7 @@ public class PainAssessmentService {
         data.put("painPattern", painAssessment.getPainPattern() != null ? painAssessment.getPainPattern().toString() : "");
         data.put("painDescription", painAssessment.getPainDescription() != null ? painAssessment.getPainDescription() : "");
 
-        NotificationCreateDTO dto = new NotificationCreateDTO(null, "PAIN_LEVEL_SEVERE", "en", null, recipientsByRule, data, "PAIN_ASSESSMENT", painAssessment.getId());
+        NotificationCreateDTO dto = new NotificationCreateDTO(null, NotificationCode.PAIN_LEVEL_SEVERE, "en", null, recipientsByRule, data, "PAIN_ASSESSMENT", painAssessment.getId());
 
         try {
             LOG.debug(

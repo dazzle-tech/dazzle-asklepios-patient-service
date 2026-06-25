@@ -19,6 +19,7 @@ import com.dazzle.asklepios.domain.enumeration.Severity;
 import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
@@ -397,7 +398,7 @@ public class DiagnosticOrderTestResultService {
                     .orElse(null);
         }
 
-        String notificationCode = resolveResultReadyNotificationCode(
+        NotificationCode notificationCode = resolveResultReadyNotificationCode(
                 orderTest,
                 calculatedMarker,
                 report
@@ -486,17 +487,17 @@ public class DiagnosticOrderTestResultService {
         }
     }
 
-    private String resolveResultReadyNotificationCode(
+    private NotificationCode resolveResultReadyNotificationCode(
             DiagnosticOrderTest orderTest,
             TestResultMarker calculatedMarker,
             DiagnosticOrderTestReport report
     ) {
         if (isLaboratoryTest(orderTest) && isAbnormalMarker(calculatedMarker)) {
-            return "DIAGNOSTIC_LAB_ABNORMAL_RESULT_READY";
+            return NotificationCode.DIAGNOSTIC_LAB_ABNORMAL_RESULT_READY;
         }
 
         if (isRadiologyTest(orderTest) && isSevereRadiologyReport(report)) {
-            return "RADIOLOGY_SEVERE_RESULT_READY";
+            return NotificationCode.RADIOLOGY_SEVERE_RESULT_READY;
         }
 
         return null;

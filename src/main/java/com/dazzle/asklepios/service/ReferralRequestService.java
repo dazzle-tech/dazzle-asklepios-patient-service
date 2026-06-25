@@ -11,6 +11,7 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.ReferralRequest;
 import com.dazzle.asklepios.domain.enumeration.ReferralStatus;
 import com.dazzle.asklepios.domain.enumeration.ReferralType;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.ReferralRequestRepository;
@@ -364,7 +365,7 @@ public class ReferralRequestService {
 
         NotificationCreateDTO dto = new NotificationCreateDTO(
                 null,
-                "NEW_REFERRAL_REQUEST_ARRIVED",
+                NotificationCode.NEW_REFERRAL_REQUEST_ARRIVED,
                 "en",
                 null,
                 recipientsByRule,

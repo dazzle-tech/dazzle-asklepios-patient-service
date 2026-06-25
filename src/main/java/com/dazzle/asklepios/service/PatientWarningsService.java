@@ -9,6 +9,7 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientWarnings;
 import com.dazzle.asklepios.domain.enumeration.PatientWarningStatus;
 import com.dazzle.asklepios.domain.enumeration.Severity;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientWarningsRepository;
@@ -446,7 +447,7 @@ public class PatientWarningsService {
         data.put("onsetDate", warning.getOnsetDate() != null ? warning.getOnsetDate().toString() : "");
         data.put("status", warning.getStatus() != null ? warning.getStatus().toString() : "");
 
-        NotificationCreateDTO dto = new NotificationCreateDTO(null, "MEDICAL_WARNING_SEVERE_CRITICAL", "en", null, recipientsByRule, data, "PATIENT_WARNING", warning.getId());
+        NotificationCreateDTO dto = new NotificationCreateDTO(null, NotificationCode.MEDICAL_WARNING_SEVERE_CRITICAL, "en", null, recipientsByRule, data, "PATIENT_WARNING", warning.getId());
 
         try {
             LOG.debug("Creating severe/critical medical warning notification. warningId={}, patientId={}, departmentId={}, recipientsByRule={}", warning.getId(), patient.getId(), departmentId, recipientsByRule);
