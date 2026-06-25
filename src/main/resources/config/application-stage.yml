@@ -16,6 +16,8 @@ management:
       probability: 1.0 # report 100% of traces
 service:
   asklepios-setup-service-url: http://asklepios-api-setup-service:8082
+  asklepios-notification-service-url: http://asklepios-notification-service:8080
+
 application:
   asklepios-application-url: http://asklepios.nereuscloud.de//#
 spring:
