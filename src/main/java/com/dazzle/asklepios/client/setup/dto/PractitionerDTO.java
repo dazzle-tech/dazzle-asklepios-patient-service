@@ -10,8 +10,11 @@ public record PractitionerDTO(
         Long id,
         List<WorkingDayJson> workingDays,
         String firstName,
-        String lastName
+        String lastName,
+        String email,
+        String phoneNumber,
+        Long userId
 
-) {
+        ) {
 
 }

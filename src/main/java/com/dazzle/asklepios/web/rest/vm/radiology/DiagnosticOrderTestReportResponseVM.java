@@ -3,6 +3,7 @@ package com.dazzle.asklepios.web.rest.vm.radiology;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.RadiologyImageStatus;
+import com.dazzle.asklepios.domain.enumeration.Severity;
 
 import java.io.Serializable;
 import java.time.Instant;
@@ -11,7 +12,7 @@ public record DiagnosticOrderTestReportResponseVM(
         Long id,
         Long orderTestId,
         String report,
-        String severity,
+        Severity severity,
         String approvedBy,
         Instant approvedDate,
         String rejectedBy,
@@ -54,7 +55,8 @@ public record DiagnosticOrderTestReportResponseVM(
                 false
         );
     }
-    public static DiagnosticOrderTestReportResponseVM ofEntityWithNote(DiagnosticOrderTestReport diagnosticOrderTestReport,boolean hasNote) {
+
+    public static DiagnosticOrderTestReportResponseVM ofEntityWithNote(DiagnosticOrderTestReport diagnosticOrderTestReport, boolean hasNote) {
         return new DiagnosticOrderTestReportResponseVM(
                 diagnosticOrderTestReport.getId(),
                 diagnosticOrderTestReport.getOrderTestId(),

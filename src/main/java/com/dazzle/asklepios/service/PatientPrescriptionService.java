@@ -1,5 +1,13 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.notification.NotificationClient;
+import com.dazzle.asklepios.client.notification.dto.NotificationCreateDTO;
+import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
+import com.dazzle.asklepios.client.setup.ActiveIngredientClient;
+import com.dazzle.asklepios.client.setup.BrandMedicationClient;
+import com.dazzle.asklepios.client.setup.dto.ActiveIngredientDTO;
+import com.dazzle.asklepios.client.setup.dto.BrandMedicationDTO;
+import com.dazzle.asklepios.client.setup.dto.UserDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientPrescription;
@@ -13,8 +21,10 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patientPrescription.PatientPrescriptionCreateDto;
 import com.dazzle.asklepios.service.dto.patientPrescription.PatientPrescriptionUpdateDTO;
+import com.dazzle.asklepios.service.helper.ActiveIngredientHelper;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
+import com.dazzle.asklepios.service.helper.UserDepartmentHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.EntityNotFoundException;
@@ -28,7 +38,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -46,6 +59,11 @@ public class PatientPrescriptionService {
     private final PatientEncounterRepository patientEncounterRepository;
     private final FacilityHelper facilityHelper;
     private final DepartmentHelper departmentHelper;
+    private final NotificationClient notificationClient;
+    private final ActiveIngredientHelper activeIngredientHelper;
+    private final ActiveIngredientClient activeIngredientClient;
+    private final BrandMedicationClient brandMedicationClient;
+    private final UserDepartmentHelper userDepartmentHelper;
 
     private String currentUsername() {
         String username = SecurityUtils.getCurrentUserLogin().orElse(null);
@@ -224,7 +242,11 @@ public class PatientPrescriptionService {
             }
         }
 
-        return toDto(prescriptionRepository.save(entity));
+        PatientPrescription saved = prescriptionRepository.save(entity);
+
+        notifyDepartmentUsersForHighAlertMedication(saved);
+
+        return toDto(saved);
     }
 
     public PatientPrescription cancel(Long id, String lastModifiedBy) {
@@ -275,4 +297,207 @@ public class PatientPrescriptionService {
     private PatientEncounter getEncounter(Long id) {
         return patientEncounterRepository.findById(id).orElseThrow(() -> new BadRequestAlertException("notfound" + id, "PatientPrescription", "Patient Encounter not found: "));
     }
+
+    private void notifyDepartmentUsersForHighAlertMedication(PatientPrescription prescription) {
+        if (prescription == null) {
+            return;
+        }
+
+        List<String> highAlertMedications = getHighAlertMedicationNames(prescription);
+
+        if (highAlertMedications.isEmpty()) {
+            return;
+        }
+
+        Long departmentId = resolvePrescriptionDepartmentId(prescription);
+
+        if (departmentId == null) {
+            LOG.warn("Skip high alert medication notification because department is missing. prescriptionId={}", prescription.getId());
+            return;
+        }
+
+        List<NotificationResolvedRecipientDTO> departmentUsers = buildDepartmentUserRecipients(departmentId);
+
+        if (departmentUsers.isEmpty()) {
+            LOG.warn("Skip high alert medication notification because no department users found. prescriptionId={}, departmentId={}", prescription.getId(), departmentId);
+            return;
+        }
+
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
+        recipientsByRule.put("DEPARTMENT_USERS", departmentUsers);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("prescriptionId", prescription.getId());
+        data.put("patientId", resolvePrescriptionPatientId(prescription));
+        data.put("patientName", resolvePrescriptionPatientName(prescription));
+        data.put("encounterId", resolvePrescriptionEncounterId(prescription));
+        data.put("departmentId", departmentId);
+        data.put("highAlertMedications", String.join(", ", highAlertMedications));
+        data.put("highAlertMedicationCount", highAlertMedications.size());
+
+        NotificationCreateDTO dto = new NotificationCreateDTO(null, "PRESCRIPTION_HIGH_ALERT_MEDICATION_SUBMITTED", "en", null, recipientsByRule, data, "PRESCRIPTION", prescription.getId());
+
+        try {
+            LOG.debug("Creating high alert medication in-app notification. prescriptionId={}, departmentId={}, medications={}, recipientsByRule={}", prescription.getId(), departmentId, highAlertMedications, recipientsByRule);
+
+            notificationClient.createNotification(dto);
+        } catch (Exception e) {
+            LOG.warn("Failed to create high alert medication notification. prescriptionId={}, error={}", prescription.getId(), e.getMessage());
+        }
+    }
+
+    private List<String> getHighAlertMedicationNames(PatientPrescription prescription) {
+        if (prescription.getMedications() == null || prescription.getMedications().isEmpty()) {
+            return List.of();
+        }
+
+        return prescription.getMedications()
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(med -> !PrescriptionStatus.CANCELLED.equals(med.getStatus()))
+                .filter(this::isHighAlertMedication)
+                .map(this::getMedicationDisplayName)
+                .filter(name -> name != null && !name.isBlank())
+                .distinct()
+                .toList();
+    }
+
+    private boolean isHighAlertMedication(PatientPrescriptionMedication med) {
+        if (med == null) {
+            return false;
+        }
+        ActiveIngredientDTO activeIngredientDTO = activeIngredientClient.getActiveIngredient(med.getActiveIngredientId());
+        return Boolean.TRUE.equals(activeIngredientDTO.highAlert());
+    }
+
+    private String getMedicationDisplayName(PatientPrescriptionMedication med) {
+        if (med == null) {
+            return "";
+        }
+        if (med.getMedicationsId() != null) {
+            BrandMedicationDTO brandMedicationDTO = brandMedicationClient.getBrandMedication(med.getMedicationsId());
+
+            if (brandMedicationDTO.name() != null && !brandMedicationDTO.name().isBlank()) {
+                return brandMedicationDTO.name();
+            }
+        }
+        ActiveIngredientDTO activeIngredientDTO = activeIngredientClient.getActiveIngredient(med.getActiveIngredientId());
+
+        if (activeIngredientDTO != null && activeIngredientDTO.name() != null
+                && !activeIngredientDTO.name().isBlank()) {
+            return activeIngredientDTO.name();
+        }
+
+        return med.getId() != null ? String.valueOf(med.getId()) : "";
+    }
+
+    private Long resolvePrescriptionDepartmentId(PatientPrescription prescription) {
+        if (prescription.getFromDepartmentId() != null) {
+            return prescription.getFromDepartmentId();
+        }
+        return null;
+    }
+
+    private Long resolvePrescriptionEncounterId(PatientPrescription prescription) {
+        if (prescription.getEncounterId() != null) {
+            return prescription.getEncounterId();
+        }
+
+        return null;
+    }
+
+    private Long resolvePrescriptionPatientId(PatientPrescription prescription) {
+        if (prescription.getPatient() != null) {
+            return prescription.getPatient().getId();
+        }
+        return null;
+    }
+
+    private String resolvePrescriptionPatientName(PatientPrescription prescription) {
+        if (prescription.getPatient() == null) {
+            Long patientId = resolvePrescriptionPatientId(prescription);
+            return patientId != null ? String.valueOf(patientId) : "";
+        }
+
+        return getPatientName(prescription.getPatient());
+    }
+
+    private List<NotificationResolvedRecipientDTO> buildDepartmentUserRecipients(Long departmentId) {
+        if (departmentId == null) {
+            return List.of();
+        }
+
+        List<UserDTO> users = userDepartmentHelper.getUsersForDepartment(departmentId);
+
+        if (users == null || users.isEmpty()) {
+            return List.of();
+        }
+
+        return users.stream()
+                .filter(user -> user != null && user.id() != null)
+                .map(user -> NotificationResolvedRecipientDTO.builder()
+                        .recipientType("USER")
+                        .recipientId(user.id())
+                        .recipientName(getUserDisplayName(user))
+                        .recipientEmail(user.email())
+                        .recipientData(Map.of(
+                                "departmentId", departmentId
+                        ))
+                        .build()
+                )
+                .toList();
+    }
+
+    private String getPatientName(Patient patient) {
+        if (patient == null) {
+            return "";
+        }
+
+        String firstName = patient.getFirstName() != null ? patient.getFirstName() : "";
+        String secondName = patient.getSecondName() != null ? patient.getSecondName() : "";
+        String thirdName = patient.getThirdName() != null ? patient.getThirdName() : "";
+        String lastName = patient.getLastName() != null ? patient.getLastName() : "";
+
+        String fullName = (firstName + " " + secondName + " " + thirdName + " " + lastName)
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        if (!fullName.isBlank()) {
+            return fullName;
+        }
+
+        if (patient.getEmail() != null && !patient.getEmail().isBlank()) {
+            return patient.getEmail();
+        }
+
+        return patient.getId() != null ? String.valueOf(patient.getId()) : "";
+    }
+
+    private String getUserDisplayName(UserDTO user) {
+        if (user == null) {
+            return "";
+        }
+
+        String firstName = user.firstName() != null ? user.firstName() : "";
+        String lastName = user.lastName() != null ? user.lastName() : "";
+
+        String fullName = (firstName + " " + lastName)
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        if (!fullName.isBlank()) {
+            return fullName;
+        }
+
+        if (user.login() != null && !user.login().isBlank()) {
+            return user.login();
+        }
+
+        if (user.email() != null && !user.email().isBlank()) {
+            return user.email();
+        }
+
+        return user.id() != null ? String.valueOf(user.id()) : "";
+    }
+
 }

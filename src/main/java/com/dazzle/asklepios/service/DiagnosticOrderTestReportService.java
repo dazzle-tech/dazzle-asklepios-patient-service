@@ -6,6 +6,7 @@ import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.RadiologyImageStatus;
+import com.dazzle.asklepios.domain.enumeration.Severity;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportCommentsRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
@@ -524,7 +525,7 @@ public class DiagnosticOrderTestReportService {
             Long id,
             List<Long> orderIdIn,
             Long orderTestId,
-            String severity,
+            Severity severity,
             String approvedBy,
             String rejectedBy,
             String reviewBy,
@@ -572,7 +573,7 @@ public class DiagnosticOrderTestReportService {
                 predicates.add(criteriaBuilder.equal(reportRoot.get("orderTestId"), orderTestId));
             }
 
-            if (severity != null && !severity.isBlank()) {
+            if (severity != null) {
                 predicates.add(criteriaBuilder.equal(reportRoot.get("severity"), severity));
             }
 

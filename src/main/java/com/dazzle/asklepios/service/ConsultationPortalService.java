@@ -1,6 +1,12 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.notification.NotificationClient;
+import com.dazzle.asklepios.client.notification.dto.NotificationCreateDTO;
+import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
+import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
+import com.dazzle.asklepios.client.setup.dto.UserDTO;
 import com.dazzle.asklepios.domain.Consultation;
+import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.ConsultationLevel;
 import com.dazzle.asklepios.domain.enumeration.ConsultationStatus;
 import com.dazzle.asklepios.repository.ConsultationRepository;
@@ -10,6 +16,8 @@ import com.dazzle.asklepios.service.dto.consultation.ConsultationResponseDTO;
 import com.dazzle.asklepios.service.dto.consultation.ConsultationSubmitErrorDTO;
 import com.dazzle.asklepios.service.dto.consultation.ConsultationSubmitRequestDTO;
 import com.dazzle.asklepios.service.dto.consultation.ConsultationSubmitResultDTO;
+import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.UserDepartmentHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,9 +42,15 @@ public class ConsultationPortalService {
             LoggerFactory.getLogger(ConsultationPortalService.class);
 
     private final ConsultationRepository consultationRepository;
+    private final NotificationClient notificationClient;
+    private final UserDepartmentHelper userDepartmentHelper;
+    private final DepartmentHelper departmentHelper;
 
-    public ConsultationPortalService(ConsultationRepository consultationRepository) {
+    public ConsultationPortalService(ConsultationRepository consultationRepository, NotificationClient notificationClient, UserDepartmentHelper userDepartmentHelper, DepartmentHelper departmentHelper) {
         this.consultationRepository = consultationRepository;
+        this.notificationClient = notificationClient;
+        this.userDepartmentHelper = userDepartmentHelper;
+        this.departmentHelper = departmentHelper;
     }
 
     private String currentUsername() {
@@ -336,6 +350,15 @@ public class ConsultationPortalService {
         consultation.setRejectReason(dto.reason());
 
         Consultation saved = consultationRepository.saveAndFlush(consultation);
+
+        notifyRequestingDepartmentUsersForConsultationEvent(
+                saved,
+                "CONSULTATION_REJECTED",
+                Map.of(
+                        "rejectReason", dto.reason() != null ? dto.reason() : ""
+                )
+        );
+
         LOG.info("[REJECT] Consultation rejected successfully id={}", saved.getId());
         return saved;
     }
@@ -390,10 +413,186 @@ public class ConsultationPortalService {
         c.setSubmittedBy(username);
         c.setSubmittedDate(Instant.now());
         });
-        consultationRepository.saveAll(consultationsToSubmit);
+        List<Consultation> savedConsultations = consultationRepository.saveAll(consultationsToSubmit);
 
+        savedConsultations.forEach(consultation ->
+                notifyRequestingDepartmentUsersForConsultationEvent(
+                        consultation,
+                        "CONSULTATION_SUBMITTED",
+                        Map.of()
+                )
+        );
         LOG.info("[SUBMIT] submittedCount={} errorsCount={}", consultationsToSubmit.size(), errors.size());
 
         return new ConsultationSubmitResultDTO(consultationsToSubmit.size(), errors);
+    }
+    private void notifyRequestingDepartmentUsersForConsultationEvent(
+            Consultation consultation,
+            String notificationCode,
+            Map<String, Object> extraData
+    ) {
+        if (consultation == null || notificationCode == null || notificationCode.isBlank()) {
+            return;
+        }
+
+        Long departmentId = consultation.getFromDepartmentId();
+        DepartmentDTO fromDepartment = departmentHelper.getDepartment(departmentId);
+        DepartmentDTO toDepartment = departmentHelper.getDepartment(consultation.getToDepartmentId());
+        if (departmentId == null) {
+            LOG.warn(
+                    "Skip consultation notification because requesting department is missing. consultationId={}, code={}",
+                    consultation.getId(),
+                    notificationCode
+            );
+            return;
+        }
+
+        List<NotificationResolvedRecipientDTO> departmentUsers =
+                buildDepartmentUserRecipients(departmentId);
+
+        if (departmentUsers.isEmpty()) {
+            LOG.warn(
+                    "Skip consultation notification because no department users found. consultationId={}, departmentId={}, code={}",
+                    consultation.getId(),
+                    departmentId,
+                    notificationCode
+            );
+            return;
+        }
+
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
+        recipientsByRule.put("DEPARTMENT_USERS", departmentUsers);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("consultationId", consultation.getId());
+        data.put("consultationNumber", consultation.getConsultationNumber());
+        data.put("patientId", consultation.getPatient() != null ? consultation.getPatient().getId() : "");
+        data.put("patientName", consultation.getPatient() != null ? getPatientName(consultation.getPatient()) : "");
+        data.put("encounterId", consultation.getEncounter() != null ? consultation.getEncounter().getId() : "");
+        data.put("fromFacilityId", consultation.getFromFacilityId());
+        data.put("toFacilityId", consultation.getToFacilityId());
+        data.put("fromDepartmentId", consultation.getFromDepartmentId());
+        data.put("fromDepartmentName", fromDepartment.name());
+        data.put("toDepartmentId", consultation.getToDepartmentId());
+        data.put("toDepartmentName", toDepartment.name());
+        data.put("consultationType", consultation.getConsultationType() != null ? consultation.getConsultationType().toString() : "");
+        data.put("destinationType", consultation.getDestinationType() != null ? consultation.getDestinationType().toString() : "");
+        data.put("consultationLevel", consultation.getConsultationLevel() != null ? consultation.getConsultationLevel().toString() : "");
+        data.put("consultationMethod", consultation.getConsultationMethod() != null ? consultation.getConsultationMethod().toString() : "");
+        data.put("status", consultation.getStatus() != null ? consultation.getStatus().toString() : "");
+        data.put("submittedBy", consultation.getSubmittedBy() != null ? consultation.getSubmittedBy() : "");
+        data.put("submittedDate", consultation.getSubmittedDate() != null ? consultation.getSubmittedDate().toString() : "");
+        data.put("rejectedBy", consultation.getRejectedBy() != null ? consultation.getRejectedBy() : "");
+        data.put("rejectedDate", consultation.getRejectedDate() != null ? consultation.getRejectedDate().toString() : "");
+        data.put("rejectReason", consultation.getRejectReason() != null ? consultation.getRejectReason() : "");
+
+        if (extraData != null && !extraData.isEmpty()) {
+            data.putAll(extraData);
+        }
+
+        NotificationCreateDTO notificationDTO = new NotificationCreateDTO(
+                null,
+                notificationCode,
+                "en",
+                null,
+                recipientsByRule,
+                data,
+                "CONSULTATION",
+                consultation.getId()
+        );
+
+        try {
+            LOG.debug(
+                    "Creating consultation in-app notification. consultationId={}, code={}, departmentId={}, recipientsByRule={}",
+                    consultation.getId(),
+                    notificationCode,
+                    departmentId,
+                    recipientsByRule
+            );
+
+            notificationClient.createNotification(notificationDTO);
+        } catch (Exception e) {
+            LOG.warn(
+                    "Failed to create consultation notification. consultationId={}, code={}, error={}",
+                    consultation.getId(),
+                    notificationCode,
+                    e.getMessage()
+            );
+        }
+    }
+    private List<NotificationResolvedRecipientDTO> buildDepartmentUserRecipients(Long departmentId) {
+        if (departmentId == null) {
+            return List.of();
+        }
+
+        List<UserDTO> users = userDepartmentHelper.getUsersForDepartment(departmentId);
+
+        if (users == null || users.isEmpty()) {
+            return List.of();
+        }
+
+        return users.stream()
+                .filter(user -> user != null && user.id() != null)
+                .map(user -> NotificationResolvedRecipientDTO.builder()
+                        .recipientType("USER")
+                        .recipientId(user.id())
+                        .recipientName(getUserDisplayName(user))
+                        .recipientEmail(user.email())
+                        .recipientData(Map.of(
+                                "departmentId", departmentId
+                        ))
+                        .build()
+                )
+                .toList();
+    }
+    private String getPatientName(Patient patient) {
+        if (patient == null) {
+            return "";
+        }
+
+        String firstName = patient.getFirstName() != null ? patient.getFirstName() : "";
+        String secondName = patient.getSecondName() != null ? patient.getSecondName() : "";
+        String thirdName = patient.getThirdName() != null ? patient.getThirdName() : "";
+        String lastName = patient.getLastName() != null ? patient.getLastName() : "";
+
+        String fullName = (firstName + " " + secondName + " " + thirdName + " " + lastName)
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        if (!fullName.isBlank()) {
+            return fullName;
+        }
+
+        if (patient.getEmail() != null && !patient.getEmail().isBlank()) {
+            return patient.getEmail();
+        }
+
+        return patient.getId() != null ? String.valueOf(patient.getId()) : "";
+    }
+    private String getUserDisplayName(UserDTO user) {
+        if (user == null) {
+            return "";
+        }
+
+        String firstName = user.firstName() != null ? user.firstName() : "";
+        String lastName = user.lastName() != null ? user.lastName() : "";
+
+        String fullName = (firstName + " " + lastName)
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        if (!fullName.isBlank()) {
+            return fullName;
+        }
+
+        if (user.login() != null && !user.login().isBlank()) {
+            return user.login();
+        }
+
+        if (user.email() != null && !user.email().isBlank()) {
+            return user.email();
+        }
+
+        return user.id() != null ? String.valueOf(user.id()) : "";
     }
 }

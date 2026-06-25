@@ -1,5 +1,10 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.notification.NotificationClient;
+import com.dazzle.asklepios.client.notification.dto.NotificationCreateDTO;
+import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
+import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
+import com.dazzle.asklepios.client.setup.dto.UserDTO;
 import com.dazzle.asklepios.domain.Consultation;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
@@ -15,6 +20,7 @@ import com.dazzle.asklepios.service.dto.consultation.ConsultationUpdateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.service.helper.PractitionerHelper;
+import com.dazzle.asklepios.service.helper.UserDepartmentHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
@@ -27,7 +33,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -46,18 +54,22 @@ public class ConsultationService {
     private final FacilityHelper facilityHelper;
     private final DepartmentHelper departmentHelper;
     private final PractitionerHelper practitionerHelper;
+    private final NotificationClient notificationClient;
+    private final UserDepartmentHelper userDepartmentHelper;
 
     public ConsultationService(
             ConsultationRepository consultationRepository,
             PatientRepository patientRepository,
             PatientEncounterRepository patientEncounterRepository,
-            FacilityHelper facilityHelper, DepartmentHelper departmentHelper, PractitionerHelper practitionerHelper) {
+            FacilityHelper facilityHelper, DepartmentHelper departmentHelper, PractitionerHelper practitionerHelper, NotificationClient notificationClient, UserDepartmentHelper userDepartmentHelper) {
         this.consultationRepository = consultationRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
         this.facilityHelper = facilityHelper;
         this.departmentHelper = departmentHelper;
         this.practitionerHelper = practitionerHelper;
+        this.notificationClient = notificationClient;
+        this.userDepartmentHelper = userDepartmentHelper;
     }
 
     private String currentUsername() {
@@ -128,6 +140,13 @@ public class ConsultationService {
 
         try {
             Consultation saved = consultationRepository.saveAndFlush(entity);
+
+            notifyDestinationDepartmentUsersForConsultationCreated(
+                    saved,
+                    patient,
+                    encounter
+            );
+
             LOG.info("[CREATE] Consultation successfully created with id={}", saved.getId());
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -337,6 +356,163 @@ public class ConsultationService {
                 "consultation",
                 "db.constraint"
         );
+    }
+    private void notifyDestinationDepartmentUsersForConsultationCreated(
+            Consultation consultation,
+            Patient patient,
+            PatientEncounter encounter
+    ) {
+        if (consultation == null || patient == null || encounter == null) {
+            return;
+        }
+
+        Long departmentId = consultation.getToDepartmentId();
+        DepartmentDTO fromDepartment = departmentHelper.getDepartment(consultation.getFromDepartmentId());
+        DepartmentDTO toDepartment = departmentHelper.getDepartment(departmentId);
+
+        if (departmentId == null) {
+            LOG.warn(
+                    "Skip consultation created notification because destination department is missing. consultationId={}",
+                    consultation.getId()
+            );
+            return;
+        }
+
+        List<NotificationResolvedRecipientDTO> departmentUsers =
+                buildDepartmentUserRecipients(departmentId);
+
+        if (departmentUsers.isEmpty()) {
+            LOG.warn(
+                    "Skip consultation created notification because no department users found. consultationId={}, departmentId={}",
+                    consultation.getId(),
+                    departmentId
+            );
+            return;
+        }
+
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
+        recipientsByRule.put("DEPARTMENT_USERS", departmentUsers);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("consultationId", consultation.getId());
+        data.put("patientId", patient.getId());
+        data.put("patientName", getPatientName(patient));
+        data.put("encounterId", encounter.getId());
+        data.put("fromFacilityId", consultation.getFromFacilityId());
+        data.put("toFacilityId", consultation.getToFacilityId());
+        data.put("fromDepartmentId", consultation.getFromDepartmentId());
+        data.put("fromDepartmentName", fromDepartment.name());
+        data.put("toDepartmentId", consultation.getToDepartmentId());
+        data.put("toDepartmentName", toDepartment.name());
+        data.put("consultationType", consultation.getConsultationType() != null ? consultation.getConsultationType().toString() : "");
+        data.put("destinationType", consultation.getDestinationType() != null ? consultation.getDestinationType().toString() : "");
+        data.put("consultationLevel", consultation.getConsultationLevel() != null ? consultation.getConsultationLevel().toString() : "");
+        data.put("consultationMethod", consultation.getConsultationMethod() != null ? consultation.getConsultationMethod().toString() : "");
+        data.put("consultantSpeciality", consultation.getConsultantSpeciality() != null ? consultation.getConsultantSpeciality() : "");
+        data.put("status", consultation.getStatus() != null ? consultation.getStatus().toString() : "");
+
+        NotificationCreateDTO notificationDTO = new NotificationCreateDTO(
+                null,
+                "CONSULTATION_CREATED",
+                "en",
+                null,
+                recipientsByRule,
+                data,
+                "CONSULTATION",
+                consultation.getId()
+        );
+
+        try {
+            LOG.debug(
+                    "Creating consultation created in-app notification. consultationId={}, toDepartmentId={}, recipientsByRule={}",
+                    consultation.getId(),
+                    departmentId,
+                    recipientsByRule
+            );
+
+            notificationClient.createNotification(notificationDTO);
+        } catch (Exception e) {
+            LOG.warn(
+                    "Failed to create consultation created notification. consultationId={}, error={}",
+                    consultation.getId(),
+                    e.getMessage()
+            );
+        }
+    }
+    private List<NotificationResolvedRecipientDTO> buildDepartmentUserRecipients(Long departmentId) {
+        if (departmentId == null) {
+            return List.of();
+        }
+
+        List<UserDTO> users = userDepartmentHelper.getUsersForDepartment(departmentId);
+
+        if (users == null || users.isEmpty()) {
+            return List.of();
+        }
+
+        return users.stream()
+                .filter(user -> user != null && user.id() != null)
+                .map(user -> NotificationResolvedRecipientDTO.builder()
+                        .recipientType("USER")
+                        .recipientId(user.id())
+                        .recipientName(getUserDisplayName(user))
+                        .recipientEmail(user.email())
+                        .recipientData(Map.of(
+                                "departmentId", departmentId
+                        ))
+                        .build()
+                )
+                .toList();
+    }
+    private String getPatientName(Patient patient) {
+        if (patient == null) {
+            return "";
+        }
+
+        String firstName = patient.getFirstName() != null ? patient.getFirstName() : "";
+        String secondName = patient.getSecondName() != null ? patient.getSecondName() : "";
+        String thirdName = patient.getThirdName() != null ? patient.getThirdName() : "";
+        String lastName = patient.getLastName() != null ? patient.getLastName() : "";
+
+        String fullName = (firstName + " " + secondName + " " + thirdName + " " + lastName)
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        if (!fullName.isBlank()) {
+            return fullName;
+        }
+
+        if (patient.getEmail() != null && !patient.getEmail().isBlank()) {
+            return patient.getEmail();
+        }
+
+        return patient.getId() != null ? String.valueOf(patient.getId()) : "";
+    }
+    private String getUserDisplayName(UserDTO user) {
+        if (user == null) {
+            return "";
+        }
+
+        String firstName = user.firstName() != null ? user.firstName() : "";
+        String lastName = user.lastName() != null ? user.lastName() : "";
+
+        String fullName = (firstName + " " + lastName)
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        if (!fullName.isBlank()) {
+            return fullName;
+        }
+
+        if (user.login() != null && !user.login().isBlank()) {
+            return user.login();
+        }
+
+        if (user.email() != null && !user.email().isBlank()) {
+            return user.email();
+        }
+
+        return user.id() != null ? String.valueOf(user.id()) : "";
     }
 
 }
