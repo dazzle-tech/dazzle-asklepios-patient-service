@@ -5,7 +5,11 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record FacilityDTO(
         Long id,
-        String name
+        String name,
+        Long defaultLabDepartmentId,
+        String defaultLabDepartmentName,
+        Long defaultRadDepartmentId,
+        String defaultRadDepartmentName
 ) {
 
 }
