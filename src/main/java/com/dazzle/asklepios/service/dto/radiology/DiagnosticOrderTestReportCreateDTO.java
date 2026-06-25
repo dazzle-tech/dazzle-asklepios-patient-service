@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service.dto.radiology;
 
+import com.dazzle.asklepios.domain.enumeration.Severity;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
@@ -11,6 +12,6 @@ public record DiagnosticOrderTestReportCreateDTO(
 
         String report,
 
-        @Size(max = 50) String severity
+        Severity severity
 ) implements Serializable {
 }

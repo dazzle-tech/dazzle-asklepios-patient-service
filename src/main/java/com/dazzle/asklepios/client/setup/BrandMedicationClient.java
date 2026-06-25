@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.client.setup;
 
+import com.dazzle.asklepios.client.setup.dto.BrandMedicationDTO;
 import com.dazzle.asklepios.config.SetupServiceFeignConfig;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -11,4 +12,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 public interface BrandMedicationClient {
     @GetMapping("/api/setup/brand-medication/{id}")
     ResponseEntity<Void> existsBrandMedication(@PathVariable("id") @NotNull Long brandMedicationId );
+
+    @GetMapping("/api/setup/brand-medication/{id}")
+    BrandMedicationDTO getBrandMedication(@PathVariable("id") @NotNull Long brandMedicationId );
 }
