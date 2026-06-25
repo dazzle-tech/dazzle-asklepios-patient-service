@@ -4,12 +4,21 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record ApprovalResponse(
+
         Long transactionId,
-        Long responseId,
-        String outgoingTransactionId,
-        String approvalRequestId,
         String status,
+        String message,
+
+        String outgoingTransactionId,
+
+        Long approvalRequestId,
+        Long approvalResponseId,
+
+        String preAuthRefNo,
+
         String outcome,
         String disposition,
+        String statusReason,
+
         Object errors
 ) {}

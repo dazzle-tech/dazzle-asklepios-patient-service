@@ -425,9 +425,14 @@ public class PreAuthorizationSubmissionService {
         preAuthorization.setMessage(response == null ? null : response.disposition());
         preAuthorization.setTransactionId(response == null ? null : response.transactionId());
         preAuthorization.setOutgoingTransactionId(response == null ? null : response.outgoingTransactionId());
-        preAuthorization.setApprovalRequestId(response == null ? null : parseLong(response.approvalRequestId()));
-        preAuthorization.setApprovalResponseId(response == null ? null : response.responseId());
-        preAuthorization.setPreAuthRefNo(response == null ? null : response.approvalRequestId());
+        preAuthorization.setApprovalRequestId(
+                response == null ? null : response.approvalRequestId());
+
+        preAuthorization.setApprovalResponseId(
+                response == null ? null : response.approvalResponseId());
+
+        preAuthorization.setPreAuthRefNo(
+                response == null ? null : response.preAuthRefNo());
         preAuthorization.setResponseJson(responseJson);
 
         preAuthorizationRequestRepository.saveAndFlush(preAuthorization);
@@ -458,9 +463,8 @@ public class PreAuthorizationSubmissionService {
                 .disposition(response == null ? null : response.disposition())
                 .transactionId(response == null ? null : response.transactionId())
                 .outgoingTransactionId(response == null ? null : response.outgoingTransactionId())
-                .approvalRequestId(response == null ? null : parseLong(response.approvalRequestId()))
-                .approvalResponseId(response == null ? null : response.responseId())
-                .requestJson(requestJson)
+                .approvalRequestId(response == null ? null : response.approvalRequestId())
+                .approvalResponseId(response == null ? null : response.approvalResponseId())                .requestJson(requestJson)
                 .responseJson(responseJson)
                 .build();
 

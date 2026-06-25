@@ -1,12 +1,12 @@
-
-        package com.dazzle.asklepios.integration.waseel.service;
-
+package com.dazzle.asklepios.integration.waseel.service;
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.PreAuthorizationCancelRequest;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.PreAuthorizationCommunicationRequest;
+import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.WaseelPreAuthorizationCancelRequest;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.response.PreAuthorizationCancelResponse;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.response.PreAuthorizationCommunicationResponse;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.response.PreAuthorizationSearchResponse;
+import com.dazzle.asklepios.integration.waseel.service.mapper.WaseelCancelReasonMapper;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -68,13 +68,15 @@ public class WaseelPreAuthorizationService {
         }
     }
 
-    public PreAuthorizationCommunicationResponse communicate(PreAuthorizationCommunicationRequest request) {
+    public PreAuthorizationCommunicationResponse communicate(
+            PreAuthorizationCommunicationRequest request
+    ) {
         String token = tokenService.getToken();
 
         String url = properties.baseUrl()
-                + "/approvals/providers/"
+                + "/poll-management/providers/"
                 + properties.providerId()
-                + "/approval/communication/request";
+                + "/communication";
 
         String jsonBody = toJsonWithoutNulls(request);
 
@@ -117,7 +119,13 @@ public class WaseelPreAuthorizationService {
                 + properties.providerId()
                 + "/approval/cancel/request";
 
-        String jsonBody = toJsonWithoutNulls(request);
+        WaseelPreAuthorizationCancelRequest waseelRequest =
+                new WaseelPreAuthorizationCancelRequest(
+                        request.approvalRequestId(),
+                        WaseelCancelReasonMapper.toWaseelCode(request.cancelReason())
+                );
+
+        String jsonBody = toJsonWithoutNulls(waseelRequest);
 
         HttpEntity<String> entity = new HttpEntity<>(
                 jsonBody,
@@ -149,7 +157,6 @@ public class WaseelPreAuthorizationService {
             throw ex;
         }
     }
-
     private HttpHeaders buildHeaders(String token) {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
