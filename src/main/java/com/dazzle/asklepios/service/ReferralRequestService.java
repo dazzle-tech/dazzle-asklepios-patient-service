@@ -1,10 +1,12 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.ReferralRequest;
 import com.dazzle.asklepios.domain.enumeration.ReferralStatus;
 import com.dazzle.asklepios.domain.enumeration.ReferralType;
+import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.ReferralRequestRepository;
@@ -40,7 +42,8 @@ public class ReferralRequestService {
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final FacilityHelper facilityHelper;
-    private final DepartmentHelper departmentHelper;
+    private final DepartmentHelper departmentHelper;;
+    private final AppointmentRepository appointmentRepository;
 
     public ReferralRequest createReferralRequest(ReferralRequestCreateDTO createDto) {
         LOG.info("[CREATE] ReferralRequest payload={}", createDto);
@@ -120,7 +123,7 @@ public class ReferralRequestService {
         });
     }
 
-    public ReferralRequest acceptReferralRequest(Long referralRequestId) {
+    public ReferralRequest acceptReferralRequest(Long referralRequestId, Long appointmentId) {
         String currentUsername = getCurrentUsername();
 
         LOG.info("[ACCEPT] ReferralRequest id={} acceptedBy={}", referralRequestId, currentUsername);
@@ -135,9 +138,20 @@ public class ReferralRequestService {
                     );
                 });
 
+        Appointment appointment = appointmentRepository.findById(appointmentId)
+                .orElseThrow(() -> {
+                    LOG.warn("[ACCEPT] Appointment not found id={}", appointmentId);
+                    return new NotFoundAlertException(
+                            "Appointment not found with id " + appointmentId,
+                            "appointment",
+                            "notfound"
+                    );
+                });
+
         referralRequest.setStatus(ReferralStatus.ACCEPTED);
         referralRequest.setAcceptedDate(Instant.now());
         referralRequest.setAcceptedBy(currentUsername);
+        referralRequest.setAppointment(appointment);
 
         try {
             ReferralRequest savedReferralRequest = referralRequestRepository.saveAndFlush(referralRequest);
