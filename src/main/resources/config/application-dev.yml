@@ -17,6 +17,9 @@ service:
   asklepios-notification-service-url: http://localhost:8090
 application:
   asklepios-application-url: http://localhost:3100//#
+appointment:
+  template-interval-ended:
+    fixed-delay: 60000
 spring:
   devtools:
     restart:

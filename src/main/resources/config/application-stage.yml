@@ -20,6 +20,9 @@ service:
 
 application:
   asklepios-application-url: http://asklepios.nereuscloud.de//#
+appointment:
+  template-interval-ended:
+    fixed-delay: 60000
 spring:
   devtools:
     restart:
