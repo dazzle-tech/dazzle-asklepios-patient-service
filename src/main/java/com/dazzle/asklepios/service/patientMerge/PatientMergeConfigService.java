@@ -5,7 +5,7 @@ import com.dazzle.asklepios.domain.enumeration.PatientMergeCategory;
 import com.dazzle.asklepios.repository.PatientMergeTableConfigRepository;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeTableConfigSaveDTO;
 import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeDataReader;
-import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeSupportService;
+import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeSupportHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeAvailableTableVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeTableConfigVM;
@@ -19,9 +19,9 @@ import java.util.stream.Collectors;
 @Service
 public class PatientMergeConfigService {
     private final PatientMergeTableConfigRepository tableConfigRepository;
-    private final PatientMergeSupportService supportService;
+    private final PatientMergeSupportHelper supportService;
     private final PatientMergeDataReader dataReader;
-    public PatientMergeConfigService(PatientMergeTableConfigRepository tableConfigRepository, PatientMergeSupportService supportService, PatientMergeDataReader dataReader) {
+    public PatientMergeConfigService(PatientMergeTableConfigRepository tableConfigRepository, PatientMergeSupportHelper supportService, PatientMergeDataReader dataReader) {
         this.tableConfigRepository = tableConfigRepository;
         this.supportService = supportService;
         this.dataReader = dataReader;

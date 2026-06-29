@@ -16,8 +16,8 @@ import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeAutoTransferDTO;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeDecisionDTO;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeExecuteDTO;
-import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeRecordTransferService;
-import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeSupportService;
+import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeRecordTransferHelper;
+import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeSupportHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeExecuteVM;
@@ -50,8 +50,8 @@ public class PatientMergeExecuteService {
     private final PatientMergeMasterDecisionRepository patientMergeMasterDecisionRepository;
     private final PatientMergeTableConfigRepository tableConfigRepository;
     private final PatientMergeAnalysisService analysisService;
-    private final PatientMergeSupportService supportService;
-    private final PatientMergeRecordTransferService recordTransferService;
+    private final PatientMergeSupportHelper supportService;
+    private final PatientMergeRecordTransferHelper recordTransferService;
 
     public PatientMergeExecuteService(
             PatientRepository patientRepository,
@@ -59,7 +59,7 @@ public class PatientMergeExecuteService {
             PatientMergeMasterDecisionRepository patientMergeMasterDecisionRepository,
             PatientMergeTableConfigRepository tableConfigRepository,
             PatientMergeAnalysisService analysisService,
-            PatientMergeSupportService supportService, PatientMergeRecordTransferService recordTransferService
+            PatientMergeSupportHelper supportService, PatientMergeRecordTransferHelper recordTransferService
     ) {
         this.patientRepository = patientRepository;
         this.patientMergeLogRepository = patientMergeLogRepository;

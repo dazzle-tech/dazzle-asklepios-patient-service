@@ -17,15 +17,15 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 @Service
 @Transactional
-public class PatientMergeRecordTransferService {
+public class PatientMergeRecordTransferHelper {
     private static final Logger LOG =
-            LoggerFactory.getLogger(PatientMergeRecordTransferService.class);
+            LoggerFactory.getLogger(PatientMergeRecordTransferHelper.class);
     private final JdbcTemplate jdbcTemplate;
-    private final PatientMergeSupportService supportService;
+    private final PatientMergeSupportHelper supportService;
 
-    public PatientMergeRecordTransferService(
+    public PatientMergeRecordTransferHelper(
             JdbcTemplate jdbcTemplate,
-            PatientMergeSupportService supportService
+            PatientMergeSupportHelper supportService
     ) {
         this.jdbcTemplate = jdbcTemplate;
         this.supportService = supportService;

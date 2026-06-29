@@ -13,8 +13,8 @@ import com.dazzle.asklepios.repository.PatientMergeLogRepository;
 import com.dazzle.asklepios.repository.PatientMergeMasterDecisionRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
-import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeRecordTransferService;
-import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeSupportService;
+import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeRecordTransferHelper;
+import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeSupportHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeUndoVM;
@@ -39,17 +39,17 @@ public class PatientMergeUndoService {
     private final PatientMergeMasterDecisionRepository patientMergeMasterDecisionRepository;
     private final PatientMergeItemLogRepository patientMergeItemLogRepository;
     private final PatientRepository patientRepository;
-    private final PatientMergeSupportService supportService;
+    private final PatientMergeSupportHelper supportService;
     private final JdbcTemplate jdbcTemplate;
-    private final PatientMergeRecordTransferService recordTransferService;
+    private final PatientMergeRecordTransferHelper recordTransferService;
 
     public PatientMergeUndoService(
             PatientMergeLogRepository patientMergeLogRepository,
             PatientMergeMasterDecisionRepository patientMergeMasterDecisionRepository,
             PatientMergeItemLogRepository patientMergeItemLogRepository,
             PatientRepository patientRepository,
-            PatientMergeSupportService supportService,
-            JdbcTemplate jdbcTemplate, PatientMergeRecordTransferService recordTransferService
+            PatientMergeSupportHelper supportService,
+            JdbcTemplate jdbcTemplate, PatientMergeRecordTransferHelper recordTransferService
     ) {
         this.patientMergeLogRepository = patientMergeLogRepository;
         this.patientMergeMasterDecisionRepository = patientMergeMasterDecisionRepository;

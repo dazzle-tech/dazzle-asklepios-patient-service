@@ -16,17 +16,17 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
-public class PatientMergeSupportService {
+public class PatientMergeSupportHelper {
 
     private static final Pattern IDENTIFIER_PATTERN =
             Pattern.compile("[a-zA-Z_][a-zA-Z0-9_]*");
     private static final Logger LOG =
-            LoggerFactory.getLogger(PatientMergeSupportService.class);
+            LoggerFactory.getLogger(PatientMergeSupportHelper.class);
     private final PatientMergeTableConfigRepository tableConfigRepository;
     private final PatientMergeFieldConfigRepository fieldConfigRepository;
     private final JdbcTemplate jdbcTemplate;
 
-    public PatientMergeSupportService(
+    public PatientMergeSupportHelper(
             PatientMergeTableConfigRepository tableConfigRepository,
             PatientMergeFieldConfigRepository fieldConfigRepository,
             JdbcTemplate jdbcTemplate

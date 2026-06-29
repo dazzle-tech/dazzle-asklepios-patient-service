@@ -13,11 +13,11 @@ import java.util.Map;
 public class PatientMergeDataReader {
 
     private final JdbcTemplate jdbcTemplate;
-    private final PatientMergeSupportService supportService;
+    private final PatientMergeSupportHelper supportService;
 
     public PatientMergeDataReader(
             JdbcTemplate jdbcTemplate,
-            PatientMergeSupportService supportService
+            PatientMergeSupportHelper supportService
     ) {
         this.jdbcTemplate = jdbcTemplate;
         this.supportService = supportService;
