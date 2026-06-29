@@ -2,12 +2,10 @@ package com.dazzle.asklepios.service.patientMerge;
 
 import com.dazzle.asklepios.domain.enumeration.MergeDecision;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeAutoTransferDTO;
-import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeConflictDTO;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeDecisionDTO;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeSummaryDTO;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeSummaryItemDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergePreviewVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeSummaryVM;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,14 +22,6 @@ public class PatientMergeSummaryService {
     private static final Logger LOG =
             LoggerFactory.getLogger(PatientMergeSummaryService.class);
 
-    private final PatientMergeAnalysisService analysisService;
-
-    public PatientMergeSummaryService(
-            PatientMergeAnalysisService analysisService
-    ) {
-        this.analysisService = analysisService;
-    }
-
     public PatientMergeSummaryVM summarizeMerge(
             PatientMergeSummaryDTO request
     ) {
@@ -43,11 +33,6 @@ public class PatientMergeSummaryService {
 
         validateRequest(request);
 
-        PatientMergePreviewVM analysis = analysisService.analyze(
-                request.fromPatientId(),
-                request.toPatientId()
-        );
-
         List<PatientMergeSummaryItemDTO> fieldUpdates = new ArrayList<>();
         List<PatientMergeSummaryItemDTO> autoTransfers = new ArrayList<>();
         List<PatientMergeSummaryItemDTO> recordsToAdd = new ArrayList<>();
@@ -55,14 +40,13 @@ public class PatientMergeSummaryService {
 
         processUserDecisions(
                 request,
-                analysis,
                 fieldUpdates,
                 recordsToAdd,
                 ignoredItems
         );
 
         processAutoTransfers(
-                analysis,
+                request.autoTransfers(),
                 autoTransfers
         );
 
@@ -86,7 +70,6 @@ public class PatientMergeSummaryService {
 
     private void processUserDecisions(
             PatientMergeSummaryDTO request,
-            PatientMergePreviewVM analysis,
             List<PatientMergeSummaryItemDTO> fieldUpdates,
             List<PatientMergeSummaryItemDTO> recordsToAdd,
             List<PatientMergeSummaryItemDTO> ignoredItems
@@ -97,41 +80,25 @@ public class PatientMergeSummaryService {
         }
 
         for (PatientMergeDecisionDTO decision : request.decisions()) {
-
             MergeDecision finalDecision = decision.finalDecision();
 
             if (finalDecision == null) {
-                continue;
+                throw new BadRequestAlertException(
+                        "Final decision is required",
+                        "PatientMerge",
+                        "final.decision.required"
+                );
             }
 
-            PatientMergeConflictDTO sourceConflict =
-                    findMatchingConflict(decision, analysis);
-
             switch (finalDecision) {
-
                 case TAKE_FROM, MANUAL ->
-                        fieldUpdates.add(
-                                buildFieldUpdateItem(
-                                        decision,
-                                        sourceConflict
-                                )
-                        );
+                        fieldUpdates.add(buildFieldUpdateItem(decision));
 
                 case ADD_FROM_RECORD ->
-                        recordsToAdd.add(
-                                buildRecordToAddItem(
-                                        decision,
-                                        sourceConflict
-                                )
-                        );
+                        recordsToAdd.add(buildRecordToAddItem(decision));
 
                 case KEEP_TO, IGNORE_FROM_RECORD ->
-                        ignoredItems.add(
-                                buildIgnoredItem(
-                                        decision,
-                                        sourceConflict
-                                )
-                        );
+                        ignoredItems.add(buildIgnoredItem(decision));
 
                 default ->
                         LOG.trace(
@@ -143,54 +110,43 @@ public class PatientMergeSummaryService {
     }
 
     private void processAutoTransfers(
-            PatientMergePreviewVM analysis,
+            List<PatientMergeAutoTransferDTO> sourceAutoTransfers,
             List<PatientMergeSummaryItemDTO> autoTransfers
     ) {
-        if (analysis == null
-                || analysis.autoTransfers() == null
-                || analysis.autoTransfers().isEmpty()) {
-
+        if (sourceAutoTransfers == null || sourceAutoTransfers.isEmpty()) {
             return;
         }
 
-        for (PatientMergeAutoTransferDTO autoTransfer :
-                analysis.autoTransfers()) {
-
+        for (PatientMergeAutoTransferDTO autoTransfer : sourceAutoTransfers) {
             autoTransfers.add(toSummaryItem(autoTransfer));
         }
     }
 
     private PatientMergeSummaryItemDTO buildFieldUpdateItem(
-            PatientMergeDecisionDTO decision,
-            PatientMergeConflictDTO sourceConflict
+            PatientMergeDecisionDTO decision
     ) {
         return toSummaryItem(
                 decision,
-                sourceConflict,
                 decision.toValue(),
                 resolveNewValue(decision)
         );
     }
 
     private PatientMergeSummaryItemDTO buildRecordToAddItem(
-            PatientMergeDecisionDTO decision,
-            PatientMergeConflictDTO sourceConflict
+            PatientMergeDecisionDTO decision
     ) {
         return toSummaryItem(
                 decision,
-                sourceConflict,
                 "",
                 decision.selectedValue()
         );
     }
 
     private PatientMergeSummaryItemDTO buildIgnoredItem(
-            PatientMergeDecisionDTO decision,
-            PatientMergeConflictDTO sourceConflict
+            PatientMergeDecisionDTO decision
     ) {
         return toSummaryItem(
                 decision,
-                sourceConflict,
                 decision.toValue(),
                 decision.toValue()
         );
@@ -212,7 +168,6 @@ public class PatientMergeSummaryService {
 
     private PatientMergeSummaryItemDTO toSummaryItem(
             PatientMergeDecisionDTO decision,
-            PatientMergeConflictDTO sourceConflict,
             String oldValue,
             String newValue
     ) {
@@ -227,9 +182,9 @@ public class PatientMergeSummaryService {
                 oldValue,
                 newValue,
                 decision.finalDecision(),
-                resolveFieldType(decision, sourceConflict),
-                resolveInputType(decision, sourceConflict),
-                resolveInputSource(decision, sourceConflict)
+                decision.fieldType(),
+                decision.inputType(),
+                decision.inputSource()
         );
     }
 
@@ -251,70 +206,6 @@ public class PatientMergeSummaryService {
                 autoTransfer.inputType(),
                 autoTransfer.inputSource()
         );
-    }
-
-    private String resolveFieldType(
-            PatientMergeDecisionDTO decision,
-            PatientMergeConflictDTO sourceConflict
-    ) {
-        if (decision.fieldType() != null) {
-            return decision.fieldType();
-        }
-
-        return sourceConflict != null
-                ? sourceConflict.fieldType()
-                : null;
-    }
-
-    private String resolveInputType(
-            PatientMergeDecisionDTO decision,
-            PatientMergeConflictDTO sourceConflict
-    ) {
-        if (decision.inputType() != null) {
-            return decision.inputType();
-        }
-
-        return sourceConflict != null
-                ? sourceConflict.inputType()
-                : null;
-    }
-
-    private String resolveInputSource(
-            PatientMergeDecisionDTO decision,
-            PatientMergeConflictDTO sourceConflict
-    ) {
-        if (decision.inputSource() != null) {
-            return decision.inputSource();
-        }
-
-        return sourceConflict != null
-                ? sourceConflict.inputSource()
-                : null;
-    }
-
-    private PatientMergeConflictDTO findMatchingConflict(
-            PatientMergeDecisionDTO decision,
-            PatientMergePreviewVM analysis
-    ) {
-        if (analysis == null || analysis.conflicts() == null) {
-            return null;
-        }
-
-        return analysis.conflicts()
-                .stream()
-                .filter(conflict ->
-                        equals(conflict.entityName(), decision.entityName())
-                                && equals(conflict.tableName(), decision.tableName())
-                                && equals(conflict.fromRecordId(), decision.fromRecordId())
-                                && equals(conflict.toRecordId(), decision.toRecordId())
-                                && equals(conflict.fieldName(), decision.fieldName())
-                )
-                .findFirst()
-                .orElse(null);
-    }
-
-    private boolean equals(Object a, Object b) {
-        return a == null ? b == null : a.equals(b);
     }
 
     private void validateRequest(

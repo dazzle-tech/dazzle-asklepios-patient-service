@@ -176,7 +176,7 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
 
     @Enumerated(EnumType.STRING)
     @Column(name = "patient_status", length = 30, nullable = false)
-    @Builder.Default
+
     private PatientStatus patientStatus = PatientStatus.ACTIVE;
 
     @Column(name = "merged_into_patient_id")
@@ -212,6 +212,7 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
 
     @Column(name = "patient_conditions", columnDefinition = "text")
     private String patientConditions;
+
     @AssertTrue(message = "When patient is not unknown, firstName, lastName, sexAtBirth, dateOfBirth, primaryMobileNumber and email are required")
     public boolean isValidWhenNotUnknown() {
         if (Boolean.TRUE.equals(isUnknown)) {

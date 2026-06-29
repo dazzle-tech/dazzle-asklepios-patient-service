@@ -1,26 +1,27 @@
-package com.dazzle.asklepios.service.patientMerge;
+package com.dazzle.asklepios.service.patientMerge.helpers;
+
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientMergeFieldConfig;
 import com.dazzle.asklepios.domain.PatientMergeTableConfig;
-import com.dazzle.asklepios.domain.enumeration.PatientMergeCategory;
 import com.dazzle.asklepios.repository.PatientMergeFieldConfigRepository;
 import com.dazzle.asklepios.repository.PatientMergeTableConfigRepository;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import jakarta.transaction.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.util.List;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Service
 public class PatientMergeSupportService {
 
     private static final Pattern IDENTIFIER_PATTERN =
             Pattern.compile("[a-zA-Z_][a-zA-Z0-9_]*");
-
+    private static final Logger LOG =
+            LoggerFactory.getLogger(PatientMergeSupportService.class);
     private final PatientMergeTableConfigRepository tableConfigRepository;
     private final PatientMergeFieldConfigRepository fieldConfigRepository;
     private final JdbcTemplate jdbcTemplate;
@@ -50,12 +51,7 @@ public class PatientMergeSupportService {
     public PatientMergeTableConfig findTableConfig(String tableName) {
         validateIdentifier(tableName);
 
-        List<PatientMergeTableConfig> configs =
-                tableConfigRepository.findByEnabledTrue();
-
-        return configs.stream()
-                .filter(config -> tableName.equals(config.getTableName()))
-                .findFirst()
+        return tableConfigRepository.findByTableNameAndEnabledTrue(tableName)
                 .orElseThrow(() ->
                         new BadRequestAlertException(
                                 "Table config not found",
@@ -93,89 +89,7 @@ public class PatientMergeSupportService {
                 .orElse(null);
     }
 
-    public String getColumnType(
-            String tableName,
-            String columnName
-    ) {
-        if (tableName == null
-                || tableName.isBlank()
-                || columnName == null
-                || columnName.isBlank()) {
 
-            return null;
-        }
-
-        try {
-            return jdbcTemplate.queryForObject(
-                    """
-                    SELECT data_type
-                    FROM information_schema.columns
-                    WHERE table_name = ?
-                      AND column_name = ?
-                    """,
-                    String.class,
-                    tableName,
-                    columnName
-            );
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    public void setPreparedStatementValue(
-            PreparedStatement ps,
-            int index,
-            Object value,
-            String tableName,
-            String columnName
-    ) throws SQLException {
-
-        if (value == null || value.toString().isBlank()) {
-            ps.setObject(index, null);
-            return;
-        }
-
-        String dataType = getColumnType(tableName, columnName);
-
-        String strValue = value.toString();
-
-        if (dataType == null) {
-            ps.setString(index, strValue);
-            return;
-        }
-
-        switch (dataType) {
-
-            case "date" -> ps.setDate(
-                    index,
-                    java.sql.Date.valueOf(strValue)
-            );
-
-            case "timestamp without time zone",
-                 "timestamp with time zone",
-                 "timestamp" -> ps.setTimestamp(
-                    index,
-                    java.sql.Timestamp.valueOf(strValue)
-            );
-
-            case "bigint" -> ps.setLong(
-                    index,
-                    Long.parseLong(strValue)
-            );
-
-            case "integer" -> ps.setInt(
-                    index,
-                    Integer.parseInt(strValue)
-            );
-
-            case "boolean" -> ps.setBoolean(
-                    index,
-                    Boolean.parseBoolean(strValue)
-            );
-
-            default -> ps.setString(index, strValue);
-        }
-    }
 
     public String buildPatientName(Patient patient) {
         if (patient == null) {
@@ -208,8 +122,8 @@ public class PatientMergeSupportService {
     public String safe(String value) {
         return value == null ? "" : value;
     }
-    public List<String> splitColumns(String columns) {
 
+    public List<String> splitColumns(String columns) {
         if (columns == null || columns.isBlank()) {
             return List.of();
         }
@@ -218,6 +132,7 @@ public class PatientMergeSupportService {
                 .stream()
                 .map(String::trim)
                 .filter(s -> !s.isBlank())
+                .peek(this::validateIdentifier)
                 .toList();
     }
 
@@ -237,8 +152,7 @@ public class PatientMergeSupportService {
                             ? ""
                             : value.toString().trim();
                 })
-                .reduce((a, b) -> a + "|" + b)
-                .orElse("");
+                .collect(Collectors.joining("|"));
     }
 
     private Object getValueIgnoreCase(

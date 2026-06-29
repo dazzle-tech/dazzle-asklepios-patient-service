@@ -4,26 +4,27 @@ import com.dazzle.asklepios.domain.PatientMergeTableConfig;
 import com.dazzle.asklepios.domain.enumeration.PatientMergeCategory;
 import com.dazzle.asklepios.repository.PatientMergeTableConfigRepository;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeTableConfigSaveDTO;
+import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeDataReader;
+import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeSupportService;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeAvailableTableVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeTableConfigVM;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 
 @Service
 public class PatientMergeConfigService {
     private final PatientMergeTableConfigRepository tableConfigRepository;
     private final PatientMergeSupportService supportService;
-    private final JdbcTemplate jdbcTemplate;
-
-    public PatientMergeConfigService(PatientMergeTableConfigRepository tableConfigRepository, PatientMergeSupportService supportService, JdbcTemplate jdbcTemplate) {
+    private final PatientMergeDataReader dataReader;
+    public PatientMergeConfigService(PatientMergeTableConfigRepository tableConfigRepository, PatientMergeSupportService supportService, PatientMergeDataReader dataReader) {
         this.tableConfigRepository = tableConfigRepository;
         this.supportService = supportService;
-        this.jdbcTemplate = jdbcTemplate;
+        this.dataReader = dataReader;
     }
 
     @Transactional(readOnly = true)
@@ -39,19 +40,7 @@ public class PatientMergeConfigService {
     private PatientMergeTableConfigVM toVm(
             PatientMergeTableConfig config
     ) {
-
-        List<String> availableColumns =
-                jdbcTemplate.queryForList(
-                        """
-                        SELECT column_name
-                        FROM information_schema.columns
-                        WHERE table_schema = 'public'
-                          AND table_name = ?
-                        ORDER BY ordinal_position
-                        """,
-                        String.class,
-                        config.getTableName()
-                );
+        List<String> availableColumns = dataReader.getTableColumns(config.getTableName());
 
         return new PatientMergeTableConfigVM(
                 config.getId(),
@@ -76,17 +65,7 @@ public class PatientMergeConfigService {
     @Transactional(readOnly = true)
     public List<PatientMergeAvailableTableVM> getAvailablePatientTables() {
 
-        List<String> patientTables =
-                jdbcTemplate.queryForList(
-                        """
-                        SELECT DISTINCT table_name
-                        FROM information_schema.columns
-                        WHERE table_schema = 'public'
-                          AND column_name = 'patient_id'
-                        ORDER BY table_name
-                        """,
-                        String.class
-                );
+        List<String> patientTables = dataReader.getTablesByColumnName("patient_id");
 
         List<String> configuredTables =
                 tableConfigRepository.findAll()
@@ -103,25 +82,16 @@ public class PatientMergeConfigService {
                 )
                 .toList();
     }
-    @jakarta.transaction.Transactional
+
+    @Transactional
     public Integer syncMissingTables() {
 
-        List<String> patientTables = jdbcTemplate.queryForList(
-                """
-                SELECT DISTINCT table_name
-                FROM information_schema.columns
-                WHERE table_schema = 'public'
-                  AND column_name = 'patient_id'
-                """,
-                String.class
-        );
+        List<String> patientTables = dataReader.getTablesByColumnName("patient_id");
 
         int inserted = 0;
 
         for (String tableName : patientTables) {
-
-            boolean exists =
-                    tableConfigRepository.existsByTableName(tableName);
+            boolean exists = tableConfigRepository.existsByTableName(tableName);
 
             if (exists) {
                 continue;
@@ -176,29 +146,18 @@ public class PatientMergeConfigService {
             return null;
         }
 
-        return columns.stream()
+        String result = columns.stream()
                 .filter(column -> column != null && !column.isBlank())
                 .map(String::trim)
                 .distinct()
-                .reduce((a, b) -> a + "," + b)
-                .orElse(null);
+                .collect(Collectors.joining(","));
+
+        return result.isBlank() ? null : result;
     }
 
     @Transactional(readOnly = true)
     public List<String> getTableColumns(String tableName) {
 
-        supportService.validateIdentifier(tableName);
-
-        return jdbcTemplate.queryForList(
-                """
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_schema = 'public'
-                  AND table_name = ?
-                ORDER BY ordinal_position
-                """,
-                String.class,
-                tableName
-        );
+        return dataReader.getTableColumns(tableName);
     }
 }

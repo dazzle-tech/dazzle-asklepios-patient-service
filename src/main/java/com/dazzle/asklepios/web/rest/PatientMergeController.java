@@ -7,7 +7,6 @@ import com.dazzle.asklepios.service.patientMerge.PatientMergeAnalysisService;
 import com.dazzle.asklepios.service.patientMerge.PatientMergeConfigService;
 import com.dazzle.asklepios.service.patientMerge.PatientMergeExecuteService;
 import com.dazzle.asklepios.service.patientMerge.PatientMergeSummaryService;
-import com.dazzle.asklepios.service.patientMerge.PatientMergeSupportService;
 import com.dazzle.asklepios.service.patientMerge.PatientMergeTransactionService;
 import com.dazzle.asklepios.service.patientMerge.PatientMergeUndoService;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeAvailableTableVM;
@@ -33,7 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/patient/patient-merge")
+@RequestMapping("/api/patient")
 public class PatientMergeController {
 
     private static final Logger LOG =
@@ -55,7 +54,7 @@ public class PatientMergeController {
         this.patientMergeConfigService = patientMergeConfigService;
     }
 
-    @GetMapping("/preview/{fromPatientId}/{toPatientId}")
+    @GetMapping("/patient-merge/preview/{fromPatientId}/{toPatientId}")
     public ResponseEntity<PatientMergePreviewVM> previewMerge(
             @PathVariable @NotNull Long fromPatientId,
             @PathVariable @NotNull Long toPatientId
@@ -74,7 +73,7 @@ public class PatientMergeController {
         );
     }
 
-    @PostMapping("/summary")
+    @PostMapping("/patient-merge/summary")
     public ResponseEntity<PatientMergeSummaryVM> summarizeMerge(
             @RequestBody PatientMergeSummaryDTO request
     ) {
@@ -89,7 +88,7 @@ public class PatientMergeController {
         );
     }
 
-    @PostMapping("/execute")
+    @PostMapping("/patient-merge/execute")
     public ResponseEntity<PatientMergeExecuteVM> executeMerge(
             @RequestBody PatientMergeExecuteDTO request
     ) {
@@ -104,7 +103,7 @@ public class PatientMergeController {
         );
     }
 
-    @PostMapping("/{mergeLogId}/undo")
+    @PostMapping("/patient-merge/{mergeLogId}/undo")
     public ResponseEntity<PatientMergeUndoVM> undoMerge(
             @PathVariable @NotNull Long mergeLogId
     ) {
@@ -118,7 +117,7 @@ public class PatientMergeController {
         );
     }
 
-    @GetMapping("/transactions")
+    @GetMapping("/patient-merge/transactions")
     public ResponseEntity<List<PatientMergeTransactionVM>> getMergeTransactions(
             @RequestParam(required = false) Long patientId
     ) {
@@ -132,7 +131,7 @@ public class PatientMergeController {
         );
     }
 
-    @GetMapping("/transactions/{mergeLogId}/changes")
+    @GetMapping("/patient-merge/transactions/{mergeLogId}/changes")
     public ResponseEntity<PatientMergeTransactionChangesVM> getMergeTransactionChanges(
             @PathVariable @NotNull Long mergeLogId
     ) {
@@ -146,7 +145,7 @@ public class PatientMergeController {
         );
     }
 
-    @PostMapping("/config/sync-missing-tables")
+    @PostMapping("/patient-merge/config/sync-missing-tables")
     public ResponseEntity<Integer> syncMissingTables() {
 
         Integer inserted =
@@ -155,7 +154,7 @@ public class PatientMergeController {
         return ResponseEntity.ok(inserted);
     }
 
-    @GetMapping("/config/available-patient-tables")
+    @GetMapping("/patient-merge/config/available-patient-tables")
     public ResponseEntity<List<PatientMergeAvailableTableVM>>
     getAvailablePatientTables() {
 
@@ -164,7 +163,7 @@ public class PatientMergeController {
         );
     }
 
-    @GetMapping("/config/tables")
+    @GetMapping("/patient-merge/config/tables")
     public ResponseEntity<List<PatientMergeTableConfigVM>>
     getTableConfigs() {
 
@@ -172,7 +171,7 @@ public class PatientMergeController {
                 patientMergeConfigService.getTableConfigs()
         );
     }
-    @PostMapping("/config/tables")
+    @PostMapping("/patient-merge/config/tables")
     public ResponseEntity<PatientMergeTableConfigVM> saveTableConfig(
             @RequestBody PatientMergeTableConfigSaveDTO dto
     ) {
@@ -181,7 +180,7 @@ public class PatientMergeController {
         );
     }
 
-    @GetMapping("/config/table-columns/{tableName}")
+    @GetMapping("/patient-merge/config/table-columns/{tableName}")
     public ResponseEntity<List<String>> getTableColumns(
             @PathVariable String tableName
     ) {

@@ -5,8 +5,11 @@ import com.dazzle.asklepios.domain.PatientMergeFieldConfig;
 import com.dazzle.asklepios.domain.PatientMergeLog;
 import com.dazzle.asklepios.domain.PatientMergeMasterDecision;
 import com.dazzle.asklepios.domain.enumeration.MergeDecision;
+import com.dazzle.asklepios.domain.enumeration.MergedStatus;
 import com.dazzle.asklepios.repository.PatientMergeLogRepository;
 import com.dazzle.asklepios.repository.PatientMergeMasterDecisionRepository;
+import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeRecordTransferService;
+import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeSupportService;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeTransactionChangesVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeTransactionVM;
 import org.slf4j.Logger;
@@ -26,15 +29,17 @@ public class PatientMergeTransactionService {
     private final PatientMergeLogRepository patientMergeLogRepository;
     private final PatientMergeMasterDecisionRepository patientMergeMasterDecisionRepository;
     private final PatientMergeSupportService supportService;
+    private final PatientMergeRecordTransferService recordTransferService;
 
     public PatientMergeTransactionService(
             PatientMergeLogRepository patientMergeLogRepository,
             PatientMergeMasterDecisionRepository patientMergeMasterDecisionRepository,
-            PatientMergeSupportService supportService
+            PatientMergeSupportService supportService, PatientMergeRecordTransferService recordTransferService
     ) {
         this.patientMergeLogRepository = patientMergeLogRepository;
         this.patientMergeMasterDecisionRepository = patientMergeMasterDecisionRepository;
         this.supportService = supportService;
+        this.recordTransferService = recordTransferService;
     }
 
     public List<PatientMergeTransactionVM> getTransactions(
@@ -145,10 +150,8 @@ public class PatientMergeTransactionService {
         );
     }
 
-    private Boolean canUndo(
-            PatientMergeLog log
-    ) {
-        return "MERGED".equals(log.getMergeStatus());
+    private Boolean canUndo(PatientMergeLog log) {
+        return log.getMergeStatus() == MergedStatus.MERGED;
     }
 
     private boolean isFieldChange(
@@ -191,7 +194,7 @@ public class PatientMergeTransactionService {
                         ? decision.getFinalDecision().name()
                         : null,
 
-                supportService.getColumnType(
+                recordTransferService.getColumnType(
                         decision.getTableName(),
                         decision.getFieldName()
                 ),

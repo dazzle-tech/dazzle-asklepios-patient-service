@@ -12,5 +12,5 @@ public interface PatientMergeTableConfigRepository extends JpaRepository<Patient
 
     List<PatientMergeTableConfig> findByEnabledTrue();
     boolean existsByTableName(String tableName);
-    List<PatientMergeTableConfig> findAll();
+    Optional<PatientMergeTableConfig> findByTableNameAndEnabledTrue(String tableName);
 }

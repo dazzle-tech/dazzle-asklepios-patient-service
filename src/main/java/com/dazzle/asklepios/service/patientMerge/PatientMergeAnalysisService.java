@@ -11,12 +11,14 @@ import com.dazzle.asklepios.repository.PatientMergeTableConfigRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeAutoTransferDTO;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeConflictDTO;
+import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeDataReader;
+import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeRecordTransferService;
+import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeSupportService;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergePreviewVM;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +27,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
@@ -37,21 +40,22 @@ public class PatientMergeAnalysisService {
     private final PatientMergeTableConfigRepository tableConfigRepository;
     private final PatientMergeFieldConfigRepository fieldConfigRepository;
     private final PatientMergeSupportService supportService;
-    private final JdbcTemplate jdbcTemplate;
+    private final PatientMergeDataReader dataReader;
+    private final PatientMergeRecordTransferService recordTransferService;
 
     public PatientMergeAnalysisService(
             PatientRepository patientRepository,
             PatientMergeTableConfigRepository tableConfigRepository,
             PatientMergeFieldConfigRepository fieldConfigRepository,
-            PatientMergeSupportService supportService,
-            JdbcTemplate jdbcTemplate
+            PatientMergeSupportService supportService, PatientMergeDataReader dataReader, PatientMergeRecordTransferService recordTransferService
     ) {
         this.patientRepository = patientRepository;
         this.tableConfigRepository = tableConfigRepository;
         this.fieldConfigRepository = fieldConfigRepository;
         this.supportService = supportService;
-        this.jdbcTemplate = jdbcTemplate;
 
+        this.dataReader = dataReader;
+        this.recordTransferService = recordTransferService;
     }
     /**
      * Builds a merge preview between two patients.
@@ -165,8 +169,8 @@ public class PatientMergeAnalysisService {
             List<PatientMergeConflictDTO> conflicts,
             List<PatientMergeAutoTransferDTO> autoTransfers
     ) {
-        Map<String, Object> fromRow = loadPatientRow(tableConfig, fromPatientId);
-        Map<String, Object> toRow = loadPatientRow(tableConfig, toPatientId);
+        Map<String, Object> fromRow = dataReader.loadPatientRow(tableConfig, fromPatientId);
+        Map<String, Object> toRow = dataReader.loadPatientRow(tableConfig, toPatientId);
 
         if (fromRow == null || toRow == null) {
             LOG.debug(
@@ -207,9 +211,17 @@ public class PatientMergeAnalysisService {
             Long toPatientId,
             List<PatientMergeAutoTransferDTO> autoTransfers
     ) {
-        List<Map<String, Object>> fromRows = loadRows(tableConfig, fromPatientId);
-        List<Map<String, Object>> toRows = loadRows(tableConfig, toPatientId);
+        List<Map<String, Object>> fromRows = dataReader.loadRows(tableConfig, fromPatientId);
+        List<Map<String, Object>> toRows = dataReader.loadRows(tableConfig, toPatientId);
+
         List<String> matchKeyColumns = splitColumns(tableConfig.getMatchKeyColumns());
+
+        Map<String, Map<String, Object>> toRowsByKey = toRows.stream()
+                .collect(Collectors.toMap(
+                        row -> buildMatchKey(row, matchKeyColumns),
+                        row -> row,
+                        (existing, replacement) -> existing
+                ));
 
         LOG.debug(
                 "Analyzing child table. tableName={}, fromRows={}, toRows={}, matchKeyColumns={}",
@@ -221,7 +233,8 @@ public class PatientMergeAnalysisService {
 
         for (Map<String, Object> fromRow : fromRows) {
             String matchKey = buildMatchKey(fromRow, matchKeyColumns);
-            Map<String, Object> toRow = findMatchingRow(toRows, matchKey, matchKeyColumns);
+
+            Map<String, Object> toRow = toRowsByKey.get(matchKey);
 
             Long fromRecordId = supportService.toLong(fromRow.get(tableConfig.getPrimaryKeyColumnName()));
             Long toRecordId = toRow != null
@@ -245,7 +258,6 @@ public class PatientMergeAnalysisService {
                     toRecordId,
                     matchKey
             );
-
         }
     }
 
@@ -333,7 +345,7 @@ public class PatientMergeAnalysisService {
                         fromStr,
                         toStr,
                         suggestedDecision,
-                        supportService.getColumnType(
+                        recordTransferService.getColumnType(
                                 tableConfig.getTableName(),
                                 fieldConfig.getFieldName()
                         ),
@@ -379,7 +391,7 @@ public class PatientMergeAnalysisService {
                         "",
                         fromStr,
                         MergeDecision.TAKE_FROM,
-                        supportService.getColumnType(
+                        recordTransferService.getColumnType(
                                 tableConfig.getTableName(),
                                 fieldConfig.getFieldName()
                         ),
@@ -439,20 +451,7 @@ public class PatientMergeAnalysisService {
      * for tables configured with auto-discovery enabled.
      */
     private List<PatientMergeFieldConfig> autoDiscoverFields(PatientMergeTableConfig tableConfig) {
-        supportService.validateIdentifier(tableConfig.getTableName());
-
-        String sql = """
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_name = ?
-                ORDER BY ordinal_position
-                """;
-
-        List<String> columns = jdbcTemplate.queryForList(
-                sql,
-                String.class,
-                tableConfig.getTableName()
-        );
+        List<String> columns = dataReader.loadColumnNames(tableConfig);
 
         List<String> excluded = splitColumns(tableConfig.getExcludedColumns());
         List<PatientMergeFieldConfig> result = new ArrayList<>();
@@ -486,49 +485,6 @@ public class PatientMergeAnalysisService {
         );
 
         return result;
-    }
-
-    private Map<String, Object> loadPatientRow(PatientMergeTableConfig config, Long patientId) {
-        supportService.validateIdentifier(config.getTableName());
-        supportService.validateIdentifier(config.getPrimaryKeyColumnName());
-
-        String sql = "SELECT * FROM " + config.getTableName()
-                + " WHERE " + config.getPrimaryKeyColumnName() + " = ?";
-
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, patientId);
-        if (rows.isEmpty()) {
-            LOG.debug(
-                    "Patient row not found. tableName={}, patientId={}",
-                    config.getTableName(),
-                    patientId
-            );
-            return null;
-        }
-
-        return rows.isEmpty() ? null : rows.get(0);
-    }
-
-    private List<Map<String, Object>> loadRows(
-            PatientMergeTableConfig config,
-            Long patientId
-    ) {
-        supportService.validateIdentifier(config.getTableName());
-        supportService.validateIdentifier(config.getPatientColumnName());
-
-        String sql = "SELECT * FROM " + config.getTableName()
-                + " WHERE " + config.getPatientColumnName() + " = ?";
-
-        List<Map<String, Object>> rows =
-                jdbcTemplate.queryForList(sql, patientId);
-
-        LOG.debug(
-                "Loaded patient records. tableName={}, patientId={}, records={}",
-                config.getTableName(),
-                patientId,
-                rows.size()
-        );
-
-        return rows;
     }
 
     private Patient findPatientOrThrow(Long patientId, String message) {
@@ -611,28 +567,8 @@ public class PatientMergeAnalysisService {
 
         return key.toString();
     }
-    /**
-     * Finds a target record with the same configured match key.
-     */
-    private Map<String, Object> findMatchingRow(
-            List<Map<String, Object>> rows,
-            String matchKey,
-            List<String> matchKeyColumns
-    ) {
-        if (matchKeyColumns.isEmpty()) {
-            return null;
-        }
 
-        for (Map<String, Object> row : rows) {
-            String rowKey = buildMatchKey(row, matchKeyColumns);
 
-            if (matchKey.equals(rowKey)) {
-                return row;
-            }
-        }
-
-        return null;
-    }
     /**
      * Converts database column names to user-friendly labels.
      * Example: first_name -> First Name

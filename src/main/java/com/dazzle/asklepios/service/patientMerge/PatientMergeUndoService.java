@@ -13,6 +13,8 @@ import com.dazzle.asklepios.repository.PatientMergeLogRepository;
 import com.dazzle.asklepios.repository.PatientMergeMasterDecisionRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeRecordTransferService;
+import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeSupportService;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeUndoVM;
@@ -39,6 +41,7 @@ public class PatientMergeUndoService {
     private final PatientRepository patientRepository;
     private final PatientMergeSupportService supportService;
     private final JdbcTemplate jdbcTemplate;
+    private final PatientMergeRecordTransferService recordTransferService;
 
     public PatientMergeUndoService(
             PatientMergeLogRepository patientMergeLogRepository,
@@ -46,7 +49,7 @@ public class PatientMergeUndoService {
             PatientMergeItemLogRepository patientMergeItemLogRepository,
             PatientRepository patientRepository,
             PatientMergeSupportService supportService,
-            JdbcTemplate jdbcTemplate
+            JdbcTemplate jdbcTemplate, PatientMergeRecordTransferService recordTransferService
     ) {
         this.patientMergeLogRepository = patientMergeLogRepository;
         this.patientMergeMasterDecisionRepository = patientMergeMasterDecisionRepository;
@@ -54,6 +57,7 @@ public class PatientMergeUndoService {
         this.patientRepository = patientRepository;
         this.supportService = supportService;
         this.jdbcTemplate = jdbcTemplate;
+        this.recordTransferService = recordTransferService;
     }
 
     public PatientMergeUndoVM undoMerge(Long mergeLogId) {
@@ -107,14 +111,13 @@ public class PatientMergeUndoService {
     }
 
     private void validateUndoAllowed(PatientMergeLog mergeLog) {
-        if (!"MERGED".equals(mergeLog.getMergeStatus())) {
+        if (mergeLog.getMergeStatus() != MergedStatus.MERGED) {
             throw new BadRequestAlertException(
                     "Only MERGED records can be undo",
                     "PatientMerge",
                     "merge.not.active"
             );
         }
-
     }
 
     private int restoreFieldChanges(PatientMergeLog mergeLog) {
@@ -193,7 +196,7 @@ public class PatientMergeUndoService {
         jdbcTemplate.update(connection -> {
             PreparedStatement ps = connection.prepareStatement(sql);
 
-            supportService.setPreparedStatementValue(
+            recordTransferService.setPreparedStatementValue(
                     ps,
                     1,
                     decision.getToValue(),

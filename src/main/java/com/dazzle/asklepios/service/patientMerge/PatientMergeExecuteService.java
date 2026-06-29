@@ -16,20 +16,19 @@ import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeAutoTransferDTO;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeDecisionDTO;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeExecuteDTO;
+import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeRecordTransferService;
+import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeSupportService;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeExecuteVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergePreviewVM;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
-import java.sql.PreparedStatement;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -52,7 +51,7 @@ public class PatientMergeExecuteService {
     private final PatientMergeTableConfigRepository tableConfigRepository;
     private final PatientMergeAnalysisService analysisService;
     private final PatientMergeSupportService supportService;
-    private final JdbcTemplate jdbcTemplate;
+    private final PatientMergeRecordTransferService recordTransferService;
 
     public PatientMergeExecuteService(
             PatientRepository patientRepository,
@@ -60,8 +59,7 @@ public class PatientMergeExecuteService {
             PatientMergeMasterDecisionRepository patientMergeMasterDecisionRepository,
             PatientMergeTableConfigRepository tableConfigRepository,
             PatientMergeAnalysisService analysisService,
-            PatientMergeSupportService supportService,
-            JdbcTemplate jdbcTemplate
+            PatientMergeSupportService supportService, PatientMergeRecordTransferService recordTransferService
     ) {
         this.patientRepository = patientRepository;
         this.patientMergeLogRepository = patientMergeLogRepository;
@@ -69,7 +67,7 @@ public class PatientMergeExecuteService {
         this.tableConfigRepository = tableConfigRepository;
         this.analysisService = analysisService;
         this.supportService = supportService;
-        this.jdbcTemplate = jdbcTemplate;
+        this.recordTransferService = recordTransferService;
     }
 
     public PatientMergeExecuteVM executeMerge(
@@ -175,6 +173,7 @@ public class PatientMergeExecuteService {
 
         return saved;
     }
+
 
     private String generateTransactionNumber() {
 
@@ -358,52 +357,12 @@ public class PatientMergeExecuteService {
             Long recordId,
             String selectedValue
     ) {
-        if (tableName == null
-                || fieldName == null
-                || recordId == null) {
-
-            return;
-        }
-
-        supportService.validateIdentifier(tableName);
-        supportService.validateIdentifier(fieldName);
-
-        PatientMergeTableConfig config =
-                supportService.findTableConfig(tableName);
-
-        supportService.validateIdentifier(
-                config.getPrimaryKeyColumnName()
-        );
-
-        String sql =
-                "UPDATE " + tableName
-                        + " SET " + fieldName + " = ?"
-                        + " WHERE " + config.getPrimaryKeyColumnName() + " = ?";
-
-        LOG.debug(
-                "Updating field value. tableName={}, fieldName={}, recordId={}",
+        recordTransferService.updateFieldValue(
                 tableName,
                 fieldName,
-                recordId
+                recordId,
+                selectedValue
         );
-
-        jdbcTemplate.update(connection -> {
-
-            PreparedStatement ps =
-                    connection.prepareStatement(sql);
-
-            supportService.setPreparedStatementValue(
-                    ps,
-                    1,
-                    selectedValue,
-                    tableName,
-                    fieldName
-            );
-
-            ps.setLong(2, recordId);
-
-            return ps;
-        });
     }
 
     private String resolveSelectedValue(
@@ -429,11 +388,7 @@ public class PatientMergeExecuteService {
         PatientMergeTableConfig config =
                 supportService.findTableConfig(tableName);
 
-        supportService.validateIdentifier(config.getTableName());
-        supportService.validateIdentifier(config.getPrimaryKeyColumnName());
-        supportService.validateIdentifier(config.getPatientColumnName());
-
-        if (shouldSkipTransfer(config, fromRecordId, toPatientId)) {
+        if (recordTransferService.shouldSkipTransfer(config, fromRecordId, toPatientId)) {
             LOG.debug(
                     "Skipping duplicate record transfer. tableName={}, recordId={}",
                     config.getTableName(),
@@ -442,89 +397,24 @@ public class PatientMergeExecuteService {
             return;
         }
 
-        saveMovedItemLog(
-                mergeLogId,
+        Long oldPatientId =
+                recordTransferService.getRecordPatientId(config, fromRecordId);
+        recordTransferService.moveRecordToTarget(
                 config,
                 fromRecordId,
                 toPatientId
         );
-
-        String sql =
-                "UPDATE " + config.getTableName()
-                        + " SET " + config.getPatientColumnName() + " = ?"
-                        + " WHERE " + config.getPrimaryKeyColumnName() + " = ?";
-
-        jdbcTemplate.update(sql, toPatientId, fromRecordId);
-    }
-
-    private void saveMovedItemLog(
-            Long mergeLogId,
-            PatientMergeTableConfig config,
-            Long recordId,
-            Long newPatientId
-    ) {
-        Long oldPatientId = jdbcTemplate.queryForObject(
-                "SELECT " + config.getPatientColumnName()
-                        + " FROM " + config.getTableName()
-                        + " WHERE " + config.getPrimaryKeyColumnName() + " = ?",
-                Long.class,
-                recordId
-        );
-
-        Object recordUpdatedAt =
-                getRecordUpdatedAt(config, recordId);
-
-        String sql = """
-                INSERT INTO patient_merge_item_logs
-                (
-                    merge_log_id,
-                    entity_name,
-                    table_name,
-                    record_id,
-                    old_patient_id,
-                    new_patient_id
-                )
-                VALUES (?, ?, ?, ?, ?, ?)
-                """;
-
-        jdbcTemplate.update(
-                sql,
+        recordTransferService.saveMovedItemLog(
                 mergeLogId,
-                config.getEntityName(),
-                config.getTableName(),
-                recordId,
+                config,
+                fromRecordId,
                 oldPatientId,
-                newPatientId
-
+                toPatientId
         );
+
+
     }
 
-    private Object getRecordUpdatedAt(
-            PatientMergeTableConfig config,
-            Long recordId
-    ) {
-        if (config.getUpdatedAtColumnName() == null
-                || config.getUpdatedAtColumnName().isBlank()) {
-
-            return null;
-        }
-
-        supportService.validateIdentifier(
-                config.getUpdatedAtColumnName()
-        );
-
-        List<Object> result = jdbcTemplate.query(
-                "SELECT " + config.getUpdatedAtColumnName()
-                        + " FROM " + config.getTableName()
-                        + " WHERE " + config.getPrimaryKeyColumnName() + " = ?",
-                (rs, rowNum) -> rs.getObject(1),
-                recordId
-        );
-
-        return result.isEmpty()
-                ? null
-                : result.get(0);
-    }
 
     private void transferEmrRecords(
             Long fromPatientId,
@@ -556,15 +446,9 @@ public class PatientMergeExecuteService {
             Long toPatientId,
             Long mergeLogId
     ) {
-        supportService.validateIdentifier(config.getTableName());
-        supportService.validateIdentifier(config.getPrimaryKeyColumnName());
-        supportService.validateIdentifier(config.getPatientColumnName());
-
         List<Map<String, Object>> fromRecords =
-                jdbcTemplate.queryForList(
-                        "SELECT " + config.getPrimaryKeyColumnName()
-                                + " FROM " + config.getTableName()
-                                + " WHERE " + config.getPatientColumnName() + " = ?",
+                recordTransferService.getRecordIdsByPatientId(
+                        config,
                         fromPatientId
                 );
 
@@ -655,105 +539,5 @@ public class PatientMergeExecuteService {
     }
 
 
-    private List<String> splitColumns(String columns) {
-        if (columns == null || columns.isBlank()) {
-            return List.of();
-        }
 
-        List<String> result = new ArrayList<>();
-
-        for (String column : columns.split(",")) {
-            String trimmed = column.trim();
-
-            if (!trimmed.isBlank()) {
-                supportService.validateIdentifier(trimmed);
-                result.add(trimmed);
-            }
-        }
-
-        return result;
-    }
-
-    private String buildMatchKey(
-            Map<String, Object> row,
-            List<String> columns
-    ) {
-        if (row == null || columns == null || columns.isEmpty()) {
-            return "";
-        }
-
-        return columns.stream()
-                .map(column -> {
-                    Object value =
-                            getValueIgnoreCase(row, column);
-
-                    return value == null
-                            ? ""
-                            : value.toString().trim();
-                })
-                .reduce((a, b) -> a + "|" + b)
-                .orElse("");
-    }
-
-    private Object getValueIgnoreCase(
-            Map<String, Object> row,
-            String column
-    ) {
-        if (row == null || column == null) {
-            return null;
-        }
-
-        if (row.containsKey(column)) {
-            return row.get(column);
-        }
-
-        for (String key : row.keySet()) {
-            if (key.equalsIgnoreCase(column)) {
-                return row.get(key);
-            }
-        }
-
-        return null;
-    }
-
-    private boolean shouldSkipTransfer(
-            PatientMergeTableConfig config,
-            Long fromRecordId,
-            Long toPatientId
-    ) {
-        List<String> matchKeyColumns =
-                splitColumns(config.getMatchKeyColumns());
-
-        if (matchKeyColumns.isEmpty()) {
-            return false;
-        }
-
-        Map<String, Object> fromRecord =
-                jdbcTemplate.queryForMap(
-                        "SELECT * FROM " + config.getTableName()
-                                + " WHERE " + config.getPrimaryKeyColumnName() + " = ?",
-                        fromRecordId
-                );
-
-        List<Map<String, Object>> toRecords =
-                jdbcTemplate.queryForList(
-                        "SELECT * FROM " + config.getTableName()
-                                + " WHERE " + config.getPatientColumnName() + " = ?",
-                        toPatientId
-                );
-
-        String fromMatchKey =
-                buildMatchKey(fromRecord, matchKeyColumns);
-
-        for (Map<String, Object> toRecord : toRecords) {
-            String toMatchKey =
-                    buildMatchKey(toRecord, matchKeyColumns);
-
-            if (fromMatchKey.equals(toMatchKey)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
 }

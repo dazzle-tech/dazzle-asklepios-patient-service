@@ -12,6 +12,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
@@ -65,8 +66,10 @@ public class PatientMergeLog  implements Serializable {
     @Column(name = "undo_at")
     private Instant undoAt;
 
+    @NotNull
     @Column(name = "reason", length = 500)
     private String reason;
+    @NotNull
     @Column(name = "transaction_number", unique = true, length = 30)
     private String transactionNumber;
 }
