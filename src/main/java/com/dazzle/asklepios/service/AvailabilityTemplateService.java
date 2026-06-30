@@ -26,6 +26,7 @@ import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.service.helper.ServiceHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -47,6 +48,7 @@ import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class AvailabilityTemplateService {
 
     private static final Logger LOG = LoggerFactory.getLogger(AvailabilityTemplateService.class);
@@ -63,29 +65,6 @@ public class AvailabilityTemplateService {
 
     private final AvailabilityTemplateIntervalBreakRepository availabilityTemplateIntervalBreakRepository;
 
-
-    public AvailabilityTemplateService(
-            AvailabilityTemplateRepository availabilityTemplateRepository,
-            FacilityHelper facilityHelper,
-            DepartmentHelper departmentHelper,
-            ServiceHelper serviceHelper,
-            PractitionerHelper practitionerHelper,
-            AvailabilityTemplateAllowedServiceRepository availabilityTemplateAllowedServiceRepository,
-            AvailabilityTemplateIntervalRepository availabilityTemplateIntervalRepository,
-            AvailabilityTemplateLogRepository availabilityTemplateLogRepository,
-            AvailabilityTemplateIntervalBreakRepository availabilityTemplateIntervalBreakRepository
-    ) {
-        this.availabilityTemplateRepository = availabilityTemplateRepository;
-        this.facilityHelper = facilityHelper;
-        this.departmentHelper = departmentHelper;
-        this.serviceHelper = serviceHelper;
-        this.practitionerHelper = practitionerHelper;
-        this.availabilityTemplateAllowedServiceRepository = availabilityTemplateAllowedServiceRepository;
-        this.availabilityTemplateIntervalRepository = availabilityTemplateIntervalRepository;
-        this.availabilityTemplateLogRepository = availabilityTemplateLogRepository;
-
-        this.availabilityTemplateIntervalBreakRepository = availabilityTemplateIntervalBreakRepository;
-    }
 
     public AvailabilityTemplate create(AvailabilityTemplateCreateDTO dto) {
         LOG.debug("create availability template {}", dto);
@@ -489,6 +468,7 @@ public class AvailabilityTemplateService {
 
         validateWorkingDays(dto.workingDays());
         entity.setWorkingDays(dto.workingDays() == null ? List.of() : dto.workingDays());
+        entity.setAllowWalkInBooking(dto.allowWalkInBooking());
         return entity;
     }
 
@@ -534,6 +514,10 @@ public class AvailabilityTemplateService {
         if (dto.workingDays() != null) {
             validateWorkingDays(dto.workingDays());
             entity.setWorkingDays(dto.workingDays());
+        }
+
+        if(dto.allowWalkInBooking()!=null){
+            entity.setAllowWalkInBooking(dto.allowWalkInBooking());
         }
     }
 
