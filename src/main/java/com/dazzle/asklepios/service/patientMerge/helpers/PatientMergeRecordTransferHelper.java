@@ -293,7 +293,13 @@ public class PatientMergeRecordTransferHelper {
         if (matchKeyColumns.isEmpty()) {
             return false;
         }
-
+        LOG.debug(
+                "Checking skip transfer. tableName={}, fromRecordId={}, toPatientId={}, matchKeyColumns={}",
+                config.getTableName(),
+                fromRecordId,
+                toPatientId,
+                matchKeyColumns
+        );
         Map<String, Object> fromRecord =
               getRecordById(config, fromRecordId);
 
@@ -302,12 +308,32 @@ public class PatientMergeRecordTransferHelper {
 
         String fromMatchKey =
                 supportService.buildMatchKey(fromRecord, matchKeyColumns);
+        LOG.debug(
+                "From match key. tableName={}, fromRecordId={}, matchKey={}",
+                config.getTableName(),
+                fromRecordId,
+                fromMatchKey
+        );
 
         for (Map<String, Object> toRecord : toRecords) {
             String toMatchKey =
                     supportService.buildMatchKey(toRecord, matchKeyColumns);
-
+            LOG.debug(
+                    "Comparing match keys. tableName={}, fromRecordId={}, fromMatchKey={}, toRecord={}, toMatchKey={}",
+                    config.getTableName(),
+                    fromRecordId,
+                    fromMatchKey,
+                    toRecord.get(config.getPrimaryKeyColumnName()),
+                    toMatchKey
+            );
             if (fromMatchKey.equals(toMatchKey)) {
+                LOG.debug(
+                        "Skip transfer matched duplicate. tableName={}, fromRecordId={}, toRecordId={}, matchKey={}",
+                        config.getTableName(),
+                        fromRecordId,
+                        toRecord.get(config.getPrimaryKeyColumnName()),
+                        fromMatchKey
+                );
                 return true;
             }
         }

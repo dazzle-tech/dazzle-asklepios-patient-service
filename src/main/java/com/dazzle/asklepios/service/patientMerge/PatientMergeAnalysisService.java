@@ -12,8 +12,8 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeAutoTransferDTO;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeConflictDTO;
 import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeDataReader;
-import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeRecordTransferService;
-import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeSupportService;
+import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeRecordTransferHelper;
+import com.dazzle.asklepios.service.patientMerge.helpers.PatientMergeSupportHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergePreviewVM;
@@ -39,15 +39,15 @@ public class PatientMergeAnalysisService {
     private final PatientRepository patientRepository;
     private final PatientMergeTableConfigRepository tableConfigRepository;
     private final PatientMergeFieldConfigRepository fieldConfigRepository;
-    private final PatientMergeSupportService supportService;
+    private final PatientMergeSupportHelper supportService;
     private final PatientMergeDataReader dataReader;
-    private final PatientMergeRecordTransferService recordTransferService;
+    private final PatientMergeRecordTransferHelper recordTransferService;
 
     public PatientMergeAnalysisService(
             PatientRepository patientRepository,
             PatientMergeTableConfigRepository tableConfigRepository,
             PatientMergeFieldConfigRepository fieldConfigRepository,
-            PatientMergeSupportService supportService, PatientMergeDataReader dataReader, PatientMergeRecordTransferService recordTransferService
+            PatientMergeSupportHelper supportService, PatientMergeDataReader dataReader, PatientMergeRecordTransferHelper recordTransferService
     ) {
         this.patientRepository = patientRepository;
         this.tableConfigRepository = tableConfigRepository;
