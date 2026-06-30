@@ -4,7 +4,6 @@ import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.AppointmentBookingGroup;
 import com.dazzle.asklepios.domain.AppointmentWaitingList;
 import com.dazzle.asklepios.domain.AppointmentWaitingListBooking;
-import com.dazzle.asklepios.domain.AvailabilityTemplate;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.AppointmentBookingGroupSourceType;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
@@ -243,8 +242,8 @@ public class AppointmentWaitingListBookingService {
     private AppointmentWaitingListVM toVm(AppointmentWaitingList entity) {
         return new AppointmentWaitingListVM(
                 entity.getId(),
-                entity.getPatient()!=null ? entity.getPatient().getId():null,
-                entity.getPatient()!=null ?getPatientName(entity.getPatient()):null,
+                entity.getPatient() != null ? entity.getPatient().getId() : null,
+                entity.getPatient() != null ? getPatientName(entity.getPatient()) : null,
                 entity.getPatient() != null ? entity.getPatient().getMedicalRecordNumber() : null,
                 entity.getDepartmentId(),
                 entity.getServiceId(),

@@ -13,6 +13,7 @@ import com.dazzle.asklepios.repository.AppointmentWaitingListRepository;
 import com.dazzle.asklepios.repository.AvailabilityTemplateRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.appointmentWaitingList.AppointmentWaitingListCreateDTO;
+import com.dazzle.asklepios.service.dto.appointmentWaitingList.AppointmentWaitingListRemoveDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointmentWaitingList.AppointmentWaitingListVM;
@@ -57,6 +58,48 @@ public class AppointmentWaitingListService {
         waitingList.setExpectedDurationMinutes(dto.expectedDurationMinutes());
         waitingList.setReason(dto.reason());
         waitingList.setNotes(dto.notes());
+
+        waitingList = waitingListRepository.save(waitingList);
+
+        return toVm(waitingList);
+    }
+    public AppointmentWaitingListVM removeFromWaitingList(Long waitingListId, AppointmentWaitingListRemoveDTO dto) {
+        AppointmentWaitingList waitingList = waitingListRepository.findById(waitingListId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "Waiting list entry not found",
+                        "appointmentWaitingList",
+                        "waitinglistnotfound"
+                ));
+
+        if (waitingList.getStatus() != WaitingListStatus.WAITING) {
+            throw new BadRequestAlertException(
+                    "Only waiting entries can be removed",
+                    "appointmentWaitingList",
+                    "cannotremove"
+            );
+        }
+
+        if (waitingList.getBookingGroup() != null || waitingList.getBookedAt() != null) {
+            throw new BadRequestAlertException(
+                    "Booked waiting list entry cannot be removed",
+                    "appointmentWaitingList",
+                    "alreadybooked"
+            );
+        }
+
+        waitingList.setStatus(WaitingListStatus.REMOVED);
+
+        String removeReason = dto != null ? dto.reason() : null;
+
+        if (removeReason != null && !removeReason.isBlank()) {
+            String oldNotes = waitingList.getNotes();
+
+            if (oldNotes == null || oldNotes.isBlank()) {
+                waitingList.setNotes("Removed reason: " + removeReason);
+            } else {
+                waitingList.setNotes(oldNotes + "\nRemoved reason: " + removeReason);
+            }
+        }
 
         waitingList = waitingListRepository.save(waitingList);
 

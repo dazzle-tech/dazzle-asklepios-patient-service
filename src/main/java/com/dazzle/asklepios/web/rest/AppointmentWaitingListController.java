@@ -1,11 +1,11 @@
 package com.dazzle.asklepios.web.rest;
 
-import com.dazzle.asklepios.service.AppointmentWaitingListService;
 import com.dazzle.asklepios.service.AppointmentWaitingListBookingService;
+import com.dazzle.asklepios.service.AppointmentWaitingListService;
 import com.dazzle.asklepios.service.dto.appointmentWaitingList.AppointmentWaitingListBookDTO;
 import com.dazzle.asklepios.service.dto.appointmentWaitingList.AppointmentWaitingListCreateDTO;
+import com.dazzle.asklepios.service.dto.appointmentWaitingList.AppointmentWaitingListRemoveDTO;
 import com.dazzle.asklepios.web.rest.vm.appointmentWaitingList.AppointmentWaitingListVM;
-import com.dazzle.asklepios.web.rest.vm.appointmentWaitingList.WaitingListAvailableSlotGroupVM;
 import com.dazzle.asklepios.web.rest.vm.appointmentWaitingList.WaitingListAvailableSlotsByBookingModeVM;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -53,5 +53,10 @@ public class AppointmentWaitingListController {
     @PostMapping("/waiting-list/{id}/book")
     public ResponseEntity<AppointmentWaitingListVM> book(@PathVariable Long id, @Valid @RequestBody AppointmentWaitingListBookDTO dto) {
         return ResponseEntity.ok(bookingService.book(id, dto));
+    }
+
+    @PostMapping("/waiting-list/{id}/remove")
+    public ResponseEntity<AppointmentWaitingListVM> removeFromWaitingList(@PathVariable Long id, @RequestBody(required = false) AppointmentWaitingListRemoveDTO dto) {
+        return ResponseEntity.ok(waitingListService.removeFromWaitingList(id, dto));
     }
 }
