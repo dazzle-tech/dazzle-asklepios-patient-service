@@ -28,6 +28,7 @@ import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.AppointmentLogRepository;
 import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.AppointmentRescheduleRepository;
@@ -74,6 +75,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.management.Notification;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -493,13 +495,14 @@ public class AppointmentService {
 
         createAppointmentNotification(
                 savedAppointment,
-                "APPOINTMENT_CANCELLED",
+                NotificationCode.APPOINTMENT_CANCELLED,
                 notificationData,
                 recipientsByRule
         );
 
         return savedAppointment;
     }
+
     public Appointment noShow(AppointmentNoShowDTO dto) {
         Appointment appointment = getAppointment(dto.id());
 
@@ -523,7 +526,7 @@ public class AppointmentService {
         appointment.setStatus(AppointmentStatus.CONFIRMED);
         Appointment savedAppointment = appointmentRepository.save(appointment);
 
-        notifyAppointmentEvent(savedAppointment, "APPOINTMENT_CONFIRMED", null);
+        notifyAppointmentEvent(savedAppointment, NotificationCode.APPOINTMENT_CONFIRMED, null);
 
         return savedAppointment;
     }
@@ -625,7 +628,7 @@ public class AppointmentService {
         Appointment quickAppointment = appointmentRepository.save(appointment);
         PatientEncounter encounter = createEncounter(quickAppointment, department);
 
-        notifyAppointmentEvent(quickAppointment, "QUICK_APPOINTMENT_CREATED", Map.of("quickAppointment", true));
+        notifyAppointmentEvent(quickAppointment, NotificationCode.QUICK_APPOINTMENT_CREATED, Map.of("quickAppointment", true));
 
         return new AppointmentQuickAppointmentResponseVM(quickAppointment, encounter);
     }
@@ -1045,7 +1048,7 @@ public class AppointmentService {
 
         appointmentRescheduleRepository.save(appointmentReschedule);
 
-        notifyAppointmentEvent(savedNewAppointment, "APPOINTMENT_RESCHEDULED",
+        notifyAppointmentEvent(savedNewAppointment, NotificationCode.APPOINTMENT_RESCHEDULED,
                 Map.of(
                         "oldAppointmentId", savedOldAppointment.getId(),
                         "newAppointmentId", savedNewAppointment.getId(),
@@ -1520,8 +1523,8 @@ public class AppointmentService {
     }
 
     //Notification helper
-    private void notifyAppointmentEvent(Appointment appointment, String notificationCode, Map<String, Object> extraData) {
-        if (appointment == null || notificationCode == null || notificationCode.isBlank()) {
+    private void notifyAppointmentEvent(Appointment appointment, NotificationCode notificationCode, Map<String, Object> extraData) {
+        if (appointment == null || notificationCode == null) {
             return;
         }
 
@@ -1768,13 +1771,14 @@ public class AppointmentService {
     private String safe(String value) {
         return value != null ? value : "";
     }
+
     private void createAppointmentNotification(
             Appointment appointment,
-            String notificationCode,
+            NotificationCode notificationCode,
             Map<String, Object> data,
             Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule
     ) {
-        if (appointment == null || notificationCode == null || notificationCode.isBlank()) {
+        if (appointment == null || notificationCode == null) {
             return;
         }
 

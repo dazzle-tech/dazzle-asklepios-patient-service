@@ -11,6 +11,7 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.ConsultationStatus;
 import com.dazzle.asklepios.domain.enumeration.DestinationType;
 import com.dazzle.asklepios.domain.enumeration.ConsultationLevel;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.ConsultationRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -413,7 +414,7 @@ public class ConsultationService {
 
         NotificationCreateDTO notificationDTO = new NotificationCreateDTO(
                 null,
-                "CONSULTATION_CREATED",
+                NotificationCode.CONSULTATION_CREATED,
                 "en",
                 null,
                 recipientsByRule,

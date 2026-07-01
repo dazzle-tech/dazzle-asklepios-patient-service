@@ -8,6 +8,7 @@ import com.dazzle.asklepios.domain.DuplicationCandidate;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
 import com.dazzle.asklepios.domain.enumeration.SystemConfigKey;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.DuplicationCandidateRepository;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -483,7 +484,7 @@ public class PatientService {
 
         NotificationCreateDTO notificationDTO = new NotificationCreateDTO(
                 null,
-                "PATIENT_CREATE_PASSWORD",
+                NotificationCode.PATIENT_CREATE_PASSWORD,
                 language,
                 null,
                 recipientsByRule,

@@ -11,6 +11,7 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
@@ -488,7 +489,7 @@ public class DiagnosticOrderService {
         data.put("submittedBy", order.getSubmittedBy() != null ? order.getSubmittedBy() : "");
         data.put("submittedDate", order.getSubmittedDate() != null ? order.getSubmittedDate().toString() : "");
 
-        NotificationCreateDTO dto = new NotificationCreateDTO(null, "URGENT_DIAGNOSTIC_ORDER_SUBMITTED", "en", null, recipientsByRule, data, "DIAGNOSTIC_ORDER", order.getId());
+        NotificationCreateDTO dto = new NotificationCreateDTO(null, NotificationCode.URGENT_DIAGNOSTIC_ORDER_SUBMITTED, "en", null, recipientsByRule, data, "DIAGNOSTIC_ORDER", order.getId());
 
         try {
             LOG.debug(

@@ -9,6 +9,7 @@ import com.dazzle.asklepios.domain.Consultation;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.ConsultationLevel;
 import com.dazzle.asklepios.domain.enumeration.ConsultationStatus;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.ConsultationRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.consultation.ConsultationRejectDTO;
@@ -353,7 +354,7 @@ public class ConsultationPortalService {
 
         notifyRequestingDepartmentUsersForConsultationEvent(
                 saved,
-                "CONSULTATION_REJECTED",
+                NotificationCode.CONSULTATION_REJECTED,
                 Map.of(
                         "rejectReason", dto.reason() != null ? dto.reason() : ""
                 )
@@ -418,7 +419,7 @@ public class ConsultationPortalService {
         savedConsultations.forEach(consultation ->
                 notifyRequestingDepartmentUsersForConsultationEvent(
                         consultation,
-                        "CONSULTATION_SUBMITTED",
+                        NotificationCode.CONSULTATION_SUBMITTED,
                         Map.of()
                 )
         );
@@ -428,10 +429,10 @@ public class ConsultationPortalService {
     }
     private void notifyRequestingDepartmentUsersForConsultationEvent(
             Consultation consultation,
-            String notificationCode,
+            NotificationCode notificationCode,
             Map<String, Object> extraData
     ) {
-        if (consultation == null || notificationCode == null || notificationCode.isBlank()) {
+        if (consultation == null || notificationCode == null ) {
             return;
         }
 

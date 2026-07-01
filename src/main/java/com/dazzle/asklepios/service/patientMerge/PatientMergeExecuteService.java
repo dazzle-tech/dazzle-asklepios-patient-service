@@ -1,5 +1,10 @@
 package com.dazzle.asklepios.service.patientMerge;
 
+import com.dazzle.asklepios.client.notification.NotificationClient;
+import com.dazzle.asklepios.client.notification.dto.NotificationCreateDTO;
+import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
+import com.dazzle.asklepios.client.setup.UserClient;
+import com.dazzle.asklepios.client.setup.dto.UserDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientMergeLog;
 import com.dazzle.asklepios.domain.PatientMergeMasterDecision;
@@ -8,6 +13,7 @@ import com.dazzle.asklepios.domain.enumeration.MergeDecision;
 import com.dazzle.asklepios.domain.enumeration.MergedStatus;
 import com.dazzle.asklepios.domain.enumeration.PatientMergeCategory;
 import com.dazzle.asklepios.domain.enumeration.PatientStatus;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.PatientMergeLogRepository;
 import com.dazzle.asklepios.repository.PatientMergeMasterDecisionRepository;
 import com.dazzle.asklepios.repository.PatientMergeTableConfigRepository;
@@ -30,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -53,6 +60,8 @@ public class PatientMergeExecuteService {
     private final PatientMergeAnalysisService analysisService;
     private final PatientMergeSupportHelper supportService;
     private final PatientMergeRecordTransferHelper recordTransferService;
+    private final NotificationClient notificationClient;
+    private final UserClient userClient;
 
     public PatientMergeExecuteService(
             PatientRepository patientRepository,
@@ -60,8 +69,8 @@ public class PatientMergeExecuteService {
             PatientMergeMasterDecisionRepository patientMergeMasterDecisionRepository,
             PatientMergeTableConfigRepository tableConfigRepository,
             PatientMergeAnalysisService analysisService,
-            PatientMergeSupportHelper supportService, PatientMergeRecordTransferHelper recordTransferService
-    ) {
+            PatientMergeSupportHelper supportService, PatientMergeRecordTransferHelper recordTransferService,
+            NotificationClient notificationClient, UserClient userClient) {
         this.patientRepository = patientRepository;
         this.patientMergeLogRepository = patientMergeLogRepository;
         this.patientMergeMasterDecisionRepository = patientMergeMasterDecisionRepository;
@@ -69,6 +78,8 @@ public class PatientMergeExecuteService {
         this.analysisService = analysisService;
         this.supportService = supportService;
         this.recordTransferService = recordTransferService;
+        this.notificationClient = notificationClient;
+        this.userClient = userClient;
     }
 
     public PatientMergeExecuteVM executeMerge(
@@ -132,6 +143,11 @@ public class PatientMergeExecuteService {
                 fromPatient.getId(),
                 toPatient.getId()
         );
+        notifyCurrentUserForPatientMergeCompleted(
+                mergeLog,
+                fromPatient,
+                toPatient
+        );
 
         return new PatientMergeExecuteVM(
                 mergeLog.getId(),
@@ -141,7 +157,111 @@ public class PatientMergeExecuteService {
                 mergeLog.getTransactionNumber()
         );
     }
+    private void notifyCurrentUserForPatientMergeCompleted(
+            PatientMergeLog mergeLog,
+            Patient sourcePatient,
+            Patient targetPatient
+    ) {
+        if (mergeLog == null || sourcePatient == null || targetPatient == null) {
+            return;
+        }
 
+        Long currentUserId = currentUserId();
+
+        if (currentUserId == null) {
+            LOG.warn(
+                    "Skip patient merge notification because current user id is missing. mergeLogId={}",
+                    mergeLog.getId()
+            );
+            return;
+        }
+
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
+
+        recipientsByRule.put(
+                "CURRENT_USER",
+                List.of(
+                        NotificationResolvedRecipientDTO.builder()
+                                .recipientType("USER")
+                                .recipientId(currentUserId)
+                                .recipientName(currentUsername())
+                                .build()
+                )
+        );
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("mergeLogId", mergeLog.getId());
+        data.put("transactionNumber", mergeLog.getTransactionNumber());
+
+        data.put("sourcePatientId", sourcePatient.getId());
+        data.put("sourcePatientName", getPatientName(sourcePatient));
+
+        data.put("targetPatientId", targetPatient.getId());
+        data.put("targetPatientName", getPatientName(targetPatient));
+
+        data.put("status", "MERGED");
+
+        NotificationCreateDTO dto = new NotificationCreateDTO(
+                null,
+                NotificationCode.PATIENT_MERGE_COMPLETED,
+                "en",
+                null,
+                recipientsByRule,
+                data,
+                "PATIENT_MERGE",
+                mergeLog.getId()
+        );
+
+        try {
+            LOG.debug(
+                    "Creating patient merge completed in-app notification. mergeLogId={}, currentUserId={}",
+                    mergeLog.getId(),
+                    currentUserId
+            );
+
+            notificationClient.createNotification(dto);
+        } catch (Exception e) {
+            LOG.warn(
+                    "Failed to create patient merge completed notification. mergeLogId={}, error={}",
+                    mergeLog.getId(),
+                    e.getMessage()
+            );
+        }
+    }
+    private Long currentUserId() {
+        String login = currentUsername();
+
+        try {
+            return userClient.getUserId(login);
+        } catch (Exception e) {
+            LOG.warn("Failed to resolve current user id. login={}, error={}", login, e.getMessage());
+            return null;
+        }
+    }
+    private String getPatientName(Patient patient) {
+        if (patient == null) {
+            return "";
+        }
+
+        String firstName = patient.getFirstName() != null ? patient.getFirstName() : "";
+        String secondName = patient.getSecondName() != null ? patient.getSecondName() : "";
+        String thirdName = patient.getThirdName() != null ? patient.getThirdName() : "";
+        String lastName = patient.getLastName() != null ? patient.getLastName() : "";
+
+        String fullName = (firstName + " " + secondName + " " + thirdName + " " + lastName)
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        if (!fullName.isBlank()) {
+            return fullName;
+        }
+
+        if (patient.getEmail() != null && !patient.getEmail().isBlank()) {
+            return patient.getEmail();
+        }
+
+        return patient.getId() != null ? String.valueOf(patient.getId()) : "";
+    }
     private PatientMergeLog createMergeLog(
             Patient fromPatient,
             Patient toPatient,

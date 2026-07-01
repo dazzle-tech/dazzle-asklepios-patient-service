@@ -19,6 +19,9 @@ public interface DepartmentClient {
     @GetMapping("/api/setup/department/{id}")
     DepartmentDTO getDepartment(@PathVariable("id") Long id);
 
+    @GetMapping("/api/setup/department/internalJob/{id}")
+    DepartmentDTO getDepartmentInternal(@PathVariable("id") Long id);
+
     @GetMapping("/api/setup/department/bookable-departments")
     List<DepartmentDTO> getBookableDepartments();
 }
