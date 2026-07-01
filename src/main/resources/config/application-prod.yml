@@ -80,4 +80,7 @@ patient:
       ring-buffer-size: 512
   appointment:
     template-interval-ended:
-      fixed-delay: 60000
+      cron: "0 0 7 * * *"
+      zone: "Asia/Gaza"
+      springdoc:
+      pre-loading-enabled: true

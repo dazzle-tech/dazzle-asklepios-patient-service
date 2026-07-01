@@ -17,9 +17,7 @@ service:
   asklepios-notification-service-url: http://localhost:8090
 application:
   asklepios-application-url: http://localhost:3100//#
-appointment:
-  template-interval-ended:
-    fixed-delay: 60000
+
 spring:
   devtools:
     restart:
@@ -32,9 +30,9 @@ spring:
       indent-output: true
   datasource:
     type: com.zaxxer.hikari.HikariDataSource
-    url: jdbc:postgresql://localhost:5433/ask
+    url: jdbc:postgresql://localhost:5432/test
     username: postgres
-    password: qse123H
+    password: 123456
     hikari:
       poolName: Hikari
       auto-commit: false
@@ -78,6 +76,8 @@ patient:
       job-zone: Asia/Hebron
       system-job-user: SYSTEM_JOB
       no-show-reason: Not Specified
-
-    springdoc:
+    template-interval-ended:
+      cron: "0 0 7 * * *"
+      zone: "Asia/Gaza"
+      springdoc:
       pre-loading-enabled: true

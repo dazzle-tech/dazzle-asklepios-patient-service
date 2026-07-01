@@ -95,3 +95,9 @@ patient:
       job-zone: Asia/Hebron
       system-job-user: SYSTEM_JOB
       no-show-reason: Not Specified
+    template-interval-ended:
+      cron: "0 0 7 * * *"
+      zone: "Asia/Gaza"
+      springdoc:
+      pre-loading-enabled: true
+

@@ -33,7 +33,7 @@ public class TemplateIntervalEndedNotificationScheduler {
     private final NotificationClient notificationClient;
     private final DepartmentHelper departmentHelper;
 
-    @Scheduled(fixedDelayString = "${appointment.template-interval-ended.fixed-delay:60000}")
+    @Scheduled(cron = "${appointment.template-interval-ended.cron:0 0 7 * * *}", zone = "${appointment.template-interval-ended.zone:Asia/Gaza}")
     @Transactional
     public void notifyEndedTemplateIntervals() {
         Instant now = Instant.now();
