@@ -33,7 +33,7 @@ public class TemplateIntervalEndedNotificationScheduler {
     private final NotificationClient notificationClient;
     private final DepartmentHelper departmentHelper;
 
-//    @Scheduled(fixedDelayString = "${appointment.template-interval-ended.fixed-delay:60000}")
+    @Scheduled(fixedDelayString = "${appointment.template-interval-ended.fixed-delay:60000}")
     @Transactional
     public void notifyEndedTemplateIntervals() {
         Instant now = Instant.now();
@@ -77,7 +77,7 @@ public class TemplateIntervalEndedNotificationScheduler {
         AvailabilityTemplate template = batch.getTemplate();
 
         Long departmentId = template.getDepartmentId();
-        DepartmentDTO departmentDTO= departmentHelper.getDepartment(departmentId);
+        DepartmentDTO departmentDTO= departmentHelper.getDepartmentInternal(departmentId);
 
         if (departmentId == null) {
             log.warn(
@@ -142,7 +142,7 @@ public class TemplateIntervalEndedNotificationScheduler {
             return List.of();
         }
 
-        List<UserDTO> users = userDepartmentHelper.getUsersForDepartment(departmentId);
+        List<UserDTO> users = userDepartmentHelper.getUsersForDepartmentInternal(departmentId);
 
         if (users == null || users.isEmpty()) {
             return List.of();
