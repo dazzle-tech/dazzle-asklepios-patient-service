@@ -171,5 +171,14 @@ public class PatientMergeSupportHelper {
 
         return null;
     }
-
+   public BadRequestAlertException buildMergeConstraintException(
+            PatientMergeTableConfig config
+    ) {
+        return new BadRequestAlertException(
+                "Unable to merge " + config.getEntityName()
+                        + " because it conflicts with an existing record.",
+                "PatientMerge",
+                "merge.constraint"
+        );
+    }
 }

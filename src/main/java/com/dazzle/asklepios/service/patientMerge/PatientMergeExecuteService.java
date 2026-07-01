@@ -24,6 +24,7 @@ import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeExecuteVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergePreviewVM;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -399,20 +400,27 @@ public class PatientMergeExecuteService {
 
         Long oldPatientId =
                 recordTransferService.getRecordPatientId(config, fromRecordId);
-        recordTransferService.moveRecordToTarget(
-                config,
-                fromRecordId,
-                toPatientId
-        );
-        recordTransferService.saveMovedItemLog(
-                mergeLogId,
-                config,
-                fromRecordId,
-                oldPatientId,
-                toPatientId
-        );
 
+        try {
 
+            recordTransferService.moveRecordToTarget(
+                    config,
+                    fromRecordId,
+                    toPatientId
+            );
+
+            recordTransferService.saveMovedItemLog(
+                    mergeLogId,
+                    config,
+                    fromRecordId,
+                    oldPatientId,
+                    toPatientId
+            );
+
+        } catch (DataIntegrityViolationException ex) {
+
+            throw supportService.buildMergeConstraintException(config);
+        }
     }
 
 
