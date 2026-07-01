@@ -974,4 +974,23 @@ public class PatientEncounterService {
 
         return patientEncounterRepository.findAllById(encounterIds);
     }
+
+    public PatientEncounter updateHistoryOfPresentIllness(Long id, String historyOfPresentIllness) {
+        LOG.debug("REST request to update History of Present Illness for Encounter : {}", id);
+
+        PatientEncounter encounter = patientEncounterRepository.findById(id)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "Encounter not found",
+                        "patientEncounter",
+                        "idnotfound"
+                ));
+
+        encounter.setHistoryOfPresentIllness(historyOfPresentIllness);
+
+        PatientEncounter saved = patientEncounterRepository.save(encounter);
+
+        LOG.debug("History of Present Illness updated successfully for Encounter : {}", id);
+
+        return saved;
+    }
 }

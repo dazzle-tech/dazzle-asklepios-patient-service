@@ -26,7 +26,7 @@ import java.time.Instant;
 @Table(name = "appointment")
 @Getter
 @Setter
-public class Appointment extends AbstractAuditingEntity<Long> implements Serializable{
+public class Appointment extends AbstractAuditingEntity<Long> implements Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -130,5 +130,13 @@ public class Appointment extends AbstractAuditingEntity<Long> implements Seriali
 
     @Column(name = "checked_in_at")
     private Instant checkedInAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "booking_group_id")
+    private AppointmentBookingGroup bookingGroup;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "waiting_list_id")
+    private AppointmentWaitingList waitingList;
 
 }

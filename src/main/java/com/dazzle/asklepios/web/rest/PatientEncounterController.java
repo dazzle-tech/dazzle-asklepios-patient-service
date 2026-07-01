@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.service.DiagnosticOrderService;
 import com.dazzle.asklepios.service.PatientEncounterService;
 import com.dazzle.asklepios.service.PatientPrescriptionService;
+import com.dazzle.asklepios.service.dto.patientEncounter.EncounterHistoryOfPresentIllnessDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
@@ -23,6 +24,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -445,5 +447,15 @@ public class PatientEncounterController {
                 patientEncounterService.getEncountersByIds(encounterIds);
 
         return ResponseEntity.ok(encounters);
+    }
+    @PatchMapping("/encounter/{id}/history-of-present-illness")
+    public ResponseEntity<PatientEncounter> updateHistoryOfPresentIllness(
+            @PathVariable Long id,
+            @RequestBody EncounterHistoryOfPresentIllnessDTO dto
+    ) {
+        PatientEncounter result = patientEncounterService
+                .updateHistoryOfPresentIllness(id, dto.historyOfPresentIllness());
+
+        return ResponseEntity.ok(result);
     }
 }

@@ -289,7 +289,8 @@ public class AvailabilityTemplateController {
                         .map(AvailabilityTemplateAllowedServiceResponseVM::ofEntity)
                         .toList()
                         : List.of(),
-                entity.getResourceId()
+                entity.getResourceId(),
+                entity.getAllowWalkInBooking()
 
         );
     }
