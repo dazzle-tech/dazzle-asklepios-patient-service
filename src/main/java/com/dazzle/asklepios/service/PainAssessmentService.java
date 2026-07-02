@@ -1,9 +1,7 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.notification.NotificationClient;
-import com.dazzle.asklepios.client.notification.dto.NotificationCreateDTO;
 import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
-import com.dazzle.asklepios.client.setup.dto.UserDTO;
+import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.PainAssessment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
@@ -13,9 +11,11 @@ import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.PainAssessmentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.painAssessment.PainAssessmentCreateDTO;
 import com.dazzle.asklepios.service.dto.painAssessment.PainAssessmentUpdateDTO;
-import com.dazzle.asklepios.service.helper.UserDepartmentHelper;
+import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -44,8 +44,8 @@ public class PainAssessmentService {
     private final PainAssessmentRepository painAssessmentRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
-    private final NotificationClient notificationClient;
-    private final UserDepartmentHelper userDepartmentHelper;
+    private final NotificationHelper notificationHelper;
+    private final DepartmentHelper departmentHelper;
 
     public PainAssessment create(PainAssessmentCreateDTO dto) {
         LOG.info("[CREATE] PainAssessment payload={}", dto);
@@ -79,7 +79,7 @@ public class PainAssessmentService {
             PainAssessment saved = painAssessmentRepository.saveAndFlush(entity);
 
 
-            notifyDepartmentUsersForSeverePain(saved, patient, encounter);
+            notificationForSeverePain(saved, patient, encounter);
 
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -116,7 +116,7 @@ public class PainAssessmentService {
             try {
                 PainAssessment saved = painAssessmentRepository.saveAndFlush(entity);
 
-                notifyDepartmentUsersForSeverePain(saved, patient, encounter);
+                notificationForSeverePain(saved, patient, encounter);
 
                 return saved;
             } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -192,7 +192,7 @@ public class PainAssessmentService {
         };
     }
 
-    private void notifyDepartmentUsersForSeverePain(PainAssessment painAssessment, Patient patient, PatientEncounter encounter) {
+    private void notificationForSeverePain(PainAssessment painAssessment, Patient patient, PatientEncounter encounter) {
         if (painAssessment == null || patient == null || encounter == null) {
             return;
         }
@@ -202,47 +202,41 @@ public class PainAssessmentService {
         }
 
         Long departmentId = encounter.getDepartmentId();
-
+        DepartmentDTO departmentDTO = null;
         if (departmentId == null) {
             LOG.warn("Skip severe pain notification because encounter department is missing. painAssessmentId={}, encounterId={}", painAssessment.getId(), encounter.getId());
             return;
+        } else {
+            departmentDTO = departmentHelper.getDepartment(departmentId);
         }
-
-        List<NotificationResolvedRecipientDTO> departmentUsers = buildDepartmentUserRecipients(departmentId);
-
-        if (departmentUsers.isEmpty()) {
-            LOG.warn("Skip severe pain notification because no department users found. painAssessmentId={}, departmentId={}", painAssessment.getId(), departmentId);
-            return;
-        }
-
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
-        recipientsByRule.put("DEPARTMENT_USERS", departmentUsers);
-
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("patientId", patient.getId());
-        data.put("patientName", getPatientName(patient));
-        data.put("encounterId", encounter.getId());
-        data.put("departmentId", departmentId);
-        data.put("painAssessmentId", painAssessment.getId());
-        data.put("painLevel", painAssessment.getPainLevel());
-        data.put("painDegree", painAssessment.getPainDegree() != null ? painAssessment.getPainDegree().toString() : "");
-        data.put("painPattern", painAssessment.getPainPattern() != null ? painAssessment.getPainPattern().toString() : "");
-        data.put("painDescription", painAssessment.getPainDescription() != null ? painAssessment.getPainDescription() : "");
-
-        NotificationCreateDTO dto = new NotificationCreateDTO(null, NotificationCode.PAIN_LEVEL_SEVERE, "en", null, recipientsByRule, data, "PAIN_ASSESSMENT", painAssessment.getId());
 
         try {
+            String login = SecurityUtils.getCurrentUserLogin().orElse(null);
+
+            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, painAssessment.getCreatedBy(), patient, null);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("patientId", patient.getId());
+            data.put("patientName", notificationHelper.getPatientName(patient));
+            data.put("encounterId", encounter.getId());
+            data.put("departmentId", departmentId);
+            data.put("departmentName", departmentDTO.name());
+            data.put("painAssessmentId", painAssessment.getId());
+            data.put("painLevel", painAssessment.getPainLevel());
+            data.put("painDegree", painAssessment.getPainDegree() != null ? painAssessment.getPainDegree().toString() : "");
+            data.put("painPattern", painAssessment.getPainPattern() != null ? painAssessment.getPainPattern().toString() : "");
+            data.put("painDescription", painAssessment.getPainDescription() != null ? painAssessment.getPainDescription() : "");
+
             LOG.debug(
-                    "Creating severe pain in-app notification. painAssessmentId={}, patientId={}, departmentId={}, recipientsByRule={}",
+                    "Creating severe pain  notification. painAssessmentId={}, patientId={}, departmentId={}, recipientsByRule={}",
                     painAssessment.getId(),
                     patient.getId(),
                     departmentId,
                     recipientsByRule
             );
 
-            notificationClient.createNotification(dto);
+            notificationHelper.sendNotification(null, NotificationCode.PAIN_LEVEL_SEVERE, "en", recipientsByRule, data, "PAIN_ASSESSMENT", painAssessment.getId());
         } catch (Exception e) {
-            LOG.warn("Failed to create severe pain in-app notification. painAssessmentId={}, error={}", painAssessment.getId(), e.getMessage());
+            LOG.warn("Failed to create severe pain  notification. painAssessmentId={}, error={}", painAssessment.getId(), e.getMessage());
         }
     }
 
@@ -252,83 +246,5 @@ public class PainAssessmentService {
         }
 
         return Severity.SEVERE == painDegree;
-    }
-
-    private List<NotificationResolvedRecipientDTO> buildDepartmentUserRecipients(Long departmentId) {
-        if (departmentId == null) {
-            return List.of();
-        }
-
-        List<UserDTO> users = userDepartmentHelper.getUsersForDepartment(departmentId);
-
-        if (users == null || users.isEmpty()) {
-            return List.of();
-        }
-
-        return users.stream()
-                .filter(user -> user != null && user.id() != null)
-                .map(user -> NotificationResolvedRecipientDTO.builder()
-                        .recipientType("USER")
-                        .recipientId(user.id())
-                        .recipientName(getUserDisplayName(user))
-                        .recipientEmail(user.email())
-                        .recipientData(Map.of(
-                                "departmentId", departmentId
-                        ))
-                        .build()
-                )
-                .toList();
-    }
-
-    private String getPatientName(Patient patient) {
-        if (patient == null) {
-            return "";
-        }
-
-        String firstName = patient.getFirstName() != null ? patient.getFirstName() : "";
-        String secondName = patient.getSecondName() != null ? patient.getSecondName() : "";
-        String thirdName = patient.getThirdName() != null ? patient.getThirdName() : "";
-        String lastName = patient.getLastName() != null ? patient.getLastName() : "";
-
-        String fullName = (firstName + " " + secondName + " " + thirdName + " " + lastName)
-                .replaceAll("\\s+", " ")
-                .trim();
-
-        if (!fullName.isBlank()) {
-            return fullName;
-        }
-
-        if (patient.getEmail() != null && !patient.getEmail().isBlank()) {
-            return patient.getEmail();
-        }
-
-        return patient.getId() != null ? String.valueOf(patient.getId()) : "";
-    }
-
-    private String getUserDisplayName(UserDTO user) {
-        if (user == null) {
-            return "";
-        }
-
-        String firstName = user.firstName() != null ? user.firstName() : "";
-        String lastName = user.lastName() != null ? user.lastName() : "";
-
-        String fullName = (firstName + " " + lastName)
-                .replaceAll("\\s+", " ")
-                .trim();
-
-        if (!fullName.isBlank()) {
-            return fullName;
-        }
-
-        if (user.login() != null && !user.login().isBlank()) {
-            return user.login();
-        }
-
-        if (user.email() != null && !user.email().isBlank()) {
-            return user.email();
-        }
-
-        return user.id() != null ? String.valueOf(user.id()) : "";
     }
 }

@@ -1,11 +1,8 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.notification.NotificationClient;
-import com.dazzle.asklepios.client.notification.dto.NotificationCreateDTO;
 import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
-import com.dazzle.asklepios.client.setup.dto.UserDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.ReferralRequest;
@@ -20,7 +17,7 @@ import com.dazzle.asklepios.service.dto.referralRequest.ReferralRequestCreateDTO
 import com.dazzle.asklepios.service.dto.referralRequest.ReferralRequestUpdateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
-import com.dazzle.asklepios.service.helper.UserDepartmentHelper;
+import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -52,8 +49,7 @@ public class ReferralRequestService {
     private final PatientEncounterRepository patientEncounterRepository;
     private final FacilityHelper facilityHelper;
     private final DepartmentHelper departmentHelper;
-    private final NotificationClient notificationClient;
-    private final UserDepartmentHelper userDepartmentHelper;
+    private final NotificationHelper notificationHelper;
 
     public ReferralRequest createReferralRequest(ReferralRequestCreateDTO createDto) {
         LOG.info("[CREATE] ReferralRequest payload={}", createDto);
@@ -330,51 +326,29 @@ public class ReferralRequestService {
             );
             return;
         }
-
-        List<NotificationResolvedRecipientDTO> departmentUsers = buildDepartmentUserRecipients(departmentId);
-
-        if (departmentUsers.isEmpty()) {
-            LOG.warn(
-                    "Skip referral request notification because no department users found. referralRequestId={}, departmentId={}",
-                    referralRequest.getId(),
-                    departmentId
-            );
-            return;
-        }
-
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
-        recipientsByRule.put("DEPARTMENT_USERS", departmentUsers);
-
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("referralRequestId", referralRequest.getId());
-        data.put("patientId", patient.getId());
-        data.put("patientName", getPatientName(patient));
-        data.put("encounterId", encounter != null ? encounter.getId() : "");
-        data.put("fromFacilityId", referralRequest.getFromFacilityId());
-        data.put("toFacilityId", referralRequest.getToFacilityId());
-        data.put("fromFacilityName", fromFacility.name());
-        data.put("toFacilityName", toFacility.name());
-        data.put("fromDepartmentId", referralRequest.getFromDepartmentId());
-        data.put("toDepartmentId", referralRequest.getToDepartmentId());
-        data.put("fromDepartmentName", fromDepartment.name());
-        data.put("toDepartmentName", toDepartment.name());
-        data.put("referralType", referralRequest.getReferralType() != null ? referralRequest.getReferralType().toString() : "");
-        data.put("referralReason", referralRequest.getReferralReason() != null ? referralRequest.getReferralReason() : "");
-        data.put("priority", referralRequest.getPriority() != null ? referralRequest.getPriority().toString() : "");
-        data.put("status", referralRequest.getStatus() != null ? referralRequest.getStatus().toString() : "");
-
-        NotificationCreateDTO dto = new NotificationCreateDTO(
-                null,
-                NotificationCode.NEW_REFERRAL_REQUEST_ARRIVED,
-                "en",
-                null,
-                recipientsByRule,
-                data,
-                "REFERRAL_REQUEST",
-                referralRequest.getId()
-        );
-
         try {
+            String login = SecurityUtils.getCurrentUserLogin().orElse(null);
+
+            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, referralRequest.getCreatedBy(), patient, null);
+
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("referralRequestId", referralRequest.getId());
+            data.put("patientId", patient.getId());
+            data.put("patientName", notificationHelper.getPatientName(patient));
+            data.put("encounterId", encounter != null ? encounter.getId() : "");
+            data.put("fromFacilityId", referralRequest.getFromFacilityId());
+            data.put("toFacilityId", referralRequest.getToFacilityId());
+            data.put("fromFacilityName", fromFacility.name());
+            data.put("toFacilityName", toFacility.name());
+            data.put("fromDepartmentId", referralRequest.getFromDepartmentId());
+            data.put("toDepartmentId", referralRequest.getToDepartmentId());
+            data.put("fromDepartmentName", fromDepartment.name());
+            data.put("toDepartmentName", toDepartment.name());
+            data.put("referralType", referralRequest.getReferralType() != null ? referralRequest.getReferralType().toString() : "");
+            data.put("referralReason", referralRequest.getReferralReason() != null ? referralRequest.getReferralReason() : "");
+            data.put("priority", referralRequest.getPriority() != null ? referralRequest.getPriority().toString() : "");
+            data.put("status", referralRequest.getStatus() != null ? referralRequest.getStatus().toString() : "");
+
             LOG.debug(
                     "Creating new referral request in-app notification. referralRequestId={}, toDepartmentId={}, recipientsByRule={}",
                     referralRequest.getId(),
@@ -382,7 +356,13 @@ public class ReferralRequestService {
                     recipientsByRule
             );
 
-            notificationClient.createNotification(dto);
+            notificationHelper.sendNotification(null,
+                    NotificationCode.NEW_REFERRAL_REQUEST_ARRIVED,
+                    "en",
+                    recipientsByRule,
+                    data,
+                    "REFERRAL_REQUEST",
+                    referralRequest.getId());
         } catch (Exception e) {
             LOG.warn(
                     "Failed to create referral request notification. referralRequestId={}, error={}",
@@ -390,83 +370,5 @@ public class ReferralRequestService {
                     e.getMessage()
             );
         }
-    }
-
-    private List<NotificationResolvedRecipientDTO> buildDepartmentUserRecipients(Long departmentId) {
-        if (departmentId == null) {
-            return List.of();
-        }
-
-        List<UserDTO> users = userDepartmentHelper.getUsersForDepartment(departmentId);
-
-        if (users == null || users.isEmpty()) {
-            return List.of();
-        }
-
-        return users.stream()
-                .filter(user -> user != null && user.id() != null)
-                .map(user -> NotificationResolvedRecipientDTO.builder()
-                        .recipientType("USER")
-                        .recipientId(user.id())
-                        .recipientName(getUserDisplayName(user))
-                        .recipientEmail(user.email())
-                        .recipientData(Map.of(
-                                "departmentId", departmentId
-                        ))
-                        .build()
-                )
-                .toList();
-    }
-
-    private String getPatientName(Patient patient) {
-        if (patient == null) {
-            return "";
-        }
-
-        String firstName = patient.getFirstName() != null ? patient.getFirstName() : "";
-        String secondName = patient.getSecondName() != null ? patient.getSecondName() : "";
-        String thirdName = patient.getThirdName() != null ? patient.getThirdName() : "";
-        String lastName = patient.getLastName() != null ? patient.getLastName() : "";
-
-        String fullName = (firstName + " " + secondName + " " + thirdName + " " + lastName)
-                .replaceAll("\\s+", " ")
-                .trim();
-
-        if (!fullName.isBlank()) {
-            return fullName;
-        }
-
-        if (patient.getEmail() != null && !patient.getEmail().isBlank()) {
-            return patient.getEmail();
-        }
-
-        return patient.getId() != null ? String.valueOf(patient.getId()) : "";
-    }
-
-    private String getUserDisplayName(UserDTO user) {
-        if (user == null) {
-            return "";
-        }
-
-        String firstName = user.firstName() != null ? user.firstName() : "";
-        String lastName = user.lastName() != null ? user.lastName() : "";
-
-        String fullName = (firstName + " " + lastName)
-                .replaceAll("\\s+", " ")
-                .trim();
-
-        if (!fullName.isBlank()) {
-            return fullName;
-        }
-
-        if (user.login() != null && !user.login().isBlank()) {
-            return user.login();
-        }
-
-        if (user.email() != null && !user.email().isBlank()) {
-            return user.email();
-        }
-
-        return user.id() != null ? String.valueOf(user.id()) : "";
     }
 }

@@ -1,12 +1,11 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.notification.NotificationClient;
-import com.dazzle.asklepios.client.notification.dto.NotificationCreateDTO;
 import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.setup.DiagnosticTestProfileClient;
+import com.dazzle.asklepios.client.setup.UserClient;
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.client.setup.dto.NormalRangeMatchDTO;
-import com.dazzle.asklepios.client.setup.dto.UserDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
@@ -27,10 +26,12 @@ import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestResultTechnicianNoteRepository;
 import com.dazzle.asklepios.repository.LabResultLogRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.ApproveResultDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultCreateDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultUpdateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.service.helper.UserDepartmentHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.laboratory.DiagnosticOrderTestResultResponseVM;
@@ -46,6 +47,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -72,6 +74,8 @@ public class DiagnosticOrderTestResultService {
     private final PatientRepository patientRepository;
     private final DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository;
     private final DepartmentHelper departmentHelper;
+    private final UserClient userClient;
+    private final NotificationHelper notificationHelper;
 
 
     /**
@@ -420,28 +424,16 @@ public class DiagnosticOrderTestResultService {
             );
             return;
         }
+        String login = SecurityUtils.getCurrentUserLogin().orElse(null);
 
-        List<NotificationResolvedRecipientDTO> departmentUsers =
-                buildDepartmentUserRecipients(departmentId);
-
-        if (departmentUsers.isEmpty()) {
-            LOG.warn(
-                    "Skip diagnostic result notification because no department users found. resultId={}, departmentId={}",
-                    result.getId(),
-                    departmentId
-            );
-            return;
-        }
-
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
-        recipientsByRule.put("DEPARTMENT_USERS", departmentUsers);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, result.getCreatedBy(), resolvePatient(order.getPatientId()).orElse(null), null);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("resultId", result.getId());
         data.put("orderTestId", orderTest.getId());
         data.put("orderId", order.getId());
         data.put("patientId", order.getPatientId());
-        data.put("patientName", resolvePatientName(order.getPatientId()));
+        data.put("patientName", notificationHelper.getPatientName(resolvePatient(order.getPatientId()).orElse(null)));
         data.put("encounterId", order.getEncounter() != null ? order.getEncounter().getId() : "");
         data.put("departmentId", departmentId);
         data.put("departmentName", department.name());
@@ -454,17 +446,6 @@ public class DiagnosticOrderTestResultService {
         data.put("reportId", report != null ? report.getId() : "");
         data.put("reportSeverity", report != null && report.getSeverity() != null ? report.getSeverity().toString() : "");
 
-        NotificationCreateDTO dto = new NotificationCreateDTO(
-                null,
-                notificationCode,
-                "en",
-                null,
-                recipientsByRule,
-                data,
-                "DIAGNOSTIC_ORDER_TEST_RESULT",
-                result.getId()
-        );
-
         try {
             LOG.debug(
                     "Creating diagnostic result ready in-app notification. resultId={}, code={}, departmentId={}, marker={}, resultLevel={}, recipientsByRule={}",
@@ -476,7 +457,13 @@ public class DiagnosticOrderTestResultService {
                     recipientsByRule
             );
 
-            notificationClient.createNotification(dto);
+            notificationHelper.sendNotification(null,
+                    notificationCode,
+                    "en",
+                    recipientsByRule,
+                    data,
+                    "DIAGNOSTIC_ORDER_TEST_RESULT",
+                    result.getId());
         } catch (Exception e) {
             LOG.warn(
                     "Failed to create diagnostic result ready notification. resultId={}, code={}, error={}",
@@ -487,11 +474,7 @@ public class DiagnosticOrderTestResultService {
         }
     }
 
-    private NotificationCode resolveResultReadyNotificationCode(
-            DiagnosticOrderTest orderTest,
-            TestResultMarker calculatedMarker,
-            DiagnosticOrderTestReport report
-    ) {
+    private NotificationCode resolveResultReadyNotificationCode(DiagnosticOrderTest orderTest, TestResultMarker calculatedMarker, DiagnosticOrderTestReport report) {
         if (isLaboratoryTest(orderTest) && isAbnormalMarker(calculatedMarker)) {
             return NotificationCode.DIAGNOSTIC_LAB_ABNORMAL_RESULT_READY;
         }
@@ -519,10 +502,7 @@ public class DiagnosticOrderTestResultService {
         return marker != null && ABNORMAL_RESULT_MARKERS.contains(marker);
     }
 
-    private Long resolveDepartmentId(
-            DiagnosticOrder order,
-            DiagnosticOrderTest orderTest
-    ) {
+    private Long resolveDepartmentId(DiagnosticOrder order, DiagnosticOrderTest orderTest) {
         if (orderTest != null && orderTest.getReceivedDepartmentId() != null) {
             return orderTest.getReceivedDepartmentId();
         }
@@ -538,92 +518,12 @@ public class DiagnosticOrderTestResultService {
         return null;
     }
 
-    private List<NotificationResolvedRecipientDTO> buildDepartmentUserRecipients(Long departmentId) {
-        if (departmentId == null) {
-            return List.of();
-        }
-
-        List<UserDTO> users = userDepartmentHelper.getUsersForDepartment(departmentId);
-
-        if (users == null || users.isEmpty()) {
-            return List.of();
-        }
-
-        return users.stream()
-                .filter(user -> user != null && user.id() != null)
-                .map(user -> NotificationResolvedRecipientDTO.builder()
-                        .recipientType("USER")
-                        .recipientId(user.id())
-                        .recipientName(getUserDisplayName(user))
-                        .recipientEmail(user.email())
-                        .recipientData(Map.of(
-                                "departmentId", departmentId
-                        ))
-                        .build()
-                )
-                .toList();
-    }
-
-    private String resolvePatientName(Long patientId) {
+    private Optional<Patient> resolvePatient(Long patientId) {
         if (patientId == null) {
-            return "";
+            return null;
         }
 
-        return patientRepository.findById(patientId)
-                .map(this::getPatientName)
-                .orElse(String.valueOf(patientId));
-    }
-
-    private String getPatientName(Patient patient) {
-        if (patient == null) {
-            return "";
-        }
-
-        String firstName = patient.getFirstName() != null ? patient.getFirstName() : "";
-        String secondName = patient.getSecondName() != null ? patient.getSecondName() : "";
-        String thirdName = patient.getThirdName() != null ? patient.getThirdName() : "";
-        String lastName = patient.getLastName() != null ? patient.getLastName() : "";
-
-        String fullName = (firstName + " " + secondName + " " + thirdName + " " + lastName)
-                .replaceAll("\\s+", " ")
-                .trim();
-
-        if (!fullName.isBlank()) {
-            return fullName;
-        }
-
-        if (patient.getEmail() != null && !patient.getEmail().isBlank()) {
-            return patient.getEmail();
-        }
-
-        return patient.getId() != null ? String.valueOf(patient.getId()) : "";
-    }
-
-    private String getUserDisplayName(UserDTO user) {
-        if (user == null) {
-            return "";
-        }
-
-        String firstName = user.firstName() != null ? user.firstName() : "";
-        String lastName = user.lastName() != null ? user.lastName() : "";
-
-        String fullName = (firstName + " " + lastName)
-                .replaceAll("\\s+", " ")
-                .trim();
-
-        if (!fullName.isBlank()) {
-            return fullName;
-        }
-
-        if (user.login() != null && !user.login().isBlank()) {
-            return user.login();
-        }
-
-        if (user.email() != null && !user.email().isBlank()) {
-            return user.email();
-        }
-
-        return user.id() != null ? String.valueOf(user.id()) : "";
+        return patientRepository.findById(patientId);
     }
 
     private boolean isSevereRadiologyReport(DiagnosticOrderTestReport report) {
@@ -632,5 +532,4 @@ public class DiagnosticOrderTestResultService {
         }
         return Severity.SEVERE == report.getSeverity() || Severity.CRITICAL == report.getSeverity();
     }
-
 }
