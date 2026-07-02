@@ -1,7 +1,6 @@
 package com.dazzle.asklepios.service.scheduler;
 
 import com.dazzle.asklepios.client.notification.NotificationClient;
-import com.dazzle.asklepios.client.notification.dto.NotificationCreateDTO;
 import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.client.setup.dto.UserDTO;
@@ -10,7 +9,9 @@ import com.dazzle.asklepios.domain.AvailabilityTemplate;
 import com.dazzle.asklepios.domain.enumeration.BatchStatus;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.AvailabilityGenerationBatchRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.service.helper.UserDepartmentHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,9 +30,8 @@ import java.util.Map;
 public class TemplateIntervalEndedNotificationScheduler {
 
     private final AvailabilityGenerationBatchRepository availabilityGenerationBatchRepository;
-    private final UserDepartmentHelper userDepartmentHelper;
-    private final NotificationClient notificationClient;
     private final DepartmentHelper departmentHelper;
+    private final NotificationHelper notificationHelper;
 
     @Scheduled(cron = "${appointment.template-interval-ended.cron:0 0 7 * * *}", zone = "${appointment.template-interval-ended.zone:Asia/Gaza}")
     @Transactional
@@ -77,7 +77,7 @@ public class TemplateIntervalEndedNotificationScheduler {
         AvailabilityTemplate template = batch.getTemplate();
 
         Long departmentId = template.getDepartmentId();
-        DepartmentDTO departmentDTO= departmentHelper.getDepartmentInternal(departmentId);
+        DepartmentDTO departmentDTO = departmentHelper.getDepartmentInternal(departmentId);
 
         if (departmentId == null) {
             log.warn(
@@ -87,21 +87,9 @@ public class TemplateIntervalEndedNotificationScheduler {
             );
             return;
         }
+        String login = SecurityUtils.getCurrentUserLogin().orElse(null);
 
-        List<NotificationResolvedRecipientDTO> departmentUsers =
-                buildDepartmentUserRecipients(departmentId);
-
-        if (departmentUsers.isEmpty()) {
-            log.warn(
-                    "[TEMPLATE_INTERVAL_ENDED] skip because no department users. batchId={}, departmentId={}",
-                    batch.getId(),
-                    departmentId
-            );
-            return;
-        }
-
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
-        recipientsByRule.put("DEPARTMENT_USERS", departmentUsers);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, batch.getCreatedBy(), null, null);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("batchId", batch.getId());
@@ -116,18 +104,14 @@ public class TemplateIntervalEndedNotificationScheduler {
         data.put("dailyAvg", batch.getDailyAvg() != null ? batch.getDailyAvg() : "");
         data.put("executionStatus", batch.getExecutionStatus() != null ? batch.getExecutionStatus().toString() : "");
 
-        NotificationCreateDTO dto = new NotificationCreateDTO(
-                template.getFacilityId(),
+
+        notificationHelper.sendNotification(template.getFacilityId(),
                 NotificationCode.TEMPLATE_INTERVAL_ENDED,
                 "en",
-                null,
                 recipientsByRule,
                 data,
                 "AVAILABILITY_GENERATION_BATCH",
-                batch.getId()
-        );
-
-        notificationClient.createNotification(dto);
+                batch.getId());
 
         log.debug(
                 "[TEMPLATE_INTERVAL_ENDED] notification created. batchId={}, templateId={}, departmentId={}",
@@ -135,56 +119,5 @@ public class TemplateIntervalEndedNotificationScheduler {
                 template.getId(),
                 departmentId
         );
-    }
-
-    private List<NotificationResolvedRecipientDTO> buildDepartmentUserRecipients(Long departmentId) {
-        if (departmentId == null) {
-            return List.of();
-        }
-
-        List<UserDTO> users = userDepartmentHelper.getUsersForDepartmentInternal(departmentId);
-
-        if (users == null || users.isEmpty()) {
-            return List.of();
-        }
-
-        return users.stream()
-                .filter(user -> user != null && user.id() != null)
-                .map(user -> NotificationResolvedRecipientDTO.builder()
-                        .recipientType("USER")
-                        .recipientId(user.id())
-                        .recipientName(getUserDisplayName(user))
-                        .recipientEmail(user.email())
-                        .recipientData(Map.of("departmentId", departmentId))
-                        .build()
-                )
-                .toList();
-    }
-
-    private String getUserDisplayName(UserDTO user) {
-        if (user == null) {
-            return "";
-        }
-
-        String firstName = user.firstName() != null ? user.firstName() : "";
-        String lastName = user.lastName() != null ? user.lastName() : "";
-
-        String fullName = (firstName + " " + lastName)
-                .replaceAll("\\s+", " ")
-                .trim();
-
-        if (!fullName.isBlank()) {
-            return fullName;
-        }
-
-        if (user.login() != null && !user.login().isBlank()) {
-            return user.login();
-        }
-
-        if (user.email() != null && !user.email().isBlank()) {
-            return user.email();
-        }
-
-        return user.id() != null ? String.valueOf(user.id()) : "";
     }
 }

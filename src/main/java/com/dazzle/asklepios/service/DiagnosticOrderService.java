@@ -1,9 +1,7 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.notification.NotificationClient;
-import com.dazzle.asklepios.client.notification.dto.NotificationCreateDTO;
 import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
-import com.dazzle.asklepios.client.setup.dto.UserDTO;
+import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.Patient;
@@ -16,16 +14,18 @@ import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderUpdateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
-import com.dazzle.asklepios.service.helper.UserDepartmentHelper;
+import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -40,11 +40,13 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class DiagnosticOrderService {
 
     private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderService.class);
@@ -55,22 +57,8 @@ public class DiagnosticOrderService {
     private final PatientEncounterRepository patientEncounterRepository;
     private final FacilityHelper facilityHelper;
     private final DepartmentHelper departmentHelper;
-    private final NotificationClient notificationClient;
-    private final UserDepartmentHelper userDepartmentHelper;
+    private final NotificationHelper notificationHelper;
 
-    public DiagnosticOrderService(
-            DiagnosticOrderRepository diagnosticOrderRepository,
-            DiagnosticOrderTestRepository diagnosticOrderTestRepository,
-            PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository, FacilityHelper facilityHelper, DepartmentHelper departmentHelper, NotificationClient notificationClient, UserDepartmentHelper userDepartmentHelper) {
-        this.diagnosticOrderRepository = diagnosticOrderRepository;
-        this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
-        this.patientRepository = patientRepository;
-        this.patientEncounterRepository = patientEncounterRepository;
-        this.departmentHelper = departmentHelper;
-        this.facilityHelper = facilityHelper;
-        this.notificationClient = notificationClient;
-        this.userDepartmentHelper = userDepartmentHelper;
-    }
 
     /**
      * Creates a new {@link DiagnosticOrder}.
@@ -267,7 +255,7 @@ public class DiagnosticOrderService {
         LOG.debug("[DiagnosticOrderService] SUBMIT - done. orderId={} newSaveDraft={} newStatus={} submittedDate={} updatedTests={}",
                 saved.getId(), saved.getSaveDraft(), saved.getStatus(), saved.getSubmittedDate(), updatedTests);
 
-        notifyDepartmentUsersForUrgentDiagnosticOrder(saved);
+        notificationForUrgentDiagnosticOrder(saved);
 
         return saved;
     }
@@ -445,7 +433,7 @@ public class DiagnosticOrderService {
                 .collect(Collectors.toSet());
     }
 
-    private void notifyDepartmentUsersForUrgentDiagnosticOrder(DiagnosticOrder order) {
+    private void notificationForUrgentDiagnosticOrder(DiagnosticOrder order) {
         if (order == null) {
             return;
         }
@@ -455,7 +443,7 @@ public class DiagnosticOrderService {
         }
 
         Long departmentId = order.getFromDepartmentId();
-
+        DepartmentDTO department = departmentId != null ? departmentHelper.getDepartment(departmentId) : null;
         if (departmentId == null) {
             LOG.warn(
                     "Skip urgent diagnostic order notification because department is missing. orderId={}",
@@ -464,32 +452,21 @@ public class DiagnosticOrderService {
             return;
         }
 
-        List<NotificationResolvedRecipientDTO> departmentUsers =
-                buildDepartmentUserRecipients(departmentId);
 
-        if (departmentUsers.isEmpty()) {
-            LOG.warn(
-                    "Skip urgent diagnostic order notification because no department users found. orderId={}, departmentId={}",
-                    order.getId(),
-                    departmentId
-            );
-            return;
-        }
+        String login = SecurityUtils.getCurrentUserLogin().orElse(null);
 
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
-        recipientsByRule.put("DEPARTMENT_USERS", departmentUsers);
-
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, order.getCreatedBy(), order.getPatient(), null);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("orderId", order.getId());
         data.put("patientId", order.getPatientId());
-        data.put("patientName", resolvePatientName(order.getPatientId()));
+        data.put("patientName", notificationHelper.getPatientName(resolvePatient(order.getPatientId()).orElse(null)));
         data.put("encounterId", order.getEncounter() != null ? order.getEncounter().getId() : "");
         data.put("departmentId", departmentId);
+        data.put("departmentName", department != null ? department.name() : "");
         data.put("status", order.getStatus() != null ? order.getStatus().toString() : "");
         data.put("submittedBy", order.getSubmittedBy() != null ? order.getSubmittedBy() : "");
         data.put("submittedDate", order.getSubmittedDate() != null ? order.getSubmittedDate().toString() : "");
 
-        NotificationCreateDTO dto = new NotificationCreateDTO(null, NotificationCode.URGENT_DIAGNOSTIC_ORDER_SUBMITTED, "en", null, recipientsByRule, data, "DIAGNOSTIC_ORDER", order.getId());
 
         try {
             LOG.debug(
@@ -499,7 +476,15 @@ public class DiagnosticOrderService {
                     recipientsByRule
             );
 
-            notificationClient.createNotification(dto);
+            notificationHelper.sendNotification(
+                    null,
+                    NotificationCode.URGENT_DIAGNOSTIC_ORDER_SUBMITTED,
+                    "en",
+                    recipientsByRule,
+                    data,
+                    "DIAGNOSTIC_ORDER",
+                    order.getId());
+
         } catch (Exception e) {
             LOG.warn(
                     "Failed to create urgent diagnostic order notification. orderId={}, error={}",
@@ -513,91 +498,11 @@ public class DiagnosticOrderService {
         return order != null && Boolean.TRUE.equals(order.getIsUrgent());
     }
 
-    private List<NotificationResolvedRecipientDTO> buildDepartmentUserRecipients(Long departmentId) {
-        if (departmentId == null) {
-            return List.of();
-        }
-
-        List<UserDTO> users = userDepartmentHelper.getUsersForDepartment(departmentId);
-
-        if (users == null || users.isEmpty()) {
-            return List.of();
-        }
-
-        return users.stream()
-                .filter(user -> user != null && user.id() != null)
-                .map(user -> NotificationResolvedRecipientDTO.builder()
-                        .recipientType("USER")
-                        .recipientId(user.id())
-                        .recipientName(getUserDisplayName(user))
-                        .recipientEmail(user.email())
-                        .recipientData(Map.of(
-                                "departmentId", departmentId
-                        ))
-                        .build()
-                )
-                .toList();
-    }
-
-    private String resolvePatientName(Long patientId) {
+    private Optional<Patient> resolvePatient(Long patientId) {
         if (patientId == null) {
-            return "";
+            return null;
         }
 
-        return patientRepository.findById(patientId)
-                .map(this::getPatientName)
-                .orElse(String.valueOf(patientId));
-    }
-
-    private String getPatientName(Patient patient) {
-        if (patient == null) {
-            return "";
-        }
-
-        String firstName = patient.getFirstName() != null ? patient.getFirstName() : "";
-        String secondName = patient.getSecondName() != null ? patient.getSecondName() : "";
-        String thirdName = patient.getThirdName() != null ? patient.getThirdName() : "";
-        String lastName = patient.getLastName() != null ? patient.getLastName() : "";
-
-        String fullName = (firstName + " " + secondName + " " + thirdName + " " + lastName)
-                .replaceAll("\\s+", " ")
-                .trim();
-
-        if (!fullName.isBlank()) {
-            return fullName;
-        }
-
-        if (patient.getEmail() != null && !patient.getEmail().isBlank()) {
-            return patient.getEmail();
-        }
-
-        return patient.getId() != null ? String.valueOf(patient.getId()) : "";
-    }
-
-    private String getUserDisplayName(UserDTO user) {
-        if (user == null) {
-            return "";
-        }
-
-        String firstName = user.firstName() != null ? user.firstName() : "";
-        String lastName = user.lastName() != null ? user.lastName() : "";
-
-        String fullName = (firstName + " " + lastName)
-                .replaceAll("\\s+", " ")
-                .trim();
-
-        if (!fullName.isBlank()) {
-            return fullName;
-        }
-
-        if (user.login() != null && !user.login().isBlank()) {
-            return user.login();
-        }
-
-        if (user.email() != null && !user.email().isBlank()) {
-            return user.email();
-        }
-
-        return user.id() != null ? String.valueOf(user.id()) : "";
+        return patientRepository.findById(patientId);
     }
 }
