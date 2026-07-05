@@ -1,6 +1,5 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.notification.NotificationClient;
 import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.setup.ActiveIngredientClient;
 import com.dazzle.asklepios.client.setup.BrandMedicationClient;
@@ -21,11 +20,9 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patientPrescription.PatientPrescriptionCreateDto;
 import com.dazzle.asklepios.service.dto.patientPrescription.PatientPrescriptionUpdateDTO;
-import com.dazzle.asklepios.service.helper.ActiveIngredientHelper;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
-import com.dazzle.asklepios.service.helper.UserDepartmentHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.EntityNotFoundException;
@@ -331,7 +328,7 @@ public class PatientPrescriptionService {
         try {
             LOG.debug("Creating high alert medication in-app notification. prescriptionId={}, departmentId={}, medications={}, recipientsByRule={}", prescription.getId(), departmentId, highAlertMedications, recipientsByRule);
 
-            notificationHelper.sendNotification(null, NotificationCode.PRESCRIPTION_HIGH_ALERT_MEDICATION_SUBMITTED, "en", recipientsByRule, data, "PRESCRIPTION", prescription.getId());
+            notificationHelper.sendNotification(null, NotificationCode.PRESCRIPTION_HIGH_ALERT_MEDICATION_SUBMITTED, recipientsByRule, data, "PRESCRIPTION", prescription.getId());
 
         } catch (Exception e) {
             LOG.warn("Failed to create high alert medication notification. prescriptionId={}, error={}", prescription.getId(), e.getMessage());

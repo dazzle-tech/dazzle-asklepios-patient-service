@@ -484,7 +484,6 @@ public class ConsultationPortalService {
 
             notificationHelper.sendNotification(null,
                     notificationCode,
-                    "en",
                     recipientsByRule,
                     data,
                     "CONSULTATION",

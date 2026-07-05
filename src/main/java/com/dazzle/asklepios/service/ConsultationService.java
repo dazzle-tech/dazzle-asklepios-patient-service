@@ -402,7 +402,6 @@ public class ConsultationService {
         notificationHelper.sendNotification(
                 null,
                 NotificationCode.CONSULTATION_CREATED,
-                "en",
                 recipientsByRule,
                 data,
                 "CONSULTATION",

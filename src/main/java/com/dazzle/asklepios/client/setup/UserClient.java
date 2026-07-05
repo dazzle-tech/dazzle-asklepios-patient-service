@@ -13,5 +13,8 @@ public interface UserClient {
     Long getUserId(@RequestParam("login") String login);
 
     @GetMapping("/api/setup/user-departments/user")
-    UserDTO getUser(@RequestParam("login") String login);
+    UserDTO getUserByLogin(@RequestParam("login") String login);
+
+    @GetMapping("/api/setup/user-departments/user/by-user-id")
+    UserDTO getUserByUserId(@RequestParam("userId") Long userId);
 }

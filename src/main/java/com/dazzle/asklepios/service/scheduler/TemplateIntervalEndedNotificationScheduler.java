@@ -107,7 +107,6 @@ public class TemplateIntervalEndedNotificationScheduler {
 
         notificationHelper.sendNotification(template.getFacilityId(),
                 NotificationCode.TEMPLATE_INTERVAL_ENDED,
-                "en",
                 recipientsByRule,
                 data,
                 "AVAILABILITY_GENERATION_BATCH",

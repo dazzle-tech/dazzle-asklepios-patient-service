@@ -166,7 +166,6 @@ public class PatientMergeExecuteService {
 
             notificationHelper.sendNotification(null,
                     NotificationCode.PATIENT_MERGE_COMPLETED,
-                    "en",
                     recipientsByRule,
                     data,
                     "PATIENT_MERGE",

@@ -33,4 +33,7 @@ public class NotificationResolvedRecipientDTO {
     private String toPhone;
 
     private Map<String, Object> recipientData;
+
+    private String language;
+
 }

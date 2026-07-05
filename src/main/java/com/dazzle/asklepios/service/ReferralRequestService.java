@@ -1,16 +1,16 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
+import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.ReferralRequest;
 import com.dazzle.asklepios.domain.enumeration.ReferralStatus;
 import com.dazzle.asklepios.domain.enumeration.ReferralType;
-import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
+import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.ReferralRequestRepository;
@@ -50,7 +50,8 @@ public class ReferralRequestService {
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final FacilityHelper facilityHelper;
-    private final DepartmentHelper departmentHelper;;
+    private final DepartmentHelper departmentHelper;
+    ;
     private final AppointmentRepository appointmentRepository;
     private final NotificationHelper notificationHelper;
 
@@ -372,7 +373,6 @@ public class ReferralRequestService {
 
             notificationHelper.sendNotification(null,
                     NotificationCode.NEW_REFERRAL_REQUEST_ARRIVED,
-                    "en",
                     recipientsByRule,
                     data,
                     "REFERRAL_REQUEST",

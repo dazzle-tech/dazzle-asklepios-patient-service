@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,7 +28,8 @@ public class NotificationHelper {
     private final UserClient userClient;
     private final DepartmentHelper departmentHelper;
 
-    public void sendNotification(Long facilityId, NotificationCode code, String language, Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule, Map<String, Object> data, String relatedEntityType, Long relatedEntityId) {
+    public void sendNotification(Long facilityId, NotificationCode code, Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule, Map<String, Object> data, String relatedEntityType, Long relatedEntityId) {
+
         if (code == null) {
             log.warn("[NOTIFICATION] Skip notification because code is missing");
             return;
@@ -43,36 +45,44 @@ public class NotificationHelper {
             return;
         }
 
-        NotificationCreateDTO dto = new NotificationCreateDTO(
-                facilityId,
-                code,
-                language != null && !language.isBlank() ? language : "en",
-                null,
-                recipientsByRule,
-                data != null ? data : new LinkedHashMap<>(),
-                relatedEntityType,
-                relatedEntityId
-        );
+        Map<String, Map<String, List<NotificationResolvedRecipientDTO>>> groupedRecipients =
+                groupRecipientsByLanguage(recipientsByRule);
 
-        try {
-            log.debug(
-                    "[NOTIFICATION] Creating notification. code={}, relatedEntityType={}, relatedEntityId={}, recipientsByRule={}, data={}",
+        for (Map.Entry<String, Map<String, List<NotificationResolvedRecipientDTO>>> languageEntry : groupedRecipients.entrySet()) {
+
+            String language = languageEntry.getKey();
+
+            NotificationCreateDTO dto = new NotificationCreateDTO(
+                    facilityId,
                     code,
+                    language,
+                    null,
+                    languageEntry.getValue(),
+                    data != null ? data : new LinkedHashMap<>(),
                     relatedEntityType,
-                    relatedEntityId,
-                    recipientsByRule,
-                    data
+                    relatedEntityId
             );
 
-            notificationClient.createNotification(dto);
-        } catch (Exception e) {
-            log.warn(
-                    "[NOTIFICATION] Failed to create notification. code={}, relatedEntityType={}, relatedEntityId={}, error={}",
-                    code,
-                    relatedEntityType,
-                    relatedEntityId,
-                    e.getMessage()
-            );
+            try {
+
+                log.debug(
+                        "[NOTIFICATION] Creating notification. language={}, code={}, recipients={}",
+                        language,
+                        code,
+                        languageEntry.getValue()
+                );
+
+                notificationClient.createNotification(dto);
+
+            } catch (Exception e) {
+
+                log.warn(
+                        "[NOTIFICATION] Failed notification. language={}, code={}, error={}",
+                        language,
+                        code,
+                        e.getMessage()
+                );
+            }
         }
     }
 
@@ -142,21 +152,25 @@ public class NotificationHelper {
 
         // Practitioner
         if (practitionerDTO != null) {
+            UserDTO practitionerUser = null;
+            if (practitionerDTO.userId() != null) {
+                practitionerUser = userClient.getUserByUserId(practitionerDTO.userId());
+            }
             NotificationResolvedRecipientDTO practitionerEmailRecipient =
-                    buildPractitionerEmailRecipient(practitionerDTO);
+                    buildPractitionerEmailRecipient(practitionerDTO, practitionerUser);
 
             if (practitionerEmailRecipient != null) {
                 recipientsByRule.put("PRACTITIONER_EMAIL", List.of(practitionerEmailRecipient));
             }
 
             NotificationResolvedRecipientDTO practitionerUserRecipient =
-                    buildPractitionerUserRecipient(practitionerDTO);
+                    buildPractitionerUserRecipient(practitionerDTO, practitionerUser);
 
             if (practitionerUserRecipient != null) {
                 recipientsByRule.put("PRACTITIONER_USER", List.of(practitionerUserRecipient));
             }
             NotificationResolvedRecipientDTO practitionerPhoneRecipient =
-                    buildPractitionerPhoneRecipient(practitionerDTO);
+                    buildPractitionerPhoneRecipient(practitionerDTO, practitionerUser);
 
             if (practitionerPhoneRecipient != null) {
                 recipientsByRule.put("PRACTITIONER_PHONE", List.of(practitionerPhoneRecipient));
@@ -205,22 +219,26 @@ public class NotificationHelper {
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
 
         if (practitionerDTO != null) {
+            UserDTO practitionerUser = null;
+            if (practitionerDTO.userId() != null) {
+                practitionerUser = userClient.getUserByUserId(practitionerDTO.userId());
+            }
             NotificationResolvedRecipientDTO practitionerEmailRecipient =
-                    buildPractitionerEmailRecipient(practitionerDTO);
+                    buildPractitionerEmailRecipient(practitionerDTO, practitionerUser);
 
             if (practitionerEmailRecipient != null) {
                 recipientsByRule.put("PRACTITIONER_EMAIL", List.of(practitionerEmailRecipient));
             }
 
             NotificationResolvedRecipientDTO practitionerUserRecipient =
-                    buildPractitionerUserRecipient(practitionerDTO);
+                    buildPractitionerUserRecipient(practitionerDTO, practitionerUser);
 
             if (practitionerUserRecipient != null) {
                 recipientsByRule.put("PRACTITIONER_USER", List.of(practitionerUserRecipient));
             }
 
             NotificationResolvedRecipientDTO practitionerPhoneRecipient =
-                    buildPractitionerPhoneRecipient(practitionerDTO);
+                    buildPractitionerPhoneRecipient(practitionerDTO, practitionerUser);
             if (practitionerPhoneRecipient != null) {
                 recipientsByRule.put("PRACTITIONER_PHONE", List.of(practitionerPhoneRecipient));
             }
@@ -339,23 +357,27 @@ public class NotificationHelper {
         if (recipientsByRule == null || practitionerDTO == null) {
             return;
         }
+        UserDTO practitionerUser = null;
+        if (practitionerDTO.userId() != null) {
+            practitionerUser = userClient.getUserByUserId(practitionerDTO.userId());
+        }
 
         NotificationResolvedRecipientDTO practitionerEmailRecipient =
-                buildPractitionerEmailRecipient(practitionerDTO);
+                buildPractitionerEmailRecipient(practitionerDTO, practitionerUser);
 
         if (practitionerEmailRecipient != null) {
             recipientsByRule.put("PRACTITIONER_EMAIL", List.of(practitionerEmailRecipient));
         }
 
         NotificationResolvedRecipientDTO practitionerUserRecipient =
-                buildPractitionerUserRecipient(practitionerDTO);
+                buildPractitionerUserRecipient(practitionerDTO, practitionerUser);
 
         if (practitionerUserRecipient != null) {
             recipientsByRule.put("PRACTITIONER_USER", List.of(practitionerUserRecipient));
         }
 
         NotificationResolvedRecipientDTO practitionerPhoneRecipient =
-                buildPractitionerPhoneRecipient(practitionerDTO);
+                buildPractitionerPhoneRecipient(practitionerDTO, practitionerUser);
 
         if (practitionerPhoneRecipient != null) {
             recipientsByRule.put("PRACTITIONER_PHONE", List.of(practitionerPhoneRecipient));
@@ -399,6 +421,7 @@ public class NotificationHelper {
                                 "departmentId", departmentId,
                                 "departmentName", department.name()
                         ))
+                        .language(user.langKey() != null && !user.langKey().isBlank() ? user.langKey() : "en")
                         .build()
                 )
                 .toList();
@@ -409,10 +432,10 @@ public class NotificationHelper {
             return null;
         }
 
-        Long userId = userClient.getUser(createdByLogin).id();
-        String email = userClient.getUser(createdByLogin).email();
+        UserDTO user = userClient.getUserByLogin(createdByLogin);
 
-        if (email == null || email.isBlank()) {
+
+        if (user.email() == null || user.email().isBlank()) {
             log.warn(
                     "[NOTIFICATION] Skip CREATED_BY_USER because email is missing. login={}",
                     createdByLogin
@@ -422,16 +445,17 @@ public class NotificationHelper {
 
         return NotificationResolvedRecipientDTO.builder()
                 .recipientType("USER")
-                .recipientId(userId)
+                .recipientId(user.id())
                 .recipientName(createdByLogin)
-                .recipientEmail(email)
-                .toEmails(List.of(email))
+                .recipientEmail(user.email())
+                .toEmails(List.of(user.email()))
                 .recipientData(Map.of(
                         "createdByLogin", createdByLogin,
-                        "createdByEmail", email,
-                        "createdByUserId", userId
+                        "createdByEmail", user.email(),
+                        "createdByUserId", user.id()
 
                 ))
+                .language(user.langKey() != null && !user.langKey().isBlank() ? user.langKey() : "en")
                 .build();
     }
 
@@ -440,10 +464,10 @@ public class NotificationHelper {
             return null;
         }
 
-        Long userId = userClient.getUser(createdByLogin).id();
-        String phoneNumber = userClient.getUser(createdByLogin).phoneNumber();
+        UserDTO user = userClient.getUserByLogin(createdByLogin);
 
-        if (phoneNumber == null || phoneNumber.isBlank()) {
+
+        if (user.phoneNumber() == null || user.phoneNumber().isBlank()) {
             log.warn(
                     "[NOTIFICATION] Skip CREATED_BY_USER_PHONE because phone number is missing. login={}",
                     createdByLogin
@@ -453,15 +477,16 @@ public class NotificationHelper {
 
         return NotificationResolvedRecipientDTO.builder()
                 .recipientType("USER")
-                .recipientId(userId)
+                .recipientId(user.id())
                 .recipientName(createdByLogin)
-                .recipientPhone(phoneNumber)
-                .toPhone(phoneNumber)
+                .recipientPhone(user.phoneNumber())
+                .toPhone(user.phoneNumber())
                 .recipientData(Map.of(
                         "createdByLogin", createdByLogin,
-                        "createdByPhoneNumber", phoneNumber,
-                        "createdByUserId", userId
+                        "createdByPhoneNumber", user.phoneNumber(),
+                        "createdByUserId", user.id()
                 ))
+                .language(user.langKey() != null && !user.langKey().isBlank() ? user.langKey() : "en")
                 .build();
     }
 
@@ -470,10 +495,9 @@ public class NotificationHelper {
             return null;
         }
 
-        Long userId = userClient.getUser(login).id();
-        String email = userClient.getUser(login).email();
+        UserDTO user = userClient.getUserByLogin(login);
 
-        if (userId == null && (email == null || email.isBlank())) {
+        if (user == null || user.id() == null || user.email() == null || user.email().isBlank()) {
             log.warn(
                     "[NOTIFICATION] Skip CURRENT_USER because user id and email are missing. login={}",
                     login
@@ -483,15 +507,16 @@ public class NotificationHelper {
 
         return NotificationResolvedRecipientDTO.builder()
                 .recipientType("USER")
-                .recipientId(userId)
+                .recipientId(user.id())
                 .recipientName(login)
-                .recipientEmail(email)
-                .toEmails(email != null && !email.isBlank() ? List.of(email) : List.of())
+                .recipientEmail(user.email())
+                .toEmails(user.email() != null && !user.email().isBlank() ? List.of(user.email()) : List.of())
                 .recipientData(Map.of(
                         "login", login,
-                        "userId", userId,
-                        "email", email
+                        "userId", user.id(),
+                        "email", user.email()
                 ))
+                .language(user.langKey() != null && !user.langKey().isBlank() ? user.langKey() : "en")
                 .build();
     }
 
@@ -500,10 +525,9 @@ public class NotificationHelper {
             return null;
         }
 
-        Long userId = userClient.getUser(login).id();
-        String phoneNumber = userClient.getUser(login).phoneNumber();
+        UserDTO user = userClient.getUserByLogin(login);
 
-        if (phoneNumber == null || phoneNumber.isBlank()) {
+        if (user == null || user.id() == null || user.phoneNumber() == null || user.phoneNumber().isBlank()) {
             log.warn(
                     "[NOTIFICATION] Skip CURRENT_USER_PHONE because phone number is missing. login={}",
                     login
@@ -513,15 +537,16 @@ public class NotificationHelper {
 
         return NotificationResolvedRecipientDTO.builder()
                 .recipientType("USER")
-                .recipientId(userId)
+                .recipientId(user.id())
                 .recipientName(login)
-                .recipientPhone(phoneNumber)
-                .toPhone(phoneNumber)
+                .recipientPhone(user.phoneNumber())
+                .toPhone(user.phoneNumber())
                 .recipientData(Map.of(
                         "login", login,
-                        "userId", userId,
-                        "phoneNumber", phoneNumber
+                        "userId", user.id(),
+                        "phoneNumber", user.phoneNumber()
                 ))
+                .language(user.langKey() != null && !user.langKey().isBlank() ? user.langKey() : "en")
                 .build();
     }
 
@@ -540,6 +565,7 @@ public class NotificationHelper {
                 .recipientName(getPatientName(patient))
                 .recipientEmail(patient.getEmail())
                 .toEmails(List.of(patient.getEmail()))
+                .language(patient.getNativeLanguage() != null && !patient.getNativeLanguage().isBlank() ? patient.getNativeLanguage() : "en")
                 .build();
     }
 
@@ -558,6 +584,7 @@ public class NotificationHelper {
                 .recipientName(getPatientName(patient))
                 .recipientPhone(patient.getPrimaryMobileNumber())
                 .toPhone(patient.getPrimaryMobileNumber())
+                .language(patient.getNativeLanguage() != null && !patient.getNativeLanguage().isBlank() ? patient.getNativeLanguage() : "en")
                 .build();
     }
 
@@ -586,7 +613,7 @@ public class NotificationHelper {
         return patient.getId() != null ? String.valueOf(patient.getId()) : "";
     }
 
-    private NotificationResolvedRecipientDTO buildPractitionerEmailRecipient(PractitionerDTO practitionerDTO) {
+    private NotificationResolvedRecipientDTO buildPractitionerEmailRecipient(PractitionerDTO practitionerDTO, UserDTO practitionerUser) {
         if (practitionerDTO == null) {
             return null;
         }
@@ -597,10 +624,11 @@ public class NotificationHelper {
                 .recipientName(practitionerDTO.firstName() + " " + practitionerDTO.lastName())
                 .recipientEmail(practitionerDTO.email())
                 .toEmails(List.of(practitionerDTO.email()))
+                .language(practitionerUser != null && practitionerUser.langKey() != null && !practitionerUser.langKey().isBlank() ? practitionerUser.langKey() : "en")
                 .build();
     }
 
-    private NotificationResolvedRecipientDTO buildPractitionerPhoneRecipient(PractitionerDTO practitionerDTO) {
+    private NotificationResolvedRecipientDTO buildPractitionerPhoneRecipient(PractitionerDTO practitionerDTO, UserDTO practitionerUser) {
         if (practitionerDTO == null) {
             return null;
         }
@@ -611,10 +639,11 @@ public class NotificationHelper {
                 .recipientName(practitionerDTO.firstName() + " " + practitionerDTO.lastName())
                 .recipientPhone(practitionerDTO.phoneNumber())
                 .toPhone(practitionerDTO.phoneNumber())
+                .language(practitionerUser != null && practitionerUser.langKey() != null && !practitionerUser.langKey().isBlank() ? practitionerUser.langKey() : "en")
                 .build();
     }
 
-    private NotificationResolvedRecipientDTO buildPractitionerUserRecipient(PractitionerDTO practitioner) {
+    private NotificationResolvedRecipientDTO buildPractitionerUserRecipient(PractitionerDTO practitioner, UserDTO practitionerUser) {
         if (practitioner == null || practitioner.userId() == null) {
             return null;
         }
@@ -630,6 +659,7 @@ public class NotificationHelper {
                         "practitionerEmail", practitioner.email(),
                         "practitionerUserId", practitioner.userId()
                 ))
+                .language(practitionerUser != null && practitionerUser.langKey() != null && !practitionerUser.langKey().isBlank() ? practitionerUser.langKey() : "en")
                 .build();
     }
 
@@ -662,6 +692,37 @@ public class NotificationHelper {
 
     private String safe(String value) {
         return value != null ? value : "";
+    }
+
+    private Map<String, Map<String, List<NotificationResolvedRecipientDTO>>> groupRecipientsByLanguage(
+            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule) {
+
+        Map<String, Map<String, List<NotificationResolvedRecipientDTO>>> result = new LinkedHashMap<>();
+
+        if (recipientsByRule == null) {
+            return result;
+        }
+
+        for (Map.Entry<String, List<NotificationResolvedRecipientDTO>> ruleEntry : recipientsByRule.entrySet()) {
+
+            String rule = ruleEntry.getKey();
+
+            for (NotificationResolvedRecipientDTO recipient : ruleEntry.getValue()) {
+
+                String language = recipient.getLanguage();
+
+                if (language == null || language.isBlank()) {
+                    language = "en";
+                }
+
+                result
+                        .computeIfAbsent(language, k -> new LinkedHashMap<>())
+                        .computeIfAbsent(rule, k -> new ArrayList<>())
+                        .add(recipient);
+            }
+        }
+
+        return result;
     }
 
 }
