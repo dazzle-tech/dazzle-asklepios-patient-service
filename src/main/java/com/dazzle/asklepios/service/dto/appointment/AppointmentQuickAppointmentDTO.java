@@ -19,6 +19,7 @@ public record AppointmentQuickAppointmentDTO(
         String note,
         Long followUpEncounterId,
         String originType,
-        String originName
+        String originName,
+        String hl7AppointmentNumber
 ) {
 }

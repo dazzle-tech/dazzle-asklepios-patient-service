@@ -34,7 +34,6 @@ public class NotificationHelper {
     private final UserDepartmentHelper userDepartmentHelper;
     private final UserClient userClient;
     private final DepartmentHelper departmentHelper;
-    private final FacilityHelper facilityHelper;
     private final OrganizationClient organizationClient;
 
     public void sendNotification(Long facilityId, NotificationCode code, Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule, Map<String, Object> data, String relatedEntityType, Long relatedEntityId) {
