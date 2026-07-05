@@ -1552,7 +1552,7 @@ public class AppointmentService {
         try {
             LOG.debug("Creating appointment notification. appointmentId={}, code={}, recipientsByRule={}", appointment.getId(), notificationCode, recipientsByRule);
 
-            notificationHelper.sendNotification(appointment.getFacilityId(), notificationCode, "en", recipientsByRule, data, "APPOINTMENT", appointment.getId());
+            notificationHelper.sendNotification(appointment.getFacilityId(), notificationCode, recipientsByRule, data, "APPOINTMENT", appointment.getId());
 
         } catch (Exception e) {
             LOG.warn("Failed to create appointment notification. appointmentId={}, code={}, error={}", appointment.getId(), notificationCode, e.getMessage());
@@ -1601,7 +1601,6 @@ public class AppointmentService {
 
             notificationHelper.sendNotification(appointment.getFacilityId(),
                     notificationCode,
-                    "en",
                     recipientsByRule,
                     data,
                     "APPOINTMENT",

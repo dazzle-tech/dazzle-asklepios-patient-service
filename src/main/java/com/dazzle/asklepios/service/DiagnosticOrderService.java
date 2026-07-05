@@ -479,7 +479,6 @@ public class DiagnosticOrderService {
             notificationHelper.sendNotification(
                     null,
                     NotificationCode.URGENT_DIAGNOSTIC_ORDER_SUBMITTED,
-                    "en",
                     recipientsByRule,
                     data,
                     "DIAGNOSTIC_ORDER",

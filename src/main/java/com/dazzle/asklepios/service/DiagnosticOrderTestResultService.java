@@ -459,7 +459,6 @@ public class DiagnosticOrderTestResultService {
 
             notificationHelper.sendNotification(null,
                     notificationCode,
-                    "en",
                     recipientsByRule,
                     data,
                     "DIAGNOSTIC_ORDER_TEST_RESULT",

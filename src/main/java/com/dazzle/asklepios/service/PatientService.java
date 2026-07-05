@@ -442,10 +442,6 @@ public class PatientService {
             );
         }
 
-        String language = patient.getNativeLanguage() != null
-                ? patient.getNativeLanguage()
-                : "en";
-
         String patientName = getPatientName(patient);
 
         String createPasswordUrl =
@@ -468,7 +464,6 @@ public class PatientService {
         try {
             notificationHelper.sendNotification(null,
                     NotificationCode.PATIENT_CREATE_PASSWORD,
-                    language,
                     recipientsByRule,
                     data,
                     "PATIENT",

@@ -234,7 +234,7 @@ public class PainAssessmentService {
                     recipientsByRule
             );
 
-            notificationHelper.sendNotification(null, NotificationCode.PAIN_LEVEL_SEVERE, "en", recipientsByRule, data, "PAIN_ASSESSMENT", painAssessment.getId());
+            notificationHelper.sendNotification(null, NotificationCode.PAIN_LEVEL_SEVERE, recipientsByRule, data, "PAIN_ASSESSMENT", painAssessment.getId());
         } catch (Exception e) {
             LOG.warn("Failed to create severe pain  notification. painAssessmentId={}, error={}", painAssessment.getId(), e.getMessage());
         }

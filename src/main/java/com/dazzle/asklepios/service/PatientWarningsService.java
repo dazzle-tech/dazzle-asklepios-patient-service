@@ -447,7 +447,6 @@ public class PatientWarningsService {
 
             notificationHelper.sendNotification(null
                     , NotificationCode.MEDICAL_WARNING_SEVERE_CRITICAL
-                    , "en"
                     , recipientsByRule
                     , data
                     , "PATIENT_WARNING"
