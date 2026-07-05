@@ -1,20 +1,21 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.notification.NotificationClient;
-import com.dazzle.asklepios.client.notification.dto.NotificationCreateDTO;
 import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.setup.SystemConfigurationClient;
 import com.dazzle.asklepios.domain.DuplicationCandidate;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
 import com.dazzle.asklepios.domain.enumeration.SystemConfigKey;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.DuplicationCandidateRepository;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientDuplicationLookupDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
+import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.InvalidPasswordException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
@@ -65,8 +66,8 @@ public class PatientService {
     private static final Pattern STRONG_PASSWORD_PATTERN = Pattern.compile(
             "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&#_.-])[A-Za-z\\d@$!%*?&#_.-]{8,}$"
     );
-    private final NotificationClient notificationClient;
     private final SystemConfigurationClient systemConfigurationClient;
+    private final NotificationHelper notificationHelper;
 
     @Value("${application.asklepios-application-url}")
     private String asklepiosApplicationlUrl;
@@ -461,39 +462,17 @@ public class PatientService {
         data.put("title", "CMS | Set your password");
         data.put("logoUrl", logoUrl);
 
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
-
-        recipientsByRule.put(
-                "PATIENT_EMAIL",
-                List.of(
-                        NotificationResolvedRecipientDTO.builder()
-                                .recipientType("PATIENT")
-                                .recipientId(patient.getId())
-                                .recipientName(patientName)
-                                .recipientEmail(patient.getEmail())
-                                .recipientPhone(patient.getPrimaryMobileNumber())
-                                .toEmails(List.of(patient.getEmail()))
-                                .recipientData(Map.of(
-                                        "patientId", patient.getId(),
-                                        "documentNumber", primaryDoc.getNumber()
-                                ))
-                                .build()
-                )
-        );
-
-        NotificationCreateDTO notificationDTO = new NotificationCreateDTO(
-                null,
-                "PATIENT_CREATE_PASSWORD",
-                language,
-                null,
-                recipientsByRule,
-                data,
-                "PATIENT",
-                patient.getId()
-        );
+        String login = SecurityUtils.getCurrentUserLogin().orElse(null);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(null, login, patient.getCreatedBy(), patient, null);
 
         try {
-            notificationClient.createNotification(notificationDTO);
+            notificationHelper.sendNotification(null,
+                    NotificationCode.PATIENT_CREATE_PASSWORD,
+                    language,
+                    recipientsByRule,
+                    data,
+                    "PATIENT",
+                    patient.getId());
         } catch (Exception e) {
             LOG.warn(
                     "Failed to create patient create-password notification. patientId={}, error={}",
@@ -502,6 +481,7 @@ public class PatientService {
             );
         }
     }
+
     @Transactional(readOnly = true)
     public CreatePasswordKeyValidationVM validateCreatePasswordKey(String key) {
         return patientRepository
@@ -727,6 +707,7 @@ public class PatientService {
             return criteriaBuilder.and(preds.toArray(new Predicate[0]));
         };
     }
+
     private String getPatientName(Patient patient) {
         if (patient == null) {
             return "";

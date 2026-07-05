@@ -1,19 +1,19 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.notification.NotificationClient;
-import com.dazzle.asklepios.client.notification.dto.NotificationCreateDTO;
 import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.setup.ActiveIngredientClient;
 import com.dazzle.asklepios.client.setup.BrandMedicationClient;
 import com.dazzle.asklepios.client.setup.dto.ActiveIngredientDTO;
 import com.dazzle.asklepios.client.setup.dto.BrandMedicationDTO;
-import com.dazzle.asklepios.client.setup.dto.UserDTO;
+import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientPrescription;
 import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionUrgencyLevel;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientPrescriptionMedicationRepository;
 import com.dazzle.asklepios.repository.PatientPrescriptionRepository;
@@ -24,6 +24,7 @@ import com.dazzle.asklepios.service.dto.patientPrescription.PatientPrescriptionU
 import com.dazzle.asklepios.service.helper.ActiveIngredientHelper;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
+import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.service.helper.UserDepartmentHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
@@ -59,11 +60,9 @@ public class PatientPrescriptionService {
     private final PatientEncounterRepository patientEncounterRepository;
     private final FacilityHelper facilityHelper;
     private final DepartmentHelper departmentHelper;
-    private final NotificationClient notificationClient;
-    private final ActiveIngredientHelper activeIngredientHelper;
     private final ActiveIngredientClient activeIngredientClient;
     private final BrandMedicationClient brandMedicationClient;
-    private final UserDepartmentHelper userDepartmentHelper;
+    private final NotificationHelper notificationHelper;
 
     private String currentUsername() {
         String username = SecurityUtils.getCurrentUserLogin().orElse(null);
@@ -244,7 +243,7 @@ public class PatientPrescriptionService {
 
         PatientPrescription saved = prescriptionRepository.save(entity);
 
-        notifyDepartmentUsersForHighAlertMedication(saved);
+        notificationForHighAlertMedication(saved);
 
         return toDto(saved);
     }
@@ -298,7 +297,7 @@ public class PatientPrescriptionService {
         return patientEncounterRepository.findById(id).orElseThrow(() -> new BadRequestAlertException("notfound" + id, "PatientPrescription", "Patient Encounter not found: "));
     }
 
-    private void notifyDepartmentUsersForHighAlertMedication(PatientPrescription prescription) {
+    private void notificationForHighAlertMedication(PatientPrescription prescription) {
         if (prescription == null) {
             return;
         }
@@ -310,37 +309,30 @@ public class PatientPrescriptionService {
         }
 
         Long departmentId = resolvePrescriptionDepartmentId(prescription);
+        DepartmentDTO department = departmentId != null ? departmentHelper.getDepartment(departmentId) : null;
 
         if (departmentId == null) {
             LOG.warn("Skip high alert medication notification because department is missing. prescriptionId={}", prescription.getId());
             return;
         }
+        String login = SecurityUtils.getCurrentUserLogin().orElse(null);
 
-        List<NotificationResolvedRecipientDTO> departmentUsers = buildDepartmentUserRecipients(departmentId);
-
-        if (departmentUsers.isEmpty()) {
-            LOG.warn("Skip high alert medication notification because no department users found. prescriptionId={}, departmentId={}", prescription.getId(), departmentId);
-            return;
-        }
-
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
-        recipientsByRule.put("DEPARTMENT_USERS", departmentUsers);
-
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, prescription.getCreatedBy(), prescription.getPatient(), null);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("prescriptionId", prescription.getId());
-        data.put("patientId", resolvePrescriptionPatientId(prescription));
-        data.put("patientName", resolvePrescriptionPatientName(prescription));
+        data.put("patientId", prescription.getPatient().getId());
+        data.put("patientName", notificationHelper.getPatientName(prescription.getPatient()));
         data.put("encounterId", resolvePrescriptionEncounterId(prescription));
         data.put("departmentId", departmentId);
+        data.put("departmentName", department != null ? department.name() : "");
         data.put("highAlertMedications", String.join(", ", highAlertMedications));
         data.put("highAlertMedicationCount", highAlertMedications.size());
-
-        NotificationCreateDTO dto = new NotificationCreateDTO(null, "PRESCRIPTION_HIGH_ALERT_MEDICATION_SUBMITTED", "en", null, recipientsByRule, data, "PRESCRIPTION", prescription.getId());
 
         try {
             LOG.debug("Creating high alert medication in-app notification. prescriptionId={}, departmentId={}, medications={}, recipientsByRule={}", prescription.getId(), departmentId, highAlertMedications, recipientsByRule);
 
-            notificationClient.createNotification(dto);
+            notificationHelper.sendNotification(null, NotificationCode.PRESCRIPTION_HIGH_ALERT_MEDICATION_SUBMITTED, "en", recipientsByRule, data, "PRESCRIPTION", prescription.getId());
+
         } catch (Exception e) {
             LOG.warn("Failed to create high alert medication notification. prescriptionId={}, error={}", prescription.getId(), e.getMessage());
         }
@@ -404,100 +396,6 @@ public class PatientPrescriptionService {
         }
 
         return null;
-    }
-
-    private Long resolvePrescriptionPatientId(PatientPrescription prescription) {
-        if (prescription.getPatient() != null) {
-            return prescription.getPatient().getId();
-        }
-        return null;
-    }
-
-    private String resolvePrescriptionPatientName(PatientPrescription prescription) {
-        if (prescription.getPatient() == null) {
-            Long patientId = resolvePrescriptionPatientId(prescription);
-            return patientId != null ? String.valueOf(patientId) : "";
-        }
-
-        return getPatientName(prescription.getPatient());
-    }
-
-    private List<NotificationResolvedRecipientDTO> buildDepartmentUserRecipients(Long departmentId) {
-        if (departmentId == null) {
-            return List.of();
-        }
-
-        List<UserDTO> users = userDepartmentHelper.getUsersForDepartment(departmentId);
-
-        if (users == null || users.isEmpty()) {
-            return List.of();
-        }
-
-        return users.stream()
-                .filter(user -> user != null && user.id() != null)
-                .map(user -> NotificationResolvedRecipientDTO.builder()
-                        .recipientType("USER")
-                        .recipientId(user.id())
-                        .recipientName(getUserDisplayName(user))
-                        .recipientEmail(user.email())
-                        .recipientData(Map.of(
-                                "departmentId", departmentId
-                        ))
-                        .build()
-                )
-                .toList();
-    }
-
-    private String getPatientName(Patient patient) {
-        if (patient == null) {
-            return "";
-        }
-
-        String firstName = patient.getFirstName() != null ? patient.getFirstName() : "";
-        String secondName = patient.getSecondName() != null ? patient.getSecondName() : "";
-        String thirdName = patient.getThirdName() != null ? patient.getThirdName() : "";
-        String lastName = patient.getLastName() != null ? patient.getLastName() : "";
-
-        String fullName = (firstName + " " + secondName + " " + thirdName + " " + lastName)
-                .replaceAll("\\s+", " ")
-                .trim();
-
-        if (!fullName.isBlank()) {
-            return fullName;
-        }
-
-        if (patient.getEmail() != null && !patient.getEmail().isBlank()) {
-            return patient.getEmail();
-        }
-
-        return patient.getId() != null ? String.valueOf(patient.getId()) : "";
-    }
-
-    private String getUserDisplayName(UserDTO user) {
-        if (user == null) {
-            return "";
-        }
-
-        String firstName = user.firstName() != null ? user.firstName() : "";
-        String lastName = user.lastName() != null ? user.lastName() : "";
-
-        String fullName = (firstName + " " + lastName)
-                .replaceAll("\\s+", " ")
-                .trim();
-
-        if (!fullName.isBlank()) {
-            return fullName;
-        }
-
-        if (user.login() != null && !user.login().isBlank()) {
-            return user.login();
-        }
-
-        if (user.email() != null && !user.email().isBlank()) {
-            return user.email();
-        }
-
-        return user.id() != null ? String.valueOf(user.id()) : "";
     }
 
 }

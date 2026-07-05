@@ -59,4 +59,9 @@ public class AvailabilityGenerationBatch extends  AbstractAuditingEntity<Long> i
     @Column(name = "execution_status", nullable = false)
     private BatchStatus executionStatus;
 
+    @Column(name = "interval_ended_notification_sent", nullable = false)
+    private Boolean intervalEndedNotificationSent = false;
+
+    @Column(name = "interval_ended_notification_sent_at")
+    private Instant intervalEndedNotificationSentAt;
 }

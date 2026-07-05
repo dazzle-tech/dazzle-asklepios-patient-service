@@ -53,4 +53,16 @@ public class DepartmentHelper {
             );
         }
     }
+    public DepartmentDTO getDepartmentInternal(Long departmentId) {
+        try {
+            return departmentClient.getDepartmentInternal(departmentId);
+        } catch (feign.FeignException.NotFound ex) {
+            throw new NotFoundAlertException(
+                    "Department not found: " + departmentId,
+                    "department",
+                    "notfound"
+            );
+        }
+    }
+
 }

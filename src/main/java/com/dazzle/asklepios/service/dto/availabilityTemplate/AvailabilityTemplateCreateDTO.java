@@ -48,6 +48,8 @@ public record AvailabilityTemplateCreateDTO(
 
         List<WorkingDayJson> workingDays,
 
-        List<AvailabilityTemplateAllowedServiceDTO> allowedServices
+        List<AvailabilityTemplateAllowedServiceDTO> allowedServices,
+
+        @NotNull Boolean allowWalkInBooking
 
 ) {}

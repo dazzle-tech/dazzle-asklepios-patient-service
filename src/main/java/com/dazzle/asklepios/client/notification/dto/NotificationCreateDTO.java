@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.client.notification.dto;
 
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -16,7 +17,7 @@ public class NotificationCreateDTO {
     private Long facilityId;
 
     @NotBlank
-    private String code;
+    private NotificationCode code;
 
     @NotBlank
     private String language;

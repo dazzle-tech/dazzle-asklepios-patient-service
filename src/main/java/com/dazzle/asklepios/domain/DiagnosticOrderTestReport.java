@@ -49,6 +49,7 @@ public class DiagnosticOrderTestReport extends AbstractAuditingEntity implements
     @Column(name = "report", columnDefinition = "text")
     private String report;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "severity", length = 50)
     private Severity severity;
 
