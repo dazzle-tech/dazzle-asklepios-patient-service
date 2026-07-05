@@ -340,8 +340,8 @@ public class AppointmentService {
                 predicates.add(cb.equal(root.get("resourceId"), filter.resourceId()));
             }
 
-            if (filter.status() != null) {
-                predicates.add(cb.equal(root.get("status"), filter.status()));
+            if (filter.status() != null && !filter.status().isEmpty()) {
+                predicates.add(root.get("status").in(filter.status()));
             }
 
             if (filter.bookingMode() != null && !filter.bookingMode().isEmpty()) {
@@ -352,6 +352,19 @@ public class AppointmentService {
 
             if (filter.patientId() != null) {
                 predicates.add(cb.equal(root.join("patient", JoinType.LEFT).get("id"), filter.patientId()));
+            }
+            if (filter.startDate() != null) {
+                predicates.add(cb.greaterThanOrEqualTo(
+                        root.get("startDatetime"),
+                        filter.startDate()
+                ));
+            }
+
+            if (filter.endDate() != null) {
+                predicates.add(cb.lessThanOrEqualTo(
+                        root.get("startDatetime"),
+                        filter.endDate()
+                ));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));

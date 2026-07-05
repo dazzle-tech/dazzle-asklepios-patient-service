@@ -4,6 +4,8 @@ import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.BookingMode;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 public record AppointmentSearchFilterMultiDepartmentDTO(
@@ -11,8 +13,10 @@ public record AppointmentSearchFilterMultiDepartmentDTO(
         List<Long> departmentIds,
         TemplateType resourceType,
         Long resourceId,
-        AppointmentStatus status,
+       List<AppointmentStatus> status,
         List<BookingMode> bookingMode,
-        Long patientId
+        Long patientId,
+        Instant startDate,
+        Instant endDate
 ) {
 }
