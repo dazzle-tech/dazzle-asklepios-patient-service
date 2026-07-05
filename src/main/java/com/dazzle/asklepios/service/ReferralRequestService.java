@@ -276,9 +276,9 @@ public class ReferralRequestService {
 
         if (messageLower.contains("uk_referral_encounter_to_department")) {
             return new BadRequestAlertException(
-                    "A referral to the same department already exists for this encounter.",
+                    "encounter.department.duplicate",
                     "referralRequest",
-                    "encounter.department.duplicate"
+                    "A referral to the same department already exists for this encounter."
             );
         }
 

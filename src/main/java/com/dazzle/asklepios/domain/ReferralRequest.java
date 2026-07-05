@@ -46,7 +46,6 @@ public class ReferralRequest extends AbstractAuditingEntity<Long> implements Ser
     @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
-    @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "appointment_id", nullable = false)
     private Appointment appointment;
