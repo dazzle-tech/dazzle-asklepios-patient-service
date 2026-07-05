@@ -1,7 +1,6 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
 import com.dazzle.asklepios.domain.PreAuthorizationRequest;
-import com.dazzle.asklepios.domain.PreAuthorizationTrack;
 import com.dazzle.asklepios.integration.waseel.dto.PreAuthorizationTrackingResponse;
 import com.dazzle.asklepios.repository.PreAuthorizationRequestRepository;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;

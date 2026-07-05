@@ -6,7 +6,6 @@ import com.dazzle.asklepios.domain.PatientDocument;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiBeneficiaryData;
-import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiCoverageClass;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiInquiryResponse;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiInsurancePlan;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiMappedPatientResponse;
@@ -20,7 +19,11 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
-
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -65,10 +68,80 @@ public class WaseelCchiService {
     }
 
     public CchiInquiryResponse fetchBeneficiaryByDocumentId(String documentId) {
-        // TODO: Replace mock response with real Waseel CCHI API call when integration is ready.
-        return mockCchiInquiryResponse();
+        if (documentId == null || documentId.trim().isEmpty()) {
+            throw new BadRequestAlertException(
+                    "Document ID is required",
+                    "waseelCchi",
+                    "documentId.required"
+            );
+        }
+
+        try {
+            // TODO real API call later
+            return mockCchiInquiryResponse();
+
+        } catch (HttpClientErrorException.BadRequest ex) {
+            LOG.warn("[CCHI] Bad request documentId={} response={}", documentId, ex.getResponseBodyAsString());
+
+            throw new BadRequestAlertException(
+                    extractWaseelErrorMessage(ex.getResponseBodyAsString(), "Invalid CCHI request"),
+                    "waseelCchi",
+                    "waseel.cchi.badRequest"
+            );
+
+        } catch (HttpClientErrorException ex) {
+            LOG.warn("[CCHI] Client error documentId={} status={} response={}",
+                    documentId,
+                    ex.getStatusCode(),
+                    ex.getResponseBodyAsString()
+            );
+
+            throw new BadRequestAlertException(
+                    extractWaseelErrorMessage(ex.getResponseBodyAsString(), "CCHI request failed"),
+                    "waseelCchi",
+                    "waseel.cchi.clientError"
+            );
+
+        } catch (ResourceAccessException ex) {
+            LOG.error("[CCHI] Waseel connection failed documentId={}", documentId, ex);
+
+            throw new BadRequestAlertException(
+                    "Unable to connect to Waseel CCHI service",
+                    "waseelCchi",
+                    "waseel.cchi.connectionFailed"
+            );
+
+        } catch (Exception ex) {
+            LOG.error("[CCHI] Unexpected error documentId={}", documentId, ex);
+
+            throw new BadRequestAlertException(
+                    "Failed to fetch patient from CCHI",
+                    "waseelCchi",
+                    "waseel.cchi.failed"
+            );
+        }
     }
 
+    private String extractWaseelErrorMessage(String responseBody, String fallback) {
+        if (responseBody == null || responseBody.isBlank()) {
+            return fallback;
+        }
+
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode node = mapper.readTree(responseBody);
+
+            if (node.hasNonNull("message")) return node.get("message").asText();
+            if (node.hasNonNull("error")) return node.get("error").asText();
+            if (node.hasNonNull("detail")) return node.get("detail").asText();
+            if (node.hasNonNull("description")) return node.get("description").asText();
+
+        } catch (Exception ignored) {
+            // ignore parsing error
+        }
+
+        return fallback;
+    }
     public Patient fetchPatientByDocumentId(String documentId) {
         CchiMappedPatientResponse mapped = fetchMappedPatientByDocumentId(documentId);
 
@@ -131,101 +204,77 @@ public class WaseelCchiService {
 
     private CchiInquiryResponse mockCchiInquiryResponse() {
         CchiBeneficiaryData data = new CchiBeneficiaryData(
-                "1254562145",
-                "National Card",
+                "2456789123",          // documentId
+                "PRC",               // documentType
 
-                "Thmd Adel Ramy Sami",
-                "",
-                "",
-                "",
-                "",
+                "Mohammed Ahmed Saleh Alharbi", // fullName
+                "Mohammed",            // firstName
+                "Ahmed",               // middleName
+                "Saleh",               // lastName
+                "Alharbi",             // familyName
 
-                "240600003",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
+                "240600003",           // beneficiaryFileId
+                "",                    // systemType
+                "",                    // passportNumber
+                "",                    // borderNumber
+                "",                    // visaNumber
+                "",                    // visaType
+                "",                    // visitTitle
+                "2034-01-01",          // visaExpiryDate
 
-                "2020-02-05",
-                "",
-                "",
-                "",
+                "1995-05-18",          // dob
+                "",                    // eHealthId
+                "Saudi",               // nationality
+                "Resident",            // residencyType
 
-                "",
-                "",
-                "",
+                "966501234567",        // contactNumber
+                "mohammed@test.com",   // email
+                "966500000000",        // emergencyNumber
 
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
+                "Building 25, Al Olaya", // addressLine
+                "King Fahad Road",       // streetLine
+                "Riyadh",                // city
+                "Riyadh",                // state
+                "Saudi Arabia",          // country
+                "12211",                 // postalCode
 
-                "Unmarried",
-                "male",
-                "",
-                "",
-                "",
-                "Business",
+                "Married",             // martialStatus
+                "male",                // gender
+                "O+",                  // bloodGroup
+                "Arabic",              // preferredLanguage
+                "Islam",               // religion
+                "Business",            // occupation
 
-                0L,
-                "",
-                false,
+                0L,                    // nphiesId
+                "",                    // providerId
+                false,                 // isNewBorn
 
                 List.of(
                         new CchiInsurancePlan(
-
                                 null,
-
                                 "74915036",
-
                                 "17452394",
-
                                 null,
-
                                 "2028-03-16",
-
                                 null,
-
                                 "false",
-
                                 null,
-
                                 "Insurance Company Testing Payer",
-
                                 "INS-FHIR",
-
                                 null,
-
                                 "self",
-
                                 "EHCPOL",
-
                                 BigDecimal.ZERO,
-
                                 BigDecimal.ZERO,
-
                                 null,
-
                                 null,
-
                                 null,
-
                                 "ELAL CONSTRUCTION",
-
                                 List.of(),
-
                                 false
-
                         )
-
                 )
         );
-
         return new CchiInquiryResponse(
                 "Success",
                 "200",

@@ -39,10 +39,12 @@ public class WaseelPreAuthorizationController {
     }
 
     @GetMapping("/internal/waseel/pre-authorizations/search")
-    public Object search(@RequestParam("requestId") Long requestId) {
-        return service.search(requestId);
+    public Object search(
+            @RequestParam("preAuthorizationId") Long preAuthorizationId,
+            @RequestParam("requestId") Long requestId
+    ) {
+        return service.searchAndUpdate(preAuthorizationId, requestId);
     }
-
     @PostMapping("/internal/waseel/pre-authorizations/communication")
     public Object communicate(@RequestBody PreAuthorizationCommunicationRequest request) {
         return service.communicate(request);

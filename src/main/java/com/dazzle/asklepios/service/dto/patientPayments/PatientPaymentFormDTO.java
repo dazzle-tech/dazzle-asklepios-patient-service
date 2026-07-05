@@ -1,6 +1,6 @@
 package com.dazzle.asklepios.service.dto.patientPayments;
 
-import com.dazzle.asklepios.domain.PatientPaymentServices;
+import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.PaymentMethods;
 import com.dazzle.asklepios.domain.enumeration.PaymentTypes;
@@ -47,6 +47,6 @@ public record PatientPaymentFormDTO(
         String transferBankName,
         LocalDate transferDate,
 
-        List<PatientPaymentServices> services
+        List<PatientServiceAndProduct> services
 
 ) {}

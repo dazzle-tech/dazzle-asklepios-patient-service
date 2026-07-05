@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.integration.waseel.dto;
 
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.CancelReason;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -59,7 +61,7 @@ public record PreAuthorizationTrackingResponse(
         String statusReason,
 
         Boolean isCancelled,
-        String cancelReason,
+        CancelReason cancelReason,
         String cancelStatus,
         String cancelOutcome,
         String cancelMessage,

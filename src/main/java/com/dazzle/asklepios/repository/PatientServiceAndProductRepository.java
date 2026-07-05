@@ -37,14 +37,26 @@ public interface PatientServiceAndProductRepository extends JpaRepository<Patien
             Long sourceId,
             Pageable pageable
     );
+
     Optional<PatientServiceAndProduct> findByServiceSourceAndSourceIdAndBillingItemType(
             ServiceSource serviceSource,
             Long sourceId,
             BillingItemTypes billingItemType
     );
+
     List<PatientServiceAndProduct> findByEncounterId(Long encounterId);
+
     List<PatientServiceAndProduct> findByEncounterIdAndPreAuthorizationStatus(
             Long encounterId,
             PreAuthorizationStatus preAuthorizationStatus
+    );
+
+    List<PatientServiceAndProduct> findByPaymentId(Long paymentId);
+
+    List<PatientServiceAndProduct> findByEncounterIdAndPaymentIdIsNull(Long encounterId);
+
+    List<PatientServiceAndProduct> findByEncounterIdAndPaymentId(
+            Long encounterId,
+            Long paymentId
     );
 }

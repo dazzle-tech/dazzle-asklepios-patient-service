@@ -3,6 +3,9 @@ package com.dazzle.asklepios.domain;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
+import com.dazzle.asklepios.domain.enumeration.PriceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -115,4 +118,88 @@ public class PatientServiceAndProduct extends AbstractAuditingEntity<Long> imple
     @Column(name = "pre_authorization_status", length = 50)
     private PreAuthorizationStatus preAuthorizationStatus;
 
+    @Column(name = "payment_id")
+    private Long paymentId;
+
+    @Column(name = "payment_type", length = 50)
+    private String paymentType;
+
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_status", nullable = false, length = 50)
+    @Builder.Default
+    private PaymentStatus paymentStatus = PaymentStatus.PENDING;
+
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(name = "coverage_status", nullable = false, length = 50)
+    @Builder.Default
+    private CoverageStatus coverageStatus = CoverageStatus.NOT_CHECKED;
+
+    @Column(name = "not_covered_reason", length = 100)
+    private String notCoveredReason;
+
+    @Column(name = "patient_insurance_id")
+    private Long patientInsuranceId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "price_source", length = 50)
+    private PriceSource priceSource;
+
+    @NotNull
+    @Column(name = "is_default_service", nullable = false)
+    @Builder.Default
+    private Boolean isDefaultService = Boolean.FALSE;
+
+    @NotNull
+    @Column(name = "is_exempted", nullable = false)
+    @Builder.Default
+    private Boolean isExempted = Boolean.FALSE;
+
+    @NotNull
+    @Column(name = "gross_amount", nullable = false, precision = 19, scale = 4)
+    @Builder.Default
+    private BigDecimal grossAmount = BigDecimal.ZERO;
+
+    @NotNull
+    @Column(name = "net_amount", nullable = false, precision = 19, scale = 4)
+    @Builder.Default
+    private BigDecimal netAmount = BigDecimal.ZERO;
+
+    @NotNull
+    @Column(name = "patient_share_amount", nullable = false, precision = 19, scale = 4)
+    @Builder.Default
+    private BigDecimal patientShareAmount = BigDecimal.ZERO;
+
+    @NotNull
+    @Column(name = "insurance_share_amount", nullable = false, precision = 19, scale = 4)
+    @Builder.Default
+    private BigDecimal insuranceShareAmount = BigDecimal.ZERO;
+
+    @NotNull
+    @Column(name = "paid_amount", nullable = false, precision = 19, scale = 4)
+    @Builder.Default
+    private BigDecimal paidAmount = BigDecimal.ZERO;
+
+    @NotNull
+    @Column(name = "remaining_amount", nullable = false, precision = 19, scale = 4)
+    @Builder.Default
+    private BigDecimal remainingAmount = BigDecimal.ZERO;
+
+    @Column(name = "waseel_sbs_mapping_id")
+    private Long waseelSbsMappingId;
+
+    @Column(name = "waseel_sbs_code", length = 100)
+    private String waseelSbsCode;
+
+    @NotNull
+    @Column(name = "pre_authorization_required", nullable = false)
+    @Builder.Default
+    private Boolean preAuthorizationRequired = Boolean.FALSE;
+
+    @Column(name = "pre_authorization_request_id")
+    private Long preAuthorizationRequestId;
+
+    @Column(name = "pre_authorization_reference_no", length = 100)
+    private String preAuthorizationReferenceNo;
 }

@@ -1,6 +1,9 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.CancelReason;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 
 import jakarta.persistence.Column;
@@ -146,8 +149,9 @@ public class PreAuthorizationRequest extends AbstractAuditingEntity<Long> implem
     @Builder.Default
     private Boolean isCancelled = Boolean.FALSE;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "cancel_reason", length = 50)
-    private String cancelReason;
+    private CancelReason cancelReason;
 
     @Column(name = "cancel_status", length = 100)
     private String cancelStatus;
