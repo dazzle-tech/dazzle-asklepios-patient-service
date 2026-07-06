@@ -189,7 +189,12 @@ public class DiagnosticOrderTestResultService {
                         )
                 );
 
-        notifyDepartmentUsersForResultReady(
+        notificationForResultReady(
+                approvedResult,
+                viewMarker
+        );
+
+        notificationForCriticalLaboratoryResultReady(
                 approvedResult,
                 viewMarker
         );
@@ -362,11 +367,12 @@ public class DiagnosticOrderTestResultService {
             TestResultMarker.CRITICAL_UPPER,
             TestResultMarker.CRITICAL_LOWER
     );
+    private static final Set<TestResultMarker> CRITICAL_RESULT_MARKERS = Set.of(
+            TestResultMarker.CRITICAL_UPPER,
+            TestResultMarker.CRITICAL_LOWER
+    );
 
-    private void notifyDepartmentUsersForResultReady(
-            DiagnosticOrderTestResult result,
-            TestResultMarker calculatedMarker
-    ) {
+    private void notificationForResultReady(DiagnosticOrderTestResult result, TestResultMarker calculatedMarker) {
         if (result == null || result.getOrderTestId() == null) {
             return;
         }
@@ -473,6 +479,112 @@ public class DiagnosticOrderTestResultService {
         }
     }
 
+    private void notificationForCriticalLaboratoryResultReady(DiagnosticOrderTestResult result, TestResultMarker calculatedMarker) {
+        if (result == null || result.getOrderTestId() == null) {
+            return;
+        }
+
+        DiagnosticOrderTest orderTest = diagnosticOrderTestRepository.findById(result.getOrderTestId())
+                .orElse(null);
+
+        if (orderTest == null || orderTest.getOrderId() == null) {
+            LOG.warn(
+                    "Skip diagnostic result notification because order test/order is missing. resultId={}, orderTestId={}",
+                    result.getId(),
+                    result.getOrderTestId()
+            );
+            return;
+        }
+
+        DiagnosticOrder order = diagnosticOrderRepository.findById(orderTest.getOrderId())
+                .orElse(null);
+
+        if (order == null) {
+            LOG.warn(
+                    "Skip diagnostic result notification because order is missing. resultId={}, orderId={}",
+                    result.getId(),
+                    orderTest.getOrderId()
+            );
+            return;
+        }
+
+        if (!isLaboratoryTest(orderTest)) {
+            LOG.warn(
+                    "Skip diagnostic result notification because it is not laboratory. resultId={}, orderId={}",
+                    result.getId(),
+                    orderTest.getOrderId()
+            );
+            return;
+        }
+        if(!isCriticalMarker(calculatedMarker)) {
+            LOG.debug(
+                    "Skip diagnostic result notification because it is not critical marker. resultId={}, orderId={}, marker={}",
+                    result.getId(),
+                    orderTest.getOrderId(),
+                    calculatedMarker
+            );
+            return;
+        }
+
+
+        Long departmentId = resolveDepartmentId(order, orderTest);
+        DepartmentDTO department = departmentHelper.getDepartment(departmentId);
+
+        if (departmentId == null) {
+            LOG.warn(
+                    "Skip diagnostic result notification because department is missing. resultId={}, orderTestId={}, orderId={}",
+                    result.getId(),
+                    orderTest.getId(),
+                    order.getId()
+            );
+            return;
+        }
+        String login = SecurityUtils.getCurrentUserLogin().orElse(null);
+
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, result.getCreatedBy(), resolvePatient(order.getPatientId()).orElse(null), null);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("resultId", result.getId());
+        data.put("orderTestId", orderTest.getId());
+        data.put("orderId", order.getId());
+        data.put("patientId", order.getPatientId());
+        data.put("patientName", notificationHelper.getPatientName(resolvePatient(order.getPatientId()).orElse(null)));
+        data.put("encounterId", order.getEncounter() != null ? order.getEncounter().getId() : "");
+        data.put("departmentId", departmentId);
+        data.put("departmentName", department.name());
+        data.put("testId", orderTest.getTestId());
+        data.put("testType", orderTest.getOrderType() != null ? orderTest.getOrderType().toString() : "");
+        data.put("marker", calculatedMarker != null ? calculatedMarker.toString() : "");
+        data.put("normalRange", result.getNormalRangeValue() != null ? result.getNormalRangeValue() : "");
+        data.put("resultValueNumber", result.getResultValueNumber() != null ? result.getResultValueNumber() : "");
+        data.put("resultValueText", result.getResultValueText() != null ? result.getResultValueText() : "");
+
+        try {
+            LOG.debug(
+                    "Creating diagnostic result ready notification. resultId={}, code={}, departmentId={}, marker={},  recipientsByRule={}",
+                    result.getId(),
+                    NotificationCode.CRITICAL_LABORATORY_RESULT,
+                    departmentId,
+                    calculatedMarker,
+                    recipientsByRule
+            );
+
+            notificationHelper.sendNotification(null,
+                    NotificationCode.CRITICAL_LABORATORY_RESULT,
+                    recipientsByRule,
+                    data,
+                    "DIAGNOSTIC_ORDER_TEST_RESULT",
+                    result.getId());
+        } catch (Exception e) {
+            LOG.warn(
+                    "Failed to create diagnostic result ready notification. resultId={}, code={}, error={}",
+                    result.getId(),
+                    NotificationCode.CRITICAL_LABORATORY_RESULT,
+                    e.getMessage()
+            );
+        }
+    }
+
     private NotificationCode resolveResultReadyNotificationCode(DiagnosticOrderTest orderTest, TestResultMarker calculatedMarker, DiagnosticOrderTestReport report) {
         if (isLaboratoryTest(orderTest) && isAbnormalMarker(calculatedMarker)) {
             return NotificationCode.DIAGNOSTIC_LAB_ABNORMAL_RESULT_READY;
@@ -499,6 +611,10 @@ public class DiagnosticOrderTestResultService {
 
     private boolean isAbnormalMarker(TestResultMarker marker) {
         return marker != null && ABNORMAL_RESULT_MARKERS.contains(marker);
+    }
+
+    private boolean isCriticalMarker(TestResultMarker marker) {
+        return marker != null && CRITICAL_RESULT_MARKERS.contains(marker);
     }
 
     private Long resolveDepartmentId(DiagnosticOrder order, DiagnosticOrderTest orderTest) {
