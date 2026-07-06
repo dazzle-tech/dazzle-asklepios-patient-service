@@ -9,6 +9,7 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.ConsultationLevel;
 import com.dazzle.asklepios.domain.enumeration.ConsultationStatus;
+import com.dazzle.asklepios.domain.enumeration.ConsultationType;
 import com.dazzle.asklepios.domain.enumeration.DestinationType;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.ConsultationRepository;
@@ -407,6 +408,28 @@ public class ConsultationService {
                 "CONSULTATION",
                 consultation.getId()
         );
+        if(consultation.getDestinationType()== DestinationType.CONSULTANT && consultation.getConsultationType()== ConsultationType.URGENT){
+            LOG.debug("Sending notification to consultant practitionerId={}", consultation.getPractitionerId());
+            notificationHelper.sendNotification(
+                    null,
+                    NotificationCode.PRACTITIONER_URGENT_CONSULTATION_CREATED,
+                    recipientsByRule,
+                    data,
+                    "CONSULTATION",
+                    consultation.getId()
+            );
+        }
+        else if(consultation.getDestinationType()== DestinationType.DEPARTMENT && consultation.getConsultationType()== ConsultationType.URGENT){
+            LOG.debug("Sending notification to department departmentId={}", consultation.getToDepartmentId());
+            notificationHelper.sendNotification(
+                    null,
+                    NotificationCode.DEPARTMENT_URGENT_CONSULTATION_CREATED,
+                    recipientsByRule,
+                    data,
+                    "CONSULTATION",
+                    consultation.getId()
+            );
+        }
     }
 
 }
