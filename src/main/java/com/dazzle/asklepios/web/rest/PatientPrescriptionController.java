@@ -99,10 +99,10 @@ public class PatientPrescriptionController {
 
     @PostMapping("/patient-prescriptions/{id}/cancel")
     public ResponseEntity<PatientPrescription> cancel(
-            @PathVariable Long id,
-            @RequestParam String lastModifiedBy
+            @PathVariable Long id
+
     ) {
         LOG.debug("cancel prescription for id ={}",id);
-        return ResponseEntity.ok(patientPrescriptionService.cancel(id, lastModifiedBy));
+        return ResponseEntity.ok(patientPrescriptionService.cancel(id));
     }
 }
