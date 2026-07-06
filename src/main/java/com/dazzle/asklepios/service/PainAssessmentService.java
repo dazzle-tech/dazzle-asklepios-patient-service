@@ -213,7 +213,7 @@ public class PainAssessmentService {
         try {
             String login = SecurityUtils.getCurrentUserLogin().orElse(null);
 
-            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, painAssessment.getCreatedBy(), patient, null);
+            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, painAssessment.getCreatedBy(), patient, null,false);
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("patientId", patient.getId());
             data.put("patientName", notificationHelper.getPatientName(patient));

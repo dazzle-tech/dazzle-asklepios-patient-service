@@ -143,7 +143,7 @@ public class PatientMergeExecuteService {
         }
 
         try {
-            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(null, currentUsername(), mergeLog.getMergedBy(), targetPatient, null);
+            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(null, currentUsername(), mergeLog.getMergedBy(), targetPatient, null,false);
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("mergeLogId", mergeLog.getId());

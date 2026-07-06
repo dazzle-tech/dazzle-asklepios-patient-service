@@ -444,7 +444,7 @@ public class ConsultationPortalService {
             if (consultation.getPractitionerId() != null) {
                 practitioner = practitionerHelper.getPractitioner(consultation.getPractitionerId());
             }
-            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, consultation.getCreatedBy(), consultation.getPatient(), practitioner);
+            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, consultation.getCreatedBy(), consultation.getPatient(), practitioner,false);
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("consultationId", consultation.getId());

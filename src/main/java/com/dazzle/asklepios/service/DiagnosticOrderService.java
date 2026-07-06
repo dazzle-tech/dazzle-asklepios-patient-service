@@ -455,7 +455,7 @@ public class DiagnosticOrderService {
 
         String login = SecurityUtils.getCurrentUserLogin().orElse(null);
 
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, order.getCreatedBy(), order.getPatient(), null);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, order.getCreatedBy(), order.getPatient(), null,false);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("orderId", order.getId());
         data.put("patientId", order.getPatientId());

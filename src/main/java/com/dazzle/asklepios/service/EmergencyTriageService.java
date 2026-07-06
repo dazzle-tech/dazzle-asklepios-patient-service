@@ -1,5 +1,10 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
+import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
+import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
+import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
+import com.dazzle.asklepios.domain.Consultation;
 import com.dazzle.asklepios.domain.EmergencyTriage;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
@@ -7,13 +12,19 @@ import com.dazzle.asklepios.domain.enumeration.AVPUScale;
 import com.dazzle.asklepios.domain.enumeration.EmergencyLevel;
 import com.dazzle.asklepios.domain.enumeration.PainLevel;
 import com.dazzle.asklepios.domain.enumeration.YesNoQuestion;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.EmergencyTriageRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.emergencyTriage.EmergencyTriageCreateDTO;
 import com.dazzle.asklepios.service.dto.emergencyTriage.EmergencyTriageDestinationUpdateDTO;
 import com.dazzle.asklepios.service.dto.emergencyTriage.EmergencyTriageLevelAssessmentUpdateDTO;
 import com.dazzle.asklepios.service.dto.emergencyTriage.EmergencyTriageUpdateDTO;
+import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.FacilityHelper;
+import com.dazzle.asklepios.service.helper.NotificationHelper;
+import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,7 +32,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -34,11 +47,19 @@ public class EmergencyTriageService {
     private final EmergencyTriageRepository emergencyTriageRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final NotificationHelper notificationHelper;
+    private final DepartmentHelper departmentHelper;
+    private final PractitionerHelper practitionerHelper;
+    private final FacilityHelper facilityHelper;
 
-    public EmergencyTriageService(EmergencyTriageRepository emergencyTriageRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository) {
+    public EmergencyTriageService(EmergencyTriageRepository emergencyTriageRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository, NotificationHelper notificationHelper, DepartmentHelper departmentHelper, PractitionerHelper practitionerHelper, FacilityHelper facilityHelper) {
         this.emergencyTriageRepository = emergencyTriageRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
+        this.notificationHelper = notificationHelper;
+        this.departmentHelper = departmentHelper;
+        this.practitionerHelper = practitionerHelper;
+        this.facilityHelper = facilityHelper;
     }
 
     /**
@@ -88,7 +109,8 @@ public class EmergencyTriageService {
         // does not affect the matrix, but safe to re-calculate (no change if inputs missing)
         recalculateAndSetEmergencyLevel(entity);
 
-        EmergencyTriage saved = emergencyTriageRepository.save(entity);
+        EmergencyTriage saved = emergencyTriageRepository.saveAndFlush(entity);
+
         LOG.debug("updateEyeAssessment: saved id={}", saved.getId());
         return saved;
     }
@@ -115,7 +137,11 @@ public class EmergencyTriageService {
 
         recalculateAndSetEmergencyLevel(entity);
 
-        EmergencyTriage saved = emergencyTriageRepository.save(entity);
+        EmergencyTriage saved = emergencyTriageRepository.saveAndFlush(entity);
+        if(saved.getEmergencyLevel()== EmergencyLevel.RESUSCITATION){
+            LOG.debug("updateLevelAssessment: saved id={} and emergency level is RESUSCITATION, sending notification", saved.getId());
+            notificationForResuscitationEmergencyLevel(saved);
+        }
         LOG.debug("updateLevelAssessment: saved id={}", saved.getId());
         return saved;
     }
@@ -209,6 +235,56 @@ public class EmergencyTriageService {
         if (pain == null) return false;
 
         return pain == PainLevel.LEVEL_7 || pain == PainLevel.LEVEL_8 || pain == PainLevel.LEVEL_9 || pain == PainLevel.LEVEL_10;
+    }
+
+    private void notificationForResuscitationEmergencyLevel(EmergencyTriage triage) {
+        if (triage == null) {
+            return;
+        }
+        String login = SecurityUtils.getCurrentUserLogin().orElse(null);
+        PractitionerDTO practitionerDTO = null;
+        if(triage.getEncounter().getPractitionerId()!=null){
+             practitionerDTO = practitionerHelper.getPractitioner(triage.getEncounter().getPractitionerId());
+        }
+        FacilityDTO facilityDTO= facilityHelper.getFacility(triage.getEncounter().getFacilityId());
+        DepartmentDTO department = departmentHelper.getDepartment(triage.getEncounter().getDepartmentId());
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
+                notificationHelper.resolveRecipients(triage.getEncounter().getDepartmentId(), login, triage.getCreatedBy(), triage.getPatient(), practitionerDTO,false);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+
+        data.put("triageId", triage.getId());
+        data.put("patientId", triage.getPatient().getId());
+        data.put("patientName", notificationHelper.getPatientName(triage.getPatient()));
+        data.put("encounterId", triage.getEncounter().getId());
+
+        data.put("facilityId", triage.getEncounter().getFacilityId());
+        data.put("facilityName", facilityDTO.name());
+
+        data.put("departmentId", triage.getEncounter().getDepartmentId());
+        data.put("departmentName", department.name());
+
+        data.put("lifeSaving", triage.getLifeSaving() != null ? triage.getLifeSaving().toString() : "");
+        data.put("unresponsive", triage.getUnresponsive() != null ? triage.getUnresponsive().toString() : "");
+        data.put("highRisk", triage.getHighRisk() != null ? triage.getHighRisk().toString() : "");
+        data.put("avpuScale", triage.getAvpuScale() != null ? triage.getAvpuScale().toString() : "");
+        data.put("painScore", triage.getPainScore() != null ? triage.getPainScore().toString() : "");
+        data.put("emergencyLevel", triage.getEmergencyLevel() != null ? triage.getEmergencyLevel().toString() : "");
+        data.put("labsRequired", triage.getLabsRequired() != null ? triage.getLabsRequired().toString() : "");
+        data.put("imagingRequired", triage.getImagingRequired() != null ? triage.getImagingRequired().toString() : "");
+        data.put("ivFluidsRequired", triage.getIvFluidsRequired() != null ? triage.getIvFluidsRequired().toString() : "");
+        data.put("medicationRequired", triage.getMedicationRequired() != null ? triage.getMedicationRequired().toString() : "");
+        data.put("ecgRequired", triage.getEcgRequired() != null ? triage.getEcgRequired().toString() : "");
+        data.put("consultationRequired", triage.getConsultationRequired() != null ? triage.getConsultationRequired().toString() : "");
+
+        notificationHelper.sendNotification(
+                null,
+                NotificationCode.EMERGENCY_RESUSCITATION_ALERT,
+                recipientsByRule,
+                data,
+                "EMERGENCY_TRIAGE",
+                triage.getId()
+        );
     }
 
     // -----------------------

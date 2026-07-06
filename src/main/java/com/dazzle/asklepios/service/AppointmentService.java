@@ -477,7 +477,7 @@ public class AppointmentService {
         String login = currentUsername();
 
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
-                notificationHelper.resolveRecipients(appointment.getDepartmentId(), login, appointment.getCreatedBy(), appointment.getPatient(), practitioner);
+                notificationHelper.resolveRecipients(appointment.getDepartmentId(), login, appointment.getCreatedBy(), appointment.getPatient(), practitioner,false);
 
         appointment.setStatus(AppointmentStatus.CANCELLED);
         appointment.setCancelReason(dto.cancelReason());
@@ -1542,7 +1542,7 @@ public class AppointmentService {
         PractitionerDTO practitioner = appointment.getDefaultPractitionerId() != null
                 ? practitionerHelper.getPractitioner(appointment.getDefaultPractitionerId())
                 : null;
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(appointment.getDepartmentId(), login, appointment.getCreatedBy(), appointment.getPatient(), practitioner);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(appointment.getDepartmentId(), login, appointment.getCreatedBy(), appointment.getPatient(), practitioner,false);
 
         if (recipientsByRule.isEmpty()) {
             LOG.warn("Skip appointment notification because no recipients were resolved. appointmentId={}, code={}", appointment.getId(), notificationCode);
