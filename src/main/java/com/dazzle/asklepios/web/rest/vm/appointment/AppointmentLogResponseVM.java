@@ -44,6 +44,9 @@ public record AppointmentLogResponseVM(
         String originType,
         String originName,
         String note,
-        Long followUpEncounterId
+        Long followUpEncounterId,
+        Long bookingGroupId,
+        Long waitingListId,
+        String hl7AppointmentNumber
 ) {
 }

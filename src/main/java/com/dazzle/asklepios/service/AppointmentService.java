@@ -241,7 +241,11 @@ public class AppointmentService {
                             log.getOriginType(),
                             log.getOriginName(),
                             log.getNote(),
-                            log.getFollowUpEncounterId()
+                            log.getFollowUpEncounterId(),
+                            log.getBookingGroup() != null ? log.getBookingGroup().getId() : null,
+                            log.getWaitingList() != null ? log.getWaitingList().getId() : null,
+                            log.getHl7AppointmentNumber()
+
                     );
                 })
                 .toList();
@@ -370,11 +374,7 @@ public class AppointmentService {
         return result;
     }
 
-    public List<Appointment> getAppointmentsByStatusBetweenDatesWithoutPagination(
-            List<AppointmentStatus> status,
-            Instant startDatetime,
-            Instant endDatetime
-    ) {
+    public List<Appointment> getAppointmentsByStatusBetweenDatesWithoutPagination(List<AppointmentStatus> status, Instant startDatetime, Instant endDatetime) {
         LOG.debug(
                 "Request to get appointments by status={} between startDatetime={} and endDatetime={}",
                 status,
@@ -618,6 +618,7 @@ public class AppointmentService {
         appointment.setReason(appointmentDTO.reason());
         appointment.setNote(appointmentDTO.note());
         appointment.setService(appointmentDTO.service());
+        appointment.setHl7AppointmentNumber(appointmentDTO.hl7AppointmentNumber());
         if (appointmentDTO.service() == EncounterReason.FOLLOW_UP && appointmentDTO.followUpEncounterId() != null) {
             PatientEncounter followUpEncounter = patientEncounterRepository.findById(appointmentDTO.followUpEncounterId())
                     .orElseThrow(() -> new BadRequestAlertException("Patient Encounter not found with id: " + appointmentDTO.followUpEncounterId(), ENTITY_NAME, "notfound"));
@@ -1572,12 +1573,7 @@ public class AppointmentService {
         return data;
     }
 
-    private void createAppointmentNotification(
-            Appointment appointment,
-            NotificationCode notificationCode,
-            Map<String, Object> data,
-            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule
-    ) {
+    private void createAppointmentNotification(Appointment appointment, NotificationCode notificationCode, Map<String, Object> data, Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule) {
         if (appointment == null || notificationCode == null) {
             return;
         }
