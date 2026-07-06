@@ -3,6 +3,7 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.AvailabilityTemplate;
 import com.dazzle.asklepios.domain.AvailabilityTemplateAllowedService;
 import com.dazzle.asklepios.domain.AvailabilityTemplateInterval;
+import com.dazzle.asklepios.domain.AvailabilityTemplateIntervalBreak;
 import com.dazzle.asklepios.domain.enumeration.DayOfWeek;
 import com.dazzle.asklepios.repository.AvailabilityTemplateAllowedServiceRepository;
 import com.dazzle.asklepios.repository.AvailabilityTemplateIntervalBreakRepository;
@@ -48,51 +49,37 @@ public class AvailabilityTemplateIntervalService {
         LOG.debug("Request to create AvailabilityTemplateInterval: {}", dto);
 
         if (dto == null) {
-            throw new BadRequestAlertException("payload.required", "availabilityTemplateInterval","Interval payload is required");
+            throw new BadRequestAlertException(
+                    "payload.required",
+                    "availabilityTemplateInterval",
+                    "Interval payload is required");
         }
 
         AvailabilityTemplate template = templateRepository.findById(dto.templateId())
-                .orElseThrow(() -> new BadRequestAlertException("template.notfound", "availabilityTemplateInterval","Template not found with id " + dto.templateId()));
+                .orElseThrow(() ->
+                        new BadRequestAlertException(
+                                "template.notfound",
+                                "availabilityTemplateInterval",
+                                "Template not found with id " + dto.templateId()));
 
-        validateInterval(dto.dayOfWeek(), dto.startTime(), dto.endTime(), dto.slotDurationMinutes());
+        validateInterval(
+                dto.dayOfWeek(),
+                dto.startTime(),
+                dto.endTime(),
+                dto.slotDurationMinutes());
 
-        boolean applyToAllWorkingDays = Boolean.TRUE.equals(dto.applyToAllWorkingDays());
-        List<DayOfWeek> targetDays = resolveTargetDays(template, dto.dayOfWeek(), applyToAllWorkingDays);
+        validateNoOverlap(
+                template.getId(),
+                dto.dayOfWeek(),
+                dto.startTime(),
+                dto.endTime());
 
-        if (!applyToAllWorkingDays) {
-            validateNoOverlap(template.getId(), dto.dayOfWeek(), dto.startTime(), dto.endTime());
-            return createIntervalForDay(template, dto, dto.dayOfWeek()).orElseThrow(() ->
-                    new BadRequestAlertException("create.failed", "availabilityTemplateInterval", "Failed to create availability template interval")
-            );
-        }
-
-        if (targetDays.isEmpty()) {
-            throw new BadRequestAlertException(
-                    "workingdays.required",
-                    "availabilityTemplateInterval",
-                    "No working days configured for this template"
-            );
-        }
-
-        List<AvailabilityTemplateInterval> createdIntervals = new ArrayList<>();
-        for (DayOfWeek targetDay : targetDays) {
-            if (hasOverlap(template.getId(), targetDay, dto.startTime(), dto.endTime())) {
-                LOG.debug("Skipping interval creation for templateId={} dayOfWeek={} because an overlap exists", template.getId(), targetDay);
-                continue;
-            }
-
-            createIntervalForDay(template, dto, targetDay).ifPresent(createdIntervals::add);
-        }
-
-        if (createdIntervals.isEmpty()) {
-            throw new BadRequestAlertException(
-                    "interval.overlap",
-                    "availabilityTemplateInterval",
-                    "Interval overlaps with an existing interval for all working days"
-            );
-        }
-
-        return createdIntervals.get(0);
+        return createIntervalForDay(template, dto, dto.dayOfWeek())
+                .orElseThrow(() ->
+                        new BadRequestAlertException(
+                                "create.failed",
+                                "availabilityTemplateInterval",
+                                "Failed to create availability template interval"));
     }
 
     public Optional<AvailabilityTemplateInterval> update(Long id, AvailabilityTemplateIntervalUpdateDTO dto) {
@@ -226,27 +213,25 @@ public class AvailabilityTemplateIntervalService {
         return Optional.of(savedInterval);
     }
 
-    private List<DayOfWeek> resolveTargetDays(AvailabilityTemplate template, DayOfWeek requestedDay, boolean applyToAllWorkingDays) {
-        if (!applyToAllWorkingDays) {
-            return List.of(requestedDay);
-        }
+private List<DayOfWeek> resolveWorkingDays(AvailabilityTemplate template) {
 
-        List<WorkingDayJson> workingDays = template.getWorkingDays();
-        if (workingDays == null || workingDays.isEmpty()) {
-            return List.of();
-        }
+    List<WorkingDayJson> workingDays = template.getWorkingDays();
 
-        Set<DayOfWeek> targetDays = new LinkedHashSet<>();
-        workingDays.stream()
-                .filter(Objects::nonNull)
-                .filter(day -> Boolean.TRUE.equals(day.getIsWorking()))
-                .map(WorkingDayJson::getDayOfWeek)
-                .filter(Objects::nonNull)
-                .forEach(targetDays::add);
-
-        return targetDays.stream().toList();
+    if (workingDays == null || workingDays.isEmpty()) {
+        return List.of();
     }
 
+    Set<DayOfWeek> targetDays = new LinkedHashSet<>();
+
+    workingDays.stream()
+            .filter(Objects::nonNull)
+            .filter(day -> Boolean.TRUE.equals(day.getIsWorking()))
+            .map(WorkingDayJson::getDayOfWeek)
+            .filter(Objects::nonNull)
+            .forEach(targetDays::add);
+
+    return new ArrayList<>(targetDays);
+}
     private boolean hasOverlap(Long templateId, DayOfWeek dayOfWeek, LocalTime startTime, LocalTime endTime) {
         return !intervalRepository.findByTemplate_IdAndDayOfWeekAndStartTimeLessThanAndEndTimeGreaterThan(templateId, dayOfWeek, endTime, startTime).isEmpty();
     }
@@ -266,4 +251,75 @@ public class AvailabilityTemplateIntervalService {
         }
     }
 
+
+    public void applyToAllWorkingDays(Long intervalId) {
+
+        LOG.debug("Request to apply interval {} to all working days", intervalId);
+
+        AvailabilityTemplateInterval source = intervalRepository.findById(intervalId)
+                .orElseThrow(() ->
+                        new BadRequestAlertException(
+                                "interval.notfound",
+                                "availabilityTemplateInterval",
+                                "Interval not found with id " + intervalId));
+
+        AvailabilityTemplate template = source.getTemplate();
+
+        List<DayOfWeek> targetDays = resolveWorkingDays(template);
+
+        targetDays.remove(source.getDayOfWeek());
+
+        List<AvailabilityTemplateIntervalBreak> sourceBreaks =
+                availabilityTemplateIntervalBreakRepository
+                        .findByInterval_IdOrderByStartTimeAsc(source.getId());
+
+        for (DayOfWeek day : targetDays) {
+
+            if (hasOverlap(
+                    template.getId(),
+                    day,
+                    source.getStartTime(),
+                    source.getEndTime())) {
+                continue;
+            }
+
+            AvailabilityTemplateInterval interval = new AvailabilityTemplateInterval();
+
+            interval.setTemplate(template);
+            interval.setDayOfWeek(day);
+            interval.setStartTime(source.getStartTime());
+            interval.setEndTime(source.getEndTime());
+            interval.setSlotStrategy(source.getSlotStrategy());
+            interval.setSlotDurationMinutes(source.getSlotDurationMinutes());
+
+            interval = intervalRepository.save(interval);
+
+            if (source.getAllowedServices() != null) {
+
+                List<AvailabilityTemplateAllowedServiceDTO> allowedServices =
+                        source.getAllowedServices().stream()
+                                .map(service ->
+                                        new AvailabilityTemplateAllowedServiceDTO(
+                                                null,
+                                                service.getService()
+                                        ))
+                                .toList();
+
+                replaceAllowedServices(interval, template, allowedServices);
+            }
+
+            for (AvailabilityTemplateIntervalBreak sourceBreak : sourceBreaks) {
+
+                AvailabilityTemplateIntervalBreak copy =
+                        new AvailabilityTemplateIntervalBreak();
+
+                copy.setTemplate(template);
+                copy.setInterval(interval);
+                copy.setStartTime(sourceBreak.getStartTime());
+                copy.setEndTime(sourceBreak.getEndTime());
+
+                availabilityTemplateIntervalBreakRepository.save(copy);
+            }
+        }
+    }
 }
