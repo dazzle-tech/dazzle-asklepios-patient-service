@@ -3,8 +3,10 @@ package com.dazzle.asklepios.service.dto.appointment;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.NotNull;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record AppointmentQuickAppointmentDTO(
         @NotNull(message = "facilityId is required") Long facilityId,
         @NotNull(message = "departmentId is required") Long departmentId,
@@ -19,6 +21,7 @@ public record AppointmentQuickAppointmentDTO(
         String note,
         Long followUpEncounterId,
         String originType,
-        String originName
+        String originName,
+        String hl7AppointmentNumber
 ) {
 }
