@@ -371,7 +371,7 @@ public class ConsultationService {
         }
         String login = SecurityUtils.getCurrentUserLogin().orElse(null);
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
-                notificationHelper.resolveRecipients(consultation.getToDepartmentId(), login, consultation.getCreatedBy(), consultation.getPatient(), practitioner);
+                notificationHelper.resolveRecipients(consultation.getToDepartmentId(), login, consultation.getCreatedBy(), consultation.getPatient(), practitioner,false);
 
         Map<String, Object> data = new LinkedHashMap<>();
 

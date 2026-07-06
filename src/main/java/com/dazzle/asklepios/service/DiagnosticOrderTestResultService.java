@@ -432,7 +432,7 @@ public class DiagnosticOrderTestResultService {
         }
         String login = SecurityUtils.getCurrentUserLogin().orElse(null);
 
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, result.getCreatedBy(), resolvePatient(order.getPatientId()).orElse(null), null);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, result.getCreatedBy(), resolvePatient(order.getPatientId()).orElse(null), null,false);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("resultId", result.getId());
@@ -541,7 +541,7 @@ public class DiagnosticOrderTestResultService {
         }
         String login = SecurityUtils.getCurrentUserLogin().orElse(null);
 
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, result.getCreatedBy(), resolvePatient(order.getPatientId()).orElse(null), null);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, result.getCreatedBy(), resolvePatient(order.getPatientId()).orElse(null), null,false);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("resultId", result.getId());

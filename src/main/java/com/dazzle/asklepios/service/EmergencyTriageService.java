@@ -249,7 +249,7 @@ public class EmergencyTriageService {
         FacilityDTO facilityDTO= facilityHelper.getFacility(triage.getEncounter().getFacilityId());
         DepartmentDTO department = departmentHelper.getDepartment(triage.getEncounter().getDepartmentId());
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
-                notificationHelper.resolveRecipients(triage.getEncounter().getDepartmentId(), login, triage.getCreatedBy(), triage.getPatient(), practitionerDTO);
+                notificationHelper.resolveRecipients(triage.getEncounter().getDepartmentId(), login, triage.getCreatedBy(), triage.getPatient(), practitionerDTO,false);
 
         Map<String, Object> data = new LinkedHashMap<>();
 

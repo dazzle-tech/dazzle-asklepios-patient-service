@@ -89,7 +89,7 @@ public class TemplateIntervalEndedNotificationScheduler {
         }
         String login = SecurityUtils.getCurrentUserLogin().orElse(null);
 
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, batch.getCreatedBy(), null, null);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, batch.getCreatedBy(), null, null,true);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("batchId", batch.getId());

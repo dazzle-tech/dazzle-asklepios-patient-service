@@ -94,18 +94,25 @@ public class NotificationHelper {
         }
     }
 
-    public Map<String, List<NotificationResolvedRecipientDTO>> resolveRecipients(Long departmentId, String login, String createdByLogin, Patient patient, PractitionerDTO practitionerDTO) {
+    public Map<String, List<NotificationResolvedRecipientDTO>> resolveRecipients(Long departmentId, String login, String createdByLogin, Patient patient, PractitionerDTO practitionerDTO, Boolean isScheduleNotification) {
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
-        List<OrganizationDefinitionDTO> organizationDefinitionList= organizationClient.getOrganization();
-        OrganizationDefinitionDTO organizationDefinitionDTO= organizationDefinitionList.stream().findFirst().orElse(null);
+        List<OrganizationDefinitionDTO> organizationDefinitionList = organizationClient.getOrganization();
+        OrganizationDefinitionDTO organizationDefinitionDTO = organizationDefinitionList.stream().findFirst().orElse(null);
 
         // Department users
         if (departmentId != null) {
             List<NotificationResolvedRecipientDTO> departmentUsers =
-                    buildDepartmentUserRecipients(departmentId, organizationDefinitionDTO);
+                    !isScheduleNotification ? buildDepartmentUserRecipients(departmentId, organizationDefinitionDTO) : buildDepartmentUserRecipientsForScheduledNotification(departmentId, organizationDefinitionDTO);
 
             if (!departmentUsers.isEmpty()) {
                 recipientsByRule.put("DEPARTMENT_USERS", departmentUsers);
+            }
+
+            List<NotificationResolvedRecipientDTO> physicianDepartmentUsers =
+                    buildPhysicianDepartmentUserRecipients(departmentId, organizationDefinitionDTO);
+
+            if (!departmentUsers.isEmpty()) {
+                recipientsByRule.put("PHYSICIAN_DEPARTMENT_USERS", physicianDepartmentUsers);
             }
         }
 
@@ -153,7 +160,7 @@ public class NotificationHelper {
             }
 
             NotificationResolvedRecipientDTO patientPhoneRecipient =
-                    buildPatientPhoneRecipient(patient,organizationDefinitionDTO);
+                    buildPatientPhoneRecipient(patient, organizationDefinitionDTO);
 
             if (patientPhoneRecipient != null) {
                 recipientsByRule.put("PATIENT_PHONE", List.of(patientPhoneRecipient));
@@ -192,8 +199,8 @@ public class NotificationHelper {
 
     public Map<String, List<NotificationResolvedRecipientDTO>> recipientsForDepartmentUsers(Long departmentId) {
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
-        List<OrganizationDefinitionDTO> organizationDefinitionList= organizationClient.getOrganization();
-        OrganizationDefinitionDTO organizationDefinitionDTO= organizationDefinitionList.stream().findFirst().orElse(null);
+        List<OrganizationDefinitionDTO> organizationDefinitionList = organizationClient.getOrganization();
+        OrganizationDefinitionDTO organizationDefinitionDTO = organizationDefinitionList.stream().findFirst().orElse(null);
 
         List<NotificationResolvedRecipientDTO> departmentUsers =
                 buildDepartmentUserRecipients(departmentId, organizationDefinitionDTO);
@@ -205,10 +212,25 @@ public class NotificationHelper {
         return recipientsByRule;
     }
 
+    public Map<String, List<NotificationResolvedRecipientDTO>> recipientsForPhysicianDepartmentUsers(Long departmentId) {
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
+        List<OrganizationDefinitionDTO> organizationDefinitionList = organizationClient.getOrganization();
+        OrganizationDefinitionDTO organizationDefinitionDTO = organizationDefinitionList.stream().findFirst().orElse(null);
+
+        List<NotificationResolvedRecipientDTO> departmentUsers =
+                buildPhysicianDepartmentUserRecipients(departmentId, organizationDefinitionDTO);
+
+        if (!departmentUsers.isEmpty()) {
+            recipientsByRule.put("PHYSICIAN_DEPARTMENT_USERS", departmentUsers);
+        }
+
+        return recipientsByRule;
+    }
+
     public Map<String, List<NotificationResolvedRecipientDTO>> recipientsForPatient(Patient patient) {
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
-        List<OrganizationDefinitionDTO> organizationDefinitionList= organizationClient.getOrganization();
-        OrganizationDefinitionDTO organizationDefinitionDTO= organizationDefinitionList.stream().findFirst().orElse(null);
+        List<OrganizationDefinitionDTO> organizationDefinitionList = organizationClient.getOrganization();
+        OrganizationDefinitionDTO organizationDefinitionDTO = organizationDefinitionList.stream().findFirst().orElse(null);
 
         if (patient != null) {
             NotificationResolvedRecipientDTO patientEmailRecipient =
@@ -219,7 +241,7 @@ public class NotificationHelper {
             }
 
             NotificationResolvedRecipientDTO patientPhoneRecipient =
-                    buildPatientPhoneRecipient(patient,organizationDefinitionDTO);
+                    buildPatientPhoneRecipient(patient, organizationDefinitionDTO);
 
             if (patientPhoneRecipient != null) {
                 recipientsByRule.put("PATIENT_PHONE", List.of(patientPhoneRecipient));
@@ -231,8 +253,8 @@ public class NotificationHelper {
 
     public Map<String, List<NotificationResolvedRecipientDTO>> recipientsForPractitioner(PractitionerDTO practitionerDTO) {
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
-        List<OrganizationDefinitionDTO> organizationDefinitionList= organizationClient.getOrganization();
-        OrganizationDefinitionDTO organizationDefinitionDTO= organizationDefinitionList.stream().findFirst().orElse(null);
+        List<OrganizationDefinitionDTO> organizationDefinitionList = organizationClient.getOrganization();
+        OrganizationDefinitionDTO organizationDefinitionDTO = organizationDefinitionList.stream().findFirst().orElse(null);
 
         if (practitionerDTO != null) {
             UserDTO practitionerUser = null;
@@ -240,21 +262,21 @@ public class NotificationHelper {
                 practitionerUser = userClient.getUserByUserId(practitionerDTO.userId());
             }
             NotificationResolvedRecipientDTO practitionerEmailRecipient =
-                    buildPractitionerEmailRecipient(practitionerDTO, practitionerUser,organizationDefinitionDTO);
+                    buildPractitionerEmailRecipient(practitionerDTO, practitionerUser, organizationDefinitionDTO);
 
             if (practitionerEmailRecipient != null) {
                 recipientsByRule.put("PRACTITIONER_EMAIL", List.of(practitionerEmailRecipient));
             }
 
             NotificationResolvedRecipientDTO practitionerUserRecipient =
-                    buildPractitionerUserRecipient(practitionerDTO, practitionerUser,organizationDefinitionDTO);
+                    buildPractitionerUserRecipient(practitionerDTO, practitionerUser, organizationDefinitionDTO);
 
             if (practitionerUserRecipient != null) {
                 recipientsByRule.put("PRACTITIONER_USER", List.of(practitionerUserRecipient));
             }
 
             NotificationResolvedRecipientDTO practitionerPhoneRecipient =
-                    buildPractitionerPhoneRecipient(practitionerDTO, practitionerUser,organizationDefinitionDTO);
+                    buildPractitionerPhoneRecipient(practitionerDTO, practitionerUser, organizationDefinitionDTO);
             if (practitionerPhoneRecipient != null) {
                 recipientsByRule.put("PRACTITIONER_PHONE", List.of(practitionerPhoneRecipient));
             }
@@ -265,16 +287,16 @@ public class NotificationHelper {
 
     public Map<String, List<NotificationResolvedRecipientDTO>> recipientsForCurrentUser(String login) {
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
-        List<OrganizationDefinitionDTO> organizationDefinitionList= organizationClient.getOrganization();
-        OrganizationDefinitionDTO organizationDefinitionDTO= organizationDefinitionList.stream().findFirst().orElse(null);
+        List<OrganizationDefinitionDTO> organizationDefinitionList = organizationClient.getOrganization();
+        OrganizationDefinitionDTO organizationDefinitionDTO = organizationDefinitionList.stream().findFirst().orElse(null);
 
-        NotificationResolvedRecipientDTO currentUser = buildCurrentUserRecipient(login,organizationDefinitionDTO);
+        NotificationResolvedRecipientDTO currentUser = buildCurrentUserRecipient(login, organizationDefinitionDTO);
 
         if (currentUser != null) {
             recipientsByRule.put("CURRENT_USER", List.of(currentUser));
         }
 
-        NotificationResolvedRecipientDTO currentUserPhoneRecipient = buildCurrentUserPhoneRecipient(login,organizationDefinitionDTO);
+        NotificationResolvedRecipientDTO currentUserPhoneRecipient = buildCurrentUserPhoneRecipient(login, organizationDefinitionDTO);
         if (currentUserPhoneRecipient != null) {
             recipientsByRule.put("CURRENT_USER_PHONE", List.of(currentUserPhoneRecipient));
         }
@@ -284,16 +306,16 @@ public class NotificationHelper {
 
     public Map<String, List<NotificationResolvedRecipientDTO>> recipientsForCreatedByUser(String createdByLogin) {
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
-        List<OrganizationDefinitionDTO> organizationDefinitionList= organizationClient.getOrganization();
-        OrganizationDefinitionDTO organizationDefinitionDTO= organizationDefinitionList.stream().findFirst().orElse(null);
+        List<OrganizationDefinitionDTO> organizationDefinitionList = organizationClient.getOrganization();
+        OrganizationDefinitionDTO organizationDefinitionDTO = organizationDefinitionList.stream().findFirst().orElse(null);
 
-        NotificationResolvedRecipientDTO createdByUser = buildCreatedByUserRecipient(createdByLogin,organizationDefinitionDTO);
+        NotificationResolvedRecipientDTO createdByUser = buildCreatedByUserRecipient(createdByLogin, organizationDefinitionDTO);
 
         if (createdByUser != null) {
             recipientsByRule.put("CREATED_BY_USER", List.of(createdByUser));
         }
 
-        NotificationResolvedRecipientDTO createdByUserPhoneRecipient = buildCreatedByUserPhoneRecipient(createdByLogin,organizationDefinitionDTO);
+        NotificationResolvedRecipientDTO createdByUserPhoneRecipient = buildCreatedByUserPhoneRecipient(createdByLogin, organizationDefinitionDTO);
         if (createdByUserPhoneRecipient != null) {
             recipientsByRule.put("CREATED_BY_USER_PHONE", List.of(createdByUserPhoneRecipient));
         }
@@ -306,15 +328,31 @@ public class NotificationHelper {
         if (recipientsByRule == null || departmentId == null) {
             return;
         }
-        List<OrganizationDefinitionDTO> organizationDefinitionList= organizationClient.getOrganization();
-        OrganizationDefinitionDTO organizationDefinitionDTO= organizationDefinitionList.stream().findFirst().orElse(null);
+        List<OrganizationDefinitionDTO> organizationDefinitionList = organizationClient.getOrganization();
+        OrganizationDefinitionDTO organizationDefinitionDTO = organizationDefinitionList.stream().findFirst().orElse(null);
 
 
         List<NotificationResolvedRecipientDTO> departmentUsers =
-                buildDepartmentUserRecipients(departmentId,organizationDefinitionDTO);
+                buildDepartmentUserRecipients(departmentId, organizationDefinitionDTO);
 
         if (!departmentUsers.isEmpty()) {
             recipientsByRule.put("DEPARTMENT_USERS", departmentUsers);
+        }
+    }
+
+    public void addPhysicianDepartmentUsers(Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule, Long departmentId) {
+        if (recipientsByRule == null || departmentId == null) {
+            return;
+        }
+        List<OrganizationDefinitionDTO> organizationDefinitionList = organizationClient.getOrganization();
+        OrganizationDefinitionDTO organizationDefinitionDTO = organizationDefinitionList.stream().findFirst().orElse(null);
+
+
+        List<NotificationResolvedRecipientDTO> departmentUsers =
+                buildPhysicianDepartmentUserRecipients(departmentId, organizationDefinitionDTO);
+
+        if (!departmentUsers.isEmpty()) {
+            recipientsByRule.put("PHYSICIAN_DEPARTMENT_USERS", departmentUsers);
         }
     }
 
@@ -322,18 +360,18 @@ public class NotificationHelper {
         if (recipientsByRule == null || createdByLogin == null || createdByLogin.isBlank()) {
             return;
         }
-        List<OrganizationDefinitionDTO> organizationDefinitionList= organizationClient.getOrganization();
-        OrganizationDefinitionDTO organizationDefinitionDTO= organizationDefinitionList.stream().findFirst().orElse(null);
+        List<OrganizationDefinitionDTO> organizationDefinitionList = organizationClient.getOrganization();
+        OrganizationDefinitionDTO organizationDefinitionDTO = organizationDefinitionList.stream().findFirst().orElse(null);
 
         NotificationResolvedRecipientDTO createdByUser =
-                buildCreatedByUserRecipient(createdByLogin,organizationDefinitionDTO);
+                buildCreatedByUserRecipient(createdByLogin, organizationDefinitionDTO);
 
         if (createdByUser != null) {
             recipientsByRule.put("CREATED_BY_USER", List.of(createdByUser));
         }
 
         NotificationResolvedRecipientDTO createdByUserPhoneRecipient =
-                buildCreatedByUserPhoneRecipient(createdByLogin,organizationDefinitionDTO);
+                buildCreatedByUserPhoneRecipient(createdByLogin, organizationDefinitionDTO);
         if (createdByUserPhoneRecipient != null) {
             recipientsByRule.put("CREATED_BY_USER_PHONE", List.of(createdByUserPhoneRecipient));
         }
@@ -343,18 +381,18 @@ public class NotificationHelper {
         if (recipientsByRule == null || login == null || login.isBlank()) {
             return;
         }
-        List<OrganizationDefinitionDTO> organizationDefinitionList= organizationClient.getOrganization();
-        OrganizationDefinitionDTO organizationDefinitionDTO= organizationDefinitionList.stream().findFirst().orElse(null);
+        List<OrganizationDefinitionDTO> organizationDefinitionList = organizationClient.getOrganization();
+        OrganizationDefinitionDTO organizationDefinitionDTO = organizationDefinitionList.stream().findFirst().orElse(null);
 
         NotificationResolvedRecipientDTO currentUser =
-                buildCurrentUserRecipient(login,organizationDefinitionDTO);
+                buildCurrentUserRecipient(login, organizationDefinitionDTO);
 
         if (currentUser != null) {
             recipientsByRule.put("CURRENT_USER", List.of(currentUser));
         }
 
         NotificationResolvedRecipientDTO currentUserPhoneRecipient =
-                buildCurrentUserPhoneRecipient(login,organizationDefinitionDTO);
+                buildCurrentUserPhoneRecipient(login, organizationDefinitionDTO);
         if (currentUserPhoneRecipient != null) {
             recipientsByRule.put("CURRENT_USER_PHONE", List.of(currentUserPhoneRecipient));
         }
@@ -364,19 +402,19 @@ public class NotificationHelper {
         if (recipientsByRule == null || patient == null) {
             return;
         }
-        List<OrganizationDefinitionDTO> organizationDefinitionList= organizationClient.getOrganization();
-        OrganizationDefinitionDTO organizationDefinitionDTO= organizationDefinitionList.stream().findFirst().orElse(null);
+        List<OrganizationDefinitionDTO> organizationDefinitionList = organizationClient.getOrganization();
+        OrganizationDefinitionDTO organizationDefinitionDTO = organizationDefinitionList.stream().findFirst().orElse(null);
 
 
         NotificationResolvedRecipientDTO patientEmailRecipient =
-                buildPatientEmailRecipient(patient,organizationDefinitionDTO);
+                buildPatientEmailRecipient(patient, organizationDefinitionDTO);
 
         if (patientEmailRecipient != null) {
             recipientsByRule.put("PATIENT_EMAIL", List.of(patientEmailRecipient));
         }
 
         NotificationResolvedRecipientDTO patientPhoneRecipient =
-                buildPatientPhoneRecipient(patient,organizationDefinitionDTO);
+                buildPatientPhoneRecipient(patient, organizationDefinitionDTO);
 
         if (patientPhoneRecipient != null) {
             recipientsByRule.put("PATIENT_PHONE", List.of(patientPhoneRecipient));
@@ -391,26 +429,26 @@ public class NotificationHelper {
         if (practitionerDTO.userId() != null) {
             practitionerUser = userClient.getUserByUserId(practitionerDTO.userId());
         }
-        List<OrganizationDefinitionDTO> organizationDefinitionList= organizationClient.getOrganization();
-        OrganizationDefinitionDTO organizationDefinitionDTO= organizationDefinitionList.stream().findFirst().orElse(null);
+        List<OrganizationDefinitionDTO> organizationDefinitionList = organizationClient.getOrganization();
+        OrganizationDefinitionDTO organizationDefinitionDTO = organizationDefinitionList.stream().findFirst().orElse(null);
 
 
         NotificationResolvedRecipientDTO practitionerEmailRecipient =
-                buildPractitionerEmailRecipient(practitionerDTO, practitionerUser,organizationDefinitionDTO);
+                buildPractitionerEmailRecipient(practitionerDTO, practitionerUser, organizationDefinitionDTO);
 
         if (practitionerEmailRecipient != null) {
             recipientsByRule.put("PRACTITIONER_EMAIL", List.of(practitionerEmailRecipient));
         }
 
         NotificationResolvedRecipientDTO practitionerUserRecipient =
-                buildPractitionerUserRecipient(practitionerDTO, practitionerUser,organizationDefinitionDTO);
+                buildPractitionerUserRecipient(practitionerDTO, practitionerUser, organizationDefinitionDTO);
 
         if (practitionerUserRecipient != null) {
             recipientsByRule.put("PRACTITIONER_USER", List.of(practitionerUserRecipient));
         }
 
         NotificationResolvedRecipientDTO practitionerPhoneRecipient =
-                buildPractitionerPhoneRecipient(practitionerDTO, practitionerUser,organizationDefinitionDTO);
+                buildPractitionerPhoneRecipient(practitionerDTO, practitionerUser, organizationDefinitionDTO);
 
         if (practitionerPhoneRecipient != null) {
             recipientsByRule.put("PRACTITIONER_PHONE", List.of(practitionerPhoneRecipient));
@@ -428,6 +466,92 @@ public class NotificationHelper {
         try {
             department = departmentHelper.getDepartment(departmentId);
             users = userDepartmentHelper.getUsersForDepartment(departmentId);
+
+        } catch (Exception e) {
+            log.warn(
+                    "[NOTIFICATION] Failed to get department users. departmentId={}, error={}",
+                    departmentId,
+                    e.getMessage()
+            );
+            return List.of();
+        }
+
+        if (users == null || users.isEmpty()) {
+            return List.of();
+        }
+
+
+        return users.stream()
+                .filter(user -> user != null && user.id() != null)
+                .map(user -> NotificationResolvedRecipientDTO.builder()
+                        .recipientType("USER")
+                        .recipientId(user.id())
+                        .recipientName(getUserDisplayName(user))
+                        .recipientEmail(user.email())
+                        .recipientData(Map.of(
+                                "departmentId", departmentId,
+                                "departmentName", department.name()
+                        ))
+                        .language(user.langKey() != null && !user.langKey().isBlank() ? user.langKey() : finalOrganizationDefinitionDTO != null ? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
+                        .build()
+                )
+                .toList();
+    }
+
+    public List<NotificationResolvedRecipientDTO> buildPhysicianDepartmentUserRecipients(Long departmentId, OrganizationDefinitionDTO finalOrganizationDefinitionDTO) {
+        if (departmentId == null) {
+            return List.of();
+        }
+
+        List<UserDTO> users;
+        DepartmentDTO department;
+
+        try {
+            department = departmentHelper.getDepartment(departmentId);
+            users = userDepartmentHelper.getPhysicianUsersForDepartment(departmentId);
+
+        } catch (Exception e) {
+            log.warn(
+                    "[NOTIFICATION] Failed to get physician department users. departmentId={}, error={}",
+                    departmentId,
+                    e.getMessage()
+            );
+            return List.of();
+        }
+
+        if (users == null || users.isEmpty()) {
+            return List.of();
+        }
+
+
+        return users.stream()
+                .filter(user -> user != null && user.id() != null)
+                .map(user -> NotificationResolvedRecipientDTO.builder()
+                        .recipientType("USER")
+                        .recipientId(user.id())
+                        .recipientName(getUserDisplayName(user))
+                        .recipientEmail(user.email())
+                        .recipientData(Map.of(
+                                "departmentId", departmentId,
+                                "departmentName", department.name()
+                        ))
+                        .language(user.langKey() != null && !user.langKey().isBlank() ? user.langKey() : finalOrganizationDefinitionDTO != null ? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
+                        .build()
+                )
+                .toList();
+    }
+
+    public List<NotificationResolvedRecipientDTO> buildDepartmentUserRecipientsForScheduledNotification(Long departmentId, OrganizationDefinitionDTO finalOrganizationDefinitionDTO) {
+        if (departmentId == null) {
+            return List.of();
+        }
+
+        List<UserDTO> users;
+        DepartmentDTO department;
+
+        try {
+            department = departmentHelper.getDepartmentInternal(departmentId);
+            users = userDepartmentHelper.getUsersForDepartmentInternal(departmentId);
 
         } catch (Exception e) {
             log.warn(
@@ -598,7 +722,7 @@ public class NotificationHelper {
                 .recipientName(getPatientName(patient))
                 .recipientEmail(patient.getEmail())
                 .toEmails(List.of(patient.getEmail()))
-                .language(patient.getNativeLanguage() != null && !patient.getNativeLanguage().isBlank() ? patient.getNativeLanguage() : finalOrganizationDefinitionDTO!=null? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
+                .language(patient.getNativeLanguage() != null && !patient.getNativeLanguage().isBlank() ? patient.getNativeLanguage() : finalOrganizationDefinitionDTO != null ? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
                 .build();
     }
 
@@ -617,7 +741,57 @@ public class NotificationHelper {
                 .recipientName(getPatientName(patient))
                 .recipientPhone(patient.getPrimaryMobileNumber())
                 .toPhone(patient.getPrimaryMobileNumber())
-                .language(patient.getNativeLanguage() != null && !patient.getNativeLanguage().isBlank() ? patient.getNativeLanguage() :  finalOrganizationDefinitionDTO!=null? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
+                .language(patient.getNativeLanguage() != null && !patient.getNativeLanguage().isBlank() ? patient.getNativeLanguage() : finalOrganizationDefinitionDTO != null ? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
+                .build();
+    }
+
+    private NotificationResolvedRecipientDTO buildPractitionerEmailRecipient(PractitionerDTO practitionerDTO, UserDTO practitionerUser, OrganizationDefinitionDTO finalOrganizationDefinitionDTO) {
+        if (practitionerDTO == null) {
+            return null;
+        }
+
+        return NotificationResolvedRecipientDTO.builder()
+                .recipientType("PRACTITIONER")
+                .recipientId(practitionerDTO.id())
+                .recipientName(practitionerDTO.firstName() + " " + practitionerDTO.lastName())
+                .recipientEmail(practitionerDTO.email())
+                .toEmails(List.of(practitionerDTO.email()))
+                .language(practitionerUser != null && practitionerUser.langKey() != null && !practitionerUser.langKey().isBlank() ? practitionerUser.langKey() : finalOrganizationDefinitionDTO != null ? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
+                .build();
+    }
+
+    private NotificationResolvedRecipientDTO buildPractitionerPhoneRecipient(PractitionerDTO practitionerDTO, UserDTO practitionerUser, OrganizationDefinitionDTO finalOrganizationDefinitionDTO) {
+        if (practitionerDTO == null) {
+            return null;
+        }
+
+        return NotificationResolvedRecipientDTO.builder()
+                .recipientType("PRACTITIONER")
+                .recipientId(practitionerDTO.id())
+                .recipientName(practitionerDTO.firstName() + " " + practitionerDTO.lastName())
+                .recipientPhone(practitionerDTO.phoneNumber())
+                .toPhone(practitionerDTO.phoneNumber())
+                .language(practitionerUser != null && practitionerUser.langKey() != null && !practitionerUser.langKey().isBlank() ? practitionerUser.langKey() : finalOrganizationDefinitionDTO != null ? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
+                .build();
+    }
+
+    private NotificationResolvedRecipientDTO buildPractitionerUserRecipient(PractitionerDTO practitioner, UserDTO practitionerUser, OrganizationDefinitionDTO finalOrganizationDefinitionDTO) {
+        if (practitioner == null || practitioner.userId() == null) {
+            return null;
+        }
+
+        return NotificationResolvedRecipientDTO.builder()
+                .recipientType("USER")
+                .recipientId(practitioner.userId())
+                .recipientName((safe(practitioner.firstName()) + " " + safe(practitioner.lastName())).trim())
+                .recipientEmail(practitioner.email())
+                .recipientData(Map.of(
+                        "practitionerId", practitioner.id(),
+                        "practitionerName", (safe(practitioner.firstName()) + " " + safe(practitioner.lastName())).trim(),
+                        "practitionerEmail", practitioner.email(),
+                        "practitionerUserId", practitioner.userId()
+                ))
+                .language(practitionerUser != null && practitionerUser.langKey() != null && !practitionerUser.langKey().isBlank() ? practitionerUser.langKey() : finalOrganizationDefinitionDTO != null ? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
                 .build();
     }
 
@@ -644,56 +818,6 @@ public class NotificationHelper {
         }
 
         return patient.getId() != null ? String.valueOf(patient.getId()) : "";
-    }
-
-    private NotificationResolvedRecipientDTO buildPractitionerEmailRecipient(PractitionerDTO practitionerDTO, UserDTO practitionerUser, OrganizationDefinitionDTO finalOrganizationDefinitionDTO) {
-        if (practitionerDTO == null) {
-            return null;
-        }
-
-        return NotificationResolvedRecipientDTO.builder()
-                .recipientType("PRACTITIONER")
-                .recipientId(practitionerDTO.id())
-                .recipientName(practitionerDTO.firstName() + " " + practitionerDTO.lastName())
-                .recipientEmail(practitionerDTO.email())
-                .toEmails(List.of(practitionerDTO.email()))
-                .language(practitionerUser != null && practitionerUser.langKey() != null && !practitionerUser.langKey().isBlank() ? practitionerUser.langKey() : finalOrganizationDefinitionDTO!=null? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
-                .build();
-    }
-
-    private NotificationResolvedRecipientDTO buildPractitionerPhoneRecipient(PractitionerDTO practitionerDTO, UserDTO practitionerUser, OrganizationDefinitionDTO finalOrganizationDefinitionDTO) {
-        if (practitionerDTO == null) {
-            return null;
-        }
-
-        return NotificationResolvedRecipientDTO.builder()
-                .recipientType("PRACTITIONER")
-                .recipientId(practitionerDTO.id())
-                .recipientName(practitionerDTO.firstName() + " " + practitionerDTO.lastName())
-                .recipientPhone(practitionerDTO.phoneNumber())
-                .toPhone(practitionerDTO.phoneNumber())
-                .language(practitionerUser != null && practitionerUser.langKey() != null && !practitionerUser.langKey().isBlank() ? practitionerUser.langKey() : finalOrganizationDefinitionDTO!=null? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
-                .build();
-    }
-
-    private NotificationResolvedRecipientDTO buildPractitionerUserRecipient(PractitionerDTO practitioner, UserDTO practitionerUser, OrganizationDefinitionDTO finalOrganizationDefinitionDTO) {
-        if (practitioner == null || practitioner.userId() == null) {
-            return null;
-        }
-
-        return NotificationResolvedRecipientDTO.builder()
-                .recipientType("USER")
-                .recipientId(practitioner.userId())
-                .recipientName((safe(practitioner.firstName()) + " " + safe(practitioner.lastName())).trim())
-                .recipientEmail(practitioner.email())
-                .recipientData(Map.of(
-                        "practitionerId", practitioner.id(),
-                        "practitionerName", (safe(practitioner.firstName()) + " " + safe(practitioner.lastName())).trim(),
-                        "practitionerEmail", practitioner.email(),
-                        "practitionerUserId", practitioner.userId()
-                ))
-                .language(practitionerUser != null && practitionerUser.langKey() != null && !practitionerUser.langKey().isBlank() ? practitionerUser.langKey() : finalOrganizationDefinitionDTO!=null? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
-                .build();
     }
 
     public String getUserDisplayName(UserDTO user) {

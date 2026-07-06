@@ -314,7 +314,7 @@ public class PatientPrescriptionService {
         }
         String login = SecurityUtils.getCurrentUserLogin().orElse(null);
 
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, prescription.getCreatedBy(), prescription.getPatient(), null);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, prescription.getCreatedBy(), prescription.getPatient(), null,false);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("prescriptionId", prescription.getId());
         data.put("patientId", prescription.getPatient().getId());

@@ -459,7 +459,7 @@ public class PatientService {
         data.put("logoUrl", logoUrl);
 
         String login = SecurityUtils.getCurrentUserLogin().orElse(null);
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(null, login, patient.getCreatedBy(), patient, null);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(null, login, patient.getCreatedBy(), patient, null,false);
 
         try {
             notificationHelper.sendNotification(null,
