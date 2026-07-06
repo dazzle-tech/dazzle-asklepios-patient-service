@@ -325,6 +325,7 @@ public class AvailabilityGenerationBatchService {
         appointment.setPriority(EncounterPriority.NORMAL);
         appointment.setCapacityIndex(capacityIndex);
         appointment.setReason(null);
+        appointment.setHl7AppointmentNumber(null);
         return appointment;
     }
 
