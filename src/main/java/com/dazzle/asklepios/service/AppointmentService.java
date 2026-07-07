@@ -75,6 +75,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -93,7 +94,7 @@ public class AppointmentService {
 
     private static final String SYSTEM_CANCEL_REASON = "cancel appointment from reschedule";
     private static final String SYSTEM_RESCHEDULE_REASON = "rescheduled due to availability change ";
-
+    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm").withZone(ZoneId.systemDefault());
     private static final Logger LOG = LoggerFactory.getLogger(AppointmentService.class);
 
     private final PatientRepository patientRepository;
@@ -477,7 +478,7 @@ public class AppointmentService {
         String login = currentUsername();
 
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
-                notificationHelper.resolveRecipients(appointment.getDepartmentId(), login, appointment.getCreatedBy(), appointment.getPatient(), practitioner,false);
+                notificationHelper.resolveRecipients(appointment.getDepartmentId(), login, appointment.getCreatedBy(), appointment.getPatient(), practitioner, false);
 
         appointment.setStatus(AppointmentStatus.CANCELLED);
         appointment.setCancelReason(dto.cancelReason());
@@ -1053,10 +1054,10 @@ public class AppointmentService {
                 Map.of(
                         "oldAppointmentId", savedOldAppointment.getId(),
                         "newAppointmentId", savedNewAppointment.getId(),
-                        "oldAppointmentDate", oldStartDatetime != null ? oldStartDatetime.toString() : "",
-                        "oldAppointmentEndDate", oldEndDatetime != null ? oldEndDatetime.toString() : "",
-                        "newAppointmentDate", savedNewAppointment.getStartDatetime() != null ? savedNewAppointment.getStartDatetime().toString() : "",
-                        "newAppointmentEndDate", savedNewAppointment.getEndDatetime() != null ? savedNewAppointment.getEndDatetime().toString() : "",
+                        "oldAppointmentDate", oldStartDatetime != null ? formatter.format(oldStartDatetime) : "",
+                        "oldAppointmentEndDate", oldEndDatetime != null ? formatter.format(oldEndDatetime) : "",
+                        "newAppointmentDate", savedNewAppointment.getStartDatetime() != null ? formatter.format(savedNewAppointment.getStartDatetime()) : "",
+                        "newAppointmentEndDate", savedNewAppointment.getEndDatetime() != null ? formatter.format(savedNewAppointment.getEndDatetime()) : "",
                         "rescheduleReason", rescheduleReason != null ? rescheduleReason : ""
                 )
         );
@@ -1542,7 +1543,7 @@ public class AppointmentService {
         PractitionerDTO practitioner = appointment.getDefaultPractitionerId() != null
                 ? practitionerHelper.getPractitioner(appointment.getDefaultPractitionerId())
                 : null;
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(appointment.getDepartmentId(), login, appointment.getCreatedBy(), appointment.getPatient(), practitioner,false);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(appointment.getDepartmentId(), login, appointment.getCreatedBy(), appointment.getPatient(), practitioner, false);
 
         if (recipientsByRule.isEmpty()) {
             LOG.warn("Skip appointment notification because no recipients were resolved. appointmentId={}, code={}", appointment.getId(), notificationCode);
@@ -1560,6 +1561,7 @@ public class AppointmentService {
         }
     }
 
+
     private Map<String, Object> buildAppointmentNotificationData(Appointment appointment, DepartmentDTO department) {
         Map<String, Object> data = new LinkedHashMap<>();
 
@@ -1567,8 +1569,13 @@ public class AppointmentService {
         data.put("appointmentNumber", appointment.getId());
         data.put("departmentId", appointment.getDepartmentId());
         data.put("departmentName", department != null ? department.name() : "");
-        data.put("patientName", appointment.getPatient() != null ? notificationHelper.getPatientName(appointment.getPatient()) : "");
-        data.put("appointmentDate", appointment.getStartDatetime() != null ? appointment.getStartDatetime().toString() : "");
+        data.put("patientName", appointment.getPatient() != null
+                ? notificationHelper.getPatientName(appointment.getPatient())
+                : "");
+
+        data.put("appointmentDate", appointment.getStartDatetime() != null
+                ? formatter.format(appointment.getStartDatetime())
+                : "");
 
         return data;
     }
