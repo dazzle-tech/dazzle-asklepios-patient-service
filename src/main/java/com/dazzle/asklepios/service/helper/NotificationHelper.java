@@ -4,18 +4,18 @@ import com.dazzle.asklepios.client.notification.NotificationClient;
 import com.dazzle.asklepios.client.notification.dto.NotificationCreateDTO;
 import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.setup.OrganizationClient;
+import com.dazzle.asklepios.client.setup.SystemConfigurationClient;
 import com.dazzle.asklepios.client.setup.UserClient;
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
-import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
 import com.dazzle.asklepios.client.setup.dto.OrganizationDefinitionDTO;
 import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
 import com.dazzle.asklepios.client.setup.dto.UserDTO;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.enumeration.SystemConfigKey;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.aspectj.weaver.ast.Or;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
@@ -35,6 +35,7 @@ public class NotificationHelper {
     private final UserClient userClient;
     private final DepartmentHelper departmentHelper;
     private final OrganizationClient organizationClient;
+    private final SystemConfigurationClient systemConfigurationClient;
 
     public void sendNotification(Long facilityId, NotificationCode code, Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule, Map<String, Object> data, String relatedEntityType, Long relatedEntityId) {
 
@@ -52,6 +53,8 @@ public class NotificationHelper {
             );
             return;
         }
+        String logoUrl = systemConfigurationClient.getResolvedValue(SystemConfigKey.SYSTEM_LOGO);
+        data.put("logoUrl", logoUrl);
 
         Map<String, Map<String, List<NotificationResolvedRecipientDTO>>> groupedRecipients =
                 groupRecipientsByLanguage(recipientsByRule);
@@ -66,7 +69,7 @@ public class NotificationHelper {
                     language,
                     null,
                     languageEntry.getValue(),
-                    data != null ? data : new LinkedHashMap<>(),
+                    data ,
                     relatedEntityType,
                     relatedEntityId
             );
