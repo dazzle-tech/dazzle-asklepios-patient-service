@@ -492,6 +492,7 @@ public class NotificationHelper {
                                 "departmentId", departmentId,
                                 "departmentName", department.name()
                         ))
+                        .toEmails(List.of(user.email()))
                         .language(user.langKey() != null && !user.langKey().isBlank() ? user.langKey() : finalOrganizationDefinitionDTO != null ? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
                         .build()
                 )
