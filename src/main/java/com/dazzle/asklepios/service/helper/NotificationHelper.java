@@ -479,7 +479,14 @@ public class NotificationHelper {
         if (users == null || users.isEmpty()) {
             return List.of();
         }
-
+        for (UserDTO user : users) {
+            log.info(
+                    "[NOTIFICATION] User id={}, login={}, email={}",
+                    user.id(),
+                    user.login(),
+                    user.email()
+            );
+        }
 
         return users.stream()
                 .filter(user -> user != null && user.id() != null)
