@@ -26,4 +26,12 @@ public interface PatientPaymentAllocationRepository
         where allocation.chargeId = :chargeId
     """)
     BigDecimal sumAllocatedForCharge(Long chargeId);
+
+
+    @Query("""
+    SELECT COALESCE(SUM(a.paidFromAmount), 0)
+    FROM PatientPaymentAllocation a
+    WHERE a.chargeId = :chargeId
+""")
+    BigDecimal sumPaidForCharge(Long chargeId);
 }

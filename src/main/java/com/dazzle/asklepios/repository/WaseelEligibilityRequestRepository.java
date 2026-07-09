@@ -15,4 +15,10 @@ public interface WaseelEligibilityRequestRepository
             Long patientId,
             String requestStatus
     );
+
+    Optional<WaseelEligibilityRequest>
+    findTopByPatientIdAndRequestStatusOrderByRespondedAtDesc(
+            Long patientId,
+            String requestStatus
+    );
 }
