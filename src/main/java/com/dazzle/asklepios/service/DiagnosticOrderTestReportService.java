@@ -462,7 +462,7 @@ public class DiagnosticOrderTestReportService {
         report.setImageStatus(imageStatusTo);
 
         if (imageStatusTo == RadiologyImageStatus.FINISHED) {
-            report.setProcessingStatus(DiagnosticStatus.RESULT_READY);
+            report.setProcessingStatus(DiagnosticStatus.EXAM_DONE);
         }
 
         DiagnosticOrderTestReport saved = diagnosticOrderTestReportRepository.save(report);
