@@ -166,9 +166,9 @@ public class DiagnosticOrderTestStatusService {
         LOG.debug("[DiagnosticOrderTestStatus] MARK_READY - start. testId={}", testId);
 
         DiagnosticOrderTest test = getTest(testId);
-        ensureTransition(test, DiagnosticStatus.RESULT_READY);
+        ensureTransition(test, DiagnosticStatus.EXAM_DONE);
 
-        test.setProcessingStatus(DiagnosticStatus.RESULT_READY);
+        test.setProcessingStatus(DiagnosticStatus.EXAM_DONE);
         test.setReadyDate(Instant.now());
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
@@ -277,6 +277,8 @@ public class DiagnosticOrderTestStatusService {
         }
 
         test.setStatus(DiagnosticOrderTestStatus.CANCELLED);
+        test.setProcessingStatus(DiagnosticStatus.CANCELLED);
+
         test.setCancelledBy(cancelledBy);
         test.setCancelledDate(Instant.now());
         test.setCancellationReason(cancellationReason);
@@ -623,7 +625,7 @@ public class DiagnosticOrderTestStatusService {
      * <p>
      * Rules:
      * - Laboratory: NEW -> SAMPLE_COLLECTED -> ACCEPTED -> RESULT_READY -> REVIEWED -> RESULT_APPROVED
-     * - Radiology: NEW -> PATIENT_ARRIVED -> ACCEPTED -> RESULT_READY -> REVIEWED -> RESULT_APPROVED
+     * - Radiology: NEW -> PATIENT_ARRIVED -> ACCEPTED -> EXAM_DONE -> REVIEWED -> RESULT_APPROVED
      * - Radiology: SAMPLE_COLLECTED is not allowed
      */
     private void ensureTransition(DiagnosticOrderTest test, DiagnosticStatus to) {
@@ -677,7 +679,7 @@ public class DiagnosticOrderTestStatusService {
         }
 
         if (to == DiagnosticStatus.RESULT_APPROVED) {
-            if (!(from == DiagnosticStatus.RESULT_READY || from == DiagnosticStatus.PARTIALLY)) {
+            if (!(from == DiagnosticStatus.EXAM_DONE || from == DiagnosticStatus.PARTIALLY)) {
                 throw invalid(from, to);
             }
             return;
