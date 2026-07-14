@@ -1,10 +1,8 @@
 package com.dazzle.asklepios.domain.enumeration;
 
-public enum LedgerSource {
-    PAYMENT,
-    CHARGE,
-    WALLET,
+public enum FinancialDocumentType {
+    INVOICE,
     CREDIT_NOTE,
     DEBIT_NOTE,
-    REFUND
+    RECEIPT
 }

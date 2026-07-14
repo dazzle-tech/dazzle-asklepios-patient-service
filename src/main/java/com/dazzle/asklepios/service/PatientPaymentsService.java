@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.FinancialDocument;
+import com.dazzle.asklepios.domain.FinancialDocumentItem;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientCharge;
 import com.dazzle.asklepios.domain.PatientEncounter;
@@ -15,6 +17,8 @@ import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.LedgerAccount;
 import com.dazzle.asklepios.domain.enumeration.LedgerEntryType;
 import com.dazzle.asklepios.domain.enumeration.LedgerSource;
@@ -25,6 +29,8 @@ import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.WalletTransactionType;
 import com.dazzle.asklepios.integration.waseel.dto.InsuranceCoverage;
 import com.dazzle.asklepios.integration.waseel.service.WaseelCoverageExtractionService;
+import com.dazzle.asklepios.repository.FinancialDocumentItemRepository;
+import com.dazzle.asklepios.repository.FinancialDocumentRepository;
 import com.dazzle.asklepios.repository.PatientChargeRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
@@ -42,6 +48,7 @@ import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentCreateDTO;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentDetailsDTO;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentFormDTO;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentServiceItemDTO;
+import com.dazzle.asklepios.service.dto.patientPayments.PaymentAllocationDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.EntityManager;
@@ -72,6 +79,8 @@ public class PatientPaymentsService {
 
     private static final BigDecimal ZERO_AMOUNT = BigDecimal.ZERO;
 
+    private final FinancialDocumentItemRepository itemRepo;
+
     private final PatientPaymentsRepository paymentRepository;
     private final PatientServiceAndProductRepository serviceRepository;
 
@@ -90,6 +99,8 @@ public class PatientPaymentsService {
     private final EntityManager entityManager;
     private final InsuranceCalculationService insuranceCalculationService;
     private final WaseelEligibilityRequestRepository waseelEligibilityRequestRepository;
+    private final FinancialDocumentStatusService documentStatusService;
+    private final FinancialDocumentRepository documentRepository;
 
     private final WaseelCoverageExtractionService coverageExtractionService;
 
@@ -243,7 +254,7 @@ public class PatientPaymentsService {
                 .planId(payment.getPlan() != null ? payment.getPlan().getId() : null)
                 .dueAmount(nonNullAmount(dueAmount))
                 .remaining(nonNullAmount(dueAmount))
-                .currency(payment.getCurrency().name())
+                .currency(payment.getCurrency())
                 .facilityDefaultCurrency(payment.getFacilityDefaultCurrency().name())
                 .createdDate(Instant.now())
                 .lastModifiedDate(Instant.now())
@@ -304,6 +315,19 @@ public class PatientPaymentsService {
                     ));
         }
     }
+    private void updateDocumentStatus(Long encounterId) {
+
+        FinancialDocument document =
+                documentRepository.findByEncounterId(encounterId)
+                        .orElseThrow(() -> new IllegalStateException("Document not found"));
+
+        FinancialDocumentStatus status =
+                documentStatusService.calculate(document.getId());
+
+        document.setStatus(status);
+
+        documentRepository.save(document);
+    }
 
     public PatientPaymentDetailsDTO postPayment(Long paymentId) {
 
@@ -314,9 +338,9 @@ public class PatientPaymentsService {
                         "notfound"
                 ));
 
-        // ✅ ✅ FIX: only validate amount here
+        // ✅ ✅ validate amount
         if (payment.getAmount() == null
-                || payment.getAmount().compareTo(ZERO_AMOUNT) < 0) {
+                || payment.getAmount().compareTo(ZERO_AMOUNT) <= 0) {
 
             throw new BadRequestAlertException(
                     "Invalid payment amount",
@@ -337,20 +361,104 @@ public class PatientPaymentsService {
         LOG.info("[POST] Executing paymentId={}", paymentId);
 
         try {
-            applyLedgerForPayment(paymentId);
+
+            // ✅ ✅ HYBRID switch
+            if (hasManualAllocations(paymentId)) {
+
+                LOG.info("[POST] Using MANUAL allocation flow paymentId={}", paymentId);
+
+                applyManualAllocationFlow(payment);
+
+            } else {
+
+                LOG.info("[POST] Using LEGACY charge allocation flow paymentId={}", paymentId);
+
+                applyLedgerForPayment(paymentId);
+            }
+
+            // ✅ ✅ Calculate Payment Status
+            PaymentStatus paymentStatus = calculatePaymentStatus(paymentId);
+            payment.setPaymentStatus(paymentStatus);
+
+            LOG.info("[POST] paymentId={} paymentStatus={}", paymentId, paymentStatus);
+            FinancialDocument document =
+                    documentRepository.findById(payment.getDocumentId())
+                            .orElseThrow(() -> new IllegalStateException("Document not found"));
+
+
+            FinancialDocumentStatus status =
+                    documentStatusService.calculate(document.getId());
+
+            document.setStatus(status);
+
+            documentRepository.save(document);
         } catch (Exception ex) {
+
             LOG.error("[POST] failed paymentId={}", paymentId, ex);
             throw ex;
         }
 
-        // ✅ update status
+        // ✅ update lifecycle status
         payment.setStatus(PaymentLifecycleStatus.POSTED);
-        LOG.info("[POST] paymentId={} status={} → POSTED", paymentId, payment.getStatus());
+
+        LOG.info("[POST] paymentId={} lifecycleStatus={} → POSTED",
+                paymentId,
+                payment.getStatus());
+
         paymentRepository.save(payment);
 
         return finalizeAndReturnDetails(payment);
     }
+    private boolean hasManualAllocations(Long paymentId) {
+        return allocationRepository.existsByPaymentIdAndDocumentItemIdIsNotNull(paymentId);
+    }
+    private void applyManualAllocationFlow(PatientPayments payment)
+    {
 
+        List<PatientPaymentAllocation> allocations =
+                allocationRepository.findByPaymentId(payment.getId());
+
+        for (PatientPaymentAllocation alloc : allocations) {
+
+            if (alloc.getDocumentItemId() == null) continue;
+
+            FinancialDocumentItem item =
+                    itemRepo.findById(alloc.getDocumentItemId())
+                            .orElseThrow(() -> new IllegalStateException("Item not found"));
+
+            BigDecimal currentPaid = nonNullAmount(alloc.getPaidFromAmount());
+            if (currentPaid.compareTo(ZERO_AMOUNT) <= 0) {
+                continue;
+            }
+
+            // ✅ update ledger per item
+            ledgerRepository.save(
+                    PatientLedgerEntry.builder()
+                            .patientId(payment.getPatient().getId())
+                            .type(LedgerEntryType.DEBIT)
+                            .account(LedgerAccount.CASH)
+                            .source(LedgerSource.PAYMENT)
+                            .referenceId(payment.getId())
+                            .amount(currentPaid)
+                            .currency(payment.getCurrency())// أو من payment
+                            .createdDate(Instant.now())
+                            .build()
+            );
+
+            ledgerRepository.save(
+                    PatientLedgerEntry.builder()
+                            .patientId(payment.getPatient().getId())
+                            .type(LedgerEntryType.CREDIT)
+                            .account(LedgerAccount.PATIENT_RECEIVABLE)
+                            .source(LedgerSource.PAYMENT)
+                            .referenceId(payment.getId())
+                            .amount(currentPaid)
+                            .currency(payment.getCurrency())
+                            .createdDate(Instant.now())
+                            .build()
+            );
+        }
+    }
     private void applyLedgerForPayment(Long paymentId) {
 
         PatientPayments payment = paymentRepository.findById(paymentId)
@@ -571,7 +679,7 @@ public class PatientPaymentsService {
                                 .source(LedgerSource.WALLET)
                                 .referenceId(paymentId)
                                 .amount(walletPortion)
-                                .currency(payment.getCurrency().name())
+                                .currency(payment.getCurrency())
                                 .createdDate(Instant.now())
                                 .build()
                 );
@@ -584,7 +692,7 @@ public class PatientPaymentsService {
                                 .source(LedgerSource.WALLET)
                                 .referenceId(paymentId)
                                 .amount(walletPortion)
-                                .currency(payment.getCurrency().name())
+                                .currency(payment.getCurrency())
                                 .createdDate(Instant.now())
                                 .build()
                 );
@@ -654,7 +762,7 @@ public class PatientPaymentsService {
                                 .source(LedgerSource.PAYMENT)
                                 .referenceId(paymentId)
                                 .amount(patientPortion)
-                                .currency(payment.getCurrency().name())
+                                .currency(payment.getCurrency())
                                 .createdDate(Instant.now())
                                 .build()
                 );
@@ -667,7 +775,7 @@ public class PatientPaymentsService {
                                 .source(LedgerSource.PAYMENT)
                                 .referenceId(paymentId)
                                 .amount(patientPortion)
-                                .currency(payment.getCurrency().name())
+                                .currency(payment.getCurrency())
                                 .createdDate(Instant.now())
                                 .build()
                 );
@@ -700,7 +808,7 @@ public class PatientPaymentsService {
                             .source(LedgerSource.PAYMENT)
                             .referenceId(paymentId)
                             .amount(totalInsuranceShare)
-                            .currency(payment.getCurrency().name())
+                            .currency(payment.getCurrency())
                             .createdDate(Instant.now())
                             .build()
             );
@@ -714,7 +822,7 @@ public class PatientPaymentsService {
                             .source(LedgerSource.PAYMENT)
                             .referenceId(paymentId)
                             .amount(totalInsuranceShare)
-                            .currency(payment.getCurrency().name())
+                            .currency(payment.getCurrency())
                             .createdDate(Instant.now())
                             .build()
             );
@@ -749,7 +857,7 @@ public class PatientPaymentsService {
                                 .source(LedgerSource.WALLET)
                                 .referenceId(paymentId)
                                 .amount(remainingPaymentAmount)
-                                .currency(payment.getCurrency().name())
+                                .currency(payment.getCurrency())
                                 .createdDate(Instant.now())
                                 .build()
                 );
@@ -762,7 +870,7 @@ public class PatientPaymentsService {
                                 .source(LedgerSource.WALLET)
                                 .referenceId(paymentId)
                                 .amount(remainingPaymentAmount)
-                                .currency(payment.getCurrency().name())
+                                .currency(payment.getCurrency())
                                 .createdDate(Instant.now())
                                 .build()
                 );
@@ -977,6 +1085,43 @@ public class PatientPaymentsService {
         try {
             PatientPayments saved = paymentRepository.saveAndFlush(payment);
 
+            // ==============================
+// ✅ CREATE OR LOAD MASTER INVOICE 💣
+// ==============================
+
+            FinancialDocument document =
+                    documentRepository.findByEncounterIdAndDocumentType(
+                            encounter.getId(),
+                            FinancialDocumentType.INVOICE
+                    ).orElseGet(() -> {
+
+                        // ✅ enforce one invoice
+                        if (documentRepository.existsByEncounterIdAndDocumentType(
+                                encounter.getId(),
+                                FinancialDocumentType.INVOICE)) {
+
+                            throw new IllegalStateException("Invoice already exists for this encounter");
+                        }
+
+                        // ✅ create new invoice
+                        FinancialDocument newInvoice = FinancialDocument.builder()
+                                .documentType(FinancialDocumentType.INVOICE)
+                                .encounterId(encounter.getId())
+                                .patientId(patient.getId())
+                                .status(FinancialDocumentStatus.ISSUED)
+                                .totalAmount(ZERO_AMOUNT)
+                                .currency(dto.currency())
+                                .createdDate(Instant.now())
+                                .build();
+
+                        return documentRepository.save(newInvoice);
+                    });
+
+// ✅ link payment to document
+            saved.setDocumentId(document.getId());
+
+// ✅ save again
+            paymentRepository.save(saved);
             // ✅ attach services FIRST (always needed)
             List<PatientServiceAndProduct> serviceRows =
                     attachServicesToPayment(saved, services);
@@ -989,6 +1134,21 @@ public class PatientPaymentsService {
                     serviceRows.size(),
                     dueAmount
             );
+// ==============================
+// ✅ UPDATE INVOICE TOTAL 💣
+// ==============================
+
+            BigDecimal totalInvoiceAmount = serviceRows.stream()
+                    .map(s -> nonNullAmount(s.getNetAmount()))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            document.setTotalAmount(totalInvoiceAmount);
+
+            documentRepository.save(document);
+
+            LOG.info("[CREATE] invoiceId={} totalAmount={}",
+                    document.getId(),
+                    totalInvoiceAmount);
 
             // ✅ update encounter status
             if (encounter.getEncounterType().equals(EncounterType.EMERGENCY)) {
@@ -1017,6 +1177,8 @@ public class PatientPaymentsService {
             throw ex;
         }
     }
+
+
     private PatientPaymentDetailsDTO buildInitialResponse(PatientPayments payment) {
         return new PatientPaymentDetailsDTO(
                 payment.getId(),
@@ -1031,6 +1193,39 @@ public class PatientPaymentsService {
                 ZERO_AMOUNT,
                 List.of()
         );
+    }
+    public void allocatePaymentManually(
+            Long paymentId,
+            List<PaymentAllocationDTO> allocations
+    ) {
+
+        for (PaymentAllocationDTO dto : allocations) {
+
+            FinancialDocumentItem item = itemRepo.findById(dto.documentItemId())
+                    .orElseThrow(() -> new IllegalStateException("Item not found"));
+
+            BigDecimal amount = nonNullAmount(dto.amount());
+
+            BigDecimal alreadyPaid =
+                    allocationRepository.sumPaidForItem(item.getId());
+
+            BigDecimal remaining =
+                    item.getNetAmount().subtract(alreadyPaid);
+
+            if (amount.compareTo(remaining) > 0) {
+                throw new IllegalStateException("Exceeds remaining");
+            }
+
+            allocationRepository.save(
+                    PatientPaymentAllocation.builder()
+                            .paymentId(paymentId)
+                            .documentItemId(item.getId())
+                            .paidFromAmount(amount)
+                            .paidFromBalance(BigDecimal.ZERO)
+                            .lastModifiedDate(Instant.now())
+                            .build()
+            );
+        }
     }
 
     private List<PatientServiceAndProduct> attachServicesToPayment(
@@ -1220,6 +1415,30 @@ public class PatientPaymentsService {
                 serviceRepository.findByPaymentId(payment.getId());
 
         return toFormDTO(payment, services);
+    }
+    private PaymentStatus calculatePaymentStatus(Long paymentId) {
+
+        List<PatientPaymentAllocation> allocations =
+                allocationRepository.findByPaymentId(paymentId);
+
+        BigDecimal totalAllocated = allocations.stream()
+                .map(a -> nonNullAmount(a.getPaidFromAmount()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        PatientPayments payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new IllegalStateException("Payment not found"));
+
+        BigDecimal totalDue = nonNullAmount(payment.getDueAmount());
+
+        if (totalAllocated.compareTo(BigDecimal.ZERO) == 0) {
+            return PaymentStatus.PENDING;
+        }
+
+        if (totalAllocated.compareTo(totalDue) < 0) {
+            return PaymentStatus.PARTIALLY_PAID;
+        }
+
+        return PaymentStatus.PAID;
     }
 
     private PatientInsurance resolvePlan(PatientPaymentCreateDTO dto) {

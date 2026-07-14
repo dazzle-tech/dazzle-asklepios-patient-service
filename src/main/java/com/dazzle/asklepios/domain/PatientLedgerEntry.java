@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.LedgerAccount;
 import com.dazzle.asklepios.domain.enumeration.LedgerEntryType;
 import com.dazzle.asklepios.domain.enumeration.LedgerSource;
@@ -54,7 +55,9 @@ public class PatientLedgerEntry {
 
     private BigDecimal amount;
 
-    private String currency;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "currency", length = 10)
+    private Currency currency;
 
     private Instant createdDate;
 }
