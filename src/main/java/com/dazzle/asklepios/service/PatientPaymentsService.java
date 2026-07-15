@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
+import com.dazzle.asklepios.domain.FinancialDocumentItemStatus;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientCharge;
 import com.dazzle.asklepios.domain.PatientEncounter;
@@ -67,6 +68,7 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -364,22 +366,22 @@ public class PatientPaymentsService {
 
             // ✅ ✅ HYBRID switch
             if (hasManualAllocations(paymentId)) {
-
-                LOG.info("[POST] Using MANUAL allocation flow paymentId={}", paymentId);
-
                 applyManualAllocationFlow(payment);
-
             } else {
-
-                LOG.info("[POST] Using LEGACY charge allocation flow paymentId={}", paymentId);
-
-                applyLedgerForPayment(paymentId);
+                applyInsuranceSplit(paymentId);
+                applyDocumentItemAllocation(paymentId);
             }
 
+// ✅ ADD HERE 💣
+            syncPaymentServicesAfterLedger(paymentId);
             // ✅ ✅ Calculate Payment Status
             PaymentStatus paymentStatus = calculatePaymentStatus(paymentId);
             payment.setPaymentStatus(paymentStatus);
-
+            BigDecimal totalPatientShare =
+                    itemRepo.findByDocumentId(payment.getDocumentId())
+                            .stream()
+                            .map(i -> nonNullAmount(i.getPatientShareAmount()))
+                            .reduce(ZERO_AMOUNT, BigDecimal::add);
             LOG.info("[POST] paymentId={} paymentStatus={}", paymentId, paymentStatus);
             FinancialDocument document =
                     documentRepository.findById(payment.getDocumentId())
@@ -469,14 +471,13 @@ public class PatientPaymentsService {
                 ));
 
         Long patientId = payment.getPatient().getId();
-        Long encounterId = payment.getEncounter().getId();
 
         lockPatientLedger(patientId);
 
         PatientWallet wallet = getOrCreateWalletLocked(patientId);
         BigDecimal walletBalance = nonNullAmount(wallet.getBalance());
 
-// ✅ correct validation
+        // ✅ validation
         if ((payment.getAmount() == null || payment.getAmount().compareTo(ZERO_AMOUNT) <= 0)
                 && walletBalance.compareTo(ZERO_AMOUNT) <= 0) {
 
@@ -487,333 +488,73 @@ public class PatientPaymentsService {
             );
         }
 
-        BigDecimal dueAmount = nonNullAmount(payment.getDueAmount());
-
-// ✅ Coverage initialization
-        InsuranceCoverage coverage;
-
-// ✅ Only load eligibility for INSURANCE payments
-        if (payment.getPaymentTypes() == PaymentTypes.INSURANCE_PLAN) {
-
-            WaseelEligibilityRequest eligibility =
-                    waseelEligibilityRequestRepository
-                            .findFirstByPatientIdAndRequestStatusAndEligibilityResponseIdIsNotNullOrderByCreatedDateDesc(
-                                    patientId,
-                                    "SUCCESS"
-                            )
-                            .orElseThrow(() -> new IllegalStateException("No valid eligibility found"));
-
-            coverage = coverageExtractionService.extractCoverage(
-                    eligibility.getResponseJson()
-            );
-
-            // ✅ Null validation
-            if (coverage.getCopaymentPercent() == null ||
-                    coverage.getCopaymentCap() == null) {
-
-                throw new IllegalStateException("Invalid coverage data from Waseel");
-            }
-
-            // ✅ Logical validation
-            if (coverage.getCopaymentPercent().compareTo(ZERO_AMOUNT) == 0
-                    && coverage.getCopaymentCap().compareTo(ZERO_AMOUNT) == 0) {
-
-                throw new IllegalStateException("Invalid coverage (both percent and cap are zero)");
-            }
-
-        } else {
-            // ✅ CASH → no insurance involvement
-            coverage = new InsuranceCoverage(ZERO_AMOUNT, ZERO_AMOUNT);
-        }
-
-// ✅ Continue normal flow
-        PatientCharge currentEncounterCharge =
-                getOrCreateChargeForEncounterLocked(payment, dueAmount);
-
-        List<PatientCharge> openCharges = chargeRepository
-                .findByPatientIdAndRemainingGreaterThanOrderByCreatedDateAscIdAsc(
-                        patientId,
-                        ZERO_AMOUNT
-                );
-
-        openCharges.sort(Comparator
-                .comparing((PatientCharge c) -> !c.getEncounterId().equals(encounterId))
-                .thenComparing(PatientCharge::getCreatedDate)
-                .thenComparing(PatientCharge::getId));
-
-        BigDecimal paymentAmount = nonNullAmount(getPaidAmountInFacilityCurrency(payment));
-        BigDecimal remainingPaymentAmount = paymentAmount;
+        BigDecimal remainingPaymentAmount =
+                nonNullAmount(getPaidAmountInFacilityCurrency(payment));
 
         BigDecimal paidFromPaymentAmount = ZERO_AMOUNT;
         BigDecimal paidFromWalletBalance = ZERO_AMOUNT;
 
-        List<PatientServiceAndProduct> services =
-                serviceRepository.findByPaymentId(paymentId);
+        // ✅ ✅ SOURCE OF TRUTH = ITEMS 💣
+        List<FinancialDocumentItem> items =
+                itemRepo.findByDocumentId(payment.getDocumentId());
 
-        BigDecimal totalPatientShare = ZERO_AMOUNT;
-        BigDecimal totalInsuranceShareFromServices = ZERO_AMOUNT;
+        for (FinancialDocumentItem item : items) {
 
-        for (PatientServiceAndProduct service : services) {
-
-            BigDecimal net = resolveServiceAmount(service);
-
-            // ✅ calculation per service
-            BigDecimal servicePatientShare =
-                    net.multiply(coverage.getCopaymentPercent())
-                            .divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP);
-
-            servicePatientShare =
-                    servicePatientShare.min(coverage.getCopaymentCap());
-
-            BigDecimal serviceInsuranceShare =
-                    net.subtract(servicePatientShare);
-
-            // ✅ update entity
-            service.setPatientShareAmount(servicePatientShare);
-            service.setInsuranceShareAmount(serviceInsuranceShare);
-            service.setPaidAmount(ZERO_AMOUNT);
-            service.setRemainingAmount(servicePatientShare);
-            totalPatientShare = totalPatientShare.add(servicePatientShare);
-            totalInsuranceShareFromServices =
-                    totalInsuranceShareFromServices.add(serviceInsuranceShare);
-        }
-
-
-        serviceRepository.saveAll(services);
-// ✅ IMPORTANT: update charge to reflect ONLY patient debt
-        BigDecimal patientShare = totalPatientShare;
-
-        if (payment.getPaymentTypes() == PaymentTypes.INSURANCE_PLAN) {
-
-            currentEncounterCharge.setRemaining(totalPatientShare);
-            currentEncounterCharge.setDueAmount(totalPatientShare);
-
-        } else {
-
-            // ✅ CASH → full due
-            currentEncounterCharge.setRemaining(dueAmount);
-            currentEncounterCharge.setDueAmount(dueAmount);
-        }
-
-        BigDecimal totalInsuranceShare = totalInsuranceShareFromServices;
-
-        BigDecimal remainingInsuranceShare = totalInsuranceShare;
-
-        if (totalPatientShare.add(totalInsuranceShare).compareTo(dueAmount) != 0) {
-            throw new IllegalStateException("Split mismatch with total amount");
-        }
-
-        if (payment.getPaymentTypes() == PaymentTypes.INSURANCE_PLAN) {
-
-            if (payment.getAmount() == null ||
-                    payment.getAmount().compareTo(ZERO_AMOUNT) <= 0) {
-
-                throw new IllegalStateException(
-                        "Payment must be greater than zero"
-                );
-            }
-
-            // ✅ allow partial but prevent overpayment
-            if (payment.getAmount().compareTo(patientShare) > 0) {
-
-                throw new IllegalStateException(
-                        "Payment exceeds patient share"
-                );
-            }
-        }
-
-        // ==============================
-        // ✅ Allocation Loop
-        // ==============================
-        for (PatientCharge openCharge : openCharges) {
-
-            // ✅ stop if no more payment
             if (remainingPaymentAmount.signum() <= 0) break;
 
-            // ✅ skip if already settled
-            if (nonNullAmount(openCharge.getRemaining()).signum() <= 0) continue;
+            // ✅ FIX: use remainingAmount ONLY ✅
+            BigDecimal remaining =
+                    nonNullAmount(item.getRemainingAmount());
 
-            // ✅ ===============================
-            // ✅ WALLET FIRST (ONLY SAME VISIT)
-            // ✅ ===============================
-            boolean isCurrentEncounter =
-                    openCharge.getEncounterId().equals(encounterId);
+            if (remaining.signum() <= 0) continue;
 
-            if (isCurrentEncounter &&
-                    walletBalance.compareTo(ZERO_AMOUNT) > 0 &&
-                    openCharge.getRemaining().compareTo(ZERO_AMOUNT) > 0) {
+            BigDecimal amountToAllocate =
+                    remainingPaymentAmount.min(remaining);
 
-                BigDecimal walletPortion =
-                        walletBalance.min(openCharge.getRemaining());
-
-                openCharge.setRemaining(
-                        openCharge.getRemaining().subtract(walletPortion)
-                );
-
-                walletBalance = walletBalance.subtract(walletPortion);
-
-                PatientPaymentAllocation allocation =
-                        allocationRepository.findByPaymentIdAndChargeId(paymentId, openCharge.getId())
-                                .orElseGet(() -> PatientPaymentAllocation.builder()
-                                        .paymentId(paymentId)
-                                        .chargeId(openCharge.getId())
-                                        .paidFromAmount(ZERO_AMOUNT)
-                                        .paidFromBalance(ZERO_AMOUNT)
-                                        .lastModifiedDate(Instant.now())
-                                        .build());
-
-                allocation.setPaidFromBalance(
-                        nonNullAmount(allocation.getPaidFromBalance()).add(walletPortion)
-                );
-
-                allocationRepository.save(allocation);
-
-                paidFromWalletBalance = paidFromWalletBalance.add(walletPortion);
-
-                // ✅ ledger (wallet usage)
-                ledgerRepository.save(
-                        PatientLedgerEntry.builder()
-                                .patientId(patientId)
-                                .type(LedgerEntryType.DEBIT)
-                                .account(LedgerAccount.LIABILITY)
-                                .source(LedgerSource.WALLET)
-                                .referenceId(paymentId)
-                                .amount(walletPortion)
-                                .currency(payment.getCurrency())
-                                .createdDate(Instant.now())
-                                .build()
-                );
-
-                ledgerRepository.save(
-                        PatientLedgerEntry.builder()
-                                .patientId(patientId)
-                                .type(LedgerEntryType.CREDIT)
-                                .account(LedgerAccount.PATIENT_RECEIVABLE)
-                                .source(LedgerSource.WALLET)
-                                .referenceId(paymentId)
-                                .amount(walletPortion)
-                                .currency(payment.getCurrency())
-                                .createdDate(Instant.now())
-                                .build()
-                );
-            }
-
-            // ✅ ===============================
-            // ✅ CASH ALLOCATION
-            // ✅ ===============================
-            if (remainingPaymentAmount.signum() <= 0) break;
-
-            BigDecimal amountToPay =
-                    remainingPaymentAmount.min(openCharge.getRemaining());
-
-            BigDecimal patientPortion;
-
-            if (payment.getPaymentTypes() == PaymentTypes.INSURANCE_PLAN) {
-                patientPortion = amountToPay.min(patientShare);
-            } else {
-                // ✅ CASH = full amount goes to patient
-                patientPortion = amountToPay;
-            }
-
-            BigDecimal insurancePortion =
-                    amountToPay.subtract(patientPortion)
-                            .min(remainingInsuranceShare);
-
-            // ✅ update trackers
-            patientShare = patientShare.subtract(patientPortion);
-            remainingInsuranceShare = remainingInsuranceShare.subtract(insurancePortion);
-            remainingPaymentAmount = remainingPaymentAmount.subtract(amountToPay);
-
-            // ✅ update charge
-            openCharge.setRemaining(
-                    openCharge.getRemaining().subtract(amountToPay)
-            );
-            openCharge.setLastModifiedDate(Instant.now());
-
-            PatientPaymentAllocation allocation =
-                    allocationRepository.findByPaymentIdAndChargeId(paymentId, openCharge.getId())
-                            .orElseGet(() -> PatientPaymentAllocation.builder()
-                                    .paymentId(paymentId)
-                                    .chargeId(openCharge.getId())
-                                    .paidFromAmount(ZERO_AMOUNT)
-                                    .paidFromBalance(ZERO_AMOUNT)
-                                    .lastModifiedDate(Instant.now())
-                                    .build());
-
-            allocation.setPaidFromAmount(
-                    nonNullAmount(allocation.getPaidFromAmount()).add(patientPortion)
+            // ✅ 1. allocation
+            allocationRepository.save(
+                    PatientPaymentAllocation.builder()
+                            .paymentId(paymentId)
+                            .documentItemId(item.getId())
+                            .paidFromAmount(amountToAllocate)
+                            .paidFromBalance(ZERO_AMOUNT)
+                            .lastModifiedDate(Instant.now())
+                            .build()
             );
 
-            allocationRepository.save(allocation);
+            // ✅ 2. update item
+            item.setPaidAmount(
+                    nonNullAmount(item.getPaidAmount()).add(amountToAllocate)
+            );
 
-            paidFromPaymentAmount =
-                    paidFromPaymentAmount.add(patientPortion);
+            item.setRemainingAmount(
+                    item.getRemainingAmount().subtract(amountToAllocate)
+            );
 
-            // ✅ ===============================
-            // ✅ ledger CASH
-            // ✅ ===============================
-            if (patientPortion.compareTo(ZERO_AMOUNT) > 0) {
-
-                ledgerRepository.save(
-                        PatientLedgerEntry.builder()
-                                .patientId(patientId)
-                                .type(LedgerEntryType.DEBIT)
-                                .account(LedgerAccount.CASH)
-                                .source(LedgerSource.PAYMENT)
-                                .referenceId(paymentId)
-                                .amount(patientPortion)
-                                .currency(payment.getCurrency())
-                                .createdDate(Instant.now())
-                                .build()
-                );
-
-                ledgerRepository.save(
-                        PatientLedgerEntry.builder()
-                                .patientId(patientId)
-                                .type(LedgerEntryType.CREDIT)
-                                .account(LedgerAccount.PATIENT_RECEIVABLE)
-                                .source(LedgerSource.PAYMENT)
-                                .referenceId(paymentId)
-                                .amount(patientPortion)
-                                .currency(payment.getCurrency())
-                                .createdDate(Instant.now())
-                                .build()
-                );
+            if (item.getRemainingAmount().compareTo(ZERO_AMOUNT) == 0) {
+                item.setStatus(FinancialDocumentItemStatus.PAID);
+            } else if (item.getPaidAmount().compareTo(ZERO_AMOUNT) > 0) {
+                item.setStatus(FinancialDocumentItemStatus.PARTIALLY_PAID);
             }
-        }
-        for (PatientServiceAndProduct service : services) {
 
-            BigDecimal total = nonNullAmount(service.getPatientShareAmount());
+            itemRepo.save(item);
 
-            BigDecimal paid = allocationRepository
-                    .sumPaidForCharge(currentEncounterCharge.getId()); // تحتاجي method
+            paidFromPaymentAmount = paidFromPaymentAmount.add(amountToAllocate);
 
-            BigDecimal remaining = total.subtract(nonNullAmount(paid));
-
-            service.setPaidAmount(nonNullAmount(paid));
-            service.setRemainingAmount(remaining.max(ZERO_AMOUNT));
-        }
-        // ==============================
-        // ✅ Insurance Ledger (FIXED)
-        // ==============================
-        if (payment.getPaymentTypes() == PaymentTypes.INSURANCE_PLAN &&
-                totalInsuranceShare.compareTo(ZERO_AMOUNT) > 0) {
-
-            // ✅ Debit → Insurance receivable
+            // ✅ 3. ledger
             ledgerRepository.save(
                     PatientLedgerEntry.builder()
                             .patientId(patientId)
                             .type(LedgerEntryType.DEBIT)
-                            .account(LedgerAccount.INSURANCE_RECEIVABLE)
+                            .account(LedgerAccount.CASH)
                             .source(LedgerSource.PAYMENT)
                             .referenceId(paymentId)
-                            .amount(totalInsuranceShare)
+                            .amount(amountToAllocate)
                             .currency(payment.getCurrency())
                             .createdDate(Instant.now())
                             .build()
             );
 
-            // ✅ Credit → reduce receivable
             ledgerRepository.save(
                     PatientLedgerEntry.builder()
                             .patientId(patientId)
@@ -821,16 +562,17 @@ public class PatientPaymentsService {
                             .account(LedgerAccount.PATIENT_RECEIVABLE)
                             .source(LedgerSource.PAYMENT)
                             .referenceId(paymentId)
-                            .amount(totalInsuranceShare)
+                            .amount(amountToAllocate)
                             .currency(payment.getCurrency())
                             .createdDate(Instant.now())
                             .build()
             );
+
+            remainingPaymentAmount =
+                    remainingPaymentAmount.subtract(amountToAllocate);
         }
 
-        // ==============================
-        // ✅ Leftover → Wallet
-        // ==============================
+        // ✅ wallet handling
         BigDecimal refunds = ZERO_AMOUNT;
 
         if (remainingPaymentAmount.signum() > 0) {
@@ -849,31 +591,6 @@ public class PatientPaymentsService {
                                 .build()
                 );
 
-                ledgerRepository.save(
-                        PatientLedgerEntry.builder()
-                                .patientId(patientId)
-                                .type(LedgerEntryType.DEBIT)
-                                .account(LedgerAccount.CASH)
-                                .source(LedgerSource.WALLET)
-                                .referenceId(paymentId)
-                                .amount(remainingPaymentAmount)
-                                .currency(payment.getCurrency())
-                                .createdDate(Instant.now())
-                                .build()
-                );
-
-                ledgerRepository.save(
-                        PatientLedgerEntry.builder()
-                                .patientId(patientId)
-                                .type(LedgerEntryType.CREDIT)
-                                .account(LedgerAccount.LIABILITY)
-                                .source(LedgerSource.WALLET)
-                                .referenceId(paymentId)
-                                .amount(remainingPaymentAmount)
-                                .currency(payment.getCurrency())
-                                .createdDate(Instant.now())
-                                .build()
-                );
             } else {
                 refunds = remainingPaymentAmount;
             }
@@ -881,13 +598,8 @@ public class PatientPaymentsService {
             remainingPaymentAmount = ZERO_AMOUNT;
         }
 
-        // ==============================
-        // ✅ Save updates
-        // ==============================
-        chargeRepository.saveAll(openCharges);
-
-        wallet.setBalance(walletBalance.max(ZERO_AMOUNT));
-        wallet.setLastModifiedDate(Instant.now()); // ✅ FIX
+        wallet.setBalance(walletBalance);
+        wallet.setLastModifiedDate(Instant.now());
         walletRepository.save(wallet);
 
         payment.setRemaining(remainingPaymentAmount);
@@ -896,25 +608,8 @@ public class PatientPaymentsService {
         payment.setRefunds(refunds);
         payment.setPatientBalance(wallet.getBalance());
 
-        // ==============================
-        // ✅ Balance Validation
-        // ==============================
-        BigDecimal totalDebit = ledgerRepository.sumDebitByPatient(patientId);
-        BigDecimal totalCredit = ledgerRepository.sumCreditByPatient(patientId);
-
-        if (totalDebit.compareTo(totalCredit) != 0) {
-            throw new IllegalStateException(
-                    "Ledger NOT BALANCED for patientId=" + patientId +
-                            " debit=" + totalDebit +
-                            " credit=" + totalCredit
-            );
-        }
-
         paymentRepository.save(payment);
-    }
-
-
-    private void syncPaymentServicesAfterLedger(Long paymentId) {
+    }    private void syncPaymentServicesAfterLedger(Long paymentId) {
         List<PatientServiceAndProduct> services = serviceRepository.findByPaymentId(paymentId);
 
         for (PatientServiceAndProduct service : services) {
@@ -934,7 +629,8 @@ public class PatientPaymentsService {
                 service.setPaymentStatus(PaymentStatus.PAID);
                 service.setPaidAmount(ZERO_AMOUNT);
                 service.setRemainingAmount(ZERO_AMOUNT);
-            } else {
+            }
+            else {
                 service.setPaymentStatus(PaymentStatus.PENDING);
                 service.setRemainingAmount(netAmount);
             }
@@ -1134,6 +830,41 @@ public class PatientPaymentsService {
                     serviceRows.size(),
                     dueAmount
             );
+
+            List<FinancialDocumentItem> items = serviceRows.stream()
+                    .map(service -> FinancialDocumentItem.builder()
+                            .document(document)
+                            .patientServiceProductId(service.getId())
+
+                            .quantity(service.getQuantity())
+                            .unitPrice(service.getUnitPrice())
+
+                            .grossAmount(service.getGrossAmount())
+                            .discountAmount(service.getDiscountAmount())
+                            .taxAmount(service.getTaxAmount())
+
+                            .netAmount(service.getNetAmount())
+
+                            // ✅ insurance (initial)
+                            .patientShareAmount(ZERO_AMOUNT)
+                            .insuranceShareAmount(ZERO_AMOUNT)
+
+                            // ✅ payment tracking 💣
+                            .paidAmount(ZERO_AMOUNT)
+                            .remainingAmount(ZERO_AMOUNT)
+
+                            .insurancePaidAmount(ZERO_AMOUNT)
+                            .insuranceRemainingAmount(ZERO_AMOUNT)
+
+                            // ✅ enums
+                            .status(FinancialDocumentItemStatus.PENDING)
+                            .currency(payment.getCurrency())
+
+                            .build())
+                    .toList();
+
+            itemRepo.saveAll(items);
+            entityManager.flush();
 // ==============================
 // ✅ UPDATE INVOICE TOTAL 💣
 // ==============================
@@ -1178,7 +909,67 @@ public class PatientPaymentsService {
         }
     }
 
+    private void applyInsuranceSplit(Long paymentId) {
 
+        PatientPayments payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new IllegalStateException("Payment not found"));
+
+        Long patientId = payment.getPatient().getId();
+
+        List<FinancialDocumentItem> items =
+                itemRepo.findByDocumentId(payment.getDocumentId());
+
+        InsuranceCoverage coverage;
+
+        if (payment.getPaymentTypes() == PaymentTypes.INSURANCE_PLAN) {
+
+            WaseelEligibilityRequest eligibility =
+                    waseelEligibilityRequestRepository
+                            .findFirstByPatientIdAndRequestStatusAndEligibilityResponseIdIsNotNullOrderByCreatedDateDesc(
+                                    patientId, "SUCCESS"
+                            )
+                            .orElseThrow(() -> new IllegalStateException("No eligibility"));
+
+            coverage = coverageExtractionService.extractCoverage(
+                    eligibility.getResponseJson()
+            );
+
+        } else {
+
+                coverage = new InsuranceCoverage(
+                new BigDecimal("100"),
+                BigDecimal.ZERO
+               );
+
+        }
+
+        for (FinancialDocumentItem item : items) {
+
+            BigDecimal net = nonNullAmount(item.getNetAmount());
+
+            BigDecimal patientShare =
+                    net.multiply(coverage.getCopaymentPercent())
+                            .divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP);
+
+            patientShare = patientShare.min(coverage.getCopaymentCap());
+
+            BigDecimal insuranceShare =
+                    net.subtract(patientShare);
+
+            item.setPatientShareAmount(patientShare);
+            item.setInsuranceShareAmount(insuranceShare);
+
+            item.setPaidAmount(ZERO_AMOUNT);
+            item.setRemainingAmount(patientShare);
+
+            item.setInsurancePaidAmount(ZERO_AMOUNT);
+            item.setInsuranceRemainingAmount(insuranceShare);
+
+            item.setStatus(FinancialDocumentItemStatus.PENDING);
+        }
+
+        itemRepo.saveAll(items);
+    }
     private PatientPaymentDetailsDTO buildInitialResponse(PatientPayments payment) {
         return new PatientPaymentDetailsDTO(
                 payment.getId(),
@@ -1206,25 +997,41 @@ public class PatientPaymentsService {
 
             BigDecimal amount = nonNullAmount(dto.amount());
 
-            BigDecimal alreadyPaid =
-                    allocationRepository.sumPaidForItem(item.getId());
-
-            BigDecimal remaining =
-                    item.getNetAmount().subtract(alreadyPaid);
+            // ✅ FIX: use remainingAmount (source of truth)
+            BigDecimal remaining = nonNullAmount(item.getRemainingAmount());
 
             if (amount.compareTo(remaining) > 0) {
                 throw new IllegalStateException("Exceeds remaining");
             }
 
+            // ✅ 1. save allocation
             allocationRepository.save(
                     PatientPaymentAllocation.builder()
                             .paymentId(paymentId)
                             .documentItemId(item.getId())
                             .paidFromAmount(amount)
-                            .paidFromBalance(BigDecimal.ZERO)
+                            .paidFromBalance(ZERO_AMOUNT)
                             .lastModifiedDate(Instant.now())
                             .build()
             );
+
+            // ✅ 2. UPDATE ITEM 💣 (CRITICAL)
+            item.setPaidAmount(
+                    nonNullAmount(item.getPaidAmount()).add(amount)
+            );
+
+            item.setRemainingAmount(
+                    item.getRemainingAmount().subtract(amount)
+            );
+
+            // ✅ status update
+            if (item.getRemainingAmount().compareTo(ZERO_AMOUNT) == 0) {
+                item.setStatus(FinancialDocumentItemStatus.PAID);
+            } else {
+                item.setStatus(FinancialDocumentItemStatus.PARTIALLY_PAID);
+            }
+
+            itemRepo.save(item);
         }
     }
 
@@ -1399,23 +1206,56 @@ public class PatientPaymentsService {
 
     @Transactional(readOnly = true)
     public PatientPaymentFormDTO getPaymentByEncounter(Long encounterId) {
+
         LOG.debug("[GET_BY_ENCOUNTER] encounterId={}", encounterId);
 
-        PatientPayments payment = paymentRepository.findByEncounter_Id(encounterId)
-                .orElseThrow(() -> {
-                    LOG.warn("[GET_BY_ENCOUNTER] Payment not found for encounterId={}", encounterId);
-                    return new NotFoundAlertException(
-                            "Payment not found for encounter " + encounterId,
-                            "patientPayments",
-                            "payment.notfound"
-                    );
-                });
+        Optional<PatientPayments> optionalPayment =
+                paymentRepository.findByEncounter_Id(encounterId);
+
+        if (optionalPayment.isEmpty()) {
+
+            return new PatientPaymentFormDTO(
+                    null,                     // id
+                    null,                     // patientId
+                    encounterId,              // encounterId
+                    null,                     // planId
+
+                    null,                     // paymentTypes
+                    null,                     // paymentMethods
+
+                    BigDecimal.ZERO,          // amount
+                    null,                     // currency
+                    null,                     // facilityDefaultCurrency
+                    null,                     // exchangeRate ✅ لازم تضيفيها
+
+                    BigDecimal.ZERO,          // amountInFacilityCurrency
+                    BigDecimal.ZERO,          // dueAmount
+                    BigDecimal.ZERO,          // patientBalance
+                    BigDecimal.ZERO,          // remaining
+                    BigDecimal.ZERO,          // refunds
+                    BigDecimal.ZERO,          // paidFromAmount
+                    BigDecimal.ZERO,          // paidFromBalance
+
+                    false,                    // addToFreeBalance
+                    false,                    // useBalanceToSettleDebts
+
+                    null, null, null,         // card info
+                    null, null, null,         // cheque info
+                    null, null, null,         // transfer info
+
+                    List.of()                 // services ✅
+            );
+        }
+
+        // ✅ FIX HERE 💣
+        PatientPayments payment = optionalPayment.get();
 
         List<PatientServiceAndProduct> services =
                 serviceRepository.findByPaymentId(payment.getId());
 
         return toFormDTO(payment, services);
     }
+
     private PaymentStatus calculatePaymentStatus(Long paymentId) {
 
         List<PatientPaymentAllocation> allocations =
@@ -1440,7 +1280,94 @@ public class PatientPaymentsService {
 
         return PaymentStatus.PAID;
     }
+    private void applyDocumentItemAllocation(Long paymentId) {
 
+        PatientPayments payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new IllegalStateException("Payment not found"));
+
+        Long patientId = payment.getPatient().getId();
+
+        BigDecimal remainingPaymentAmount =
+                nonNullAmount(getPaidAmountInFacilityCurrency(payment));
+
+        List<FinancialDocumentItem> items =
+                itemRepo.findByDocumentId(payment.getDocumentId());
+
+        for (FinancialDocumentItem item : items) {
+
+            if (remainingPaymentAmount.signum() <= 0) break;
+
+            BigDecimal remaining =
+                    nonNullAmount(item.getRemainingAmount());
+
+            if (remaining.signum() <= 0) continue;
+
+            BigDecimal amountToAllocate =
+                    remainingPaymentAmount.min(remaining);
+
+            // ✅ 1. save allocation
+            allocationRepository.save(
+                    PatientPaymentAllocation.builder()
+                            .paymentId(paymentId)
+                            .documentItemId(item.getId())
+                            .paidFromAmount(amountToAllocate)
+                            .paidFromBalance(ZERO_AMOUNT)
+                            .lastModifiedDate(Instant.now())
+                            .build()
+            );
+
+            // ✅ ✅ 2. UPDATE ITEM (هون المكان الصحيح 💣)
+            item.setPaidAmount(
+                    nonNullAmount(item.getPaidAmount()).add(amountToAllocate)
+            );
+
+            item.setRemainingAmount(
+                    item.getRemainingAmount().subtract(amountToAllocate)
+            );
+
+            // ✅ status update
+            if (item.getRemainingAmount().compareTo(ZERO_AMOUNT) == 0) {
+                item.setStatus(FinancialDocumentItemStatus.PAID);
+            } else if (item.getPaidAmount().compareTo(ZERO_AMOUNT) > 0) {
+                item.setStatus(FinancialDocumentItemStatus.PARTIALLY_PAID);
+            }
+
+            itemRepo.save(item);
+
+            // ✅ 3. ledger
+            ledgerRepository.save(
+                    PatientLedgerEntry.builder()
+                            .patientId(patientId)
+                            .type(LedgerEntryType.DEBIT)
+                            .account(LedgerAccount.CASH)
+                            .source(LedgerSource.PAYMENT)
+                            .referenceId(paymentId)
+                            .amount(amountToAllocate)
+                            .currency(payment.getCurrency())
+                            .createdDate(Instant.now())
+                            .build()
+            );
+
+            ledgerRepository.save(
+                    PatientLedgerEntry.builder()
+                            .patientId(patientId)
+                            .type(LedgerEntryType.CREDIT)
+                            .account(LedgerAccount.PATIENT_RECEIVABLE)
+                            .source(LedgerSource.PAYMENT)
+                            .referenceId(paymentId)
+                            .amount(amountToAllocate)
+                            .currency(payment.getCurrency())
+                            .createdDate(Instant.now())
+                            .build()
+            );
+
+
+
+            // ✅ 4. reduce payment
+            remainingPaymentAmount =
+                    remainingPaymentAmount.subtract(amountToAllocate);
+        }
+    }
     private PatientInsurance resolvePlan(PatientPaymentCreateDTO dto) {
         PatientInsurance plan = null;
 

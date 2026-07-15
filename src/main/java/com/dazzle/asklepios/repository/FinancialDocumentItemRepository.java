@@ -8,4 +8,6 @@ import java.util.List;
 public interface FinancialDocumentItemRepository extends JpaRepository<FinancialDocumentItem, Long> {
 
     List<FinancialDocumentItem> findByDocument_Id(Long documentId);
+
+    List<FinancialDocumentItem> findByDocumentId(Long documentId);
 }

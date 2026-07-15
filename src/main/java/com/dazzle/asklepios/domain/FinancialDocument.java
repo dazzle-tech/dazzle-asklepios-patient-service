@@ -44,7 +44,11 @@ public class FinancialDocument {
     private Long id;
 
     // ✅ document number (INV-00000001)
-    @Column(name = "document_number", nullable = false, unique = true)
+    @Column(
+            name = "document_number",
+            insertable = false,
+            updatable = false
+    )
     private String documentNumber;
 
     // ✅ INVOICE / CREDIT_NOTE / DEBIT_NOTE / RECEIPT

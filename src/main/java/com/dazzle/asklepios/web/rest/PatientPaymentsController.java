@@ -11,6 +11,7 @@ import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentCreateDTO;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentDetailsDTO;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentFormDTO;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentServiceItemDTO;
+import com.dazzle.asklepios.service.dto.patientPayments.PaymentAllocationDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.validation.Valid;
@@ -172,4 +173,11 @@ public class PatientPaymentsController {
         return unitPrice.multiply(quantity);
     }
 
+    @PostMapping("/{paymentId}/manual-allocate")
+    public void manualAllocate(
+            @PathVariable Long paymentId,
+            @RequestBody List<PaymentAllocationDTO> allocations
+    ) {
+        patientPaymentsService.allocatePaymentManually(paymentId, allocations);
+    }
 }

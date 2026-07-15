@@ -1,7 +1,9 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.Currency;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -14,7 +16,9 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import jakarta.persistence.Enumerated;
 
+import java.io.Serializable;
 import java.math.BigDecimal;
 
 @Entity
@@ -24,7 +28,7 @@ import java.math.BigDecimal;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class FinancialDocumentItem {
+public class FinancialDocumentItem extends AbstractAuditingEntity<Long> implements Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -55,13 +59,40 @@ public class FinancialDocumentItem {
     @Column(name = "net_amount", nullable = false)
     private BigDecimal netAmount;
 
+    // ✅ Insurance Split
     @Column(name = "patient_share_amount", nullable = false)
     private BigDecimal patientShareAmount;
 
     @Column(name = "insurance_share_amount", nullable = false)
     private BigDecimal insuranceShareAmount;
 
+    // ✅ Payment Tracking 💣
+    @Column(name = "paid_amount", nullable = false)
+    private BigDecimal paidAmount;
+
+    @Column(name = "remaining_amount", nullable = false)
+    private BigDecimal remainingAmount;
+
+    // ✅ Insurance tracking (optional strong feature)
+    @Column(name = "insurance_paid_amount")
+    private BigDecimal insurancePaidAmount;
+
+    @Column(name = "insurance_remaining_amount")
+    private BigDecimal insuranceRemainingAmount;
+
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private FinancialDocumentItemStatus status;
+
+
+    // ✅ Currency
+    @Enumerated(EnumType.STRING)
+    @Column(name = "currency", nullable = false)
+    private Currency currency;
+
+    // ✅ Utility
     public BigDecimal calculateRemaining(BigDecimal allocatedAmount) {
-        return netAmount.subtract(allocatedAmount);
+        return patientShareAmount.subtract(allocatedAmount);
     }
 }
