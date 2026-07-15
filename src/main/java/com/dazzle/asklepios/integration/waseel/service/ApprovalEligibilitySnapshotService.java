@@ -43,8 +43,6 @@ public class ApprovalEligibilitySnapshotService {
                 snapshot.insurancePlan(),
                 snapshot.memberId(),
                 snapshot.patientInsuranceId(),
-                snapshot.payorId(),
-                snapshot.payorPlanId(),
                 snapshot.providerId(),
                 snapshot.destinationId(),
                 snapshot.eligibilityResponseId(),

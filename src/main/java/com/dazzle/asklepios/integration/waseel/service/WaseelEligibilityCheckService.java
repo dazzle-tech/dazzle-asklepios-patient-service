@@ -68,8 +68,6 @@ public class WaseelEligibilityCheckService {
         WaseelEligibilityRequest log = WaseelEligibilityRequest.builder()
                 .patientId(patient.getId())
                 .patientInsuranceId(insurance.getId())
-                .payorId(null)
-                .planId(null)
                 .providerId(properties.providerId())
                 .destinationId(resolveDestinationId(request.destinationId(), insurance))
                 .serviceDate(serviceDate)

@@ -98,8 +98,6 @@ public class ApprovalEligibilitySnapshotMapper {
                         text(requestRoot, "memberId")
                 ),
                 eligibilityRequest.getPatientInsuranceId(),
-                eligibilityRequest.getPayorId(),
-                eligibilityRequest.getPlanId(),
                 eligibilityRequest.getProviderId(),
                 eligibilityRequest.getDestinationId(),
                 firstNonBlank(

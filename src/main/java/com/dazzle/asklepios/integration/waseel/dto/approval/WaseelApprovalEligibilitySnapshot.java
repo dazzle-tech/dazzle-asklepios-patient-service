@@ -7,8 +7,6 @@ public record WaseelApprovalEligibilitySnapshot(
         WaseelApprovalInsurancePlan insurancePlan,
         String memberId,
         Long patientInsuranceId,
-        Long payorId,
-        Long payorPlanId,
         String providerId,
         String destinationId,
         String eligibilityResponseId,

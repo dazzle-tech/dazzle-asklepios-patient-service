@@ -212,8 +212,6 @@ public class PreAuthorizationSubmissionService {
                 .patientId(encounter.getPatient().getId())
                 .encounterId(encounter.getId())
                 .patientInsuranceId(snapshot.patientInsuranceId())
-                .payorId(snapshot.payorId())
-                .payorPlanId(snapshot.payorPlanId())
                 .providerId(firstNonBlank(snapshot.providerId(), waseelApiProperties.providerId()))
                 .providerNphiesId(firstNonBlank(waseelApiProperties.nphiesId(), snapshot.providerId()))
                 .eligibilityResponseId(firstNonBlank(
