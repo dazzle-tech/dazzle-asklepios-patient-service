@@ -3,6 +3,7 @@ package com.dazzle.asklepios.repository;
 import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.BookingMode;
+import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -92,6 +93,13 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
             Instant startDatetimeTo,
             List<AppointmentStatus> statuses,
             List<BookingMode> bookingModes
+    );
+
+    boolean existsByResourceTypeAndResourceIdAndStartDatetimeAndStatusNot(
+            TemplateType resourceType,
+            Long resourceId,
+            Instant startDatetime,
+            AppointmentStatus status
     );
 }
 
