@@ -124,4 +124,20 @@ public class AvailabilityTemplateIntervalController {
         availabilityTemplateIntervalService.hardDelete(id);
         return ResponseEntity.noContent().build();
     }
+
+    /**
+     * {@code POST /api/patient/availability-template-intervals/{id}/apply-to-all-working-days}
+     * : Apply an interval and its breaks to all working days.
+     *
+     * @param id the interval id
+     * @return the {@link ResponseEntity} with status {@code 204 (NO_CONTENT)}
+     */
+    @PostMapping("/availability-template-intervals/{id}/apply-to-all-working-days")
+    public ResponseEntity<Void> applyToAllWorkingDays(@PathVariable Long id) {
+        LOG.debug("REST request to apply AvailabilityTemplateInterval {} to all working days", id);
+
+        availabilityTemplateIntervalService.applyToAllWorkingDays(id);
+
+        return ResponseEntity.noContent().build();
+    }
 }
