@@ -1,12 +1,12 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.Appointment;
-import com.dazzle.asklepios.domain.AppointmentLog;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.service.AppointmentService;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentBookPatientDTO;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentCancelDTO;
+import com.dazzle.asklepios.service.dto.appointment.AppointmentIntegrationCreateDTO;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentNoShowDTO;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentQuickAppointmentDTO;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentRescheduleDTO;
@@ -290,4 +290,9 @@ public class AppointmentController {
                 .body(page.getContent());
     }
 
+    @PostMapping("/appointments/integration")
+    public ResponseEntity<Appointment> createIntegrationAppointment(@Valid @RequestBody AppointmentIntegrationCreateDTO dto) {
+        Appointment appointment = appointmentService.createIntegrationAppointment(dto);
+        return ResponseEntity.ok(appointment);
+    }
 }
