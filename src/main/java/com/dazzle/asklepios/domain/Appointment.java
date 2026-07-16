@@ -59,7 +59,7 @@ public class Appointment extends AbstractAuditingEntity<Long> implements Seriali
     @Column(name = "end_datetime", nullable = false)
     private Instant endDatetime;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "patient_id")
     private Patient patient;
 

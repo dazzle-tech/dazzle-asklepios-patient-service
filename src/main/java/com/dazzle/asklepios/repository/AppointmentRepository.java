@@ -4,9 +4,12 @@ import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.BookingMode;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
+import jakarta.annotation.Nullable;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
@@ -101,5 +104,9 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
             Instant startDatetime,
             AppointmentStatus status
     );
+
+    @Override
+    @EntityGraph(attributePaths = {"patient"})
+    Page<Appointment> findAll(@Nullable Specification<Appointment> spec, Pageable pageable);
 }
 
