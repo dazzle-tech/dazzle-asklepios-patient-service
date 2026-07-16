@@ -99,7 +99,7 @@ public class PatientProcedure extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "side")
     private String side;
 
-    @FutureOrPresent
+//    @FutureOrPresent
     @NotNull
     @Column(name = "scheduled_date_time")
     private Instant scheduledDateTime;

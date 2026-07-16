@@ -245,15 +245,31 @@ public class PatientPrescriptionService {
         return toDto(saved);
     }
 
-    public PatientPrescription cancel(Long id, String lastModifiedBy) {
+    public PatientPrescription cancel(Long id) {
 
-        LOG.debug("cancel prescription for id ={}", id);
+        LOG.debug("cancel prescription for id={}", id);
+
         PatientPrescription entity = prescriptionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
 
         entity.setStatus(PrescriptionStatus.CANCELLED);
 
-        return toDto(prescriptionRepository.save(entity));
+        Instant now = Instant.now();
+        String username = currentUsername();
+
+        List<PatientPrescriptionMedication> medications =
+                prescriptionMedicationRepository.findByPrescriptionHeader_Id(id);
+
+        for (PatientPrescriptionMedication medication : medications) {
+            medication.setStatus(PrescriptionStatus.CANCELLED);
+            medication.setLastModifiedBy(username);
+            medication.setLastModifiedDate(now);
+        }
+
+        prescriptionMedicationRepository.saveAll(medications);
+        PatientPrescription saved = prescriptionRepository.save(entity);
+
+        return toDto(saved);
     }
 
     private PatientPrescription toDto(PatientPrescription e) {
@@ -269,6 +285,7 @@ public class PatientPrescriptionService {
         dto.setFromDepartmentId(e.getFromDepartmentId());
         dto.setToFacilityId(e.getToFacilityId());
         dto.setToDepartmentId(e.getToDepartmentId());
+        dto.setLastModifiedBy(currentUsername());
         return dto;
     }
 
@@ -314,7 +331,7 @@ public class PatientPrescriptionService {
         }
         String login = SecurityUtils.getCurrentUserLogin().orElse(null);
 
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, prescription.getCreatedBy(), prescription.getPatient(), null);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, prescription.getCreatedBy(), prescription.getPatient(), null,false);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("prescriptionId", prescription.getId());
         data.put("patientId", prescription.getPatient().getId());

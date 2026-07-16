@@ -37,6 +37,7 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentBookPatientDTO;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentCancelDTO;
+import com.dazzle.asklepios.service.dto.appointment.AppointmentIntegrationCreateDTO;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentNoShowDTO;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentQuickAppointmentDTO;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentRescheduleDTO;
@@ -75,6 +76,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -93,7 +95,7 @@ public class AppointmentService {
 
     private static final String SYSTEM_CANCEL_REASON = "cancel appointment from reschedule";
     private static final String SYSTEM_RESCHEDULE_REASON = "rescheduled due to availability change ";
-
+    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm").withZone(ZoneId.systemDefault());
     private static final Logger LOG = LoggerFactory.getLogger(AppointmentService.class);
 
     private final PatientRepository patientRepository;
@@ -241,7 +243,11 @@ public class AppointmentService {
                             log.getOriginType(),
                             log.getOriginName(),
                             log.getNote(),
-                            log.getFollowUpEncounterId()
+                            log.getFollowUpEncounterId(),
+                            log.getBookingGroup() != null ? log.getBookingGroup().getId() : null,
+                            log.getWaitingList() != null ? log.getWaitingList().getId() : null,
+                            log.getHl7AppointmentNumber()
+
                     );
                 })
                 .toList();
@@ -383,11 +389,7 @@ public class AppointmentService {
         return result;
     }
 
-    public List<Appointment> getAppointmentsByStatusBetweenDatesWithoutPagination(
-            List<AppointmentStatus> status,
-            Instant startDatetime,
-            Instant endDatetime
-    ) {
+    public List<Appointment> getAppointmentsByStatusBetweenDatesWithoutPagination(List<AppointmentStatus> status, Instant startDatetime, Instant endDatetime) {
         LOG.debug(
                 "Request to get appointments by status={} between startDatetime={} and endDatetime={}",
                 status,
@@ -490,7 +492,7 @@ public class AppointmentService {
         String login = currentUsername();
 
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
-                notificationHelper.resolveRecipients(appointment.getDepartmentId(), login, appointment.getCreatedBy(), appointment.getPatient(), practitioner);
+                notificationHelper.resolveRecipients(appointment.getDepartmentId(), login, appointment.getCreatedBy(), appointment.getPatient(), practitioner, false);
 
         appointment.setStatus(AppointmentStatus.CANCELLED);
         appointment.setCancelReason(dto.cancelReason());
@@ -631,6 +633,7 @@ public class AppointmentService {
         appointment.setReason(appointmentDTO.reason());
         appointment.setNote(appointmentDTO.note());
         appointment.setService(appointmentDTO.service());
+        appointment.setHl7AppointmentNumber(appointmentDTO.hl7AppointmentNumber());
         if (appointmentDTO.service() == EncounterReason.FOLLOW_UP && appointmentDTO.followUpEncounterId() != null) {
             PatientEncounter followUpEncounter = patientEncounterRepository.findById(appointmentDTO.followUpEncounterId())
                     .orElseThrow(() -> new BadRequestAlertException("Patient Encounter not found with id: " + appointmentDTO.followUpEncounterId(), ENTITY_NAME, "notfound"));
@@ -939,6 +942,179 @@ public class AppointmentService {
                 );
     }
 
+    @Transactional
+    public Appointment createIntegrationAppointment(AppointmentIntegrationCreateDTO dto) {
+        DepartmentDTO departmentDTO = departmentHelper.getDepartment(dto.departmentId());
+
+        validateCreateAppointment(dto);
+
+        Patient patient = patientRepository.findById(dto.patientId())
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "Patient not found",
+                        ENTITY_NAME,
+                        "patientnotfound"
+                ));
+
+        Appointment appointment = new Appointment();
+
+        appointment.setFacilityId(departmentDTO.facilityId());
+        appointment.setDepartmentId(dto.departmentId());
+
+        appointment.setResourceType(dto.resourceType());
+        appointment.setResourceId(dto.resourceId());
+
+        appointment.setStartDatetime(dto.startDatetime());
+        appointment.setEndDatetime(dto.endDatetime());
+
+        appointment.setPatient(patient);
+
+        appointment.setDefaultServiceId(dto.defaultServiceId());
+        appointment.setDefaultPractitionerId(dto.defaultPractitionerId());
+
+        appointment.setRequirePractitioner(dto.requirePractitioner());
+
+        appointment.setReason(dto.reason());
+        appointment.setService(dto.service());
+
+        appointment.setBookingMode(dto.bookingMode());
+        appointment.setRequireConfirmation(dto.requireConfirmation());
+
+        appointment.setPriority(
+                dto.priority() != null
+                        ? dto.priority()
+                        : EncounterPriority.NORMAL
+        );
+
+        appointment.setOriginType(dto.originType());
+        appointment.setOriginName(dto.originName());
+        appointment.setNote(dto.note());
+
+        appointment.setHl7AppointmentNumber(dto.hl7AppointmentNumber());
+
+        if (dto.followUpEncounterId() != null) {
+            PatientEncounter encounter = patientEncounterRepository.findById(dto.followUpEncounterId())
+                    .orElseThrow(() -> new BadRequestAlertException(
+                            "Follow up encounter not found",
+                            ENTITY_NAME,
+                            "encounternotfound"
+                    ));
+
+            appointment.setFollowUpEncounter(encounter);
+        }
+
+        appointment.setStatus(AppointmentStatus.BOOKED);
+
+        return appointmentRepository.save(appointment);
+    }
+
+    private void validateCreateAppointment(AppointmentIntegrationCreateDTO dto) {
+
+        if (dto.startDatetime().isAfter(dto.endDatetime())) {
+            throw new BadRequestAlertException(
+                    "Start datetime must be before end datetime",
+                    ENTITY_NAME,
+                    "invaliddatetime"
+            );
+        }
+
+        if (dto.startDatetime().isBefore(Instant.now())) {
+            throw new BadRequestAlertException(
+                    "Appointment cannot be created in the past",
+                    ENTITY_NAME,
+                    "pastdatetime"
+            );
+        }
+
+        if (Boolean.TRUE.equals(dto.requirePractitioner())
+                && dto.defaultPractitionerId() == null) {
+            throw new BadRequestAlertException(
+                    "Practitioner is required",
+                    ENTITY_NAME,
+                    "practitionerrequired"
+            );
+        }
+
+        if (dto.service() == EncounterReason.FOLLOW_UP
+                && dto.followUpEncounterId() == null) {
+            throw new BadRequestAlertException(
+                    "Follow up encounter is required",
+                    ENTITY_NAME,
+                    "followuprequired"
+            );
+        }
+
+        if (!patientRepository.existsById(dto.patientId())) {
+            throw new BadRequestAlertException(
+                    "Patient not found",
+                    ENTITY_NAME,
+                    "patientnotfound"
+            );
+        }
+
+        if (dto.defaultPractitionerId() != null &&
+                practitionerHelper.getPractitioner(dto.defaultPractitionerId()) == null) {
+            throw new BadRequestAlertException(
+                    "Practitioner not found",
+                    ENTITY_NAME,
+                    "practitionernotfound"
+            );
+        }
+
+        if (departmentHelper.getDepartment(dto.departmentId()) == null) {
+            throw new BadRequestAlertException(
+                    "Department not found",
+                    ENTITY_NAME,
+                    "departmentnotfound"
+            );
+        }
+
+        validateResource(dto);
+        validateDuplicateAppointment(dto);
+    }
+
+    private void validateResource(AppointmentIntegrationCreateDTO dto) {
+
+        switch (dto.resourceType()) {
+
+            case PRACTITIONER -> practitionerHelper.getPractitioner(dto.resourceId());
+
+            case SERVICE -> serviceHelper.getService(dto.resourceId());
+
+            case ROOM -> roomHelper.getRoom(dto.resourceId());
+
+            case DEPARTMENT -> departmentHelper.getDepartment(dto.resourceId());
+
+            case DIAGNOSTIC_TEST -> diagnosticTestHelper.getDiagnosticTest(dto.resourceId());
+
+            case CATALOG -> catalogHelper.getCatalog(dto.resourceId());
+
+            default -> throw new BadRequestAlertException(
+                    "Unsupported resource type",
+                    ENTITY_NAME,
+                    "invalidresource"
+            );
+        }
+    }
+
+    private void validateDuplicateAppointment(AppointmentIntegrationCreateDTO dto) {
+
+        boolean exists = appointmentRepository
+                .existsByResourceTypeAndResourceIdAndStartDatetimeAndStatusNot(
+                        dto.resourceType(),
+                        dto.resourceId(),
+                        dto.startDatetime(),
+                        AppointmentStatus.CANCELLED
+                );
+
+        if (exists) {
+            throw new BadRequestAlertException(
+                    "Appointment already exists for this resource and time",
+                    ENTITY_NAME,
+                    "appointmentexists"
+            );
+        }
+    }
+
     private Instant tomorrowStartInstant() {
         return LocalDate.now(ZoneId.systemDefault())
                 .plusDays(1)
@@ -1065,10 +1241,10 @@ public class AppointmentService {
                 Map.of(
                         "oldAppointmentId", savedOldAppointment.getId(),
                         "newAppointmentId", savedNewAppointment.getId(),
-                        "oldAppointmentDate", oldStartDatetime != null ? oldStartDatetime.toString() : "",
-                        "oldAppointmentEndDate", oldEndDatetime != null ? oldEndDatetime.toString() : "",
-                        "newAppointmentDate", savedNewAppointment.getStartDatetime() != null ? savedNewAppointment.getStartDatetime().toString() : "",
-                        "newAppointmentEndDate", savedNewAppointment.getEndDatetime() != null ? savedNewAppointment.getEndDatetime().toString() : "",
+                        "oldAppointmentDate", oldStartDatetime != null ? formatter.format(oldStartDatetime) : "",
+                        "oldAppointmentEndDate", oldEndDatetime != null ? formatter.format(oldEndDatetime) : "",
+                        "newAppointmentDate", savedNewAppointment.getStartDatetime() != null ? formatter.format(savedNewAppointment.getStartDatetime()) : "",
+                        "newAppointmentEndDate", savedNewAppointment.getEndDatetime() != null ? formatter.format(savedNewAppointment.getEndDatetime()) : "",
                         "rescheduleReason", rescheduleReason != null ? rescheduleReason : ""
                 )
         );
@@ -1554,7 +1730,7 @@ public class AppointmentService {
         PractitionerDTO practitioner = appointment.getDefaultPractitionerId() != null
                 ? practitionerHelper.getPractitioner(appointment.getDefaultPractitionerId())
                 : null;
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(appointment.getDepartmentId(), login, appointment.getCreatedBy(), appointment.getPatient(), practitioner);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(appointment.getDepartmentId(), login, appointment.getCreatedBy(), appointment.getPatient(), practitioner, false);
 
         if (recipientsByRule.isEmpty()) {
             LOG.warn("Skip appointment notification because no recipients were resolved. appointmentId={}, code={}", appointment.getId(), notificationCode);
@@ -1572,6 +1748,7 @@ public class AppointmentService {
         }
     }
 
+
     private Map<String, Object> buildAppointmentNotificationData(Appointment appointment, DepartmentDTO department) {
         Map<String, Object> data = new LinkedHashMap<>();
 
@@ -1579,18 +1756,18 @@ public class AppointmentService {
         data.put("appointmentNumber", appointment.getId());
         data.put("departmentId", appointment.getDepartmentId());
         data.put("departmentName", department != null ? department.name() : "");
-        data.put("patientName", appointment.getPatient() != null ? notificationHelper.getPatientName(appointment.getPatient()) : "");
-        data.put("appointmentDate", appointment.getStartDatetime() != null ? appointment.getStartDatetime().toString() : "");
+        data.put("patientName", appointment.getPatient() != null
+                ? notificationHelper.getPatientName(appointment.getPatient())
+                : "");
+
+        data.put("appointmentDate", appointment.getStartDatetime() != null
+                ? formatter.format(appointment.getStartDatetime())
+                : "");
 
         return data;
     }
 
-    private void createAppointmentNotification(
-            Appointment appointment,
-            NotificationCode notificationCode,
-            Map<String, Object> data,
-            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule
-    ) {
+    private void createAppointmentNotification(Appointment appointment, NotificationCode notificationCode, Map<String, Object> data, Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule) {
         if (appointment == null || notificationCode == null) {
             return;
         }

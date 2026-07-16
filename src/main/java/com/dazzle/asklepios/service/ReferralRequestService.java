@@ -276,9 +276,9 @@ public class ReferralRequestService {
 
         if (messageLower.contains("uk_referral_encounter_to_department")) {
             return new BadRequestAlertException(
-                    "A referral to the same department already exists for this encounter.",
+                    "encounter.department.duplicate",
                     "referralRequest",
-                    "encounter.department.duplicate"
+                    "A referral to the same department already exists for this encounter."
             );
         }
 
@@ -344,7 +344,7 @@ public class ReferralRequestService {
         try {
             String login = SecurityUtils.getCurrentUserLogin().orElse(null);
 
-            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, referralRequest.getCreatedBy(), patient, null);
+            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, referralRequest.getCreatedBy(), patient, null,false);
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("referralRequestId", referralRequest.getId());

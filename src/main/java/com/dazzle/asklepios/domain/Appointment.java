@@ -139,4 +139,7 @@ public class Appointment extends AbstractAuditingEntity<Long> implements Seriali
     @JoinColumn(name = "waiting_list_id")
     private AppointmentWaitingList waitingList;
 
+    @Column(name="hl7_appointment_number", length = 50)
+    private String hl7AppointmentNumber;
+
 }

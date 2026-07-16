@@ -443,7 +443,10 @@ public class DiagnosticOrderService {
         }
 
         Long departmentId = order.getFromDepartmentId();
-        DepartmentDTO department = departmentId != null ? departmentHelper.getDepartment(departmentId) : null;
+        DepartmentDTO department = departmentId != null
+                ? departmentHelper.getDepartment(departmentId)
+                : null;
+
         if (departmentId == null) {
             LOG.warn(
                     "Skip urgent diagnostic order notification because department is missing. orderId={}",
@@ -452,21 +455,30 @@ public class DiagnosticOrderService {
             return;
         }
 
-
         String login = SecurityUtils.getCurrentUserLogin().orElse(null);
 
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, order.getCreatedBy(), order.getPatient(), null);
+        Patient patient = resolvePatient(order.getPatientId()).orElse(null);
+
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
+                notificationHelper.resolveRecipients(
+                        departmentId,
+                        login,
+                        order.getCreatedBy(),
+                        patient,
+                        null,
+                        false
+                );
+
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("orderId", order.getId());
         data.put("patientId", order.getPatientId());
-        data.put("patientName", notificationHelper.getPatientName(resolvePatient(order.getPatientId()).orElse(null)));
+        data.put("patientName", notificationHelper.getPatientName(patient));
         data.put("encounterId", order.getEncounter() != null ? order.getEncounter().getId() : "");
         data.put("departmentId", departmentId);
         data.put("departmentName", department != null ? department.name() : "");
         data.put("status", order.getStatus() != null ? order.getStatus().toString() : "");
         data.put("submittedBy", order.getSubmittedBy() != null ? order.getSubmittedBy() : "");
         data.put("submittedDate", order.getSubmittedDate() != null ? order.getSubmittedDate().toString() : "");
-
 
         try {
             LOG.debug(
@@ -482,16 +494,19 @@ public class DiagnosticOrderService {
                     recipientsByRule,
                     data,
                     "DIAGNOSTIC_ORDER",
-                    order.getId());
+                    order.getId()
+            );
 
         } catch (Exception e) {
             LOG.warn(
                     "Failed to create urgent diagnostic order notification. orderId={}, error={}",
                     order.getId(),
-                    e.getMessage()
+                    e.getMessage(),
+                    e
             );
         }
     }
+
 
     private boolean isUrgentDiagnosticOrder(DiagnosticOrder order) {
         return order != null && Boolean.TRUE.equals(order.getIsUrgent());

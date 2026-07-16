@@ -55,4 +55,20 @@ public class UserDepartmentHelper {
         }
     }
 
+    public List<UserDTO> getPhysicianUsersForDepartment(Long departmentId) {
+        LOG.debug("Fetching users for department. departmentId={}", departmentId);
+
+        try {
+            return userDepartmentClient.getPhysicianUsersForDepartment(departmentId);
+        } catch (FeignException.NotFound ex) {
+            LOG.warn("user failed. Not found. departmentId={}", departmentId);
+
+            throw new NotFoundAlertException(
+                    "Users not found for department with id= " + departmentId,
+                    "userDepartment",
+                    "notfound"
+            );
+        }
+    }
+
 }

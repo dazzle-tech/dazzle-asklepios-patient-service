@@ -447,7 +447,6 @@ public class PatientService {
         String createPasswordUrl =
                 asklepiosApplicationlUrl + "/create-patient-password?key=" + token;
 
-        String logoUrl = systemConfigurationClient.getResolvedValue(SystemConfigKey.SYSTEM_LOGO);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("patientName", patientName);
@@ -456,10 +455,9 @@ public class PatientService {
         data.put("token", token);
         data.put("createPasswordUrl", createPasswordUrl);
         data.put("title", "CMS | Set your password");
-        data.put("logoUrl", logoUrl);
 
         String login = SecurityUtils.getCurrentUserLogin().orElse(null);
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(null, login, patient.getCreatedBy(), patient, null);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(null, login, patient.getCreatedBy(), patient, null,false);
 
         try {
             notificationHelper.sendNotification(null,
