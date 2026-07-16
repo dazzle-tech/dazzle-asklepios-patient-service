@@ -133,7 +133,7 @@ public class PatientMergeValidationRuleService {
             StringBuilder sql = new StringBuilder();
             List<Object> params = new ArrayList<>();
 
-            // ✅ SELECT
+
             if (matchColumns != null && !matchColumns.isEmpty()) {
 
                 for (String col : matchColumns) {

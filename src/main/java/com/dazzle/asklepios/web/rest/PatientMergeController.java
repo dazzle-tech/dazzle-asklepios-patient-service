@@ -81,18 +81,17 @@ public class PatientMergeController {
                 toPatientId
         );
 
-        // ✅ Step 1: validation
+
         PatientMergeValidationVM validation =
                 patientMergeValidationRuleService.validate(fromPatientId, toPatientId);
 
-        // ✅ Step 2: preview (always call)
+
         PatientMergePreviewVM preview =
                 patientMergeAnalysisService.analyze(
                         fromPatientId,
                         toPatientId
                 );
 
-        // ✅ Step 3: return combined response
         return ResponseEntity.ok(
                 new PatientMergePreviewWithValidationVM(
                         validation.valid(),
@@ -240,28 +239,5 @@ public class PatientMergeController {
                 patientMergeValidationRuleService.save(dto)
         );
     }
-//    @GetMapping("/patient-merge/validation-rules")
-//    public ResponseEntity<List<PatientMergeValidationRuleDTO>> getAllValidationRules() {
-//
-//        return ResponseEntity.ok(
-//                patientMergeValidationRuleService.findAll()
-//        );
-//    }
-//    @GetMapping("/patient-merge/validation-rules/enabled")
-//    public ResponseEntity<List<PatientMergeValidationRuleDTO>> getEnabledValidationRules() {
-//
-//        return ResponseEntity.ok(
-//                patientMergeValidationRuleService.findEnabled()
-//        );
-//    }
-//    @DeleteMapping("/patient-merge/validation-rules/{id}")
-//    public ResponseEntity<Void> deleteValidationRule(
-//            @PathVariable @NotNull Long id
-//    ) {
-//        LOG.debug("REST request to delete validation rule. id={}", id);
-//
-//        patientMergeValidationRuleService.delete(id);
-//
-//        return ResponseEntity.noContent().build();
-//    }
+
 }
