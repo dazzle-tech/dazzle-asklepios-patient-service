@@ -3,24 +3,30 @@ package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeExecuteDTO;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeSummaryDTO;
 import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeTableConfigSaveDTO;
+import com.dazzle.asklepios.service.dto.patientMerge.PatientMergeValidationRuleDTO;
 import com.dazzle.asklepios.service.patientMerge.PatientMergeAnalysisService;
 import com.dazzle.asklepios.service.patientMerge.PatientMergeConfigService;
 import com.dazzle.asklepios.service.patientMerge.PatientMergeExecuteService;
 import com.dazzle.asklepios.service.patientMerge.PatientMergeSummaryService;
 import com.dazzle.asklepios.service.patientMerge.PatientMergeTransactionService;
 import com.dazzle.asklepios.service.patientMerge.PatientMergeUndoService;
+import com.dazzle.asklepios.service.patientMerge.PatientMergeValidationRuleService;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeAvailableTableVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeExecuteVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergePreviewVM;
+import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergePreviewWithValidationVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeSummaryVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeTableConfigVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeTransactionChangesVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeTransactionVM;
 import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeUndoVM;
+import com.dazzle.asklepios.web.rest.vm.patientMerge.PatientMergeValidationVM;
 import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -44,31 +50,53 @@ public class PatientMergeController {
     private final PatientMergeUndoService patientMergeUndoService;
     private final PatientMergeTransactionService patientMergeTransactionService;
     private final PatientMergeConfigService patientMergeConfigService;
+    private final PatientMergeValidationRuleService patientMergeValidationRuleService;
 
-    public PatientMergeController(PatientMergeAnalysisService patientMergeAnalysisService, PatientMergeSummaryService patientMergeSummaryService, PatientMergeExecuteService patientMergeExecuteService, PatientMergeUndoService patientMergeUndoService, PatientMergeTransactionService patientMergeTransactionService, PatientMergeConfigService patientMergeConfigService) {
+    public PatientMergeController(
+            PatientMergeAnalysisService patientMergeAnalysisService,
+            PatientMergeSummaryService patientMergeSummaryService,
+            PatientMergeExecuteService patientMergeExecuteService,
+            PatientMergeUndoService patientMergeUndoService,
+            PatientMergeTransactionService patientMergeTransactionService,
+            PatientMergeConfigService patientMergeConfigService,
+            PatientMergeValidationRuleService patientMergeValidationRuleService
+    ) {
         this.patientMergeAnalysisService = patientMergeAnalysisService;
         this.patientMergeSummaryService = patientMergeSummaryService;
         this.patientMergeExecuteService = patientMergeExecuteService;
         this.patientMergeUndoService = patientMergeUndoService;
         this.patientMergeTransactionService = patientMergeTransactionService;
         this.patientMergeConfigService = patientMergeConfigService;
+        this.patientMergeValidationRuleService = patientMergeValidationRuleService;
     }
-
     @GetMapping("/patient-merge/preview/{fromPatientId}/{toPatientId}")
-    public ResponseEntity<PatientMergePreviewVM> previewMerge(
+    public ResponseEntity<PatientMergePreviewWithValidationVM> previewMerge(
             @PathVariable @NotNull Long fromPatientId,
             @PathVariable @NotNull Long toPatientId
     ) {
+
         LOG.debug(
                 "REST request to preview patient merge. fromPatientId={}, toPatientId={}",
                 fromPatientId,
                 toPatientId
         );
 
-        return ResponseEntity.ok(
+
+        PatientMergeValidationVM validation =
+                patientMergeValidationRuleService.validate(fromPatientId, toPatientId);
+
+
+        PatientMergePreviewVM preview =
                 patientMergeAnalysisService.analyze(
                         fromPatientId,
                         toPatientId
+                );
+
+        return ResponseEntity.ok(
+                new PatientMergePreviewWithValidationVM(
+                        validation.valid(),
+                        validation.issues(),
+                        preview
                 )
         );
     }
@@ -97,12 +125,23 @@ public class PatientMergeController {
                 request != null ? request.fromPatientId() : null,
                 request != null ? request.toPatientId() : null
         );
+        PatientMergeValidationVM validation =
+
+                patientMergeValidationRuleService.validate(request.fromPatientId(), request.toPatientId());
+
+        if (!validation.valid()) {
+            throw new BadRequestAlertException(
+                    validation.issues().toString(),
+                    "PatientMerge",
+                    "merge.validation.failed"
+            );
+        }
 
         return ResponseEntity.ok(
-                patientMergeExecuteService.executeMerge(request)
-        );
-    }
+                    patientMergeExecuteService.executeMerge(request)
+            );
 
+    }
     @PostMapping("/patient-merge/{mergeLogId}/undo")
     public ResponseEntity<PatientMergeUndoVM> undoMerge(
             @PathVariable @NotNull Long mergeLogId
@@ -189,4 +228,16 @@ public class PatientMergeController {
                 patientMergeConfigService.getTableColumns(tableName)
         );
     }
+
+    @PostMapping("/patient-merge/validation-rules")
+    public ResponseEntity<PatientMergeValidationRuleDTO> saveValidationRule(
+            @RequestBody @NotNull PatientMergeValidationRuleDTO dto
+    ) {
+        LOG.debug("REST request to save patient merge validation rule. code={}", dto.code());
+
+        return ResponseEntity.ok(
+                patientMergeValidationRuleService.save(dto)
+        );
+    }
+
 }
