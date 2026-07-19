@@ -1,8 +1,6 @@
 package com.dazzle.asklepios.domain;
 
-import com.dazzle.asklepios.domain.enumeration.MedFrequency;
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
-import com.dazzle.asklepios.domain.enumeration.UOM;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -26,7 +24,6 @@ import lombok.Setter;
 
 import java.io.Serial;
 import java.io.Serializable;
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Date;
 
@@ -56,16 +53,8 @@ public class CurrentMedication extends AbstractAuditingEntity<Long>
     @Column(name = "active_ingredient_id", nullable = false)
     private Long activeIngredientId;
 
-    @Column(name = "dosage", precision = 10, scale = 3)
-    private BigDecimal dosage;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "unit", length = 50)
-    private UOM unit;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "frequency", length = 100)
-    private MedFrequency frequency;
+    @Column(name = "instructions", columnDefinition = "text")
+    private String instructions;
 
     @NotNull
     @Column(name = "start_date", nullable = false)

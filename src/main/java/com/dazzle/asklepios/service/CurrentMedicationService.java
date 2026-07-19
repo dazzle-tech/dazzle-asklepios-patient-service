@@ -68,9 +68,7 @@ public class CurrentMedicationService {
         CurrentMedication entity = CurrentMedication.builder()
                 .patient(patient)
                 .activeIngredientId(dto.activeIngredientId())
-                .dosage(dto.dosage())
-                .unit(dto.unit())
-                .frequency(dto.frequency())
+                .instructions(dto.instructions())
                 .startDate(dto.startDate())
                 .build();
 
@@ -111,9 +109,7 @@ public class CurrentMedicationService {
 
         entity.setPatient(patient);
         entity.setActiveIngredientId(dto.activeIngredientId());
-        entity.setDosage(dto.dosage());
-        entity.setUnit(dto.unit());
-        entity.setFrequency(dto.frequency());
+        entity.setInstructions(dto.instructions());
         entity.setStartDate(dto.startDate());
 
         try {
