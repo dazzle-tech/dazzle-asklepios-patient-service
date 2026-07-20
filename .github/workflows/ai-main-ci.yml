@@ -46,4 +46,4 @@ jobs:
 
       - name: Update Kubernetes Deployment with New Image
         run: |
-          kubectl set image deployment/asklepios-patient asklepios-patient=${{ secrets.DOCR_REGISTRY_URL }}/asklepios-patient:ai.${{ github.sha }} -n ai-sandbox
+          kubectl set image deployment/asklepiosdemo-patient asklepiosdemo-patient=${{ secrets.DOCR_REGISTRY_URL }}/asklepios-patient:ai.${{ github.sha }} -n asklepios-sandbox
