@@ -93,7 +93,7 @@ public class PatientService {
                 .responsibleParty(dto.responsibleParty())
                 .educationalLevel(dto.educationalLevel())
                 .isCchiPatient(Boolean.TRUE.equals(dto.isCchiPatient()))
-                .documentId(dto.documentId())
+                .documentId(normalizeDocumentId(dto.documentId()))
                 .previousId(dto.previousId())
                 .archivingNumber(dto.archivingNumber())
                 .details(dto.details())
@@ -589,5 +589,15 @@ public class PatientService {
         );
 
         return patientRepository.findAll(spec, pageable);
+    }
+
+    private String normalizeDocumentId(String documentId) {
+        if (documentId == null) {
+            return null;
+        }
+
+        documentId = documentId.trim();
+
+        return documentId.isEmpty() ? null : documentId;
     }
 }
