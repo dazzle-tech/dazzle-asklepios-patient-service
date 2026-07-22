@@ -4,6 +4,8 @@ public enum BillingChargeLineStatus {
 
     DRAFT,
 
+    OPEN,
+
     CONFIRMED,
 
     RESERVED,

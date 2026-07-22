@@ -1,22 +1,11 @@
-package com.dazzle.asklepios.domain.enumeration.billing;
+package com.dazzle.asklepios.domain.enumeration;
 
 public enum BillingChargeStatus {
-
     DRAFT,
-
     OPEN,
-
-    FULLY_ALLOCATED,
-
-    CONFIRMED,
-
     PARTIALLY_ALLOCATED,
-
-    ALLOCATED,
-
+    FULLY_ALLOCATED,
     CLOSED,
-
     CANCELLED,
-
     REVERSED
 }

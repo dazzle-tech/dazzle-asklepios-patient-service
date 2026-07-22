@@ -1,11 +1,11 @@
 package com.dazzle.asklepios.domain;
 
-import com.dazzle.asklepios.domain.enumeration.BillingLedgerEntryCategory;
-import com.dazzle.asklepios.domain.enumeration.BillingLedgerEntryDirection;
-import com.dazzle.asklepios.domain.enumeration.BillingLedgerScope;
-import com.dazzle.asklepios.domain.enumeration.BillingLedgerSourceChannel;
-import com.dazzle.asklepios.domain.enumeration.BillingLedgerTransactionType;
 import com.dazzle.asklepios.domain.enumeration.Currency;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryCategory;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryDirection;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerScope;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerSourceChannel;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerTransactionType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

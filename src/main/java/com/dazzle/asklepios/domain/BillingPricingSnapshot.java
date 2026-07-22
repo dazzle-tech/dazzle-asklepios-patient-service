@@ -1,14 +1,14 @@
 package com.dazzle.asklepios.domain;
 
-import com.dazzle.asklepios.domain.enumeration.BillingPricingSnapshotStatus;
-import com.dazzle.asklepios.domain.enumeration.CalculationOrder;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPricingSnapshotStatus;
 import com.dazzle.asklepios.domain.enumeration.Currency;
-import com.dazzle.asklepios.domain.enumeration.DiscountType;
-import com.dazzle.asklepios.domain.enumeration.ExemptionType;
-import com.dazzle.asklepios.domain.enumeration.PricingReason;
-import com.dazzle.asklepios.domain.enumeration.PricingSource;
-import com.dazzle.asklepios.domain.enumeration.RoundingModeType;
-import com.dazzle.asklepios.domain.enumeration.TaxType;
+import com.dazzle.asklepios.domain.enumeration.billing.CalculationOrder;
+import com.dazzle.asklepios.domain.enumeration.billing.DiscountType;
+import com.dazzle.asklepios.domain.enumeration.billing.ExemptionType;
+import com.dazzle.asklepios.domain.enumeration.billing.PricingReason;
+import com.dazzle.asklepios.domain.enumeration.billing.PricingSource;
+import com.dazzle.asklepios.domain.enumeration.billing.RoundingModeType;
+import com.dazzle.asklepios.domain.enumeration.billing.TaxType;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -22,7 +22,6 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
@@ -66,7 +65,7 @@ public class BillingPricingSnapshot extends AbstractAuditingEntity<Long>
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "patient_service_product_id", nullable = false)
-    private PatientServicesAndProducts patientServiceProduct;
+    private PatientServiceAndProduct patientServiceProduct;
 
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -78,13 +77,11 @@ public class BillingPricingSnapshot extends AbstractAuditingEntity<Long>
     @JoinColumn(name = "encounter_id", nullable = false)
     private PatientEncounter encounter;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "price_list_id")
-    private PriceListSetup priceList;
+    @Column(name = "price_list_id")
+    private Long priceListId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "price_list_item_id")
-    private PriceListItemSetup priceListItem;
+    @Column(name = "price_list_item_id")
+    private Long priceListItemId;
 
     @Column(name = "billing_configuration_id")
     private Long billingConfigurationId;
@@ -239,8 +236,7 @@ public class BillingPricingSnapshot extends AbstractAuditingEntity<Long>
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
-    private BillingPricingSnapshotStatus status =
-            BillingPricingSnapshotStatus.ACTIVE;
+    private BillingPricingSnapshotStatus status = BillingPricingSnapshotStatus.ACTIVE;
 
     @NotNull
     @Column(name = "effective_date", nullable = false)
