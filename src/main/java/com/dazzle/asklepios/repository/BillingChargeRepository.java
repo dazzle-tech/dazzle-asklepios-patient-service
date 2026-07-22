@@ -1,0 +1,11 @@
+package com.dazzle.asklepios.repository;
+
+import com.dazzle.asklepios.domain.BillingCharge;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+
+@Repository
+public interface BillingChargeRepository extends JpaRepository<BillingCharge, Long> {
+
+}

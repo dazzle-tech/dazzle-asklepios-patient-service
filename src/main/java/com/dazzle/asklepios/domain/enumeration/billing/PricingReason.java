@@ -1,0 +1,30 @@
+package com.dazzle.asklepios.domain.enumeration.billing;
+
+public enum PricingReason {
+
+    INITIAL_PRICING,
+
+    PRICE_LIST_CHANGE,
+
+    QUANTITY_CHANGE,
+
+    DISCOUNT_APPLIED,
+
+    DISCOUNT_REMOVED,
+
+    EXEMPTION_APPLIED,
+
+    EXEMPTION_REMOVED,
+
+    TAX_CHANGE,
+
+    INSURANCE_CHANGE,
+
+    RESPONSIBILITY_CHANGE,
+
+    MANUAL_OVERRIDE,
+
+    RECALCULATION,
+
+    CORRECTION
+}
