@@ -1,23 +1,27 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.service.PatientAuthenticationService;
 import com.dazzle.asklepios.service.PatientService;
+import com.dazzle.asklepios.service.dto.patient.KeyAndPasswordDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientDuplicationLookupDTO;
+import com.dazzle.asklepios.service.dto.patient.PatientLoginDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.InvalidPasswordException;
 import com.dazzle.asklepios.web.rest.vm.patient.CreatePasswordKeyValidationVM;
-import com.dazzle.asklepios.service.dto.patient.KeyAndPasswordDTO;
 import com.dazzle.asklepios.web.rest.vm.patient.ManagedPatientVM;
 import com.dazzle.asklepios.web.rest.vm.patient.PatientBasicInformationResponseVM;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -25,6 +29,12 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.oauth2.jwt.JwsHeader;
+import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -36,19 +46,37 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.stream.Collectors;
+
+import static com.dazzle.asklepios.security.SecurityUtils.AUTHORITIES_CLAIM;
+import static com.dazzle.asklepios.security.SecurityUtils.JWT_ALGORITHM;
 
 @RestController
 @RequestMapping("/api/patient")
+
 public class PatientController {
 
     private static final Logger LOG = LoggerFactory.getLogger(PatientController.class);
 
     private final PatientService patientService;
+    private final PatientAuthenticationService patientAuthenticationService;
 
-    public PatientController(PatientService patientService) {
+    private final JwtEncoder jwtEncoder;
+
+    @Value("${patient.security.authentication.jwt.token-validity-in-seconds:0}")
+    private long tokenValidityInSeconds;
+
+    @Value("${patient.security.authentication.jwt.token-validity-in-seconds-for-remember-me:0}")
+    private long tokenValidityInSecondsForRememberMe;
+
+    public PatientController(PatientService patientService, PatientAuthenticationService patientAuthenticationService, JwtEncoder jwtEncoder) {
         this.patientService = patientService;
+        this.patientAuthenticationService = patientAuthenticationService;
+        this.jwtEncoder = jwtEncoder;
     }
 
     @PostMapping
@@ -392,12 +420,76 @@ public class PatientController {
         return patientService.validateCreatePasswordKey(key);
     }
 
+    @PostMapping("/authenticate")
+    public ResponseEntity<JWTToken> authenticatePatient(@Valid @RequestBody PatientLoginDTO login) {
+
+        Authentication authentication = patientAuthenticationService.authenticate(login);
+
+        String jwt = createToken(
+                authentication,
+                Boolean.TRUE.equals(login.rememberMe()));
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(jwt);
+
+        return new ResponseEntity<>(new JWTToken(jwt), headers, HttpStatus.OK);
+
+    }
+
     private static boolean isPasswordLengthInvalid(String password) {
         return (
                 StringUtils.isEmpty(password) ||
                         password.length() < ManagedPatientVM.PASSWORD_MIN_LENGTH ||
                         password.length() > ManagedPatientVM.PASSWORD_MAX_LENGTH
         );
+    }
+
+    public String createToken(Authentication authentication, boolean rememberMe) {
+        String authorities = authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.joining(" "));
+
+        Instant now = Instant.now();
+        Instant validity = rememberMe
+                ? now.plus(tokenValidityInSecondsForRememberMe, ChronoUnit.SECONDS)
+                : now.plus(tokenValidityInSeconds, ChronoUnit.SECONDS);
+
+        JwtClaimsSet.Builder claims = JwtClaimsSet.builder()
+                .issuedAt(now)
+                .expiresAt(validity)
+                .subject(authentication.getName())
+                .claim(AUTHORITIES_CLAIM, authorities);
+
+        if (authentication.getPrincipal() instanceof Patient patient) {
+            claims.claim("patientId", patient.getId());
+            claims.claim("medicalRecordNumber", patient.getMedicalRecordNumber());
+        }
+
+        JwsHeader jwsHeader = JwsHeader.with(JWT_ALGORITHM).build();
+
+        return jwtEncoder.encode(
+                JwtEncoderParameters.from(jwsHeader, claims.build())
+        ).getTokenValue();
+    }
+    /**
+     * Object to return as body in JWT Authentication.
+     */
+    static class JWTToken {
+
+        private String idToken;
+
+        JWTToken(String idToken) {
+            this.idToken = idToken;
+        }
+
+        @JsonProperty("id_token")
+        String getIdToken() {
+            return idToken;
+        }
+
+        void setIdToken(String idToken) {
+            this.idToken = idToken;
+        }
     }
 }
 
