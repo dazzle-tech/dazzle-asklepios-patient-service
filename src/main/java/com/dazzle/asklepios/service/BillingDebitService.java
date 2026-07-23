@@ -8,6 +8,7 @@ import com.dazzle.asklepios.domain.BillingPayment;
 import com.dazzle.asklepios.domain.BillingPaymentTransaction;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.Currency;
+import com.dazzle.asklepios.domain.enumeration.billing.AllocationSourceType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingAllocationStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingDebitAccountStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingDebitTransactionStatus;
@@ -2086,6 +2087,67 @@ public class BillingDebitService {
         validateRequestInfo(
                 requestId,
                 sourceChannel
+        );
+    }
+
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class
+    )
+    public BigDecimal reverseDebitAllocation(
+            BillingAllocation allocation,
+            String reason,
+            String reversedBy,
+            String requestId,
+            BillingLedgerSourceChannel sourceChannel
+    ) {
+        if (allocation == null
+                || allocation.getId() == null) {
+            throw new BadRequestAlertException(
+                    "Persisted debit allocation is required.",
+                    ENTITY_NAME,
+                    "allocation.required"
+            );
+        }
+
+        if (allocation.getAllocationSourceType()
+                != AllocationSourceType.DEBIT) {
+            throw new BadRequestAlertException(
+                    "Allocation source must be DEBIT.",
+                    ENTITY_NAME,
+                    "allocation.notDebit"
+            );
+        }
+
+        if (allocation.getDebitTransactionId() == null) {
+            throw new BadRequestAlertException(
+                    "Debit allocation does not contain a debit transaction ID.",
+                    ENTITY_NAME,
+                    "allocation.debitTransaction.missing"
+            );
+        }
+
+        BigDecimal remainingAmount =
+                money(
+                        allocation.getRemainingAllocatedAmount()
+                );
+
+        if (remainingAmount.signum() <= 0) {
+            return zero();
+        }
+
+        BillingDebitReversalResult result =
+                reverseDebit(
+                        allocation.getDebitTransactionId(),
+                        remainingAmount,
+                        reason,
+                        reversedBy,
+                        requestId,
+                        sourceChannel
+                );
+
+        return money(
+                result.reversedAmount()
         );
     }
 }

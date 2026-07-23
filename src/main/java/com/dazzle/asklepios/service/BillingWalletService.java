@@ -55,9 +55,8 @@ public class BillingWalletService {
 
         BillingWallet wallet =
                 billingWalletRepository
-                        .findByPatient_IdAndCurrency(
-                                patientId,
-                                currency
+                        .findByPatient_Id(
+                                patientId
                         )
                         .orElseThrow(() ->
                                 new NotFoundAlertException(
@@ -90,9 +89,8 @@ public class BillingWalletService {
 
         BillingWallet existing =
                 billingWalletRepository
-                        .findByPatient_IdAndCurrency(
-                                patientId,
-                                currency
+                        .findByPatient_Id(
+                                patientId
                         )
                         .orElse(null);
 
@@ -144,9 +142,8 @@ public class BillingWalletService {
 
             BillingWallet concurrentWallet =
                     billingWalletRepository
-                            .findByPatient_IdAndCurrency(
-                                    patientId,
-                                    currency
+                            .findByPatient_Id(
+                                    patientId
                             )
                             .orElse(null);
 
@@ -517,9 +514,8 @@ public class BillingWalletService {
         );
 
         return billingWalletRepository
-                .findFirstByPatient_IdAndCurrencyOrderByIdAsc(
-                        patientId,
-                        currency
+                .findFirstByPatient_IdOrderByIdAsc(
+                        patientId
                 )
                 .orElseThrow(() ->
                         new NotFoundAlertException(
@@ -781,9 +777,117 @@ public class BillingWalletService {
         }
 
         return billingWalletRepository
-                .findFirstByPatient_IdAndCurrencyOrderByIdAsc(
-                        patientId,
-                        currency
+                .findFirstByPatient_IdOrderByIdAsc(
+                        patientId
+                )
+                .orElse(null);
+    }
+
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class
+    )
+    public BillingWallet reverseRefundToAvailable(
+            BillingWallet wallet,
+            BigDecimal requestedAmount
+    ) {
+        BillingWallet lockedWallet =
+                reloadAndLock(wallet);
+
+        BigDecimal amount =
+                requirePositiveAmount(
+                        requestedAmount,
+                        "Refund reversal amount"
+                );
+
+        BigDecimal refunded =
+                money(
+                        lockedWallet.getRefundedAmount()
+                );
+
+        if (refunded.compareTo(amount) < 0) {
+            throw new BadRequestAlertException(
+                    "Refund reversal amount exceeds wallet refunded balance.",
+                    ENTITY_NAME,
+                    "wallet.refundReversal.exceedsRefunded"
+            );
+        }
+
+        lockedWallet.setRefundedAmount(
+                refunded.subtract(amount)
+        );
+
+        lockedWallet.setAvailableBalance(
+                money(
+                        lockedWallet.getAvailableBalance()
+                ).add(amount)
+        );
+
+        validateWalletBalance(
+                lockedWallet
+        );
+
+        BillingWallet saved =
+                billingWalletRepository.save(
+                        lockedWallet
+                );
+
+        LOG.info(
+                "[REVERSE_REFUND] Wallet refund reversed "
+                        + "walletId={} amount={} available={} refunded={}",
+                saved.getId(),
+                amount,
+                saved.getAvailableBalance(),
+                saved.getRefundedAmount()
+        );
+
+        return saved;
+    }
+
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class
+    )
+    public BillingWallet lockWallet(
+            Long patientId
+    ) {
+        if (patientId == null) {
+            throw new BadRequestAlertException(
+                    "Patient ID is required.",
+                    ENTITY_NAME,
+                    "patientId.required"
+            );
+        }
+
+        BillingWallet wallet =
+                billingWalletRepository
+                        .findByPatient_Id(patientId)
+                        .orElseThrow(() ->
+                                new NotFoundAlertException(
+                                        "Billing wallet not found for patient "
+                                                + patientId,
+                                        ENTITY_NAME,
+                                        "wallet.notfound"
+                                )
+                        );
+
+        validateWalletUsable(wallet);
+
+        return wallet;
+    }
+
+
+    @Transactional(readOnly = true)
+    public BillingWallet findOptionalByPatient(
+            Long patientId
+    ) {
+        if (patientId == null) {
+            return null;
+        }
+
+        return billingWalletRepository
+                .findFirstByPatient_IdOrderByIdAsc(
+                        patientId
                 )
                 .orElse(null);
     }

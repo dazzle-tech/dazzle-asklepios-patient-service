@@ -11,7 +11,11 @@ public record BillingCancellationResult(
 
         Long chargeLineId,
 
-        BigDecimal reversedAllocationAmount,
+        BigDecimal walletAllocationReversedAmount,
+
+        BigDecimal debitAllocationReversedAmount,
+
+        BigDecimal totalReversedAllocationAmount,
 
         BigDecimal releasedReservationAmount,
 

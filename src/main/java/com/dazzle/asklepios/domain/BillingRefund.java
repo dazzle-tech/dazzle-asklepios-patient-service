@@ -1,7 +1,5 @@
 package com.dazzle.asklepios.domain;
 
-import com.dazzle.asklepios.domain.enumeration.BillingRefundSourceType;
-import com.dazzle.asklepios.domain.enumeration.BillingRefundStatus;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -15,6 +13,8 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingRefundSourceType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingRefundStatus;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;

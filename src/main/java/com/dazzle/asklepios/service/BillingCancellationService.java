@@ -14,6 +14,7 @@ import com.dazzle.asklepios.repository.BillingChargeRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationResult;
+import com.dazzle.asklepios.service.dto.billing.BillingChargeLineReversalResult;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -63,6 +64,7 @@ public class BillingCancellationService {
 
     private final BillingWalletService
             billingWalletService;
+    private final BillingAllocationReversalCoordinator billingAllocationReversalCoordinator;
 
     @Transactional(rollbackFor = Exception.class)
     public BillingCancellationResult cancelPatientService(
@@ -119,6 +121,8 @@ public class BillingCancellationService {
                     zero(),
                     zero(),
                     zero(),
+                    zero(),
+                    zero(),
                     true
             );
         }
@@ -132,7 +136,11 @@ public class BillingCancellationService {
             return buildResult(
                     item,
                     chargeLine,
-                    zero(),
+                    new BillingChargeLineReversalResult(
+                            zero(),
+                            zero(),
+                            zero()
+                    ),
                     zero(),
                     wallet
             );
@@ -167,8 +175,8 @@ public class BillingCancellationService {
         /*
          * 1. Reverse consumed and allocated money.
          */
-        BigDecimal reversedAllocationAmount =
-                billingAllocationService
+        BillingChargeLineReversalResult reversalResult =
+                billingAllocationReversalCoordinator
                         .reverseActiveAllocationsForChargeLine(
                                 chargeLine.getId(),
                                 request.reason(),
@@ -237,17 +245,16 @@ public class BillingCancellationService {
         LOG.info(
                 "[CANCEL_COMPLETE] Billing service cancelled "
                         + "pspId={} chargeLineId={} "
-                        + "reversedAllocation={} releasedReservation={}",
+                        + "releasedReservation={}",
                 item.getId(),
                 chargeLine.getId(),
-                reversedAllocationAmount,
                 releasedReservationAmount
         );
 
         return buildResult(
                 item,
                 chargeLine,
-                reversedAllocationAmount,
+                reversalResult,
                 releasedReservationAmount,
                 wallet
         );
@@ -493,21 +500,44 @@ public class BillingCancellationService {
     private BillingCancellationResult buildResult(
             PatientServiceAndProduct item,
             BillingChargeLine chargeLine,
-            BigDecimal reversedAllocationAmount,
+            BillingChargeLineReversalResult reversalResult,
             BigDecimal releasedReservationAmount,
             BillingWallet wallet
     ) {
+        BillingChargeLineReversalResult normalizedReversal =
+                reversalResult == null
+                        ? new BillingChargeLineReversalResult(
+                        zero(),
+                        zero(),
+                        zero()
+                )
+                        : reversalResult;
+
         return new BillingCancellationResult(
                 item.getId(),
 
                 chargeLine.getCharge() == null
                         ? null
-                        : chargeLine.getCharge()
+                        : chargeLine
+                        .getCharge()
                         .getId(),
 
                 chargeLine.getId(),
 
-                money(reversedAllocationAmount),
+                money(
+                        normalizedReversal
+                                .walletAllocationReversedAmount()
+                ),
+
+                money(
+                        normalizedReversal
+                                .debitAllocationReversedAmount()
+                ),
+
+                money(
+                        normalizedReversal
+                                .totalReversedAmount()
+                ),
 
                 money(releasedReservationAmount),
 

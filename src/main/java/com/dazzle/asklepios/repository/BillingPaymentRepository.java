@@ -18,7 +18,9 @@ public interface BillingPaymentRepository
 
     @Override
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    Optional<BillingPayment> findById(Long id);
+    Optional<BillingPayment> findById(
+            Long id
+    );
 
     Optional<BillingPayment> findByIdempotencyKey(
             String idempotencyKey

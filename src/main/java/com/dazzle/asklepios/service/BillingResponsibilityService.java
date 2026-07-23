@@ -1020,4 +1020,69 @@ public class BillingResponsibilityService {
         billingChargeResponsibilityRepository
                 .saveAll(responsibilities);
     }
+
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class
+    )
+    public void supersedeActiveResponsibilities(
+            BillingProcessingContext context,
+            String reason
+    ) {
+        if (context == null
+                || context.getChargeLine() == null
+                || context.getChargeLine().getId() == null) {
+
+            throw new BadRequestAlertException(
+                    "Persisted charge line is required.",
+                    ENTITY_NAME,
+                    "chargeLine.required"
+            );
+        }
+
+        List<BillingChargeResponsibility> responsibilities =
+                billingChargeResponsibilityRepository
+                        .findAllByChargeLine_IdAndStatusNotInOrderByIdAsc(
+                                context.getChargeLine().getId(),
+                                List.of(
+                                        BillingResponsibilityStatus.CANCELLED,
+                                        BillingResponsibilityStatus.SUPERSEDED
+                                )
+                        );
+
+        for (BillingChargeResponsibility responsibility
+                : responsibilities) {
+
+            if (money(
+                    responsibility.getAllocatedAmount()
+            ).signum() > 0) {
+                throw new BadRequestAlertException(
+                        "Responsibility has an allocated amount. "
+                                + "Reverse allocations before repricing.",
+                        ENTITY_NAME,
+                        "responsibility.hasAllocation"
+                );
+            }
+
+            responsibility.setStatus(
+                    BillingResponsibilityStatus.SUPERSEDED
+            );
+
+            responsibility.setAdjustmentReason(
+                    reason
+            );
+
+            responsibility.setClosedDate(
+                    Instant.now()
+            );
+        }
+
+        billingChargeResponsibilityRepository.saveAll(
+                responsibilities
+        );
+
+        context.setPatientResponsibility(null);
+        context.setInsuranceResponsibility(null);
+    }
+
 }

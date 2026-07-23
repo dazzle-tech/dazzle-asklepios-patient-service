@@ -18,16 +18,13 @@ public interface BillingWalletRepository
     Optional<BillingWallet> findById(Long id);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    Optional<BillingWallet>
-    findByPatient_IdAndCurrency(
-            Long patientId,
-            Currency currency
+    Optional<BillingWallet> findByPatient_Id(
+            Long patientId
     );
 
     Optional<BillingWallet>
-    findFirstByPatient_IdAndCurrencyOrderByIdAsc(
-            Long patientId,
-            Currency currency
+    findFirstByPatient_IdOrderByIdAsc(
+            Long patientId
     );
 
     boolean existsByPatient_IdAndCurrency(

@@ -41,4 +41,4 @@ public record BillingPricingResolveResponse(
         Integer roundingScale
 
 ) implements Serializable {
-}}
+}

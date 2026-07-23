@@ -323,7 +323,19 @@ public class BillingReservationService {
             BillingProcessingContext context,
             List<BillingPayment> payments
     ) {
-        if (payments == null || payments.isEmpty()) {
+        if (context == null
+                || context.getPatientResponsibility() == null
+                || context.getChargeLine() == null) {
+
+            return zero();
+        }
+
+        if (payments == null
+                || payments.isEmpty()) {
+            context.setReservedAmount(
+                    zero()
+            );
+
             return zero();
         }
 
@@ -334,30 +346,84 @@ public class BillingReservationService {
                                 .getOutstandingAmount()
                 );
 
-        BigDecimal totalReserved = zero();
+        if (required.signum() <= 0) {
+            context.setReservedAmount(
+                    zero()
+            );
+
+            return zero();
+        }
+
+        BigDecimal alreadyReserved =
+                calculateActiveReservedAmount(
+                        context
+                                .getChargeLine()
+                                .getId()
+                );
+
+        BigDecimal remainingRequired =
+                required.subtract(
+                        alreadyReserved
+                ).max(zero());
+
+        if (remainingRequired.signum() <= 0) {
+            context.setReservedAmount(
+                    alreadyReserved
+            );
+
+            return alreadyReserved;
+        }
 
         for (BillingPayment payment : payments) {
-            if (totalReserved.compareTo(required) >= 0) {
+            if (remainingRequired.signum() <= 0) {
                 break;
             }
 
+            BigDecimal paymentAvailable =
+                    calculatePaymentReservableAmount(
+                            payment
+                    );
+
+            if (paymentAvailable.signum() <= 0) {
+                continue;
+            }
+
+            /*
+             * reserve() calculates using responsibility outstanding.
+             * To prevent over-reservation across multiple payments,
+             * temporarily limit the amount visible to this iteration.
+             */
+            BigDecimal reservationLimit =
+                    minimum(
+                            remainingRequired,
+                            paymentAvailable
+                    );
+
             BillingReservation reservation =
-                    reserve(
+                    reserveLimited(
                             context,
                             payment,
-                            null
+                            null,
+                            reservationLimit
                     );
 
             if (reservation != null) {
-                totalReserved =
-                        totalReserved.add(
+                remainingRequired =
+                        remainingRequired.subtract(
                                 money(
                                         reservation
-                                                .getRemainingReservedAmount()
+                                                .getOriginalReservedAmount()
                                 )
-                        );
+                        ).max(zero());
             }
         }
+
+        BigDecimal totalReserved =
+                calculateActiveReservedAmount(
+                        context
+                                .getChargeLine()
+                                .getId()
+                );
 
         context.setReservedAmount(
                 totalReserved
@@ -366,6 +432,163 @@ public class BillingReservationService {
         return totalReserved;
     }
 
+    private BillingReservation reserveLimited(
+            BillingProcessingContext context,
+            BillingPayment payment,
+            BillingPaymentTransaction paymentTransaction,
+            BigDecimal maximumAmount
+    ) {
+        validateReservationContext(
+                context,
+                payment
+        );
+
+        BigDecimal limit =
+                money(maximumAmount);
+
+        if (limit.signum() <= 0) {
+            return null;
+        }
+
+        BillingChargeResponsibility responsibility =
+                context.getPatientResponsibility();
+
+        String idempotencyKey =
+                context.getIdempotencyKey()
+                        + ":RESERVATION:PAYMENT:"
+                        + payment.getId();
+
+        BillingReservation existing =
+                billingReservationRepository
+                        .findByIdempotencyKey(
+                                idempotencyKey
+                        )
+                        .orElse(null);
+
+        if (existing != null) {
+            context.setReservation(existing);
+            return existing;
+        }
+
+        BillingWallet wallet =
+                billingWalletService.lockWallet(
+                        context
+                                .getPatientServiceProduct()
+                                .getPatientId(),
+                        context
+                                .getPatientServiceProduct()
+                                .getCurrency()
+                );
+
+        validatePaymentSource(
+                payment,
+                paymentTransaction,
+                wallet,
+                context
+        );
+
+        BigDecimal reservationAmount =
+                minimum(
+                        limit,
+                        money(
+                                wallet.getAvailableBalance()
+                        ),
+                        calculatePaymentReservableAmount(
+                                payment
+                        )
+                );
+
+        if (reservationAmount.signum() <= 0) {
+            return null;
+        }
+
+        BillingWallet updatedWallet =
+                billingWalletService.reserve(
+                        wallet,
+                        reservationAmount
+                );
+
+        BillingReservation reservation =
+                BillingReservation.builder()
+                        .reservationNumber(
+                                generateReservationNumber()
+                        )
+                        .wallet(updatedWallet)
+                        .payment(payment)
+                        .paymentTransaction(
+                                paymentTransaction
+                        )
+                        .patient(
+                                context
+                                        .getChargeLine()
+                                        .getPatient()
+                        )
+                        .encounter(
+                                context
+                                        .getChargeLine()
+                                        .getEncounter()
+                        )
+                        .charge(
+                                context
+                                        .getChargeLine()
+                                        .getCharge()
+                        )
+                        .chargeLine(
+                                context.getChargeLine()
+                        )
+                        .chargeResponsibility(
+                                responsibility
+                        )
+                        .patientServiceProduct(
+                                context
+                                        .getPatientServiceProduct()
+                        )
+                        .originalReservedAmount(
+                                reservationAmount
+                        )
+                        .remainingReservedAmount(
+                                reservationAmount
+                        )
+                        .consumedAmount(zero())
+                        .releasedAmount(zero())
+                        .currency(
+                                context
+                                        .getChargeLine()
+                                        .getCurrency()
+                        )
+                        .status(
+                                BillingReservationStatus.ACTIVE
+                        )
+                        .reservedDate(
+                                Instant.now()
+                        )
+                        .idempotencyKey(
+                                idempotencyKey
+                        )
+                        .transactionGroupId(
+                                context.getTransactionGroupId()
+                                        == null
+                                        ? UUID.randomUUID()
+                                        : context
+                                        .getTransactionGroupId()
+                        )
+                        .build();
+
+        BillingReservation saved =
+                billingReservationRepository
+                        .saveAndFlush(
+                                reservation
+                        );
+
+        updateReservedAmountsAfterCreation(
+                context,
+                saved
+        );
+
+        context.setReservation(saved);
+
+        return saved;
+    }
     /**
      * Releases all active reservations for one charge line.
      *
