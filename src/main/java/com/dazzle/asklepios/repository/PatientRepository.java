@@ -27,4 +27,7 @@ public interface PatientRepository extends JpaRepository<Patient, Long>, JpaSpec
     Optional<Patient> findByPreviousId(String previousId);
 
     Optional<Patient> findOneByResetKey(String resetKey);
+
+    Optional<Patient> findByMedicalRecordNumber(String medicalRecordNumber);
+
 }
