@@ -482,7 +482,7 @@ public class AppointmentService {
                 buildAppointmentNotificationData(appointment, department);
 
         notificationData.put(
-                "cancelReason",
+                "cancel_reason",
                 dto.cancelReason() != null ? dto.cancelReason() : ""
         );
         PractitionerDTO practitioner = appointment.getDefaultPractitionerId() != null
@@ -1728,18 +1728,17 @@ public class AppointmentService {
     private Map<String, Object> buildAppointmentNotificationData(Appointment appointment, DepartmentDTO department) {
         Map<String, Object> data = new LinkedHashMap<>();
 
-        data.put("appointmentId", appointment.getId());
-        data.put("appointmentNumber", appointment.getId());
-        data.put("departmentId", appointment.getDepartmentId());
-        data.put("departmentName", department != null ? department.name() : "");
-        data.put("patientName", appointment.getPatient() != null
+        data.put("appointment_id", appointment.getId());
+        data.put("appointment_number", appointment.getId());
+        data.put("department_id", appointment.getDepartmentId());
+        data.put("department_name", department != null ? department.name() : "");
+        data.put("patient_name", appointment.getPatient() != null
                 ? notificationHelper.getPatientName(appointment.getPatient())
                 : "");
 
-        data.put("appointmentDate", appointment.getStartDatetime() != null
+        data.put("appointment_date", appointment.getStartDatetime() != null
                 ? formatter.format(appointment.getStartDatetime())
                 : "");
-
         return data;
     }
 

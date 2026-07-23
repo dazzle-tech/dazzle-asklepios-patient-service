@@ -449,11 +449,11 @@ public class PatientService {
 
 
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("patientName", patientName);
-        data.put("documentNumber", primaryDoc.getNumber());
-        data.put("patientEmail", patient.getEmail());
+        data.put("patient_name", patientName);
+        data.put("document_number", primaryDoc.getNumber());
+        data.put("patient_email", patient.getEmail());
         data.put("token", token);
-        data.put("createPasswordUrl", createPasswordUrl);
+        data.put("create_password_url", createPasswordUrl);
         data.put("title", "CMS | Set your password");
 
         String login = SecurityUtils.getCurrentUserLogin().orElse(null);

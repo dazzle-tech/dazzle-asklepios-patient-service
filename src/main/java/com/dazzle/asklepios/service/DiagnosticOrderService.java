@@ -470,16 +470,15 @@ public class DiagnosticOrderService {
                 );
 
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("orderId", order.getId());
-        data.put("patientId", order.getPatientId());
-        data.put("patientName", notificationHelper.getPatientName(patient));
-        data.put("encounterId", order.getEncounter() != null ? order.getEncounter().getId() : "");
-        data.put("departmentId", departmentId);
-        data.put("departmentName", department != null ? department.name() : "");
+        data.put("order_id", order.getId());
+        data.put("patient_id", order.getPatientId());
+        data.put("patient_name", notificationHelper.getPatientName(patient));
+        data.put("encounter_id", order.getEncounter() != null ? order.getEncounter().getId() : "");
+        data.put("department_id", departmentId);
+        data.put("department_name", department != null ? department.name() : "");
         data.put("status", order.getStatus() != null ? order.getStatus().toString() : "");
-        data.put("submittedBy", order.getSubmittedBy() != null ? order.getSubmittedBy() : "");
-        data.put("submittedDate", order.getSubmittedDate() != null ? order.getSubmittedDate().toString() : "");
-
+        data.put("submitted_by", order.getSubmittedBy() != null ? order.getSubmittedBy() : "");
+        data.put("submitted_date", order.getSubmittedDate() != null ? order.getSubmittedDate().toString() : "");
         try {
             LOG.debug(
                     "Creating urgent diagnostic order in-app notification. orderId={}, departmentId={}, recipientsByRule={}",

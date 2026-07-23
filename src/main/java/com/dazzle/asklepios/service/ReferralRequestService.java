@@ -347,20 +347,20 @@ public class ReferralRequestService {
             Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, referralRequest.getCreatedBy(), patient, null,false);
 
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("referralRequestId", referralRequest.getId());
-            data.put("patientId", patient.getId());
-            data.put("patientName", notificationHelper.getPatientName(patient));
-            data.put("encounterId", encounter != null ? encounter.getId() : "");
-            data.put("fromFacilityId", referralRequest.getFromFacilityId());
-            data.put("toFacilityId", referralRequest.getToFacilityId());
-            data.put("fromFacilityName", fromFacility.name());
-            data.put("toFacilityName", toFacility.name());
-            data.put("fromDepartmentId", referralRequest.getFromDepartmentId());
-            data.put("toDepartmentId", referralRequest.getToDepartmentId());
-            data.put("fromDepartmentName", fromDepartment.name());
-            data.put("toDepartmentName", toDepartment.name());
-            data.put("referralType", referralRequest.getReferralType() != null ? referralRequest.getReferralType().toString() : "");
-            data.put("referralReason", referralRequest.getReferralReason() != null ? referralRequest.getReferralReason() : "");
+            data.put("referral_request_id", referralRequest.getId());
+            data.put("patient_id", patient.getId());
+            data.put("patient_name", notificationHelper.getPatientName(patient));
+            data.put("encounter_id", encounter != null ? encounter.getId() : "");
+            data.put("from_facility_id", referralRequest.getFromFacilityId());
+            data.put("to_facility_id", referralRequest.getToFacilityId());
+            data.put("from_facility_name", fromFacility.name());
+            data.put("to_facility_name", toFacility.name());
+            data.put("from_department_id", referralRequest.getFromDepartmentId());
+            data.put("to_department_id", referralRequest.getToDepartmentId());
+            data.put("from_department_name", fromDepartment.name());
+            data.put("to_department_name", toDepartment.name());
+            data.put("referral_type", referralRequest.getReferralType() != null ? referralRequest.getReferralType().toString() : "");
+            data.put("referral_reason", referralRequest.getReferralReason() != null ? referralRequest.getReferralReason() : "");
             data.put("priority", referralRequest.getPriority() != null ? referralRequest.getPriority().toString() : "");
             data.put("status", referralRequest.getStatus() != null ? referralRequest.getStatus().toString() : "");
 

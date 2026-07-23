@@ -92,18 +92,17 @@ public class TemplateIntervalEndedNotificationScheduler {
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, batch.getCreatedBy(), null, null,true);
 
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("batchId", batch.getId());
-        data.put("templateId", template.getId());
-        data.put("templateName", template.getTemplateName() != null ? template.getTemplateName() : "");
-        data.put("departmentId", departmentId);
-        data.put("departmentName", departmentDTO.name());
+        data.put("batch_id", batch.getId());
+        data.put("template_id", template.getId());
+        data.put("template_name", template.getTemplateName() != null ? template.getTemplateName() : "");
+        data.put("department_id", departmentId);
+        data.put("department_name", departmentDTO.name());
         data.put("scope", batch.getScope() != null ? batch.getScope().toString() : "");
-        data.put("applyStartDateTime", batch.getApplyStartDateTime() != null ? batch.getApplyStartDateTime().toString() : "");
-        data.put("applyEndDateTime", batch.getApplyEndDateTime() != null ? batch.getApplyEndDateTime().toString() : "");
-        data.put("totalSlots", batch.getTotalSlots() != null ? batch.getTotalSlots() : "");
-        data.put("dailyAvg", batch.getDailyAvg() != null ? batch.getDailyAvg() : "");
-        data.put("executionStatus", batch.getExecutionStatus() != null ? batch.getExecutionStatus().toString() : "");
-
+        data.put("apply_start_date_time", batch.getApplyStartDateTime() != null ? batch.getApplyStartDateTime().toString() : "");
+        data.put("apply_end_date_time", batch.getApplyEndDateTime() != null ? batch.getApplyEndDateTime().toString() : "");
+        data.put("total_slots", batch.getTotalSlots() != null ? batch.getTotalSlots() : "");
+        data.put("daily_avg", batch.getDailyAvg() != null ? batch.getDailyAvg() : "");
+        data.put("execution_status", batch.getExecutionStatus() != null ? batch.getExecutionStatus().toString() : "");
 
         notificationHelper.sendNotification(template.getFacilityId(),
                 NotificationCode.TEMPLATE_INTERVAL_ENDED,

@@ -429,18 +429,17 @@ public class PatientWarningsService {
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, warning.getCreatedBy(), patient, null,false);
 
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("patientId", patient.getId());
-        data.put("patientName", notificationHelper.getPatientName(patient));
-        data.put("encounterId", encounter.getId());
-        data.put("departmentId", departmentId);
-        data.put("departmentName", department != null ? department.name() : "");
-        data.put("warningId", warning.getId());
-        data.put("warningType", warning.getWarningType() != null ? warning.getWarningType().toString() : "");
+        data.put("patient_id", patient.getId());
+        data.put("patient_name", notificationHelper.getPatientName(patient));
+        data.put("encounter_id", encounter.getId());
+        data.put("department_id", departmentId);
+        data.put("department_name", department != null ? department.name() : "");
+        data.put("warning_id", warning.getId());
+        data.put("warning_type", warning.getWarningType() != null ? warning.getWarningType().toString() : "");
         data.put("warning", warning.getWarning() != null ? warning.getWarning() : "");
         data.put("severity", warning.getSeverity() != null ? warning.getSeverity().toString() : "");
-        data.put("onsetDate", warning.getOnsetDate() != null ? warning.getOnsetDate().toString() : "");
+        data.put("onset_date", warning.getOnsetDate() != null ? warning.getOnsetDate().toString() : "");
         data.put("status", warning.getStatus() != null ? warning.getStatus().toString() : "");
-
 
         try {
             LOG.debug("Creating severe/critical medical warning notification. warningId={}, patientId={}, departmentId={}, recipientsByRule={}", warning.getId(), patient.getId(), departmentId, recipientsByRule);
