@@ -339,7 +339,7 @@ public class PatientEncounterService {
             Pageable pageable
     ) {
         List<TreatmentStatus> completedEncounterStatuses = List.of(
-                TreatmentStatus.CLOSED,
+                TreatmentStatus.COMPLETED,
                 TreatmentStatus.DISCHARGED
         );
 
@@ -477,7 +477,7 @@ public class PatientEncounterService {
             );
         }
 
-        encounter.setStatus(TreatmentStatus.CLOSED);
+        encounter.setStatus(TreatmentStatus.COMPLETED);
 
         PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
         updateAppointmentStatusForEncounter(AppointmentStatus.COMPLETED, encounter.getAppointment().getId());
@@ -544,7 +544,7 @@ public class PatientEncounterService {
                 .countByDepartmentIdAndEncounterDateAndStatus(
                         departmentId,
                         today,
-                        TreatmentStatus.CLOSED
+                        TreatmentStatus.COMPLETED
                 );
 
         LOG.debug("[DASHBOARD] COUNT_COMPLETED_RESULT departmentId={} date={} total={}",
@@ -882,7 +882,7 @@ public class PatientEncounterService {
         return patientEncounterRepository
                 .findFirstByPatientIdAndStatusAndEncounterDateLessThanEqualOrderByEncounterDateDesc(
                         currentEncounter.getPatient().getId(),
-                        TreatmentStatus.CLOSED,
+                        TreatmentStatus.COMPLETED,
                         currentEncounter.getEncounterDate()
                 );
     }

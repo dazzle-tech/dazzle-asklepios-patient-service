@@ -4,7 +4,7 @@ public enum TreatmentStatus {
     NEW,
     ONGOING,
     CANCELLED,
-    CLOSED,
+    COMPLETED,
     DISCHARGED,
     IN_OPERATION,
     CONFIRM_RETURN,
