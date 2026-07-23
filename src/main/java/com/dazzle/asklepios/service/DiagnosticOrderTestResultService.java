@@ -435,23 +435,22 @@ public class DiagnosticOrderTestResultService {
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, result.getCreatedBy(), resolvePatient(order.getPatientId()).orElse(null), null,false);
 
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("resultId", result.getId());
-        data.put("orderTestId", orderTest.getId());
-        data.put("orderId", order.getId());
-        data.put("patientId", order.getPatientId());
-        data.put("patientName", notificationHelper.getPatientName(resolvePatient(order.getPatientId()).orElse(null)));
-        data.put("encounterId", order.getEncounter() != null ? order.getEncounter().getId() : "");
-        data.put("departmentId", departmentId);
-        data.put("departmentName", department.name());
-        data.put("testId", orderTest.getTestId());
-        data.put("testType", orderTest.getOrderType() != null ? orderTest.getOrderType().toString() : "");
+        data.put("result_id", result.getId());
+        data.put("order_test_id", orderTest.getId());
+        data.put("order_id", order.getId());
+        data.put("patient_id", order.getPatientId());
+        data.put("patient_name", notificationHelper.getPatientName(resolvePatient(order.getPatientId()).orElse(null)));
+        data.put("encounter_id", order.getEncounter() != null ? order.getEncounter().getId() : "");
+        data.put("department_id", departmentId);
+        data.put("department_name", department.name());
+        data.put("test_id", orderTest.getTestId());
+        data.put("test_type", orderTest.getOrderType() != null ? orderTest.getOrderType().toString() : "");
         data.put("marker", calculatedMarker != null ? calculatedMarker.toString() : "");
-        data.put("normalRange", result.getNormalRangeValue() != null ? result.getNormalRangeValue() : "");
-        data.put("resultValueNumber", result.getResultValueNumber() != null ? result.getResultValueNumber() : "");
-        data.put("resultValueText", result.getResultValueText() != null ? result.getResultValueText() : "");
-        data.put("reportId", report != null ? report.getId() : "");
-        data.put("reportSeverity", report != null && report.getSeverity() != null ? report.getSeverity().toString() : "");
-
+        data.put("normal_range", result.getNormalRangeValue() != null ? result.getNormalRangeValue() : "");
+        data.put("result_value_number", result.getResultValueNumber() != null ? result.getResultValueNumber() : "");
+        data.put("result_value_text", result.getResultValueText() != null ? result.getResultValueText() : "");
+        data.put("report_id", report != null ? report.getId() : "");
+        data.put("report_severity", report != null && report.getSeverity() != null ? report.getSeverity().toString() : "");
         try {
             LOG.debug(
                     "Creating diagnostic result ready in-app notification. resultId={}, code={}, departmentId={}, marker={}, resultLevel={}, recipientsByRule={}",
@@ -544,21 +543,20 @@ public class DiagnosticOrderTestResultService {
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, result.getCreatedBy(), resolvePatient(order.getPatientId()).orElse(null), null,false);
 
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("resultId", result.getId());
-        data.put("orderTestId", orderTest.getId());
-        data.put("orderId", order.getId());
-        data.put("patientId", order.getPatientId());
-        data.put("patientName", notificationHelper.getPatientName(resolvePatient(order.getPatientId()).orElse(null)));
-        data.put("encounterId", order.getEncounter() != null ? order.getEncounter().getId() : "");
-        data.put("departmentId", departmentId);
-        data.put("departmentName", department.name());
-        data.put("testId", orderTest.getTestId());
-        data.put("testType", orderTest.getOrderType() != null ? orderTest.getOrderType().toString() : "");
+        data.put("result_id", result.getId());
+        data.put("order_test_id", orderTest.getId());
+        data.put("order_id", order.getId());
+        data.put("patient_id", order.getPatientId());
+        data.put("patient_name", notificationHelper.getPatientName(resolvePatient(order.getPatientId()).orElse(null)));
+        data.put("encounter_id", order.getEncounter() != null ? order.getEncounter().getId() : "");
+        data.put("department_id", departmentId);
+        data.put("department_name", department.name());
+        data.put("test_id", orderTest.getTestId());
+        data.put("test_type", orderTest.getOrderType() != null ? orderTest.getOrderType().toString() : "");
         data.put("marker", calculatedMarker != null ? calculatedMarker.toString() : "");
-        data.put("normalRange", result.getNormalRangeValue() != null ? result.getNormalRangeValue() : "");
-        data.put("resultValueNumber", result.getResultValueNumber() != null ? result.getResultValueNumber() : "");
-        data.put("resultValueText", result.getResultValueText() != null ? result.getResultValueText() : "");
-
+        data.put("normal_range", result.getNormalRangeValue() != null ? result.getNormalRangeValue() : "");
+        data.put("result_value_number", result.getResultValueNumber() != null ? result.getResultValueNumber() : "");
+        data.put("result_value_text", result.getResultValueText() != null ? result.getResultValueText() : "");
         try {
             LOG.debug(
                     "Creating diagnostic result ready notification. resultId={}, code={}, departmentId={}, marker={},  recipientsByRule={}",

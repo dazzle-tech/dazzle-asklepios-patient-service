@@ -333,14 +333,14 @@ public class PatientPrescriptionService {
 
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, prescription.getCreatedBy(), prescription.getPatient(), null,false);
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("prescriptionId", prescription.getId());
-        data.put("patientId", prescription.getPatient().getId());
-        data.put("patientName", notificationHelper.getPatientName(prescription.getPatient()));
-        data.put("encounterId", resolvePrescriptionEncounterId(prescription));
-        data.put("departmentId", departmentId);
-        data.put("departmentName", department != null ? department.name() : "");
-        data.put("highAlertMedications", String.join(", ", highAlertMedications));
-        data.put("highAlertMedicationCount", highAlertMedications.size());
+        data.put("prescription_id", prescription.getId());
+        data.put("patient_id", prescription.getPatient().getId());
+        data.put("patient_name", notificationHelper.getPatientName(prescription.getPatient()));
+        data.put("encounter_id", resolvePrescriptionEncounterId(prescription));
+        data.put("department_id", departmentId);
+        data.put("department_name", department != null ? department.name() : "");
+        data.put("high_alert_medications", String.join(", ", highAlertMedications));
+        data.put("high_alert_medication_count", highAlertMedications.size());
 
         try {
             LOG.debug("Creating high alert medication in-app notification. prescriptionId={}, departmentId={}, medications={}, recipientsByRule={}", prescription.getId(), departmentId, highAlertMedications, recipientsByRule);
