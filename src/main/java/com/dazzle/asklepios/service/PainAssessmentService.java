@@ -215,17 +215,16 @@ public class PainAssessmentService {
 
             Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, painAssessment.getCreatedBy(), patient, null,false);
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("patientId", patient.getId());
-            data.put("patientName", notificationHelper.getPatientName(patient));
-            data.put("encounterId", encounter.getId());
-            data.put("departmentId", departmentId);
-            data.put("departmentName", departmentDTO.name());
-            data.put("painAssessmentId", painAssessment.getId());
-            data.put("painLevel", painAssessment.getPainLevel());
-            data.put("painDegree", painAssessment.getPainDegree() != null ? painAssessment.getPainDegree().toString() : "");
-            data.put("painPattern", painAssessment.getPainPattern() != null ? painAssessment.getPainPattern().toString() : "");
-            data.put("painDescription", painAssessment.getPainDescription() != null ? painAssessment.getPainDescription() : "");
-
+            data.put("patient_id", patient.getId());
+            data.put("patient_name", notificationHelper.getPatientName(patient));
+            data.put("encounter_id", encounter.getId());
+            data.put("department_id", departmentId);
+            data.put("department_name", departmentDTO.name());
+            data.put("pain_assessment_id", painAssessment.getId());
+            data.put("pain_level", painAssessment.getPainLevel());
+            data.put("pain_degree", painAssessment.getPainDegree() != null ? painAssessment.getPainDegree().toString() : "");
+            data.put("pain_pattern", painAssessment.getPainPattern() != null ? painAssessment.getPainPattern().toString() : "");
+            data.put("pain_description", painAssessment.getPainDescription() != null ? painAssessment.getPainDescription() : "");
             LOG.debug(
                     "Creating severe pain  notification. painAssessmentId={}, patientId={}, departmentId={}, recipientsByRule={}",
                     painAssessment.getId(),

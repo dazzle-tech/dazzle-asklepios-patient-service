@@ -253,29 +253,29 @@ public class EmergencyTriageService {
 
         Map<String, Object> data = new LinkedHashMap<>();
 
-        data.put("triageId", triage.getId());
-        data.put("patientId", triage.getPatient().getId());
-        data.put("patientName", notificationHelper.getPatientName(triage.getPatient()));
-        data.put("encounterId", triage.getEncounter().getId());
+        data.put("triage_id", triage.getId());
+        data.put("patient_id", triage.getPatient().getId());
+        data.put("patient_name", notificationHelper.getPatientName(triage.getPatient()));
+        data.put("encounter_id", triage.getEncounter().getId());
 
-        data.put("facilityId", triage.getEncounter().getFacilityId());
-        data.put("facilityName", facilityDTO.name());
+        data.put("facility_id", triage.getEncounter().getFacilityId());
+        data.put("facility_name", facilityDTO.name());
 
-        data.put("departmentId", triage.getEncounter().getDepartmentId());
-        data.put("departmentName", department.name());
+        data.put("department_id", triage.getEncounter().getDepartmentId());
+        data.put("department_name", department.name());
 
-        data.put("lifeSaving", triage.getLifeSaving() != null ? triage.getLifeSaving().toString() : "");
+        data.put("life_saving", triage.getLifeSaving() != null ? triage.getLifeSaving().toString() : "");
         data.put("unresponsive", triage.getUnresponsive() != null ? triage.getUnresponsive().toString() : "");
-        data.put("highRisk", triage.getHighRisk() != null ? triage.getHighRisk().toString() : "");
-        data.put("avpuScale", triage.getAvpuScale() != null ? triage.getAvpuScale().toString() : "");
-        data.put("painScore", triage.getPainScore() != null ? triage.getPainScore().toString() : "");
-        data.put("emergencyLevel", triage.getEmergencyLevel() != null ? triage.getEmergencyLevel().toString() : "");
-        data.put("labsRequired", triage.getLabsRequired() != null ? triage.getLabsRequired().toString() : "");
-        data.put("imagingRequired", triage.getImagingRequired() != null ? triage.getImagingRequired().toString() : "");
-        data.put("ivFluidsRequired", triage.getIvFluidsRequired() != null ? triage.getIvFluidsRequired().toString() : "");
-        data.put("medicationRequired", triage.getMedicationRequired() != null ? triage.getMedicationRequired().toString() : "");
-        data.put("ecgRequired", triage.getEcgRequired() != null ? triage.getEcgRequired().toString() : "");
-        data.put("consultationRequired", triage.getConsultationRequired() != null ? triage.getConsultationRequired().toString() : "");
+        data.put("high_risk", triage.getHighRisk() != null ? triage.getHighRisk().toString() : "");
+        data.put("avpu_scale", triage.getAvpuScale() != null ? triage.getAvpuScale().toString() : "");
+        data.put("pain_score", triage.getPainScore() != null ? triage.getPainScore().toString() : "");
+        data.put("emergency_level", triage.getEmergencyLevel() != null ? triage.getEmergencyLevel().toString() : "");
+        data.put("labs_required", triage.getLabsRequired() != null ? triage.getLabsRequired().toString() : "");
+        data.put("imaging_required", triage.getImagingRequired() != null ? triage.getImagingRequired().toString() : "");
+        data.put("iv_fluids_required", triage.getIvFluidsRequired() != null ? triage.getIvFluidsRequired().toString() : "");
+        data.put("medication_required", triage.getMedicationRequired() != null ? triage.getMedicationRequired().toString() : "");
+        data.put("ecg_required", triage.getEcgRequired() != null ? triage.getEcgRequired().toString() : "");
+        data.put("consultation_required", triage.getConsultationRequired() != null ? triage.getConsultationRequired().toString() : "");
 
         notificationHelper.sendNotification(
                 null,

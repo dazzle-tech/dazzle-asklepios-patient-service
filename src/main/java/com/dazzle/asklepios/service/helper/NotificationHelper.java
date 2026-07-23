@@ -54,7 +54,7 @@ public class NotificationHelper {
             return;
         }
         String logoUrl = systemConfigurationClient.getResolvedValue(SystemConfigKey.SYSTEM_LOGO);
-        data.put("logoUrl", logoUrl);
+        data.put("logo_url", logoUrl);
         Long loggedInFacilityId= getLoggedInFacility();
         if (loggedInFacilityId != null) {
             FacilityDTO facilityDTO = facilityHelper.getFacility(facilityId);

@@ -447,28 +447,27 @@ public class ConsultationPortalService {
             Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, consultation.getCreatedBy(), consultation.getPatient(), practitioner,false);
 
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("consultationId", consultation.getId());
-            data.put("consultationNumber", consultation.getConsultationNumber());
-            data.put("patientId", consultation.getPatient() != null ? consultation.getPatient().getId() : "");
-            data.put("patientName", consultation.getPatient() != null ? notificationHelper.getPatientName(consultation.getPatient()) : "");
-            data.put("encounterId", consultation.getEncounter() != null ? consultation.getEncounter().getId() : "");
-            data.put("fromFacilityId", consultation.getFromFacilityId());
-            data.put("toFacilityId", consultation.getToFacilityId());
-            data.put("fromDepartmentId", consultation.getFromDepartmentId());
-            data.put("fromDepartmentName", fromDepartment.name());
-            data.put("toDepartmentId", consultation.getToDepartmentId());
-            data.put("toDepartmentName", toDepartment.name());
-            data.put("consultationType", consultation.getConsultationType() != null ? consultation.getConsultationType().toString() : "");
-            data.put("destinationType", consultation.getDestinationType() != null ? consultation.getDestinationType().toString() : "");
-            data.put("consultationLevel", consultation.getConsultationLevel() != null ? consultation.getConsultationLevel().toString() : "");
-            data.put("consultationMethod", consultation.getConsultationMethod() != null ? consultation.getConsultationMethod().toString() : "");
+            data.put("consultation_id", consultation.getId());
+            data.put("consultation_number", consultation.getConsultationNumber());
+            data.put("patient_id", consultation.getPatient() != null ? consultation.getPatient().getId() : "");
+            data.put("patient_name", consultation.getPatient() != null ? notificationHelper.getPatientName(consultation.getPatient()) : "");
+            data.put("encounter_id", consultation.getEncounter() != null ? consultation.getEncounter().getId() : "");
+            data.put("from_facility_id", consultation.getFromFacilityId());
+            data.put("to_facility_id", consultation.getToFacilityId());
+            data.put("from_department_id", consultation.getFromDepartmentId());
+            data.put("from_department_name", fromDepartment.name());
+            data.put("to_department_id", consultation.getToDepartmentId());
+            data.put("to_department_name", toDepartment.name());
+            data.put("consultation_type", consultation.getConsultationType() != null ? consultation.getConsultationType().toString() : "");
+            data.put("destination_type", consultation.getDestinationType() != null ? consultation.getDestinationType().toString() : "");
+            data.put("consultation_level", consultation.getConsultationLevel() != null ? consultation.getConsultationLevel().toString() : "");
+            data.put("consultation_method", consultation.getConsultationMethod() != null ? consultation.getConsultationMethod().toString() : "");
             data.put("status", consultation.getStatus() != null ? consultation.getStatus().toString() : "");
-            data.put("submittedBy", consultation.getSubmittedBy() != null ? consultation.getSubmittedBy() : "");
-            data.put("submittedDate", consultation.getSubmittedDate() != null ? consultation.getSubmittedDate().toString() : "");
-            data.put("rejectedBy", consultation.getRejectedBy() != null ? consultation.getRejectedBy() : "");
-            data.put("rejectedDate", consultation.getRejectedDate() != null ? consultation.getRejectedDate().toString() : "");
-            data.put("rejectReason", consultation.getRejectReason() != null ? consultation.getRejectReason() : "");
-
+            data.put("submitted_by", consultation.getSubmittedBy() != null ? consultation.getSubmittedBy() : "");
+            data.put("submitted_date", consultation.getSubmittedDate() != null ? consultation.getSubmittedDate().toString() : "");
+            data.put("rejected_by", consultation.getRejectedBy() != null ? consultation.getRejectedBy() : "");
+            data.put("rejected_date", consultation.getRejectedDate() != null ? consultation.getRejectedDate().toString() : "");
+            data.put("reject_reason", consultation.getRejectReason() != null ? consultation.getRejectReason() : "");
             if (extraData != null && !extraData.isEmpty()) {
                 data.putAll(extraData);
             }

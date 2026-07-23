@@ -146,14 +146,14 @@ public class PatientMergeExecuteService {
             Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(null, currentUsername(), mergeLog.getMergedBy(), targetPatient, null,false);
 
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("mergeLogId", mergeLog.getId());
-            data.put("transactionNumber", mergeLog.getTransactionNumber());
+            data.put("merge_log_id", mergeLog.getId());
+            data.put("transaction_number", mergeLog.getTransactionNumber());
 
-            data.put("sourcePatientId", sourcePatient.getId());
-            data.put("sourcePatientName", notificationHelper.getPatientName(sourcePatient));
+            data.put("source_patient_id", sourcePatient.getId());
+            data.put("source_patient_name", notificationHelper.getPatientName(sourcePatient));
 
-            data.put("targetPatientId", targetPatient.getId());
-            data.put("targetPatientName", notificationHelper.getPatientName(targetPatient));
+            data.put("target_patient_id", targetPatient.getId());
+            data.put("target_patient_name", notificationHelper.getPatientName(targetPatient));
 
             data.put("status", "MERGED");
 

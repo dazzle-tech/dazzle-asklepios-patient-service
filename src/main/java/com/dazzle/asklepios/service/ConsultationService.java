@@ -376,30 +376,29 @@ public class ConsultationService {
 
         Map<String, Object> data = new LinkedHashMap<>();
 
-        data.put("consultationId", consultation.getId());
-        data.put("patientId", patient.getId());
-        data.put("patientName", notificationHelper.getPatientName(patient));
-        data.put("encounterId", encounter.getId());
+        data.put("consultation_id", consultation.getId());
+        data.put("patient_id", patient.getId());
+        data.put("patient_name", notificationHelper.getPatientName(patient));
+        data.put("encounter_id", encounter.getId());
 
-        data.put("fromFacilityId", consultation.getFromFacilityId());
-        data.put("fromFacilityName", fromFacility.name());
+        data.put("from_facility_id", consultation.getFromFacilityId());
+        data.put("from_facility_name", fromFacility.name());
 
-        data.put("toFacilityId", consultation.getToFacilityId());
-        data.put("toFacilityName", toFacility.name());
+        data.put("to_facility_id", consultation.getToFacilityId());
+        data.put("to_facility_name", toFacility.name());
 
-        data.put("fromDepartmentId", consultation.getFromDepartmentId());
-        data.put("fromDepartmentName", fromDepartment.name());
+        data.put("from_department_id", consultation.getFromDepartmentId());
+        data.put("from_department_name", fromDepartment.name());
 
-        data.put("toDepartmentId", consultation.getToDepartmentId());
-        data.put("toDepartmentName", toDepartment.name());
+        data.put("to_department_id", consultation.getToDepartmentId());
+        data.put("to_department_name", toDepartment.name());
 
-        data.put("consultationType", consultation.getConsultationType() != null ? consultation.getConsultationType().toString() : "");
-        data.put("destinationType", consultation.getDestinationType() != null ? consultation.getDestinationType().toString() : "");
-        data.put("consultationLevel", consultation.getConsultationLevel() != null ? consultation.getConsultationLevel().toString() : "");
-        data.put("consultationMethod", consultation.getConsultationMethod() != null ? consultation.getConsultationMethod().toString() : "");
-        data.put("consultantSpeciality", consultation.getConsultantSpeciality() != null ? consultation.getConsultantSpeciality() : "");
+        data.put("consultation_type", consultation.getConsultationType() != null ? consultation.getConsultationType().toString() : "");
+        data.put("destination_type", consultation.getDestinationType() != null ? consultation.getDestinationType().toString() : "");
+        data.put("consultation_level", consultation.getConsultationLevel() != null ? consultation.getConsultationLevel().toString() : "");
+        data.put("consultation_method", consultation.getConsultationMethod() != null ? consultation.getConsultationMethod().toString() : "");
+        data.put("consultant_speciality", consultation.getConsultantSpeciality() != null ? consultation.getConsultantSpeciality() : "");
         data.put("status", consultation.getStatus() != null ? consultation.getStatus().toString() : "");
-
         notificationHelper.sendNotification(
                 null,
                 NotificationCode.CONSULTATION_CREATED,
