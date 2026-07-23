@@ -12,5 +12,7 @@ public enum ResponsiblePartyType {
 
     GUARANTOR,
 
-    THIRD_PARTY
+    THIRD_PARTY,
+
+    OTHER_PAYER
 }

@@ -33,6 +33,7 @@ public class BillingProcessingContext {
 
     private BillingChargeLine chargeLine;
 
+
     private BillingPricingSnapshot pricingSnapshot;
 
     private BillingChargeResponsibility patientResponsibility;

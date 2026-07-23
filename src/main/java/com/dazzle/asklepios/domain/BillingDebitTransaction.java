@@ -1,7 +1,7 @@
 package com.dazzle.asklepios.domain;
 
-import com.dazzle.asklepios.domain.enumeration.BillingDebitTransactionStatus;
-import com.dazzle.asklepios.domain.enumeration.BillingDebitTransactionType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingDebitTransactionStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingDebitTransactionType;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

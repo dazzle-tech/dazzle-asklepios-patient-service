@@ -1,10 +1,67 @@
 package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.BillingAllocation;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingAllocationStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.stereotype.Repository;
 
-@Repository
-public interface BillingAllocationRepository extends JpaRepository<BillingAllocation, Long> {
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
 
+@Repository
+public interface BillingAllocationRepository
+        extends JpaRepository<BillingAllocation, Long> {
+
+    @Override
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<BillingAllocation> findById(
+            Long id
+    );
+
+    Optional<BillingAllocation>
+    findByIdempotencyKey(
+            String idempotencyKey
+    );
+    List<BillingAllocation>
+    findAllByChargeLine_IdAndStatusInOrderByAllocationDateDescIdDesc(
+            Long chargeLineId,
+            Collection<BillingAllocationStatus> statuses
+    );
+    Optional<BillingAllocation>
+    findByAllocationNumber(
+            String allocationNumber
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    List<BillingAllocation>
+    findAllByChargeLine_IdAndStatusOrderByAllocationDateAscIdAsc(
+            Long chargeLineId,
+            BillingAllocationStatus status
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    List<BillingAllocation>
+    findAllByChargeResponsibility_IdAndStatusOrderByAllocationDateAscIdAsc(
+            Long chargeResponsibilityId,
+            BillingAllocationStatus status
+    );
+
+    List<BillingAllocation>
+    findAllByReservation_IdOrderByAllocationDateAscIdAsc(
+            Long reservationId
+    );
+
+    List<BillingAllocation>
+    findAllByPayment_IdOrderByAllocationDateAscIdAsc(
+            Long paymentId
+    );
+
+
+    List<BillingAllocation>
+    findAllByDebitTransactionIdOrderByAllocationDateAscIdAsc(
+            Long debitTransactionId
+    );
 }

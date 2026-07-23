@@ -26,5 +26,7 @@ public enum BillingResponsibilityStatus {
 
     SUPERSEDED,
 
-    CANCELLED
+    CANCELLED,
+
+    FULLY_ALLOCATED
 }

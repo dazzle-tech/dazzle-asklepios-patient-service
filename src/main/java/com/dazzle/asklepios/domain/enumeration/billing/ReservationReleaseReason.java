@@ -16,5 +16,9 @@ public enum ReservationReleaseReason {
 
     REPLACED,
 
+    QUANTITY_ZERO,
+
+    ENCOUNTER_CANCELLED,
+
     OTHER
 }

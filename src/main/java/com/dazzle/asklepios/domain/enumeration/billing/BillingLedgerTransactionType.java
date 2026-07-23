@@ -8,7 +8,11 @@ public enum BillingLedgerTransactionType {
 
     PAYMENT_REFUNDED,
 
+    WALLET_CREDITED,
+
     WALLET_RESERVED,
+
+    WALLET_AVAILABLE_CONSUMED,
 
     RESERVATION_CONSUMED,
 

@@ -35,4 +35,5 @@ public interface BillingChargeRepository
             Long encounterId,
             Collection<BillingChargeStatus> statuses
     );
+
 }

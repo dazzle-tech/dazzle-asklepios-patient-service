@@ -32,4 +32,16 @@ public interface BillingChargeLineRepository
             Long chargeId,
             Collection<BillingChargeLineStatus> excludedStatuses
     );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<BillingChargeLine>
+    findFirstByPatientServiceProduct_IdOrderByIdDesc(
+            Long patientServiceProductId
+    );
+
+    List<BillingChargeLine>
+    findAllByCharge_IdAndStatusNotOrderByIdAsc(
+            Long chargeId,
+            BillingChargeLineStatus excludedStatus
+    );
 }

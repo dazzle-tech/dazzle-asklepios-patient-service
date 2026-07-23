@@ -7,7 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.stereotype.Repository;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -21,22 +20,41 @@ public interface BillingReservationRepository
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     List<BillingReservation>
-    findAllByChargeLine_IdAndStatusInOrderByIdAsc(
+    findAllByChargeLine_IdAndStatusOrderByIdAsc(
             Long chargeLineId,
-            Collection<BillingReservationStatus> statuses
+            BillingReservationStatus status
     );
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     List<BillingReservation>
-    findAllByEncounter_IdAndStatusInOrderByIdAsc(
+    findAllByEncounter_IdAndStatusOrderByIdAsc(
             Long encounterId,
-            Collection<BillingReservationStatus> statuses
+            BillingReservationStatus status
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    List<BillingReservation>
+    findAllByChargeLine_IdAndStatusOrderByReservedDateDescIdDesc(
+            Long chargeLineId,
+            BillingReservationStatus status
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    List<BillingReservation>
+    findAllByChargeResponsibility_IdAndStatusOrderByIdAsc(
+            Long chargeResponsibilityId,
+            BillingReservationStatus status
     );
 
     List<BillingReservation>
-    findAllByWallet_IdAndStatusInOrderByIdAsc(
+    findAllByPayment_IdOrderByIdAsc(
+            Long paymentId
+    );
+
+    List<BillingReservation>
+    findAllByWallet_IdAndStatusOrderByIdAsc(
             Long walletId,
-            Collection<BillingReservationStatus> statuses
+            BillingReservationStatus status
     );
 
     Optional<BillingReservation>
@@ -44,14 +62,10 @@ public interface BillingReservationRepository
             String idempotencyKey
     );
 
-    BigDecimalProjection
-    findFirstByChargeLine_IdAndStatusInOrderByIdAsc(
-            Long chargeLineId,
-            Collection<BillingReservationStatus> statuses
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    List<BillingReservation>
+    findAllByChargeResponsibility_IdAndStatusOrderByReservedDateAscIdAsc(
+            Long chargeResponsibilityId,
+            BillingReservationStatus status
     );
-
-    interface BigDecimalProjection {
-
-        java.math.BigDecimal getRemainingReservedAmount();
-    }
 }

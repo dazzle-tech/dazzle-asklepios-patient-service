@@ -2,8 +2,7 @@ package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.Currency;
-import com.dazzle.asklepios.domain.enumeration.PayerType;
-import com.dazzle.asklepios.domain.enumeration.PaymentCategory;
+;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -65,12 +64,12 @@ public class BillingPayment extends AbstractAuditingEntity<Long> implements Seri
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_category", nullable = false, length = 30)
-    private PaymentCategory paymentCategory;
+    private com.dazzle.asklepios.domain.enumeration.billing.PaymentCategory paymentCategory;
 
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "payer_type", nullable = false, length = 30)
-    private PayerType payerType;
+    private com.dazzle.asklepios.domain.enumeration.billing.PayerType payerType;
 
     @Column(name = "payer_id")
     private Long payerId;

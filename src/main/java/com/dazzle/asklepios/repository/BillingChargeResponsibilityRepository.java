@@ -43,4 +43,31 @@ public interface BillingChargeResponsibilityRepository
 
     Optional<BillingChargeResponsibility>
     findByIdempotencyKey(String idempotencyKey);
+
+    Optional<BillingChargeResponsibility>
+    findFirstByChargeLine_IdAndResponsiblePartyTypeAndStatusOrderByIdDesc(
+            Long chargeLineId,
+            ResponsiblePartyType responsiblePartyType,
+            BillingResponsibilityStatus status
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    List<BillingChargeResponsibility>
+    findAllByChargeLine_IdOrderByIdAsc(
+            Long chargeLineId
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    List<BillingChargeResponsibility>
+    findAllByCharge_IdAndResponsiblePartyTypeAndStatusNotInOrderByIdAsc(
+            Long chargeId,
+            ResponsiblePartyType responsiblePartyType,
+            Collection<BillingResponsibilityStatus> excludedStatuses
+    );
+
+    List<BillingChargeResponsibility>
+    findAllByCharge_IdAndStatusNotInOrderByIdAsc(
+            Long chargeId,
+            Collection<BillingResponsibilityStatus> excludedStatuses
+    );
 }

@@ -1,8 +1,8 @@
 package com.dazzle.asklepios.domain;
 
-import com.dazzle.asklepios.domain.enumeration.BillingPaymentTransactionStatus;
-import com.dazzle.asklepios.domain.enumeration.BillingPaymentTransactionType;
 import com.dazzle.asklepios.domain.enumeration.Currency;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentTransactionStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentTransactionType;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -67,7 +67,7 @@ public class BillingPaymentTransaction extends AbstractAuditingEntity<Long>
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "transaction_type", nullable = false, length = 30)
-    private BillingPaymentTransactionType transactionType;
+    private com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentTransactionType transactionType;
 
     @NotNull
     @Column(name = "payment_method_id", nullable = false)
@@ -91,8 +91,8 @@ public class BillingPaymentTransaction extends AbstractAuditingEntity<Long>
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
-    private BillingPaymentTransactionStatus status =
-            BillingPaymentTransactionStatus.PENDING;
+    private com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentTransactionStatus status =
+            com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentTransactionStatus.PENDING;
 
     @NotNull
     @Column(name = "transaction_date", nullable = false)

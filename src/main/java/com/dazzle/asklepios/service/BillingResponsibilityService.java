@@ -29,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -915,5 +916,108 @@ public class BillingResponsibilityService {
         return value == null
                 ? BigDecimal.ZERO
                 : value;
+    }
+
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class
+    )
+    public void loadPatientResponsibility(
+            BillingProcessingContext context
+    ) {
+        if (context == null
+                || context.getChargeLine() == null
+                || context.getChargeLine().getId() == null) {
+            throw new BadRequestAlertException(
+                    "Persisted charge line is required.",
+                    ENTITY_NAME,
+                    "chargeLine.required"
+            );
+        }
+
+        BillingChargeResponsibility responsibility =
+                billingChargeResponsibilityRepository
+                        .findFirstByChargeLine_IdAndResponsiblePartyTypeAndStatusOrderByIdDesc(
+                                context.getChargeLine().getId(),
+                                ResponsiblePartyType.PATIENT,
+                                BillingResponsibilityStatus.CALCULATED
+                        )
+                        .orElse(null);
+
+        context.setPatientResponsibility(
+                responsibility
+        );
+
+        context.setPatientResponsibilityAmount(
+                responsibility == null
+                        ? BigDecimal.ZERO
+                        : money(
+                        responsibility
+                                .getResponsibilityAmount()
+                )
+        );
+    }
+
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class
+    )
+    public void cancelResponsibilitiesForChargeLine(
+            Long chargeLineId,
+            String reason
+    ) {
+        if (chargeLineId == null) {
+            throw new BadRequestAlertException(
+                    "Charge-line ID is required.",
+                    ENTITY_NAME,
+                    "chargeLineId.required"
+            );
+        }
+
+        List<BillingChargeResponsibility> responsibilities =
+                billingChargeResponsibilityRepository
+                        .findAllByChargeLine_IdOrderByIdAsc(
+                                chargeLineId
+                        );
+
+        for (BillingChargeResponsibility responsibility
+                : responsibilities) {
+
+            BigDecimal allocated =
+                    money(
+                            responsibility.getAllocatedAmount()
+                    );
+
+            if (allocated.signum() > 0) {
+                throw new BadRequestAlertException(
+                        "Responsibility still has allocated amount. "
+                                + "Reverse allocations before cancellation.",
+                        ENTITY_NAME,
+                        "responsibility.hasAllocation"
+                );
+            }
+
+            responsibility.setOutstandingAmount(
+                    BigDecimal.ZERO.setScale(
+                            4,
+                            RoundingMode.HALF_UP
+                    )
+            );
+
+            responsibility.setStatus(
+                    BillingResponsibilityStatus.CANCELLED
+            );
+
+            responsibility.setAdjustmentReason(
+                    reason
+            );
+
+            responsibility.setClosedDate(
+                    Instant.now()
+            );
+        }
+
+        billingChargeResponsibilityRepository
+                .saveAll(responsibilities);
     }
 }

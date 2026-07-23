@@ -2,17 +2,17 @@ package com.dazzle.asklepios.domain.enumeration.billing;
 
 public enum BillingLedgerSourceChannel {
 
-    API,
+    BILLING_ENGINE,
 
-    UI,
+    CASHIER,
+
+    PATIENT_PORTAL,
+
+    INSURANCE,
+
+    API,
 
     SYSTEM,
 
-    SCHEDULED_JOB,
-
-    INTEGRATION,
-
-    EVENT,
-
-    MIGRATION
+    MANUAL
 }
