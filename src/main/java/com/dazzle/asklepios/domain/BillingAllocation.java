@@ -1,8 +1,8 @@
 package com.dazzle.asklepios.domain;
 
-import com.dazzle.asklepios.domain.enumeration.AllocationSourceType;
-import com.dazzle.asklepios.domain.enumeration.BillingAllocationStatus;
 import com.dazzle.asklepios.domain.enumeration.Currency;
+import com.dazzle.asklepios.domain.enumeration.billing.AllocationSourceType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingAllocationStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -70,7 +70,7 @@ public class BillingAllocation extends AbstractAuditingEntity<Long>
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "patient_service_product_id", nullable = false)
-    private PatientServicesAndProducts patientServiceProduct;
+    private PatientServiceAndProduct patientServiceProduct;
 
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

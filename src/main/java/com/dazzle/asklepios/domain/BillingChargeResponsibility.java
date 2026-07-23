@@ -1,10 +1,10 @@
 package com.dazzle.asklepios.domain;
 
-import com.dazzle.asklepios.domain.enumeration.BillingResponsibilityStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStatus;
 import com.dazzle.asklepios.domain.enumeration.Currency;
-import com.dazzle.asklepios.domain.enumeration.PreAuthorizationStatus;
-import com.dazzle.asklepios.domain.enumeration.ResponsibilityRole;
-import com.dazzle.asklepios.domain.enumeration.ResponsiblePartyType;
+import com.dazzle.asklepios.domain.enumeration.billing.PreAuthorizationStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.ResponsibilityRole;
+import com.dazzle.asklepios.domain.enumeration.billing.ResponsiblePartyType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -61,7 +61,7 @@ public class BillingChargeResponsibility extends AbstractAuditingEntity<Long> im
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "patient_service_product_id", nullable = false)
-    private PatientServicesAndProducts patientServiceProduct;
+    private PatientServiceAndProduct patientServiceProduct;
 
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
