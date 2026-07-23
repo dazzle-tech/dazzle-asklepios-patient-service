@@ -38,66 +38,77 @@ public class NotificationHelper {
     private final FacilityHelper facilityHelper;
 
     public void sendNotification(Long facilityId, NotificationCode code, Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule, Map<String, Object> data, String relatedEntityType, Long relatedEntityId) {
+        try {
+            if (code == null) {
+                log.warn("[NOTIFICATION] Skip notification because code is missing");
+                return;
+            }
 
-        if (code == null) {
-            log.warn("[NOTIFICATION] Skip notification because code is missing");
-            return;
-        }
+            if (recipientsByRule == null || recipientsByRule.isEmpty()) {
+                log.warn(
+                        "[NOTIFICATION] Skip notification because no recipients. code={}, relatedEntityType={}, relatedEntityId={}",
+                        code,
+                        relatedEntityType,
+                        relatedEntityId
+                );
+                return;
+            }
+            String logoUrl = systemConfigurationClient.getResolvedValue(SystemConfigKey.SYSTEM_LOGO);
+            data.put("logo_url", logoUrl);
+            Long loggedInFacilityId = getLoggedInFacility();
+            if (loggedInFacilityId != null) {
+                FacilityDTO facilityDTO = facilityHelper.getFacility(loggedInFacilityId);
+                data.put("facility_name", facilityDTO.name());
+            }
+            Map<String, Map<String, List<NotificationResolvedRecipientDTO>>> groupedRecipients =
+                    groupRecipientsByLanguage(recipientsByRule);
 
-        if (recipientsByRule == null || recipientsByRule.isEmpty()) {
+            for (Map.Entry<String, Map<String, List<NotificationResolvedRecipientDTO>>> languageEntry : groupedRecipients.entrySet()) {
+
+                String language = languageEntry.getKey();
+
+                NotificationCreateDTO dto = new NotificationCreateDTO(
+                        facilityId,
+                        code,
+                        language,
+                        null,
+                        languageEntry.getValue(),
+                        data,
+                        relatedEntityType,
+                        relatedEntityId
+                );
+
+                try {
+
+                    log.debug(
+                            "[NOTIFICATION] Creating notification. language={}, code={}, recipients={}",
+                            language,
+                            code,
+                            languageEntry.getValue()
+                    );
+
+                    notificationClient.createNotification(dto);
+
+                } catch (Exception e) {
+
+                    log.warn(
+                            "[NOTIFICATION] Failed notification. language={}, code={}, error={}",
+                            language,
+                            code,
+                            e.getMessage()
+                    );
+                }
+            }
+        } catch (Exception e) {
             log.warn(
-                    "[NOTIFICATION] Skip notification because no recipients. code={}, relatedEntityType={}, relatedEntityId={}",
+                    "[NOTIFICATION] Failed notification. code={}, error={},recipientsByRule={},data={},relatedEntityType={},relatedEntityId={}",
                     code,
-                    relatedEntityType,
-                    relatedEntityId
-            );
-            return;
-        }
-        String logoUrl = systemConfigurationClient.getResolvedValue(SystemConfigKey.SYSTEM_LOGO);
-        data.put("logo_url", logoUrl);
-        Long loggedInFacilityId= getLoggedInFacility();
-        if (loggedInFacilityId != null) {
-            FacilityDTO facilityDTO = facilityHelper.getFacility(facilityId);
-            data.put("facility_name", facilityDTO.name());
-        }
-        Map<String, Map<String, List<NotificationResolvedRecipientDTO>>> groupedRecipients =
-                groupRecipientsByLanguage(recipientsByRule);
-
-        for (Map.Entry<String, Map<String, List<NotificationResolvedRecipientDTO>>> languageEntry : groupedRecipients.entrySet()) {
-
-            String language = languageEntry.getKey();
-
-            NotificationCreateDTO dto = new NotificationCreateDTO(
-                    facilityId,
-                    code,
-                    language,
-                    null,
-                    languageEntry.getValue(),
+                    e.getMessage(),
+                    recipientsByRule,
                     data,
                     relatedEntityType,
                     relatedEntityId
             );
-
-            try {
-
-                log.debug(
-                        "[NOTIFICATION] Creating notification. language={}, code={}, recipients={}",
-                        language,
-                        code,
-                        languageEntry.getValue()
-                );
-
-                notificationClient.createNotification(dto);
-
-            } catch (Exception e) {
-
-                log.warn(
-                        "[NOTIFICATION] Failed notification. language={}, code={}, error={}",
-                        language,
-                        code,
-                        e.getMessage()
-                );
-            }
         }
     }
 
