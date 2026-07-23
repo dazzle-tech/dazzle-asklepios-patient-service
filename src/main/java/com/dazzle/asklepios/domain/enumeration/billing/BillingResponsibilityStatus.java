@@ -2,6 +2,10 @@ package com.dazzle.asklepios.domain.enumeration.billing;
 
 public enum BillingResponsibilityStatus {
 
+    OPEN,
+
+    REVERSED,
+
     CALCULATED,
 
     PENDING_AUTHORIZATION,

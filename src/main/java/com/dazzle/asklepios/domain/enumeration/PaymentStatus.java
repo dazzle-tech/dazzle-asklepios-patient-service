@@ -1,11 +1,26 @@
 package com.dazzle.asklepios.domain.enumeration;
 
 public enum PaymentStatus {
+
     PENDING,
-    PAID,
+
     PARTIALLY_PAID,
-    UNPAID,
-    CANCELLED,
-    REFUNDED,
-    SKIPPED_PENDING_PRE_AUTH
+
+    PAID,
+
+    RESERVED,
+
+    PARTIALLY_RESERVED,
+
+    DEBIT,
+
+    PARTIALLY_DEBIT,
+
+    EXEMPTED,
+
+    INSURANCE_PENDING,
+
+    SKIPPED_PENDING_PRE_AUTH,
+
+    CANCELLED
 }

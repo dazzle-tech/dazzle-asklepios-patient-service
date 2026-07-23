@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.client.setup.dto.BrandMedicationSetupDTO;
+import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
@@ -72,7 +73,7 @@ public class BillingChargeLine extends AbstractAuditingEntity<Long>
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "billing_item_type", nullable = false, length = 50)
-    private BillingItemType billingItemType;
+    private BillingItemTypes billingItemType;
 
     @Column(name = "brand_medication_id")
     private Long brandMedicationId;
@@ -222,4 +223,5 @@ public class BillingChargeLine extends AbstractAuditingEntity<Long>
 
     @Column(name = "notes", columnDefinition = "text")
     private String notes;
+
 }

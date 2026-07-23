@@ -1,12 +1,6 @@
 package com.dazzle.asklepios.domain.enumeration.billing;
 
-public enum ExemptionType {
-
-    PARTIAL,
-
+public enum DiscountType {
     PERCENTAGE,
-
-    FIXED_AMOUNT,
-
-    FULL
+    FIXED_AMOUNT
 }

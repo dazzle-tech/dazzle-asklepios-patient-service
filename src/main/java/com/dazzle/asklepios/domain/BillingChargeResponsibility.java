@@ -1,10 +1,10 @@
 package com.dazzle.asklepios.domain;
 
-import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStatus;
 import com.dazzle.asklepios.domain.enumeration.Currency;
-import com.dazzle.asklepios.domain.enumeration.billing.PreAuthorizationStatus;
-import com.dazzle.asklepios.domain.enumeration.billing.ResponsibilityRole;
 import com.dazzle.asklepios.domain.enumeration.billing.ResponsiblePartyType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.ResponsibilityRole;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
