@@ -93,6 +93,9 @@ public class BillingAllocationService {
 
     private final BillingDebitTransactionRepository
             billingDebitTransactionRepository;
+
+    private final BillingAllocationService
+            billingAllocationService;
     /*
      * ============================================================
      * ALLOCATION FROM RESERVATION
@@ -3077,6 +3080,160 @@ public class BillingAllocationService {
         validateRequestInformation(
                 requestId,
                 sourceChannel
+        );
+    }
+
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class
+    )
+    public BillingAllocationReversalResult reverseDebitAllocationBalances(
+            Long allocationId,
+            BigDecimal requestedAmount,
+            String reason,
+            String reversedBy
+    ) {
+        if (allocationId == null) {
+            throw new BadRequestAlertException(
+                    "Allocation ID is required.",
+                    ENTITY_NAME,
+                    "allocationId.required"
+            );
+        }
+
+        if (reason == null || reason.isBlank()) {
+            throw new BadRequestAlertException(
+                    "Debit-allocation reversal reason is required.",
+                    ENTITY_NAME,
+                    "reason.required"
+            );
+        }
+
+        if (reversedBy == null || reversedBy.isBlank()) {
+            throw new BadRequestAlertException(
+                    "Reversed-by user is required.",
+                    ENTITY_NAME,
+                    "reversedBy.required"
+            );
+        }
+
+        BillingAllocation allocation =
+                billingAllocationRepository
+                        .findById(allocationId)
+                        .orElseThrow(() ->
+                                new NotFoundAlertException(
+                                        "Billing allocation not found with id "
+                                                + allocationId,
+                                        ENTITY_NAME,
+                                        "allocation.notfound"
+                                )
+                        );
+
+        if (allocation.getAllocationSourceType()
+                != AllocationSourceType.DEBIT) {
+            throw new BadRequestAlertException(
+                    "Only debit allocations may be reversed through this operation.",
+                    ENTITY_NAME,
+                    "allocation.notDebit"
+            );
+        }
+
+        if (allocation.getStatus()
+                == BillingAllocationStatus.CANCELLED) {
+            throw new BadRequestAlertException(
+                    "Cancelled allocation cannot be reversed.",
+                    ENTITY_NAME,
+                    "allocation.cancelled"
+            );
+        }
+
+        if (allocation.getStatus()
+                == BillingAllocationStatus.REVERSED) {
+            return buildReversalResult(
+                    allocation,
+                    zero(),
+                    null
+            );
+        }
+
+        BigDecimal reversalAmount =
+                resolveReversalAmount(
+                        allocation,
+                        requestedAmount
+                );
+
+        BillingChargeResponsibility responsibility =
+                lockResponsibility(
+                        allocation
+                                .getChargeResponsibility()
+                                .getId()
+                );
+
+        BillingChargeLine chargeLine =
+                lockChargeLine(
+                        allocation
+                                .getChargeLine()
+                                .getId()
+                );
+
+        BillingCharge charge =
+                lockCharge(
+                        allocation
+                                .getCharge()
+                                .getId()
+                );
+
+        PatientServiceAndProduct item =
+                loadPatientServiceProduct(
+                        allocation
+                                .getPatientServiceProduct()
+                                .getId()
+                );
+
+        reverseResponsibility(
+                responsibility,
+                reversalAmount
+        );
+
+        reverseChargeLine(
+                chargeLine,
+                reversalAmount
+        );
+
+        reverseCharge(
+                charge,
+                reversalAmount
+        );
+
+        reverseAllocationAmounts(
+                allocation,
+                reversalAmount,
+                reason,
+                reversedBy
+        );
+
+        updatePatientItemAfterReversal(
+                item,
+                responsibility
+        );
+
+        LOG.info(
+                "[REVERSE_DEBIT_ALLOCATION] Debit allocation balances reversed "
+                        + "allocationId={} amount={} "
+                        + "responsibilityOutstanding={} "
+                        + "chargeLineOutstanding={} "
+                        + "chargeOutstanding={}",
+                allocation.getId(),
+                reversalAmount,
+                responsibility.getOutstandingAmount(),
+                chargeLine.getOutstandingAmount(),
+                charge.getOutstandingAmount()
+        );
+
+        return buildReversalResult(
+                allocation,
+                reversalAmount,
+                null
         );
     }
 }

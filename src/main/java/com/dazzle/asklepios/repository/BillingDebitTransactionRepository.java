@@ -58,4 +58,13 @@ public interface BillingDebitTransactionRepository
             BillingDebitTransactionType transactionType,
             BillingDebitTransactionStatus status
     );
+
+    Optional<BillingDebitTransaction>
+    findFirstByParentTransaction_IdAndTransactionTypeAndStatusOrderByIdDesc(
+            Long parentTransactionId,
+            BillingDebitTransactionType transactionType,
+            BillingDebitTransactionStatus status
+    );
+
+
 }

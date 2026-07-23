@@ -12,19 +12,15 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface BillingAllocationRepository
-        extends JpaRepository<BillingAllocation, Long> {
+public interface BillingAllocationRepository extends JpaRepository<BillingAllocation, Long> {
 
     @Override
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    Optional<BillingAllocation> findById(
-            Long id
-    );
+    Optional<BillingAllocation> findById( Long id);
 
     Optional<BillingAllocation>
-    findByIdempotencyKey(
-            String idempotencyKey
-    );
+    findByIdempotencyKey(String idempotencyKey);
+
     List<BillingAllocation>
     findAllByChargeLine_IdAndStatusInOrderByAllocationDateDescIdDesc(
             Long chargeLineId,
@@ -64,4 +60,13 @@ public interface BillingAllocationRepository
     findAllByDebitTransactionIdOrderByAllocationDateAscIdAsc(
             Long debitTransactionId
     );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<BillingAllocation>
+    findFirstByDebitTransactionIdAndStatusInOrderByIdDesc(
+            Long debitTransactionId,
+            Collection<BillingAllocationStatus> statuses
+    );
+
+    
 }

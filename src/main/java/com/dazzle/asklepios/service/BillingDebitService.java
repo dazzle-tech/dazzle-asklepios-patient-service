@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.BillingAllocation;
 import com.dazzle.asklepios.domain.BillingChargeResponsibility;
 import com.dazzle.asklepios.domain.BillingDebitAccount;
 import com.dazzle.asklepios.domain.BillingDebitTransaction;
@@ -7,6 +8,7 @@ import com.dazzle.asklepios.domain.BillingPayment;
 import com.dazzle.asklepios.domain.BillingPaymentTransaction;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.Currency;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingAllocationStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingDebitAccountStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingDebitTransactionStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingDebitTransactionType;
@@ -15,11 +17,14 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryDirecti
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerScope;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerSourceChannel;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerTransactionType;
+import com.dazzle.asklepios.repository.BillingAllocationRepository;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
 import com.dazzle.asklepios.repository.BillingDebitAccountRepository;
 import com.dazzle.asklepios.repository.BillingDebitTransactionRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.service.dto.billing.BillingAllocationReversalResult;
 import com.dazzle.asklepios.service.dto.billing.BillingDebitCreationResult;
+import com.dazzle.asklepios.service.dto.billing.BillingDebitReversalResult;
 import com.dazzle.asklepios.service.dto.billing.BillingDebitSettlementResult;
 import com.dazzle.asklepios.service.dto.billing.BillingLedgerEntryRequest;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -37,6 +42,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.EnumSet;
 import java.util.UUID;
 
 @Service
@@ -67,6 +73,8 @@ public class BillingDebitService {
 
     private final BillingLedgerService
             billingLedgerService;
+    private final BillingAllocationRepository billingAllocationRepository;
+    private final BillingAllocationService billingAllocationService;
 
     /*
      * Creates or loads one debit account per patient/currency.
@@ -1432,5 +1440,652 @@ public class BillingDebitService {
         }
 
         return value.trim();
+    }
+
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class
+    )
+    public BillingDebitReversalResult reverseDebit(
+            Long debitTransactionId,
+            BigDecimal requestedAmount,
+            String reason,
+            String reversedBy,
+            String requestId,
+            BillingLedgerSourceChannel sourceChannel
+    ) {
+        validateDebitReversalInput(
+                debitTransactionId,
+                requestedAmount,
+                reason,
+                reversedBy,
+                requestId,
+                sourceChannel
+        );
+
+        String idempotencyKey =
+                "DEBIT:REVERSAL:TRANSACTION:"
+                        + debitTransactionId
+                        + ":"
+                        + requestId.trim();
+
+        BillingDebitTransaction existingReversal =
+                billingDebitTransactionRepository
+                        .findByIdempotencyKey(
+                                idempotencyKey
+                        )
+                        .orElse(null);
+
+        if (existingReversal != null) {
+            return buildDebitReversalResult(
+                    existingReversal,
+                    null
+            );
+        }
+
+        BillingDebitTransaction originalTransaction =
+                billingDebitTransactionRepository
+                        .findById(debitTransactionId)
+                        .orElseThrow(() ->
+                                new NotFoundAlertException(
+                                        "Billing debit transaction not found with id "
+                                                + debitTransactionId,
+                                        ENTITY_NAME,
+                                        "debitTransaction.notfound"
+                                )
+                        );
+
+        validateOriginalDebitTransaction(
+                originalTransaction
+        );
+
+        BillingAllocation allocation =
+                billingAllocationRepository
+                        .findFirstByDebitTransactionIdAndStatusInOrderByIdDesc(
+                                originalTransaction.getId(),
+                                EnumSet.of(
+                                        BillingAllocationStatus.ACTIVE,
+                                        BillingAllocationStatus.PARTIALLY_REVERSED
+                                )
+                        )
+                        .orElseThrow(() ->
+                                new NotFoundAlertException(
+                                        "Active debit allocation was not found for debit transaction "
+                                                + originalTransaction.getId(),
+                                        ENTITY_NAME,
+                                        "debitAllocation.notfound"
+                                )
+                        );
+
+        BillingDebitAccount account =
+                lockAccount(
+                        originalTransaction
+                                .getDebitAccount()
+                                .getId()
+                );
+
+        validateAccountUsable(account);
+
+        BigDecimal amount =
+                resolveDebitReversalAmount(
+                        originalTransaction,
+                        allocation,
+                        requestedAmount
+                );
+
+        BigDecimal balanceBefore =
+                money(
+                        account.getCurrentDebitBalance()
+                );
+
+        if (balanceBefore.compareTo(amount) < 0) {
+            throw new BadRequestAlertException(
+                    "Debit reversal amount exceeds the current debit-account balance.",
+                    ENTITY_NAME,
+                    "debitReversal.exceedsBalance"
+            );
+        }
+
+        /*
+         * Reverse Charge / Responsibility / Allocation first.
+         * No wallet operation is performed.
+         */
+        BillingAllocationReversalResult allocationResult =
+                billingAllocationService
+                        .reverseDebitAllocationBalances(
+                                allocation.getId(),
+                                amount,
+                                reason,
+                                reversedBy
+                        );
+
+        BigDecimal balanceAfter =
+                balanceBefore.subtract(amount);
+
+        BigDecimal availableCreditAfter =
+                money(
+                        account.getCreditLimit()
+                ).subtract(balanceAfter);
+
+        account.setCurrentDebitBalance(
+                balanceAfter
+        );
+
+        account.setAvailableCredit(
+                availableCreditAfter
+        );
+
+        /*
+         * A reversal reduces the net debit-created history.
+         * We do not reduce totalDebitCreated because it is an audit total.
+         *
+         * Keep:
+         * totalDebitCreated = lifetime created amount
+         * totalDebitSettled = actual payment settlements only
+         */
+
+        validateAccountBalance(account);
+
+        BillingDebitAccount savedAccount =
+                billingDebitAccountRepository.save(
+                        account
+                );
+
+        BillingDebitTransaction reversalTransaction =
+                BillingDebitTransaction.builder()
+                        .transactionNumber(
+                                generateTransactionNumber()
+                        )
+                        .debitAccount(
+                                savedAccount
+                        )
+                        .patient(
+                                originalTransaction.getPatient()
+                        )
+                        .encounter(
+                                originalTransaction.getEncounter()
+                        )
+                        .chargeResponsibility(
+                                originalTransaction
+                                        .getChargeResponsibility()
+                        )
+                        .charge(
+                                originalTransaction.getCharge()
+                        )
+                        .chargeLine(
+                                originalTransaction.getChargeLine()
+                        )
+                        .patientServiceProduct(
+                                originalTransaction
+                                        .getPatientServiceProduct()
+                        )
+                        .payment(null)
+                        .paymentTransaction(null)
+                        .parentTransaction(
+                                originalTransaction
+                        )
+                        .transactionType(
+                                BillingDebitTransactionType
+                                        .DEBIT_REVERSAL
+                        )
+                        .amount(amount)
+                        .currency(
+                                originalTransaction.getCurrency()
+                        )
+                        .balanceBefore(
+                                balanceBefore
+                        )
+                        .balanceAfter(
+                                balanceAfter
+                        )
+                        .status(
+                                BillingDebitTransactionStatus.COMPLETED
+                        )
+                        .transactionDate(
+                                Instant.now()
+                        )
+                        .dueDate(null)
+                        .settledDate(null)
+                        .referenceType(
+                                "BILLING_DEBIT_TRANSACTION"
+                        )
+                        .referenceId(
+                                originalTransaction.getId()
+                        )
+                        .referenceNumber(
+                                originalTransaction
+                                        .getTransactionNumber()
+                        )
+                        .reason(
+                                reason.trim()
+                        )
+                        .approvedBy(
+                                reversedBy.trim()
+                        )
+                        .approvedDate(
+                                Instant.now()
+                        )
+                        .idempotencyKey(
+                                idempotencyKey
+                        )
+                        .transactionGroupId(
+                                allocation
+                                        .getTransactionGroupId()
+                        )
+                        .notes(
+                                "Patient debit and related charge allocation reversed."
+                        )
+                        .build();
+
+        BillingDebitTransaction savedReversal =
+                saveTransaction(
+                        reversalTransaction,
+                        idempotencyKey
+                );
+
+        recordDebitReversalLedger(
+                savedReversal,
+                originalTransaction,
+                allocation,
+                amount,
+                balanceBefore,
+                balanceAfter,
+                reason,
+                requestId,
+                sourceChannel
+        );
+
+        if (money(
+                allocation.getRemainingAllocatedAmount()
+        ).signum() == 0) {
+            originalTransaction.setStatus(
+                    BillingDebitTransactionStatus.REVERSED
+            );
+
+            billingDebitTransactionRepository.save(
+                    originalTransaction
+            );
+        }
+
+        LOG.info(
+                "[REVERSE_DEBIT] Debit reversed "
+                        + "originalTransactionId={} "
+                        + "reversalTransactionId={} "
+                        + "allocationId={} amount={} "
+                        + "balanceBefore={} balanceAfter={}",
+                originalTransaction.getId(),
+                savedReversal.getId(),
+                allocation.getId(),
+                amount,
+                balanceBefore,
+                balanceAfter
+        );
+
+        return buildDebitReversalResult(
+                savedReversal,
+                allocationResult
+        );
+    }
+
+    private BigDecimal resolveDebitReversalAmount(
+            BillingDebitTransaction originalTransaction,
+            BillingAllocation allocation,
+            BigDecimal requestedAmount
+    ) {
+        BigDecimal requested =
+                positiveMoney(
+                        requestedAmount,
+                        "Debit reversal amount"
+                );
+
+        BigDecimal originalAmount =
+                money(
+                        originalTransaction.getAmount()
+                );
+
+        BigDecimal allocationRemaining =
+                money(
+                        allocation
+                                .getRemainingAllocatedAmount()
+                );
+
+        BigDecimal previouslyReversed =
+                billingDebitTransactionRepository
+                        .findAllByDebitAccount_IdOrderByTransactionDateAscIdAsc(
+                                originalTransaction
+                                        .getDebitAccount()
+                                        .getId()
+                        )
+                        .stream()
+                        .filter(transaction ->
+                                transaction.getParentTransaction() != null
+                                        && transaction
+                                        .getParentTransaction()
+                                        .getId()
+                                        .equals(
+                                                originalTransaction.getId()
+                                        )
+                        )
+                        .filter(transaction ->
+                                transaction.getTransactionType()
+                                        == BillingDebitTransactionType
+                                        .DEBIT_REVERSAL
+                        )
+                        .filter(transaction ->
+                                transaction.getStatus()
+                                        == BillingDebitTransactionStatus
+                                        .COMPLETED
+                        )
+                        .map(
+                                BillingDebitTransaction::getAmount
+                        )
+                        .map(this::money)
+                        .reduce(
+                                zero(),
+                                BigDecimal::add
+                        );
+
+        BigDecimal transactionRemaining =
+                originalAmount
+                        .subtract(previouslyReversed)
+                        .max(zero());
+
+        BigDecimal amount =
+                minimum(
+                        requested,
+                        transactionRemaining,
+                        allocationRemaining
+                );
+
+        if (amount.signum() <= 0) {
+            throw new BadRequestAlertException(
+                    "No debit amount remains available for reversal.",
+                    ENTITY_NAME,
+                    "debitReversal.amount.zero"
+            );
+        }
+
+        return amount;
+    }
+
+    private void validateOriginalDebitTransaction(
+            BillingDebitTransaction transaction
+    ) {
+        if (transaction.getTransactionType()
+                != BillingDebitTransactionType.DEBIT_CREATED) {
+            throw new BadRequestAlertException(
+                    "Only DEBIT_CREATED transactions may be reversed.",
+                    ENTITY_NAME,
+                    "debitTransaction.type.notReversible"
+            );
+        }
+
+        if (transaction.getStatus()
+                != BillingDebitTransactionStatus.COMPLETED) {
+            throw new BadRequestAlertException(
+                    "Only completed debit transactions may be reversed.",
+                    ENTITY_NAME,
+                    "debitTransaction.status.notReversible"
+            );
+        }
+
+        if (transaction.getDebitAccount() == null
+                || transaction.getDebitAccount().getId() == null) {
+            throw new BadRequestAlertException(
+                    "Debit transaction does not have a debit account.",
+                    ENTITY_NAME,
+                    "debitTransaction.account.missing"
+            );
+        }
+
+        if (transaction.getChargeResponsibility() == null
+                || transaction
+                .getChargeResponsibility()
+                .getId() == null) {
+            throw new BadRequestAlertException(
+                    "Debit transaction does not have a billing responsibility.",
+                    ENTITY_NAME,
+                    "debitTransaction.responsibility.missing"
+            );
+        }
+    }
+
+    private void recordDebitReversalLedger(
+            BillingDebitTransaction reversalTransaction,
+            BillingDebitTransaction originalTransaction,
+            BillingAllocation allocation,
+            BigDecimal amount,
+            BigDecimal balanceBefore,
+            BigDecimal balanceAfter,
+            String reason,
+            String requestId,
+            BillingLedgerSourceChannel sourceChannel
+    ) {
+        billingLedgerService.record(
+                new BillingLedgerEntryRequest(
+                        reversalTransaction
+                                .getTransactionGroupId(),
+
+                        requestId.trim(),
+
+                        reversalTransaction
+                                .getIdempotencyKey()
+                                + ":LEDGER",
+
+                        reversalTransaction.getPatient(),
+
+                        reversalTransaction.getEncounter(),
+
+                        null,
+
+                        null,
+
+                        null,
+
+                        reversalTransaction.getCharge(),
+
+                        reversalTransaction.getChargeLine(),
+
+                        reversalTransaction
+                                .getChargeResponsibility(),
+
+                        null,
+
+                        allocation,
+
+                        reversalTransaction
+                                .getDebitAccount(),
+
+                        reversalTransaction,
+
+                        null,
+
+                        BillingLedgerTransactionType
+                                .DEBIT_REVERSED,
+
+                        BillingLedgerScope
+                                .DEBIT_ACCOUNT,
+
+                        amount,
+
+                        reversalTransaction.getCurrency(),
+
+                        zero(),
+                        zero(),
+                        zero(),
+                        zero(),
+
+                        amount.negate(),
+
+                        amount.negate(),
+
+                        amount,
+
+                        null,
+                        null,
+                        null,
+                        null,
+
+                        balanceBefore,
+                        balanceAfter,
+
+                        /*
+                         * Responsibility was reopened by
+                         * reverseDebitAllocationBalances().
+                         */
+                        money(
+                                reversalTransaction
+                                        .getChargeResponsibility()
+                                        .getOutstandingAmount()
+                        ).subtract(amount),
+
+                        money(
+                                reversalTransaction
+                                        .getChargeResponsibility()
+                                        .getOutstandingAmount()
+                        ),
+
+                        BillingLedgerEntryDirection.CREDIT,
+
+                        BillingLedgerEntryCategory.REVERSAL,
+
+                        null,
+
+                        "BILLING_DEBIT_TRANSACTION",
+
+                        originalTransaction.getId(),
+
+                        originalTransaction
+                                .getTransactionNumber(),
+
+                        "Patient debit and related charge allocation reversed.",
+
+                        reason.trim(),
+
+                        sourceChannel
+                )
+        );
+    }
+
+    private BillingDebitReversalResult
+    buildDebitReversalResult(
+            BillingDebitTransaction reversalTransaction,
+            BillingAllocationReversalResult allocationResult
+    ) {
+        BillingDebitAccount account =
+                reversalTransaction.getDebitAccount();
+
+        BillingChargeResponsibility responsibility =
+                reversalTransaction
+                        .getChargeResponsibility();
+
+        return new BillingDebitReversalResult(
+                reversalTransaction.getParentTransaction()
+                        == null
+                        ? null
+                        : reversalTransaction
+                        .getParentTransaction()
+                        .getId(),
+
+                reversalTransaction.getId(),
+
+                reversalTransaction
+                        .getTransactionNumber(),
+
+                allocationResult == null
+                        ? null
+                        : allocationResult.allocationId(),
+
+                money(
+                        reversalTransaction.getAmount()
+                ),
+
+                money(
+                        reversalTransaction.getBalanceBefore()
+                ),
+
+                money(
+                        reversalTransaction.getBalanceAfter()
+                ),
+
+                money(
+                        account.getAvailableCredit()
+                ),
+
+                responsibility == null
+                        ? zero()
+                        : money(
+                        responsibility
+                                .getOutstandingAmount()
+                ),
+
+                reversalTransaction.getChargeLine() == null
+                        ? zero()
+                        : money(
+                        reversalTransaction
+                                .getChargeLine()
+                                .getOutstandingAmount()
+                ),
+
+                reversalTransaction.getCharge() == null
+                        ? zero()
+                        : money(
+                        reversalTransaction
+                                .getCharge()
+                                .getOutstandingAmount()
+                ),
+
+                reversalTransaction.getCurrency(),
+
+                reversalTransaction.getStatus(),
+
+                allocationResult == null
+                        ? null
+                        : allocationResult.allocationStatus()
+        );
+    }
+
+    private void validateDebitReversalInput(
+            Long debitTransactionId,
+            BigDecimal requestedAmount,
+            String reason,
+            String reversedBy,
+            String requestId,
+            BillingLedgerSourceChannel sourceChannel
+    ) {
+        if (debitTransactionId == null) {
+            throw new BadRequestAlertException(
+                    "Debit transaction ID is required.",
+                    ENTITY_NAME,
+                    "debitTransactionId.required"
+            );
+        }
+
+        positiveMoney(
+                requestedAmount,
+                "Debit reversal amount"
+        );
+
+        if (reason == null || reason.isBlank()) {
+            throw new BadRequestAlertException(
+                    "Debit reversal reason is required.",
+                    ENTITY_NAME,
+                    "reason.required"
+            );
+        }
+
+        if (reversedBy == null
+                || reversedBy.isBlank()) {
+            throw new BadRequestAlertException(
+                    "Reversed-by user is required.",
+                    ENTITY_NAME,
+                    "reversedBy.required"
+            );
+        }
+
+        validateRequestInfo(
+                requestId,
+                sourceChannel
+        );
     }
 }
