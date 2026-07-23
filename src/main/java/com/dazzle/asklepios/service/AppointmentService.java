@@ -944,8 +944,6 @@ public class AppointmentService {
 
     @Transactional
     public Appointment createIntegrationAppointment(AppointmentIntegrationCreateDTO dto) {
-        DepartmentDTO departmentDTO = departmentHelper.getDepartment(dto.departmentId());
-
         validateCreateAppointment(dto);
 
         Patient patient = patientRepository.findById(dto.patientId())
@@ -955,41 +953,48 @@ public class AppointmentService {
                         "patientnotfound"
                 ));
 
-        Appointment appointment = new Appointment();
+        Appointment appointment = appointmentRepository.findFirstByDepartmentIdAndResourceTypeAndResourceIdAndStartDatetimeGreaterThanEqualAndEndDatetimeLessThanEqualAndStatusAndBookingMode(
+                dto.departmentId(),
+                dto.resourceType(),
+                dto.resourceId(),
+                dto.startDatetime(),
+                dto.endDatetime(),
+                AppointmentStatus.NEW,
+                BookingMode.SLOT
+        ).orElseThrow(() -> new BadRequestAlertException(
+                "No available appointment slot found",
+                ENTITY_NAME,
+                "slotnotfound"
+        ));
 
-        appointment.setFacilityId(departmentDTO.facilityId());
-        appointment.setDepartmentId(dto.departmentId());
-
-        appointment.setResourceType(dto.resourceType());
-        appointment.setResourceId(dto.resourceId());
-
-        appointment.setStartDatetime(dto.startDatetime());
-        appointment.setEndDatetime(dto.endDatetime());
+        if (Boolean.TRUE.equals(appointment.getRequirePractitioner()) && dto.defaultPractitionerId() == null) {
+            throw new BadRequestAlertException(
+                    "Practitioner is required",
+                    ENTITY_NAME,
+                    "practitionerrequired"
+            );
+        }
 
         appointment.setPatient(patient);
 
         appointment.setDefaultServiceId(dto.defaultServiceId());
         appointment.setDefaultPractitionerId(dto.defaultPractitionerId());
 
-        appointment.setRequirePractitioner(dto.requirePractitioner());
 
         appointment.setReason(dto.reason());
         appointment.setService(dto.service());
 
-        appointment.setBookingMode(dto.bookingMode());
-        appointment.setRequireConfirmation(dto.requireConfirmation());
 
-        appointment.setPriority(
-                dto.priority() != null
-                        ? dto.priority()
-                        : EncounterPriority.NORMAL
-        );
+        appointment.setPriority(dto.priority() != null ? dto.priority() : EncounterPriority.NORMAL);
 
         appointment.setOriginType(dto.originType());
         appointment.setOriginName(dto.originName());
         appointment.setNote(dto.note());
 
         appointment.setHl7AppointmentNumber(dto.hl7AppointmentNumber());
+
+        appointment.setStatus(AppointmentStatus.BOOKED);
+
 
         if (dto.followUpEncounterId() != null) {
             PatientEncounter encounter = patientEncounterRepository.findById(dto.followUpEncounterId())
@@ -1002,7 +1007,6 @@ public class AppointmentService {
             appointment.setFollowUpEncounter(encounter);
         }
 
-        appointment.setStatus(AppointmentStatus.BOOKED);
 
         return appointmentRepository.save(appointment);
     }
@@ -1022,15 +1026,6 @@ public class AppointmentService {
                     "Appointment cannot be created in the past",
                     ENTITY_NAME,
                     "pastdatetime"
-            );
-        }
-
-        if (Boolean.TRUE.equals(dto.requirePractitioner())
-                && dto.defaultPractitionerId() == null) {
-            throw new BadRequestAlertException(
-                    "Practitioner is required",
-                    ENTITY_NAME,
-                    "practitionerrequired"
             );
         }
 
@@ -1069,7 +1064,6 @@ public class AppointmentService {
         }
 
         validateResource(dto);
-        validateDuplicateAppointment(dto);
     }
 
     private void validateResource(AppointmentIntegrationCreateDTO dto) {
@@ -1096,24 +1090,6 @@ public class AppointmentService {
         }
     }
 
-    private void validateDuplicateAppointment(AppointmentIntegrationCreateDTO dto) {
-
-        boolean exists = appointmentRepository
-                .existsByResourceTypeAndResourceIdAndStartDatetimeAndStatusNot(
-                        dto.resourceType(),
-                        dto.resourceId(),
-                        dto.startDatetime(),
-                        AppointmentStatus.CANCELLED
-                );
-
-        if (exists) {
-            throw new BadRequestAlertException(
-                    "Appointment already exists for this resource and time",
-                    ENTITY_NAME,
-                    "appointmentexists"
-            );
-        }
-    }
 
     private Instant tomorrowStartInstant() {
         return LocalDate.now(ZoneId.systemDefault())

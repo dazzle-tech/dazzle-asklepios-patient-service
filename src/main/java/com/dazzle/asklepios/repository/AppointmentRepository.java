@@ -18,6 +18,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface AppointmentRepository extends JpaRepository<Appointment, Long>, JpaSpecificationExecutor<Appointment> {
@@ -108,5 +109,15 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
     @Override
     @EntityGraph(attributePaths = {"patient"})
     Page<Appointment> findAll(@Nullable Specification<Appointment> spec, Pageable pageable);
+
+    Optional<Appointment> findFirstByDepartmentIdAndResourceTypeAndResourceIdAndStartDatetimeGreaterThanEqualAndEndDatetimeLessThanEqualAndStatusAndBookingMode(
+            Long departmentId,
+            TemplateType resourceType,
+            Long resourceId,
+            Instant start,
+            Instant end,
+            AppointmentStatus status,
+            BookingMode bookingMode
+    );
 }
 
