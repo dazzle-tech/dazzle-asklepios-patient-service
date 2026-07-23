@@ -5,7 +5,7 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
-import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
+import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 
 import java.time.Instant;
@@ -27,7 +27,7 @@ public record PatientEncounterVM(
         EncounterType encounterType,
         EncounterReason encounterReason,
         EncounterPriority priorityLevel,
-        EncounterStatus status,
+        TreatmentStatus status,
 
         String originType,
         String originName,
