@@ -7,6 +7,7 @@ import com.dazzle.asklepios.client.setup.OrganizationClient;
 import com.dazzle.asklepios.client.setup.SystemConfigurationClient;
 import com.dazzle.asklepios.client.setup.UserClient;
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
+import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
 import com.dazzle.asklepios.client.setup.dto.OrganizationDefinitionDTO;
 import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
 import com.dazzle.asklepios.client.setup.dto.UserDTO;
@@ -16,9 +17,7 @@ import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -36,6 +35,7 @@ public class NotificationHelper {
     private final DepartmentHelper departmentHelper;
     private final OrganizationClient organizationClient;
     private final SystemConfigurationClient systemConfigurationClient;
+    private final FacilityHelper facilityHelper;
 
     public void sendNotification(Long facilityId, NotificationCode code, Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule, Map<String, Object> data, String relatedEntityType, Long relatedEntityId) {
 
@@ -55,7 +55,11 @@ public class NotificationHelper {
         }
         String logoUrl = systemConfigurationClient.getResolvedValue(SystemConfigKey.SYSTEM_LOGO);
         data.put("logoUrl", logoUrl);
-
+        Long loggedInFacilityId= getLoggedInFacility();
+        if (loggedInFacilityId != null) {
+            FacilityDTO facilityDTO = facilityHelper.getFacility(facilityId);
+            data.put("facility_name", facilityDTO.name());
+        }
         Map<String, Map<String, List<NotificationResolvedRecipientDTO>>> groupedRecipients =
                 groupRecipientsByLanguage(recipientsByRule);
 
@@ -69,7 +73,7 @@ public class NotificationHelper {
                     language,
                     null,
                     languageEntry.getValue(),
-                    data ,
+                    data,
                     relatedEntityType,
                     relatedEntityId
             );
@@ -862,8 +866,7 @@ public class NotificationHelper {
         return value != null ? value : "";
     }
 
-    private Map<String, Map<String, List<NotificationResolvedRecipientDTO>>> groupRecipientsByLanguage(
-            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule) {
+    private Map<String, Map<String, List<NotificationResolvedRecipientDTO>>> groupRecipientsByLanguage(Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule) {
 
         Map<String, Map<String, List<NotificationResolvedRecipientDTO>>> result = new LinkedHashMap<>();
 
@@ -896,8 +899,9 @@ public class NotificationHelper {
     private Long getLoggedInFacility() {
 
         return SecurityUtils.getCurrentUserFacility()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing mandatory claim 'tenant' in JWT."));
+                .orElse(null);
 
     }
+
 
 }
