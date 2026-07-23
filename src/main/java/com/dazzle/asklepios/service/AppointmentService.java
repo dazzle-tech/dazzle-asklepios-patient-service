@@ -22,7 +22,7 @@ import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
-import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
+import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
@@ -1426,7 +1426,7 @@ public class AppointmentService {
                                 .atZone(java.time.ZoneId.systemDefault())
                                 .toLocalTime(),
 
-                        EncounterStatus.NEW,
+                        TreatmentStatus.NEW,
 
                         savedAppointment.getReason()
 

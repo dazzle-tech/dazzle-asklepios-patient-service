@@ -1,7 +1,7 @@
 package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.PatientEncounter;
-import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
+import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -21,7 +21,7 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
     Page<PatientEncounter> findByPatientIdAndDepartmentIdAndStatusInOrderByCreatedDateDesc(
             Long patientId,
             Long departmentId,
-            List<EncounterStatus> statuses,
+            List<TreatmentStatus> statuses,
             Pageable pageable
     );
 
@@ -35,13 +35,13 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
     long countByDepartmentIdAndEncounterDateAndStatusIn(
             Long departmentId,
             LocalDate encounterDate,
-            List<EncounterStatus> statuses
+            List<TreatmentStatus> statuses
     );
 
     long countByDepartmentIdAndEncounterDateAndStatus(
             Long departmentId,
             LocalDate encounterDate,
-            EncounterStatus status
+            TreatmentStatus status
     );
 
     @EntityGraph(attributePaths = "appointment")
@@ -56,7 +56,7 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
     @EntityGraph(attributePaths = "appointment")
     Optional<PatientEncounter> findFirstByPatientIdAndStatusAndEncounterDateLessThanEqualOrderByEncounterDateDesc(
             Long patientId,
-            EncounterStatus status,
+            TreatmentStatus status,
             LocalDate encounterDate
     );
 
@@ -70,14 +70,14 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
             Long departmentId,
             LocalDate fromDate,
             LocalDate toDate,
-            EncounterStatus status
+            TreatmentStatus status
     );
 
     long countByDepartmentIdAndEncounterDateBetweenAndStatusIn(
             Long departmentId,
             LocalDate fromDate,
             LocalDate toDate,
-            List<EncounterStatus> statuses
+            List<TreatmentStatus> statuses
     );
 
 }
