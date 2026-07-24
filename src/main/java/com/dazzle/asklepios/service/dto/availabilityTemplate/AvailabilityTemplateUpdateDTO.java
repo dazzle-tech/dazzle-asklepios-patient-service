@@ -48,9 +48,7 @@ public record AvailabilityTemplateUpdateDTO(
 
         List<WorkingDayJson> workingDays,
 
-        List<AvailabilityTemplateAllowedServiceDTO> allowedServices,
-
-        Boolean allowWalkInBooking
+        List<AvailabilityTemplateAllowedServiceDTO> allowedServices
 
 
 ) {}

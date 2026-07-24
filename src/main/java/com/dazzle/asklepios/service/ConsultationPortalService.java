@@ -1,12 +1,8 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
-import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
-import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
 import com.dazzle.asklepios.domain.Consultation;
 import com.dazzle.asklepios.domain.enumeration.ConsultationLevel;
 import com.dazzle.asklepios.domain.enumeration.ConsultationStatus;
-import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.ConsultationRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.consultation.ConsultationRejectDTO;
@@ -14,11 +10,7 @@ import com.dazzle.asklepios.service.dto.consultation.ConsultationResponseDTO;
 import com.dazzle.asklepios.service.dto.consultation.ConsultationSubmitErrorDTO;
 import com.dazzle.asklepios.service.dto.consultation.ConsultationSubmitRequestDTO;
 import com.dazzle.asklepios.service.dto.consultation.ConsultationSubmitResultDTO;
-import com.dazzle.asklepios.service.helper.DepartmentHelper;
-import com.dazzle.asklepios.service.helper.NotificationHelper;
-import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -36,16 +28,16 @@ import java.util.Map;
 
 @Service
 @Transactional
-@RequiredArgsConstructor
 public class ConsultationPortalService {
 
     private static final Logger LOG =
             LoggerFactory.getLogger(ConsultationPortalService.class);
 
     private final ConsultationRepository consultationRepository;
-    private final DepartmentHelper departmentHelper;
-    private final NotificationHelper notificationHelper;
-    private final PractitionerHelper practitionerHelper;
+
+    public ConsultationPortalService(ConsultationRepository consultationRepository) {
+        this.consultationRepository = consultationRepository;
+    }
 
     private String currentUsername() {
         String username = SecurityUtils.getCurrentUserLogin().orElse(null);
@@ -344,15 +336,6 @@ public class ConsultationPortalService {
         consultation.setRejectReason(dto.reason());
 
         Consultation saved = consultationRepository.saveAndFlush(consultation);
-
-        notificationForRequestingDepartmentWhenConsultationEvent(
-                saved,
-                NotificationCode.CONSULTATION_REJECTED,
-                Map.of(
-                        "rejectReason", dto.reason() != null ? dto.reason() : ""
-                )
-        );
-
         LOG.info("[REJECT] Consultation rejected successfully id={}", saved.getId());
         return saved;
     }
@@ -403,97 +386,14 @@ public class ConsultationPortalService {
                         && c.getStatus() == ConsultationStatus.READY)
                 .toList();
 
-        consultationsToSubmit.forEach(c -> {
-            c.setStatus(ConsultationStatus.SUBMITTED);
-            c.setSubmittedBy(username);
-            c.setSubmittedDate(Instant.now());
+        consultationsToSubmit.forEach(c -> {c.setStatus(ConsultationStatus.SUBMITTED);
+        c.setSubmittedBy(username);
+        c.setSubmittedDate(Instant.now());
         });
-        List<Consultation> savedConsultations = consultationRepository.saveAll(consultationsToSubmit);
+        consultationRepository.saveAll(consultationsToSubmit);
 
-        savedConsultations.forEach(consultation ->
-                notificationForRequestingDepartmentWhenConsultationEvent(
-                        consultation,
-                        NotificationCode.CONSULTATION_SUBMITTED,
-                        Map.of()
-                )
-        );
         LOG.info("[SUBMIT] submittedCount={} errorsCount={}", consultationsToSubmit.size(), errors.size());
 
         return new ConsultationSubmitResultDTO(consultationsToSubmit.size(), errors);
-    }
-
-    private void notificationForRequestingDepartmentWhenConsultationEvent(Consultation consultation, NotificationCode notificationCode, Map<String, Object> extraData) {
-        try {
-            if (consultation == null || notificationCode == null) {
-                return;
-            }
-
-            Long departmentId = consultation.getFromDepartmentId();
-            DepartmentDTO fromDepartment = departmentHelper.getDepartment(departmentId);
-            DepartmentDTO toDepartment = departmentHelper.getDepartment(consultation.getToDepartmentId());
-            if (departmentId == null) {
-                LOG.warn(
-                        "Skip consultation notification because requesting department is missing. consultationId={}, code={}",
-                        consultation.getId(),
-                        notificationCode
-                );
-                return;
-            }
-            String login = SecurityUtils.getCurrentUserLogin().orElse(null);
-            PractitionerDTO practitioner = null;
-            if (consultation.getPractitionerId() != null) {
-                practitioner = practitionerHelper.getPractitioner(consultation.getPractitionerId());
-            }
-            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, consultation.getCreatedBy(), consultation.getPatient(), practitioner,false);
-
-            Map<String, Object> data = new LinkedHashMap<>();
-            data.put("consultation_id", consultation.getId());
-            data.put("consultation_number", consultation.getConsultationNumber());
-            data.put("patient_id", consultation.getPatient() != null ? consultation.getPatient().getId() : "");
-            data.put("patient_name", consultation.getPatient() != null ? notificationHelper.getPatientName(consultation.getPatient()) : "");
-            data.put("encounter_id", consultation.getEncounter() != null ? consultation.getEncounter().getId() : "");
-            data.put("from_facility_id", consultation.getFromFacilityId());
-            data.put("to_facility_id", consultation.getToFacilityId());
-            data.put("from_department_id", consultation.getFromDepartmentId());
-            data.put("from_department_name", fromDepartment.name());
-            data.put("to_department_id", consultation.getToDepartmentId());
-            data.put("to_department_name", toDepartment.name());
-            data.put("consultation_type", consultation.getConsultationType() != null ? consultation.getConsultationType().toString() : "");
-            data.put("destination_type", consultation.getDestinationType() != null ? consultation.getDestinationType().toString() : "");
-            data.put("consultation_level", consultation.getConsultationLevel() != null ? consultation.getConsultationLevel().toString() : "");
-            data.put("consultation_method", consultation.getConsultationMethod() != null ? consultation.getConsultationMethod().toString() : "");
-            data.put("status", consultation.getStatus() != null ? consultation.getStatus().toString() : "");
-            data.put("submitted_by", consultation.getSubmittedBy() != null ? consultation.getSubmittedBy() : "");
-            data.put("submitted_date", consultation.getSubmittedDate() != null ? consultation.getSubmittedDate().toString() : "");
-            data.put("rejected_by", consultation.getRejectedBy() != null ? consultation.getRejectedBy() : "");
-            data.put("rejected_date", consultation.getRejectedDate() != null ? consultation.getRejectedDate().toString() : "");
-            data.put("reject_reason", consultation.getRejectReason() != null ? consultation.getRejectReason() : "");
-            if (extraData != null && !extraData.isEmpty()) {
-                data.putAll(extraData);
-            }
-
-
-            LOG.debug(
-                    "Creating consultation in-app notification. consultationId={}, code={}, departmentId={}, recipientsByRule={}",
-                    consultation.getId(),
-                    notificationCode,
-                    departmentId,
-                    recipientsByRule
-            );
-
-            notificationHelper.sendNotification(null,
-                    notificationCode,
-                    recipientsByRule,
-                    data,
-                    "CONSULTATION",
-                    consultation.getId());
-        } catch (Exception e) {
-            LOG.warn(
-                    "Failed to create consultation notification. consultationId={}, code={}, error={}",
-                    consultation.getId(),
-                    notificationCode,
-                    e.getMessage()
-            );
-        }
     }
 }

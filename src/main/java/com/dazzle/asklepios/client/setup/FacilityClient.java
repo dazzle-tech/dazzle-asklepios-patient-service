@@ -1,6 +1,5 @@
 package com.dazzle.asklepios.client.setup;
 
-import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
 import com.dazzle.asklepios.config.SetupServiceFeignConfig;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.ResponseEntity;
@@ -12,7 +11,4 @@ public interface FacilityClient {
 
     @GetMapping("/api/setup/facility/{id}")
     ResponseEntity<Void> existsFacility(@PathVariable("id") Long id);
-
-    @GetMapping("/api/setup/facility/{id}")
-    FacilityDTO getFacility(@PathVariable("id") Long id);
 }

@@ -120,7 +120,4 @@ public class AvailabilityTemplate extends AbstractAuditingEntity<Long> implement
 
     @OneToMany(mappedBy = "template", cascade = CascadeType.ALL)
     private List<AvailabilityTemplateAllowedService> allowedServices;
-
-    @Column(name = "allow_walk_in_booking", nullable = false)
-    private Boolean allowWalkInBooking = false;
 }

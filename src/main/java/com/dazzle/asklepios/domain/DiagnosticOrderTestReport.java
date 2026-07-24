@@ -2,7 +2,6 @@ package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.RadiologyImageStatus;
-import com.dazzle.asklepios.domain.enumeration.Severity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -49,9 +48,8 @@ public class DiagnosticOrderTestReport extends AbstractAuditingEntity implements
     @Column(name = "report", columnDefinition = "text")
     private String report;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "severity", length = 50)
-    private Severity severity;
+    private String severity;
 
     @Column(name = "approved_by", length = 50)
     private String approvedBy;

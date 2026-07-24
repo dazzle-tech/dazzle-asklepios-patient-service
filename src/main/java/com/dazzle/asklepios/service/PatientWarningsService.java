@@ -1,21 +1,15 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
-import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientWarnings;
 import com.dazzle.asklepios.domain.enumeration.PatientWarningStatus;
-import com.dazzle.asklepios.domain.enumeration.Severity;
-import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientWarningsRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.PatientWarningCreateDTO;
 import com.dazzle.asklepios.service.dto.PatientWarningUpdateDTO;
-import com.dazzle.asklepios.service.helper.DepartmentHelper;
-import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
@@ -30,9 +24,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -45,15 +36,11 @@ public class PatientWarningsService {
     private final PatientWarningsRepository patientWarningsRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
-    private final DepartmentHelper departmentHelper;
-    private final NotificationHelper notificationHelper;
 
-    public PatientWarningsService(PatientWarningsRepository patientWarningsRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository, DepartmentHelper departmentHelper, NotificationHelper notificationHelper) {
+    public PatientWarningsService(PatientWarningsRepository patientWarningsRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository) {
         this.patientWarningsRepository = patientWarningsRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
-        this.departmentHelper = departmentHelper;
-        this.notificationHelper = notificationHelper;
     }
 
     public PatientWarnings create(PatientWarningCreateDTO patientWarningCreateDTO) {
@@ -142,13 +129,11 @@ public class PatientWarningsService {
 
         try {
             PatientWarnings saved = patientWarningsRepository.save(entity);
-
-            notificationForSevereCriticalWarning(saved, patient, encounter);
-
             LOG.debug("Created Patient Warning: {}", saved);
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException constraintException) {
             throw handleConstraintViolation(constraintException);
+
         }
     }
 
@@ -338,25 +323,6 @@ public class PatientWarningsService {
 
         try {
             PatientWarnings updated = patientWarningsRepository.saveAndFlush(patientWarningObj);
-            Patient patient = patientRepository.findById(updated.getPatientId())
-                    .orElseThrow(() ->
-                            new NotFoundAlertException(
-                                    "Patient not found with id " + updated.getPatientId(),
-                                    "procedure",
-                                    "patient.notfound"
-                            )
-                    );
-
-            PatientEncounter encounter = patientEncounterRepository.findById(updated.getEncounterId())
-                    .orElseThrow(() ->
-                            new NotFoundAlertException(
-                                    "Encounter not found with id " + updated.getEncounterId(),
-                                    "PatientWarnings",
-                                    "encounter.notfound"
-                            )
-                    );
-            notificationForSevereCriticalWarning(updated, patient, encounter);
-
             LOG.debug("Updated Patient Warning: {}", updated);
             return updated;
         } catch (DataIntegrityViolationException | JpaSystemException constraintException) {
@@ -406,65 +372,5 @@ public class PatientWarningsService {
                 "patient_allergies",
                 "Database constraint violated while saving patient warning"
         );
-    }
-
-    private void notificationForSevereCriticalWarning(PatientWarnings warning, Patient patient, PatientEncounter encounter) {
-        if (warning == null || patient == null || encounter == null) {
-            return;
-        }
-
-        if (!isSevereOrCritical(warning.getSeverity())) {
-            return;
-        }
-
-        Long departmentId = encounter.getDepartmentId();
-        DepartmentDTO department = departmentId != null ? departmentHelper.getDepartment(departmentId) : null;
-
-        if (departmentId == null) {
-            LOG.warn("Skip medical warning notification because encounter department is missing. warningId={}, encounterId={}", warning.getId(), encounter.getId());
-            return;
-        }
-        String login = SecurityUtils.getCurrentUserLogin().orElse(null);
-
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, warning.getCreatedBy(), patient, null,false);
-
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("patient_id", patient.getId());
-        data.put("patient_name", notificationHelper.getPatientName(patient));
-        data.put("encounter_id", encounter.getId());
-        data.put("department_id", departmentId);
-        data.put("department_name", department != null ? department.name() : "");
-        data.put("warning_id", warning.getId());
-        data.put("warning_type", warning.getWarningType() != null ? warning.getWarningType().toString() : "");
-        data.put("warning", warning.getWarning() != null ? warning.getWarning() : "");
-        data.put("severity", warning.getSeverity() != null ? warning.getSeverity().toString() : "");
-        data.put("onset_date", warning.getOnsetDate() != null ? warning.getOnsetDate().toString() : "");
-        data.put("status", warning.getStatus() != null ? warning.getStatus().toString() : "");
-
-        try {
-            LOG.debug("Creating severe/critical medical warning notification. warningId={}, patientId={}, departmentId={}, recipientsByRule={}", warning.getId(), patient.getId(), departmentId, recipientsByRule);
-
-            notificationHelper.sendNotification(null
-                    , NotificationCode.MEDICAL_WARNING_SEVERE_CRITICAL
-                    , recipientsByRule
-                    , data
-                    , "PATIENT_WARNING"
-                    , warning.getId());
-
-        } catch (Exception e) {
-            LOG.warn(
-                    "Failed to create severe/critical medical warning notification. warningId={}, error={}",
-                    warning.getId(),
-                    e.getMessage()
-            );
-        }
-    }
-
-    private boolean isSevereOrCritical(Severity severity) {
-        if (severity == null) {
-            return false;
-        }
-
-        return Severity.SEVERE == severity || Severity.CRITICAL == severity;
     }
 }

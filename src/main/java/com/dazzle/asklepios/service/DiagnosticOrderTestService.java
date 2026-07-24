@@ -1,11 +1,9 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
-import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestTechnicianNoteRepository;
@@ -13,11 +11,9 @@ import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.Diagnosti
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestUpdateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.DiagnosticTestHelper;
-import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.service.helper.ICDTreeHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.diagnosticorders.DiagnosticOrderTestResponseVM;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -43,7 +39,6 @@ import java.util.Set;
  */
 @Service
 @Transactional
-@RequiredArgsConstructor
 public class DiagnosticOrderTestService {
 
     /**
@@ -66,8 +61,26 @@ public class DiagnosticOrderTestService {
     private final DiagnosticTestHelper diagnosticTestHelper;
     private final DepartmentHelper departmentHelper;
     private final ICDTreeHelper icdTreeHelper;
-    private final FacilityHelper facilityHelper;
 
+    /**
+     * Creates the service with required dependencies.
+     *
+     * @param diagnosticOrderTestRepository repository used to persist and query DiagnosticOrderTest
+     * @param diagnosticOrderStatusService  service used to recompute aggregated lab/radiology statuses
+     */
+    public DiagnosticOrderTestService(
+            DiagnosticOrderTestRepository diagnosticOrderTestRepository,
+            DiagnosticOrderStatusService diagnosticOrderStatusService, DiagnosticOrderTestTechnicianNoteRepository diagnosticOrderTestTechnicianNoteRepository,
+            DiagnosticOrderRepository diagnosticOrderRepository, DiagnosticTestHelper diagnosticTestHelper, DepartmentHelper departmentHelper, ICDTreeHelper icdTreeHelper) {
+        this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
+        this.diagnosticOrderStatusService = diagnosticOrderStatusService;
+
+        this.diagnosticOrderTestTechnicianNoteRepository = diagnosticOrderTestTechnicianNoteRepository;
+        this.diagnosticOrderRepository = diagnosticOrderRepository;
+        this.diagnosticTestHelper = diagnosticTestHelper;
+        this.departmentHelper = departmentHelper;
+        this.icdTreeHelper = icdTreeHelper;
+    }
 
     /**
      * Creates and persists a new {@link DiagnosticOrderTest} from the provided DTO.
@@ -88,15 +101,8 @@ public class DiagnosticOrderTestService {
         // Build a new entity instance from DTO fields
         DiagnosticOrder order = getDiagnosticOrder(dto.orderId());
         diagnosticTestHelper.getDiagnosticTest(dto.testId());
-        Long finalReceivedDepartmentId = null;
-        if (dto.receivedDepartmentId() != null) {
-            finalReceivedDepartmentId = dto.receivedDepartmentId();
+        if (dto.receivedDepartmentId() != null)
             departmentHelper.validateDepartmentExists(dto.receivedDepartmentId());
-        } else {
-            FacilityDTO facilityDTO = facilityHelper.getFacility(order.getFromFacilityId());
-
-            finalReceivedDepartmentId = dto.orderType() == TestType.LABORATORY ? facilityDTO.defaultLabDepartmentId() : dto.orderType() == TestType.RADIOLOGY ? facilityDTO.defaultRadDepartmentId() : null;
-        }
         if (dto.icdDiagnosisId() != null)
             icdTreeHelper.validateICDDiagnosisExists(dto.icdDiagnosisId());
 
@@ -113,7 +119,7 @@ public class DiagnosticOrderTestService {
 
 
         // Additional metadata and routing information
-        orderTest.setReceivedDepartmentId(finalReceivedDepartmentId);
+        orderTest.setReceivedDepartmentId(dto.receivedDepartmentId());
         orderTest.setReason(dto.reason());
         orderTest.setNotes(dto.notes());
         orderTest.setOrderType(dto.orderType());

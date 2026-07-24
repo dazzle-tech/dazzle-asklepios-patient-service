@@ -6,7 +6,7 @@ import jakarta.validation.constraints.FutureOrPresent;
 import jakarta.validation.constraints.NotNull;
 
 import java.time.Instant;
-import java.util.List;
+import java.time.LocalDate;
 
 public record AvailabilityGenerationBatchApplyDTO(
         @NotNull Long templateId,
@@ -15,8 +15,7 @@ public record AvailabilityGenerationBatchApplyDTO(
         @NotNull Boolean deferred,
         Instant deferredAt,
         @NotNull AvailabilityGenerationScope scope,
-        HolidayHandlingMode holidayHandlingMode,
-        List<Long> policyAssignmentIds
+        HolidayHandlingMode holidayHandlingMode
 
 ) {
 }

@@ -25,9 +25,6 @@ waseel:
     system-type: ${WASEEL_SYSTEM_TYPE:1}
     timeout-seconds: 90
 
-  asklepios-notification-service-url: http://localhost:8090
-application:
-  asklepios-application-url: http://localhost:3100//#
 
 spring:
   devtools:
@@ -86,13 +83,6 @@ patient:
     presignExpirySeconds: 300
     maxBytes: 52428800
     allowed: application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png,text/plain
-  appointment:
-    auto-no-show:
-      job-zone: Asia/Hebron
-      system-job-user: SYSTEM_JOB
-      no-show-reason: Not Specified
-    template-interval-ended:
-      cron: "0 0 7 * * *"
-      zone: "Asia/Gaza"
-      springdoc:
+
+    springdoc:
       pre-loading-enabled: true

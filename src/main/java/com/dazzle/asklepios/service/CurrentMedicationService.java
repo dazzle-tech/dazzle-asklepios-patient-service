@@ -1,12 +1,10 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.setup.ActiveIngredientClient;
 import com.dazzle.asklepios.domain.CurrentMedication;
 import com.dazzle.asklepios.domain.Patient;
-import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.repository.CurrentMedicationRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
-import com.dazzle.asklepios.security.SecurityUtils;
-import com.dazzle.asklepios.service.dto.currentMedication.CurrentMedicationCancelDTO;
 import com.dazzle.asklepios.service.dto.currentMedication.CurrentMedicationCreateDTO;
 import com.dazzle.asklepios.service.dto.currentMedication.CurrentMedicationUpdateDTO;
 import com.dazzle.asklepios.service.helper.ActiveIngredientHelper;
@@ -22,9 +20,6 @@ import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
-import java.util.Date;
-
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
@@ -32,8 +27,7 @@ import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 @Transactional
 public class CurrentMedicationService {
 
-    private static final Logger LOG =
-            LoggerFactory.getLogger(CurrentMedicationService.class);
+    private static final Logger LOG = LoggerFactory.getLogger(CurrentMedicationService.class);
 
     private final CurrentMedicationRepository currentMedicationRepository;
     private final PatientRepository patientRepository;
@@ -48,43 +42,25 @@ public class CurrentMedicationService {
                 ));
     }
 
-    private String currentUsername() {
-        return SecurityUtils.getCurrentUserLogin()
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "unauthenticated",
-                        "currentMedication",
-                        "No authenticated user"
-                ));
-    }
-
     public CurrentMedication create(CurrentMedicationCreateDTO dto) {
         LOG.info("[CREATE] CurrentMedication dto={}", dto);
 
         Patient patient = getPatientOrThrow(dto.patientId());
-        activeIngredientHelper.validateActiveIngredientExists(
-                dto.activeIngredientId()
-        );
-
+        activeIngredientHelper.validateActiveIngredientExists(dto.activeIngredientId());
         CurrentMedication entity = CurrentMedication.builder()
                 .patient(patient)
                 .activeIngredientId(dto.activeIngredientId())
-                .dosage(dto.dosage())
-                .unit(dto.unit())
-                .frequency(dto.frequency())
+                .instructions(dto.instructions())
                 .startDate(dto.startDate())
                 .build();
 
         try {
-            CurrentMedication saved =
-                    currentMedicationRepository.saveAndFlush(entity);
-
+            CurrentMedication saved = currentMedicationRepository.saveAndFlush(entity);
             LOG.info("[CREATE] CurrentMedication created id={}", saved.getId());
-
             return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
-
             throw new BadRequestAlertException(
                     "Database constraint violated while creating current medication.",
                     "currentMedication",
@@ -96,86 +72,30 @@ public class CurrentMedicationService {
     public CurrentMedication update(CurrentMedicationUpdateDTO dto) {
         LOG.info("[UPDATE] CurrentMedication dto={}", dto);
 
-        CurrentMedication entity =
-                currentMedicationRepository.findById(dto.id())
-                        .orElseThrow(() -> new NotFoundAlertException(
-                                "Current medication not found with id " + dto.id(),
-                                "currentMedication",
-                                "notfound"
-                        ));
+        CurrentMedication entity = currentMedicationRepository.findById(dto.id())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Current medication not found with id " + dto.id(),
+                        "currentMedication",
+                        "notfound"
+                ));
 
         Patient patient = getPatientOrThrow(dto.patientId());
-        activeIngredientHelper.validateActiveIngredientExists(
-                dto.activeIngredientId()
-        );
+        activeIngredientHelper.validateActiveIngredientExists(dto.activeIngredientId());
 
         entity.setPatient(patient);
         entity.setActiveIngredientId(dto.activeIngredientId());
-        entity.setDosage(dto.dosage());
-        entity.setUnit(dto.unit());
-        entity.setFrequency(dto.frequency());
+        entity.setInstructions(dto.instructions());
         entity.setStartDate(dto.startDate());
 
         try {
-            CurrentMedication updated =
-                    currentMedicationRepository.saveAndFlush(entity);
-
+            CurrentMedication updated = currentMedicationRepository.saveAndFlush(entity);
             LOG.info("[UPDATE] CurrentMedication updated id={}", updated.getId());
-
             return updated;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
-
             throw new BadRequestAlertException(
                     "Database constraint violated while updating current medication.",
-                    "currentMedication",
-                    "db.constraint"
-            );
-        }
-    }
-
-    public CurrentMedication cancel(
-            CurrentMedicationCancelDTO currentMedicationCancelDTO
-    ) {
-        LOG.info(
-                "[CANCEL] CurrentMedication payload={}",
-                currentMedicationCancelDTO
-        );
-
-        CurrentMedication entity =
-                currentMedicationRepository
-                        .findById(currentMedicationCancelDTO.id())
-                        .orElseThrow(() -> new NotFoundAlertException(
-                                "Current medication not found with id "
-                                        + currentMedicationCancelDTO.id(),
-                                "currentMedication",
-                                "notfound"
-                        ));
-
-        entity.setStatus(PatientHistoryStatus.CANCELLED);
-        entity.setCancelledBy(currentUsername());
-        entity.setCancelledDate(Instant.now());
-        entity.setCancellationReason(
-                currentMedicationCancelDTO.cancellationReason()
-        );
-
-        try {
-            CurrentMedication cancelled =
-                    currentMedicationRepository.saveAndFlush(entity);
-
-            LOG.info(
-                    "[CANCEL] CurrentMedication cancelled id={}",
-                    cancelled.getId()
-            );
-
-            return cancelled;
-
-        } catch (DataIntegrityViolationException | JpaSystemException ex) {
-            handleConstraints(ex);
-
-            throw new BadRequestAlertException(
-                    "Database constraint violated while cancelling current medication.",
                     "currentMedication",
                     "db.constraint"
             );
@@ -185,50 +105,26 @@ public class CurrentMedicationService {
     public void delete(Long id) {
         LOG.info("[DELETE] CurrentMedication id={}", id);
 
-        CurrentMedication entity =
-                currentMedicationRepository.findById(id)
-                        .orElseThrow(() -> new NotFoundAlertException(
-                                "Current medication not found with id " + id,
-                                "currentMedication",
-                                "notfound"
-                        ));
+        CurrentMedication entity = currentMedicationRepository.findById(id)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Current medication not found with id " + id,
+                        "currentMedication",
+                        "notfound"
+                ));
 
         currentMedicationRepository.delete(entity);
     }
 
     @Transactional(readOnly = true)
-    public Page<CurrentMedication> findByPatientId(
-            Long patientId,
-            boolean showCancelled,
-            Pageable pageable
-    ) {
-        LOG.debug(
-                "[LIST] CurrentMedication patientId={} showCancelled={} pageable={}",
-                patientId,
-                showCancelled,
-                pageable
-        );
-
-        if (showCancelled) {
-            return currentMedicationRepository.findAllByPatientId(
-                    patientId,
-                    pageable
-            );
-        }
-
-        return currentMedicationRepository.findAllByPatientIdAndStatusNot(
-                patientId,
-                PatientHistoryStatus.CANCELLED,
-                pageable
-        );
+    public Page<CurrentMedication> findByPatientId(Long patientId, Pageable pageable) {
+        LOG.debug("[LIST] CurrentMedication patientId={} pageable={}", patientId, pageable);
+        return currentMedicationRepository.findAllByPatientId(patientId, pageable);
     }
 
     private void handleConstraints(RuntimeException exception) {
         Throwable root = getRootCause(exception);
-        String message =
-                (root != null ? root.getMessage() : exception.getMessage());
-        String lower =
-                message != null ? message.toLowerCase() : "";
+        String message = (root != null ? root.getMessage() : exception.getMessage());
+        String lower = message != null ? message.toLowerCase() : "";
 
         LOG.error("DB ROOT CAUSE: {}", message, exception);
 
@@ -255,30 +151,17 @@ public class CurrentMedicationService {
         );
     }
 
-    @Transactional(readOnly = true)
-    public boolean existsByPatientAndIngredient(
-            Long patientId,
-            Long activeIngredientId
-    ) {
-        LOG.debug(
-                "Checking existence of CurrentMedication for patientId={} and activeIngredientId={}",
-                patientId,
-                activeIngredientId
-        );
+    @Transactional
+    public boolean existsByPatientAndIngredient(Long patientId, Long activeIngredientId) {
 
-        boolean exists =
-                currentMedicationRepository
-                        .existsByPatientIdAndActiveIngredientId(
-                                patientId,
-                                activeIngredientId
-                        );
+        LOG.debug("Checking existence of CurrentMedication for patientId={} and activeIngredientId={}",
+                patientId, activeIngredientId);
 
-        LOG.debug(
-                "Existence result for patientId={} and activeIngredientId={} => {}",
-                patientId,
-                activeIngredientId,
-                exists
-        );
+        boolean exists = currentMedicationRepository
+                .existsByPatientIdAndActiveIngredientId(patientId, activeIngredientId);
+
+        LOG.debug("Existence result for patientId={} and activeIngredientId={} => {}",
+                patientId, activeIngredientId, exists);
 
         return exists;
     }

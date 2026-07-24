@@ -114,7 +114,7 @@ public class EncounterAssessmentService {
         LOG.debug("[FIND LATEST] encounterId={} createdBy={}", encounterId, currentUser);
 
         return encounterAssessmentRepository
-                .findTopByEncounterIdOrderByCreatedDateDesc(encounterId);
+                .findTopByEncounterIdAndCreatedByOrderByCreatedDateDesc(encounterId, currentUser);
     }
 
     private void handleConstraintsOnCreateOrUpdate(RuntimeException exception) {

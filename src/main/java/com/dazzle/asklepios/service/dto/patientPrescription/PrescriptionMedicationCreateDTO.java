@@ -30,7 +30,7 @@ public class PrescriptionMedicationCreateDTO {
 
     public String indicationManually;
     public String indicationUse;
-   @NotNull public Long indicationIcd;
+    public Long indicationIcd;
     public String parametersToMonitor;
     public String administrationInstructions;
     public Long numberOfRefills;

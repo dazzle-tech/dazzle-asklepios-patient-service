@@ -84,12 +84,12 @@ public ResponseEntity<ReferralRequest> updateReferralRequest(
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
-    @PutMapping("/referral-request/{id}/accept/{appointmentId}")
-    public ResponseEntity<ReferralRequest> acceptReferralRequest(@PathVariable @NotNull Long id, @PathVariable @NotNull Long appointmentId) {
+    @PutMapping("/referral-request/{id}/accept")
+    public ResponseEntity<ReferralRequest> acceptReferralRequest(@PathVariable @NotNull Long id) {
 
         LOG.debug("REST accept ReferralRequest id={}", id);
 
-        ReferralRequest accepted = referralRequestService.acceptReferralRequest(id, appointmentId);
+        ReferralRequest accepted = referralRequestService.acceptReferralRequest(id);
 
         return ResponseEntity.ok(accepted);
     }

@@ -1,26 +1,13 @@
 package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.CurrentMedication;
-import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface CurrentMedicationRepository extends JpaRepository<CurrentMedication, Long> {
 
-    Page<CurrentMedication> findAllByPatientIdAndStatusNot(
-            Long patientId,
-            PatientHistoryStatus status,
-            Pageable pageable
-    );
+    Page<CurrentMedication> findAllByPatientId(Long patientId, Pageable pageable);
+    boolean existsByPatientIdAndActiveIngredientId(Long patientId, Long activeIngredientId);
 
-    Page<CurrentMedication> findAllByPatientId(
-            Long patientId,
-            Pageable pageable
-    );
-
-    boolean existsByPatientIdAndActiveIngredientId(
-            Long patientId,
-            Long activeIngredientId
-    );
 }

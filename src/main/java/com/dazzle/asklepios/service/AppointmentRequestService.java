@@ -1,19 +1,19 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
-import com.dazzle.asklepios.domain.Appointment;
+import com.dazzle.asklepios.domain.AppointmentFromTemplate;
 import com.dazzle.asklepios.domain.AppointmentRequest;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.AppointmentRequestStatus;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
-import com.dazzle.asklepios.repository.AppointmentRepository;
+import com.dazzle.asklepios.domain.enumeration.TemplateType;
+import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
 import com.dazzle.asklepios.repository.AppointmentRequestRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
-import com.dazzle.asklepios.service.dto.appointment.AppointmentBookPatientDTO;
+import com.dazzle.asklepios.service.dto.appointmentFromTemplate.AppointmentFromTemplateBookPatientDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestCancelDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestCreateDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestUpdateDTO;
@@ -28,7 +28,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.Collections;
 import java.util.List;
 
 @Service
@@ -42,8 +41,8 @@ public class AppointmentRequestService {
     private final AppointmentRequestRepository appointmentRequestRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
-    private final AppointmentRepository appointmentRepository;
-    private final AppointmentService appointmentService;
+    private final AppointmentFromTemplateRepository appointmentFromTemplateRepository;
+    private final AppointmentFromTemplateService appointmentFromTemplateService;
     private final FacilityHelper facilityHelper;
     private final DepartmentHelper departmentHelper;
 
@@ -78,7 +77,6 @@ public class AppointmentRequestService {
         request.setReason(dto.reason());
         request.setNote(dto.note());
         request.setStatus(AppointmentRequestStatus.REQUESTED);
-        request.setPreferredDate(dto.preferredDate());
 
         AppointmentRequest saved = appointmentRequestRepository.save(request);
         return toResponseVM(saved);
@@ -132,14 +130,14 @@ public class AppointmentRequestService {
                         "sourceEncounter.notfound"
                 ));
 
-        Appointment appointment = appointmentRepository.findById(dto.appointmentId())
+        AppointmentFromTemplate appointment = appointmentFromTemplateRepository.findById(dto.appointmentId())
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Appointment not found with id: " + dto.appointmentId(),
                         ENTITY_NAME,
                         "appointment.notfound"
                 ));
 
-        AppointmentBookPatientDTO bookDto = new AppointmentBookPatientDTO(
+        AppointmentFromTemplateBookPatientDTO bookDto = new AppointmentFromTemplateBookPatientDTO(
                 appointment.getId(),
                 patient.getId(),
                 appointment.getDefaultServiceId(),
@@ -154,7 +152,7 @@ public class AppointmentRequestService {
                 sourceEncounter.getId()
         );
 
-        Appointment bookedAppointment = appointmentService.bookPatientAppointment(bookDto);
+        AppointmentFromTemplate bookedAppointment = appointmentFromTemplateService.bookPatientAppointment(bookDto);
 
         request.setPatient(patient);
         request.setFacilityId(dto.facilityId());
@@ -207,26 +205,10 @@ public class AppointmentRequestService {
     }
 
     @Transactional(readOnly = true)
-    public List<AppointmentRequestResponseVM> getByFacilityIdAndBookableDepartment(Long facilityId) {
+    public List<AppointmentRequestResponseVM> getByFacilityId(Long facilityId) {
         log.debug("Request to get AppointmentRequests by facilityId={}", facilityId);
 
-        String login = SecurityUtils
-                .getCurrentUserLogin()
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "user",
-                        ENTITY_NAME,
-                        "Current user is required"
-                ));
-
-        List<Long> bookableDepartmentIds =departmentHelper.getBookableDepartment().stream().map(DepartmentDTO::id).toList();
-
-        if (bookableDepartmentIds == null || bookableDepartmentIds.isEmpty()) {
-            log.debug("[APPOINTMENT_REQUEST] No bookable departments found for logged-in user={}", login);
-            return Collections.emptyList();
-        }
-
-        return appointmentRequestRepository
-                .findByFacilityIdAndDepartmentIdIn(facilityId, bookableDepartmentIds)
+        return appointmentRequestRepository.findByFacilityId(facilityId)
                 .stream()
                 .map(this::toResponseVM)
                 .toList();
@@ -319,7 +301,7 @@ public class AppointmentRequestService {
     private AppointmentRequestResponseVM toResponseVM(AppointmentRequest entity) {
         Long patientId = entity.getPatient() != null ? entity.getPatient().getId() : null;
         String patientName = entity.getPatient() != null ? entity.getPatient().getFirstName() + "" + entity.getPatient().getLastName() : null;
-        String patientMrn = entity.getPatient() != null ? entity.getPatient().getMedicalRecordNumber() : null;
+        String patientMrn =  entity.getPatient() != null ? entity.getPatient().getMedicalRecordNumber() : null ;
         Long sourceEncounterId = entity.getSourceEncounter() != null ? entity.getSourceEncounter().getId() : null;
         Long appointmentId = entity.getAppointment() != null ? entity.getAppointment().getId() : null;
 
@@ -345,8 +327,15 @@ public class AppointmentRequestService {
                 entity.getCreatedBy(),
                 entity.getCreatedDate(),
                 entity.getLastModifiedBy(),
-                entity.getLastModifiedDate(),
-                entity.getPreferredDate()
+                entity.getLastModifiedDate()
         );
+    }
+    private String currentUsername() {
+        return SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "unauthenticated",
+                        ENTITY_NAME,
+                        "user.notauthenticated"
+                ));
     }
 }

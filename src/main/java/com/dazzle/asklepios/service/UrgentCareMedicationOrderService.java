@@ -239,6 +239,8 @@ public class UrgentCareMedicationOrderService {
         order.setStatus(MedicationOrderStatus.ADMINISTERED);
         order.setDoubleCheckedBy(username);
         order.setDoubleCheckedDate(Instant.now());
+        order.setAdministeredBy(username);
+        order.setAdministeredDate(Instant.now());
 
         UrgentCareMedicationOrder saved = urgentCareMedicationOrderRepository.save(order);
 

@@ -18,6 +18,4 @@ public record PractitionerDTO(
         String educationalLevel,
         String jobRole,
         List<WorkingDayJson> workingDays
-        String phoneNumber,
-        Long userId
 ) {}

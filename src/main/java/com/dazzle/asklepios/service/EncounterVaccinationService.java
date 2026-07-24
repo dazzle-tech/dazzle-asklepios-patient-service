@@ -66,7 +66,7 @@ public class EncounterVaccinationService {
 
         loadEncounter(createRequest.encounterId());
         vaccineHelper.validateVaccineExists(createRequest.vaccineId());
-        vaccineBrandHelper.validateVaccineBrandExists(createRequest.vaccineBrandId());
+        vaccineBrandHelper.validateVaccineBrandExists(createRequest.encounterId());
         vaccineDosesHelper.validateVaccineDosesExists(createRequest.vaccineDoseId());
 
         String normalizedExternalFacilityName = Boolean.TRUE.equals(createRequest.isExternalFacility())
@@ -131,7 +131,7 @@ public class EncounterVaccinationService {
 
                     loadEncounter(updateRequest.encounterId());
                     vaccineHelper.validateVaccineExists(updateRequest.vaccineId());
-                    vaccineBrandHelper.validateVaccineBrandExists(updateRequest.vaccineBrandId());
+                    vaccineBrandHelper.validateVaccineBrandExists(updateRequest.encounterId());
                     vaccineDosesHelper.validateVaccineDosesExists(updateRequest.vaccineDoseId());
 
                     encounterVaccination.setPatient(patient);

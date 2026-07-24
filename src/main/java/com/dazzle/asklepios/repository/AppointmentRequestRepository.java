@@ -20,5 +20,7 @@ public interface AppointmentRequestRepository extends JpaRepository<AppointmentR
 
     List<AppointmentRequest> findByStatus(AppointmentRequestStatus status);
 
-    List<AppointmentRequest> findByFacilityIdAndDepartmentIdIn(Long facilityId, List<Long> departmentIds);
+    Optional<AppointmentRequest> findByAppointmentId(Long appointmentId);
+
+    boolean existsBySourceEncounterIdAndStatus(Long sourceEncounterId, AppointmentRequestStatus status);
 }

@@ -1,7 +1,5 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
-import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.Patient;
@@ -9,23 +7,19 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
-import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
-import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderUpdateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
-import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -37,16 +31,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
 @Transactional
-@RequiredArgsConstructor
 public class DiagnosticOrderService {
 
     private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderService.class);
@@ -57,8 +47,18 @@ public class DiagnosticOrderService {
     private final PatientEncounterRepository patientEncounterRepository;
     private final FacilityHelper facilityHelper;
     private final DepartmentHelper departmentHelper;
-    private final NotificationHelper notificationHelper;
 
+    public DiagnosticOrderService(
+            DiagnosticOrderRepository diagnosticOrderRepository,
+            DiagnosticOrderTestRepository diagnosticOrderTestRepository,
+            PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository, FacilityHelper facilityHelper, DepartmentHelper departmentHelper) {
+        this.diagnosticOrderRepository = diagnosticOrderRepository;
+        this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
+        this.patientRepository = patientRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
+        this.departmentHelper = departmentHelper;
+        this.facilityHelper = facilityHelper;
+    }
 
     /**
      * Creates a new {@link DiagnosticOrder}.
@@ -235,7 +235,6 @@ public class DiagnosticOrderService {
      * - Updates order: saveDraft=false, status=SUBMITTED, submittedBy/submittedDate set
      * - Updates tests: bulk updates all tests under this order to SUBMITTED, excluding CANCELLED tests
      */
-    @Transactional
     public DiagnosticOrder submit(DiagnosticOrder existing, String submittedBy) {
         LOG.debug("[DiagnosticOrderService] SUBMIT - start. orderId={} currentSaveDraft={} currentStatus={} submittedBy={}",
                 existing.getId(), existing.getSaveDraft(), existing.getStatus(), submittedBy);
@@ -255,12 +254,9 @@ public class DiagnosticOrderService {
         LOG.debug("[DiagnosticOrderService] SUBMIT - done. orderId={} newSaveDraft={} newStatus={} submittedDate={} updatedTests={}",
                 saved.getId(), saved.getSaveDraft(), saved.getStatus(), saved.getSubmittedDate(), updatedTests);
 
-        notificationForUrgentDiagnosticOrder(saved);
-
         return saved;
     }
 
-    @Transactional
     public DiagnosticOrder submit(Long orderId, String submittedBy) {
         DiagnosticOrder order = findById(orderId);
         if (Boolean.FALSE.equals(order.getSaveDraft())) {
@@ -287,7 +283,24 @@ public class DiagnosticOrderService {
     }
 
     @Transactional(readOnly = true)
-    public Page<DiagnosticOrder> filter(Long patientId, List<Long> patientIdIn, Long encounterId, DiagnosticStatus status, List<DiagnosticStatus> statusIn, List<DiagnosticStatus> statusNotIn, DiagnosticStatus excludeStatus, Boolean saveDraft, Boolean isUrgent, String labStatus, String radStatus, Instant submittedDateFrom, Instant submittedDateTo, Long departmentId, List<Long> fromDepartmentIdIn, TestType testType, String orderNumber, Pageable pageable) {
+    public Page<DiagnosticOrder> filter(
+            Long patientId,
+            Long encounterId,
+            DiagnosticStatus status,
+            List<DiagnosticStatus> statusIn,
+            List<DiagnosticStatus> statusNotIn,
+            DiagnosticStatus excludeStatus,
+            Boolean saveDraft,
+            Boolean isUrgent,
+            String labStatus,
+            String radStatus,
+            Instant submittedDateFrom,
+            Instant submittedDateTo,
+            Long departmentId,
+            TestType testType,
+            String orderNumber,
+            Pageable pageable
+    ) {
         if (status != null && statusIn != null && !statusIn.isEmpty()) {
             throw new BadRequestAlertException(
                     "invalid_filter",
@@ -299,103 +312,53 @@ public class DiagnosticOrderService {
         Specification<DiagnosticOrder> filterSpec = (orderRoot, criteriaQuery, criteriaBuilder) -> {
             List<Predicate> filterPredicates = new ArrayList<>();
 
-            if (patientId != null) {
+            if (patientId != null)
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("patientId"), patientId));
-            }
-
-            if (patientIdIn != null && !patientIdIn.isEmpty()) {
-                filterPredicates.add(orderRoot.get("patientId").in(patientIdIn));
-            }
-
-            if (encounterId != null) {
+            if (encounterId != null)
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("encounterId"), encounterId));
-            }
 
-            if (status != null) {
+            if (status != null)
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("status"), status));
-            }
-
-            if (statusIn != null && !statusIn.isEmpty()) {
+            if (statusIn != null && !statusIn.isEmpty())
                 filterPredicates.add(orderRoot.get("status").in(statusIn));
-            }
-
-            if (excludeStatus != null) {
+            if (excludeStatus != null)
                 filterPredicates.add(criteriaBuilder.notEqual(orderRoot.get("status"), excludeStatus));
-            }
-
-            if (statusNotIn != null && !statusNotIn.isEmpty()) {
+            if (statusNotIn != null && !statusNotIn.isEmpty())
                 filterPredicates.add(criteriaBuilder.not(orderRoot.get("status").in(statusNotIn)));
-            }
 
-            if (saveDraft != null) {
+            if (saveDraft != null)
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("saveDraft"), saveDraft));
-            }
-
-            if (isUrgent != null) {
+            if (isUrgent != null)
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("isUrgent"), isUrgent));
-            }
 
-            if (labStatus != null && !labStatus.isBlank()) {
+            if (labStatus != null && !labStatus.isBlank())
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("labStatus"), labStatus));
-            }
-
-            if (radStatus != null && !radStatus.isBlank()) {
+            if (radStatus != null && !radStatus.isBlank())
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("radStatus"), radStatus));
-            }
 
-            if (submittedDateFrom != null) {
-                filterPredicates.add(criteriaBuilder.greaterThanOrEqualTo(
-                        orderRoot.get("submittedDate"),
-                        submittedDateFrom
-                ));
-            }
+            if (submittedDateFrom != null)
+                filterPredicates.add(criteriaBuilder.greaterThanOrEqualTo(orderRoot.get("submittedDate"), submittedDateFrom));
+            if (submittedDateTo != null)
+                filterPredicates.add(criteriaBuilder.lessThanOrEqualTo(orderRoot.get("submittedDate"), submittedDateTo));
 
-            if (submittedDateTo != null) {
-                filterPredicates.add(criteriaBuilder.lessThanOrEqualTo(
-                        orderRoot.get("submittedDate"),
-                        submittedDateTo
-                ));
-            }
-
-            if (fromDepartmentIdIn != null && !fromDepartmentIdIn.isEmpty()) {
-                filterPredicates.add(orderRoot.get("fromDepartmentId").in(fromDepartmentIdIn));
-            }
-
-            if (orderNumber != null && !orderNumber.isBlank()) {
+            if (orderNumber != null && !orderNumber.isBlank())
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("orderNumber"), orderNumber));
-            }
 
             if (departmentId != null) {
                 Subquery<Long> orderTestSubquery = criteriaQuery.subquery(Long.class);
                 Root<DiagnosticOrderTest> orderTestRoot = orderTestSubquery.from(DiagnosticOrderTest.class);
 
                 List<Predicate> subqueryPredicates = new ArrayList<>();
-
-                subqueryPredicates.add(criteriaBuilder.equal(
-                        orderTestRoot.get("orderId"),
-                        orderRoot.get("id")
-                ));
-
-                subqueryPredicates.add(criteriaBuilder.equal(
-                        orderTestRoot.get("receivedDepartmentId"),
-                        departmentId
-                ));
-
-                subqueryPredicates.add(criteriaBuilder.notEqual(
-                        orderTestRoot.get("status"),
-                        DiagnosticOrderTestStatus.CANCELLED
-                ));
+                subqueryPredicates.add(criteriaBuilder.equal(orderTestRoot.get("orderId"), orderRoot.get("id")));
+                subqueryPredicates.add(criteriaBuilder.equal(orderTestRoot.get("receivedDepartmentId"), departmentId));
+                subqueryPredicates.add(criteriaBuilder.notEqual(orderTestRoot.get("status"), DiagnosticOrderTestStatus.CANCELLED));
 
                 if (testType != null) {
-                    subqueryPredicates.add(criteriaBuilder.equal(
-                            orderTestRoot.get("orderType"),
-                            testType
-                    ));
+                    subqueryPredicates.add(criteriaBuilder.equal(orderTestRoot.get("orderType"), testType));
                 }
 
                 orderTestSubquery.select(orderTestRoot.get("id"))
                         .where(subqueryPredicates.toArray(new Predicate[0]));
-
                 filterPredicates.add(criteriaBuilder.exists(orderTestSubquery));
             }
 
@@ -431,91 +394,5 @@ public class DiagnosticOrderService {
                 .stream()
                 .map(DiagnosticOrder::getEncounterId)
                 .collect(Collectors.toSet());
-    }
-
-    private void notificationForUrgentDiagnosticOrder(DiagnosticOrder order) {
-        if (order == null) {
-            return;
-        }
-
-        if (!isUrgentDiagnosticOrder(order)) {
-            return;
-        }
-
-        Long departmentId = order.getFromDepartmentId();
-        DepartmentDTO department = departmentId != null
-                ? departmentHelper.getDepartment(departmentId)
-                : null;
-
-        if (departmentId == null) {
-            LOG.warn(
-                    "Skip urgent diagnostic order notification because department is missing. orderId={}",
-                    order.getId()
-            );
-            return;
-        }
-
-        String login = SecurityUtils.getCurrentUserLogin().orElse(null);
-
-        Patient patient = resolvePatient(order.getPatientId()).orElse(null);
-
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
-                notificationHelper.resolveRecipients(
-                        departmentId,
-                        login,
-                        order.getCreatedBy(),
-                        patient,
-                        null,
-                        false
-                );
-
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("order_id", order.getId());
-        data.put("patient_id", order.getPatientId());
-        data.put("patient_name", notificationHelper.getPatientName(patient));
-        data.put("encounter_id", order.getEncounter() != null ? order.getEncounter().getId() : "");
-        data.put("department_id", departmentId);
-        data.put("department_name", department != null ? department.name() : "");
-        data.put("status", order.getStatus() != null ? order.getStatus().toString() : "");
-        data.put("submitted_by", order.getSubmittedBy() != null ? order.getSubmittedBy() : "");
-        data.put("submitted_date", order.getSubmittedDate() != null ? order.getSubmittedDate().toString() : "");
-        try {
-            LOG.debug(
-                    "Creating urgent diagnostic order in-app notification. orderId={}, departmentId={}, recipientsByRule={}",
-                    order.getId(),
-                    departmentId,
-                    recipientsByRule
-            );
-
-            notificationHelper.sendNotification(
-                    null,
-                    NotificationCode.URGENT_DIAGNOSTIC_ORDER_SUBMITTED,
-                    recipientsByRule,
-                    data,
-                    "DIAGNOSTIC_ORDER",
-                    order.getId()
-            );
-
-        } catch (Exception e) {
-            LOG.warn(
-                    "Failed to create urgent diagnostic order notification. orderId={}, error={}",
-                    order.getId(),
-                    e.getMessage(),
-                    e
-            );
-        }
-    }
-
-
-    private boolean isUrgentDiagnosticOrder(DiagnosticOrder order) {
-        return order != null && Boolean.TRUE.equals(order.getIsUrgent());
-    }
-
-    private Optional<Patient> resolvePatient(Long patientId) {
-        if (patientId == null) {
-            return null;
-        }
-
-        return patientRepository.findById(patientId);
     }
 }

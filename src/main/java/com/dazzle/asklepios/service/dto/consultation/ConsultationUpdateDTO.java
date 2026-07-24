@@ -1,6 +1,5 @@
 package com.dazzle.asklepios.service.dto.consultation;
 
-import com.dazzle.asklepios.domain.enumeration.ConsultationType;
 import com.dazzle.asklepios.domain.enumeration.DestinationType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -26,8 +25,8 @@ public record ConsultationUpdateDTO(
         @NotBlank
         String consultationMethod,
 
-        @NotNull
-        ConsultationType consultationType,
+        @NotBlank
+        String consultationType,
 
         @NotNull
         String consultationLevel,

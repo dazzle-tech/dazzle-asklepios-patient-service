@@ -23,7 +23,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
@@ -93,24 +92,6 @@ public class AvailabilityGenerationBatchController {
 
         AvailabilityGenerationBatch batch = availabilityGenerationBatchService.getById(batchId);
         return ResponseEntity.ok(batch);
-    }
-
-    /**
-     * Get generation batches for selected template, excluding selected batch.
-     */
-    @GetMapping("/availability-generation-batches/template/{templateId}/exclude/{batchId}")
-    public ResponseEntity<List<AvailabilityGenerationBatch>> getListByTemplateExcludingBatch(@PathVariable Long templateId, @PathVariable Long batchId, @ParameterObject Pageable pageable) {
-        LOG.debug("REST request to get availability generation batches by template: {}, excluding batch: {}", templateId, batchId);
-
-        Page<AvailabilityGenerationBatch> batches =
-                availabilityGenerationBatchService.getListByTemplateExcludingBatch(templateId, batchId, pageable);
-
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(),
-                batches
-        );
-
-        return new ResponseEntity<>(batches.getContent(), headers, HttpStatus.OK);
     }
 
 }

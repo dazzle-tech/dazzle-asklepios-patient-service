@@ -2,7 +2,6 @@ package com.dazzle.asklepios.web.rest.vm.patient;
 
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.Gender;
-import com.dazzle.asklepios.domain.enumeration.PatientStatus;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
@@ -21,7 +20,6 @@ public class PatientBasicInformationResponseVM {
     private LocalDate dateOfBirth;
     private Gender sexAtBirth;
     private String primaryMobileNumber;
-    private PatientStatus patientStatus;
 
     public static PatientBasicInformationResponseVM ofEntity(Patient patient) {
         if (patient == null) {
@@ -37,7 +35,6 @@ public class PatientBasicInformationResponseVM {
                 .sexAtBirth(patient.getSexAtBirth())
                 .dateOfBirth(patient.getDateOfBirth())
                 .primaryMobileNumber(patient.getPrimaryMobileNumber())
-                .patientStatus(patient.getPatientStatus())
                 .build();
     }
 }

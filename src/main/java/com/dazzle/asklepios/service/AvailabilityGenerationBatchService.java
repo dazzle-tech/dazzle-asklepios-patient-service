@@ -1,9 +1,7 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.dto.OrganizationHolidayDTO;
-import com.dazzle.asklepios.client.setup.dto.PolicyAssignmentDTO;
-import com.dazzle.asklepios.domain.Appointment;
-import com.dazzle.asklepios.domain.AppointmentPolicyAssignment;
+import com.dazzle.asklepios.domain.AppointmentFromTemplate;
 import com.dazzle.asklepios.domain.AvailabilityGenerationBatch;
 import com.dazzle.asklepios.domain.AvailabilityTemplate;
 import com.dazzle.asklepios.domain.AvailabilityTemplateInterval;
@@ -13,14 +11,13 @@ import com.dazzle.asklepios.domain.enumeration.BookingMode;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.HolidayHandlingMode;
 import com.dazzle.asklepios.domain.enumeration.TemplateStatus;
-import com.dazzle.asklepios.repository.AppointmentPolicyAssignmentRepository;
-import com.dazzle.asklepios.repository.AppointmentRepository;
+import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
 import com.dazzle.asklepios.repository.AvailabilityGenerationBatchRepository;
 import com.dazzle.asklepios.repository.AvailabilityTemplateRepository;
 import com.dazzle.asklepios.service.dto.availabilityGenerationBatch.AvailabilityGenerationBatchApplyDTO;
 import com.dazzle.asklepios.service.helper.OrganizationHolidayHelper;
-import com.dazzle.asklepios.service.helper.PolicyAssignmentHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.availabilityGenerationBatch.ApplyAvailabilityTemplateResponseVM;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -37,7 +34,6 @@ import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -48,10 +44,8 @@ public class AvailabilityGenerationBatchService {
 
     private final AvailabilityTemplateRepository availabilityTemplateRepository;
     private final AvailabilityGenerationBatchRepository availabilityGenerationBatchRepository;
-    private final AppointmentRepository appointmentRepository;
-    private final AppointmentPolicyAssignmentRepository appointmentPolicyAssignmentRepository;
+    private final AppointmentFromTemplateRepository appointmentFromTemplateRepository;
     private final OrganizationHolidayHelper organizationHolidayHelper;
-    private final PolicyAssignmentHelper policyAssignmentHelper;
 
     @Transactional(readOnly = true)
     public Page<AvailabilityGenerationBatch> getListByParentTemplate(Long templateId, Pageable pageable) {
@@ -96,14 +90,21 @@ public class AvailabilityGenerationBatchService {
     }
 
     public ApplyAvailabilityTemplateResponseVM applyTemplate(AvailabilityGenerationBatchApplyDTO request) {
-        LOG.info("[APPLY TEMPLATE] templateId={}, startDate={}, endDate={}, deferred={}, deferredAt={}, holidayHandlingMode={}, policyAssignmentIds={}", request.templateId(), request.startDate(), request.endDate(), request.deferred(), request.deferredAt(), request.holidayHandlingMode(), request.policyAssignmentIds());
+        LOG.info("[APPLY TEMPLATE] templateId={}, startDate={}, endDate={}, deferred={}, deferredAt={}, holidayHandlingMode={}",
+                request.templateId(),
+                request.startDate(),
+                request.endDate(),
+                request.deferred(),
+                request.deferredAt(),
+                request.holidayHandlingMode());
+
 
         AvailabilityTemplate template = getTemplate(request.templateId());
         validateTemplateForApply(template);
 
         LocalDate startDate = request.startDate().atZone(ZoneId.systemDefault()).toLocalDate();
         LocalDate endDate = request.endDate().atZone(ZoneId.systemDefault()).toLocalDate();
-        List<PolicyAssignmentDTO> activePolicyAssignments = validateAndGetActivePolicyAssignments(request.policyAssignmentIds());
+
         List<OrganizationHolidayDTO> holidays = organizationHolidayHelper.getOrganizationHolidayByDateRange(
                 template.getFacilityId(),
                 startDate,
@@ -120,13 +121,11 @@ public class AvailabilityGenerationBatchService {
         batch = availabilityGenerationBatchRepository.save(batch);
 
         try {
-            List<Appointment> generatedAppointments = generateAppointments(template, batch, request.startDate(), request.endDate(), request.deferred(), request.deferredAt(), request.holidayHandlingMode(), holidays);
+            List<AppointmentFromTemplate> generatedAppointments = generateAppointments(template, batch, request.startDate(), request.endDate(), request.deferred(), request.deferredAt(), request.holidayHandlingMode(), holidays);
 
-            List<Appointment> savedAppointments = appointmentRepository.saveAll(generatedAppointments);
+            appointmentFromTemplateRepository.saveAll(generatedAppointments);
 
-            copyPolicyAssignmentsToAppointments(savedAppointments, activePolicyAssignments);
-
-            int totalSlots = savedAppointments.size();
+            int totalSlots = generatedAppointments.size();
             int days = (int) (endDate.toEpochDay() - startDate.toEpochDay()) + 1;
             int dailyAvg = totalSlots == 0 || days <= 0 ? 0 : totalSlots / days;
 
@@ -157,23 +156,15 @@ public class AvailabilityGenerationBatchService {
         }
     }
 
-    @Transactional(readOnly = true)
-    public Page<AvailabilityGenerationBatch> getListByTemplateExcludingBatch(
-            Long templateId,
-            Long batchId,
-            Pageable pageable
-    ) {
-        return availabilityGenerationBatchRepository
-                .findAllByTemplate_IdAndIdNotOrderByApplyStartDateTimeDesc(templateId, batchId, pageable);
-    }
+    private List<AppointmentFromTemplate> generateAppointments(AvailabilityTemplate template, AvailabilityGenerationBatch batch, Instant startDate, Instant endDate, boolean deferred, Instant deferredAt, HolidayHandlingMode holidayHandlingMode, List<OrganizationHolidayDTO> holidays) {
+        LOG.info("[GENERATE TEMPLATE] templateId={}, batchId={},startDate={}, endDate={}, deferred={}, deferredAt={}, holidayHandlingMode={}", template.getId(), batch.getId(), startDate, endDate, deferred, deferredAt, holidayHandlingMode);
 
-    private List<Appointment> generateAppointments(AvailabilityTemplate template, AvailabilityGenerationBatch batch, Instant startDate, Instant endDate, boolean deferred, Instant deferredAt, HolidayHandlingMode holidayHandlingMode, List<OrganizationHolidayDTO> holidays) {
-        LOG.info("[GENERATE TEMPLATE] templateId={}, batchId={}, startDate={}, endDate={}, deferred={}, deferredAt={}, holidayHandlingMode={}", template.getId(), batch.getId(), startDate, endDate, deferred, deferredAt, holidayHandlingMode);
 
-        List<Appointment> appointments = new ArrayList<>();
+        List<AppointmentFromTemplate> appointments = new ArrayList<>();
         ZoneId zone = ZoneId.systemDefault();
         Instant current = startDate;
         while (!current.isAfter(endDate)) {
+
             LocalDate currentDate = current.atZone(zone).toLocalDate();
             boolean holiday = isHoliday(currentDate, holidays);
 
@@ -205,8 +196,17 @@ public class AvailabilityGenerationBatchService {
         return appointments;
     }
 
-    private List<Appointment> generateAppointmentsForInterval(AvailabilityTemplate template, AvailabilityGenerationBatch batch, Instant currentDate, Instant applyStart, Instant applyEnd, AvailabilityTemplateInterval interval, boolean deferred, Instant deferredAt) {
-        List<Appointment> appointments = new ArrayList<>();
+    private List<AppointmentFromTemplate> generateAppointmentsForInterval(
+            AvailabilityTemplate template,
+            AvailabilityGenerationBatch batch,
+            Instant currentDate,
+            Instant applyStart,
+            Instant applyEnd,
+            AvailabilityTemplateInterval interval,
+            boolean deferred,
+            Instant deferredAt
+    ) {
+        List<AppointmentFromTemplate> appointments = new ArrayList<>();
 
         int slotDuration = interval.getSlotDurationMinutes() != null
                 ? interval.getSlotDurationMinutes()
@@ -300,8 +300,8 @@ public class AvailabilityGenerationBatchService {
         return appointments;
     }
 
-    private Appointment buildAppointment(AvailabilityTemplate template, AvailabilityGenerationBatch batch, boolean deferred, Instant deferredAt, int capacityIndex, LocalDateTime start, LocalDateTime end, BookingMode bookingMode) {
-        Appointment appointment = new Appointment();
+    private AppointmentFromTemplate buildAppointment(AvailabilityTemplate template, AvailabilityGenerationBatch batch, boolean deferred, Instant deferredAt, int capacityIndex, LocalDateTime start, LocalDateTime end, BookingMode bookingMode) {
+        AppointmentFromTemplate appointment = new AppointmentFromTemplate();
         appointment.setFacilityId(template.getFacilityId());
         appointment.setDepartmentId(template.getDepartmentId());
         appointment.setAvailabilityGenerationBatch(batch);
@@ -325,7 +325,6 @@ public class AvailabilityGenerationBatchService {
         appointment.setPriority(EncounterPriority.NORMAL);
         appointment.setCapacityIndex(capacityIndex);
         appointment.setReason(null);
-        appointment.setHl7AppointmentNumber(null);
         return appointment;
     }
 
@@ -387,61 +386,5 @@ public class AvailabilityGenerationBatchService {
                 && !date.isBefore(holiday.startDate())
                 && !date.isAfter(holiday.endDate())
         );
-    }
-
-    private List<PolicyAssignmentDTO> validateAndGetActivePolicyAssignments(List<Long> policyAssignmentIds) {
-        if (policyAssignmentIds == null || policyAssignmentIds.isEmpty()) {
-            return List.of();
-        }
-
-        List<Long> distinctIds = policyAssignmentIds.stream()
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
-
-        if (distinctIds.isEmpty()) {
-            return List.of();
-        }
-
-        List<PolicyAssignmentDTO> policyAssignments = new ArrayList<>();
-
-        for (Long policyAssignmentId : distinctIds) {
-            PolicyAssignmentDTO policyAssignment = policyAssignmentHelper.getPolicyAssignment(policyAssignmentId);
-            policyAssignments.add(policyAssignment);
-        }
-
-        return policyAssignments.stream()
-                .filter(policyAssignment -> Boolean.TRUE.equals(policyAssignment.isActive()))
-                .toList();
-    }
-
-    private void copyPolicyAssignmentsToAppointments(List<Appointment> appointments, List<PolicyAssignmentDTO> activePolicyAssignments) {
-        if (appointments == null || appointments.isEmpty()) {
-            return;
-        }
-
-        if (activePolicyAssignments == null || activePolicyAssignments.isEmpty()) {
-            return;
-        }
-
-        List<AppointmentPolicyAssignment> appointmentPolicyAssignments = new ArrayList<>();
-
-        for (Appointment appointment : appointments) {
-            for (PolicyAssignmentDTO policyAssignment : activePolicyAssignments) {
-                AppointmentPolicyAssignment appointmentPolicyAssignment = new AppointmentPolicyAssignment();
-
-                appointmentPolicyAssignment.setAppointment(appointment);
-                appointmentPolicyAssignment.setPolicyAssignmentId(policyAssignment.id());
-                appointmentPolicyAssignment.setPolicyId(policyAssignment.policy().id());
-                appointmentPolicyAssignment.setIsRequired(Boolean.TRUE.equals(policyAssignment.isRequired()));
-                appointmentPolicyAssignment.setIsApplied(false);
-
-                appointmentPolicyAssignments.add(appointmentPolicyAssignment);
-            }
-        }
-
-        appointmentPolicyAssignmentRepository.saveAll(appointmentPolicyAssignments);
-
-        LOG.info("[COPY POLICY ASSIGNMENTS] appointmentsCount={}, activePolicyAssignmentsCount={}, insertedRows={}", appointments.size(), activePolicyAssignments.size(), appointmentPolicyAssignments.size());
     }
 }

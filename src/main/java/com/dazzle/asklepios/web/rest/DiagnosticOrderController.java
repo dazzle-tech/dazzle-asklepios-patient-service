@@ -312,13 +312,10 @@ public class DiagnosticOrderController {
      * along with pagination headers
      * @throws BadRequestAlertException if the request contains conflicting filters (e.g. both {@code status} and {@code statusIn})
      */
+
     @GetMapping("/diagnostic-orders")
     public ResponseEntity<List<DiagnosticOrderResponseVM>> filter(
             @RequestParam(name = "patientId", required = false) Long patientId,
-
-            @RequestParam(name = "patientIdIn", required = false)
-            List<Long> patientIdIn,
-
             @RequestParam(name = "encounterId", required = false) Long encounterId,
 
             @RequestParam(name = "status", required = false) DiagnosticStatus status,
@@ -335,26 +332,21 @@ public class DiagnosticOrderController {
             @RequestParam(name = "submittedDateTo", required = false) Instant submittedDateTo,
 
             @RequestParam(name = "departmentId", required = false) Long departmentId,
-
-            @RequestParam(name = "fromDepartmentIdIn", required = false)
-            List<Long> fromDepartmentIdIn,
-
             @RequestParam(name = "testType", required = false) TestType testType,
 
             @RequestParam(name = "orderNumber", required = false) String orderNumber,
 
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("[DiagnosticOrder] FILTER - request received. patientId={} patientIdIn={} encounterId={} status={} statusIn={} " +
+        LOG.debug("[DiagnosticOrder] FILTER - request received. patientId={} encounterId={} status={} statusIn={} " +
                         "statusNotIn={} excludeStatus={} saveDraft={} isUrgent={} labStatus={} radStatus={} " +
-                        "submittedDateFrom={} submittedDateTo={} departmentId={} fromDepartmentIdIn={} testType={} orderNumber={} pageable={}",
-                patientId, patientIdIn, encounterId, status, statusIn, statusNotIn, excludeStatus, saveDraft, isUrgent,
-                labStatus, radStatus, submittedDateFrom, submittedDateTo, departmentId, fromDepartmentIdIn, testType,
+                        "submittedDateFrom={} submittedDateTo={} departmentId={} testType={} orderNumber={} pageable={}",
+                patientId, encounterId, status, statusIn, statusNotIn, excludeStatus, saveDraft, isUrgent,
+                labStatus, radStatus, submittedDateFrom, submittedDateTo, departmentId, testType,
                 orderNumber, pageable);
 
         Page<DiagnosticOrder> ordersPage = diagnosticOrderService.filter(
                 patientId,
-                patientIdIn,
                 encounterId,
                 status,
                 statusIn,
@@ -367,7 +359,6 @@ public class DiagnosticOrderController {
                 submittedDateFrom,
                 submittedDateTo,
                 departmentId,
-                fromDepartmentIdIn,
                 testType,
                 orderNumber,
                 pageable
@@ -383,10 +374,12 @@ public class DiagnosticOrderController {
                 .toList();
 
         LOG.debug("[DiagnosticOrder] FILTER - response ready. returned={} totalElements={} totalPages={}",
+
                 ordersPage.getNumberOfElements(), ordersPage.getTotalElements(), ordersPage.getTotalPages());
 
         return new ResponseEntity<>(responseBody, paginationHeaders, HttpStatus.OK);
     }
+
     /**
      * Submits an existing diagnostic order.
      *

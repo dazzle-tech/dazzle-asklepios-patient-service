@@ -2,7 +2,6 @@ package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.ConsultationLevel;
 import com.dazzle.asklepios.domain.enumeration.ConsultationStatus;
-import com.dazzle.asklepios.domain.enumeration.ConsultationType;
 import com.dazzle.asklepios.domain.enumeration.DestinationType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -72,8 +71,7 @@ Consultation extends AbstractAuditingEntity<Long> implements Serializable {
     private DestinationType destinationType;
 
     @Column(name = "consultation_type", nullable = false, length = 50)
-    @Enumerated(EnumType.STRING)
-    private ConsultationType consultationType;
+    private String consultationType;
 
     @Column(name = "consultant_speciality")
     private String consultantSpeciality;

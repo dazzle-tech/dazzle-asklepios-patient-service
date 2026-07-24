@@ -9,7 +9,6 @@ public enum DiagnosticStatus {
     SAMPLE_COLLECTED,
     RESULT_APPROVED,
     RESULT_READY,
-    EXAM_DONE,
     PARTIALLY,
     ALL_ACCEPTED,
     ALL_REJECTED,

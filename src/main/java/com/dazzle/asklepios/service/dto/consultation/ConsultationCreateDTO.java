@@ -1,7 +1,6 @@
 package com.dazzle.asklepios.service.dto.consultation;
 
 import com.dazzle.asklepios.domain.enumeration.ConsultationStatus;
-import com.dazzle.asklepios.domain.enumeration.ConsultationType;
 import com.dazzle.asklepios.domain.enumeration.DestinationType;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.NotBlank;
@@ -29,8 +28,8 @@ public record ConsultationCreateDTO(
 
         Long toDepartmentId,
 
-        @NotNull
-        ConsultationType consultationType,
+        @NotBlank
+        String consultationType,
 
         String consultantSpeciality,
 

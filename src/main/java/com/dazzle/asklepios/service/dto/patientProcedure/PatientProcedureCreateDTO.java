@@ -33,7 +33,7 @@ public record PatientProcedureCreateDTO(
         String side,
 
         @NotNull(message = "schedule.required")
-        // @FutureOrPresent
+        @FutureOrPresent
         Instant scheduledDateTime,
 
         String notes,

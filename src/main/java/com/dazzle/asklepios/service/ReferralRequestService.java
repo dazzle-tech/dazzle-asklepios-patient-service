@@ -1,16 +1,10 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
-import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
-import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
-import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.ReferralRequest;
 import com.dazzle.asklepios.domain.enumeration.ReferralStatus;
 import com.dazzle.asklepios.domain.enumeration.ReferralType;
-import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
-import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.ReferralRequestRepository;
@@ -19,7 +13,6 @@ import com.dazzle.asklepios.service.dto.referralRequest.ReferralRequestCreateDTO
 import com.dazzle.asklepios.service.dto.referralRequest.ReferralRequestUpdateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
-import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -33,9 +26,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -51,9 +41,6 @@ public class ReferralRequestService {
     private final PatientEncounterRepository patientEncounterRepository;
     private final FacilityHelper facilityHelper;
     private final DepartmentHelper departmentHelper;
-    ;
-    private final AppointmentRepository appointmentRepository;
-    private final NotificationHelper notificationHelper;
 
     public ReferralRequest createReferralRequest(ReferralRequestCreateDTO createDto) {
         LOG.info("[CREATE] ReferralRequest payload={}", createDto);
@@ -86,13 +73,6 @@ public class ReferralRequestService {
 
         try {
             ReferralRequest savedReferralRequest = referralRequestRepository.saveAndFlush(referralRequest);
-
-            notifyDestinationDepartmentForNewReferralRequest(
-                    savedReferralRequest,
-                    patient,
-                    encounter
-            );
-
             LOG.info("[CREATE] Successfully created ReferralRequest id={}", savedReferralRequest.getId());
             return savedReferralRequest;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -140,7 +120,7 @@ public class ReferralRequestService {
         });
     }
 
-    public ReferralRequest acceptReferralRequest(Long referralRequestId, Long appointmentId) {
+    public ReferralRequest acceptReferralRequest(Long referralRequestId) {
         String currentUsername = getCurrentUsername();
 
         LOG.info("[ACCEPT] ReferralRequest id={} acceptedBy={}", referralRequestId, currentUsername);
@@ -155,20 +135,9 @@ public class ReferralRequestService {
                     );
                 });
 
-        Appointment appointment = appointmentRepository.findById(appointmentId)
-                .orElseThrow(() -> {
-                    LOG.warn("[ACCEPT] Appointment not found id={}", appointmentId);
-                    return new NotFoundAlertException(
-                            "Appointment not found with id " + appointmentId,
-                            "appointment",
-                            "notfound"
-                    );
-                });
-
         referralRequest.setStatus(ReferralStatus.ACCEPTED);
         referralRequest.setAcceptedDate(Instant.now());
         referralRequest.setAcceptedBy(currentUsername);
-        referralRequest.setAppointment(appointment);
 
         try {
             ReferralRequest savedReferralRequest = referralRequestRepository.saveAndFlush(referralRequest);
@@ -235,7 +204,12 @@ public class ReferralRequestService {
     }
 
     @Transactional(readOnly = true)
-    public Page<ReferralRequest> getReferralRequestsByToFacilityAndCreatedDateRange(Long toFacilityId, Instant fromDateTime, Instant toDateTime, Pageable pageable) {
+    public Page<ReferralRequest> getReferralRequestsByToFacilityAndCreatedDateRange(
+            Long toFacilityId,
+            Instant fromDateTime,
+            Instant toDateTime,
+            Pageable pageable
+    ) {
         LOG.debug("[LIST] ReferralRequests by toFacilityId={} from={} to={}",
                 toFacilityId, fromDateTime, toDateTime);
 
@@ -276,9 +250,9 @@ public class ReferralRequestService {
 
         if (messageLower.contains("uk_referral_encounter_to_department")) {
             return new BadRequestAlertException(
-                    "encounter.department.duplicate",
+                    "A referral to the same department already exists for this encounter.",
                     "referralRequest",
-                    "A referral to the same department already exists for this encounter."
+                    "encounter.department.duplicate"
             );
         }
 
@@ -320,69 +294,5 @@ public class ReferralRequestService {
                 "referralRequest",
                 "db.constraint"
         );
-    }
-
-    private void notifyDestinationDepartmentForNewReferralRequest(ReferralRequest referralRequest, Patient patient, PatientEncounter encounter) {
-        if (referralRequest == null || patient == null) {
-            return;
-        }
-
-        Long departmentId = referralRequest.getToDepartmentId();
-        DepartmentDTO fromDepartment = departmentHelper.getDepartment(referralRequest.getFromDepartmentId());
-        DepartmentDTO toDepartment = departmentHelper.getDepartment(departmentId);
-
-        FacilityDTO fromFacility = facilityHelper.getFacility(referralRequest.getFromFacilityId());
-        FacilityDTO toFacility = facilityHelper.getFacility(referralRequest.getToFacilityId());
-
-        if (departmentId == null) {
-            LOG.warn(
-                    "Skip referral request notification because destination department is missing. referralRequestId={}",
-                    referralRequest.getId()
-            );
-            return;
-        }
-        try {
-            String login = SecurityUtils.getCurrentUserLogin().orElse(null);
-
-            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, referralRequest.getCreatedBy(), patient, null,false);
-
-            Map<String, Object> data = new LinkedHashMap<>();
-            data.put("referral_request_id", referralRequest.getId());
-            data.put("patient_id", patient.getId());
-            data.put("patient_name", notificationHelper.getPatientName(patient));
-            data.put("encounter_id", encounter != null ? encounter.getId() : "");
-            data.put("from_facility_id", referralRequest.getFromFacilityId());
-            data.put("to_facility_id", referralRequest.getToFacilityId());
-            data.put("from_facility_name", fromFacility.name());
-            data.put("to_facility_name", toFacility.name());
-            data.put("from_department_id", referralRequest.getFromDepartmentId());
-            data.put("to_department_id", referralRequest.getToDepartmentId());
-            data.put("from_department_name", fromDepartment.name());
-            data.put("to_department_name", toDepartment.name());
-            data.put("referral_type", referralRequest.getReferralType() != null ? referralRequest.getReferralType().toString() : "");
-            data.put("referral_reason", referralRequest.getReferralReason() != null ? referralRequest.getReferralReason() : "");
-            data.put("priority", referralRequest.getPriority() != null ? referralRequest.getPriority().toString() : "");
-            data.put("status", referralRequest.getStatus() != null ? referralRequest.getStatus().toString() : "");
-
-            LOG.debug(
-                    "Creating new referral request in-app notification. referralRequestId={}, toDepartmentId={}, recipientsByRule={}",
-                    referralRequest.getId(),
-                    departmentId,
-                    recipientsByRule
-            );
-
-            notificationHelper.sendNotification(null,
-                    NotificationCode.NEW_REFERRAL_REQUEST_ARRIVED,
-                    recipientsByRule,
-                    data,
-                    "REFERRAL_REQUEST",
-                    referralRequest.getId());
-        } catch (Exception e) {
-            LOG.warn(
-                    "Failed to create referral request notification. referralRequestId={}, error={}",
-                    referralRequest.getId(),
-                    e.getMessage()
-            );
-        }
     }
 }

@@ -5,7 +5,6 @@ import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 
 import java.time.Instant;
-import java.time.LocalDate;
 
 public record AppointmentRequestResponseVM(
 
@@ -39,8 +38,7 @@ public record AppointmentRequestResponseVM(
         String createdBy,
         Instant createdDate,
         String lastModifiedBy,
-        Instant lastModifiedDate,
-        LocalDate preferredDate
+        Instant lastModifiedDate
 )
 {
 

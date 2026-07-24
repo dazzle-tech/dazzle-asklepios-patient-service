@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
-import com.dazzle.asklepios.service.dto.socialHistory.SocialHistoryCancelDTO;
+
 import java.net.URI;
 import java.util.Date;
 import java.util.List;
@@ -81,19 +81,6 @@ public class SocialHistoryController {
         return ResponseEntity.ok(updated);
     }
 
-    @PutMapping("/social-history/cancel")
-    public ResponseEntity<SocialHistory> cancel(
-            @Valid @RequestBody SocialHistoryCancelDTO cancelDTO
-    ) {
-        LOG.debug("REST cancel SocialHistory payload={}", cancelDTO);
-
-        SocialHistory cancelled = socialHistoryService.cancel(cancelDTO);
-
-        LOG.info("REST cancel SocialHistory - cancelled id={}", cancelled.getId());
-
-        return ResponseEntity.ok(cancelled);
-    }
-
     @DeleteMapping("/social-history/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
 
@@ -109,22 +96,12 @@ public class SocialHistoryController {
     @GetMapping("/social-history")
     public ResponseEntity<List<SocialHistory>> list(
             @RequestParam Long patientId,
-            @RequestParam(defaultValue = "false") boolean showCancelled,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug(
-                "REST list SocialHistory patientId={} showCancelled={} pageable={}",
-                patientId,
-                showCancelled,
-                pageable
-        );
+        LOG.debug("REST list SocialHistory patientId={} pageable={}", patientId, pageable);
 
         Page<SocialHistory> page =
-                socialHistoryService.findByPatientId(
-                        patientId,
-                        showCancelled,
-                        pageable
-                );
+                socialHistoryService.findByPatientId(patientId, pageable);
 
         HttpHeaders headers =
                 PaginationUtil.generatePaginationHttpHeaders(
@@ -132,16 +109,10 @@ public class SocialHistoryController {
                         page
                 );
 
-        LOG.debug(
-                "REST list SocialHistory - returning {} records",
-                page.getContent().size()
-        );
+        LOG.debug("REST list SocialHistory - returning {} records",
+                page.getContent().size());
 
-        return new ResponseEntity<>(
-                page.getContent(),
-                headers,
-                HttpStatus.OK
-        );
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
     private SocialHistoryUpdateDTO sanitizeUpdateDTO(SocialHistoryUpdateDTO dto) {

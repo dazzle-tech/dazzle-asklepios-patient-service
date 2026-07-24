@@ -11,6 +11,5 @@ public interface DiagnosticOrderTestReportRepository
         JpaSpecificationExecutor<DiagnosticOrderTestReport> {
 
     Optional<DiagnosticOrderTestReport> findByOrderTestId(Long orderTestId);
-    Optional<DiagnosticOrderTestReport> findFirstByOrderTestIdOrderByIdDesc(Long orderTestId);
 
 }

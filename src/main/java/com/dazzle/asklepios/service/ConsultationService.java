@@ -1,17 +1,11 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
-import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
-import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
-import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
 import com.dazzle.asklepios.domain.Consultation;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
-import com.dazzle.asklepios.domain.enumeration.ConsultationLevel;
 import com.dazzle.asklepios.domain.enumeration.ConsultationStatus;
-import com.dazzle.asklepios.domain.enumeration.ConsultationType;
 import com.dazzle.asklepios.domain.enumeration.DestinationType;
-import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
+import com.dazzle.asklepios.domain.enumeration.ConsultationLevel;
 import com.dazzle.asklepios.repository.ConsultationRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -20,11 +14,9 @@ import com.dazzle.asklepios.service.dto.consultation.ConsultationCreateDTO;
 import com.dazzle.asklepios.service.dto.consultation.ConsultationUpdateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
-import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -35,9 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -45,7 +35,6 @@ import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
 @Transactional
-@RequiredArgsConstructor
 public class ConsultationService {
 
     private static final Logger LOG =
@@ -57,8 +46,19 @@ public class ConsultationService {
     private final FacilityHelper facilityHelper;
     private final DepartmentHelper departmentHelper;
     private final PractitionerHelper practitionerHelper;
-    private final NotificationHelper notificationHelper;
 
+    public ConsultationService(
+            ConsultationRepository consultationRepository,
+            PatientRepository patientRepository,
+            PatientEncounterRepository patientEncounterRepository,
+            FacilityHelper facilityHelper, DepartmentHelper departmentHelper, PractitionerHelper practitionerHelper) {
+        this.consultationRepository = consultationRepository;
+        this.patientRepository = patientRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
+        this.facilityHelper = facilityHelper;
+        this.departmentHelper = departmentHelper;
+        this.practitionerHelper = practitionerHelper;
+    }
 
     private String currentUsername() {
         String username = SecurityUtils.getCurrentUserLogin().orElse(null);
@@ -128,13 +128,6 @@ public class ConsultationService {
 
         try {
             Consultation saved = consultationRepository.saveAndFlush(entity);
-
-            notificationForConsultationCreated(
-                    saved,
-                    patient,
-                    encounter
-            );
-
             LOG.info("[CREATE] Consultation successfully created with id={}", saved.getId());
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -344,91 +337,6 @@ public class ConsultationService {
                 "consultation",
                 "db.constraint"
         );
-    }
-
-    private void notificationForConsultationCreated(Consultation consultation, Patient patient, PatientEncounter encounter) {
-        if (consultation == null || patient == null || encounter == null) {
-            return;
-        }
-
-        Long departmentId = consultation.getToDepartmentId();
-        DepartmentDTO fromDepartment = departmentHelper.getDepartment(consultation.getFromDepartmentId());
-        DepartmentDTO toDepartment = departmentHelper.getDepartment(departmentId);
-
-        FacilityDTO fromFacility = facilityHelper.getFacility(consultation.getFromFacilityId());
-        FacilityDTO toFacility = facilityHelper.getFacility(consultation.getToFacilityId());
-
-        PractitionerDTO practitioner = null;
-        if (consultation.getPractitionerId() != null) {
-            practitioner = practitionerHelper.getPractitioner(consultation.getPractitionerId());
-        }
-
-        if (departmentId == null) {
-            LOG.warn(
-                    "Skip consultation created notification because destination department is missing. consultationId={}",
-                    consultation.getId()
-            );
-            return;
-        }
-        String login = SecurityUtils.getCurrentUserLogin().orElse(null);
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
-                notificationHelper.resolveRecipients(consultation.getToDepartmentId(), login, consultation.getCreatedBy(), consultation.getPatient(), practitioner,false);
-
-        Map<String, Object> data = new LinkedHashMap<>();
-
-        data.put("consultation_id", consultation.getId());
-        data.put("patient_id", patient.getId());
-        data.put("patient_name", notificationHelper.getPatientName(patient));
-        data.put("encounter_id", encounter.getId());
-
-        data.put("from_facility_id", consultation.getFromFacilityId());
-        data.put("from_facility_name", fromFacility.name());
-
-        data.put("to_facility_id", consultation.getToFacilityId());
-        data.put("to_facility_name", toFacility.name());
-
-        data.put("from_department_id", consultation.getFromDepartmentId());
-        data.put("from_department_name", fromDepartment.name());
-
-        data.put("to_department_id", consultation.getToDepartmentId());
-        data.put("to_department_name", toDepartment.name());
-
-        data.put("consultation_type", consultation.getConsultationType() != null ? consultation.getConsultationType().toString() : "");
-        data.put("destination_type", consultation.getDestinationType() != null ? consultation.getDestinationType().toString() : "");
-        data.put("consultation_level", consultation.getConsultationLevel() != null ? consultation.getConsultationLevel().toString() : "");
-        data.put("consultation_method", consultation.getConsultationMethod() != null ? consultation.getConsultationMethod().toString() : "");
-        data.put("consultant_speciality", consultation.getConsultantSpeciality() != null ? consultation.getConsultantSpeciality() : "");
-        data.put("status", consultation.getStatus() != null ? consultation.getStatus().toString() : "");
-        notificationHelper.sendNotification(
-                null,
-                NotificationCode.CONSULTATION_CREATED,
-                recipientsByRule,
-                data,
-                "CONSULTATION",
-                consultation.getId()
-        );
-        if(consultation.getDestinationType()== DestinationType.CONSULTANT && consultation.getConsultationType()== ConsultationType.URGENT){
-            LOG.debug("Sending notification to consultant practitionerId={}", consultation.getPractitionerId());
-            notificationHelper.sendNotification(
-                    null,
-                    NotificationCode.PRACTITIONER_URGENT_CONSULTATION_CREATED,
-                    recipientsByRule,
-                    data,
-                    "CONSULTATION",
-                    consultation.getId()
-            );
-        }
-        else if(consultation.getDestinationType()== DestinationType.DEPARTMENT && consultation.getConsultationType()== ConsultationType.URGENT){
-            LOG.debug("Sending notification to department departmentId={}", consultation.getToDepartmentId());
-            notificationHelper.sendNotification(
-                    null,
-                    NotificationCode.DEPARTMENT_URGENT_CONSULTATION_CREATED,
-                    recipientsByRule,
-                    data,
-                    "CONSULTATION",
-                    consultation.getId()
-            );
-        }
     }
 
 }

@@ -13,5 +13,5 @@ public interface PatientPrescriptionMedicationRepository extends JpaRepository<P
     Page<PatientPrescriptionMedication> findByPrescriptionHeader_Id(Long prescriptionHeaderId, Pageable pageable);
 
     Page<PatientPrescriptionMedication> findByChronicMedicationTrueAndPrescriptionHeader_Patient_IdOrderByCreatedDateDesc(Long patientId, Pageable pageable );
-    List<PatientPrescriptionMedication> findByPrescriptionHeader_Id(Long prescriptionHeaderId);
+
 }
