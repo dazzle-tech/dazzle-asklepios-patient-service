@@ -456,7 +456,7 @@ public class DentalProcedureService {
             String notes,
             String surface
     ) {
-        BigDecimal unitPrice = BigDecimal.valueOf(setupProcedure.price() == null ? 0L : setupProcedure.price());
+        BigDecimal unitPrice = setupProcedure.price();
         Long quantity = 1L;
         BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
         String billingNotes = buildBillingNotesValue(notes, surface);
@@ -498,7 +498,7 @@ public class DentalProcedureService {
             String notes,
             String surface
     ) {
-        BigDecimal unitPrice = BigDecimal.valueOf(setupService.price() == null ? 0L : setupService.price());
+        BigDecimal unitPrice =setupService.price();
         Long quantity = 1L;
         BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
         String billingNotes = buildBillingNotesValue(notes, surface);

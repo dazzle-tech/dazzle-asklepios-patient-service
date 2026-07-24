@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service.dto.billing;
 
+import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
@@ -10,11 +11,10 @@ import java.io.Serializable;
 import java.util.List;
 
 /**
- * Request used to prepare selected default services for billing
- * before treatment starts.
+ * Prepares selected encounter default services before treatment starts.
  *
- * The frontend sends service references only.
- * Pricing is always resolved by the backend.
+ * Currency is the facility currency resolved by the calling application;
+ * it must not be an editable cashier field.
  */
 public record PrepareDefaultServicesRequest(
 
@@ -23,6 +23,9 @@ public record PrepareDefaultServicesRequest(
 
         @NotNull
         Long facilityId,
+
+        @NotNull
+        Currency currency,
 
         @NotNull
         BillingCoverageType coverageType,

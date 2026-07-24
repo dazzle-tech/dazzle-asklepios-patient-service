@@ -297,7 +297,7 @@ public class PatientProcedureService {
             ProcedureSetupDTO setupProcedure,
             String notes
     ) {
-        BigDecimal unitPrice = BigDecimal.valueOf(setupProcedure.price());
+        BigDecimal unitPrice = setupProcedure.price();
         Long quantity = 1L;
 
         BigDecimal discountAmount = BigDecimal.ZERO;

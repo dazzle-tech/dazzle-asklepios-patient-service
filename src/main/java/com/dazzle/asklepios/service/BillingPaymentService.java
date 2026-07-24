@@ -38,7 +38,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -528,15 +527,28 @@ public class BillingPaymentService {
                         requestedItemIds
                 );
 
-        List<PatientServiceAndProduct> items =
+        List<PatientServiceAndProduct> loadedItems =
                 patientServiceAndProductRepository
-                        .findAllById(uniqueItemIds)
-                        .stream()
-                        .sorted(
-                                Comparator.comparing(
-                                        PatientServiceAndProduct::getId
+                        .findAllById(uniqueItemIds);
+
+        java.util.Map<Long, PatientServiceAndProduct> itemById =
+                loadedItems.stream()
+                        .collect(
+                                java.util.stream.Collectors.toMap(
+                                        PatientServiceAndProduct::getId,
+                                        item -> item
                                 )
-                        )
+                        );
+
+        /*
+         * Preserve the exact PSP order supplied by the caller.
+         * The prepare-default-services response returns PSP IDs in
+         * selected-service sequence order, so this becomes the service FIFO.
+         */
+        List<PatientServiceAndProduct> items =
+                uniqueItemIds.stream()
+                        .map(itemById::get)
+                        .filter(java.util.Objects::nonNull)
                         .toList();
 
         if (items.size() != uniqueItemIds.size()) {

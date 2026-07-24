@@ -260,7 +260,7 @@ public class BillingPricingInputFactory {
          *
          * replace DEFAULT below with that exact value.
          */
-        return PricingSource.DEFAULT;
+        return PricingSource.DEFAULT_ITEM_PRICE;
     }
 
     private String resolveFallbackItemCode(

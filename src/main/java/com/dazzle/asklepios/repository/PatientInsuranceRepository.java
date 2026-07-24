@@ -10,24 +10,26 @@ import java.time.LocalDate;
 import java.util.Optional;
 
 @Repository
-public interface PatientInsuranceRepository extends JpaRepository<PatientInsurance, Long> {
-    Page<PatientInsurance> findByPatientId(Long patientId, Pageable pageable);
+public interface PatientInsuranceRepository
+        extends JpaRepository<PatientInsurance, Long> {
 
-    Optional<PatientInsurance> findFirstByPatientIdAndPayerNphiesIdAndMemberCardId(
+    Page<PatientInsurance> findByPatient_Id(Long patientId, Pageable pageable);
+
+    Optional<PatientInsurance>
+    findFirstByPatient_IdAndPayerNphiesIdAndMemberCardId(
             Long patientId,
             String payerNphiesId,
             String memberCardId
     );
 
-    Optional<PatientInsurance> findFirstByPatientIdAndIsPrimaryTrue(Long patientId);
-
-    Optional<PatientInsurance> findFirstByPatientId(Long patientId);
+    Optional<PatientInsurance>
+    findFirstByPatient_IdAndIsPrimaryTrue(Long patientId);
 
     Optional<PatientInsurance>
-    findByIdAndPatient_Id(
-            Long id,
-            Long patientId
-    );
+    findFirstByPatient_Id(Long patientId);
+
+    Optional<PatientInsurance>
+    findByIdAndPatient_Id(Long id, Long patientId);
 
     Optional<PatientInsurance>
     findByIdAndPatient_IdAndExpirationDateGreaterThanEqual(
@@ -35,4 +37,6 @@ public interface PatientInsuranceRepository extends JpaRepository<PatientInsuran
             Long patientId,
             LocalDate date
     );
+
+    Page<PatientInsurance> findByPatientId(Long patientId, Pageable pageable);
 }

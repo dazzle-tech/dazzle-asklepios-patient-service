@@ -13,7 +13,8 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface PatientServiceAndProductRepository extends JpaRepository<PatientServiceAndProduct, Long> {
+public interface PatientServiceAndProductRepository
+        extends JpaRepository<PatientServiceAndProduct, Long> {
 
     Page<PatientServiceAndProduct> findAllByEncounterId(Long encounterId, Pageable pageable);
 
@@ -61,18 +62,14 @@ public interface PatientServiceAndProductRepository extends JpaRepository<Patien
     );
 
     Optional<PatientServiceAndProduct>
-    findFirstByEncounterIdAndServiceIdAndIsDefaultServiceTrue(
+    findFirstByEncounterIdAndBillingItemTypeAndSourceIdAndIsDefaultServiceTrue(
             Long encounterId,
-            Long serviceId
+            BillingItemTypes billingItemType,
+            Long sourceId
     );
 
     List<PatientServiceAndProduct>
     findAllByEncounterIdAndIsDefaultServiceTrueOrderByIdAsc(
             Long encounterId
-    );
-
-    boolean existsByEncounterIdAndServiceIdAndIsDefaultServiceTrue(
-            Long encounterId,
-            Long serviceId
     );
 }

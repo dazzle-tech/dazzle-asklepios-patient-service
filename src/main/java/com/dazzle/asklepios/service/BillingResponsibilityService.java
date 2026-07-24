@@ -12,6 +12,10 @@ import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
+import com.dazzle.asklepios.integration.waseel.dto.InsuranceCoverage;
+import com.dazzle.asklepios.integration.waseel.service.WaseelCoverageExtractionService;
+import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -29,6 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 @Service
@@ -58,6 +63,12 @@ public class BillingResponsibilityService {
 
     private final PatientServiceAndProductRepository
             patientServiceAndProductRepository;
+
+    private final WaseelEligibilityRequestRepository
+            waseelEligibilityRequestRepository;
+
+    private final WaseelCoverageExtractionService
+            waseelCoverageExtractionService;
 
     /**
      * Calculates and persists responsibility rows.
@@ -549,11 +560,7 @@ public class BillingResponsibilityService {
                                 responsibilityRole
                         )
 
-                        .payerId(
-                                insurance == null
-                                        ? null
-                                        : insurance.getPayorId()
-                        )
+                        .payerId(null)
 
                         .patientInsurance(
                                 insurance
@@ -695,34 +702,80 @@ public class BillingResponsibilityService {
     }
 
     /**
-     * Current assumption:
-     * PatientInsurance.patientShare is a percentage between 0 and 100.
+     * Resolves the patient copayment from the latest successful
+     * Waseel eligibility response.
+     *
+     * No payorId or planId is used in this first version.
      */
     private BigDecimal calculatePatientInsuranceShare(
             PatientInsurance insurance,
             BigDecimal netAmount
     ) {
-        BigDecimal patientSharePercentage =
-                percentage(
-                        insurance.getPatientShare()
-                );
-
-        BigDecimal result =
-                netAmount
-                        .multiply(
-                                patientSharePercentage
+        WaseelEligibilityRequest eligibility =
+                waseelEligibilityRequestRepository
+                        .findFirstByPatientIdAndRequestStatusAndEligibilityResponseIdIsNotNullOrderByCreatedDateDesc(
+                                insurance.getPatient().getId(),
+                                "SUCCESS"
                         )
+                        .orElseThrow(() ->
+                                new BadRequestAlertException(
+                                        "A successful Waseel eligibility response is required before insurance billing.",
+                                        ENTITY_NAME,
+                                        "insurance.eligibility.required"
+                                )
+                        );
+
+        if (eligibility.getResponseJson() == null
+                || eligibility.getResponseJson().isBlank()) {
+            throw new BadRequestAlertException(
+                    "Waseel eligibility response JSON is missing.",
+                    ENTITY_NAME,
+                    "insurance.eligibility.response.missing"
+            );
+        }
+
+        InsuranceCoverage coverage;
+        try {
+            coverage = waseelCoverageExtractionService
+                    .extractCoverage(eligibility.getResponseJson());
+        } catch (RuntimeException exception) {
+            LOG.error(
+                    "[INSURANCE] Unable to extract Waseel coverage patientInsuranceId={} eligibilityId={}",
+                    insurance.getId(),
+                    eligibility.getId(),
+                    exception
+            );
+
+            throw new BadRequestAlertException(
+                    "Unable to extract insurance coverage from Waseel eligibility response.",
+                    ENTITY_NAME,
+                    "insurance.coverage.extract.failed"
+            );
+        }
+
+        BigDecimal copaymentPercent = percentage(
+                coverage == null ? null : coverage.getCopaymentPercent()
+        );
+
+        BigDecimal patientAmount = money(
+                netAmount
+                        .multiply(copaymentPercent)
                         .divide(
                                 BigDecimal.valueOf(100),
                                 MONEY_SCALE,
                                 RoundingMode.HALF_UP
-                        );
+                        )
+        );
 
-        if (result.compareTo(netAmount) > 0) {
-            return netAmount;
+        BigDecimal copaymentCap = money(
+                coverage == null ? null : coverage.getCopaymentCap()
+        );
+
+        if (copaymentCap.signum() > 0) {
+            patientAmount = patientAmount.min(copaymentCap);
         }
 
-        return money(result);
+        return patientAmount.min(money(netAmount));
     }
 
     private PatientInsurance loadAndValidateInsurance(
@@ -730,28 +783,42 @@ public class BillingResponsibilityService {
     ) {
         PatientInsurance insurance =
                 patientInsuranceRepository
-                        .findById(
-                                item.getPatientInsuranceId()
+                        .findByIdAndPatient_Id(
+                                item.getPatientInsuranceId(),
+                                item.getPatientId()
                         )
                         .orElseThrow(() ->
                                 new NotFoundAlertException(
-                                        "Patient insurance not found with id "
-                                                + item.getPatientInsuranceId(),
+                                        "Patient insurance was not found for this patient.",
                                         ENTITY_NAME,
                                         "patientInsurance.notfound"
                                 )
                         );
 
-        if (insurance.getPatient() == null
-                || insurance.getPatient().getId() == null
-                || !insurance.getPatient()
-                .getId()
-                .equals(item.getPatientId())) {
-
+        if (insurance.getExpirationDate() == null
+                || insurance.getExpirationDate().isBefore(LocalDate.now())) {
             throw new BadRequestAlertException(
-                    "Patient insurance does not belong to the patient.",
+                    "Patient insurance is expired or has no expiration date.",
                     ENTITY_NAME,
-                    "patientInsurance.patient.mismatch"
+                    "patientInsurance.expired"
+            );
+        }
+
+        if (insurance.getPayerNphiesId() == null
+                || insurance.getPayerNphiesId().isBlank()) {
+            throw new BadRequestAlertException(
+                    "Waseel payer NPHIES ID is required.",
+                    ENTITY_NAME,
+                    "patientInsurance.payerNphiesId.required"
+            );
+        }
+
+        if (insurance.getMemberCardId() == null
+                || insurance.getMemberCardId().isBlank()) {
+            throw new BadRequestAlertException(
+                    "Waseel member card ID is required.",
+                    ENTITY_NAME,
+                    "patientInsurance.memberCardId.required"
             );
         }
 
@@ -763,6 +830,11 @@ public class BillingResponsibilityService {
     ) {
         if (insurance == null) {
             return null;
+        }
+
+        if (insurance.getMemberCardId() != null
+                && !insurance.getMemberCardId().isBlank()) {
+            return insurance.getMemberCardId().trim();
         }
 
         return insurance.getPolicyNumber();

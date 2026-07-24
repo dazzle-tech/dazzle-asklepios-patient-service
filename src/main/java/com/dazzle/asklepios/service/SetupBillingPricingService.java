@@ -302,11 +302,7 @@ public class SetupBillingPricingService {
         );
 
         BigDecimal price =
-                service.price() == null
-                        ? null
-                        : BigDecimal.valueOf(
-                        service.price()
-                );
+                service.price();
 
         return buildFallbackResult(
                 request,
@@ -343,11 +339,7 @@ public class SetupBillingPricingService {
         );
 
         BigDecimal price =
-                procedure.price() == null
-                        ? null
-                        : BigDecimal.valueOf(
-                        procedure.price()
-                );
+                procedure.price();
 
         return buildFallbackResult(
                 request,
