@@ -7,11 +7,17 @@ import com.dazzle.asklepios.domain.BillingWallet;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryCategory;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryDirection;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerScope;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerSourceChannel;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerTransactionType;
 import com.dazzle.asklepios.repository.BillingPaymentRepository;
 import com.dazzle.asklepios.repository.BillingPaymentTransactionRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.service.dto.billing.BillingLedgerEntryRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingPaymentReservationResult;
 import com.dazzle.asklepios.service.dto.billing.BillingPaymentResult;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
@@ -79,6 +85,9 @@ public class BillingPaymentService {
     private final BillingChargeService
             billingChargeService;
 
+    private final BillingLedgerService
+            billingLedgerService;
+
     private final ObjectMapper objectMapper;
 
     @Transactional(rollbackFor = Exception.class)
@@ -131,6 +140,19 @@ public class BillingPaymentService {
                                 request.currency()
                         );
 
+        UUID transactionGroupId =
+                UUID.randomUUID();
+
+        BigDecimal walletAvailableBefore =
+                money(
+                        wallet.getAvailableBalance()
+                );
+
+        BigDecimal walletReservedBefore =
+                money(
+                        wallet.getReservedBalance()
+                );
+
         BillingPayment payment =
                 createPayment(
                         request,
@@ -158,6 +180,17 @@ public class BillingPaymentService {
                         request.currency(),
                         request.amount()
                 );
+
+        recordPaymentCreditedLedger(
+                payment,
+                paymentTransaction,
+                creditedWallet,
+                money(request.amount()),
+                walletAvailableBefore,
+                walletReservedBefore,
+                transactionGroupId,
+                request.requestId()
+        );
 
         List<BillingPaymentReservationResult>
                 reservationResults =
@@ -859,6 +892,92 @@ public class BillingPaymentService {
                     "requestId.required"
             );
         }
+    }
+
+    private void recordPaymentCreditedLedger(
+            BillingPayment payment,
+            BillingPaymentTransaction paymentTransaction,
+            BillingWallet wallet,
+            BigDecimal amount,
+            BigDecimal walletAvailableBefore,
+            BigDecimal walletReservedBefore,
+            UUID transactionGroupId,
+            String requestId
+    ) {
+        billingLedgerService.record(
+                new BillingLedgerEntryRequest(
+                        transactionGroupId,
+                        requestId.trim(),
+                        payment.getIdempotencyKey()
+                                + ":LEDGER:PAYMENT_CREDITED",
+
+                        payment.getPatient(),
+                        payment.getEncounter(),
+
+                        wallet,
+                        payment,
+                        paymentTransaction,
+
+                        null,
+                        null,
+                        null,
+
+                        null,
+                        null,
+
+                        null,
+                        null,
+                        null,
+
+                        BillingLedgerTransactionType
+                                .PAYMENT_CREDITED,
+
+                        BillingLedgerScope.PAYMENT,
+
+                        amount,
+                        payment.getCurrency(),
+
+                        amount,
+                        zero(),
+                        zero(),
+                        zero(),
+
+                        zero(),
+                        zero(),
+                        zero(),
+
+                        walletAvailableBefore,
+                        money(
+                                wallet.getAvailableBalance()
+                        ),
+
+                        walletReservedBefore,
+                        money(
+                                wallet.getReservedBalance()
+                        ),
+
+                        null,
+                        null,
+
+                        null,
+                        null,
+
+                        BillingLedgerEntryDirection.CREDIT,
+                        BillingLedgerEntryCategory.BUSINESS,
+
+                        null,
+
+                        "BILLING_PAYMENT",
+                        payment.getId(),
+                        payment.getPaymentNumber(),
+
+                        "Advance payment credited to the patient wallet.",
+
+                        null,
+
+                        BillingLedgerSourceChannel.BILLING_ENGINE
+                )
+        );
     }
 
     private ObjectNode buildProcessorResponse(

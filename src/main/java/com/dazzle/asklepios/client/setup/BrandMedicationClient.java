@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 
 @FeignClient(
         name = "setupServiceClient",
+        contextId = "brandMedicationClient",
         url = "${service.asklepios-setup-service-url}",
         configuration = SetupServiceFeignConfig.class
 )

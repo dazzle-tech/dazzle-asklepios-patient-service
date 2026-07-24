@@ -1,7 +1,6 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.dto.BillingPricingResolveRequest;
-import com.dazzle.asklepios.client.setup.dto.BillingPricingResolveResponse;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.domain.enumeration.billing.DiscountApplicableOn;
@@ -18,6 +17,7 @@ import com.dazzle.asklepios.service.dto.billing.BillingRefundResult;
 import com.dazzle.asklepios.service.dto.billing.BillingRefundReversalRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingRefundReversalResult;
 import com.dazzle.asklepios.service.dto.billing.BillingRuleResolveResponse;
+import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -71,8 +71,14 @@ public class BillingEngineService {
     /**
      * Main billing entry point for one patient service/product.
      *
-     * This method is intentionally not transactional because it calls
-     * Setup Service before entering the local financial transaction.
+     * Setup Service calls happen before the local financial
+     * transaction begins.
+     *
+     * Pricing resolution order:
+     *
+     * 1. Applicable active Price List.
+     * 2. Setup item base-price fallback.
+     * 3. Error if no valid price exists.
      */
     public BillingOperationResult process(
             Long patientServiceProductId,
@@ -108,6 +114,7 @@ public class BillingEngineService {
          * An exempted item is still processed.
          *
          * It must produce:
+         *
          * - pricing snapshot
          * - charge line
          * - exemption audit record
@@ -115,7 +122,9 @@ public class BillingEngineService {
          * It is not skipped.
          */
         BillingRuleResolveResponse billingRule =
-                setupBillingRuleService.resolve(item);
+                setupBillingRuleService.resolve(
+                        item
+                );
 
         validateBillingRule(
                 item,
@@ -149,40 +158,47 @@ public class BillingEngineService {
         }
 
         Long sourceId =
-                resolveSourceId(item);
+                resolveSourceId(
+                        item
+                );
 
         Long payerId =
-                resolvePayerId(item);
+                resolvePayerId(
+                        item
+                );
 
         BillingPricingResolveRequest pricingRequest =
-                new BillingPricingResolveRequest(
+                buildPricingRequest(
+                        item,
                         facilityId,
-                        item.getPatientId(),
-                        item.getEncounterId(),
-                        item.getBillingItemType(),
                         sourceId,
-                        item.getPatientInsuranceId(),
-                        payerId,
-                        item.getCurrency(),
-                        resolveTaxApplicableOn(item),
-                        resolveDiscountApplicableOn(item),
-                        LocalDate.now()
+                        payerId
                 );
 
-        BillingPricingResolveResponse pricingResponse =
-                setupBillingPricingService.resolve(
-                        pricingRequest
-                );
+        /*
+         * Resolution order:
+         *
+         * Price List
+         *     ↓ when no applicable item exists
+         * Setup item base price
+         *     ↓ when no valid base price exists
+         * Error
+         */
+        ResolvedBillingPrice resolvedPrice =
+                setupBillingPricingService
+                        .resolveOrFallback(
+                                pricingRequest
+                        );
 
         validateResolvedPricing(
                 item,
-                pricingResponse
+                resolvedPrice
         );
 
         BillingPricingInput pricingInput =
                 billingPricingInputFactory.create(
                         item,
-                        pricingResponse
+                        resolvedPrice
                 );
 
         /*
@@ -203,11 +219,12 @@ public class BillingEngineService {
                 "[PROCESS] Billing completed "
                         + "pspId={} chargeId={} "
                         + "chargeLineId={} netAmount={} "
-                        + "processed={}",
+                        + "priceSource={} processed={}",
                 result.patientServiceProductId(),
                 result.chargeId(),
                 result.chargeLineId(),
                 result.netAmount(),
+                resolvedPrice.priceSource(),
                 result.processed()
         );
 
@@ -349,10 +366,14 @@ public class BillingEngineService {
                         patientServiceProductId
                 );
 
-        validatePatientItem(item);
+        validatePatientItem(
+                item
+        );
 
         BillingRuleResolveResponse billingRule =
-                setupBillingRuleService.resolve(item);
+                setupBillingRuleService.resolve(
+                        item
+                );
 
         validateBillingRule(
                 item,
@@ -360,34 +381,38 @@ public class BillingEngineService {
         );
 
         Long sourceId =
-                resolveSourceId(item);
-
-        BillingPricingResolveResponse pricingResponse =
-                setupBillingPricingService.resolve(
-                        new BillingPricingResolveRequest(
-                                facilityId,
-                                item.getPatientId(),
-                                item.getEncounterId(),
-                                item.getBillingItemType(),
-                                sourceId,
-                                item.getPatientInsuranceId(),
-                                resolvePayerId(item),
-                                item.getCurrency(),
-                                resolveTaxApplicableOn(item),
-                                resolveDiscountApplicableOn(item),
-                                LocalDate.now()
-                        )
+                resolveSourceId(
+                        item
                 );
+
+        Long payerId =
+                resolvePayerId(
+                        item
+                );
+
+        BillingPricingResolveRequest pricingRequest =
+                buildPricingRequest(
+                        item,
+                        facilityId,
+                        sourceId,
+                        payerId
+                );
+
+        ResolvedBillingPrice resolvedPrice =
+                setupBillingPricingService
+                        .resolveOrFallback(
+                                pricingRequest
+                        );
 
         validateResolvedPricing(
                 item,
-                pricingResponse
+                resolvedPrice
         );
 
         BillingPricingInput pricingInput =
                 billingPricingInputFactory.create(
                         item,
-                        pricingResponse
+                        resolvedPrice
                 );
 
         BillingOperationResult result =
@@ -402,11 +427,13 @@ public class BillingEngineService {
         LOG.info(
                 "[REPRICE] Billing repricing completed "
                         + "pspId={} chargeId={} "
-                        + "chargeLineId={} netAmount={}",
+                        + "chargeLineId={} netAmount={} "
+                        + "priceSource={}",
                 result.patientServiceProductId(),
                 result.chargeId(),
                 result.chargeLineId(),
-                result.netAmount()
+                result.netAmount(),
+                resolvedPrice.priceSource()
         );
 
         return result;
@@ -501,7 +528,9 @@ public class BillingEngineService {
 
         BillingCancellationResult result =
                 billingTransactionService
-                        .cancelPatientService(request);
+                        .cancelPatientService(
+                                request
+                        );
 
         LOG.info(
                 "[CANCEL_SERVICE] Billing cancellation completed "
@@ -629,12 +658,6 @@ public class BillingEngineService {
      *
      * BillingTransactionService must internally cancel each patient
      * service/product through BillingCancellationService.
-     *
-     * It must not directly cancel charge rows before:
-     *
-     * - reversing allocations
-     * - reversing debit allocations
-     * - releasing reservations
      */
     @Transactional(rollbackFor = Exception.class)
     public void cancelEncounter(
@@ -655,11 +678,12 @@ public class BillingEngineService {
                 requestId
         );
 
-        billingTransactionService.cancelEncounterBilling(
-                encounterId,
-                reason.trim(),
-                requestId.trim()
-        );
+        billingTransactionService
+                .cancelEncounterBilling(
+                        encounterId,
+                        reason.trim(),
+                        requestId.trim()
+                );
 
         LOG.info(
                 "[CANCEL_ENCOUNTER] Encounter billing cancellation "
@@ -671,12 +695,42 @@ public class BillingEngineService {
 
     /*
      * ============================================================
+     * PRICING REQUEST
+     * ============================================================
+     */
+
+    private BillingPricingResolveRequest buildPricingRequest(
+            PatientServiceAndProduct item,
+            Long facilityId,
+            Long sourceId,
+            Long payerId
+    ) {
+        return new BillingPricingResolveRequest(
+                facilityId,
+                item.getPatientId(),
+                item.getEncounterId(),
+                item.getBillingItemType(),
+                sourceId,
+                item.getPatientInsuranceId(),
+                payerId,
+                item.getCurrency(),
+                resolveTaxApplicableOn(
+                        item
+                ),
+                resolveDiscountApplicableOn(
+                        item
+                ),
+                LocalDate.now()
+        );
+    }
+
+    /*
+     * ============================================================
      * ENTITY LOADERS
      * ============================================================
      */
 
-    private PatientServiceAndProduct
-    findPatientServiceProduct(
+    private PatientServiceAndProduct findPatientServiceProduct(
             Long id
     ) {
         return patientServiceAndProductRepository
@@ -732,10 +786,6 @@ public class BillingEngineService {
             );
         }
 
-        /*
-         * Quantity zero is handled through cancellation,
-         * not repricing.
-         */
         if (item.getQuantity() == null
                 || item.getQuantity() <= 0) {
             throw new BadRequestAlertException(
@@ -789,18 +839,26 @@ public class BillingEngineService {
 
     private void validateResolvedPricing(
             PatientServiceAndProduct item,
-            BillingPricingResolveResponse pricing
+            ResolvedBillingPrice resolvedPrice
     ) {
-        if (pricing == null) {
+        if (resolvedPrice == null) {
             throw new BadRequestAlertException(
-                    "Setup Service returned no pricing data.",
+                    "No billing price could be resolved.",
                     ENTITY_NAME,
                     "pricing.notfound"
             );
         }
 
-        if (pricing.unitPrice() == null
-                || pricing.unitPrice().signum() < 0) {
+        if (resolvedPrice.priceSource() == null) {
+            throw new BadRequestAlertException(
+                    "Resolved billing price source is missing.",
+                    ENTITY_NAME,
+                    "priceSource.missing"
+            );
+        }
+
+        if (resolvedPrice.unitPrice() == null
+                || resolvedPrice.unitPrice().signum() < 0) {
             throw new BadRequestAlertException(
                     "Resolved unit price is invalid.",
                     ENTITY_NAME,
@@ -808,7 +866,7 @@ public class BillingEngineService {
             );
         }
 
-        if (pricing.currency() == null) {
+        if (resolvedPrice.currency() == null) {
             throw new BadRequestAlertException(
                     "Resolved pricing currency is missing.",
                     ENTITY_NAME,
@@ -816,12 +874,48 @@ public class BillingEngineService {
             );
         }
 
-        if (pricing.currency()
+        if (resolvedPrice.currency()
                 != item.getCurrency()) {
             throw new BadRequestAlertException(
                     "Resolved pricing currency does not match item currency.",
                     ENTITY_NAME,
                     "pricingCurrency.mismatch"
+            );
+        }
+
+        if (resolvedPrice.resolvedFromPriceList()) {
+            if (resolvedPrice.priceListId() == null) {
+                throw new BadRequestAlertException(
+                        "Resolved price-list ID is missing.",
+                        ENTITY_NAME,
+                        "priceListId.missing"
+                );
+            }
+
+            if (resolvedPrice.priceListItemId() == null) {
+                throw new BadRequestAlertException(
+                        "Resolved price-list item ID is missing.",
+                        ENTITY_NAME,
+                        "priceListItemId.missing"
+                );
+            }
+
+            if (resolvedPrice.pricingResponse() == null) {
+                throw new BadRequestAlertException(
+                        "Price-list response metadata is missing.",
+                        ENTITY_NAME,
+                        "pricingResponse.missing"
+                );
+            }
+        }
+
+        if (resolvedPrice.resolvedFromSetupFallback()
+                && resolvedPrice.setupSourceId() == null) {
+
+            throw new BadRequestAlertException(
+                    "Setup source ID is required for fallback pricing.",
+                    ENTITY_NAME,
+                    "setupSourceId.missing"
             );
         }
     }
@@ -908,17 +1002,14 @@ public class BillingEngineService {
             PatientServiceAndProduct item
     ) {
         /*
-         * PSP currently exposes patientInsuranceId but not payerId.
+         * Temporary behavior:
          *
-         * Payer ID should be resolved from PatientInsurance or from
-         * the insurance integration before calling Setup Pricing.
+         * SELF_PAY:
+         * payerId = null
          *
-         * Returning null is valid for:
-         * - self-pay
-         * - uninsured services
-         *
-         * Replace this when payerId becomes available on PSP or from
-         * PatientInsurance.
+         * INSURANCE:
+         * This must be replaced in the Default Service insurance
+         * phase by loading PatientInsurance and returning its payerId.
          */
         return null;
     }

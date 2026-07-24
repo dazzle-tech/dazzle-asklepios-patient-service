@@ -6,6 +6,7 @@ import com.dazzle.asklepios.domain.BillingDebitAccount;
 import com.dazzle.asklepios.domain.BillingDebitTransaction;
 import com.dazzle.asklepios.domain.BillingPayment;
 import com.dazzle.asklepios.domain.BillingPaymentTransaction;
+import com.dazzle.asklepios.domain.BillingWallet;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.billing.AllocationSourceType;
@@ -74,8 +75,14 @@ public class BillingDebitService {
 
     private final BillingLedgerService
             billingLedgerService;
-    private final BillingAllocationRepository billingAllocationRepository;
-    private final BillingAllocationService billingAllocationService;
+
+    private final BillingWalletService
+            billingWalletService;
+
+    private final BillingAllocationRepository
+            billingAllocationRepository;
+    private final BillingAllocationService
+            billingAllocationService;
 
     /*
      * Creates or loads one debit account per patient/currency.
@@ -607,6 +614,39 @@ public class BillingDebitService {
             );
         }
 
+        BillingWallet wallet =
+                billingWalletService.lockWallet(
+                        account.getPatient().getId(),
+                        account.getCurrency()
+                );
+
+        if (payment.getWallet() == null
+                || payment.getWallet().getId() == null
+                || !payment.getWallet()
+                .getId()
+                .equals(wallet.getId())) {
+            throw new BadRequestAlertException(
+                    "Payment does not belong to the patient's billing wallet.",
+                    ENTITY_NAME,
+                    "payment.wallet.mismatch"
+            );
+        }
+
+        BigDecimal walletAvailableBefore =
+                money(
+                        wallet.getAvailableBalance()
+                );
+
+        BigDecimal walletReservedBefore =
+                money(
+                        wallet.getReservedBalance()
+                );
+
+        BigDecimal paymentRemaining =
+                calculatePaymentRemainingForDebitSettlement(
+                        payment
+                );
+
         BigDecimal amount =
                 minimum(
                         positiveMoney(
@@ -614,7 +654,28 @@ public class BillingDebitService {
                                 "Settlement amount"
                         ),
                         balanceBefore,
-                        money(payment.getAmount())
+                        paymentRemaining,
+                        walletAvailableBefore
+                );
+
+        if (amount.signum() <= 0) {
+            throw new BadRequestAlertException(
+                    "No payment balance is available for debit settlement.",
+                    ENTITY_NAME,
+                    "settlement.amount.zero"
+            );
+        }
+
+        /*
+         * The payment was credited to the shared patient wallet.
+         * Settling the debit must consume that available wallet balance;
+         * otherwise the same payment would both reduce debt and remain
+         * spendable in the wallet.
+         */
+        BillingWallet updatedWallet =
+                billingWalletService.consumeAvailable(
+                        wallet,
+                        amount
                 );
 
         BigDecimal balanceAfter =
@@ -718,6 +779,9 @@ public class BillingDebitService {
                 savedTransaction,
                 payment,
                 paymentTransaction,
+                updatedWallet,
+                walletAvailableBefore,
+                walletReservedBefore,
                 balanceBefore,
                 balanceAfter,
                 sourceChannel,
@@ -840,6 +904,9 @@ public class BillingDebitService {
             BillingDebitTransaction transaction,
             BillingPayment payment,
             BillingPaymentTransaction paymentTransaction,
+            BillingWallet wallet,
+            BigDecimal walletAvailableBefore,
+            BigDecimal walletReservedBefore,
             BigDecimal balanceBefore,
             BigDecimal balanceAfter,
             BillingLedgerSourceChannel sourceChannel,
@@ -855,7 +922,7 @@ public class BillingDebitService {
                         transaction.getPatient(),
                         transaction.getEncounter(),
 
-                        payment.getWallet(),
+                        wallet,
                         payment,
                         paymentTransaction,
 
@@ -878,9 +945,10 @@ public class BillingDebitService {
                         transaction.getAmount(),
                         transaction.getCurrency(),
 
+                        transaction.getAmount()
+                                .negate(),
                         zero(),
-                        zero(),
-                        zero(),
+                        transaction.getAmount(),
                         zero(),
 
                         transaction.getAmount()
@@ -889,32 +957,16 @@ public class BillingDebitService {
                         zero(),
                         zero(),
 
-                        payment.getWallet() == null
-                                ? null
-                                : money(
-                                payment.getWallet()
-                                        .getAvailableBalance()
+                        walletAvailableBefore,
+
+                        money(
+                                wallet.getAvailableBalance()
                         ),
 
-                        payment.getWallet() == null
-                                ? null
-                                : money(
-                                payment.getWallet()
-                                        .getAvailableBalance()
-                        ),
+                        walletReservedBefore,
 
-                        payment.getWallet() == null
-                                ? null
-                                : money(
-                                payment.getWallet()
-                                        .getReservedBalance()
-                        ),
-
-                        payment.getWallet() == null
-                                ? null
-                                : money(
-                                payment.getWallet()
-                                        .getReservedBalance()
+                        money(
+                                wallet.getReservedBalance()
                         ),
 
                         balanceBefore,
@@ -1333,6 +1385,43 @@ public class BillingDebitService {
                 ),
 
                 transaction.getStatus()
+        );
+    }
+
+    private BigDecimal calculatePaymentRemainingForDebitSettlement(
+            BillingPayment payment
+    ) {
+        BigDecimal alreadySettled =
+                billingDebitTransactionRepository
+                        .findAllByPayment_IdOrderByTransactionDateAscIdAsc(
+                                payment.getId()
+                        )
+                        .stream()
+                        .filter(transaction ->
+                                transaction.getStatus()
+                                        == BillingDebitTransactionStatus.COMPLETED
+                        )
+                        .filter(transaction ->
+                                transaction.getTransactionType()
+                                        == BillingDebitTransactionType.DEBIT_SETTLEMENT
+                                        || transaction.getTransactionType()
+                                        == BillingDebitTransactionType.PARTIAL_SETTLEMENT
+                        )
+                        .map(
+                                BillingDebitTransaction::getAmount
+                        )
+                        .map(this::money)
+                        .reduce(
+                                zero(),
+                                BigDecimal::add
+                        );
+
+        return money(
+                payment.getAmount()
+        ).subtract(
+                alreadySettled
+        ).max(
+                zero()
         );
     }
 

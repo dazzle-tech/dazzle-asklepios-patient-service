@@ -8,12 +8,18 @@ import com.dazzle.asklepios.domain.BillingReservation;
 import com.dazzle.asklepios.domain.BillingWallet;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryCategory;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryDirection;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerScope;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerSourceChannel;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerTransactionType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingReservationStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.ReservationReleaseReason;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
 import com.dazzle.asklepios.repository.BillingReservationRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.service.dto.billing.BillingLedgerEntryRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
@@ -60,6 +66,9 @@ public class BillingReservationService {
 
     private final BillingWalletService
             billingWalletService;
+
+    private final BillingLedgerService
+            billingLedgerService;
 
     /**
      * Reserves patient responsibility from one specific payment source.
@@ -176,6 +185,13 @@ public class BillingReservationService {
             return null;
         }
 
+        BigDecimal walletAvailableBefore =
+                money(wallet.getAvailableBalance());
+
+        BigDecimal walletReservedBefore =
+                money(wallet.getReservedBalance());
+
+
         BillingWallet updatedWallet =
                 billingWalletService.reserve(
                         wallet,
@@ -270,6 +286,14 @@ public class BillingReservationService {
                                     .getChargeLine()
                                     .getId()
                     )
+            );
+
+            recordReservationCreatedLedger(
+                    saved,
+                    updatedWallet,
+                    reservationAmount,
+                    walletAvailableBefore,
+                    walletReservedBefore
             );
 
             LOG.info(
@@ -467,6 +491,13 @@ public class BillingReservationService {
 
         if (existing != null) {
             context.setReservation(existing);
+
+            context.setReservedAmount(
+                    calculateActiveReservedAmount(
+                            context.getChargeLine().getId()
+                    )
+            );
+
             return existing;
         }
 
@@ -501,6 +532,19 @@ public class BillingReservationService {
         if (reservationAmount.signum() <= 0) {
             return null;
         }
+
+        /*
+         * Keep wallet balances before mutation for Ledger audit.
+         */
+        BigDecimal walletAvailableBefore =
+                money(
+                        wallet.getAvailableBalance()
+                );
+
+        BigDecimal walletReservedBefore =
+                money(
+                        wallet.getReservedBalance()
+                );
 
         BillingWallet updatedWallet =
                 billingWalletService.reserve(
@@ -549,8 +593,12 @@ public class BillingReservationService {
                         .remainingReservedAmount(
                                 reservationAmount
                         )
-                        .consumedAmount(zero())
-                        .releasedAmount(zero())
+                        .consumedAmount(
+                                zero()
+                        )
+                        .releasedAmount(
+                                zero()
+                        )
                         .currency(
                                 context
                                         .getChargeLine()
@@ -586,6 +634,30 @@ public class BillingReservationService {
         );
 
         context.setReservation(saved);
+
+        context.setReservedAmount(
+                calculateActiveReservedAmount(
+                        context.getChargeLine().getId()
+                )
+        );
+
+        recordReservationCreatedLedger(
+                saved,
+                updatedWallet,
+                reservationAmount,
+                walletAvailableBefore,
+                walletReservedBefore
+        );
+
+        LOG.info(
+                "[RESERVE_LIMITED] Reservation created "
+                        + "reservationId={} paymentId={} "
+                        + "chargeLineId={} amount={}",
+                saved.getId(),
+                payment.getId(),
+                context.getChargeLine().getId(),
+                reservationAmount
+        );
 
         return saved;
     }
@@ -766,10 +838,23 @@ public class BillingReservationService {
             );
         }
 
-        billingWalletService.release(
-                lockedReservation.getWallet(),
-                amount
-        );
+        BillingWallet wallet =
+                billingWalletService.lockWallet(
+                        lockedReservation.getPatient().getId(),
+                        lockedReservation.getCurrency()
+                );
+
+        BigDecimal walletAvailableBefore =
+                money(wallet.getAvailableBalance());
+
+        BigDecimal walletReservedBefore =
+                money(wallet.getReservedBalance());
+
+        BillingWallet updatedWallet =
+                billingWalletService.release(
+                        wallet,
+                        amount
+                );
 
         lockedReservation.setRemainingReservedAmount(
                 remaining.subtract(amount)
@@ -808,6 +893,16 @@ public class BillingReservationService {
 
         billingReservationRepository.save(
                 lockedReservation
+        );
+
+        recordReservationReleasedLedger(
+                lockedReservation,
+                updatedWallet,
+                amount,
+                walletAvailableBefore,
+                walletReservedBefore,
+                releaseReason,
+                notes
         );
 
         updateChargeLineReservedAmount(
@@ -867,10 +962,23 @@ public class BillingReservationService {
             );
         }
 
-        billingWalletService.consumeReserved(
-                lockedReservation.getWallet(),
-                amount
-        );
+        BillingWallet wallet =
+                billingWalletService.lockWallet(
+                        lockedReservation.getPatient().getId(),
+                        lockedReservation.getCurrency()
+                );
+
+        BigDecimal walletAvailableBefore =
+                money(wallet.getAvailableBalance());
+
+        BigDecimal walletReservedBefore =
+                money(wallet.getReservedBalance());
+
+        BillingWallet updatedWallet =
+                billingWalletService.consumeReserved(
+                        wallet,
+                        amount
+                );
 
         lockedReservation.setRemainingReservedAmount(
                 remaining.subtract(amount)
@@ -897,6 +1005,14 @@ public class BillingReservationService {
 
         billingReservationRepository.save(
                 lockedReservation
+        );
+
+        recordReservationConsumedLedger(
+                lockedReservation,
+                updatedWallet,
+                amount,
+                walletAvailableBefore,
+                walletReservedBefore
         );
 
         updateChargeLineReservedAmount(
@@ -1013,6 +1129,292 @@ public class BillingReservationService {
 
         return excess.subtract(
                 remainingToRelease
+        );
+    }
+
+    /*
+     * ============================================================
+     * LEDGER
+     * ============================================================
+     */
+
+    private void recordReservationCreatedLedger(
+            BillingReservation reservation,
+            BillingWallet wallet,
+            BigDecimal amount,
+            BigDecimal walletAvailableBefore,
+            BigDecimal walletReservedBefore
+    ) {
+        billingLedgerService.record(
+                new BillingLedgerEntryRequest(
+                        reservation.getTransactionGroupId(),
+                        reservation.getIdempotencyKey(),
+                        reservation.getIdempotencyKey()
+                                + ":LEDGER:CREATED",
+
+                        reservation.getPatient(),
+                        reservation.getEncounter(),
+
+                        wallet,
+                        reservation.getPayment(),
+                        reservation.getPaymentTransaction(),
+
+                        reservation.getCharge(),
+                        reservation.getChargeLine(),
+                        reservation.getChargeResponsibility(),
+
+                        reservation,
+                        null,
+
+                        null,
+                        null,
+                        null,
+
+                        BillingLedgerTransactionType.WALLET_RESERVED,
+                        BillingLedgerScope.RESERVATION,
+
+                        amount,
+                        reservation.getCurrency(),
+
+                        amount.negate(),
+                        amount,
+                        zero(),
+                        zero(),
+
+                        zero(),
+                        zero(),
+                        zero(),
+
+                        walletAvailableBefore,
+                        money(wallet.getAvailableBalance()),
+
+                        walletReservedBefore,
+                        money(wallet.getReservedBalance()),
+
+                        null,
+                        null,
+
+                        reservation.getChargeResponsibility() == null
+                                ? null
+                                : money(
+                                reservation
+                                        .getChargeResponsibility()
+                                        .getOutstandingAmount()
+                        ),
+
+                        reservation.getChargeResponsibility() == null
+                                ? null
+                                : money(
+                                reservation
+                                        .getChargeResponsibility()
+                                        .getOutstandingAmount()
+                        ),
+
+                        BillingLedgerEntryDirection.DEBIT,
+                        BillingLedgerEntryCategory.BUSINESS,
+
+                        null,
+
+                        "BILLING_RESERVATION",
+                        reservation.getId(),
+                        reservation.getReservationNumber(),
+
+                        "Available wallet balance reserved for patient responsibility.",
+
+                        null,
+
+                        BillingLedgerSourceChannel.BILLING_ENGINE
+                )
+        );
+    }
+
+    private void recordReservationReleasedLedger(
+            BillingReservation reservation,
+            BillingWallet wallet,
+            BigDecimal amount,
+            BigDecimal walletAvailableBefore,
+            BigDecimal walletReservedBefore,
+            ReservationReleaseReason releaseReason,
+            String notes
+    ) {
+        billingLedgerService.record(
+                new BillingLedgerEntryRequest(
+                        reservation.getTransactionGroupId(),
+                        reservation.getIdempotencyKey(),
+                        reservation.getIdempotencyKey()
+                                + ":LEDGER:RELEASED:"
+                                + money(
+                                reservation.getReleasedAmount()
+                        ).toPlainString(),
+
+                        reservation.getPatient(),
+                        reservation.getEncounter(),
+
+                        wallet,
+                        reservation.getPayment(),
+                        reservation.getPaymentTransaction(),
+
+                        reservation.getCharge(),
+                        reservation.getChargeLine(),
+                        reservation.getChargeResponsibility(),
+
+                        reservation,
+                        null,
+
+                        null,
+                        null,
+                        null,
+
+                        BillingLedgerTransactionType.RESERVATION_RELEASED,
+                        BillingLedgerScope.RESERVATION,
+
+                        amount,
+                        reservation.getCurrency(),
+
+                        amount,
+                        amount.negate(),
+                        zero(),
+                        zero(),
+
+                        zero(),
+                        zero(),
+                        zero(),
+
+                        walletAvailableBefore,
+                        money(wallet.getAvailableBalance()),
+
+                        walletReservedBefore,
+                        money(wallet.getReservedBalance()),
+
+                        null,
+                        null,
+
+                        reservation.getChargeResponsibility() == null
+                                ? null
+                                : money(
+                                reservation
+                                        .getChargeResponsibility()
+                                        .getOutstandingAmount()
+                        ),
+
+                        reservation.getChargeResponsibility() == null
+                                ? null
+                                : money(
+                                reservation
+                                        .getChargeResponsibility()
+                                        .getOutstandingAmount()
+                        ),
+
+                        BillingLedgerEntryDirection.CREDIT,
+                        BillingLedgerEntryCategory.REVERSAL,
+
+                        null,
+
+                        "BILLING_RESERVATION",
+                        reservation.getId(),
+                        reservation.getReservationNumber(),
+
+                        "Reserved wallet balance released back to available balance.",
+
+                        releaseReason == null
+                                ? trimToNull(notes)
+                                : releaseReason.name(),
+
+                        BillingLedgerSourceChannel.BILLING_ENGINE
+                )
+        );
+    }
+
+    private void recordReservationConsumedLedger(
+            BillingReservation reservation,
+            BillingWallet wallet,
+            BigDecimal amount,
+            BigDecimal walletAvailableBefore,
+            BigDecimal walletReservedBefore
+    ) {
+        billingLedgerService.record(
+                new BillingLedgerEntryRequest(
+                        reservation.getTransactionGroupId(),
+                        reservation.getIdempotencyKey(),
+                        reservation.getIdempotencyKey()
+                                + ":LEDGER:CONSUMED:"
+                                + money(
+                                reservation.getConsumedAmount()
+                        ).toPlainString(),
+
+                        reservation.getPatient(),
+                        reservation.getEncounter(),
+
+                        wallet,
+                        reservation.getPayment(),
+                        reservation.getPaymentTransaction(),
+
+                        reservation.getCharge(),
+                        reservation.getChargeLine(),
+                        reservation.getChargeResponsibility(),
+
+                        reservation,
+                        null,
+
+                        null,
+                        null,
+                        null,
+
+                        BillingLedgerTransactionType.RESERVATION_CONSUMED,
+                        BillingLedgerScope.RESERVATION,
+
+                        amount,
+                        reservation.getCurrency(),
+
+                        zero(),
+                        amount.negate(),
+                        amount,
+                        zero(),
+
+                        zero(),
+                        zero(),
+                        zero(),
+
+                        walletAvailableBefore,
+                        money(wallet.getAvailableBalance()),
+
+                        walletReservedBefore,
+                        money(wallet.getReservedBalance()),
+
+                        null,
+                        null,
+
+                        reservation.getChargeResponsibility() == null
+                                ? null
+                                : money(
+                                reservation
+                                        .getChargeResponsibility()
+                                        .getOutstandingAmount()
+                        ),
+
+                        reservation.getChargeResponsibility() == null
+                                ? null
+                                : money(
+                                reservation
+                                        .getChargeResponsibility()
+                                        .getOutstandingAmount()
+                        ),
+
+                        BillingLedgerEntryDirection.DEBIT,
+                        BillingLedgerEntryCategory.BUSINESS,
+
+                        null,
+
+                        "BILLING_RESERVATION",
+                        reservation.getId(),
+                        reservation.getReservationNumber(),
+
+                        "Reserved wallet balance consumed.",
+
+                        null,
+
+                        BillingLedgerSourceChannel.BILLING_ENGINE
+                )
         );
     }
 

@@ -59,4 +59,20 @@ public interface PatientServiceAndProductRepository extends JpaRepository<Patien
             Long encounterId,
             Long paymentId
     );
+
+    Optional<PatientServiceAndProduct>
+    findFirstByEncounterIdAndServiceIdAndIsDefaultServiceTrue(
+            Long encounterId,
+            Long serviceId
+    );
+
+    List<PatientServiceAndProduct>
+    findAllByEncounterIdAndIsDefaultServiceTrueOrderByIdAsc(
+            Long encounterId
+    );
+
+    boolean existsByEncounterIdAndServiceIdAndIsDefaultServiceTrue(
+            Long encounterId,
+            Long serviceId
+    );
 }

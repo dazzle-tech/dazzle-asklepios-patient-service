@@ -44,4 +44,14 @@ public interface BillingChargeLineRepository
             Long chargeId,
             BillingChargeLineStatus excludedStatus
     );
+
+    /*
+     * Read query used by the encounter billing summary endpoint.
+     * No pessimistic lock is required for this view operation.
+     */
+    List<BillingChargeLine>
+    findAllByEncounter_IdAndStatusNotInOrderByIdAsc(
+            Long encounterId,
+            Collection<BillingChargeLineStatus> excludedStatuses
+    );
 }

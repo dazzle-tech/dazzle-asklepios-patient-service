@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPricingSnapshotStatus;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.billing.CalculationOrder;
@@ -262,4 +263,16 @@ public class BillingPricingSnapshot extends AbstractAuditingEntity<Long>
     @Size(max = 150)
     @Column(name = "idempotency_key", nullable = false, unique = true, length = 150)
     private String idempotencyKey;
+
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(
+            name = "price_source",
+            nullable = false,
+            length = 30
+    )
+    private BillingPriceSource priceSource;
+
+    @Column(name = "setup_source_id")
+    private Long setupSourceId;
 }

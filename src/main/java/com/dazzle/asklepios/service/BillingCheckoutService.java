@@ -219,7 +219,10 @@ public class BillingCheckoutService {
                 );
 
         boolean financiallyClosed =
-                totalOutstanding.signum() == 0;
+                patientOutstanding.signum() == 0
+                        && insuranceOutstanding.signum() == 0
+                        && otherPayerOutstanding.signum() == 0
+                        && totalOutstanding.signum() == 0;
 
         if (financiallyClosed) {
             recalculatedCharge.setStatus(
@@ -451,6 +454,11 @@ public class BillingCheckoutService {
                         money(
                                 allocationResult
                                         .allocatedAmount()
+                        );
+
+                responsibility =
+                        reloadResponsibility(
+                                responsibility.getId()
                         );
             }
         }
@@ -700,6 +708,14 @@ public class BillingCheckoutService {
         if (Boolean.TRUE.equals(
                 request.allowDebit()
         )) {
+            if (request.debitApprovalRequired() == null) {
+                throw new BadRequestAlertException(
+                        "Debit-approval-required option is required when debit is allowed.",
+                        ENTITY_NAME,
+                        "debitApprovalRequired.required"
+                );
+            }
+
             if (request.creditLimit() == null
                     || request.creditLimit()
                     .signum() < 0) {

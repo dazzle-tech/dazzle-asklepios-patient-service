@@ -2,9 +2,12 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.dto.BillingPricingResolveResponse;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.CalculationOrder;
+import com.dazzle.asklepios.domain.enumeration.billing.PricingSource;
 import com.dazzle.asklepios.domain.enumeration.billing.RoundingModeType;
 import com.dazzle.asklepios.service.dto.billing.BillingPricingInput;
+import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import org.springframework.stereotype.Service;
 
@@ -18,47 +21,77 @@ public class BillingPricingInputFactory {
 
     public BillingPricingInput create(
             PatientServiceAndProduct item,
-            BillingPricingResolveResponse response
+            ResolvedBillingPrice resolvedPrice
     ) {
-        if (item == null) {
-            throw new BadRequestAlertException(
-                    "Patient service/product is required.",
-                    ENTITY_NAME,
-                    "item.required"
+        validateInput(
+                item,
+                resolvedPrice
+        );
+
+        if (resolvedPrice.resolvedFromPriceList()) {
+            return createFromPriceList(
+                    item,
+                    resolvedPrice
             );
         }
 
+        return createFromSetupFallback(
+                item,
+                resolvedPrice
+        );
+    }
+
+    private BillingPricingInput createFromPriceList(
+            PatientServiceAndProduct item,
+            ResolvedBillingPrice resolvedPrice
+    ) {
+        BillingPricingResolveResponse response =
+                resolvedPrice.pricingResponse();
+
         if (response == null) {
             throw new BadRequestAlertException(
-                    "Resolved pricing response is required.",
+                    "Price-list pricing response is required.",
                     ENTITY_NAME,
-                    "response.required"
+                    "priceListResponse.required"
             );
         }
 
         return new BillingPricingInput(
-                response.priceListId(),
-                response.priceListItemId(),
+                resolvedPrice.priceListId(),
+                resolvedPrice.priceListItemId(),
                 response.priceListCode(),
                 response.priceListName(),
                 response.priceListItemCode(),
                 response.pricingVersion(),
 
-                BigDecimal.valueOf(item.getQuantity()),
-                response.unitPrice(),
+                BillingPriceSource.PRICE_LIST,
+                resolvedPrice.setupSourceId(),
+
+                BigDecimal.valueOf(
+                        item.getQuantity()
+                ),
+                resolvedPrice.unitPrice(),
 
                 response.discountId(),
                 response.discountType(),
-                defaultZero(response.discountRate()),
-                defaultZero(response.discountFixedAmount()),
+                defaultZero(
+                        response.discountRate()
+                ),
+                defaultZero(
+                        response.discountFixedAmount()
+                ),
 
                 response.taxId(),
                 response.taxType(),
                 response.taxCalculationType(),
-                defaultZero(response.taxRate()),
-                defaultZero(response.taxFixedAmount()),
+                defaultZero(
+                        response.taxRate()
+                ),
+                defaultZero(
+                        response.taxFixedAmount()
+                ),
 
-                response.currency(),
+                resolvedPrice.currency(),
                 response.pricingSource(),
 
                 resolveCalculationOrder(
@@ -76,10 +109,190 @@ public class BillingPricingInputFactory {
         );
     }
 
+    private BillingPricingInput createFromSetupFallback(
+            PatientServiceAndProduct item,
+            ResolvedBillingPrice resolvedPrice
+    ) {
+        /*
+         * Setup fallback provides only the base item price.
+         *
+         * No price-list discount or price-list tax metadata exists.
+         * Therefore:
+         *
+         * - discount is zero
+         * - tax is zero
+         * - default calculation and rounding settings are used
+         *
+         * Later, if tax and discount are resolved independently from
+         * Setup configuration, they can be injected here.
+         */
+        return new BillingPricingInput(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+
+                BillingPriceSource.SETUP_FALLBACK,
+                resolvedPrice.setupSourceId(),
+
+                BigDecimal.valueOf(
+                        item.getQuantity()
+                ),
+                resolvedPrice.unitPrice(),
+
+                null,
+                null,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+
+                null,
+                null,
+                null,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+
+                resolvedPrice.currency(),
+                resolveFallbackPricingSource(),
+
+                CalculationOrder.DISCOUNT_THEN_TAX,
+                RoundingModeType.HALF_UP,
+                4,
+
+                resolveFallbackItemCode(item),
+                resolveFallbackItemName(item)
+        );
+    }
+
+    private void validateInput(
+            PatientServiceAndProduct item,
+            ResolvedBillingPrice resolvedPrice
+    ) {
+        if (item == null) {
+            throw new BadRequestAlertException(
+                    "Patient service/product is required.",
+                    ENTITY_NAME,
+                    "item.required"
+            );
+        }
+
+        if (resolvedPrice == null) {
+            throw new BadRequestAlertException(
+                    "Resolved billing price is required.",
+                    ENTITY_NAME,
+                    "resolvedPrice.required"
+            );
+        }
+
+        if (resolvedPrice.priceSource() == null) {
+            throw new BadRequestAlertException(
+                    "Billing price source is required.",
+                    ENTITY_NAME,
+                    "priceSource.required"
+            );
+        }
+
+        if (resolvedPrice.unitPrice() == null
+                || resolvedPrice.unitPrice().signum() < 0) {
+            throw new BadRequestAlertException(
+                    "Resolved unit price is invalid.",
+                    ENTITY_NAME,
+                    "unitPrice.invalid"
+            );
+        }
+
+        if (resolvedPrice.currency() == null) {
+            throw new BadRequestAlertException(
+                    "Resolved currency is required.",
+                    ENTITY_NAME,
+                    "currency.required"
+            );
+        }
+
+        if (item.getQuantity() == null
+                || item.getQuantity() <= 0) {
+            throw new BadRequestAlertException(
+                    "Item quantity must be greater than zero.",
+                    ENTITY_NAME,
+                    "quantity.invalid"
+            );
+        }
+
+        if (resolvedPrice.currency()
+                != item.getCurrency()) {
+            throw new BadRequestAlertException(
+                    "Resolved price currency does not match item currency.",
+                    ENTITY_NAME,
+                    "currency.mismatch"
+            );
+        }
+
+        if (resolvedPrice.resolvedFromPriceList()
+                && !resolvedPrice.hasPriceListMetadata()) {
+            throw new BadRequestAlertException(
+                    "Price-list metadata is incomplete.",
+                    ENTITY_NAME,
+                    "priceListMetadata.incomplete"
+            );
+        }
+
+        if (resolvedPrice.resolvedFromSetupFallback()
+                && resolvedPrice.setupSourceId() == null) {
+            throw new BadRequestAlertException(
+                    "Setup source ID is required for fallback pricing.",
+                    ENTITY_NAME,
+                    "setupSourceId.required"
+            );
+        }
+    }
+
+    private PricingSource resolveFallbackPricingSource() {
+        /*
+         * Use the closest existing enum value that represents
+         * the standard/default item price.
+         *
+         * If your PricingSource enum contains a value such as:
+         *
+         * SETUP
+         * BASE_PRICE
+         * STANDARD
+         *
+         * replace DEFAULT below with that exact value.
+         */
+        return PricingSource.DEFAULT;
+    }
+
+    private String resolveFallbackItemCode(
+            PatientServiceAndProduct item
+    ) {
+        if (item.getSourceId() != null) {
+            return item.getBillingItemType().name()
+                    + "-"
+                    + item.getSourceId();
+        }
+
+        return item.getBillingItemType().name()
+                + "-"
+                + item.getId();
+    }
+
+    private String resolveFallbackItemName(
+            PatientServiceAndProduct item
+    ) {
+        return item.getBillingItemType().name()
+                .replace(
+                        '_',
+                        ' '
+                );
+    }
+
     private CalculationOrder resolveCalculationOrder(
             String value
     ) {
-        if ("TAX_THEN_DISCOUNT".equals(value)) {
+        if ("TAX_THEN_DISCOUNT".equalsIgnoreCase(
+                value
+        )) {
             return CalculationOrder.TAX_THEN_DISCOUNT;
         }
 
@@ -89,27 +302,27 @@ public class BillingPricingInputFactory {
     private RoundingModeType resolveRoundingMode(
             String value
     ) {
-        if ("HALF_DOWN".equals(value)) {
+        if ("HALF_DOWN".equalsIgnoreCase(value)) {
             return RoundingModeType.HALF_DOWN;
         }
 
-        if ("HALF_EVEN".equals(value)) {
+        if ("HALF_EVEN".equalsIgnoreCase(value)) {
             return RoundingModeType.HALF_EVEN;
         }
 
-        if ("UP".equals(value)) {
+        if ("UP".equalsIgnoreCase(value)) {
             return RoundingModeType.UP;
         }
 
-        if ("DOWN".equals(value)) {
+        if ("DOWN".equalsIgnoreCase(value)) {
             return RoundingModeType.DOWN;
         }
 
-        if ("CEILING".equals(value)) {
+        if ("CEILING".equalsIgnoreCase(value)) {
             return RoundingModeType.CEILING;
         }
 
-        if ("FLOOR".equals(value)) {
+        if ("FLOOR".equalsIgnoreCase(value)) {
             return RoundingModeType.FLOOR;
         }
 

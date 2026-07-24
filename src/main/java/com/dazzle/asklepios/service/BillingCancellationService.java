@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.EnumSet;
 
 @Service
 @RequiredArgsConstructor
@@ -64,7 +65,9 @@ public class BillingCancellationService {
 
     private final BillingWalletService
             billingWalletService;
-    private final BillingAllocationReversalCoordinator billingAllocationReversalCoordinator;
+
+    private final BillingAllocationReversalCoordinator
+            billingAllocationReversalCoordinator;
 
     @Transactional(rollbackFor = Exception.class)
     public BillingCancellationResult cancelPatientService(
@@ -209,6 +212,9 @@ public class BillingCancellationService {
                 );
 
 
+        /*
+         * 4. Cancel active pricing snapshot.
+         */
         cancelPricingSnapshot(
                 chargeLine,
                 item,
@@ -409,13 +415,16 @@ public class BillingCancellationService {
             BillingCancellationRequest request
     ) {
         /*
-         * This method assumes the repository returns non-cancelled lines.
+         * Recalculate from financially active lines only.
          */
         java.util.List<BillingChargeLine> activeLines =
                 billingChargeLineRepository
-                        .findAllByCharge_IdAndStatusNotOrderByIdAsc(
+                        .findAllByCharge_IdAndStatusNotInOrderByIdAsc(
                                 charge.getId(),
-                                BillingChargeLineStatus.CANCELLED
+                                EnumSet.of(
+                                        BillingChargeLineStatus.CANCELLED,
+                                        BillingChargeLineStatus.REVERSED
+                                )
                         );
 
         BigDecimal gross = zero();

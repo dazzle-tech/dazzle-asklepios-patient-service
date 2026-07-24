@@ -4,10 +4,16 @@ import com.dazzle.asklepios.domain.BillingPayment;
 import com.dazzle.asklepios.domain.BillingWallet;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryCategory;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryDirection;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerScope;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerSourceChannel;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerTransactionType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentStatus;
 import com.dazzle.asklepios.repository.BillingPaymentRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationRequest;
+import com.dazzle.asklepios.service.dto.billing.BillingLedgerEntryRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationResult;
 import com.dazzle.asklepios.service.dto.billing.BillingCheckoutRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingCheckoutResult;
@@ -74,11 +80,24 @@ public class BillingTransactionService {
 
     private final BillingRefundService
             billingRefundService;
-    private final BillingPricingSnapshotService billingPricingSnapshotService;
-    private final BillingResponsibilityService billingResponsibilityService;
-    private final BillingWalletService billingWalletService;
-    private final BillingPaymentRepository billingPaymentRepository;
-    private final BillingReservationService billingReservationService;
+
+    private final BillingPricingSnapshotService
+            billingPricingSnapshotService;
+
+    private final BillingResponsibilityService
+            billingResponsibilityService;
+
+    private final BillingWalletService
+            billingWalletService;
+
+    private final BillingPaymentRepository
+            billingPaymentRepository;
+
+    private final BillingReservationService
+            billingReservationService;
+
+    private final BillingLedgerService
+            billingLedgerService;
 
     /*
      * ============================================================
@@ -170,7 +189,28 @@ public class BillingTransactionService {
         );
 
         /*
-         * 6. Header totals after responsibility calculation.
+         * 6. Reserve any available advance balance against the
+         * patient responsibility. This moves wallet funds from
+         * available to reserved only; it does not allocate or consume.
+         */
+        reserveAdvanceBalance(
+                context
+        );
+
+        /*
+         * 7. Record the charge creation in the financial ledger.
+         * Zero-net/exempted lines are intentionally not posted as a
+         * monetary ledger entry; their audit remains in charge and
+         * pricing-snapshot records.
+         */
+        recordChargeCreatedLedger(
+                context,
+                requestId
+        );
+
+        /*
+         * 8. Header totals after responsibility and reservation
+         * processing.
          */
         billingChargeService.recalculateChargeTotals(
                 context
@@ -956,7 +996,7 @@ public class BillingTransactionService {
 
     private String currentUser() {
         /*
-         * Replace later with:
+         * TODO Replace later with:
          *
          * SecurityUtils.getCurrentUserLogin()
          *         .orElse("system");
@@ -1007,6 +1047,109 @@ public class BillingTransactionService {
         );
 
         return result;
+    }
+
+    private void recordChargeCreatedLedger(
+            BillingProcessingContext context,
+            String requestId
+    ) {
+        if (context == null
+                || context.getCharge() == null
+                || context.getChargeLine() == null
+                || context.getPatientServiceProduct() == null) {
+
+            throw new BadRequestAlertException(
+                    "Complete billing context is required before charge ledger recording.",
+                    ENTITY_NAME,
+                    "ledger.context.invalid"
+            );
+        }
+
+        BigDecimal netAmount =
+                defaultZero(
+                        context.getChargeLine()
+                                .getNetAmount()
+                );
+
+        if (netAmount.signum() <= 0) {
+            LOG.debug(
+                    "[LEDGER_CHARGE] Monetary ledger entry skipped for zero-net charge lineId={}",
+                    context.getChargeLineId()
+            );
+            return;
+        }
+
+        billingLedgerService.record(
+                new BillingLedgerEntryRequest(
+                        context.getTransactionGroupId(),
+                        requestId.trim(),
+                        context.getIdempotencyKey()
+                                + ":LEDGER:CHARGE_CREATED",
+
+                        context.getCharge().getPatient(),
+                        context.getCharge().getEncounter(),
+
+                        null,
+                        null,
+                        null,
+
+                        context.getCharge(),
+                        context.getChargeLine(),
+                        context.getPatientResponsibility(),
+
+                        context.getReservation(),
+                        null,
+
+                        null,
+                        null,
+                        null,
+
+                        BillingLedgerTransactionType.CHARGE_CREATED,
+                        BillingLedgerScope.CHARGE,
+
+                        netAmount,
+                        context.getChargeLine().getCurrency(),
+
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        netAmount,
+
+                        null,
+                        null,
+                        null,
+                        null,
+
+                        null,
+                        null,
+
+                        null,
+                        context.getPatientResponsibility() == null
+                                ? null
+                                : defaultZero(
+                                context.getPatientResponsibility()
+                                        .getOutstandingAmount()
+                        ),
+
+                        BillingLedgerEntryDirection.DEBIT,
+                        BillingLedgerEntryCategory.BUSINESS,
+
+                        null,
+
+                        "BILLING_CHARGE_LINE",
+                        context.getChargeLineId(),
+                        context.getCharge().getChargeNumber(),
+
+                        "Billing charge created for patient service/product.",
+                        null,
+
+                        BillingLedgerSourceChannel.BILLING_ENGINE
+                )
+        );
     }
 
     private BigDecimal reserveAdvanceBalance(

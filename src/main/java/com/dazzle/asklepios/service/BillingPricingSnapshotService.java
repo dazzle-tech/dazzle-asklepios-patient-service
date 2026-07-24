@@ -3,6 +3,7 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingPricingSnapshot;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPricingSnapshotStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.ExemptionType;
 import com.dazzle.asklepios.domain.enumeration.billing.PricingReason;
@@ -290,7 +291,13 @@ public class BillingPricingSnapshotService {
                 .priceListItemId(
                         input.priceListItemId()
                 )
+                .priceSource(
+                        input.priceSource()
+                )
 
+                .setupSourceId(
+                        input.setupSourceId()
+                )
                 .billingConfigurationId(null)
 
                 .discountId(input.discountId())
@@ -454,7 +461,18 @@ public class BillingPricingSnapshotService {
 
         put(payload, "priceListId", input.priceListId());
         put(payload, "priceListItemId", input.priceListItemId());
+        if (input.priceSource() != null) {
+            payload.put(
+                    "priceSource",
+                    input.priceSource().name()
+            );
+        }
 
+        put(
+                payload,
+                "setupSourceId",
+                input.setupSourceId()
+        );
         put(payload, "quantity", result.quantity());
         put(payload, "unitPrice", result.unitPrice());
         put(payload, "grossAmount", result.grossAmount());
@@ -611,7 +629,23 @@ public class BillingPricingSnapshotService {
                     "pricingInput.required"
             );
         }
+        if (context.getPricingInput().priceSource() == null) {
+            throw new BadRequestAlertException(
+                    "Price source is required.",
+                    ENTITY_NAME,
+                    "priceSource.required"
+            );
+        }
+        if (context.getPricingInput().priceSource()
+                == BillingPriceSource.SETUP_FALLBACK
+                && context.getPricingInput().setupSourceId() == null) {
 
+            throw new BadRequestAlertException(
+                    "Setup source ID is required.",
+                    ENTITY_NAME,
+                    "setupSourceId.required"
+            );
+        }
         if (context.getPricingResult() == null) {
             throw new BadRequestAlertException(
                     "Pricing result is required.",

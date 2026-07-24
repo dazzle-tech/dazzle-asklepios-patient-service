@@ -6,6 +6,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.Optional;
 
 @Repository
@@ -21,4 +22,17 @@ public interface PatientInsuranceRepository extends JpaRepository<PatientInsuran
     Optional<PatientInsurance> findFirstByPatientIdAndIsPrimaryTrue(Long patientId);
 
     Optional<PatientInsurance> findFirstByPatientId(Long patientId);
+
+    Optional<PatientInsurance>
+    findByIdAndPatient_Id(
+            Long id,
+            Long patientId
+    );
+
+    Optional<PatientInsurance>
+    findByIdAndPatient_IdAndExpirationDateGreaterThanEqual(
+            Long id,
+            Long patientId,
+            LocalDate date
+    );
 }

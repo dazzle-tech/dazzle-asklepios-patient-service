@@ -94,8 +94,6 @@ public class BillingAllocationService {
     private final BillingDebitTransactionRepository
             billingDebitTransactionRepository;
 
-    private final BillingAllocationService
-            billingAllocationService;
     /*
      * ============================================================
      * ALLOCATION FROM RESERVATION

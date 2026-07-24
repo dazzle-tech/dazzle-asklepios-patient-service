@@ -1196,7 +1196,7 @@ public class BillingRefundService {
                         null,
                         null,
 
-                        BillingLedgerEntryDirection.CREDIT,
+                        BillingLedgerEntryDirection.DEBIT,
                         BillingLedgerEntryCategory.BUSINESS,
 
                         null,
@@ -1299,7 +1299,7 @@ public class BillingRefundService {
                         null,
                         null,
 
-                        BillingLedgerEntryDirection.DEBIT,
+                        BillingLedgerEntryDirection.CREDIT,
 
                         BillingLedgerEntryCategory.REVERSAL,
 

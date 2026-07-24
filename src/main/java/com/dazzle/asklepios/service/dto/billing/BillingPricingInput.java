@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service.dto.billing;
 
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.TaxCalculationType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.CalculationOrder;
 import com.dazzle.asklepios.domain.enumeration.billing.DiscountType;
 import com.dazzle.asklepios.domain.enumeration.billing.PricingSource;
@@ -18,6 +19,9 @@ public record BillingPricingInput(
         String priceListName,
         String priceListItemCode,
         Long pricingVersion,
+
+        BillingPriceSource priceSource,
+        Long setupSourceId,
 
         BigDecimal quantity,
         BigDecimal unitPrice,
