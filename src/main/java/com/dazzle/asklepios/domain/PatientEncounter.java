@@ -3,8 +3,9 @@ package com.dazzle.asklepios.domain;
 import com.dazzle.asklepios.domain.enumeration.DischargeType;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
-import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
+import com.dazzle.asklepios.domain.enumeration.EncounterType;
+import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -16,6 +17,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -28,6 +31,7 @@ import java.io.Serializable;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 @Entity
 @Table(name = "patient_encounters")
@@ -66,7 +70,7 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "appointment_id", nullable = false)
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-    private AppointmentFromTemplate appointment;
+    private Appointment appointment;
 
     @NotNull
     @Enumerated(EnumType.STRING)
@@ -102,11 +106,13 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @Column(name = "encounter_date", updatable = false)
     private LocalDate encounterDate;
-
+    @NotNull
+    @Column(name = "encounter_time", nullable = false)
+    private LocalTime encounterTime;
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
-    private EncounterStatus status;
+    private TreatmentStatus status;
 
     @Column(name = "chief_complaint", columnDefinition = "text")
     private String chiefComplaint;
@@ -126,10 +132,59 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @Column(name = "physical_examination_summery")
     private String physicalExaminationSummery;
-
+    
     @Column(name = "completed_by", length = 50)
     private String completedBy;
 
     @Column(name = "completed_at")
     private Instant completedAt;
+
+    @Column(name = "history_of_present_illness")
+    private String historyOfPresentIllness;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "encounter_status")
+    private EncounterStatus encounterStatus = EncounterStatus.OPEN;
+
+
+    @PrePersist
+    @PreUpdate
+
+    private void syncEncounterStatus() {
+
+        if (status != null) {
+
+            this.encounterStatus = computeEncounterStatus(status);
+
+        }
+
+    }
+
+
+    private EncounterStatus computeEncounterStatus(TreatmentStatus status) {
+        if (status == null) {
+            return EncounterStatus.OPEN;
+        }
+
+        return switch (status) {
+            case NEW,
+                 PENDING_PAYMENT,
+                 WAITING_TRIAGE ->
+                    EncounterStatus.OPEN;
+
+            case TRIAGE_STARTED,
+                 DISCHARGED,
+                 ASSIGENS_TO_BED,
+                 ONGOING ->
+                    EncounterStatus.IN_PROGRESS;
+
+            case CANCELLED ->
+                    EncounterStatus.CANCELLED;
+
+
+
+            default ->
+                    this.encounterStatus;
+        };
+    }
 }

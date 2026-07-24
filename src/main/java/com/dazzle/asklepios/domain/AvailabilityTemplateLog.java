@@ -123,4 +123,7 @@ public class AvailabilityTemplateLog extends AbstractAuditingEntity<Long> implem
 
     @Column(name = "is_active", nullable = false)
     private Boolean isActive;
+
+    @Column(name = "allow_walk_in_booking", nullable = false)
+    private Boolean allowWalkInBooking = false;
 }

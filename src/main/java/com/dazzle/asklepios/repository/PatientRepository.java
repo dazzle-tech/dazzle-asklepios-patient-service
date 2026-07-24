@@ -9,8 +9,7 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import java.time.LocalDate;
 import java.util.Optional;
 
-public interface PatientRepository  extends JpaRepository<Patient, Long>,
-        JpaSpecificationExecutor<Patient> {
+public interface PatientRepository extends JpaRepository<Patient, Long>, JpaSpecificationExecutor<Patient> {
 
 
     Page<Patient> findByMedicalRecordNumberContainingIgnoreCase(String medicalRecordNumber, Pageable pageable);
@@ -22,7 +21,13 @@ public interface PatientRepository  extends JpaRepository<Patient, Long>,
     Page<Patient> findByDateOfBirth(LocalDate dateOfBirth, Pageable pageable);
 
     Page<Patient> findByIsUnknownTrue(Pageable pageable);
+
     Page<Patient> findDistinctByPatientDocuments_NumberContainingIgnoreCase(String numberPart, Pageable pageable);
+
     Optional<Patient> findByPreviousId(String previousId);
+
+    Optional<Patient> findOneByResetKey(String resetKey);
+
+    Optional<Patient> findByMedicalRecordNumber(String medicalRecordNumber);
 
 }

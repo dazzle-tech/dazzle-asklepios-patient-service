@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.SurgicalHistory;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.SurgicalHistoryRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryCreateDTO;
 import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -19,8 +20,12 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryCancelDTO;
 
+import java.time.Instant;
+import java.util.Date;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 
 @Service
 @RequiredArgsConstructor
@@ -45,31 +50,49 @@ public class SurgicalHistoryService {
                 ));
     }
 
-    public SurgicalHistory create(SurgicalHistoryCreateDTO dto) {
-        LOG.info("[CREATE] SurgicalHistory payload={}", dto);
+    private String currentUsername() {
+        return SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "unauthenticated",
+                        "surgicalHistory",
+                        "No authenticated user"
+                ));
+    }
 
+    public SurgicalHistory create(
+            SurgicalHistoryCreateDTO surgicalHistoryCreateDTO
+    ) {
+        LOG.info("[CREATE] SurgicalHistory payload={}", surgicalHistoryCreateDTO);
 
         SurgicalHistory entity = SurgicalHistory.builder()
-                .patient(refPatient(dto.patientId()))
-                .surgery(dto.surgery())
-                .dateOfSurgery(dto.dateOfSurgery())
-                .facility(dto.facility())
-                .anesthesiaType(dto.anesthesiaType())
-                .complications(dto.complications())
-                .adverseReactionsToAnesthesia(dto.adverseReactionsToAnesthesia())
-                .hasImplantsOrDevices(dto.hasImplantsOrDevices())
-                .implantsOrDevicesDescription(dto.implantsOrDevicesDescription())
+                .patient(refPatient(surgicalHistoryCreateDTO.patientId()))
+                .surgery(surgicalHistoryCreateDTO.surgery())
+                .dateOfSurgery(surgicalHistoryCreateDTO.dateOfSurgery())
+                .facility(surgicalHistoryCreateDTO.facility())
+                .anesthesiaType(surgicalHistoryCreateDTO.anesthesiaType())
+                .complications(surgicalHistoryCreateDTO.complications())
+                .adverseReactionsToAnesthesia(
+                        surgicalHistoryCreateDTO.adverseReactionsToAnesthesia()
+                )
+                .hasImplantsOrDevices(
+                        surgicalHistoryCreateDTO.hasImplantsOrDevices()
+                )
+                .implantsOrDevicesDescription(
+                        surgicalHistoryCreateDTO.implantsOrDevicesDescription()
+                )
+
+                // Default status for new records
+                .status(PatientHistoryStatus.ACTIVE)
+
                 .build();
 
         try {
-            SurgicalHistory saved = repository.saveAndFlush(entity);
-            entityManager.refresh(saved);
-            return saved;
+            return repository.saveAndFlush(entity);
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
             throw new BadRequestAlertException(
-                    "Database constraint violated while creating surgical history.",
+                    "Database constraint violated while saving surgical history.",
                     "surgicalHistory",
                     "db.constraint"
             );
@@ -111,6 +134,35 @@ public class SurgicalHistoryService {
         }
     }
 
+    public SurgicalHistory cancel(SurgicalHistoryCancelDTO dto) {
+        LOG.info("[CANCEL] SurgicalHistory payload={}", dto);
+
+        SurgicalHistory entity = repository.findById(dto.id())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Surgical history not found with id " + dto.id(),
+                        "surgicalHistory",
+                        "notfound"
+                ));
+
+        entity.setStatus(PatientHistoryStatus.CANCELLED);
+        entity.setCancelledBy(currentUsername());
+        entity.setCancelledDate(Instant.now());
+        entity.setCancellationReason(dto.cancellationReason());
+
+        try {
+            SurgicalHistory cancelled = repository.saveAndFlush(entity);
+            entityManager.refresh(cancelled);
+            return cancelled;
+
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            handleConstraints(ex);
+            throw new BadRequestAlertException(
+                    "Database constraint violated while cancelling surgical history.",
+                    "surgicalHistory",
+                    "db.constraint"
+            );
+        }
+    }
 
     public void delete(Long id) {
         LOG.info("[DELETE] SurgicalHistory id={}", id);
@@ -127,9 +179,30 @@ public class SurgicalHistoryService {
 
 
     @Transactional(readOnly = true)
-    public Page<SurgicalHistory> findByPatientId(Long patientId, Pageable pageable) {
-        LOG.debug("[LIST] SurgicalHistory patientId={} pageable={}", patientId, pageable);
-        return repository.findAllByPatientId(patientId, pageable);
+    public Page<SurgicalHistory> findByPatientId(
+            Long patientId,
+            boolean showCancelled,
+            Pageable pageable
+    ) {
+        LOG.debug(
+                "[LIST] SurgicalHistory patientId={} showCancelled={} pageable={}",
+                patientId,
+                showCancelled,
+                pageable
+        );
+
+        if (showCancelled) {
+            return repository.findAllByPatientId(
+                    patientId,
+                    pageable
+            );
+        }
+
+        return repository.findAllByPatientIdAndStatusNot(
+                patientId,
+                PatientHistoryStatus.CANCELLED,
+                pageable
+        );
     }
 
 

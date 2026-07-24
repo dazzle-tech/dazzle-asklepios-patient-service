@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service.helper;
 
 import com.dazzle.asklepios.client.setup.FacilityClient;
+import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.springframework.stereotype.Service;
 
@@ -15,6 +16,18 @@ public class FacilityHelper {
     public void validateFacilityExists(Long facilityId) {
         try {
             facilityClient.existsFacility(facilityId);
+        } catch (feign.FeignException.NotFound ex) {
+            throw new NotFoundAlertException(
+                    "Facility not found: " + facilityId,
+                    "facility",
+                    "notfound"
+            );
+        }
+    }
+
+    public FacilityDTO getFacility(Long facilityId) {
+        try {
+            return facilityClient.getFacility(facilityId);
         } catch (feign.FeignException.NotFound ex) {
             throw new NotFoundAlertException(
                     "Facility not found: " + facilityId,

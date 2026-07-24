@@ -78,3 +78,9 @@ patient:
       host: localhost
       port: 5000
       ring-buffer-size: 512
+  appointment:
+    template-interval-ended:
+      cron: "0 0 7 * * *"
+      zone: "Asia/Gaza"
+      springdoc:
+      pre-loading-enabled: true

@@ -74,7 +74,7 @@ public class AppointmentRequestController {
         }
 
         if (facilityId != null) {
-            return ResponseEntity.ok(appointmentRequestService.getByFacilityId(facilityId));
+            return ResponseEntity.ok(appointmentRequestService.getByFacilityIdAndBookableDepartment(facilityId));
         }
 
         if (sourceEncounterId != null) {

@@ -132,9 +132,9 @@ public class DiagnosticOrderTestStatusService {
 
     public DiagnosticOrderTest markReady(Long testId) {
         DiagnosticOrderTest test = getTest(testId);
-        ensureTransition(test, DiagnosticStatus.RESULT_READY);
+        ensureTransition(test, DiagnosticStatus.EXAM_DONE);
 
-        test.setProcessingStatus(DiagnosticStatus.RESULT_READY);
+        test.setProcessingStatus(DiagnosticStatus.EXAM_DONE);
         test.setReadyDate(Instant.now());
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
@@ -194,6 +194,8 @@ public class DiagnosticOrderTestStatusService {
         }
 
         test.setStatus(DiagnosticOrderTestStatus.CANCELLED);
+        test.setProcessingStatus(DiagnosticStatus.CANCELLED);
+
         test.setCancelledBy(cancelledBy);
         test.setCancelledDate(Instant.now());
         test.setCancellationReason(cancellationReason);
@@ -494,7 +496,7 @@ public class DiagnosticOrderTestStatusService {
         }
 
         if (to == DiagnosticStatus.RESULT_APPROVED) {
-            if (!(from == DiagnosticStatus.RESULT_READY || from == DiagnosticStatus.PARTIALLY)) {
+            if (!(from == DiagnosticStatus.EXAM_DONE || from == DiagnosticStatus.PARTIALLY)) {
                 throw invalid(from, to);
             }
             return;
