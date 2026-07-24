@@ -8,7 +8,7 @@ import com.dazzle.asklepios.domain.PatientPaymentAllocation;
 import com.dazzle.asklepios.domain.PatientPaymentServices;
 import com.dazzle.asklepios.domain.PatientPayments;
 import com.dazzle.asklepios.domain.PatientWallet;
-import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
+import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.PaymentTypes;
 
@@ -454,7 +454,7 @@ public class PatientPaymentsService {
                     );
                 });
 
-        if (encounter.getStatus() != EncounterStatus.PENDING_PAYMENT) {
+        if (encounter.getStatus() != TreatmentStatus.PENDING_PAYMENT) {
             LOG.warn("[CREATE] PatientPayments rejected: encounter status invalid encounterId={} status={}",
                     dto.encounterId(), encounter.getStatus());
             throw new BadRequestAlertException(
@@ -486,9 +486,9 @@ public class PatientPaymentsService {
                     dto.encounterId());
 
             if (encounter.getEncounterType().equals(EncounterType.EMERGENCY)) {
-                encounter.setStatus(EncounterStatus.WAITING_TRIAGE);
+                encounter.setStatus(TreatmentStatus.WAITING_TRIAGE);
             } else {
-                encounter.setStatus(EncounterStatus.NEW);
+                encounter.setStatus(TreatmentStatus.NEW);
             }
 
             encounterRepository.saveAndFlush(encounter);
@@ -566,9 +566,9 @@ public class PatientPaymentsService {
                     saved.getId(), dto.patientId(), dto.encounterId(), serviceRows.size(), dueAmount);
 
             if (encounter.getEncounterType().equals(EncounterType.EMERGENCY)) {
-                encounter.setStatus(EncounterStatus.WAITING_TRIAGE);
+                encounter.setStatus(TreatmentStatus.WAITING_TRIAGE);
             } else {
-                encounter.setStatus(EncounterStatus.NEW);
+                encounter.setStatus(TreatmentStatus.NEW);
             }
 
             encounterRepository.saveAndFlush(encounter);

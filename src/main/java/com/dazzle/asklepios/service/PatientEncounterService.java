@@ -10,6 +10,7 @@ import com.dazzle.asklepios.domain.PatientObservationsComplaints;
 import com.dazzle.asklepios.domain.VitalSigns;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
+import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.repository.AdditionalMeasurementsRepository;
 import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.BodyMeasurementsRepository;
@@ -126,7 +127,7 @@ public class PatientEncounterService {
                 .originName(createDTO.originName())
                 .notes(createDTO.notes())
                 .chiefComplaint(createDTO.chiefComplaint())
-                .status(EncounterStatus.PENDING_PAYMENT)
+                .status(TreatmentStatus.PENDING_PAYMENT)
                 .encounterDate(createDTO.encounterDate())
                 .encounterTime(createDTO.encounterTime())
                 .build();
@@ -233,10 +234,10 @@ public class PatientEncounterService {
         LocalDate effectiveFrom = filter.fromDate() != null ? filter.fromDate() : today;
         LocalDate effectiveTo = filter.toDate() != null ? filter.toDate() : today;
 
-        List<EncounterStatus> effectiveStatuses =
+        List<TreatmentStatus> effectiveStatuses =
                 (filter.statuses() != null && !filter.statuses().isEmpty())
                         ? filter.statuses()
-                        : List.of(EncounterStatus.NEW, EncounterStatus.ONGOING);
+                        : List.of(TreatmentStatus.NEW, TreatmentStatus.ONGOING);
 
         boolean hasPatientName = filter.patientName() != null && !filter.patientName().isBlank();
         boolean hasMrn = filter.mrn() != null && !filter.mrn().isBlank();
@@ -338,9 +339,9 @@ public class PatientEncounterService {
             Long departmentId,
             Pageable pageable
     ) {
-        List<EncounterStatus> completedEncounterStatuses = List.of(
-                EncounterStatus.CLOSED,
-                EncounterStatus.DISCHARGED
+        List<TreatmentStatus> completedEncounterStatuses = List.of(
+                TreatmentStatus.COMPLETED,
+                TreatmentStatus.DISCHARGED
         );
 
         LOG.debug("[FIND_PREVIOUS_PAGE] patientId={} departmentId={} statuses={} pageable={}",
@@ -364,7 +365,7 @@ public class PatientEncounterService {
                         "id.notfound"
                 ));
 
-        if (EncounterStatus.ONGOING.equals(encounter.getStatus())) {
+        if (TreatmentStatus.ONGOING.equals(encounter.getStatus())) {
             throw new BadRequestAlertException(
                     "Encounter is already ongoing",
                     "patientEncounter",
@@ -372,7 +373,7 @@ public class PatientEncounterService {
             );
         }
 
-        encounter.setStatus(EncounterStatus.ONGOING);
+        encounter.setStatus(TreatmentStatus.ONGOING);
         encounter.setStartedBy(currentUsername());
         encounter.setStartedDate(Instant.now());
 
@@ -401,9 +402,9 @@ public class PatientEncounterService {
                 ));
 
         if (!Set.of(
-                EncounterStatus.NEW,
-                EncounterStatus.WAITING_TRIAGE,
-                EncounterStatus.PENDING_PAYMENT
+                TreatmentStatus.NEW,
+                TreatmentStatus.WAITING_TRIAGE,
+                TreatmentStatus.PENDING_PAYMENT
         ).contains(encounter.getStatus())) {
 
             throw new BadRequestAlertException(
@@ -422,7 +423,7 @@ public class PatientEncounterService {
             );
         }
 
-        encounter.setStatus(EncounterStatus.CANCELLED);
+        encounter.setStatus(TreatmentStatus.CANCELLED);
 
         try {
             PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
@@ -444,7 +445,7 @@ public class PatientEncounterService {
                         "id.notfound"
                 ));
 
-        if (encounter.getStatus() != EncounterStatus.ONGOING) {
+        if (encounter.getStatus() != TreatmentStatus.ONGOING) {
             throw new BadRequestAlertException(
                     "Discharge allowed only when status is ONGOING.",
                     "patientEncounter",
@@ -452,7 +453,7 @@ public class PatientEncounterService {
             );
         }
 
-        encounter.setStatus(EncounterStatus.DISCHARGED);
+        encounter.setStatus(TreatmentStatus.DISCHARGED);
 
         PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
         LOG.info("[DISCHARGE] success id={} status={}", saved.getId(), saved.getStatus());
@@ -469,7 +470,7 @@ public class PatientEncounterService {
                         "id.notfound"
                 ));
 
-        if (encounter.getStatus() != EncounterStatus.ONGOING && encounter.getStatus() != EncounterStatus.TRIAGE_STARTED) {
+        if (encounter.getStatus() != TreatmentStatus.ONGOING && encounter.getStatus() != TreatmentStatus.TRIAGE_STARTED) {
             throw new BadRequestAlertException(
                     "Complete allowed only when status is ONGOING.",
                     "patientEncounter",
@@ -477,7 +478,7 @@ public class PatientEncounterService {
             );
         }
 
-        encounter.setStatus(EncounterStatus.CLOSED);
+        encounter.setStatus(TreatmentStatus.COMPLETED);
 
         PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
         updateAppointmentStatusForEncounter(AppointmentStatus.COMPLETED, encounter.getAppointment().getId());
@@ -525,7 +526,7 @@ public class PatientEncounterService {
         long active = patientEncounterRepository.countByDepartmentIdAndEncounterDateAndStatusIn(
                 departmentId,
                 today,
-                List.of(EncounterStatus.NEW, EncounterStatus.ONGOING)
+                List.of(TreatmentStatus.NEW, TreatmentStatus.ONGOING)
         );
 
         LOG.debug("[DASHBOARD] COUNT_ACTIVE_CASES_RESULT departmentId={} date={} total={}",
@@ -544,7 +545,7 @@ public class PatientEncounterService {
                 .countByDepartmentIdAndEncounterDateAndStatus(
                         departmentId,
                         today,
-                        EncounterStatus.CLOSED
+                        TreatmentStatus.COMPLETED
                 );
 
         LOG.debug("[DASHBOARD] COUNT_COMPLETED_RESULT departmentId={} date={} total={}",
@@ -563,7 +564,7 @@ public class PatientEncounterService {
                 .countByDepartmentIdAndEncounterDateAndStatus(
                         departmentId,
                         today,
-                        EncounterStatus.CANCELLED
+                        TreatmentStatus.CANCELLED
                 );
 
         LOG.debug("[DASHBOARD] COUNT_CANCELLED_RESULT departmentId={} date={} total={}",
@@ -714,7 +715,7 @@ public class PatientEncounterService {
                 departmentId,
                 fromDate,
                 toDate,
-                EncounterStatus.WAITING_LIST
+                TreatmentStatus.WAITING_LIST
         );
 
         LOG.debug("[COUNT_WAITING_LIST_RESULT] departmentId={} fromDate={} toDate={} total={}",
@@ -737,8 +738,8 @@ public class PatientEncounterService {
                 fromDate,
                 toDate,
                 List.of(
-                        EncounterStatus.WAITING_TRIAGE,
-                        EncounterStatus.TRIAGE_STARTED
+                        TreatmentStatus.WAITING_TRIAGE,
+                        TreatmentStatus.TRIAGE_STARTED
                 )
         );
 
@@ -761,7 +762,7 @@ public class PatientEncounterService {
                 departmentId,
                 fromDate,
                 toDate,
-                EncounterStatus.DISCHARGED
+                TreatmentStatus.DISCHARGED
         );
 
         LOG.debug("[COUNT_DISCHARGED_RESULT] departmentId={} fromDate={} toDate={} total={}",
@@ -780,10 +781,10 @@ public class PatientEncounterService {
                         "notfound"
                 ));
 
-        EncounterStatus currentStatus = encounter.getStatus();
+        TreatmentStatus currentStatus = encounter.getStatus();
 
-        if (!(currentStatus == EncounterStatus.WAITING_LIST
-                || currentStatus == EncounterStatus.TRIAGE_STARTED)) {
+        if (!(currentStatus == TreatmentStatus.WAITING_LIST
+                || currentStatus == TreatmentStatus.TRIAGE_STARTED)) {
             LOG.warn("[STATUS CHANGE] Invalid transition for id={} currentStatus={}",
                     id, currentStatus);
 
@@ -794,7 +795,7 @@ public class PatientEncounterService {
             );
         }
 
-        encounter.setStatus(EncounterStatus.NEW);
+        encounter.setStatus(TreatmentStatus.NEW);
 
         PatientEncounter updated = patientEncounterRepository.saveAndFlush(encounter);
 
@@ -816,7 +817,7 @@ public class PatientEncounterService {
                     );
                 });
 
-        if (encounter.getStatus() != EncounterStatus.ONGOING) {
+        if (encounter.getStatus() != TreatmentStatus.ONGOING) {
             LOG.warn("[DISCHARGE] PatientEncounter rejected: invalid status id={} status={}",
                     dischargeDTO.encounterId(), encounter.getStatus());
             throw new BadRequestAlertException(
@@ -846,7 +847,7 @@ public class PatientEncounterService {
 
         encounter.setDischargeType(dischargeDTO.dischargeType());
         encounter.setDischargeAt(dischargeDTO.dischargeAt());
-        encounter.setStatus(EncounterStatus.DISCHARGED);
+        encounter.setStatus(TreatmentStatus.DISCHARGED);
 
         try {
             PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
@@ -882,7 +883,7 @@ public class PatientEncounterService {
         return patientEncounterRepository
                 .findFirstByPatientIdAndStatusAndEncounterDateLessThanEqualOrderByEncounterDateDesc(
                         currentEncounter.getPatient().getId(),
-                        EncounterStatus.CLOSED,
+                        TreatmentStatus.COMPLETED,
                         currentEncounter.getEncounterDate()
                 );
     }
@@ -993,4 +994,6 @@ public class PatientEncounterService {
 
         return saved;
     }
+
+
 }
