@@ -175,16 +175,16 @@ public class BillingTransactionService {
         );
 
         /*
-         * 4. Historical pricing snapshot.
+         * 4. Patient / insurance responsibility.
          */
-        billingPricingSnapshotService.createInitialSnapshot(
+        billingResponsibilityService.calculate(
                 context
         );
 
         /*
-         * 5. Patient / insurance responsibility.
+         * 5. Historical pricing snapshot.
          */
-        billingResponsibilityService.calculate(
+        billingPricingSnapshotService.createInitialSnapshot(
                 context
         );
 

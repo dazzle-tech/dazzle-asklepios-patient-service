@@ -30,7 +30,13 @@ public record ResolvedBillingPrice(
 
         Long priceListItemId,
 
-        BillingPricingResolveResponse pricingResponse
+        BillingPricingResolveResponse pricingResponse,
+
+        /**
+         * Base unit price from Setup configuration, regardless of whether
+         * billing ultimately used the Price List or Setup fallback.
+         */
+        BigDecimal setupUnitPrice
 
 ) implements Serializable {
 

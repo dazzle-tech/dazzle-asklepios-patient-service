@@ -7,6 +7,7 @@ import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.client.WaseelItemMappingClient;
+import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationSubmissionService;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -49,6 +50,7 @@ public class PatientServiceAndProductService {
     private final BrandMedicationHelper brandMedicationHelper;
     private final WaseelItemMappingClient waseelItemMappingClient;
     private final PreAuthorizationSubmissionService preAuthorizationSubmissionService;
+    private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
 
     public PatientServiceAndProductService(
             PatientServiceAndProductRepository patientServiceAndProductRepository,
@@ -59,7 +61,8 @@ public class PatientServiceAndProductService {
             ProcedureHelper procedureHelper,
             BrandMedicationHelper brandMedicationHelper,
             WaseelItemMappingClient waseelItemMappingClient,
-            PreAuthorizationSubmissionService preAuthorizationSubmissionService
+            PreAuthorizationSubmissionService preAuthorizationSubmissionService,
+            EncounterInsuranceEligibilityService encounterInsuranceEligibilityService
     ) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.patientRepository = patientRepository;
@@ -70,6 +73,7 @@ public class PatientServiceAndProductService {
         this.brandMedicationHelper = brandMedicationHelper;
         this.waseelItemMappingClient = waseelItemMappingClient;
         this.preAuthorizationSubmissionService = preAuthorizationSubmissionService;
+        this.encounterInsuranceEligibilityService = encounterInsuranceEligibilityService;
     }
 
     public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
@@ -93,6 +97,7 @@ public class PatientServiceAndProductService {
 
         PreAuthorizationStatus preAuthorizationStatus =
                 resolvePreAuthorizationStatus(
+                        encounter.getId(),
                         dto.billingItemType(),
                         dto.procedureId(),
                         dto.serviceId(),
@@ -188,6 +193,7 @@ public class PatientServiceAndProductService {
 
         entity.setPreAuthorizationStatus(
                 resolvePreAuthorizationStatus(
+                        entity.getEncounterId(),
                         dto.billingItemType(),
                         dto.procedureId(),
                         dto.serviceId(),
@@ -249,6 +255,7 @@ public class PatientServiceAndProductService {
 
                         PreAuthorizationStatus preAuthorizationStatus =
                                 resolvePreAuthorizationStatus(
+                                        encounter.getId(),
                                         dto.billingItemType(),
                                         dto.procedureId(),
                                         dto.serviceId(),
@@ -340,12 +347,17 @@ public class PatientServiceAndProductService {
     }
 
     private PreAuthorizationStatus resolvePreAuthorizationStatus(
+            Long encounterId,
             BillingItemTypes billingItemType,
             Long procedureId,
             Long serviceId,
             Long diagnosticTestId,
             Long brandMedicationId
     ) {
+        if (!encounterInsuranceEligibilityService.isInsuranceEncounter(encounterId)) {
+            return PreAuthorizationStatus.NOT_REQUIRED;
+        }
+
         if (billingItemType == BillingItemTypes.PROCEDURE && procedureId != null) {
             return requiresPreAuthorization(billingItemType, procedureId)
                     ? PreAuthorizationStatus.PENDING_APPROVAL
@@ -421,9 +433,20 @@ public class PatientServiceAndProductService {
     }
 
     private void submitPreAuthorizationIfPending(PatientServiceAndProduct item) {
-        if (item != null && item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL) {
-            preAuthorizationSubmissionService.submitIfRequired(item.getEncounterId());
+        if (item == null || item.getPreAuthorizationStatus() != PreAuthorizationStatus.PENDING_APPROVAL) {
+            return;
         }
+
+        if (!encounterInsuranceEligibilityService.isInsuranceEncounter(item.getEncounterId())) {
+            LOG.debug(
+                    "Skipping pre-authorization for billing item id={} on encounterId={} — cash/self-pay encounter",
+                    item.getId(),
+                    item.getEncounterId()
+            );
+            return;
+        }
+
+        preAuthorizationSubmissionService.submitIfRequired(item.getEncounterId());
     }
 
     private BigDecimal defaultZero(BigDecimal value) {

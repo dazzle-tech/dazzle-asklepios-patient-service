@@ -17,6 +17,13 @@ public interface WaseelEligibilityRequestRepository
     );
 
     Optional<WaseelEligibilityRequest>
+    findFirstByPatientIdAndPatientInsuranceIdAndRequestStatusAndEligibilityResponseIdIsNotNullOrderByCreatedDateDesc(
+            Long patientId,
+            Long patientInsuranceId,
+            String requestStatus
+    );
+
+    Optional<WaseelEligibilityRequest>
     findTopByPatientIdAndRequestStatusOrderByRespondedAtDesc(
             Long patientId,
             String requestStatus

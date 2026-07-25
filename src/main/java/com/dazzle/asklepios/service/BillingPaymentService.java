@@ -12,6 +12,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryDirecti
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerScope;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerSourceChannel;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerTransactionType;
+import com.dazzle.asklepios.domain.enumeration.billing.PaymentCategory;
 import com.dazzle.asklepios.repository.BillingPaymentRepository;
 import com.dazzle.asklepios.repository.BillingPaymentTransactionRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
@@ -168,28 +169,47 @@ public class BillingPaymentService {
                 );
 
         /*
-         * The payment is confirmed by the statuses supplied in the request.
-         * Only confirmed/successful requests should call this operation.
-         *
-         * Wallet is credited once inside this transaction.
+         * External payments credit the wallet.
+         * Wallet-category payments consume existing available balance instead.
          */
-        BillingWallet creditedWallet =
-                billingWalletService.credit(
-                        request.patientId(),
-                        request.currency(),
-                        request.amount()
-                );
+        BillingWallet walletAfterPayment;
 
-        recordPaymentCreditedLedger(
-                payment,
-                paymentTransaction,
-                creditedWallet,
-                money(request.amount()),
-                walletAvailableBefore,
-                walletReservedBefore,
-                transactionGroupId,
-                request.requestId()
-        );
+        if (PaymentCategory.WALLET.equals(request.paymentCategory())) {
+            walletAfterPayment =
+                    billingWalletService.consumeAvailable(
+                            wallet,
+                            request.amount()
+                    );
+
+            recordWalletPaymentLedger(
+                    payment,
+                    paymentTransaction,
+                    walletAfterPayment,
+                    money(request.amount()),
+                    walletAvailableBefore,
+                    walletReservedBefore,
+                    transactionGroupId,
+                    request.requestId()
+            );
+        } else {
+            walletAfterPayment =
+                    billingWalletService.credit(
+                            request.patientId(),
+                            request.currency(),
+                            request.amount()
+                    );
+
+            recordPaymentCreditedLedger(
+                    payment,
+                    paymentTransaction,
+                    walletAfterPayment,
+                    money(request.amount()),
+                    walletAvailableBefore,
+                    walletReservedBefore,
+                    transactionGroupId,
+                    request.requestId()
+            );
+        }
 
         List<BillingPaymentReservationResult>
                 reservationResults =
@@ -220,10 +240,11 @@ public class BillingPaymentService {
         LOG.info(
                 "[CREATE_ADVANCE] Advance payment created "
                         + "paymentId={} transactionId={} patientId={} "
-                        + "amount={} available={} reserved={} serviceCount={}",
+                        + "category={} amount={} available={} reserved={} serviceCount={}",
                 payment.getId(),
                 paymentTransaction.getId(),
                 request.patientId(),
+                request.paymentCategory(),
                 request.amount(),
                 finalWallet.getAvailableBalance(),
                 finalWallet.getReservedBalance(),
@@ -236,6 +257,92 @@ public class BillingPaymentService {
                 finalWallet,
                 totalReserved,
                 reservationResults
+        );
+    }
+
+    private void recordWalletPaymentLedger(
+            BillingPayment payment,
+            BillingPaymentTransaction paymentTransaction,
+            BillingWallet wallet,
+            BigDecimal amount,
+            BigDecimal walletAvailableBefore,
+            BigDecimal walletReservedBefore,
+            UUID transactionGroupId,
+            String requestId
+    ) {
+        billingLedgerService.record(
+                new BillingLedgerEntryRequest(
+                        transactionGroupId,
+                        requestId.trim(),
+                        payment.getIdempotencyKey()
+                                + ":LEDGER:WALLET_PAYMENT",
+
+                        payment.getPatient(),
+                        payment.getEncounter(),
+
+                        wallet,
+                        payment,
+                        paymentTransaction,
+
+                        null,
+                        null,
+                        null,
+
+                        null,
+                        null,
+
+                        null,
+                        null,
+                        null,
+
+                        BillingLedgerTransactionType
+                                .WALLET_AVAILABLE_CONSUMED,
+
+                        BillingLedgerScope.PAYMENT,
+
+                        amount,
+                        payment.getCurrency(),
+
+                        amount.negate(),
+                        zero(),
+                        amount,
+                        zero(),
+
+                        zero(),
+                        zero(),
+                        zero(),
+
+                        walletAvailableBefore,
+                        money(
+                                wallet.getAvailableBalance()
+                        ),
+
+                        walletReservedBefore,
+                        money(
+                                wallet.getReservedBalance()
+                        ),
+
+                        null,
+                        null,
+
+                        null,
+                        null,
+
+                        BillingLedgerEntryDirection.DEBIT,
+                        BillingLedgerEntryCategory.BUSINESS,
+
+                        null,
+
+                        "BILLING_PAYMENT",
+                        payment.getId(),
+                        payment.getPaymentNumber(),
+
+                        "Wallet balance applied to encounter payment.",
+
+                        null,
+
+                        BillingLedgerSourceChannel.BILLING_ENGINE
+                )
         );
     }
 

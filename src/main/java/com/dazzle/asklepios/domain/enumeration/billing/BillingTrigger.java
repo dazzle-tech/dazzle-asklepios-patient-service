@@ -6,6 +6,7 @@ public enum BillingTrigger {
 
     TREATMENT_STARTED,
 
+
     ORDERED,
 
     DISPENSED,

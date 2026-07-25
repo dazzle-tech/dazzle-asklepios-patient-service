@@ -16,6 +16,7 @@ import java.util.Optional;
 public interface BillingChargeResponsibilityRepository
         extends JpaRepository<BillingChargeResponsibility, Long> {
 
+
     @Override
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<BillingChargeResponsibility> findById(Long id);

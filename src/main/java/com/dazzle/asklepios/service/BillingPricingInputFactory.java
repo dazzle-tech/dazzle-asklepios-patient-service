@@ -71,6 +71,7 @@ public class BillingPricingInputFactory {
                         item.getQuantity()
                 ),
                 resolvedPrice.unitPrice(),
+                resolvedPrice.setupUnitPrice(),
 
                 response.discountId(),
                 response.discountType(),
@@ -141,6 +142,7 @@ public class BillingPricingInputFactory {
                         item.getQuantity()
                 ),
                 resolvedPrice.unitPrice(),
+                resolvedPrice.setupUnitPrice(),
 
                 null,
                 null,

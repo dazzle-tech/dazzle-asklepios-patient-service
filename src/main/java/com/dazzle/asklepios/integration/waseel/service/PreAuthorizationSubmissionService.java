@@ -48,6 +48,7 @@ public class PreAuthorizationSubmissionService {
     private final ApprovalEligibilitySnapshotService snapshotService;
     private final WaseelApprovalService waseelApprovalService;
     private final EligibilityRequestResolverService eligibilityRequestResolverService;
+    private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
 
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
@@ -63,6 +64,14 @@ public class PreAuthorizationSubmissionService {
     private final ObjectMapper objectMapper;
 
     public ApprovalResponse submitIfRequired(Long encounterId) {
+        if (!encounterInsuranceEligibilityService.isInsuranceEncounter(encounterId)) {
+            log.debug(
+                    "Skipping pre-authorization submission for encounterId={} — not an insurance encounter",
+                    encounterId
+            );
+            return null;
+        }
+
         PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "Encounter not found",

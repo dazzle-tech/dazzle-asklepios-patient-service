@@ -36,4 +36,10 @@ public interface BillingChargeRepository
             Collection<BillingChargeStatus> statuses
     );
 
+    Optional<BillingCharge>
+    findFirstByEncounter_IdAndStatusNotInOrderByIdDesc(
+            Long encounterId,
+            Collection<BillingChargeStatus> excludedStatuses
+    );
+
 }

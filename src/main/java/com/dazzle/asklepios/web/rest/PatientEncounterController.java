@@ -309,6 +309,17 @@ public class PatientEncounterController {
         return ResponseEntity.ok(existing);
     }
 
+    @PostMapping("/encounter/{id}/close-billing")
+    public ResponseEntity<PatientEncounter> closeEncounterForBilling(
+            @PathVariable("id") @NotNull Long encounterId
+    ) {
+        LOG.debug("REST close PatientEncounter for billing id={}", encounterId);
+
+        PatientEncounter closed =
+                patientEncounterService.closeEncounterForBilling(encounterId);
+        return ResponseEntity.ok(closed);
+    }
+
     @GetMapping("/encounter/patient/{patientId}")
     public ResponseEntity<List<PatientEncounter>> getEncountersByPatient(
             @PathVariable @NotNull Long patientId,

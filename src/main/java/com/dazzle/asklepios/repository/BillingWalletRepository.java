@@ -31,4 +31,10 @@ public interface BillingWalletRepository
             Long patientId,
             Currency currency
     );
+
+    Optional<BillingWallet>
+    findByPatient_IdAndCurrency(
+            Long patientId,
+            Currency currency
+    );
 }

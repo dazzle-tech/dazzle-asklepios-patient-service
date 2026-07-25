@@ -1,13 +1,17 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.converter.EncounterLifecycleStatusConverter;
+import com.dazzle.asklepios.domain.converter.TreatmentStatusConverter;
 import com.dazzle.asklepios.domain.enumeration.DischargeType;
+import com.dazzle.asklepios.domain.enumeration.EncounterLifecycleStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
-import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
+import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.Convert;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
@@ -104,9 +108,14 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     private LocalDate encounterDate;
 
     @NotNull
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 50)
-    private EncounterStatus status;
+    @Convert(converter = EncounterLifecycleStatusConverter.class)
+    @Column(name = "encounter_status", nullable = false, length = 50)
+    private EncounterLifecycleStatus encounterStatus;
+
+    @NotNull
+    @Convert(converter = TreatmentStatusConverter.class)
+    @Column(name = "treatment_status", nullable = false, length = 50)
+    private TreatmentStatus treatmentStatus;
 
     @Column(name = "chief_complaint", columnDefinition = "text")
     private String chiefComplaint;

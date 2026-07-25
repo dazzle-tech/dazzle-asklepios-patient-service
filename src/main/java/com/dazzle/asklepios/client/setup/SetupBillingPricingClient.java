@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 
 public interface SetupBillingPricingClient {
 
-    @PostMapping("/internal/billing-pricing/resolve")
+    @PostMapping("/api/setup/internal/billing-pricing/resolve")
     BillingPricingResolveResponse resolve(
             @RequestBody
             BillingPricingResolveRequest request

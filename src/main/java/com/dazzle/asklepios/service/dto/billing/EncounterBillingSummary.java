@@ -46,6 +46,10 @@ public record EncounterBillingSummary(
 
         BigDecimal patientOutstandingAmount,
 
+        BigDecimal patientWalletSettledAmount,
+
+        BigDecimal patientDebitSettledAmount,
+
         BigDecimal insuranceResponsibilityAmount,
 
         BigDecimal insuranceAllocatedAmount,

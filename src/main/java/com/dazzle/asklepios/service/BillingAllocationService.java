@@ -688,6 +688,20 @@ public class BillingAllocationService {
             String requestId,
             BillingLedgerSourceChannel sourceChannel
     ) {
+        /*
+         * Allocation consumes responsibility against an existing debit balance.
+         * The debit account balance was already updated by createDebit(), so
+         * debitBalanceChange stays zero and before/after must reflect the
+         * current account balance (not the debit transaction's creation
+         * snapshot).
+         */
+        BigDecimal debitBalanceSnapshot =
+                money(
+                        debitTransaction
+                                .getDebitAccount()
+                                .getCurrentDebitBalance()
+                );
+
         billingLedgerService.record(
                 new BillingLedgerEntryRequest(
                         allocation.getTransactionGroupId(),
@@ -726,10 +740,6 @@ public class BillingAllocationService {
                         zero(),
                         zero(),
 
-                        /*
-                         * The debit balance was already increased by
-                         * BillingDebitService.createDebit().
-                         */
                         zero(),
 
                         amount,
@@ -740,8 +750,8 @@ public class BillingAllocationService {
                         null,
                         null,
 
-                        debitTransaction.getBalanceBefore(),
-                        debitTransaction.getBalanceAfter(),
+                        debitBalanceSnapshot,
+                        debitBalanceSnapshot,
 
                         responsibilityOutstandingBefore,
                         money(

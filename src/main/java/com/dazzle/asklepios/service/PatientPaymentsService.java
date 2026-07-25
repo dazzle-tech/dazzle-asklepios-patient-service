@@ -16,7 +16,7 @@ import com.dazzle.asklepios.domain.WalletTransaction;
 import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
-import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
+import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
@@ -692,11 +692,11 @@ public class PatientPaymentsService {
                     );
                 });
 
-        if (encounter.getStatus() != EncounterStatus.PENDING_PAYMENT) {
+        if (encounter.getTreatmentStatus() != TreatmentStatus.PENDING_PAYMENT) {
             LOG.warn(
-                    "[CREATE] PatientPayments rejected: encounter status invalid encounterId={} status={}",
+                    "[CREATE] PatientPayments rejected: encounter treatment status invalid encounterId={} treatmentStatus={}",
                     dto.encounterId(),
-                    encounter.getStatus()
+                    encounter.getTreatmentStatus()
             );
             throw new BadRequestAlertException(
                     "Encounter is not in PENDING_PAYMENT status",
@@ -721,9 +721,9 @@ public class PatientPaymentsService {
             );
 
             if (encounter.getEncounterType().equals(EncounterType.EMERGENCY)) {
-                encounter.setStatus(EncounterStatus.WAITING_TRIAGE);
+                encounter.setTreatmentStatus(TreatmentStatus.WAITING_TRIAGE);
             } else {
-                encounter.setStatus(EncounterStatus.NEW);
+                encounter.setTreatmentStatus(TreatmentStatus.NEW);
             }
 
             encounterRepository.saveAndFlush(encounter);
@@ -883,9 +883,9 @@ public class PatientPaymentsService {
 
             // ✅ update encounter status
             if (encounter.getEncounterType().equals(EncounterType.EMERGENCY)) {
-                encounter.setStatus(EncounterStatus.WAITING_TRIAGE);
+                encounter.setTreatmentStatus(TreatmentStatus.WAITING_TRIAGE);
             } else {
-                encounter.setStatus(EncounterStatus.NEW);
+                encounter.setTreatmentStatus(TreatmentStatus.NEW);
             }
 
             encounterRepository.saveAndFlush(encounter);

@@ -2,8 +2,9 @@ package com.dazzle.asklepios.service.dto.patientEncounter;
 
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
-import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
+import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.NotNull;
 
@@ -46,8 +47,8 @@ public record PatientEncounterCreateDTO(
 
         LocalDate encounterDate,
 
-        @NotNull
-        EncounterStatus status,
+        @JsonAlias("status")
+        TreatmentStatus treatmentStatus,
 
         String chiefComplaint
 

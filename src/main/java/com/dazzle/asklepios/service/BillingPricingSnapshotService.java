@@ -475,6 +475,13 @@ public class BillingPricingSnapshotService {
         );
         put(payload, "quantity", result.quantity());
         put(payload, "unitPrice", result.unitPrice());
+        put(payload, "setupUnitPrice", input.setupUnitPrice());
+        if (input.priceListItemCode() != null) {
+            payload.put(
+                    "priceListItemCode",
+                    input.priceListItemCode()
+            );
+        }
         put(payload, "grossAmount", result.grossAmount());
         put(payload, "discountAmount", result.discountAmount());
         put(payload, "exemptionAmount", result.exemptionAmount());

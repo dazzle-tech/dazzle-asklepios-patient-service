@@ -302,7 +302,7 @@ public class BillingChargeService {
                         .reservedAmount(BigDecimal.ZERO)
 
                         .currency(item.getCurrency())
-                        .status(resolveInitialLineStatus(item, pricing))
+                        .status(BillingChargeLineStatus.DRAFT)
 
                         .patientInsurance(patientInsurance)
 
@@ -481,6 +481,21 @@ public class BillingChargeService {
             );
         }
 
+        line.setStatus(
+                BillingChargeLineStatus.DRAFT
+        );
+
+        line.setPatientResponsibilityAmount(
+                BigDecimal.ZERO
+        );
+
+        line.setInsuranceResponsibilityAmount(
+                BigDecimal.ZERO
+        );
+
+        line.setOtherPayerResponsibilityAmount(
+                BigDecimal.ZERO
+        );
         BillingChargeLine saved =
                 billingChargeLineRepository.save(line);
 
@@ -593,6 +608,16 @@ public class BillingChargeService {
                 outstandingAmount
         );
         charge.setLineCount(activeLines.size());
+
+        for (BillingChargeLine line : activeLines) {
+            line.setStatus(
+                    determineLineStatus(
+                            line,
+                            charge.getStatus()
+                    )
+            );
+            billingChargeLineRepository.save(line);
+        }
 
         charge.setStatus(
                 determineChargeStatus(
@@ -873,27 +898,6 @@ public class BillingChargeService {
         patientServiceAndProductRepository.save(item);
     }
 
-    private BillingChargeLineStatus resolveInitialLineStatus(
-            PatientServiceAndProduct item,
-            PriceCalculationResult pricing
-    ) {
-        if (Boolean.TRUE.equals(
-                item.getIsExempted()
-        )) {
-            /*
-             * Keep DRAFT until responsibility processing finishes.
-             * The line has zero financial outstanding amount.
-             */
-            return BillingChargeLineStatus.DRAFT;
-        }
-
-        if (pricing.netAmount().signum() == 0) {
-            return BillingChargeLineStatus.DRAFT;
-        }
-
-        return BillingChargeLineStatus.OPEN;
-    }
-
     private void validatePatientItem(
             PatientServiceAndProduct item
     ) {
@@ -1093,6 +1097,59 @@ public class BillingChargeService {
                     "charge.hasReservation"
             );
         }
+    }
+
+    private BillingChargeLineStatus determineLineStatus(
+            BillingChargeLine line,
+            BillingChargeStatus chargeStatus
+    ) {
+        if (line.getStatus()
+                == BillingChargeLineStatus.CANCELLED
+                || line.getStatus()
+                == BillingChargeLineStatus.REVERSED) {
+            return line.getStatus();
+        }
+
+        BigDecimal netAmount =
+                defaultZero(line.getNetAmount());
+        BigDecimal allocatedAmount =
+                defaultZero(line.getAllocatedAmount());
+        BigDecimal outstandingAmount =
+                defaultZero(line.getOutstandingAmount());
+        BigDecimal reservedAmount =
+                defaultZero(line.getReservedAmount());
+
+        if (chargeStatus
+                == BillingChargeStatus.CLOSED
+                && outstandingAmount.signum() == 0) {
+            return BillingChargeLineStatus.CLOSED;
+        }
+
+        if (outstandingAmount.signum() == 0
+                && allocatedAmount.compareTo(
+                netAmount
+        ) >= 0
+                && netAmount.signum() > 0) {
+            return BillingChargeLineStatus.ALLOCATED;
+        }
+
+        if (allocatedAmount.signum() > 0
+                && outstandingAmount.signum() > 0) {
+            return BillingChargeLineStatus
+                    .PARTIALLY_ALLOCATED;
+        }
+
+        if (reservedAmount.signum() > 0
+                && allocatedAmount.signum() == 0) {
+            return BillingChargeLineStatus.RESERVED;
+        }
+
+        if (line.getStatus()
+                == BillingChargeLineStatus.DRAFT) {
+            return BillingChargeLineStatus.DRAFT;
+        }
+
+        return BillingChargeLineStatus.OPEN;
     }
 
     private BillingChargeStatus determineChargeStatus(

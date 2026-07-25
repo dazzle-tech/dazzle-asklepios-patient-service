@@ -26,6 +26,8 @@ public record BillingPricingInput(
         BigDecimal quantity,
         BigDecimal unitPrice,
 
+        BigDecimal setupUnitPrice,
+
         Long discountId,
         DiscountType discountType,
         BigDecimal discountRate,

@@ -29,7 +29,7 @@ import java.net.URI;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/billing")
+@RequestMapping("/api/patient/billing")
 public class BillingTransactionController {
 
     private static final Logger LOG =
@@ -43,6 +43,12 @@ public class BillingTransactionController {
     private final BillingPaymentService
             billingPaymentService;
 
+    /*
+     * ============================================================
+     * ADVANCE PAYMENT
+     * ============================================================
+     */
+
     @PostMapping("/payments/advance")
     public ResponseEntity<BillingPaymentResult>
     createAdvancePayment(
@@ -52,7 +58,8 @@ public class BillingTransactionController {
             CreateAdvancePaymentRequest request
     ) {
         LOG.debug(
-                "REST request to create advance billing payment patientId={} encounterId={} amount={} requestId={}",
+                "REST request to create advance billing payment "
+                        + "patientId={} encounterId={} amount={} requestId={}",
                 request.patientId(),
                 request.encounterId(),
                 request.amount(),
@@ -68,12 +75,20 @@ public class BillingTransactionController {
         return ResponseEntity
                 .created(
                         URI.create(
-                                "/api/billing/payments/"
+                                "/api/patient/billing/payments/"
                                         + result.paymentId()
                         )
                 )
-                .body(result);
+                .body(
+                        result
+                );
     }
+
+    /*
+     * ============================================================
+     * GET PAYMENT
+     * ============================================================
+     */
 
     @GetMapping("/payments/{paymentId}")
     public ResponseEntity<BillingPaymentResult>
@@ -87,93 +102,118 @@ public class BillingTransactionController {
                 paymentId
         );
 
-        return ResponseEntity.ok(
+        BillingPaymentResult result =
                 billingPaymentService
-                        .findById(paymentId)
-        );
-    }
-
-    @PostMapping("/checkout")
-    public ResponseEntity<BillingCheckoutResult>
-    checkout(
-            @Valid
-            @RequestBody
-            @NotNull
-            BillingCheckoutRequest request
-    ) {
-        LOG.debug(
-                "REST request to checkout billing charge chargeId={} requestId={}",
-                request.chargeId(),
-                request.requestId()
-        );
+                        .findById(
+                                paymentId
+                        );
 
         return ResponseEntity.ok(
-                billingTransactionService
-                        .checkout(request)
+                result
         );
     }
 
-    @PostMapping("/cancel-service")
-    public ResponseEntity<BillingCancellationResult>
-    cancelPatientService(
-            @Valid
-            @RequestBody
-            @NotNull
-            BillingCancellationRequest request
-    ) {
-        LOG.debug(
-                "REST request to cancel billing service pspId={} requestId={}",
-                request.patientServiceProductId(),
-                request.requestId()
-        );
+    /*
+     * ============================================================
+     * CHECKOUT
+     * ============================================================
+     */
 
-        return ResponseEntity.ok(
-                billingTransactionService
-                        .cancelPatientService(
-                                request
-                        )
-        );
-    }
+    /*
+     * ============================================================
+     * CANCEL SERVICE
+     * ============================================================
+     */
 
-    @PostMapping("/refund")
-    public ResponseEntity<BillingRefundResult>
-    refund(
-            @Valid
-            @RequestBody
-            @NotNull
-            BillingRefundRequest request
-    ) {
-        LOG.debug(
-                "REST request to refund billing wallet patientId={} amount={} requestId={}",
-                request.patientId(),
-                request.requestedAmount(),
-                request.requestId()
-        );
-
-        return ResponseEntity.ok(
-                billingTransactionService
-                        .refund(request)
-        );
-    }
-
-    @PostMapping("/refund/reverse")
-    public ResponseEntity<BillingRefundReversalResult>
-    reverseRefund(
-            @Valid
-            @RequestBody
-            @NotNull
-            BillingRefundReversalRequest request
-    ) {
-        LOG.debug(
-                "REST request to reverse billing refund refundId={} amount={} requestId={}",
-                request.refundId(),
-                request.amount(),
-                request.requestId()
-        );
-
-        return ResponseEntity.ok(
-                billingTransactionService
-                        .reverseRefund(request)
-        );
-    }
+//    @PostMapping("/cancel-service")
+//    public ResponseEntity<BillingCancellationResult>
+//    cancelPatientService(
+//            @Valid
+//            @RequestBody
+//            @NotNull
+//            BillingCancellationRequest request
+//    ) {
+//        LOG.debug(
+//                "REST request to cancel billing service "
+//                        + "pspId={} requestId={}",
+//                request.patientServiceProductId(),
+//                request.requestId()
+//        );
+//
+//        BillingCancellationResult result =
+//                billingTransactionService
+//                        .cancelPatientService(
+//                                request
+//                        );
+//
+//        return ResponseEntity.ok(
+//                result
+//        );
+//    }
+//
+//    /*
+//     * ============================================================
+//     * REFUND
+//     * ============================================================
+//     */
+//
+//    @PostMapping("/refund")
+//    public ResponseEntity<BillingRefundResult>
+//    refund(
+//            @Valid
+//            @RequestBody
+//            @NotNull
+//            BillingRefundRequest request
+//    ) {
+//        LOG.debug(
+//                "REST request to refund billing wallet "
+//                        + "patientId={} amount={} requestId={}",
+//                request.patientId(),
+//                request.requestedAmount(),
+//                request.requestId()
+//        );
+//
+//        BillingRefundResult result =
+//                billingTransactionService
+//                        .refund(
+//                                request
+//                        );
+//
+//        return ResponseEntity.ok(
+//                result
+//        );
+//    }
+//
+//    /*
+//     * ============================================================
+//     * REFUND REVERSAL
+//     * ============================================================
+//     */
+//
+//    @PostMapping("/refund/reverse")
+//    public ResponseEntity<BillingRefundReversalResult>
+//    reverseRefund(
+//            @Valid
+//            @RequestBody
+//            @NotNull
+//            BillingRefundReversalRequest request
+//    ) {
+//        LOG.debug(
+//                "REST request to reverse billing refund "
+//                        + "refundId={} amount={} requestId={}",
+//                request.refundId(),
+//                request.amount(),
+//                request.requestId()
+//        );
+//
+//        BillingRefundReversalResult result =
+//                billingTransactionService
+//                        .reverseRefund(
+//                                request
+//                        );
+//
+//        return ResponseEntity.ok(
+//                result
+//        );
+//    }
 }
