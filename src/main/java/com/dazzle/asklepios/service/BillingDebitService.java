@@ -247,6 +247,45 @@ public class BillingDebitService {
         }
     }
 
+    /**
+     * Returns how much debit credit checkout may still use without creating
+     * a new account. Uses the configured limit only when no account exists yet.
+     */
+    @Transactional(
+            readOnly = true
+    )
+    public BigDecimal resolveAvailableDebitCredit(
+            Long patientId,
+            Currency currency,
+            BigDecimal configuredCreditLimit
+    ) {
+        validatePatientAndCurrency(
+                patientId,
+                currency
+        );
+
+        BillingDebitAccount existing =
+                billingDebitAccountRepository
+                        .findByPatient_IdAndCurrency(
+                                patientId,
+                                currency
+                        )
+                        .orElse(null);
+
+        if (existing != null) {
+            validateAccountBalance(existing);
+
+            return money(
+                    existing.getAvailableCredit()
+            );
+        }
+
+        return nonNegativeMoney(
+                configuredCreditLimit,
+                "Credit limit"
+        );
+    }
+
     /*
      * Creates debt for the outstanding patient responsibility.
      *
@@ -328,7 +367,11 @@ public class BillingDebitService {
                                 .getPatient()
                                 .getId(),
                         responsibility.getCurrency(),
-                        configuredCreditLimit,
+                        resolveEffectiveCreditLimit(
+                                configuredCreditLimit,
+                                requestedAmount,
+                                outstanding
+                        ),
                         debitAllowed,
                         approvalRequired,
                         approvedBy
@@ -336,6 +379,11 @@ public class BillingDebitService {
 
         account =
                 lockAccount(account.getId());
+
+        ensureCreditCapacity(
+                account,
+                requestedAmount
+        );
 
         validateAccountForDebit(
                 account,
@@ -1113,6 +1161,76 @@ public class BillingDebitService {
         }
 
         validateAccountBalance(account);
+    }
+
+    private BigDecimal resolveEffectiveCreditLimit(
+            BigDecimal configuredCreditLimit,
+            BigDecimal requestedAmount,
+            BigDecimal outstandingAmount
+    ) {
+        BigDecimal configured =
+                nonNegativeMoney(
+                        configuredCreditLimit,
+                        "Credit limit"
+                );
+
+        BigDecimal requested =
+                positiveMoney(
+                        requestedAmount,
+                        "Debit amount"
+                );
+
+        BigDecimal outstanding =
+                money(outstandingAmount);
+
+        return configured
+                .max(requested)
+                .max(outstanding);
+    }
+
+    private void ensureCreditCapacity(
+            BillingDebitAccount account,
+            BigDecimal requiredAmount
+    ) {
+        BigDecimal required =
+                positiveMoney(
+                        requiredAmount,
+                        "Required amount"
+                );
+
+        BigDecimal currentBalance =
+                money(
+                        account.getCurrentDebitBalance()
+                );
+
+        BigDecimal creditLimit =
+                money(
+                        account.getCreditLimit()
+                );
+
+        BigDecimal minimumLimit =
+                currentBalance.add(required);
+
+        if (creditLimit.compareTo(minimumLimit) >= 0) {
+            return;
+        }
+
+        account.setCreditLimit(minimumLimit);
+        account.setAvailableCredit(
+                minimumLimit.subtract(currentBalance)
+        );
+
+        validateAccountBalance(account);
+
+        billingDebitAccountRepository.save(account);
+
+        LOG.info(
+                "[DEBIT_ACCOUNT] Credit limit expanded "
+                        + "accountId={} creditLimit={} availableCredit={}",
+                account.getId(),
+                account.getCreditLimit(),
+                account.getAvailableCredit()
+        );
     }
 
     private void validateAccountBalance(

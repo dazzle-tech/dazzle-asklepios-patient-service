@@ -25,6 +25,16 @@ public interface BillingPricingSnapshotRepository
             BillingPricingSnapshotStatus status
     );
 
+    /*
+     * Read query used by the encounter billing summary endpoint.
+     * No pessimistic lock is required for this view operation.
+     */
+    Optional<BillingPricingSnapshot>
+    findTopByChargeLine_IdAndStatusOrderByIdDesc(
+            Long chargeLineId,
+            BillingPricingSnapshotStatus status
+    );
+
     List<BillingPricingSnapshot>
     findAllByChargeLine_IdOrderByIdDesc(
             Long chargeLineId

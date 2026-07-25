@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.ServiceClient;
 import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
+import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
@@ -10,7 +11,9 @@ import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
+import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -26,13 +29,16 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 @Service
@@ -45,10 +51,17 @@ public class DefaultServicePreparationService {
     private static final String ENTITY_NAME =
             "defaultServiceBilling";
 
+    private static final EnumSet<BillingChargeLineStatus> EXCLUDED_CHARGE_LINE_STATUSES =
+            EnumSet.of(
+                    BillingChargeLineStatus.CANCELLED,
+                    BillingChargeLineStatus.REVERSED
+            );
+
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientInsuranceRepository patientInsuranceRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
+    private final BillingChargeLineRepository billingChargeLineRepository;
     private final ServiceClient serviceClient;
     private final BillingEngineService billingEngineService;
 
@@ -57,6 +70,7 @@ public class DefaultServicePreparationService {
      * through the Billing Engine. This operation does not create a payment,
      * allocation, consumption, checkout, or invoice closure.
      */
+    @Transactional
     public PrepareDefaultServicesResult prepare(
             Long encounterId,
             PrepareDefaultServicesRequest request
@@ -98,19 +112,40 @@ public class DefaultServicePreparationService {
                             service
                     );
 
-            String itemRequestId =
-                    request.requestId().trim()
-                            + ":DEFAULT_SERVICE:"
-                            + requestedItem.sequence()
-                            + ":"
-                            + requestedItem.serviceId();
+            Optional<BillingChargeLine> existingChargeLine =
+                    findActiveChargeLine(item.getId());
 
-            BillingOperationResult billingResult =
-                    billingEngineService.onEncounterCreated(
-                            item.getId(),
-                            request.facilityId(),
-                            itemRequestId
-                    );
+            BillingOperationResult billingResult;
+
+            if (existingChargeLine.isPresent()) {
+                LOG.info(
+                        "[PREPARE_DEFAULT_SERVICES] Skipping duplicate billing "
+                                + "pspId={} chargeLineId={} encounterId={}",
+                        item.getId(),
+                        existingChargeLine.get().getId(),
+                        encounterId
+                );
+
+                billingResult =
+                        toExistingBillingResult(
+                                item,
+                                existingChargeLine.get()
+                        );
+            } else {
+                String itemRequestId =
+                        request.requestId().trim()
+                                + ":DEFAULT_SERVICE:"
+                                + requestedItem.sequence()
+                                + ":"
+                                + requestedItem.serviceId();
+
+                billingResult =
+                        billingEngineService.onEncounterCreated(
+                                item.getId(),
+                                request.facilityId(),
+                                itemRequestId
+                        );
+            }
 
             results.add(
                     new PrepareDefaultServicesResult.PreparedDefaultServiceResult(
@@ -149,6 +184,38 @@ public class DefaultServicePreparationService {
                 processed
                         ? "Default services prepared successfully."
                         : "Default services were prepared, but one or more billing rules did not match the encounter-created event."
+        );
+    }
+
+    private Optional<BillingChargeLine> findActiveChargeLine(
+            Long patientServiceProductId
+    ) {
+        return billingChargeLineRepository
+                .findFirstByPatientServiceProduct_IdAndStatusNotInOrderByIdAsc(
+                        patientServiceProductId,
+                        EXCLUDED_CHARGE_LINE_STATUSES
+                );
+    }
+
+    private BillingOperationResult toExistingBillingResult(
+            PatientServiceAndProduct item,
+            BillingChargeLine chargeLine
+    ) {
+        return new BillingOperationResult(
+                item.getId(),
+                chargeLine.getCharge().getId(),
+                chargeLine.getId(),
+                null,
+                chargeLine.getGrossAmount(),
+                chargeLine.getDiscountAmount(),
+                chargeLine.getExemptionAmount(),
+                chargeLine.getTaxAmount(),
+                chargeLine.getNetAmount(),
+                chargeLine.getPatientResponsibilityAmount(),
+                chargeLine.getInsuranceResponsibilityAmount(),
+                chargeLine.getReservedAmount(),
+                true,
+                "Service already calculated for this encounter."
         );
     }
 
@@ -354,6 +421,13 @@ public class DefaultServicePreparationService {
                     "service.notfound"
             );
         } catch (FeignException exception) {
+            LOG.error(
+                    "Setup Service call failed for serviceId={} status={} body={}",
+                    serviceId,
+                    exception.status(),
+                    exception.contentUTF8(),
+                    exception
+            );
             throw new BadRequestAlertException(
                     "Unable to validate the selected service in Setup Service.",
                     ENTITY_NAME,

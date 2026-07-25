@@ -18,7 +18,7 @@ import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
-import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
+import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.repository.AppointmentFromTemplateRepository;
@@ -686,7 +686,7 @@ public class AppointmentFromTemplateService {
                 savedAppointment.getStartDatetime()
                         .atZone(java.time.ZoneId.systemDefault())
                         .toLocalDate(),
-                EncounterStatus.NEW,
+                TreatmentStatus.NEW,
                 savedAppointment.getReason()
 
         );

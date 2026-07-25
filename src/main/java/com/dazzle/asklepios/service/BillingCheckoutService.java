@@ -482,15 +482,20 @@ public class BillingCheckoutService {
                 && Boolean.TRUE.equals(
                 request.allowDebit()
         )) {
+            BigDecimal checkoutCreditLimit =
+                    money(
+                            request.creditLimit()
+                    ).max(
+                            outstandingAfterWallet
+                    );
+
             BillingDebitCreationResult debitResult =
                     billingDebitService.createDebit(
                             responsibility.getId(),
 
                             outstandingAfterWallet,
 
-                            money(
-                                    request.creditLimit()
-                            ),
+                            checkoutCreditLimit,
 
                             true,
 
@@ -550,10 +555,13 @@ public class BillingCheckoutService {
 
         if (finalOutstanding.signum() > 0) {
             throw new BadRequestAlertException(
-                    "Unable to settle patient responsibility "
-                            + responsibility.getId()
-                            + ". Remaining amount: "
-                            + finalOutstanding,
+                    "Unable to settle patient responsibility. "
+                            + "Remaining amount: "
+                            + finalOutstanding
+                            + " "
+                            + responsibility.getCurrency()
+                            + ". Collect additional payment or enable "
+                            + "patient debit at checkout.",
                     ENTITY_NAME,
                     "responsibility.unsettled"
             );

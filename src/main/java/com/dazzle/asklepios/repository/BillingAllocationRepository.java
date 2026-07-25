@@ -68,5 +68,11 @@ public interface BillingAllocationRepository extends JpaRepository<BillingAlloca
             Collection<BillingAllocationStatus> statuses
     );
 
-    
+    List<BillingAllocation>
+    findAllByEncounter_IdAndCharge_IdAndStatusInOrderByAllocationDateAscIdAsc(
+            Long encounterId,
+            Long chargeId,
+            Collection<BillingAllocationStatus> statuses
+    );
+
 }

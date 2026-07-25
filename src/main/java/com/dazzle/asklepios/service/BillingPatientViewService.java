@@ -205,6 +205,9 @@ public class BillingPatientViewService {
                 patientTotals.allocated(),
                 patientTotals.outstanding(),
 
+                zero(),
+                zero(),
+
                 insuranceTotals.total(),
                 insuranceTotals.allocated(),
                 insuranceTotals.outstanding(),
@@ -309,6 +312,10 @@ public class BillingPatientViewService {
                 ),
 
                 money(line.getUnitPrice()),
+
+                null,
+                null,
+                null,
 
                 money(line.getGrossAmount()),
 
@@ -521,6 +528,9 @@ public class BillingPatientViewService {
                 null,
 
                 zero(),
+                zero(),
+                zero(),
+
                 zero(),
                 zero(),
 

@@ -46,6 +46,16 @@ public class EncounterInsuranceEligibilityService {
     }
 
     @Transactional(readOnly = true)
+    public boolean isInsuranceEncounter(Long encounterId) {
+        return patientPaymentsRepository
+                .findFirstByEncounterIdOrderByIdDesc(encounterId)
+                .map(payment ->
+                        PaymentTypes.INSURANCE_PLAN.equals(payment.getPaymentTypes())
+                                && payment.getPlan() != null)
+                .orElse(false);
+    }
+
+    @Transactional(readOnly = true)
     public PatientInsurance getValidatedInsuranceForPreAuthorization(Long encounterId) {
         PatientPayments payment = getInsurancePayment(encounterId);
         PatientInsurance insurance = payment.getPlan();

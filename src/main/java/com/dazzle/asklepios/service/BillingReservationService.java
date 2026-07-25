@@ -116,6 +116,31 @@ public class BillingReservationService {
             return null;
         }
 
+        BigDecimal alreadyReserved =
+                calculateActiveReservedAmount(
+                        context.getChargeLine().getId()
+                );
+
+        BigDecimal remainingRequired =
+                responsibilityOutstanding
+                        .subtract(alreadyReserved)
+                        .max(zero());
+
+        if (remainingRequired.signum() <= 0) {
+            LOG.debug(
+                    "[RESERVE] Charge line already fully reserved "
+                            + "pspId={} chargeLineId={} outstanding={} alreadyReserved={}",
+                    context.getPatientServiceProduct().getId(),
+                    context.getChargeLine().getId(),
+                    responsibilityOutstanding,
+                    alreadyReserved
+            );
+
+            context.setReservedAmount(alreadyReserved);
+
+            return null;
+        }
+
         String idempotencyKey =
                 context.getIdempotencyKey()
                         + ":RESERVATION:PAYMENT:"
@@ -166,7 +191,7 @@ public class BillingReservationService {
 
         BigDecimal reservationAmount =
                 minimum(
-                        responsibilityOutstanding,
+                        remainingRequired,
                         walletAvailable,
                         paymentAvailable
                 );
@@ -174,10 +199,10 @@ public class BillingReservationService {
         if (reservationAmount.signum() == 0) {
             LOG.info(
                     "[RESERVE] No reservable balance pspId={} paymentId={} "
-                            + "responsibilityOutstanding={} walletAvailable={} paymentAvailable={}",
+                            + "remainingRequired={} walletAvailable={} paymentAvailable={}",
                     context.getPatientServiceProduct().getId(),
                     payment.getId(),
-                    responsibilityOutstanding,
+                    remainingRequired,
                     walletAvailable,
                     paymentAvailable
             );

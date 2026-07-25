@@ -3,17 +3,25 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.BillingCharge;
 import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingChargeResponsibility;
+import com.dazzle.asklepios.domain.BillingAllocation;
 import com.dazzle.asklepios.domain.BillingWallet;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingAllocationStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.AllocationSourceType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.ResponsiblePartyType;
+import com.dazzle.asklepios.repository.BillingAllocationRepository;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingChargeRepository;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
+import com.dazzle.asklepios.repository.BillingPricingSnapshotRepository;
 import com.dazzle.asklepios.repository.BillingWalletRepository;
+import com.dazzle.asklepios.domain.BillingPricingSnapshot;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPricingSnapshotStatus;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingResponsibilitySummary;
 import com.dazzle.asklepios.service.dto.billing.BillingWalletSummary;
@@ -70,6 +78,12 @@ public class EncounterBillingSummaryService {
 
     private final BillingWalletRepository
             billingWalletRepository;
+
+    private final BillingPricingSnapshotRepository
+            billingPricingSnapshotRepository;
+
+    private final BillingAllocationRepository
+            billingAllocationRepository;
 
     /**
      * Returns an empty summary when the encounter does not yet have a
@@ -190,6 +204,12 @@ public class EncounterBillingSummaryService {
                         )
                         .toList();
 
+        SettlementTotals settlementTotals =
+                settlementTotalsFor(
+                        encounter.getId(),
+                        charge.getId()
+                );
+
         return new EncounterBillingSummary(
                 charge.getId(),
                 charge.getChargeNumber(),
@@ -209,6 +229,8 @@ public class EncounterBillingSummaryService {
                 patientTotals.responsibilityAmount(),
                 patientTotals.allocatedAmount(),
                 patientTotals.outstandingAmount(),
+                settlementTotals.walletSettledAmount(),
+                settlementTotals.debitSettledAmount(),
                 insuranceTotals.responsibilityAmount(),
                 insuranceTotals.allocatedAmount(),
                 insuranceTotals.outstandingAmount(),
@@ -227,6 +249,11 @@ public class EncounterBillingSummaryService {
         PatientServiceAndProduct item =
                 line.getPatientServiceProduct();
 
+        PricingDisplayFields pricingDisplay =
+                resolvePricingDisplayFields(
+                        line.getId()
+                );
+
         return new EncounterBillingItemSummary(
                 item == null
                         ? null
@@ -240,6 +267,9 @@ public class EncounterBillingSummaryService {
                 line.getItemDescription(),
                 money(line.getQuantity()),
                 money(line.getUnitPrice()),
+                pricingDisplay.setupUnitPrice(),
+                pricingDisplay.priceSource(),
+                pricingDisplay.priceListItemCode(),
                 money(line.getGrossAmount()),
                 money(line.getDiscountAmount()),
                 money(line.getExemptionAmount()),
@@ -376,9 +406,82 @@ public class EncounterBillingSummaryService {
                 zero(),
                 zero(),
                 zero(),
+                zero(),
+                zero(),
                 emptyWallet(null),
                 List.of()
         );
+    }
+
+    private SettlementTotals settlementTotalsFor(
+            Long encounterId,
+            Long chargeId
+    ) {
+        List<BillingAllocation> allocations =
+                billingAllocationRepository
+                        .findAllByEncounter_IdAndCharge_IdAndStatusInOrderByAllocationDateAscIdAsc(
+                                encounterId,
+                                chargeId,
+                                EnumSet.of(
+                                        BillingAllocationStatus.ACTIVE,
+                                        BillingAllocationStatus.PARTIALLY_REVERSED
+                                )
+                        );
+
+        BigDecimal walletSettled =
+                zero();
+        BigDecimal debitSettled =
+                zero();
+
+        for (BillingAllocation allocation
+                : allocations) {
+
+            BigDecimal amount =
+                    money(
+                            allocation
+                                    .getRemainingAllocatedAmount()
+                    );
+
+            if (amount.signum() <= 0) {
+                continue;
+            }
+
+            AllocationSourceType sourceType =
+                    allocation.getAllocationSourceType();
+
+            if (sourceType == null) {
+                continue;
+            }
+
+            switch (sourceType) {
+                case RESERVATION,
+                     WALLET_AVAILABLE,
+                     PAYMENT ->
+                        walletSettled =
+                                walletSettled.add(
+                                        amount
+                                );
+                case DEBIT ->
+                        debitSettled =
+                                debitSettled.add(
+                                        amount
+                                );
+                default -> {
+                    // Insurance and other payers are tracked separately.
+                }
+            }
+        }
+
+        return new SettlementTotals(
+                money(walletSettled),
+                money(debitSettled)
+        );
+    }
+
+    private record SettlementTotals(
+            BigDecimal walletSettledAmount,
+            BigDecimal debitSettledAmount
+    ) {
     }
 
     private BillingWalletSummary emptyWallet(
@@ -474,6 +577,95 @@ public class EncounterBillingSummaryService {
                 MONEY_SCALE,
                 RoundingMode.HALF_UP
         );
+    }
+
+    private PricingDisplayFields resolvePricingDisplayFields(
+            Long chargeLineId
+    ) {
+        return billingPricingSnapshotRepository
+                .findTopByChargeLine_IdAndStatusOrderByIdDesc(
+                        chargeLineId,
+                        BillingPricingSnapshotStatus.ACTIVE
+                )
+                .map(snapshot -> {
+                    JsonNode payload =
+                            snapshot.getCalculationPayload();
+
+                    BigDecimal setupUnitPrice =
+                            readPayloadDecimal(
+                                    payload,
+                                    "setupUnitPrice"
+                            );
+
+                    if (setupUnitPrice == null) {
+                        setupUnitPrice =
+                                money(
+                                        snapshot.getBaseUnitPrice()
+                                );
+                    }
+
+                    String priceSource =
+                            payload != null
+                                    && payload.hasNonNull(
+                                    "priceSource"
+                            )
+                                    ? payload.get(
+                                            "priceSource"
+                                    ).asText()
+                                    : snapshot.getPriceSource() == null
+                                    ? null
+                                    : snapshot.getPriceSource().name();
+
+                    String priceListItemCode =
+                            payload != null
+                                    && payload.hasNonNull(
+                                    "priceListItemCode"
+                            )
+                                    ? payload.get(
+                                            "priceListItemCode"
+                                    ).asText()
+                                    : snapshot.getPriceListItemCode();
+
+                    return new PricingDisplayFields(
+                            setupUnitPrice,
+                            priceSource,
+                            priceListItemCode
+                    );
+                })
+                .orElseGet(
+                        () ->
+                                new PricingDisplayFields(
+                                        null,
+                                        null,
+                                        null
+                                )
+                );
+    }
+
+    private BigDecimal readPayloadDecimal(
+            JsonNode payload,
+            String fieldName
+    ) {
+        if (
+                payload == null
+                        || !payload.hasNonNull(
+                        fieldName
+                )
+        ) {
+            return null;
+        }
+
+        return money(
+                payload.get(fieldName)
+                        .decimalValue()
+        );
+    }
+
+    private record PricingDisplayFields(
+            BigDecimal setupUnitPrice,
+            String priceSource,
+            String priceListItemCode
+    ) {
     }
 
     private record ResponsibilityTotals(

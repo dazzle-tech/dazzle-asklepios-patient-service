@@ -70,6 +70,11 @@ public class SetupBillingPricingService {
     ) {
         validateRequest(request);
 
+        BigDecimal setupUnitPrice =
+                readSetupUnitPrice(
+                        request
+                );
+
         BillingPricingResolveResponse priceListResponse =
                 tryResolveFromPriceList(
                         request
@@ -82,12 +87,13 @@ public class SetupBillingPricingService {
                     "[RESOLVE] Price resolved from Price List "
                             + "itemType={} sourceId={} "
                             + "priceListId={} priceListItemId={} "
-                            + "unitPrice={} currency={}",
+                            + "unitPrice={} setupUnitPrice={} currency={}",
                     request.billingItemType(),
                     request.sourceId(),
                     priceListResponse.priceListId(),
                     priceListResponse.priceListItemId(),
                     priceListResponse.unitPrice(),
+                    setupUnitPrice,
                     priceListResponse.currency()
             );
 
@@ -104,15 +110,19 @@ public class SetupBillingPricingService {
 
                     priceListResponse.priceListItemId(),
 
-                    priceListResponse
+                    priceListResponse,
+
+                    setupUnitPrice
             );
         }
 
         LOG.info(
                 "[RESOLVE] No applicable Price List item found. "
-                        + "Using Setup fallback itemType={} sourceId={}",
+                        + "Using Setup fallback itemType={} sourceId={} "
+                        + "setupUnitPrice={}",
                 request.billingItemType(),
-                request.sourceId()
+                request.sourceId(),
+                setupUnitPrice
         );
 
         return resolveFromSetupFallback(
@@ -438,12 +448,12 @@ public class SetupBillingPricingService {
 
     private ResolvedBillingPrice buildFallbackResult(
             BillingPricingResolveRequest request,
-            BigDecimal unitPrice,
+            BigDecimal setupUnitPrice,
             Currency setupCurrency,
             Long setupSourceId
     ) {
-        if (unitPrice == null
-                || unitPrice.signum() < 0) {
+        if (setupUnitPrice == null
+                || setupUnitPrice.signum() < 0) {
             throw new BadRequestAlertException(
                     "No valid price was found in the Price List or Setup item.",
                     ENTITY_NAME,
@@ -496,12 +506,12 @@ public class SetupBillingPricingService {
                         + "unitPrice={} currency={}",
                 request.billingItemType(),
                 setupSourceId,
-                unitPrice,
+                setupUnitPrice,
                 setupCurrency
         );
 
         return new ResolvedBillingPrice(
-                unitPrice,
+                setupUnitPrice,
 
                 setupCurrency,
 
@@ -513,8 +523,73 @@ public class SetupBillingPricingService {
 
                 null,
 
-                null
+                null,
+
+                setupUnitPrice
         );
+    }
+
+    private BigDecimal readSetupUnitPrice(
+            BillingPricingResolveRequest request
+    ) {
+        return switch (
+                request.billingItemType()
+                ) {
+            case SERVICE -> {
+                ServiceSetupDTO service =
+                        callSetupItem(
+                                request.billingItemType(),
+                                request.sourceId(),
+                                () ->
+                                        serviceClient
+                                                .getServiceDetails(
+                                                        request.sourceId()
+                                                )
+                        );
+                yield service.price();
+            }
+            case PROCEDURE -> {
+                ProcedureSetupDTO procedure =
+                        callSetupItem(
+                                request.billingItemType(),
+                                request.sourceId(),
+                                () ->
+                                        procedureClient
+                                                .getProcedure(
+                                                        request.sourceId()
+                                                )
+                        );
+                yield procedure.price();
+            }
+            case MEDICATION -> {
+                BrandMedicationSetupDTO medication =
+                        callSetupItem(
+                                request.billingItemType(),
+                                request.sourceId(),
+                                () ->
+                                        brandMedicationClient
+                                                .getBrandMedication(
+                                                        request.sourceId()
+                                                )
+                        );
+                yield medication.price();
+            }
+            case LABORATORY,
+                 RADIOLOGY,
+                 PATHOLOGY -> {
+                DiagnosticTestSetupDTO diagnosticTest =
+                        callSetupItem(
+                                request.billingItemType(),
+                                request.sourceId(),
+                                () ->
+                                        diagnosticTestClient
+                                                .getDiagnosticTest(
+                                                        request.sourceId()
+                                                )
+                        );
+                yield diagnosticTest.price();
+            }
+        };
     }
 
     /*

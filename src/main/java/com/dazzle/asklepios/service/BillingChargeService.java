@@ -609,6 +609,16 @@ public class BillingChargeService {
         );
         charge.setLineCount(activeLines.size());
 
+        for (BillingChargeLine line : activeLines) {
+            line.setStatus(
+                    determineLineStatus(
+                            line,
+                            charge.getStatus()
+                    )
+            );
+            billingChargeLineRepository.save(line);
+        }
+
         charge.setStatus(
                 determineChargeStatus(
                         charge.getStatus(),
@@ -1087,6 +1097,59 @@ public class BillingChargeService {
                     "charge.hasReservation"
             );
         }
+    }
+
+    private BillingChargeLineStatus determineLineStatus(
+            BillingChargeLine line,
+            BillingChargeStatus chargeStatus
+    ) {
+        if (line.getStatus()
+                == BillingChargeLineStatus.CANCELLED
+                || line.getStatus()
+                == BillingChargeLineStatus.REVERSED) {
+            return line.getStatus();
+        }
+
+        BigDecimal netAmount =
+                defaultZero(line.getNetAmount());
+        BigDecimal allocatedAmount =
+                defaultZero(line.getAllocatedAmount());
+        BigDecimal outstandingAmount =
+                defaultZero(line.getOutstandingAmount());
+        BigDecimal reservedAmount =
+                defaultZero(line.getReservedAmount());
+
+        if (chargeStatus
+                == BillingChargeStatus.CLOSED
+                && outstandingAmount.signum() == 0) {
+            return BillingChargeLineStatus.CLOSED;
+        }
+
+        if (outstandingAmount.signum() == 0
+                && allocatedAmount.compareTo(
+                netAmount
+        ) >= 0
+                && netAmount.signum() > 0) {
+            return BillingChargeLineStatus.ALLOCATED;
+        }
+
+        if (allocatedAmount.signum() > 0
+                && outstandingAmount.signum() > 0) {
+            return BillingChargeLineStatus
+                    .PARTIALLY_ALLOCATED;
+        }
+
+        if (reservedAmount.signum() > 0
+                && allocatedAmount.signum() == 0) {
+            return BillingChargeLineStatus.RESERVED;
+        }
+
+        if (line.getStatus()
+                == BillingChargeLineStatus.DRAFT) {
+            return BillingChargeLineStatus.DRAFT;
+        }
+
+        return BillingChargeLineStatus.OPEN;
     }
 
     private BillingChargeStatus determineChargeStatus(

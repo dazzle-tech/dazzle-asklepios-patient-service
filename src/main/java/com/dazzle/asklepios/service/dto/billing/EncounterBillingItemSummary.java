@@ -25,6 +25,12 @@ public record EncounterBillingItemSummary(
 
         BigDecimal unitPrice,
 
+        BigDecimal setupUnitPrice,
+
+        String priceSource,
+
+        String priceListItemCode,
+
         BigDecimal grossAmount,
 
         BigDecimal discountAmount,
