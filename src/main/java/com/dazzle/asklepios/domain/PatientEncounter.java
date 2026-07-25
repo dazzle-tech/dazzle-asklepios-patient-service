@@ -105,7 +105,7 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @NotNull
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 50)
+    @Column(name = "encounter_status", nullable = false, length = 50)
     private EncounterStatus status;
 
     @Column(name = "chief_complaint", columnDefinition = "text")

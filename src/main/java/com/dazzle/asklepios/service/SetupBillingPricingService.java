@@ -14,6 +14,7 @@ import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
+import com.dazzle.asklepios.domain.enumeration.billing.PricingSource;
 import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import feign.FeignException;
@@ -660,22 +661,6 @@ public class SetupBillingPricingService {
             );
         }
 
-        if (response.priceListId() == null) {
-            throw new BadRequestAlertException(
-                    "Resolved Price List ID is missing.",
-                    ENTITY_NAME,
-                    "priceListId.missing"
-            );
-        }
-
-        if (response.priceListItemId() == null) {
-            throw new BadRequestAlertException(
-                    "Resolved Price List item ID is missing.",
-                    ENTITY_NAME,
-                    "priceListItemId.missing"
-            );
-        }
-
         if (response.unitPrice() == null
                 || response.unitPrice().signum() < 0) {
             throw new BadRequestAlertException(
@@ -690,6 +675,40 @@ public class SetupBillingPricingService {
                     "Resolved currency is missing.",
                     ENTITY_NAME,
                     "currency.missing"
+            );
+        }
+
+        if (response.pricingSource() == null) {
+            throw new BadRequestAlertException(
+                    "Resolved pricing source is missing.",
+                    ENTITY_NAME,
+                    "pricingSource.missing"
+            );
+        }
+
+        boolean priceListSource =
+                response.pricingSource()
+                        == PricingSource.PRICE_LIST
+                        || response.pricingSource()
+                        == PricingSource.INSURANCE_PRICE_LIST
+                        || response.pricingSource()
+                        == PricingSource.CASH_PRICE_LIST;
+
+        if (priceListSource
+                && response.priceListId() == null) {
+            throw new BadRequestAlertException(
+                    "Resolved price-list ID is missing.",
+                    ENTITY_NAME,
+                    "priceListId.missing"
+            );
+        }
+
+        if (priceListSource
+                && response.priceListItemId() == null) {
+            throw new BadRequestAlertException(
+                    "Resolved price-list item ID is missing.",
+                    ENTITY_NAME,
+                    "priceListItemId.missing"
             );
         }
     }

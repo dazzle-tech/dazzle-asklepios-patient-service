@@ -302,7 +302,7 @@ public class BillingChargeService {
                         .reservedAmount(BigDecimal.ZERO)
 
                         .currency(item.getCurrency())
-                        .status(resolveInitialLineStatus(item, pricing))
+                        .status(BillingChargeLineStatus.DRAFT)
 
                         .patientInsurance(patientInsurance)
 
@@ -481,6 +481,21 @@ public class BillingChargeService {
             );
         }
 
+        line.setStatus(
+                BillingChargeLineStatus.DRAFT
+        );
+
+        line.setPatientResponsibilityAmount(
+                BigDecimal.ZERO
+        );
+
+        line.setInsuranceResponsibilityAmount(
+                BigDecimal.ZERO
+        );
+
+        line.setOtherPayerResponsibilityAmount(
+                BigDecimal.ZERO
+        );
         BillingChargeLine saved =
                 billingChargeLineRepository.save(line);
 
@@ -871,27 +886,6 @@ public class BillingChargeService {
         }
 
         patientServiceAndProductRepository.save(item);
-    }
-
-    private BillingChargeLineStatus resolveInitialLineStatus(
-            PatientServiceAndProduct item,
-            PriceCalculationResult pricing
-    ) {
-        if (Boolean.TRUE.equals(
-                item.getIsExempted()
-        )) {
-            /*
-             * Keep DRAFT until responsibility processing finishes.
-             * The line has zero financial outstanding amount.
-             */
-            return BillingChargeLineStatus.DRAFT;
-        }
-
-        if (pricing.netAmount().signum() == 0) {
-            return BillingChargeLineStatus.DRAFT;
-        }
-
-        return BillingChargeLineStatus.OPEN;
     }
 
     private void validatePatientItem(

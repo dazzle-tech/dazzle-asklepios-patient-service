@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.BillingChargeResponsibility;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.ResponsibilityRole;
 import com.dazzle.asklepios.domain.enumeration.billing.ResponsiblePartyType;
@@ -173,6 +174,10 @@ public class BillingResponsibilityService {
                 BigDecimal.ZERO
         );
 
+        chargeLine.setStatus(
+                BillingChargeLineStatus.DRAFT
+        );
+
         billingChargeLineRepository.save(chargeLine);
 
         item.setPatientShareAmount(
@@ -274,6 +279,9 @@ public class BillingResponsibilityService {
                 netAmount
         );
 
+        chargeLine.setStatus(
+                BillingChargeLineStatus.OPEN
+        );
         billingChargeLineRepository.save(chargeLine);
 
         item.setPatientShareAmount(netAmount);
@@ -438,6 +446,9 @@ public class BillingResponsibilityService {
                 netAmount
         );
 
+        chargeLine.setStatus(
+                BillingChargeLineStatus.OPEN
+        );
         billingChargeLineRepository.save(chargeLine);
 
         item.setPatientShareAmount(
