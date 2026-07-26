@@ -76,6 +76,8 @@ patient:
         # - In a separate `application-prod.yml` file, in the same folder as your executable JAR file
         base64-secret: Y2RiNDRmMGM3ODZkM2FhMTEwYWYxZGE0NjQ3ODM5YThkYWFjZWYzMzY2ZDVkMTVhNGEyNDNmZTM0MzQ5NTRhMmVlMmFkNGVlODBmYTkyZWE4ZWYyMDRhZDJiZGU4YzJhMGEyN2U5NGUzMmNmNWU4Yzk2MDVkNzhmY2M3YTgyZDM=
         # Token is valid 24 hours
+        token-validity-in-seconds: 86400
+        token-validity-in-seconds-for-remember-me: 2592000
   logging:
     use-json-format: false # By default, logs are not in Json format
     logstash: # Forward logs to logstash over a socket, used by LoggingConfiguration
