@@ -14,5 +14,5 @@ public enum TreatmentStatus {
     WAITING_TRIAGE,
     WAITING_LIST,
     PENDING_PAYMENT,
-   ASSIGENS_TO_BED
+    ASSIGNED_TO_BED
 }
