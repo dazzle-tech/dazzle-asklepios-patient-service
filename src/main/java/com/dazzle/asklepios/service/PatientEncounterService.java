@@ -52,6 +52,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -104,18 +106,18 @@ public class PatientEncounterService {
             practitionerHelper.validatePractitionerExists(createDTO.practitionerId());
 
         validateEmergencyEncounterCreation(createDTO.patientId(), createDTO.encounterType());
+        AppointmentFromTemplate appointment = appointmentFromTemplateRepository.findById(createDTO.appointmentId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "appointment for this encounter not found with id " + createDTO.appointmentId(),
+                        "patientEncounter",
+                        "appointment.notfound"
+                ));
         PatientEncounter patientEncounterToCreate = PatientEncounter.builder()
                 .patient(patient)
                 .facilityId(createDTO.facilityId())
                 .departmentId(createDTO.departmentId())
                 .practitionerId(createDTO.practitionerId())
-                .appointment(appointmentFromTemplateRepository.findById(createDTO.appointmentId())
-                        .orElseThrow(() -> new NotFoundAlertException(
-                                "appointment for this encounter not found with id " + createDTO.appointmentId(),
-                                "patientEncounter",
-                                "appointment.notfound"
-                        ))
-                )
+                .appointment(appointment)
                 .encounterType(createDTO.encounterType())
                 .encounterReason(createDTO.encounterReason())
                 .followUpEncounter(createDTO.followUpEncounterId() == null ? null :
@@ -138,6 +140,11 @@ public class PatientEncounterService {
                                 : TreatmentStatus.PENDING_PAYMENT
                 )
                 .encounterDate(createDTO.encounterDate())
+                .encounterTime(
+                        appointment.getStartDatetime() != null
+                                ? appointment.getStartDatetime().atZone(ZoneId.systemDefault()).toLocalTime()
+                                : LocalTime.now()
+                )
                 .build();
 
         try {

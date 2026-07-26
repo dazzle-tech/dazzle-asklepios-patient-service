@@ -1,6 +1,8 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.Currency;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentItemAdjustmentAction;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentItemStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -40,6 +42,22 @@ public class FinancialDocumentItem extends AbstractAuditingEntity<Long> implemen
 
     @Column(name = "patient_service_product_id", nullable = false)
     private Long patientServiceProductId;
+
+    @Column(name = "billing_charge_line_id")
+    private Long billingChargeLineId;
+
+    @Column(name = "parent_document_item_id")
+    private Long parentDocumentItemId;
+
+    @Column(name = "item_code", length = 100)
+    private String itemCode;
+
+    @Column(name = "item_description", length = 500)
+    private String itemDescription;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "adjustment_action", length = 50)
+    private FinancialDocumentItemAdjustmentAction adjustmentAction;
 
     @Column(name = "quantity", nullable = false)
     private Long quantity;

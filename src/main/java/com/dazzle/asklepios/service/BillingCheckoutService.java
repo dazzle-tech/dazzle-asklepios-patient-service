@@ -4,6 +4,8 @@ import com.dazzle.asklepios.domain.BillingCharge;
 import com.dazzle.asklepios.domain.BillingChargeResponsibility;
 import com.dazzle.asklepios.domain.BillingReservation;
 import com.dazzle.asklepios.domain.BillingWallet;
+import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.enumeration.EncounterBillingStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingReservationStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStatus;
@@ -11,6 +13,8 @@ import com.dazzle.asklepios.domain.enumeration.billing.ResponsiblePartyType;
 import com.dazzle.asklepios.repository.BillingChargeRepository;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
 import com.dazzle.asklepios.repository.BillingReservationRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.BillingAllocationResult;
 import com.dazzle.asklepios.service.dto.billing.BillingCheckoutLineResult;
 import com.dazzle.asklepios.service.dto.billing.BillingCheckoutRequest;
@@ -72,6 +76,9 @@ public class BillingCheckoutService {
 
     private final BillingChargeService
             billingChargeService;
+
+    private final PatientEncounterRepository
+            patientEncounterRepository;
 
     @Transactional(rollbackFor = Exception.class)
     public BillingCheckoutResult checkout(
@@ -237,6 +244,8 @@ public class BillingCheckoutService {
                     billingChargeRepository.save(
                             recalculatedCharge
                     );
+
+            markEncounterFinanciallyClosed(recalculatedCharge);
 
         } else if (money(
                 recalculatedCharge.getAllocatedAmount()
@@ -813,6 +822,34 @@ public class BillingCheckoutService {
                 MONEY_SCALE,
                 RoundingMode.HALF_UP
         );
+    }
+
+    private void markEncounterFinanciallyClosed(BillingCharge charge) {
+        PatientEncounter encounter = charge.getEncounter();
+        if (encounter == null || encounter.getId() == null) {
+            return;
+        }
+
+        if (EncounterBillingStatus.INVOICED.equals(encounter.getBillingStatus())) {
+            return;
+        }
+
+        if (EncounterBillingStatus.FINANCIALLY_CLOSED.equals(encounter.getBillingStatus())) {
+            return;
+        }
+
+        Instant closedAt =
+                charge.getClosedDate() != null
+                        ? charge.getClosedDate()
+                        : Instant.now();
+
+        encounter.setBillingStatus(EncounterBillingStatus.FINANCIALLY_CLOSED);
+        encounter.setFinanciallyClosedAt(closedAt);
+        encounter.setFinanciallyClosedBy(
+                SecurityUtils.getCurrentUserLogin()
+                        .orElse("checkout")
+        );
+        patientEncounterRepository.save(encounter);
     }
 
 }

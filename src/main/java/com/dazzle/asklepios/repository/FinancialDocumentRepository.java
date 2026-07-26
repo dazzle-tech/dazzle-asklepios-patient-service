@@ -1,10 +1,13 @@
 package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.FinancialDocument;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.Optional;
 import java.util.List;
 
@@ -32,5 +35,29 @@ public interface FinancialDocumentRepository extends JpaRepository<FinancialDocu
     boolean existsByEncounterIdAndDocumentType(
             Long encounterId,
             FinancialDocumentType type
+    );
+
+    boolean existsByEncounterIdAndDocumentTypeAndStatusIn(
+            Long encounterId,
+            FinancialDocumentType documentType,
+            Collection<FinancialDocumentStatus> statuses
+    );
+
+    List<FinancialDocument> findAllByPatientIdAndDocumentTypeOrderByCreatedDateDesc(
+            Long patientId,
+            FinancialDocumentType documentType
+    );
+
+    boolean existsByEncounterIdAndDocumentTypeAndDocumentSubtypeAndStatusIn(
+            Long encounterId,
+            FinancialDocumentType documentType,
+            FinancialDocumentSubtype documentSubtype,
+            Collection<FinancialDocumentStatus> statuses
+    );
+
+    Optional<FinancialDocument> findFirstByEncounterIdAndDocumentTypeAndDocumentSubtypeOrderByIdDesc(
+            Long encounterId,
+            FinancialDocumentType documentType,
+            FinancialDocumentSubtype documentSubtype
     );
 }
