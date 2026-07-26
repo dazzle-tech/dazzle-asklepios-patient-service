@@ -19,4 +19,7 @@ public interface UserDepartmentClient {
 
     @GetMapping("/api/setup/user-department/department/{departmentId}/physician-users")
     List<UserDTO> getPhysicianUsersForDepartment(@PathVariable("departmentId") Long departmentId);
+
+    @GetMapping("/api/setup/user-department/department/{departmentId}/nurse-users")
+    List<UserDTO> getNurseUsersForDepartment(@PathVariable("departmentId") Long departmentId);
 }
