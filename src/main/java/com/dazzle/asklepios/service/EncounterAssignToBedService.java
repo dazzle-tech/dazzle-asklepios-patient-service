@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.EncounterAssignToBed;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.BedTransactionType;
+import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.repository.EncounterAssignToBedRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -91,6 +92,8 @@ public class EncounterAssignToBedService {
         try {
             EncounterAssignToBed createdEncounterAssignToBed =
                     encounterAssignToBedRepository.saveAndFlush(encounterAssignToBedToCreate);
+            patientEncounter.setStatus(TreatmentStatus.ASSIGNED_TO_BED);
+            patientEncounterRepository.saveAndFlush(patientEncounter);
 
             bedTransactionService.create(new BedTransactionCreateDTO(
                     createDTO.encounterId(),
