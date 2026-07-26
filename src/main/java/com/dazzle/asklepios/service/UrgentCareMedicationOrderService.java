@@ -1,15 +1,23 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
+import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
+import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.UrgentCareMedicationOrder;
 import com.dazzle.asklepios.domain.enumeration.MedicationOrderStatus;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.UrgentCareMedicationOrderRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderUpdateDTO;
 import com.dazzle.asklepios.service.helper.ActiveIngredientHelper;
+import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.FacilityHelper;
+import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
@@ -21,6 +29,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 @Service
 @Transactional
@@ -32,15 +43,21 @@ public class UrgentCareMedicationOrderService {
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final ActiveIngredientHelper activeIngredientHelper;
+    private final DepartmentHelper departmentHelper;
+    private final FacilityHelper facilityHelper;
+    private final NotificationHelper notificationHelper;
 
     public UrgentCareMedicationOrderService(
             UrgentCareMedicationOrderRepository urgentCareMedicationOrderRepository,
             PatientRepository patientRepository,
-            PatientEncounterRepository patientEncounterRepository, ActiveIngredientHelper activeIngredientHelper) {
+            PatientEncounterRepository patientEncounterRepository, ActiveIngredientHelper activeIngredientHelper, DepartmentHelper departmentHelper, FacilityHelper facilityHelper, NotificationHelper notificationHelper) {
         this.urgentCareMedicationOrderRepository = urgentCareMedicationOrderRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
         this.activeIngredientHelper = activeIngredientHelper;
+        this.departmentHelper = departmentHelper;
+        this.facilityHelper = facilityHelper;
+        this.notificationHelper = notificationHelper;
     }
 
     public UrgentCareMedicationOrder create(UrgentCareMedicationOrderCreateDTO dto) {
@@ -82,6 +99,8 @@ public class UrgentCareMedicationOrderService {
                 dto.patientId(),
                 dto.encounterId(),
                 saved.getStatus());
+
+        notificationForUCCMedicationOrderCreated(saved, patient, encounter);
 
         return saved;
     }
@@ -150,10 +169,7 @@ public class UrgentCareMedicationOrderService {
     }
 
     @Transactional(readOnly = true)
-    public Page<UrgentCareMedicationOrder> filter(
-            Specification<UrgentCareMedicationOrder> spec,
-            Pageable pageable
-    ) {
+    public Page<UrgentCareMedicationOrder> filter(Specification<UrgentCareMedicationOrder> spec, Pageable pageable) {
         LOG.debug("[SERVICE][FILTER] request -> pageable={}", pageable);
 
         Page<UrgentCareMedicationOrder> page = urgentCareMedicationOrderRepository.findAll(spec, pageable);
@@ -355,4 +371,60 @@ public class UrgentCareMedicationOrderService {
                 "Invalid transition " + from + " -> " + to
         );
     }
+
+    private void notificationForUCCMedicationOrderCreated(UrgentCareMedicationOrder urgentCareMedicationOrder, Patient patient, PatientEncounter encounter) {
+        if (urgentCareMedicationOrder == null || patient == null || encounter == null) {
+            return;
+        }
+
+        Long departmentId = urgentCareMedicationOrder.getEncounter().getDepartmentId();
+        DepartmentDTO departmentDTO = departmentHelper.getDepartment(departmentId);
+
+        FacilityDTO facilityDTO = facilityHelper.getFacility(urgentCareMedicationOrder.getEncounter().getFacilityId());
+
+
+        if (departmentId == null) {
+            LOG.warn(
+                    "Skip Urgent Care Medication Order created notification because  department is missing. orderId={}",
+                    urgentCareMedicationOrder.getId()
+            );
+            return;
+        }
+        String login = SecurityUtils.getCurrentUserLogin().orElse(null);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
+                notificationHelper.resolveRecipients(departmentId, login, urgentCareMedicationOrder.getCreatedBy(), urgentCareMedicationOrder.getPatient(), null, false);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+
+        data.put("order_id", urgentCareMedicationOrder.getId());
+        data.put("patient_id", patient.getId());
+        data.put("patient_name", notificationHelper.getPatientName(patient));
+        data.put("encounter_id", encounter.getId());
+
+        data.put("facility_id", urgentCareMedicationOrder.getEncounter().getFacilityId());
+        data.put("facility_name", facilityDTO.name());
+
+        data.put("department_id", urgentCareMedicationOrder.getEncounter().getDepartmentId());
+        data.put("department_name", departmentDTO.name());
+
+        data.put("instructionType", urgentCareMedicationOrder.getInstructionType() != null ? urgentCareMedicationOrder.getInstructionType().toString() : "");
+        data.put("instructionText", urgentCareMedicationOrder.getInstructionText() != null ? urgentCareMedicationOrder.getInstructionText() : "");
+        data.put("dose", urgentCareMedicationOrder.getDose() != null ? urgentCareMedicationOrder.getDose().toString() : "");
+        data.put("doseUnit", urgentCareMedicationOrder.getDoseUnit() != null ? urgentCareMedicationOrder.getDoseUnit() : "");
+        data.put("route", urgentCareMedicationOrder.getRoute() != null ? urgentCareMedicationOrder.getRoute() : "");
+        data.put("frequency", urgentCareMedicationOrder.getFrequency() != null ? urgentCareMedicationOrder.getFrequency() : "");
+        data.put("isHighAlert", urgentCareMedicationOrder.getIsHighAlert() != null ? urgentCareMedicationOrder.getIsHighAlert() : "");
+        data.put("status", urgentCareMedicationOrder.getStatus() != null ? urgentCareMedicationOrder.getStatus().toString() : "");
+
+        notificationHelper.sendNotification(
+                null,
+                NotificationCode.URGENT_CARE_MEDICATION_ORDER_CREATED,
+                recipientsByRule,
+                data,
+                "URGENT_CARE_MEDICATION_ORDER",
+                urgentCareMedicationOrder.getId()
+        );
+
+    }
+
 }
