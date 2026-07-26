@@ -12,6 +12,7 @@ import com.dazzle.asklepios.domain.PatientPaymentAllocation;
 import com.dazzle.asklepios.domain.PatientPayments;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.PatientWallet;
+import com.dazzle.asklepios.domain.BillingWallet;
 import com.dazzle.asklepios.domain.WalletTransaction;
 import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
@@ -105,6 +106,7 @@ public class PatientPaymentsService {
     private final FinancialDocumentRepository documentRepository;
 
     private final WaseelCoverageExtractionService coverageExtractionService;
+    private final BillingWalletService billingWalletService;
 
     private static BigDecimal nonNullAmount(BigDecimal value) {
         return value == null ? ZERO_AMOUNT : value;
@@ -1160,9 +1162,7 @@ public class PatientPaymentsService {
             );
         }
 
-        BigDecimal balance = walletRepository.findById(patientId)
-                .map(PatientWallet::getBalance)
-                .orElse(ZERO_AMOUNT);
+        BigDecimal balance = resolveBillingWalletAvailableBalance(patientId);
 
         LOG.debug("[GET_BALANCE] result patientId={} balance={}", patientId, balance);
 
@@ -1185,10 +1185,7 @@ public class PatientPaymentsService {
         BigDecimal totalDebt =
                 nonNullAmount(chargeRepository.sumOpenRemainingByPatient(patientId));
 
-        BigDecimal walletBalance =
-                nonNullAmount(walletRepository.findById(patientId)
-                        .map(PatientWallet::getBalance)
-                        .orElse(ZERO_AMOUNT));
+        BigDecimal walletBalance = resolveBillingWalletAvailableBalance(patientId);
 
         LOG.info(
                 "[LEDGER_SUMMARY] result patientId={} totalDebt={} walletBalance={}",
@@ -1201,6 +1198,21 @@ public class PatientPaymentsService {
                 patientId,
                 totalDebt,
                 walletBalance
+        );
+    }
+
+    private BigDecimal resolveBillingWalletAvailableBalance(Long patientId) {
+        BillingWallet billingWallet =
+                billingWalletService.findOptionalByPatient(patientId);
+
+        if (billingWallet != null) {
+            return nonNullAmount(billingWallet.getAvailableBalance());
+        }
+
+        return nonNullAmount(
+                walletRepository.findById(patientId)
+                        .map(PatientWallet::getBalance)
+                        .orElse(ZERO_AMOUNT)
         );
     }
 

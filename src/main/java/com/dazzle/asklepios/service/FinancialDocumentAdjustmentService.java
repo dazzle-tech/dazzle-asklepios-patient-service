@@ -1,11 +1,15 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.BillingAllocation;
+import com.dazzle.asklepios.domain.BillingCharge;
 import com.dazzle.asklepios.domain.BillingChargeLine;
+import com.dazzle.asklepios.domain.BillingWallet;
 import com.dazzle.asklepios.domain.FinancialDocument;
+import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
 import com.dazzle.asklepios.domain.FinancialDocumentItemStatus;
 import com.dazzle.asklepios.domain.PatientLedgerEntry;
-import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
@@ -16,14 +20,27 @@ import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.LedgerAccount;
 import com.dazzle.asklepios.domain.enumeration.LedgerEntryType;
 import com.dazzle.asklepios.domain.enumeration.LedgerSource;
+import com.dazzle.asklepios.domain.enumeration.billing.AllocationSourceType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingAllocationStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryCategory;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryDirection;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerScope;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerSourceChannel;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerTransactionType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
+import com.dazzle.asklepios.repository.BillingAllocationRepository;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
+import com.dazzle.asklepios.repository.BillingChargeRepository;
+import com.dazzle.asklepios.repository.BillingLedgerRepository;
 import com.dazzle.asklepios.repository.FinancialDocumentItemRepository;
 import com.dazzle.asklepios.repository.FinancialDocumentRepository;
 import com.dazzle.asklepios.repository.PatientLedgerRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientPaymentAllocationRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
+import com.dazzle.asklepios.service.dto.billing.BillingLedgerEntryRequest;
 import com.dazzle.asklepios.service.dto.billing.AddableChargeLineResponse;
 import com.dazzle.asklepios.service.dto.billing.CreateFinancialDocumentAdjustmentRequest;
 import com.dazzle.asklepios.service.dto.billing.FinancialDocumentAdjustmentItemResponse;
@@ -34,6 +51,8 @@ import com.dazzle.asklepios.service.dto.billing.InvoiceLineItemResponse;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -49,6 +68,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -57,6 +77,9 @@ import java.util.stream.Collectors;
 @Transactional
 public class FinancialDocumentAdjustmentService {
 
+    private static final Logger LOG =
+            LoggerFactory.getLogger(FinancialDocumentAdjustmentService.class);
+
     private static final String ENTITY = "financialDocument";
     private static final BigDecimal ZERO = BigDecimal.ZERO;
 
@@ -64,6 +87,18 @@ public class FinancialDocumentAdjustmentService {
             EnumSet.of(
                     BillingChargeLineStatus.CANCELLED,
                     BillingChargeLineStatus.REVERSED
+            );
+
+    private static final EnumSet<BillingChargeStatus> EXCLUDED_CHARGE_STATUSES =
+            EnumSet.of(
+                    BillingChargeStatus.CANCELLED,
+                    BillingChargeStatus.REVERSED
+            );
+
+    private static final EnumSet<BillingAllocationStatus> ACTIVE_ALLOCATION_STATUSES =
+            EnumSet.of(
+                    BillingAllocationStatus.ACTIVE,
+                    BillingAllocationStatus.PARTIALLY_REVERSED
             );
 
     private static final EnumSet<FinancialDocumentItemAdjustmentAction> CREDIT_ACTIONS =
@@ -83,14 +118,20 @@ public class FinancialDocumentAdjustmentService {
     private final FinancialDocumentRepository documentRepo;
     private final FinancialDocumentItemRepository itemRepo;
     private final BillingChargeLineRepository chargeLineRepo;
+    private final BillingChargeRepository billingChargeRepository;
+    private final BillingAllocationRepository billingAllocationRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientLedgerRepository ledgerRepository;
     private final FinancialDocumentStatusService statusService;
     private final FinancialDocumentBalanceService balanceService;
     private final PatientPaymentAllocationRepository allocationRepo;
     private final PatientServiceAndProductService patientServiceAndProductService;
-    private final BillingEngineService billingEngineService;
+    private final BillingChargeService billingChargeService;
     private final FinancialDocumentNumberAssignmentService documentNumberAssignmentService;
+    private final BillingWalletService billingWalletService;
+    private final BillingLedgerService billingLedgerService;
+    private final BillingLedgerRepository billingLedgerRepository;
+    private final BillingDebitService billingDebitService;
 
     @Transactional(readOnly = true)
     public List<InvoiceLineItemResponse> listInvoiceLineItems(Long invoiceId) {
@@ -135,8 +176,9 @@ public class FinancialDocumentAdjustmentService {
                 .toList();
     }
 
-    @Transactional(readOnly = true)
     public InvoiceAdjustmentSummaryResponse getInvoiceAdjustmentSummary(Long invoiceId) {
+        reconcileMissingCreditNoteFinancialAdjustments(invoiceId);
+
         FinancialDocument invoice = loadInvoice(invoiceId);
 
         List<FinancialDocument> children = documentRepo.findAllByParentDocumentId(invoiceId);
@@ -535,22 +577,6 @@ public class FinancialDocumentAdjustmentService {
 
         validateNewServiceReference(request);
 
-        PatientEncounter encounter = patientEncounterRepository.findById(invoice.getEncounterId())
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Encounter not found",
-                        ENTITY,
-                        "encounter.notFound"
-                ));
-
-        Long facilityId = encounter.getFacilityId();
-        if (facilityId == null) {
-            throw new BadRequestAlertException(
-                    "Encounter facility is required to bill a new service",
-                    ENTITY,
-                    "encounter.facility.required"
-            );
-        }
-
         PatientServiceProductCreateDTO createDto = new PatientServiceProductCreateDTO(
                 invoice.getPatientId(),
                 invoice.getEncounterId(),
@@ -571,22 +597,25 @@ public class FinancialDocumentAdjustmentService {
 
         var createdService = patientServiceAndProductService.create(createDto);
 
-        billingEngineService.onManualBilling(
-                createdService.getId(),
-                facilityId,
-                "debit-note-add-new-" + createdService.getId()
-        );
+        BigDecimal netAmount = money(quantity.multiply(unitPrice));
+        BigDecimal patientShare =
+                invoice.getDocumentSubtype() == FinancialDocumentSubtype.PATIENT
+                        ? netAmount
+                        : ZERO;
+        BigDecimal insuranceShare =
+                invoice.getDocumentSubtype() == FinancialDocumentSubtype.INSURANCE_CLAIM
+                        ? netAmount
+                        : ZERO;
 
-        BillingChargeLine chargeLine = chargeLineRepo
-                .findFirstByPatientServiceProduct_IdAndStatusNotInOrderByIdAsc(
-                        createdService.getId(),
-                        EXCLUDED_LINE_STATUSES
-                )
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "Billing charge line was not created for the new service",
-                        ENTITY,
-                        "adjustment.chargeLine.notCreated"
-                ));
+        BillingChargeLine chargeLine =
+                billingChargeService.createDebitNoteAdjustmentChargeLine(
+                        createdService,
+                        quantity,
+                        unitPrice,
+                        patientShare,
+                        insuranceShare,
+                        "debit-note-add-new-" + createdService.getId()
+                );
 
         BigDecimal debitAmount = shareForSubtype(chargeLine, invoice.getDocumentSubtype());
         if (debitAmount.signum() <= 0) {
@@ -1047,6 +1076,305 @@ public class FinancialDocumentAdjustmentService {
 
     private void applyCreditNoteLedger(FinancialDocument creditNote) {
         postAdjustmentLedger(creditNote, LedgerSource.CREDIT_NOTE, true);
+        applyCreditNoteFinancialAdjustments(creditNote);
+    }
+
+    private void reconcileMissingCreditNoteFinancialAdjustments(Long invoiceId) {
+        List<FinancialDocument> pendingCreditNotes =
+                documentRepo.findAllByParentDocumentId(invoiceId).stream()
+                        .filter(document ->
+                                document.getDocumentType()
+                                        == FinancialDocumentType.CREDIT_NOTE
+                        )
+                        .filter(document -> !hasCreditNoteWalletLedger(document))
+                        .toList();
+
+        if (pendingCreditNotes.isEmpty()) {
+            return;
+        }
+
+        pendingCreditNotes.forEach(this::applyCreditNoteFinancialAdjustments);
+
+        LOG.info(
+                "[CREDIT_NOTE] Reconciled missing wallet/debit refunds invoiceId={} creditNoteCount={}",
+                invoiceId,
+                pendingCreditNotes.size()
+        );
+    }
+
+    private void applyCreditNoteFinancialAdjustments(FinancialDocument creditNote) {
+        BigDecimal creditAmount = money(creditNote.getTotalAmount());
+        if (creditAmount.signum() <= 0) {
+            return;
+        }
+
+        BigDecimal remainingAfterWallet =
+                applyCreditNoteWalletRefund(creditNote, creditAmount);
+
+        if (remainingAfterWallet.signum() > 0) {
+            applyCreditNoteDebitReduction(creditNote, remainingAfterWallet);
+        }
+    }
+
+    private boolean hasCreditNoteWalletLedger(FinancialDocument creditNote) {
+        return billingLedgerRepository
+                .findByIdempotencyKey(
+                        creditNoteWalletLedgerKey(creditNote.getId())
+                )
+                .isPresent();
+    }
+
+    private String creditNoteWalletLedgerKey(Long creditNoteId) {
+        return "CREDIT_NOTE:"
+                + creditNoteId
+                + ":WALLET_REFUND:LEDGER";
+    }
+
+    private BigDecimal applyCreditNoteWalletRefund(
+            FinancialDocument creditNote,
+            BigDecimal maxAmount
+    ) {
+        if (hasCreditNoteWalletLedger(creditNote)) {
+            return billingLedgerRepository
+                    .findByIdempotencyKey(
+                            creditNoteWalletLedgerKey(creditNote.getId())
+                    )
+                    .map(ledger -> maxAmount.subtract(money(ledger.getAmount())).max(ZERO))
+                    .orElse(maxAmount);
+        }
+
+        BillingWallet wallet =
+                billingWalletService.findOptionalByPatientAndCurrency(
+                        creditNote.getPatientId(),
+                        creditNote.getCurrency()
+                );
+
+        if (wallet == null) {
+            return maxAmount;
+        }
+
+        BigDecimal consumedBefore = money(wallet.getConsumedAmount());
+        BigDecimal walletRefund = maxAmount.min(consumedBefore);
+
+        if (walletRefund.signum() <= 0) {
+            return maxAmount;
+        }
+
+        BigDecimal availableBefore = money(wallet.getAvailableBalance());
+        BigDecimal reservedBefore = money(wallet.getReservedBalance());
+
+        BillingWallet updatedWallet =
+                billingWalletService.reverseConsumedToAvailable(
+                        wallet,
+                        walletRefund
+                );
+
+        recordCreditNoteWalletLedger(
+                creditNote,
+                updatedWallet,
+                walletRefund,
+                availableBefore,
+                reservedBefore
+        );
+
+        LOG.info(
+                "[CREDIT_NOTE] Wallet refunded creditNoteId={} creditNoteNumber={} "
+                        + "amount={} available={} reserved={} consumed={}",
+                creditNote.getId(),
+                creditNote.getDocumentNumber(),
+                walletRefund,
+                updatedWallet.getAvailableBalance(),
+                updatedWallet.getReservedBalance(),
+                updatedWallet.getConsumedAmount()
+        );
+
+        return maxAmount.subtract(walletRefund);
+    }
+
+    private void applyCreditNoteDebitReduction(
+            FinancialDocument creditNote,
+            BigDecimal maxAmount
+    ) {
+        BigDecimal remaining = maxAmount;
+        if (remaining.signum() <= 0) {
+            return;
+        }
+
+        BillingCharge charge =
+                billingChargeRepository
+                        .findFirstByEncounter_IdAndStatusNotInOrderByIdDesc(
+                                creditNote.getEncounterId(),
+                                EXCLUDED_CHARGE_STATUSES
+                        )
+                        .orElse(null);
+
+        if (charge == null) {
+            return;
+        }
+
+        List<BillingAllocation> allocations =
+                billingAllocationRepository
+                        .findAllByEncounter_IdAndCharge_IdAndStatusInOrderByAllocationDateAscIdAsc(
+                                creditNote.getEncounterId(),
+                                charge.getId(),
+                                ACTIVE_ALLOCATION_STATUSES
+                        );
+
+        String reversedBy =
+                SecurityUtils.getCurrentUserLogin()
+                        .orElse("system");
+
+        String reason =
+                StringUtils.hasText(creditNote.getAdjustmentReason())
+                        ? creditNote.getAdjustmentReason()
+                        : "Credit note "
+                                + creditNote.getDocumentNumber();
+
+        for (BillingAllocation allocation : allocations) {
+            if (remaining.signum() <= 0) {
+                break;
+            }
+
+            if (allocation.getAllocationSourceType()
+                    != AllocationSourceType.DEBIT) {
+                continue;
+            }
+
+            if (allocation.getDebitTransactionId() == null) {
+                continue;
+            }
+
+            BigDecimal allocationRemaining =
+                    money(
+                            allocation.getRemainingAllocatedAmount()
+                    );
+
+            if (allocationRemaining.signum() <= 0) {
+                continue;
+            }
+
+            BigDecimal reversalAmount =
+                    remaining.min(allocationRemaining);
+
+            String requestId =
+                    "CREDIT_NOTE:"
+                            + creditNote.getId()
+                            + ":DEBIT:"
+                            + allocation.getId();
+
+            billingDebitService.reverseDebit(
+                    allocation.getDebitTransactionId(),
+                    reversalAmount,
+                    reason,
+                    reversedBy,
+                    requestId,
+                    BillingLedgerSourceChannel.SYSTEM
+            );
+
+            remaining = remaining.subtract(reversalAmount);
+
+            LOG.info(
+                    "[CREDIT_NOTE] Debit reduced creditNoteId={} creditNoteNumber={} "
+                            + "allocationId={} amount={} remaining={}",
+                    creditNote.getId(),
+                    creditNote.getDocumentNumber(),
+                    allocation.getId(),
+                    reversalAmount,
+                    remaining
+            );
+        }
+    }
+
+    private void recordCreditNoteWalletLedger(
+            FinancialDocument creditNote,
+            BillingWallet wallet,
+            BigDecimal amount,
+            BigDecimal walletAvailableBefore,
+            BigDecimal walletReservedBefore
+    ) {
+        PatientEncounter encounter =
+                patientEncounterRepository.findById(creditNote.getEncounterId())
+                        .orElse(null);
+
+        Patient patient =
+                encounter == null
+                        ? null
+                        : encounter.getPatient();
+
+        UUID transactionGroupId = UUID.randomUUID();
+        String idempotencyKey =
+                "CREDIT_NOTE:"
+                        + creditNote.getId()
+                        + ":WALLET_REFUND";
+
+        billingLedgerService.record(
+                new BillingLedgerEntryRequest(
+                        transactionGroupId,
+                        idempotencyKey,
+                        creditNoteWalletLedgerKey(creditNote.getId()),
+
+                        patient,
+                        encounter,
+
+                        wallet,
+                        null,
+                        null,
+
+                        null,
+                        null,
+                        null,
+
+                        null,
+                        null,
+
+                        null,
+                        null,
+                        null,
+
+                        BillingLedgerTransactionType.ADJUSTMENT,
+
+                        BillingLedgerScope.WALLET,
+
+                        amount,
+                        creditNote.getCurrency(),
+
+                        amount,
+                        ZERO,
+                        amount.negate(),
+                        ZERO,
+
+                        ZERO,
+                        ZERO,
+                        ZERO,
+
+                        walletAvailableBefore,
+                        money(wallet.getAvailableBalance()),
+
+                        walletReservedBefore,
+                        money(wallet.getReservedBalance()),
+
+                        null,
+                        null,
+
+                        null,
+                        null,
+
+                        BillingLedgerEntryDirection.CREDIT,
+                        BillingLedgerEntryCategory.ADJUSTMENT,
+
+                        null,
+
+                        "FINANCIAL_DOCUMENT",
+                        creditNote.getId(),
+                        creditNote.getDocumentNumber(),
+
+                        "Credit note returned consumed wallet balance to available balance.",
+
+                        creditNote.getAdjustmentReason(),
+
+                        BillingLedgerSourceChannel.SYSTEM
+                )
+        );
     }
 
     private void applyDebitNoteLedger(FinancialDocument debitNote) {

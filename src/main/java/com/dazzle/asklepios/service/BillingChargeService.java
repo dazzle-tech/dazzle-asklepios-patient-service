@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.BillingCharge;
 import com.dazzle.asklepios.domain.BillingChargeLine;
+import com.dazzle.asklepios.domain.BillingChargeResponsibility;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
@@ -10,8 +11,12 @@ import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.ResponsibilityRole;
+import com.dazzle.asklepios.domain.enumeration.billing.ResponsiblePartyType;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingChargeRepository;
+import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -30,6 +35,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -69,8 +75,11 @@ public class BillingChargeService {
             BillingChargeLineStatus.REVERSED
     );
 
+    private static final int MONEY_SCALE = 4;
+
     private final BillingChargeRepository billingChargeRepository;
     private final BillingChargeLineRepository billingChargeLineRepository;
+    private final BillingChargeResponsibilityRepository billingChargeResponsibilityRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientInsuranceRepository patientInsuranceRepository;
@@ -692,6 +701,265 @@ public class BillingChargeService {
         );
 
         return saved;
+    }
+
+    /**
+     * Creates a post-invoice debit-note charge line using the supplied manual
+     * price. The line is recorded on the existing encounter charge (including
+     * CLOSED charges) and is treated as already settled so checkout state is
+     * not reopened.
+     */
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class
+    )
+    public BillingChargeLine createDebitNoteAdjustmentChargeLine(
+            PatientServiceAndProduct item,
+            BigDecimal quantity,
+            BigDecimal unitPrice,
+            BigDecimal patientShareAmount,
+            BigDecimal insuranceShareAmount,
+            String idempotencyKeyPrefix
+    ) {
+        if (item == null || item.getId() == null) {
+            throw new BadRequestAlertException(
+                    "Patient service/product is required.",
+                    ENTITY_NAME,
+                    "patientServiceProduct.required"
+            );
+        }
+
+        BigDecimal normalizedQuantity =
+                defaultZero(quantity).setScale(0, RoundingMode.HALF_UP);
+
+        if (normalizedQuantity.signum() <= 0) {
+            throw new BadRequestAlertException(
+                    "Quantity must be greater than zero.",
+                    ENTITY_NAME,
+                    "quantity.invalid"
+            );
+        }
+
+        BigDecimal normalizedUnitPrice =
+                defaultZero(unitPrice).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+
+        if (normalizedUnitPrice.signum() <= 0) {
+            throw new BadRequestAlertException(
+                    "Unit price must be greater than zero.",
+                    ENTITY_NAME,
+                    "unitPrice.invalid"
+            );
+        }
+
+        BigDecimal netAmount =
+                normalizedQuantity
+                        .multiply(normalizedUnitPrice)
+                        .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+
+        if (netAmount.signum() <= 0) {
+            throw new BadRequestAlertException(
+                    "Debit-note amount must be greater than zero.",
+                    ENTITY_NAME,
+                    "amount.invalid"
+            );
+        }
+
+        billingChargeLineRepository
+                .findFirstByPatientServiceProduct_IdAndStatusNotInOrderByIdAsc(
+                        item.getId(),
+                        EXCLUDED_LINE_STATUSES
+                )
+                .ifPresent(existing ->
+                        {
+                            throw new BadRequestAlertException(
+                                    "A charge line already exists for this service.",
+                                    ENTITY_NAME,
+                                    "chargeLine.duplicate"
+                            );
+                        }
+                );
+
+        BillingCharge charge =
+                billingChargeRepository
+                        .findFirstByEncounter_IdAndStatusNotInOrderByIdDesc(
+                                item.getEncounterId(),
+                                EXCLUDED_CHARGE_STATUSES
+                        )
+                        .orElseThrow(() ->
+                                new NotFoundAlertException(
+                                        "Encounter charge not found for debit note adjustment.",
+                                        ENTITY_NAME,
+                                        "charge.notfound"
+                                )
+                        );
+
+        Patient patient = findPatient(item.getPatientId());
+        PatientEncounter encounter = findEncounter(item.getEncounterId());
+        validatePatientMatchesEncounter(patient, encounter);
+
+        String lineIdempotencyKey =
+                idempotencyKeyPrefix + ":CHARGE_LINE";
+
+        BillingChargeLine line =
+                BillingChargeLine.builder()
+                        .charge(charge)
+                        .patientServiceProduct(item)
+                        .patient(patient)
+                        .encounter(encounter)
+                        .billingItemType(item.getBillingItemType())
+                        .brandMedicationId(item.getBrandMedicationId())
+                        .diagnosticTestId(item.getDiagnosticTestId())
+                        .serviceId(item.getServiceId())
+                        .procedureId(item.getProcedureId())
+                        .itemCode(resolveDebitNoteItemCode(item))
+                        .itemDescription(resolveDebitNoteItemDescription(item))
+                        .serviceSource(item.getServiceSource())
+                        .sourceId(resolveSourceId(item))
+                        .quantity(normalizedQuantity)
+                        .unitPrice(normalizedUnitPrice)
+                        .grossAmount(netAmount)
+                        .discountAmount(BigDecimal.ZERO)
+                        .exemptionAmount(BigDecimal.ZERO)
+                        .taxAmount(BigDecimal.ZERO)
+                        .netAmount(netAmount)
+                        .patientResponsibilityAmount(
+                                defaultZero(patientShareAmount)
+                        )
+                        .insuranceResponsibilityAmount(
+                                defaultZero(insuranceShareAmount)
+                        )
+                        .otherPayerResponsibilityAmount(BigDecimal.ZERO)
+                        .allocatedAmount(netAmount)
+                        .outstandingAmount(BigDecimal.ZERO)
+                        .reservedAmount(BigDecimal.ZERO)
+                        .currency(item.getCurrency())
+                        .status(BillingChargeLineStatus.CLOSED)
+                        .idempotencyKey(lineIdempotencyKey)
+                        .build();
+
+        BillingChargeLine savedLine =
+                billingChargeLineRepository.saveAndFlush(line);
+
+        createSettledDebitNoteResponsibility(
+                savedLine,
+                item,
+                ResponsiblePartyType.PATIENT,
+                defaultZero(patientShareAmount),
+                idempotencyKeyPrefix + ":RESPONSIBILITY:PATIENT"
+        );
+
+        createSettledDebitNoteResponsibility(
+                savedLine,
+                item,
+                ResponsiblePartyType.INSURANCE,
+                defaultZero(insuranceShareAmount),
+                idempotencyKeyPrefix + ":RESPONSIBILITY:INSURANCE"
+        );
+
+        item.setUnitPrice(normalizedUnitPrice);
+        item.setPatientShareAmount(defaultZero(patientShareAmount));
+        item.setInsuranceShareAmount(defaultZero(insuranceShareAmount));
+        item.setPaidAmount(netAmount);
+        item.setRemainingAmount(BigDecimal.ZERO);
+        item.setPaymentStatus(PaymentStatus.PAID);
+        item.setIsBilled(Boolean.TRUE);
+        patientServiceAndProductRepository.save(item);
+
+        BillingProcessingContext context =
+                BillingProcessingContext.builder()
+                        .idempotencyKey(idempotencyKeyPrefix)
+                        .patientServiceProduct(item)
+                        .charge(charge)
+                        .chargeLine(savedLine)
+                        .build();
+
+        recalculateChargeTotals(context);
+
+        LOG.info(
+                "[DEBIT_NOTE] Adjustment charge line created lineId={} chargeId={} pspId={} net={}",
+                savedLine.getId(),
+                charge.getId(),
+                item.getId(),
+                netAmount
+        );
+
+        return savedLine;
+    }
+
+    private void createSettledDebitNoteResponsibility(
+            BillingChargeLine chargeLine,
+            PatientServiceAndProduct item,
+            ResponsiblePartyType partyType,
+            BigDecimal amount,
+            String idempotencyKey
+    ) {
+        if (amount.signum() <= 0) {
+            return;
+        }
+
+        BillingChargeResponsibility existing =
+                billingChargeResponsibilityRepository
+                        .findByIdempotencyKey(idempotencyKey)
+                        .orElse(null);
+
+        if (existing != null) {
+            return;
+        }
+
+        BillingChargeResponsibility responsibility =
+                BillingChargeResponsibility.builder()
+                        .charge(chargeLine.getCharge())
+                        .chargeLine(chargeLine)
+                        .patientServiceProduct(item)
+                        .patient(chargeLine.getPatient())
+                        .encounter(chargeLine.getEncounter())
+                        .responsiblePartyType(partyType)
+                        .responsibilityRole(ResponsibilityRole.PRIMARY)
+                        .responsibilityAmount(amount)
+                        .allocatedAmount(amount)
+                        .outstandingAmount(BigDecimal.ZERO)
+                        .coveragePercentage(BigDecimal.ZERO)
+                        .deductibleAmount(BigDecimal.ZERO)
+                        .copayAmount(BigDecimal.ZERO)
+                        .coinsuranceAmount(BigDecimal.ZERO)
+                        .nonCoveredAmount(BigDecimal.ZERO)
+                        .contractualAdjustmentAmount(BigDecimal.ZERO)
+                        .currency(chargeLine.getCurrency())
+                        .status(BillingResponsibilityStatus.ALLOCATED)
+                        .idempotencyKey(idempotencyKey)
+                        .build();
+
+        billingChargeResponsibilityRepository.save(responsibility);
+    }
+
+    private String resolveDebitNoteItemCode(
+            PatientServiceAndProduct item
+    ) {
+        if (item.getServiceId() != null) {
+            return "SERVICE-" + item.getServiceId();
+        }
+        if (item.getProcedureId() != null) {
+            return "PROCEDURE-" + item.getProcedureId();
+        }
+        if (item.getDiagnosticTestId() != null) {
+            return "LAB-" + item.getDiagnosticTestId();
+        }
+        if (item.getBrandMedicationId() != null) {
+            return "MED-" + item.getBrandMedicationId();
+        }
+        return item.getBillingItemType() == null
+                ? "ITEM-" + item.getId()
+                : item.getBillingItemType().name();
+    }
+
+    private String resolveDebitNoteItemDescription(
+            PatientServiceAndProduct item
+    ) {
+        if (item.getNotes() != null && !item.getNotes().isBlank()) {
+            return item.getNotes().trim();
+        }
+
+        return resolveDebitNoteItemCode(item);
     }
 
     /**
