@@ -167,7 +167,7 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
             case TRIAGE_STARTED,
                  DISCHARGED,
-                 ASSIGENS_TO_BED,
+                 ASSIGNED_TO_BED,
                  ONGOING ->
                     EncounterStatus.IN_PROGRESS;
 
