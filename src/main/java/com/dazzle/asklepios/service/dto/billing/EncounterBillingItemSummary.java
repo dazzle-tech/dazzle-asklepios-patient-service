@@ -59,6 +59,8 @@ public record EncounterBillingItemSummary(
 
         BillingChargeLineStatus status,
 
+        java.time.Instant chargedAt,
+
         List<BillingResponsibilitySummary> responsibilities
 
 ) implements Serializable {

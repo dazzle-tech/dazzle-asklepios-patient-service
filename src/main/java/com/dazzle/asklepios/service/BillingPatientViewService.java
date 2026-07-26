@@ -349,6 +349,8 @@ public class BillingPatientViewService {
 
                 line.getStatus(),
 
+                line.getCreatedDate(),
+
                 responsibilities.stream()
                         .map(this::mapResponsibility)
                         .toList()

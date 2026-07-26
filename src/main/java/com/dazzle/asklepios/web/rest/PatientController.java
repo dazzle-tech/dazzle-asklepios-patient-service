@@ -42,15 +42,7 @@ public class PatientController {
 
     private final PatientService patientService;
 
-    private final JwtEncoder jwtEncoder;
-
-    @Value("${patient.security.authentication.jwt.token-validity-in-seconds:86400}")
-    private long tokenValidityInSeconds;
-
-    @Value("${patient.security.authentication.jwt.token-validity-in-seconds-for-remember-me:2592000}")
-    private long tokenValidityInSecondsForRememberMe;
-
-    public PatientController(PatientService patientService, PatientAuthenticationService patientAuthenticationService, JwtEncoder jwtEncoder) {
+    public PatientController(PatientService patientService) {
         this.patientService = patientService;
     }
 

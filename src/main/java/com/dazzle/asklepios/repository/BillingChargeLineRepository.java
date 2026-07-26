@@ -27,6 +27,14 @@ public interface BillingChargeLineRepository
     );
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<BillingChargeLine>
+    findFirstByEncounter_IdAndPatientServiceProduct_IdAndStatusNotInOrderByIdAsc(
+            Long encounterId,
+            Long patientServiceProductId,
+            Collection<BillingChargeLineStatus> excludedStatuses
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     List<BillingChargeLine>
     findAllByCharge_IdAndStatusNotInOrderByIdAsc(
             Long chargeId,

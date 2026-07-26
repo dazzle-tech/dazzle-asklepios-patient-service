@@ -3,6 +3,7 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.client.setup.dto.BillingPricingResolveRequest;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingTrigger;
 import com.dazzle.asklepios.domain.enumeration.billing.DiscountApplicableOn;
 import com.dazzle.asklepios.domain.enumeration.billing.TaxApplicableOn;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
@@ -27,6 +28,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -61,6 +66,9 @@ public class BillingEngineService {
      */
     private final BillingTransactionService
             billingTransactionService;
+
+    private final BillingChargeService
+            billingChargeService;
 
     /*
      * ============================================================
@@ -332,6 +340,167 @@ public class BillingEngineService {
                 facilityId,
                 requestId
         );
+    }
+
+    /**
+     * Creates a charge line when payment collection is attempted before billing
+     * was prepared. Tries the configured billing trigger first, then common
+     * fallback events (medications often bill on ORDERED/DISPENSED, not
+     * ENCOUNTER_CREATED).
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void ensureChargeLineCreated(
+            Long patientServiceProductId,
+            Long encounterId,
+            Long facilityId,
+            String requestId
+    ) {
+        if (billingChargeService
+                .findActiveChargeLine(
+                        patientServiceProductId,
+                        encounterId
+                )
+                .isPresent()) {
+            return;
+        }
+
+        PatientServiceAndProduct item =
+                findPatientServiceProduct(
+                        patientServiceProductId
+                );
+
+        BillingRuleResolveResponse billingRule =
+                setupBillingRuleService.resolve(
+                        item
+                );
+
+        List<BillingEventType> eventCandidates =
+                buildChargeLineEventCandidates(
+                        billingRule
+                );
+
+        String baseRequestId =
+                requestId == null
+                        ? "ENSURE_CHARGE:"
+                        + patientServiceProductId
+                        : requestId.trim();
+
+        for (BillingEventType eventType : eventCandidates) {
+            if (billingChargeService
+                    .findActiveChargeLine(
+                            patientServiceProductId,
+                            encounterId
+                    )
+                    .isPresent()) {
+                return;
+            }
+
+            LOG.info(
+                    "[ENSURE_CHARGE] Attempting billing "
+                            + "pspId={} encounterId={} eventType={}",
+                    patientServiceProductId,
+                    encounterId,
+                    eventType
+            );
+
+            try {
+                BillingOperationResult result =
+                        process(
+                                patientServiceProductId,
+                                eventType,
+                                facilityId,
+                                baseRequestId
+                                        + ":"
+                                        + eventType.name()
+                        );
+
+                if (result.chargeLineId() != null
+                        || billingChargeService
+                        .findActiveChargeLine(
+                                patientServiceProductId,
+                                encounterId
+                        )
+                        .isPresent()) {
+                    LOG.info(
+                            "[ENSURE_CHARGE] Charge line created "
+                                    + "pspId={} eventType={} chargeLineId={}",
+                            patientServiceProductId,
+                            eventType,
+                            result.chargeLineId()
+                    );
+
+                    return;
+                }
+            } catch (RuntimeException exception) {
+                LOG.warn(
+                        "[ENSURE_CHARGE] Billing attempt failed "
+                                + "pspId={} eventType={} reason={}",
+                        patientServiceProductId,
+                        eventType,
+                        exception.getMessage()
+                );
+            }
+        }
+
+        throw new BadRequestAlertException(
+                "Unable to create a billing charge line for patient service/product "
+                        + patientServiceProductId
+                        + ". Bill the item from Prepare Services first.",
+                ENTITY_NAME,
+                "chargeLine.create.failed"
+        );
+    }
+
+    private List<BillingEventType> buildChargeLineEventCandidates(
+            BillingRuleResolveResponse billingRule
+    ) {
+        Set<BillingEventType> candidates =
+                new LinkedHashSet<>();
+
+        if (billingRule != null
+                && billingRule.billingTrigger() != null) {
+            candidates.add(
+                    resolveEventType(
+                            billingRule.billingTrigger()
+                    )
+            );
+        }
+
+        candidates.add(BillingEventType.ITEM_ORDERED);
+        candidates.add(BillingEventType.ITEM_DISPENSED);
+        candidates.add(BillingEventType.ENCOUNTER_CREATED);
+        candidates.add(BillingEventType.TREATMENT_STARTED);
+        candidates.add(BillingEventType.SERVICE_COMPLETED);
+        candidates.add(BillingEventType.MANUAL);
+
+        return new ArrayList<>(candidates);
+    }
+
+    private BillingEventType resolveEventType(
+            BillingTrigger trigger
+    ) {
+        return switch (trigger) {
+            case ENCOUNTER_CREATED ->
+                    BillingEventType.ENCOUNTER_CREATED;
+
+            case TREATMENT_STARTED ->
+                    BillingEventType.TREATMENT_STARTED;
+
+            case ORDERED ->
+                    BillingEventType.ITEM_ORDERED;
+
+            case DISPENSED ->
+                    BillingEventType.ITEM_DISPENSED;
+
+            case SERVICE_COMPLETED ->
+                    BillingEventType.SERVICE_COMPLETED;
+
+            case CHECKOUT ->
+                    BillingEventType.CHECKOUT;
+
+            case MANUAL ->
+                    BillingEventType.MANUAL;
+        };
     }
 
     /*

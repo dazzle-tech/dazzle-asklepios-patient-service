@@ -85,6 +85,9 @@ public class BillingPaymentService {
     private final BillingChargeService
             billingChargeService;
 
+    private final BillingEngineService
+            billingEngineService;
+
     private final BillingLedgerService
             billingLedgerService;
 
@@ -691,12 +694,14 @@ public class BillingPaymentService {
                             .build();
 
             /*
-             * Loads the existing active charge line.
+             * Loads the existing active charge line, creating billing if needed.
              */
-            billingChargeService
-                    .loadExistingChargeLine(
-                            context
-                    );
+            ensureChargeLineForPayment(
+                    request,
+                    item,
+                    payment,
+                    context
+            );
 
             /*
              * Responsibility should already have been created by
@@ -754,6 +759,76 @@ public class BillingPaymentService {
         }
 
         return results;
+    }
+
+    /**
+     * Ensures an active charge line exists before reserving payment against a service.
+     * When billing has not been prepared yet, runs the billing engine once for the PSP.
+     */
+    private void ensureChargeLineForPayment(
+            CreateAdvancePaymentRequest request,
+            PatientServiceAndProduct item,
+            BillingPayment payment,
+            BillingProcessingContext context
+    ) {
+        if (billingChargeService
+                .findActiveChargeLine(
+                        item.getId(),
+                        request.encounterId()
+                )
+                .isPresent()) {
+
+            billingChargeService.loadExistingChargeLine(
+                    context,
+                    request.encounterId()
+            );
+
+            return;
+        }
+
+        if (request.encounterId() == null) {
+            throw new BadRequestAlertException(
+                    "Active billing charge line not found for patient service/product "
+                            + item.getId()
+                            + ". Prepare services before collecting payment.",
+                    ENTITY_NAME,
+                    "chargeLine.notfound"
+            );
+        }
+
+        PatientEncounter encounter =
+                patientEncounterRepository
+                        .findById(request.encounterId())
+                        .orElseThrow(() ->
+                                new NotFoundAlertException(
+                                        "Encounter not found with id "
+                                                + request.encounterId(),
+                                        ENTITY_NAME,
+                                        "encounter.notfound"
+                                )
+                        );
+
+        LOG.info(
+                "[CREATE_ADVANCE] Creating missing charge line before payment "
+                        + "pspId={} encounterId={} paymentId={}",
+                item.getId(),
+                request.encounterId(),
+                payment.getId()
+        );
+
+        billingEngineService.ensureChargeLineCreated(
+                item.getId(),
+                request.encounterId(),
+                encounter.getFacilityId(),
+                payment.getIdempotencyKey()
+                        + ":ENSURE_CHARGE:"
+                        + item.getId()
+        );
+
+        billingChargeService.loadExistingChargeLine(
+                context,
+                request.encounterId()
+        );
     }
 
 

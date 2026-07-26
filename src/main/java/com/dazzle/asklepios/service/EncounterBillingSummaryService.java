@@ -35,6 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -84,6 +85,9 @@ public class EncounterBillingSummaryService {
 
     private final BillingAllocationRepository
             billingAllocationRepository;
+
+    private final BillingItemDisplayNameService
+            billingItemDisplayNameService;
 
     /**
      * Returns an empty summary when the encounter does not yet have a
@@ -191,18 +195,10 @@ public class EncounterBillingSummaryService {
                 );
 
         List<EncounterBillingItemSummary> items =
-                lines.stream()
-                        .map(line ->
-                                buildItemSummary(
-                                        line,
-                                        responsibilitiesByChargeLineId
-                                                .getOrDefault(
-                                                        line.getId(),
-                                                        List.of()
-                                                )
-                                )
-                        )
-                        .toList();
+                buildItemSummaries(
+                        lines,
+                        responsibilitiesByChargeLineId
+                );
 
         SettlementTotals settlementTotals =
                 settlementTotalsFor(
@@ -242,9 +238,31 @@ public class EncounterBillingSummaryService {
         );
     }
 
+    private List<EncounterBillingItemSummary> buildItemSummaries(
+            List<BillingChargeLine> lines,
+            Map<Long, List<BillingChargeResponsibility>> responsibilitiesByChargeLineId
+    ) {
+        Map<String, String> displayNameCache = new HashMap<>();
+
+        return lines.stream()
+                .map(line ->
+                        buildItemSummary(
+                                line,
+                                responsibilitiesByChargeLineId
+                                        .getOrDefault(
+                                                line.getId(),
+                                                List.of()
+                                        ),
+                                displayNameCache
+                        )
+                )
+                .toList();
+    }
+
     private EncounterBillingItemSummary buildItemSummary(
             BillingChargeLine line,
-            List<BillingChargeResponsibility> responsibilities
+            List<BillingChargeResponsibility> responsibilities,
+            Map<String, String> displayNameCache
     ) {
         PatientServiceAndProduct item =
                 line.getPatientServiceProduct();
@@ -252,6 +270,15 @@ public class EncounterBillingSummaryService {
         PricingDisplayFields pricingDisplay =
                 resolvePricingDisplayFields(
                         line.getId()
+                );
+
+        String itemName =
+                billingItemDisplayNameService.resolveDisplayName(
+                        line.getBillingItemType(),
+                        item,
+                        line.getSourceId(),
+                        line.getItemDescription(),
+                        displayNameCache
                 );
 
         return new EncounterBillingItemSummary(
@@ -264,7 +291,7 @@ public class EncounterBillingSummaryService {
                         : line.getBillingItemType().name(),
                 line.getSourceId(),
                 line.getItemCode(),
-                line.getItemDescription(),
+                itemName,
                 money(line.getQuantity()),
                 money(line.getUnitPrice()),
                 pricingDisplay.setupUnitPrice(),
@@ -287,6 +314,7 @@ public class EncounterBillingSummaryService {
                 ),
                 line.getCurrency(),
                 line.getStatus(),
+                line.getCreatedDate(),
                 responsibilities.stream()
                         .map(this::buildResponsibilitySummary)
                         .toList()

@@ -374,19 +374,36 @@ public class BillingChargeService {
     public BillingChargeLine loadExistingChargeLine(
             BillingProcessingContext context
     ) {
+        return loadExistingChargeLine(
+                context,
+                null
+        );
+    }
+
+    /**
+     * Loads and locks the active charge line, optionally scoped to an encounter.
+     */
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class
+    )
+    public BillingChargeLine loadExistingChargeLine(
+            BillingProcessingContext context,
+            Long encounterId
+    ) {
         PatientServiceAndProduct item =
                 requirePatientServiceProduct(context);
 
         BillingChargeLine line =
-                billingChargeLineRepository
-                        .findFirstByPatientServiceProduct_IdAndStatusNotInOrderByIdAsc(
-                                item.getId(),
-                                EXCLUDED_LINE_STATUSES
-                        )
+                findActiveChargeLine(
+                        item.getId(),
+                        encounterId
+                )
                         .orElseThrow(() -> {
                             LOG.warn(
-                                    "[LOAD_LINE] Active charge line not found pspId={}",
-                                    item.getId()
+                                    "[LOAD_LINE] Active charge line not found pspId={} encounterId={}",
+                                    item.getId(),
+                                    encounterId
                             );
 
                             return new NotFoundAlertException(
@@ -401,6 +418,34 @@ public class BillingChargeService {
         context.setChargeLine(line);
 
         return line;
+    }
+
+    /**
+     * Finds the active charge line for a PSP, preferring an encounter-scoped match.
+     */
+    public java.util.Optional<BillingChargeLine> findActiveChargeLine(
+            Long patientServiceProductId,
+            Long encounterId
+    ) {
+        if (encounterId != null) {
+            java.util.Optional<BillingChargeLine> encounterLine =
+                    billingChargeLineRepository
+                            .findFirstByEncounter_IdAndPatientServiceProduct_IdAndStatusNotInOrderByIdAsc(
+                                    encounterId,
+                                    patientServiceProductId,
+                                    EXCLUDED_LINE_STATUSES
+                            );
+
+            if (encounterLine.isPresent()) {
+                return encounterLine;
+            }
+        }
+
+        return billingChargeLineRepository
+                .findFirstByPatientServiceProduct_IdAndStatusNotInOrderByIdAsc(
+                        patientServiceProductId,
+                        EXCLUDED_LINE_STATUSES
+                );
     }
 
     /**

@@ -9,6 +9,7 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentItemAdjustmentAction;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
