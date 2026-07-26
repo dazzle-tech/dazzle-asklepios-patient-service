@@ -67,10 +67,10 @@ public class PatientController {
 
     private final JwtEncoder jwtEncoder;
 
-    @Value("${patient.security.authentication.jwt.token-validity-in-seconds:0}")
+    @Value("${patient.security.authentication.jwt.token-validity-in-seconds:86400}")
     private long tokenValidityInSeconds;
 
-    @Value("${patient.security.authentication.jwt.token-validity-in-seconds-for-remember-me:0}")
+    @Value("${patient.security.authentication.jwt.token-validity-in-seconds-for-remember-me:2592000}")
     private long tokenValidityInSecondsForRememberMe;
 
     public PatientController(PatientService patientService, PatientAuthenticationService patientAuthenticationService, JwtEncoder jwtEncoder) {
