@@ -2,6 +2,7 @@ package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.Relations;
 import jakarta.persistence.Column;
@@ -46,8 +47,9 @@ public class FinancialDocument {
     // ✅ document number (INV-00000001)
     @Column(
             name = "document_number",
-            insertable = false,
-            updatable = false
+            nullable = false,
+            updatable = false,
+            length = 50
     )
     private String documentNumber;
 
@@ -55,6 +57,19 @@ public class FinancialDocument {
     @Enumerated(EnumType.STRING)
     @Column(name = "document_type", nullable = false)
     private FinancialDocumentType documentType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "document_subtype", nullable = false, length = 50)
+    private FinancialDocumentSubtype documentSubtype = FinancialDocumentSubtype.PATIENT;
+
+    @Column(name = "eligibility_reference", length = 100)
+    private String eligibilityReference;
+
+    @Column(name = "claim_reference", length = 150)
+    private String claimReference;
+
+    @Column(name = "adjustment_reason", length = 500)
+    private String adjustmentReason;
 
     // ✅ lifecycle
     @Enumerated(EnumType.STRING)

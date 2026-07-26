@@ -28,4 +28,10 @@ public interface WaseelEligibilityRequestRepository
             Long patientId,
             String requestStatus
     );
+
+    Optional<WaseelEligibilityRequest>
+    findFirstByEncounterIdAndRequestStatusAndEligibilityResponseIdIsNotNullOrderByRespondedAtDesc(
+            Long encounterId,
+            String requestStatus
+    );
 }

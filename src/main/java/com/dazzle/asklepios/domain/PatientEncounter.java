@@ -3,6 +3,7 @@ package com.dazzle.asklepios.domain;
 import com.dazzle.asklepios.domain.converter.EncounterLifecycleStatusConverter;
 import com.dazzle.asklepios.domain.converter.TreatmentStatusConverter;
 import com.dazzle.asklepios.domain.enumeration.DischargeType;
+import com.dazzle.asklepios.domain.enumeration.EncounterBillingStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterLifecycleStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
@@ -32,6 +33,7 @@ import java.io.Serializable;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 @Entity
 @Table(name = "patient_encounters")
@@ -108,6 +110,10 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     private LocalDate encounterDate;
 
     @NotNull
+    @Column(name = "encounter_time", nullable = false, updatable = false)
+    private LocalTime encounterTime;
+
+    @NotNull
     @Convert(converter = EncounterLifecycleStatusConverter.class)
     @Column(name = "encounter_status", nullable = false, length = 50)
     private EncounterLifecycleStatus encounterStatus;
@@ -141,4 +147,16 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @Column(name = "completed_at")
     private Instant completedAt;
+
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(name = "billing_status", nullable = false, length = 50)
+    @Builder.Default
+    private EncounterBillingStatus billingStatus = EncounterBillingStatus.OPEN;
+
+    @Column(name = "financially_closed_at")
+    private Instant financiallyClosedAt;
+
+    @Column(name = "financially_closed_by", length = 50)
+    private String financiallyClosedBy;
 }

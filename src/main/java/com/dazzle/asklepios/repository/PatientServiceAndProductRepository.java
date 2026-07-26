@@ -47,6 +47,8 @@ public interface PatientServiceAndProductRepository
 
     List<PatientServiceAndProduct> findByEncounterId(Long encounterId);
 
+    long countByEncounterId(Long encounterId);
+
     List<PatientServiceAndProduct> findByEncounterIdAndPreAuthorizationStatus(
             Long encounterId,
             PreAuthorizationStatus preAuthorizationStatus
