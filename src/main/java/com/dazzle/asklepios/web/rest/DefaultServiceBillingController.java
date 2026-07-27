@@ -1,10 +1,14 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.service.DefaultServicePreparationService;
+import com.dazzle.asklepios.service.DefaultServicePricingPreviewService;
 import com.dazzle.asklepios.service.EncounterBillingSummaryService;
+import com.dazzle.asklepios.service.FinancialDocumentAdjustmentService;
 import com.dazzle.asklepios.service.dto.billing.EncounterBillingSummary;
 import com.dazzle.asklepios.service.dto.billing.PrepareDefaultServicesRequest;
 import com.dazzle.asklepios.service.dto.billing.PrepareDefaultServicesResult;
+import com.dazzle.asklepios.service.dto.billing.PreviewDefaultServicesPricingRequest;
+import com.dazzle.asklepios.service.dto.billing.PreviewDefaultServicesPricingResult;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
@@ -31,8 +35,14 @@ public class DefaultServiceBillingController {
     private final DefaultServicePreparationService
             defaultServicePreparationService;
 
+    private final DefaultServicePricingPreviewService
+            defaultServicePricingPreviewService;
+
     private final EncounterBillingSummaryService
             encounterBillingSummaryService;
+
+    private final FinancialDocumentAdjustmentService
+            financialDocumentAdjustmentService;
 
     @GetMapping("/{encounterId}/summary")
     public ResponseEntity<EncounterBillingSummary>
@@ -45,6 +55,11 @@ public class DefaultServiceBillingController {
                 "REST request to get encounter billing summary encounterId={}",
                 encounterId
         );
+
+        financialDocumentAdjustmentService
+                .reconcileCreditNoteChargeLineSyncForEncounter(
+                        encounterId
+                );
 
         return ResponseEntity.ok(
                 encounterBillingSummaryService
@@ -85,6 +100,38 @@ public class DefaultServiceBillingController {
                                 encounterId,
                                 request
                         )
+        );
+    }
+
+    @PostMapping("/{encounterId}/preview-default-services-pricing")
+    public ResponseEntity<PreviewDefaultServicesPricingResult>
+    previewDefaultServicesPricing(
+            @PathVariable("encounterId")
+            @NotNull
+            Long encounterId,
+
+            @Valid
+            @RequestBody
+            @NotNull
+            PreviewDefaultServicesPricingRequest request
+    ) {
+        LOG.debug(
+                "REST request to preview encounter default-service pricing "
+                        + "encounterId={} patientId={} coverageType={} "
+                        + "itemCount={}",
+                encounterId,
+                request.patientId(),
+                request.coverageType(),
+                request.items() == null
+                        ? 0
+                        : request.items().size()
+        );
+
+        return ResponseEntity.ok(
+                defaultServicePricingPreviewService.preview(
+                        encounterId,
+                        request
+                )
         );
     }
 }

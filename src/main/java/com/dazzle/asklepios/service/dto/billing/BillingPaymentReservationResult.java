@@ -11,6 +11,10 @@ public record BillingPaymentReservationResult(
 
         String reservationNumber,
 
+        String itemDescription,
+
+        String billingItemType,
+
         BigDecimal patientResponsibilityAmount,
 
         BigDecimal reservedAmount,

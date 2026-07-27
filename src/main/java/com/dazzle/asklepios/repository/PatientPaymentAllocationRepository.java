@@ -50,6 +50,11 @@ public interface PatientPaymentAllocationRepository
     WHERE a.documentItemId IN (
         SELECT i.id FROM FinancialDocumentItem i
         WHERE i.document.id = :documentId
+        OR i.document.id IN (
+            SELECT d.id FROM FinancialDocument d
+            WHERE d.parentDocumentId = :documentId
+            AND d.documentType = 'DEBIT_NOTE'
+        )
     )
 """)
     BigDecimal sumPaidByDocument(Long documentId);

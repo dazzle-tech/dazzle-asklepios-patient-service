@@ -15,6 +15,7 @@ import com.dazzle.asklepios.service.dto.billing.BillingResponsibilitySummary;
 import com.dazzle.asklepios.service.dto.billing.BillingWalletSummary;
 import com.dazzle.asklepios.service.dto.billing.EncounterBillingItemSummary;
 import com.dazzle.asklepios.service.dto.billing.EncounterBillingSummary;
+import com.dazzle.asklepios.service.dto.billing.EncounterInvoiceBalance;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -62,6 +63,9 @@ public class BillingPatientViewService {
 
     private final BillingWalletService
             billingWalletService;
+
+    private final EncounterInvoiceBalanceService
+            encounterInvoiceBalanceService;
 
     public EncounterBillingSummary getEncounterSummary(
             Long encounterId
@@ -182,6 +186,11 @@ public class BillingPatientViewService {
                         ResponsiblePartyType.OTHER_PAYER
                 );
 
+        EncounterInvoiceBalance invoiceBalance =
+                encounterInvoiceBalanceService.resolveForEncounter(
+                        encounterId
+                );
+
         return new EncounterBillingSummary(
                 charge.getId(),
                 charge.getChargeNumber(),
@@ -217,6 +226,11 @@ public class BillingPatientViewService {
                 otherPayerTotals.outstanding(),
 
                 mapWallet(wallet),
+                invoiceBalance.invoiceId(),
+                invoiceBalance.invoiceNumber(),
+                invoiceBalance.totalAmount(),
+                invoiceBalance.paidAmount(),
+                invoiceBalance.outstandingAmount(),
                 items
         );
     }
@@ -545,6 +559,11 @@ public class BillingPatientViewService {
                 zero(),
 
                 mapWallet(wallet),
+                null,
+                null,
+                zero(),
+                zero(),
+                zero(),
                 List.of()
         );
     }

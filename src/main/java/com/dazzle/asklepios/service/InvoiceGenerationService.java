@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.BillingCharge;
 import com.dazzle.asklepios.domain.BillingChargeLine;
+import com.dazzle.asklepios.domain.BillingPayment;
 import com.dazzle.asklepios.domain.BillingChargeResponsibility;
 import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
@@ -18,9 +19,11 @@ import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.ResponsiblePartyType;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
+import com.dazzle.asklepios.repository.BillingPaymentRepository;
 import com.dazzle.asklepios.repository.BillingChargeRepository;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
 import com.dazzle.asklepios.repository.FinancialDocumentItemRepository;
@@ -51,9 +54,13 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -92,6 +99,11 @@ public class InvoiceGenerationService {
                     PaymentStatus.SKIPPED_PENDING_PRE_AUTH
             );
 
+    private static final EnumSet<BillingPaymentStatus> RECEIPT_PAYMENT_STATUSES =
+            EnumSet.of(
+                    BillingPaymentStatus.COMPLETED
+            );
+
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final FinancialDocumentRepository financialDocumentRepository;
@@ -103,6 +115,10 @@ public class InvoiceGenerationService {
     private final EncounterBillingSummaryService encounterBillingSummaryService;
     private final BillingEligibilitySnapshotService billingEligibilitySnapshotService;
     private final FinancialDocumentNumberAssignmentService documentNumberAssignmentService;
+    private final BillingPaymentRepository billingPaymentRepository;
+    private final InvoiceApplicableOnAdjustmentService invoiceApplicableOnAdjustmentService;
+    private final InvoiceItemPricingSnapshotService invoiceItemPricingSnapshotService;
+    private final InvoiceChargePaymentSyncService invoiceChargePaymentSyncService;
 
     @Transactional(readOnly = true)
     public List<BillableVisitResponse> findBillableVisits(Long patientId) {
@@ -167,6 +183,95 @@ public class InvoiceGenerationService {
                 .stream()
                 .map(this::mapFinancialDocument)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<PatientFinancialDocumentResponse> listPatientFinancialDocuments(
+            Long patientId
+    ) {
+        validatePatientId(patientId);
+
+        List<PatientFinancialDocumentResponse> documents = new ArrayList<>(
+                financialDocumentRepository
+                        .findAllByPatientIdOrderByCreatedDateDesc(patientId)
+                        .stream()
+                        .map(this::mapFinancialDocument)
+                        .toList()
+        );
+
+        documents.addAll(
+                billingPaymentRepository
+                        .findAllByPatient_IdAndStatusInOrderByPaymentDateDescIdDesc(
+                                patientId,
+                                RECEIPT_PAYMENT_STATUSES
+                        )
+                        .stream()
+                        .map(this::mapBillingPaymentReceipt)
+                        .toList()
+        );
+
+        documents.sort(
+                Comparator.comparing(
+                        PatientFinancialDocumentResponse::createdDate,
+                        Comparator.nullsLast(Comparator.reverseOrder())
+                )
+        );
+
+        return enrichDocumentsWithEncounterNumbers(documents);
+    }
+
+    private List<PatientFinancialDocumentResponse> enrichDocumentsWithEncounterNumbers(
+            List<PatientFinancialDocumentResponse> documents
+    ) {
+        Set<Long> encounterIds =
+                documents.stream()
+                        .map(PatientFinancialDocumentResponse::encounterId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+
+        if (encounterIds.isEmpty()) {
+            return documents;
+        }
+
+        Map<Long, String> encounterNumbersById =
+                patientEncounterRepository.findAllById(encounterIds).stream()
+                        .collect(Collectors.toMap(
+                                PatientEncounter::getId,
+                                PatientEncounter::getEncounterNumber
+                        ));
+
+        return documents.stream()
+                .map(document -> withEncounterNumber(
+                        document,
+                        document.encounterId() != null
+                                ? encounterNumbersById.get(document.encounterId())
+                                : null
+                ))
+                .toList();
+    }
+
+    private PatientFinancialDocumentResponse withEncounterNumber(
+            PatientFinancialDocumentResponse document,
+            String encounterNumber
+    ) {
+        return new PatientFinancialDocumentResponse(
+                document.id(),
+                document.documentNumber(),
+                document.documentType(),
+                document.documentSubtype(),
+                document.status(),
+                document.patientId(),
+                document.encounterId(),
+                document.totalAmount(),
+                document.currency(),
+                document.eligibilityReference(),
+                document.claimReference(),
+                document.createdDate(),
+                document.parentDocumentId(),
+                document.adjustmentReason(),
+                document.billingPaymentId(),
+                encounterNumber
+        );
     }
 
     @Transactional
@@ -465,6 +570,17 @@ public class InvoiceGenerationService {
             );
         }
 
+        invoiceItemPricingSnapshotService.captureChargeLineSnapshots(items);
+
+        items = invoiceApplicableOnAdjustmentService.applyApplicableOnAdjustments(
+                items,
+                encounter.getFacilityId(),
+                document.getCurrency(),
+                LocalDate.now()
+        );
+
+        invoiceChargePaymentSyncService.syncPreInvoicePayments(items);
+
         financialDocumentItemRepository.saveAll(items);
 
         BigDecimal totalAmount =
@@ -702,7 +818,47 @@ public class InvoiceGenerationService {
                 document.getCurrency(),
                 document.getEligibilityReference(),
                 document.getClaimReference(),
-                document.getCreatedDate()
+                document.getCreatedDate(),
+                document.getParentDocumentId(),
+                document.getAdjustmentReason(),
+                null,
+                null
+        );
+    }
+
+    private PatientFinancialDocumentResponse mapBillingPaymentReceipt(
+            BillingPayment payment
+    ) {
+        String documentNumber =
+                payment.getReceiptNumber() != null
+                        && !payment.getReceiptNumber().isBlank()
+                        ? payment.getReceiptNumber()
+                        : payment.getPaymentNumber();
+
+        Long encounterId =
+                payment.getEncounter() != null
+                        ? payment.getEncounter().getId()
+                        : null;
+
+        return new PatientFinancialDocumentResponse(
+                payment.getId(),
+                documentNumber,
+                FinancialDocumentType.RECEIPT,
+                FinancialDocumentSubtype.PATIENT,
+                FinancialDocumentStatus.ISSUED,
+                payment.getPatient().getId(),
+                encounterId,
+                money(payment.getAmount()),
+                payment.getCurrency(),
+                null,
+                null,
+                payment.getPaymentDate(),
+                null,
+                null,
+                payment.getId(),
+                payment.getEncounter() != null
+                        ? payment.getEncounter().getEncounterNumber()
+                        : null
         );
     }
 

@@ -48,6 +48,8 @@ public interface FinancialDocumentRepository extends JpaRepository<FinancialDocu
             FinancialDocumentType documentType
     );
 
+    List<FinancialDocument> findAllByPatientIdOrderByCreatedDateDesc(Long patientId);
+
     boolean existsByEncounterIdAndDocumentTypeAndDocumentSubtypeAndStatusIn(
             Long encounterId,
             FinancialDocumentType documentType,

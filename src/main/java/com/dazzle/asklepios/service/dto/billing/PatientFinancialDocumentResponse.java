@@ -33,7 +33,15 @@ public record PatientFinancialDocumentResponse(
 
         String claimReference,
 
-        Instant createdDate
+        Instant createdDate,
+
+        Long parentDocumentId,
+
+        String adjustmentReason,
+
+        Long billingPaymentId,
+
+        String encounterNumber
 
 ) implements Serializable {
 }

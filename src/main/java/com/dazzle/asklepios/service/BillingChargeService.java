@@ -706,8 +706,7 @@ public class BillingChargeService {
     /**
      * Creates a post-invoice debit-note charge line using the supplied manual
      * price. The line is recorded on the existing encounter charge (including
-     * CLOSED charges) and is treated as already settled so checkout state is
-     * not reopened.
+     * CLOSED charges) and remains collectable until payment is collected.
      */
     @Transactional(
             propagation = Propagation.MANDATORY,
@@ -829,18 +828,34 @@ public class BillingChargeService {
                                 defaultZero(insuranceShareAmount)
                         )
                         .otherPayerResponsibilityAmount(BigDecimal.ZERO)
-                        .allocatedAmount(netAmount)
-                        .outstandingAmount(BigDecimal.ZERO)
+                        .allocatedAmount(BigDecimal.ZERO)
+                        .outstandingAmount(netAmount)
                         .reservedAmount(BigDecimal.ZERO)
                         .currency(item.getCurrency())
-                        .status(BillingChargeLineStatus.CLOSED)
+                        .status(BillingChargeLineStatus.OPEN)
+
+                        .preAuthorizationRequired(
+                                Boolean.TRUE.equals(
+                                        item.getPreAuthorizationRequired()
+                                )
+                        )
+                        .preAuthorizationStatus(
+                                item.getPreAuthorizationStatus()
+                        )
+                        .preAuthorizationRequestId(
+                                item.getPreAuthorizationRequestId()
+                        )
+                        .preAuthorizationReferenceNo(
+                                item.getPreAuthorizationReferenceNo()
+                        )
+
                         .idempotencyKey(lineIdempotencyKey)
                         .build();
 
         BillingChargeLine savedLine =
                 billingChargeLineRepository.saveAndFlush(line);
 
-        createSettledDebitNoteResponsibility(
+        createPendingDebitNoteResponsibility(
                 savedLine,
                 item,
                 ResponsiblePartyType.PATIENT,
@@ -848,7 +863,7 @@ public class BillingChargeService {
                 idempotencyKeyPrefix + ":RESPONSIBILITY:PATIENT"
         );
 
-        createSettledDebitNoteResponsibility(
+        createPendingDebitNoteResponsibility(
                 savedLine,
                 item,
                 ResponsiblePartyType.INSURANCE,
@@ -857,12 +872,14 @@ public class BillingChargeService {
         );
 
         item.setUnitPrice(normalizedUnitPrice);
+        item.setGrossAmount(netAmount);
+        item.setNetAmount(netAmount);
+        item.setTotalAmount(netAmount);
         item.setPatientShareAmount(defaultZero(patientShareAmount));
         item.setInsuranceShareAmount(defaultZero(insuranceShareAmount));
-        item.setPaidAmount(netAmount);
-        item.setRemainingAmount(BigDecimal.ZERO);
-        item.setPaymentStatus(PaymentStatus.PAID);
-        item.setIsBilled(Boolean.TRUE);
+        item.setPaidAmount(BigDecimal.ZERO);
+        item.setRemainingAmount(defaultZero(patientShareAmount));
+        item.setPaymentStatus(PaymentStatus.PENDING);
         patientServiceAndProductRepository.save(item);
 
         BillingProcessingContext context =
@@ -875,6 +892,13 @@ public class BillingChargeService {
 
         recalculateChargeTotals(context);
 
+        BillingCharge updatedCharge = context.getCharge();
+        if (updatedCharge.getStatus() == BillingChargeStatus.CLOSED
+                && defaultZero(updatedCharge.getOutstandingAmount()).signum() > 0) {
+            updatedCharge.setStatus(BillingChargeStatus.OPEN);
+            billingChargeRepository.save(updatedCharge);
+        }
+
         LOG.info(
                 "[DEBIT_NOTE] Adjustment charge line created lineId={} chargeId={} pspId={} net={}",
                 savedLine.getId(),
@@ -886,7 +910,279 @@ public class BillingChargeService {
         return savedLine;
     }
 
-    private void createSettledDebitNoteResponsibility(
+    /**
+     * Keeps encounter charge lines aligned when a credit note reduces an
+     * invoice or debit-note financial document line.
+     */
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class
+    )
+    public void applyCreditNoteChargeLineSync(
+            Long chargeLineId,
+            BigDecimal creditAmount,
+            BigDecimal financialItemNetAmount
+    ) {
+        if (chargeLineId == null
+                || creditAmount == null
+                || creditAmount.signum() <= 0) {
+            return;
+        }
+
+        BillingChargeLine chargeLine =
+                billingChargeLineRepository
+                        .findById(chargeLineId)
+                        .orElse(null);
+
+        if (chargeLine == null
+                || EXCLUDED_LINE_STATUSES.contains(
+                        chargeLine.getStatus()
+                )) {
+            return;
+        }
+
+        BigDecimal patientResponsibility =
+                defaultZero(
+                        chargeLine.getPatientResponsibilityAmount()
+                );
+
+        if (patientResponsibility.signum() <= 0) {
+            return;
+        }
+
+        BigDecimal chargeCredit =
+                mapFinancialCreditToChargeAmount(
+                        creditAmount,
+                        financialItemNetAmount,
+                        patientResponsibility
+                );
+
+        if (chargeCredit.signum() <= 0) {
+            return;
+        }
+
+        List<BillingChargeResponsibility> responsibilities =
+                billingChargeResponsibilityRepository
+                        .findAllByChargeLine_IdOrderByIdAsc(
+                                chargeLineId
+                        )
+                        .stream()
+                        .filter(responsibility ->
+                                responsibility.getResponsiblePartyType()
+                                        == ResponsiblePartyType.PATIENT
+                        )
+                        .filter(responsibility ->
+                                responsibility.getStatus()
+                                        != BillingResponsibilityStatus.CANCELLED
+                                        && responsibility.getStatus()
+                                        != BillingResponsibilityStatus.SUPERSEDED
+                        )
+                        .toList();
+
+        BigDecimal remainingCredit = chargeCredit;
+
+        for (BillingChargeResponsibility responsibility
+                : responsibilities) {
+
+            if (remainingCredit.signum() <= 0) {
+                break;
+            }
+
+            BigDecimal responsibilityAmount =
+                    defaultZero(
+                            responsibility.getResponsibilityAmount()
+                    );
+
+            if (responsibilityAmount.signum() <= 0) {
+                continue;
+            }
+
+            BigDecimal lineCredit =
+                    remainingCredit.min(responsibilityAmount);
+
+            BigDecimal newResponsibility =
+                    responsibilityAmount.subtract(lineCredit);
+
+            BigDecimal allocated =
+                    defaultZero(
+                            responsibility.getAllocatedAmount()
+                    );
+
+            BigDecimal newAllocated =
+                    allocated.min(newResponsibility);
+
+            responsibility.setResponsibilityAmount(
+                    newResponsibility
+            );
+            responsibility.setAllocatedAmount(
+                    newAllocated
+            );
+            responsibility.setOutstandingAmount(
+                    newResponsibility.subtract(newAllocated)
+            );
+
+            if (newResponsibility.signum() == 0) {
+                responsibility.setStatus(
+                        BillingResponsibilityStatus.FULLY_ALLOCATED
+                );
+            } else if (newAllocated.signum() > 0) {
+                responsibility.setStatus(
+                        BillingResponsibilityStatus.PARTIALLY_ALLOCATED
+                );
+            } else {
+                responsibility.setStatus(
+                        BillingResponsibilityStatus.CALCULATED
+                );
+            }
+
+            billingChargeResponsibilityRepository.save(
+                    responsibility
+            );
+
+            remainingCredit =
+                    remainingCredit.subtract(lineCredit);
+        }
+
+        BigDecimal appliedCredit =
+                chargeCredit.subtract(remainingCredit);
+
+        BigDecimal netAmount =
+                defaultZero(chargeLine.getNetAmount());
+        BigDecimal grossAmount =
+                defaultZero(chargeLine.getGrossAmount());
+
+        BigDecimal netReduction =
+                scaleCreditToChargeAmount(
+                        appliedCredit,
+                        patientResponsibility,
+                        netAmount
+                );
+        BigDecimal grossReduction =
+                scaleCreditToChargeAmount(
+                        appliedCredit,
+                        patientResponsibility,
+                        grossAmount
+                );
+
+        chargeLine.setNetAmount(
+                netAmount.subtract(netReduction).max(BigDecimal.ZERO)
+        );
+        chargeLine.setGrossAmount(
+                grossAmount.subtract(grossReduction).max(BigDecimal.ZERO)
+        );
+        chargeLine.setPatientResponsibilityAmount(
+                patientResponsibility.subtract(appliedCredit)
+                        .max(BigDecimal.ZERO)
+        );
+
+        BigDecimal currentAllocated =
+                defaultZero(chargeLine.getAllocatedAmount());
+        BigDecimal currentReserved =
+                defaultZero(chargeLine.getReservedAmount());
+
+        if (currentAllocated.compareTo(chargeLine.getNetAmount()) > 0) {
+            chargeLine.setAllocatedAmount(chargeLine.getNetAmount());
+        }
+
+        chargeLine.setOutstandingAmount(
+                defaultZero(chargeLine.getNetAmount())
+                        .subtract(defaultZero(chargeLine.getAllocatedAmount()))
+                        .subtract(currentReserved)
+                        .max(BigDecimal.ZERO)
+        );
+
+        if (chargeLine.getNetAmount().signum() == 0) {
+            chargeLine.setPatientResponsibilityAmount(BigDecimal.ZERO);
+            chargeLine.setOutstandingAmount(BigDecimal.ZERO);
+            chargeLine.setAllocatedAmount(BigDecimal.ZERO);
+            chargeLine.setReservedAmount(BigDecimal.ZERO);
+            chargeLine.setStatus(BillingChargeLineStatus.CANCELLED);
+            chargeLine.setCancelledDate(Instant.now());
+            chargeLine.setCancellationReason(
+                    "Credited via invoice adjustment."
+            );
+        } else if (chargeLine.getOutstandingAmount().signum() == 0
+                && currentReserved.signum() == 0) {
+            chargeLine.setStatus(
+                    defaultZero(chargeLine.getAllocatedAmount()).signum() > 0
+                            ? BillingChargeLineStatus.ALLOCATED
+                            : BillingChargeLineStatus.OPEN
+            );
+        }
+
+        billingChargeLineRepository.save(chargeLine);
+
+        BillingProcessingContext context =
+                BillingProcessingContext.builder()
+                        .charge(chargeLine.getCharge())
+                        .idempotencyKey(
+                                "CREDIT_NOTE:CHARGE_SYNC:"
+                                        + chargeLineId
+                        )
+                        .build();
+
+        recalculateChargeTotals(context);
+
+        LOG.info(
+                "[CREDIT_NOTE] Charge line synced lineId={} credit={} "
+                        + "net={} patientResponsibility={} outstanding={}",
+                chargeLineId,
+                appliedCredit,
+                chargeLine.getNetAmount(),
+                chargeLine.getPatientResponsibilityAmount(),
+                chargeLine.getOutstandingAmount()
+        );
+    }
+
+    private BigDecimal scaleCreditToChargeAmount(
+            BigDecimal creditAmount,
+            BigDecimal chargeBasisAmount,
+            BigDecimal chargeFieldAmount
+    ) {
+        if (creditAmount.signum() <= 0
+                || chargeFieldAmount.signum() <= 0) {
+            return BigDecimal.ZERO;
+        }
+
+        if (chargeBasisAmount.signum() <= 0) {
+            return creditAmount.min(chargeFieldAmount);
+        }
+
+        return creditAmount
+                .multiply(chargeFieldAmount)
+                .divide(
+                        chargeBasisAmount,
+                        MONEY_SCALE,
+                        RoundingMode.HALF_UP
+                )
+                .min(chargeFieldAmount);
+    }
+
+    private BigDecimal mapFinancialCreditToChargeAmount(
+            BigDecimal creditAmount,
+            BigDecimal financialItemNetAmount,
+            BigDecimal patientResponsibility
+    ) {
+        if (financialItemNetAmount == null
+                || financialItemNetAmount.signum() <= 0) {
+            return creditAmount.min(patientResponsibility);
+        }
+
+        if (creditAmount.compareTo(financialItemNetAmount) >= 0) {
+            return patientResponsibility;
+        }
+
+        return creditAmount
+                .multiply(patientResponsibility)
+                .divide(
+                        financialItemNetAmount,
+                        MONEY_SCALE,
+                        RoundingMode.HALF_UP
+                )
+                .min(patientResponsibility);
+    }
+
+    private void createPendingDebitNoteResponsibility(
             BillingChargeLine chargeLine,
             PatientServiceAndProduct item,
             ResponsiblePartyType partyType,
@@ -916,8 +1212,8 @@ public class BillingChargeService {
                         .responsiblePartyType(partyType)
                         .responsibilityRole(ResponsibilityRole.PRIMARY)
                         .responsibilityAmount(amount)
-                        .allocatedAmount(amount)
-                        .outstandingAmount(BigDecimal.ZERO)
+                        .allocatedAmount(BigDecimal.ZERO)
+                        .outstandingAmount(amount)
                         .coveragePercentage(BigDecimal.ZERO)
                         .deductibleAmount(BigDecimal.ZERO)
                         .copayAmount(BigDecimal.ZERO)
@@ -925,7 +1221,19 @@ public class BillingChargeService {
                         .nonCoveredAmount(BigDecimal.ZERO)
                         .contractualAdjustmentAmount(BigDecimal.ZERO)
                         .currency(chargeLine.getCurrency())
-                        .status(BillingResponsibilityStatus.ALLOCATED)
+                        .status(BillingResponsibilityStatus.CALCULATED)
+                        .preAuthorizationRequired(
+                                Boolean.TRUE.equals(
+                                        item.getPreAuthorizationRequired()
+                                )
+                        )
+                        .preAuthorizationStatus(
+                                item.getPreAuthorizationStatus()
+                        )
+                        .preAuthorizationReferenceNo(
+                                item.getPreAuthorizationReferenceNo()
+                        )
+                        .effectiveDate(Instant.now())
                         .idempotencyKey(idempotencyKey)
                         .build();
 

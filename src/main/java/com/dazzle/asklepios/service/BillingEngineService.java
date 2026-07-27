@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.dto.BillingPricingResolveRequest;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingTrigger;
 import com.dazzle.asklepios.domain.enumeration.billing.DiscountApplicableOn;
@@ -93,6 +94,22 @@ public class BillingEngineService {
             BillingEventType eventType,
             Long facilityId,
             String requestId
+    ) {
+        return process(
+                patientServiceProductId,
+                eventType,
+                facilityId,
+                requestId,
+                false
+        );
+    }
+
+    public BillingOperationResult process(
+            Long patientServiceProductId,
+            BillingEventType eventType,
+            Long facilityId,
+            String requestId,
+            boolean skipAdvanceReservation
     ) {
         validateInput(
                 patientServiceProductId,
@@ -220,7 +237,8 @@ public class BillingEngineService {
                                 billingRule,
                                 pricingInput,
                                 eventType,
-                                requestId.trim()
+                                requestId.trim(),
+                                skipAdvanceReservation
                         );
 
         LOG.info(
@@ -259,6 +277,146 @@ public class BillingEngineService {
                 BillingEventType.ENCOUNTER_CREATED,
                 facilityId,
                 requestId
+        );
+    }
+
+    /**
+     * Resolves pricing from the applicable price list or setup fallback
+     * without creating charge lines. Used for pre-prepare price previews.
+     */
+    public ResolvedBillingPrice resolvePricing(
+            PatientServiceAndProduct item,
+            Long facilityId
+    ) {
+        validatePatientItem(item);
+
+        Long sourceId = resolveSourceId(item);
+        Long payerId = resolvePayerId(item);
+
+        BillingPricingResolveRequest pricingRequest =
+                buildPricingRequest(
+                        item,
+                        facilityId,
+                        sourceId,
+                        payerId
+                );
+
+        ResolvedBillingPrice resolvedPrice =
+                setupBillingPricingService.resolveOrFallback(
+                        pricingRequest
+                );
+
+        validateResolvedPricing(item, resolvedPrice);
+
+        return resolvedPrice;
+    }
+
+    /**
+     * Attempts billing using the configured trigger first, then common
+     * fallback events. Used when preparing default services so billing
+     * still runs when the rule trigger is not ENCOUNTER_CREATED.
+     */
+    public BillingOperationResult processWithEventFallback(
+            Long patientServiceProductId,
+            Long encounterId,
+            Long facilityId,
+            String requestId
+    ) {
+        if (billingChargeService
+                .findActiveChargeLine(
+                        patientServiceProductId,
+                        encounterId
+                )
+                .isPresent()) {
+            return BillingOperationResult.skipped(
+                    patientServiceProductId,
+                    "Charge line already exists for this service."
+            );
+        }
+
+        PatientServiceAndProduct item =
+                findPatientServiceProduct(
+                        patientServiceProductId
+                );
+
+        BillingRuleResolveResponse billingRule =
+                setupBillingRuleService.resolve(item);
+
+        List<BillingEventType> eventCandidates =
+                buildChargeLineEventCandidates(billingRule);
+
+        String baseRequestId =
+                requestId == null
+                        ? "PREPARE:"
+                                + patientServiceProductId
+                        : requestId.trim();
+
+        BillingOperationResult lastResult = null;
+
+        for (BillingEventType eventType : eventCandidates) {
+            if (billingChargeService
+                    .findActiveChargeLine(
+                            patientServiceProductId,
+                            encounterId
+                    )
+                    .isPresent()) {
+                return BillingOperationResult.skipped(
+                        patientServiceProductId,
+                        "Charge line already exists for this service."
+                );
+            }
+
+            LOG.info(
+                    "[PREPARE_FALLBACK] Attempting billing "
+                            + "pspId={} encounterId={} eventType={}",
+                    patientServiceProductId,
+                    encounterId,
+                    eventType
+            );
+
+            try {
+                BillingOperationResult result =
+                        process(
+                                patientServiceProductId,
+                                eventType,
+                                facilityId,
+                                baseRequestId
+                                        + ":"
+                                        + eventType.name()
+                        );
+
+                lastResult = result;
+
+                if (result.processed()
+                        && result.chargeLineId() != null) {
+                    LOG.info(
+                            "[PREPARE_FALLBACK] Billing succeeded "
+                                    + "pspId={} eventType={} chargeLineId={}",
+                            patientServiceProductId,
+                            eventType,
+                            result.chargeLineId()
+                    );
+
+                    return result;
+                }
+            } catch (RuntimeException exception) {
+                LOG.warn(
+                        "[PREPARE_FALLBACK] Billing attempt failed "
+                                + "pspId={} eventType={} reason={}",
+                        patientServiceProductId,
+                        eventType,
+                        exception.getMessage()
+                );
+            }
+        }
+
+        if (lastResult != null) {
+            return lastResult;
+        }
+
+        return BillingOperationResult.skipped(
+                patientServiceProductId,
+                "No billing event matched the configured rule."
         );
     }
 
@@ -411,7 +569,8 @@ public class BillingEngineService {
                                 facilityId,
                                 baseRequestId
                                         + ":"
-                                        + eventType.name()
+                                        + eventType.name(),
+                                true
                         );
 
                 if (result.chargeLineId() != null
@@ -882,6 +1041,7 @@ public class BillingEngineService {
                 sourceId,
                 item.getPatientInsuranceId(),
                 payerId,
+                resolveCoverageType(item),
                 item.getCurrency(),
                 resolveTaxApplicableOn(
                         item
@@ -891,6 +1051,14 @@ public class BillingEngineService {
                 ),
                 LocalDate.now()
         );
+    }
+
+    private BillingCoverageType resolveCoverageType(
+            PatientServiceAndProduct item
+    ) {
+        return item.getPatientInsuranceId() == null
+                ? BillingCoverageType.SELF_PAY
+                : BillingCoverageType.INSURANCE;
     }
 
     /*
@@ -1238,6 +1406,14 @@ public class BillingEngineService {
     /*
      * ============================================================
      * TAX AND DISCOUNT APPLICABILITY
+     *
+     * Charge-line pricing resolves setup rules with:
+     *   SERVICE  -> services, procedures, labs, etc.
+     *   PRODUCT  -> medications
+     *
+     * Invoice-time rules use Applicable On at invoice generation:
+     *   INVOICE_LINE -> per invoice line
+     *   INVOICE      -> whole invoice total
      * ============================================================
      */
 

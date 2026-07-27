@@ -4,6 +4,8 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.client.WaseelItemMappingClient;
@@ -94,6 +96,7 @@ public class PatientServiceAndProductService {
                 ));
 
         validateReferences(dto);
+        validateNoDuplicateEncounterItem(dto, encounter.getId());
 
         PreAuthorizationStatus preAuthorizationStatus =
                 resolvePreAuthorizationStatus(
@@ -105,25 +108,12 @@ public class PatientServiceAndProductService {
                         dto.brandMedicationId()
                 );
 
-        PatientServiceAndProduct entity = PatientServiceAndProduct.builder()
-                .patientId(patient.getId())
-                .encounterId(encounter.getId())
-                .billingItemType(dto.billingItemType())
-                .brandMedicationId(dto.brandMedicationId())
-                .diagnosticTestId(dto.diagnosticTestId())
-                .serviceId(dto.serviceId())
-                .procedureId(dto.procedureId())
-                .quantity(dto.quantity() == null ? 1L : dto.quantity())
-                .unitPrice(dto.unitPrice())
-                .currency(dto.currency())
-                .serviceSource(dto.serviceSource())
-                .sourceId(dto.sourceId())
-                .notes(dto.notes())
-                .preAuthorizationStatus(preAuthorizationStatus)
-                .isBilled(Boolean.FALSE)
-                .billingInvoiceId(null)
-                .billingInvoiceItemId(null)
-                .build();
+        PatientServiceAndProduct entity = buildEntityFromCreateDto(
+                dto,
+                patient.getId(),
+                encounter.getId(),
+                preAuthorizationStatus
+        );
 
         try {
             PatientServiceAndProduct saved = patientServiceAndProductRepository.saveAndFlush(entity);
@@ -252,6 +242,7 @@ public class PatientServiceAndProductService {
                                 ));
 
                         validateReferences(dto);
+                        validateNoDuplicateEncounterItem(dto, encounter.getId());
 
                         PreAuthorizationStatus preAuthorizationStatus =
                                 resolvePreAuthorizationStatus(
@@ -263,25 +254,12 @@ public class PatientServiceAndProductService {
                                         dto.brandMedicationId()
                                 );
 
-                        return PatientServiceAndProduct.builder()
-                                .patientId(patient.getId())
-                                .encounterId(encounter.getId())
-                                .billingItemType(dto.billingItemType())
-                                .brandMedicationId(dto.brandMedicationId())
-                                .diagnosticTestId(dto.diagnosticTestId())
-                                .serviceId(dto.serviceId())
-                                .procedureId(dto.procedureId())
-                                .quantity(dto.quantity() == null ? 1L : dto.quantity())
-                                .unitPrice(dto.unitPrice())
-                                .currency(dto.currency())
-                                .sourceId(dto.sourceId())
-                                .serviceSource(dto.serviceSource())
-                                .notes(dto.notes())
-                                .preAuthorizationStatus(preAuthorizationStatus)
-                                .isBilled(Boolean.FALSE)
-                                .billingInvoiceId(null)
-                                .billingInvoiceItemId(null)
-                                .build();
+                        return buildEntityFromCreateDto(
+                                dto,
+                                patient.getId(),
+                                encounter.getId(),
+                                preAuthorizationStatus
+                        );
                     })
                     .toList();
 
@@ -328,6 +306,62 @@ public class PatientServiceAndProductService {
         LOG.debug("Deleted Patient billing item : id={}", id);
     }
 
+    private PatientServiceAndProduct buildEntityFromCreateDto(
+            PatientServiceProductCreateDTO dto,
+            Long patientId,
+            Long encounterId,
+            PreAuthorizationStatus preAuthorizationStatus
+    ) {
+        long quantity = dto.quantity() == null ? 1L : dto.quantity();
+        BigDecimal unitPrice = defaultZero(dto.unitPrice());
+        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
+        boolean preAuthRequired =
+                preAuthorizationStatus == PreAuthorizationStatus.PENDING_APPROVAL;
+
+        return PatientServiceAndProduct.builder()
+                .patientId(patientId)
+                .encounterId(encounterId)
+                .billingItemType(dto.billingItemType())
+                .brandMedicationId(dto.brandMedicationId())
+                .diagnosticTestId(dto.diagnosticTestId())
+                .serviceId(dto.serviceId())
+                .procedureId(dto.procedureId())
+                .quantity(quantity)
+                .unitPrice(unitPrice)
+                .discountAmount(BigDecimal.ZERO)
+                .exemptionAmount(BigDecimal.ZERO)
+                .taxAmount(BigDecimal.ZERO)
+                .totalAmount(totalAmount)
+                .grossAmount(totalAmount)
+                .netAmount(totalAmount)
+                .patientShareAmount(BigDecimal.ZERO)
+                .insuranceShareAmount(BigDecimal.ZERO)
+                .paidAmount(BigDecimal.ZERO)
+                .remainingAmount(totalAmount)
+                .currency(dto.currency())
+                .serviceSource(
+                        dto.serviceSource() != null
+                                ? dto.serviceSource()
+                                : ServiceSource.SERVICE_AND_PRODUCT
+                )
+                .sourceId(dto.sourceId())
+                .notes(dto.notes())
+                .isBilled(Boolean.FALSE)
+                .billingInvoiceId(null)
+                .billingInvoiceItemId(null)
+                .paymentStatus(
+                        preAuthRequired
+                                ? PaymentStatus.SKIPPED_PENDING_PRE_AUTH
+                                : PaymentStatus.PENDING
+                )
+                .coverageStatus(CoverageStatus.NOT_CHECKED)
+                .isDefaultService(Boolean.FALSE)
+                .isExempted(Boolean.FALSE)
+                .preAuthorizationRequired(preAuthRequired)
+                .preAuthorizationStatus(preAuthorizationStatus)
+                .build();
+    }
+
     private void validateReferences(PatientServiceProductCreateDTO dto) {
         if (dto.diagnosticTestId() != null) {
             diagnosticTestHelper.getDiagnosticTest(dto.diagnosticTestId());
@@ -343,6 +377,74 @@ public class PatientServiceAndProductService {
 
         if (dto.brandMedicationId() != null) {
             brandMedicationHelper.validateBrandMedicationExists(dto.brandMedicationId());
+        }
+    }
+
+    private void validateNoDuplicateEncounterItem(
+            PatientServiceProductCreateDTO dto,
+            Long encounterId
+    ) {
+        if (encounterId == null || dto.billingItemType() == null) {
+            return;
+        }
+
+        if (dto.billingItemType() == BillingItemTypes.MEDICATION
+                && dto.brandMedicationId() != null
+                && patientServiceAndProductRepository
+                        .existsByEncounterIdAndBillingItemTypeAndBrandMedicationId(
+                                encounterId,
+                                BillingItemTypes.MEDICATION,
+                                dto.brandMedicationId()
+                        )) {
+            throw new BadRequestAlertException(
+                    "This medication is already on the encounter. Edit the existing line to change quantity.",
+                    "patient_services_and_products",
+                    "medication.duplicate"
+            );
+        }
+
+        if (dto.diagnosticTestId() != null
+                && patientServiceAndProductRepository
+                        .existsByEncounterIdAndBillingItemTypeAndDiagnosticTestId(
+                                encounterId,
+                                dto.billingItemType(),
+                                dto.diagnosticTestId()
+                        )) {
+            throw new BadRequestAlertException(
+                    "This diagnostic test is already on the encounter.",
+                    "patient_services_and_products",
+                    "diagnosticTest.duplicate"
+            );
+        }
+
+        if (dto.billingItemType() == BillingItemTypes.SERVICE
+                && dto.serviceId() != null
+                && patientServiceAndProductRepository
+                        .existsByEncounterIdAndBillingItemTypeAndServiceId(
+                                encounterId,
+                                BillingItemTypes.SERVICE,
+                                dto.serviceId()
+                        )) {
+            throw new BadRequestAlertException(
+                    "This service is already on the encounter.",
+                    "patient_services_and_products",
+                    "service.duplicate"
+            );
+        }
+
+        if (dto.billingItemType() == BillingItemTypes.PROCEDURE
+                && dto.procedureId() != null
+                && patientServiceAndProductRepository
+                        .existsByEncounterIdAndBillingItemTypeAndProcedureId(
+                                encounterId,
+                                BillingItemTypes.PROCEDURE,
+                                dto.procedureId()
+                        )) {
+            throw new BadRequestAlertException(
+                    "This procedure is already on the encounter.",
+                    "patient_services_and_products",
+                    "procedure.duplicate"
+            );
         }
     }
 

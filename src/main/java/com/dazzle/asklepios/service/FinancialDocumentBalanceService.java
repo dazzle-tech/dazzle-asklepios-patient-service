@@ -2,6 +2,8 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
+import com.dazzle.asklepios.domain.FinancialDocumentItem;
+import com.dazzle.asklepios.repository.FinancialDocumentItemRepository;
 import com.dazzle.asklepios.repository.FinancialDocumentRepository;
 import com.dazzle.asklepios.repository.PatientPaymentAllocationRepository;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +17,7 @@ import java.util.List;
 public class FinancialDocumentBalanceService {
 
     private final FinancialDocumentRepository documentRepo;
+    private final FinancialDocumentItemRepository itemRepo;
     private final PatientPaymentAllocationRepository allocationRepo;
 
     private static final BigDecimal ZERO = BigDecimal.ZERO;
@@ -42,9 +45,28 @@ public class FinancialDocumentBalanceService {
                 .map(d -> safe(d.getTotalAmount()))
                 .reduce(ZERO, BigDecimal::add);
 
-        // ✅ 3. Payments (from allocations)
-        BigDecimal totalPaid =
-                allocationRepo.sumPaidByDocument(documentId);
+        // ✅ 3. Payments (invoice lines + debit-note lines + legacy allocations)
+        BigDecimal invoiceItemPaid =
+                itemRepo.findByDocument_Id(documentId)
+                        .stream()
+                        .map(FinancialDocumentItem::getPaidAmount)
+                        .map(this::safe)
+                        .reduce(ZERO, BigDecimal::add);
+
+        BigDecimal debitNoteItemPaid =
+                children.stream()
+                        .filter(d -> d.getDocumentType() == FinancialDocumentType.DEBIT_NOTE)
+                        .flatMap(d -> itemRepo.findByDocument_Id(d.getId()).stream())
+                        .map(FinancialDocumentItem::getPaidAmount)
+                        .map(this::safe)
+                        .reduce(ZERO, BigDecimal::add);
+
+        BigDecimal itemPaid = invoiceItemPaid.add(debitNoteItemPaid);
+
+        BigDecimal allocationPaid =
+                safe(allocationRepo.sumPaidByDocument(documentId));
+
+        BigDecimal totalPaid = itemPaid.max(allocationPaid);
 
         // ✅ FINAL FORMULA 💣
         return invoiceTotal

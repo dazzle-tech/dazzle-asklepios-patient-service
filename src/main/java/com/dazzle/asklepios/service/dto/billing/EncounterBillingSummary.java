@@ -64,6 +64,16 @@ public record EncounterBillingSummary(
 
         BillingWalletSummary wallet,
 
+        Long invoiceId,
+
+        String invoiceNumber,
+
+        BigDecimal invoiceTotalAmount,
+
+        BigDecimal invoicePaidAmount,
+
+        BigDecimal invoiceOutstandingAmount,
+
         List<EncounterBillingItemSummary> items
 
 ) implements Serializable {

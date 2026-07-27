@@ -2,6 +2,7 @@ package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentItemAdjustmentAction;
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -17,6 +18,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import jakarta.persistence.Enumerated;
 
 import java.io.Serializable;
@@ -107,6 +110,10 @@ public class FinancialDocumentItem extends AbstractAuditingEntity<Long> implemen
     @Enumerated(EnumType.STRING)
     @Column(name = "currency", nullable = false)
     private Currency currency;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "pricing_adjustment_snapshot", columnDefinition = "jsonb")
+    private JsonNode pricingAdjustmentSnapshot;
 
     // ✅ Utility
     public BigDecimal calculateRemaining(BigDecimal allocatedAmount) {

@@ -890,7 +890,7 @@ public class BillingRefundService {
 
         BillingPayment payment =
                 billingPaymentRepository
-                        .findById(
+                        .findByIdForUpdate(
                                 request.originalPaymentId()
                         )
                         .orElseThrow(() ->

@@ -1,11 +1,17 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.service.FinancialDocumentAdjustmentService;
+import com.dazzle.asklepios.service.InvoiceBalancePaymentService;
+import com.dazzle.asklepios.service.InvoicePricingSummaryService;
 import com.dazzle.asklepios.service.dto.billing.AddableChargeLineResponse;
+import com.dazzle.asklepios.service.dto.billing.CollectInvoiceBalanceRequest;
+import com.dazzle.asklepios.service.dto.billing.CollectInvoiceBalanceResult;
+import com.dazzle.asklepios.service.dto.billing.SyncInvoicePaymentsResult;
 import com.dazzle.asklepios.service.dto.billing.CreateFinancialDocumentAdjustmentRequest;
 import com.dazzle.asklepios.service.dto.billing.FinancialDocumentAdjustmentResponse;
 import com.dazzle.asklepios.service.dto.billing.InvoiceAdjustmentSummaryResponse;
 import com.dazzle.asklepios.service.dto.billing.InvoiceLineItemResponse;
+import com.dazzle.asklepios.service.dto.billing.InvoicePricingSummaryResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,6 +31,8 @@ import java.util.List;
 public class FinancialDocumentAdjustmentController {
 
     private final FinancialDocumentAdjustmentService adjustmentService;
+    private final InvoicePricingSummaryService invoicePricingSummaryService;
+    private final InvoiceBalancePaymentService invoiceBalancePaymentService;
 
     @GetMapping("/financial-documents/{invoiceId}/items")
     public List<InvoiceLineItemResponse> listInvoiceItems(@PathVariable Long invoiceId) {
@@ -39,6 +47,13 @@ public class FinancialDocumentAdjustmentController {
     @GetMapping("/financial-documents/{invoiceId}/adjustments")
     public InvoiceAdjustmentSummaryResponse getAdjustments(@PathVariable Long invoiceId) {
         return adjustmentService.getInvoiceAdjustmentSummary(invoiceId);
+    }
+
+    @GetMapping("/financial-documents/{invoiceId}/pricing-summary")
+    public InvoicePricingSummaryResponse getPricingSummary(
+            @PathVariable Long invoiceId
+    ) {
+        return invoicePricingSummaryService.getByInvoiceId(invoiceId);
     }
 
     @PostMapping("/financial-documents/{invoiceId}/credit-note")
@@ -63,5 +78,20 @@ public class FinancialDocumentAdjustmentController {
             @RequestParam BigDecimal amount
     ) {
         adjustmentService.createRefund(invoiceId, amount);
+    }
+
+    @PostMapping("/financial-documents/{invoiceId}/collect-balance")
+    public CollectInvoiceBalanceResult collectInvoiceBalance(
+            @PathVariable Long invoiceId,
+            @Valid @RequestBody CollectInvoiceBalanceRequest request
+    ) {
+        return invoiceBalancePaymentService.collectBalance(invoiceId, request);
+    }
+
+    @PostMapping("/financial-documents/{invoiceId}/sync-payments")
+    public SyncInvoicePaymentsResult syncInvoicePayments(
+            @PathVariable Long invoiceId
+    ) {
+        return invoiceBalancePaymentService.syncChargePayments(invoiceId);
     }
 }

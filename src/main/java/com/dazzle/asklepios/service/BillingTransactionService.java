@@ -120,6 +120,25 @@ public class BillingTransactionService {
             BillingEventType eventType,
             String requestId
     ) {
+        return createPatientItemBilling(
+                patientServiceProductId,
+                billingRule,
+                pricingInput,
+                eventType,
+                requestId,
+                false
+        );
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public BillingOperationResult createPatientItemBilling(
+            Long patientServiceProductId,
+            BillingRuleResolveResponse billingRule,
+            BillingPricingInput pricingInput,
+            BillingEventType eventType,
+            String requestId,
+            boolean skipAdvanceReservation
+    ) {
         validateCreateInput(
                 patientServiceProductId,
                 billingRule,
@@ -192,10 +211,15 @@ public class BillingTransactionService {
          * 6. Reserve any available advance balance against the
          * patient responsibility. This moves wallet funds from
          * available to reserved only; it does not allocate or consume.
+         *
+         * Skipped when billing is triggered during explicit payment
+         * collection so the payment flow controls wallet movement.
          */
-        reserveAdvanceBalance(
-                context
-        );
+        if (!skipAdvanceReservation) {
+            reserveAdvanceBalance(
+                    context
+            );
+        }
 
         /*
          * 7. Record the charge creation in the financial ledger.

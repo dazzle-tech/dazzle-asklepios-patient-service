@@ -3,6 +3,7 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.client.setup.ServiceClient;
 import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
 import com.dazzle.asklepios.domain.BillingChargeLine;
+import com.dazzle.asklepios.domain.BillingPricingSnapshot;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
@@ -13,7 +14,10 @@ import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPricingSnapshotStatus;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
+import com.dazzle.asklepios.repository.BillingPricingSnapshotRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -62,6 +66,7 @@ public class DefaultServicePreparationService {
     private final PatientInsuranceRepository patientInsuranceRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final BillingChargeLineRepository billingChargeLineRepository;
+    private final BillingPricingSnapshotRepository billingPricingSnapshotRepository;
     private final ServiceClient serviceClient;
     private final BillingEngineService billingEngineService;
 
@@ -118,19 +123,43 @@ public class DefaultServicePreparationService {
             BillingOperationResult billingResult;
 
             if (existingChargeLine.isPresent()) {
-                LOG.info(
-                        "[PREPARE_DEFAULT_SERVICES] Skipping duplicate billing "
-                                + "pspId={} chargeLineId={} encounterId={}",
-                        item.getId(),
-                        existingChargeLine.get().getId(),
-                        encounterId
-                );
+                BillingChargeLine chargeLine =
+                        existingChargeLine.get();
 
-                billingResult =
-                        toExistingBillingResult(
-                                item,
-                                existingChargeLine.get()
-                        );
+                if (shouldRepriceExistingChargeLine(chargeLine)) {
+                    LOG.info(
+                            "[PREPARE_DEFAULT_SERVICES] Repricing existing setup-fallback "
+                                    + "charge line pspId={} chargeLineId={} encounterId={}",
+                            item.getId(),
+                            chargeLine.getId(),
+                            encounterId
+                    );
+
+                    billingResult =
+                            billingEngineService.reprice(
+                                    item.getId(),
+                                    request.facilityId(),
+                                    request.requestId().trim()
+                                            + ":REPRICE:"
+                                            + requestedItem.sequence()
+                                            + ":"
+                                            + requestedItem.serviceId()
+                            );
+                } else {
+                    LOG.info(
+                            "[PREPARE_DEFAULT_SERVICES] Skipping duplicate billing "
+                                    + "pspId={} chargeLineId={} encounterId={}",
+                            item.getId(),
+                            chargeLine.getId(),
+                            encounterId
+                    );
+
+                    billingResult =
+                            toExistingBillingResult(
+                                    item,
+                                    chargeLine
+                            );
+                }
             } else {
                 String itemRequestId =
                         request.requestId().trim()
@@ -140,8 +169,9 @@ public class DefaultServicePreparationService {
                                 + requestedItem.serviceId();
 
                 billingResult =
-                        billingEngineService.onEncounterCreated(
+                        billingEngineService.processWithEventFallback(
                                 item.getId(),
+                                encounterId,
                                 request.facilityId(),
                                 itemRequestId
                         );
@@ -183,7 +213,7 @@ public class DefaultServicePreparationService {
                 processed,
                 processed
                         ? "Default services prepared successfully."
-                        : "Default services were prepared, but one or more billing rules did not match the encounter-created event."
+                        : "Default services were prepared, but one or more billing rules could not be matched."
         );
     }
 
@@ -195,6 +225,24 @@ public class DefaultServicePreparationService {
                         patientServiceProductId,
                         EXCLUDED_CHARGE_LINE_STATUSES
                 );
+    }
+
+    private boolean shouldRepriceExistingChargeLine(
+            BillingChargeLine chargeLine
+    ) {
+        if (chargeLine.getAllocatedAmount() != null
+                && chargeLine.getAllocatedAmount().signum() > 0) {
+            return false;
+        }
+
+        return billingPricingSnapshotRepository
+                .findTopByChargeLine_IdAndStatusOrderByIdDesc(
+                        chargeLine.getId(),
+                        BillingPricingSnapshotStatus.ACTIVE
+                )
+                .map(BillingPricingSnapshot::getPriceSource)
+                .map(BillingPriceSource.SETUP_FALLBACK::equals)
+                .orElse(false);
     }
 
     private BillingOperationResult toExistingBillingResult(

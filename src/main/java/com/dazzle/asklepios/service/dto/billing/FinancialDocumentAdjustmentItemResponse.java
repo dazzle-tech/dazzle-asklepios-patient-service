@@ -24,6 +24,12 @@ public record FinancialDocumentAdjustmentItemResponse(
 
         BigDecimal unitPrice,
 
+        BigDecimal grossAmount,
+
+        BigDecimal discountAmount,
+
+        BigDecimal taxAmount,
+
         BigDecimal netAmount,
 
         Currency currency

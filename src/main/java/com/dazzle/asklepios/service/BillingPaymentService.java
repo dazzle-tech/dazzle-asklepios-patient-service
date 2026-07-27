@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.BillingAllocation;
+import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingPayment;
 import com.dazzle.asklepios.domain.BillingPaymentTransaction;
 import com.dazzle.asklepios.domain.BillingReservation;
@@ -13,8 +15,10 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerScope;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerSourceChannel;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerTransactionType;
 import com.dazzle.asklepios.domain.enumeration.billing.PaymentCategory;
+import com.dazzle.asklepios.repository.BillingAllocationRepository;
 import com.dazzle.asklepios.repository.BillingPaymentRepository;
 import com.dazzle.asklepios.repository.BillingPaymentTransactionRepository;
+import com.dazzle.asklepios.repository.BillingReservationRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
@@ -66,6 +70,12 @@ public class BillingPaymentService {
 
     private final BillingPaymentTransactionRepository
             billingPaymentTransactionRepository;
+
+    private final BillingReservationRepository
+            billingReservationRepository;
+
+    private final BillingAllocationRepository
+            billingAllocationRepository;
 
     private final PatientRepository
             patientRepository;
@@ -171,29 +181,89 @@ public class BillingPaymentService {
                         payment
                 );
 
-        /*
-         * External payments credit the wallet.
-         * Wallet-category payments consume existing available balance instead.
-         */
+        List<BillingPaymentReservationResult>
+                reservationResults;
+
         BillingWallet walletAfterPayment;
+        BigDecimal walletMovementAmount = money(request.amount());
 
         if (PaymentCategory.WALLET.equals(request.paymentCategory())) {
-            walletAfterPayment =
-                    billingWalletService.consumeAvailable(
-                            wallet,
-                            request.amount()
+            /*
+             * Wallet-advance payments move available balance to reserved
+             * through BillingReservationService#reserve, same as cash
+             * payments after credit — without adding new funds first.
+             */
+            reservationResults =
+                    createServiceReservations(
+                            request,
+                            payment,
+                            paymentTransaction
                     );
 
-            recordWalletPaymentLedger(
-                    payment,
-                    paymentTransaction,
-                    walletAfterPayment,
-                    money(request.amount()),
-                    walletAvailableBefore,
-                    walletReservedBefore,
-                    transactionGroupId,
-                    request.requestId()
-            );
+            walletMovementAmount =
+                    reservationResults.stream()
+                            .map(
+                                    BillingPaymentReservationResult::
+                                            reservedAmount
+                            )
+                            .map(this::money)
+                            .reduce(
+                                    zero(),
+                                    BigDecimal::add
+                            );
+
+            if (walletMovementAmount.signum() <= 0) {
+                if (isPatientLevelPayment(request)) {
+                    /*
+                     * Invoice balance and other document-level wallet
+                     * payments have no PSP lines — consume available
+                     * balance directly instead of service reservations.
+                     */
+                    BigDecimal amountToConsume =
+                            money(request.amount());
+
+                    walletAfterPayment =
+                            billingWalletService.consumeAvailable(
+                                    wallet,
+                                    amountToConsume
+                            );
+
+                    recordWalletPaymentLedger(
+                            payment,
+                            paymentTransaction,
+                            walletAfterPayment,
+                            amountToConsume,
+                            walletAvailableBefore,
+                            walletReservedBefore,
+                            transactionGroupId,
+                            request.requestId()
+                    );
+
+                    walletMovementAmount = amountToConsume;
+                } else {
+                    throw new BadRequestAlertException(
+                            "No service balance could be reserved from the wallet payment. "
+                                    + "Select lines with an outstanding patient balance, "
+                                    + "or run Prepare & calculate for unbilled services first.",
+                            ENTITY_NAME,
+                            "payment.wallet.noReservation"
+                    );
+                }
+            } else {
+                if (walletMovementAmount.compareTo(money(request.amount())) > 0) {
+                    throw new BadRequestAlertException(
+                            "Reserved amount exceeds the wallet payment amount.",
+                            ENTITY_NAME,
+                            "payment.wallet.exceedsAmount"
+                    );
+                }
+
+                walletAfterPayment =
+                        billingWalletService.lockWallet(
+                                request.patientId(),
+                                request.currency()
+                        );
+            }
         } else {
             walletAfterPayment =
                     billingWalletService.credit(
@@ -212,27 +282,28 @@ public class BillingPaymentService {
                     transactionGroupId,
                     request.requestId()
             );
+
+            reservationResults =
+                    createServiceReservations(
+                            request,
+                            payment,
+                            paymentTransaction
+                    );
         }
 
-        List<BillingPaymentReservationResult>
-                reservationResults =
-                createServiceReservations(
-                        request,
-                        payment,
-                        paymentTransaction
-                );
-
         BigDecimal totalReserved =
-                reservationResults.stream()
-                        .map(
-                                BillingPaymentReservationResult::
-                                        reservedAmount
-                        )
-                        .map(this::money)
-                        .reduce(
-                                zero(),
-                                BigDecimal::add
-                        );
+                PaymentCategory.WALLET.equals(request.paymentCategory())
+                        ? walletMovementAmount
+                        : reservationResults.stream()
+                                .map(
+                                        BillingPaymentReservationResult::
+                                                reservedAmount
+                                )
+                                .map(this::money)
+                                .reduce(
+                                        zero(),
+                                        BigDecimal::add
+                                );
 
         BillingWallet finalWallet =
                 billingWalletService.lockWallet(
@@ -619,54 +690,15 @@ public class BillingPaymentService {
             BillingPayment payment,
             BillingPaymentTransaction paymentTransaction
     ) {
-        List<Long> requestedItemIds =
-                request.patientServiceProductIds();
+        List<PatientServiceAndProduct> items =
+                loadReservationItems(request);
 
-        if (requestedItemIds == null
-                || requestedItemIds.isEmpty()) {
-
+        if (items.isEmpty()) {
             /*
              * Patient-level advance:
              * no reservation is created.
              */
             return List.of();
-        }
-
-        Set<Long> uniqueItemIds =
-                new LinkedHashSet<>(
-                        requestedItemIds
-                );
-
-        List<PatientServiceAndProduct> loadedItems =
-                patientServiceAndProductRepository
-                        .findAllById(uniqueItemIds);
-
-        java.util.Map<Long, PatientServiceAndProduct> itemById =
-                loadedItems.stream()
-                        .collect(
-                                java.util.stream.Collectors.toMap(
-                                        PatientServiceAndProduct::getId,
-                                        item -> item
-                                )
-                        );
-
-        /*
-         * Preserve the exact PSP order supplied by the caller.
-         * The prepare-default-services response returns PSP IDs in
-         * selected-service sequence order, so this becomes the service FIFO.
-         */
-        List<PatientServiceAndProduct> items =
-                uniqueItemIds.stream()
-                        .map(itemById::get)
-                        .filter(java.util.Objects::nonNull)
-                        .toList();
-
-        if (items.size() != uniqueItemIds.size()) {
-            throw new BadRequestAlertException(
-                    "One or more patient service/product records were not found.",
-                    ENTITY_NAME,
-                    "patientServiceProduct.notfound"
-            );
         }
 
         List<BillingPaymentReservationResult> results =
@@ -733,6 +765,13 @@ public class BillingPaymentService {
                                     .getRemainingReservedAmount()
                     );
 
+            BigDecimal originalReservedAmount =
+                    reservation == null
+                            ? patientAmount
+                            : money(
+                            reservation.getOriginalReservedAmount()
+                    );
+
             BigDecimal uncoveredAmount =
                     patientAmount
                             .subtract(
@@ -741,17 +780,15 @@ public class BillingPaymentService {
                             .max(zero());
 
             results.add(
-                    new BillingPaymentReservationResult(
-                            item.getId(),
+                    toReservationResult(
+                            item,
                             reservation == null
                                     ? null
-                                    : reservation.getId(),
-                            reservation == null
-                                    ? null
-                                    : reservation
-                                    .getReservationNumber(),
+                                    : reservation.getChargeLine(),
+                            reservation == null ? null : reservation.getId(),
+                            reservation == null ? null : reservation.getReservationNumber(),
                             patientAmount,
-                            reservedAmount,
+                            originalReservedAmount,
                             uncoveredAmount,
                             uncoveredAmount.signum() == 0
                     )
@@ -759,6 +796,57 @@ public class BillingPaymentService {
         }
 
         return results;
+    }
+
+    private List<PatientServiceAndProduct> loadReservationItems(
+            CreateAdvancePaymentRequest request
+    ) {
+        List<Long> requestedItemIds =
+                request.patientServiceProductIds();
+
+        if (requestedItemIds == null
+                || requestedItemIds.isEmpty()) {
+            return List.of();
+        }
+
+        Set<Long> uniqueItemIds =
+                new LinkedHashSet<>(
+                        requestedItemIds
+                );
+
+        List<PatientServiceAndProduct> loadedItems =
+                patientServiceAndProductRepository
+                        .findAllById(uniqueItemIds);
+
+        java.util.Map<Long, PatientServiceAndProduct> itemById =
+                loadedItems.stream()
+                        .collect(
+                                java.util.stream.Collectors.toMap(
+                                        PatientServiceAndProduct::getId,
+                                        item -> item
+                                )
+                        );
+
+        /*
+         * Preserve the exact PSP order supplied by the caller.
+         * The prepare-default-services response returns PSP IDs in
+         * selected-service sequence order, so this becomes the service FIFO.
+         */
+        List<PatientServiceAndProduct> items =
+                uniqueItemIds.stream()
+                        .map(itemById::get)
+                        .filter(java.util.Objects::nonNull)
+                        .toList();
+
+        if (items.size() != uniqueItemIds.size()) {
+            throw new BadRequestAlertException(
+                    "One or more patient service/product records were not found.",
+                    ENTITY_NAME,
+                    "patientServiceProduct.notfound"
+            );
+        }
+
+        return items;
     }
 
     /**
@@ -927,8 +1015,133 @@ public class BillingPaymentService {
                 transaction,
                 wallet,
                 money(wallet.getReservedBalance()),
-                List.of()
+                loadPaymentReservations(payment)
         );
+    }
+
+    private List<BillingPaymentReservationResult> loadPaymentReservations(
+            BillingPayment payment
+    ) {
+        List<BillingPaymentReservationResult> reservations =
+                billingReservationRepository
+                        .findAllByPayment_IdOrderByIdAsc(payment.getId())
+                        .stream()
+                        .map(reservation -> {
+                            PatientServiceAndProduct item =
+                                    reservation.getPatientServiceProduct();
+
+                            BigDecimal paidAmount =
+                                    money(
+                                            reservation.getOriginalReservedAmount()
+                                    );
+
+                            BigDecimal remainingAmount =
+                                    money(
+                                            reservation.getRemainingReservedAmount()
+                                    );
+
+                            BigDecimal uncoveredAmount =
+                                    paidAmount
+                                            .subtract(remainingAmount)
+                                            .max(zero());
+
+                            return toReservationResult(
+                                    item,
+                                    reservation.getChargeLine(),
+                                    reservation.getId(),
+                                    reservation.getReservationNumber(),
+                                    paidAmount,
+                                    paidAmount,
+                                    uncoveredAmount,
+                                    uncoveredAmount.signum() == 0
+                            );
+                        })
+                        .filter(result ->
+                                result.patientResponsibilityAmount().signum() > 0
+                        )
+                        .toList();
+
+        if (!reservations.isEmpty()) {
+            return reservations;
+        }
+
+        return billingAllocationRepository
+                .findAllByPayment_IdOrderByAllocationDateAscIdAsc(payment.getId())
+                .stream()
+                .map(this::toReservationResultFromAllocation)
+                .filter(result ->
+                        result.patientResponsibilityAmount().signum() > 0
+                )
+                .toList();
+    }
+
+    private BillingPaymentReservationResult toReservationResultFromAllocation(
+            BillingAllocation allocation
+    ) {
+        BigDecimal paidAmount = money(allocation.getAllocatedAmount());
+
+        return toReservationResult(
+                allocation.getPatientServiceProduct(),
+                allocation.getChargeLine(),
+                allocation.getReservation() != null
+                        ? allocation.getReservation().getId()
+                        : null,
+                allocation.getReservation() != null
+                        ? allocation.getReservation().getReservationNumber()
+                        : allocation.getAllocationNumber(),
+                paidAmount,
+                paidAmount,
+                zero(),
+                true
+        );
+    }
+
+    private BillingPaymentReservationResult toReservationResult(
+            PatientServiceAndProduct item,
+            BillingChargeLine chargeLine,
+            Long reservationId,
+            String reservationNumber,
+            BigDecimal patientResponsibilityAmount,
+            BigDecimal reservedAmount,
+            BigDecimal uncoveredAmount,
+            boolean fullyReserved
+    ) {
+        String itemDescription =
+                firstNonBlank(
+                        chargeLine != null ? chargeLine.getItemDescription() : null,
+                        chargeLine != null ? chargeLine.getItemCode() : null
+                );
+
+        String billingItemType =
+                item != null && item.getBillingItemType() != null
+                        ? item.getBillingItemType().name()
+                        : null;
+
+        return new BillingPaymentReservationResult(
+                item != null ? item.getId() : null,
+                reservationId,
+                reservationNumber,
+                itemDescription,
+                billingItemType,
+                patientResponsibilityAmount,
+                reservedAmount,
+                uncoveredAmount,
+                fullyReserved
+        );
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+
+        return null;
     }
 
     private BillingPaymentResult buildResult(
@@ -1230,6 +1443,13 @@ public class BillingPaymentService {
                 .replace("-", "")
                 .substring(0, 16)
                 .toUpperCase();
+    }
+
+    private boolean isPatientLevelPayment(
+            CreateAdvancePaymentRequest request
+    ) {
+        return request.patientServiceProductIds() == null
+                || request.patientServiceProductIds().isEmpty();
     }
 
     private BigDecimal money(

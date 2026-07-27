@@ -190,27 +190,12 @@ public class BillingReservationService {
                         payment
                 );
 
-        boolean walletPaymentAlreadyConsumed =
-                PaymentCategory.WALLET.equals(
-                        payment.getPaymentCategory()
+        BigDecimal reservationAmount =
+                minimum(
+                        remainingRequired,
+                        walletAvailable,
+                        paymentAvailable
                 );
-
-        BigDecimal reservationAmount;
-
-        if (walletPaymentAlreadyConsumed) {
-            reservationAmount =
-                    minimum(
-                            remainingRequired,
-                            paymentAvailable
-                    );
-        } else {
-            reservationAmount =
-                    minimum(
-                            remainingRequired,
-                            walletAvailable,
-                            paymentAvailable
-                    );
-        }
 
         if (reservationAmount.signum() == 0) {
             LOG.info(
@@ -232,17 +217,11 @@ public class BillingReservationService {
         BigDecimal walletReservedBefore =
                 money(wallet.getReservedBalance());
 
-        BillingWallet updatedWallet;
-
-        if (walletPaymentAlreadyConsumed) {
-            updatedWallet = wallet;
-        } else {
-            updatedWallet =
-                    billingWalletService.reserve(
-                            wallet,
-                            reservationAmount
-                    );
-        }
+        BillingWallet updatedWallet =
+                billingWalletService.reserve(
+                        wallet,
+                        reservationAmount
+                );
 
         BillingReservation reservation =
                 BillingReservation.builder()
@@ -334,15 +313,13 @@ public class BillingReservationService {
                     )
             );
 
-            if (!walletPaymentAlreadyConsumed) {
-                recordReservationCreatedLedger(
-                        saved,
-                        updatedWallet,
-                        reservationAmount,
-                        walletAvailableBefore,
-                        walletReservedBefore
-                );
-            }
+            recordReservationCreatedLedger(
+                    saved,
+                    updatedWallet,
+                    reservationAmount,
+                    walletAvailableBefore,
+                    walletReservedBefore
+            );
 
             LOG.info(
                     "[RESERVE] Reservation created "

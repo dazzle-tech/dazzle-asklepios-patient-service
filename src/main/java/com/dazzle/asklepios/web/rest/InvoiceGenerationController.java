@@ -79,6 +79,20 @@ public class InvoiceGenerationController {
         );
     }
 
+    @GetMapping("/patients/{patientId}/documents")
+    public ResponseEntity<List<PatientFinancialDocumentResponse>> getPatientFinancialDocuments(
+            @PathVariable("patientId") @NotNull Long patientId
+    ) {
+        LOG.debug(
+                "REST request patient financial documents patientId={}",
+                patientId
+        );
+
+        return ResponseEntity.ok(
+                invoiceGenerationService.listPatientFinancialDocuments(patientId)
+        );
+    }
+
     @PostMapping("/encounters/{encounterId}/financial-close")
     public ResponseEntity<FinancialCloseResult> financialClose(
             @PathVariable("encounterId") @NotNull Long encounterId,

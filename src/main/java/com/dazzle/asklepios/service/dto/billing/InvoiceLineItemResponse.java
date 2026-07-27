@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.enumeration.FinancialDocumentItemAdjustmentAc
 
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.util.List;
 
 public record InvoiceLineItemResponse(
 
@@ -36,7 +37,62 @@ public record InvoiceLineItemResponse(
 
         String status,
 
-        Currency currency
+        Currency currency,
+
+        List<InvoiceLineAppliedDiscount> appliedDiscounts,
+
+        List<InvoiceLineAppliedTax> appliedTaxes,
+
+        /** INVOICE or DEBIT_NOTE — debit-note lines can be credited when invoice lines are fully paid. */
+        String lineSource
 
 ) implements Serializable {
+
+    public record InvoiceLineAppliedDiscount(
+
+            String source,
+
+            Long ruleId,
+
+            String code,
+
+            String name,
+
+            String applicableOn,
+
+            String discountType,
+
+            BigDecimal rate,
+
+            BigDecimal fixedAmount,
+
+            BigDecimal appliedAmount
+
+    ) implements Serializable {
+    }
+
+    public record InvoiceLineAppliedTax(
+
+            String source,
+
+            Long ruleId,
+
+            String code,
+
+            String name,
+
+            String applicableOn,
+
+            String taxType,
+
+            String calculationType,
+
+            BigDecimal rate,
+
+            BigDecimal fixedAmount,
+
+            BigDecimal appliedAmount
+
+    ) implements Serializable {
+    }
 }

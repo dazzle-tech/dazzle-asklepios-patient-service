@@ -48,6 +48,7 @@ import com.dazzle.asklepios.service.dto.billing.FinancialDocumentAdjustmentRespo
 import com.dazzle.asklepios.service.dto.billing.InvoiceAdjustmentSummaryResponse;
 import com.dazzle.asklepios.service.dto.billing.InvoiceLineAdjustmentRequest;
 import com.dazzle.asklepios.service.dto.billing.InvoiceLineItemResponse;
+import com.dazzle.asklepios.service.dto.billing.InvoiceItemPricingAdjustmentSnapshot;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -59,8 +60,9 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDate;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -132,17 +134,40 @@ public class FinancialDocumentAdjustmentService {
     private final BillingLedgerService billingLedgerService;
     private final BillingLedgerRepository billingLedgerRepository;
     private final BillingDebitService billingDebitService;
+    private final InvoiceItemPricingSnapshotService invoiceItemPricingSnapshotService;
+    private final InvoiceApplicableOnAdjustmentService invoiceApplicableOnAdjustmentService;
 
     @Transactional(readOnly = true)
     public List<InvoiceLineItemResponse> listInvoiceLineItems(Long invoiceId) {
         FinancialDocument invoice = loadInvoice(invoiceId);
-        List<FinancialDocumentItem> items = itemRepo.findByDocument_Id(invoiceId);
         Map<Long, BillingChargeLine> chargeLinesByPsp = loadChargeLinesByPsp(invoice.getEncounterId());
 
-        return items.stream()
+        List<InvoiceLineItemResponse> responses = new ArrayList<>();
+        itemRepo.findByDocument_Id(invoiceId).stream()
                 .sorted(Comparator.comparing(FinancialDocumentItem::getId))
-                .map(item -> toInvoiceLineItemResponse(item, chargeLinesByPsp))
-                .toList();
+                .forEach(item ->
+                        responses.add(
+                                toInvoiceLineItemResponse(item, chargeLinesByPsp, "INVOICE")
+                        )
+                );
+
+        documentRepo.findAllByParentDocumentId(invoiceId).stream()
+                .filter(child -> child.getDocumentType() == FinancialDocumentType.DEBIT_NOTE)
+                .forEach(debitNote ->
+                        itemRepo.findByDocument_Id(debitNote.getId()).stream()
+                                .sorted(Comparator.comparing(FinancialDocumentItem::getId))
+                                .forEach(item ->
+                                        responses.add(
+                                                toInvoiceLineItemResponse(
+                                                        item,
+                                                        chargeLinesByPsp,
+                                                        "DEBIT_NOTE"
+                                                )
+                                        )
+                                )
+                );
+
+        return responses;
     }
 
     @Transactional(readOnly = true)
@@ -178,6 +203,7 @@ public class FinancialDocumentAdjustmentService {
 
     public InvoiceAdjustmentSummaryResponse getInvoiceAdjustmentSummary(Long invoiceId) {
         reconcileMissingCreditNoteFinancialAdjustments(invoiceId);
+        reconcileCreditNoteChargeLineSync(invoiceId);
 
         FinancialDocument invoice = loadInvoice(invoiceId);
 
@@ -185,7 +211,25 @@ public class FinancialDocumentAdjustmentService {
 
         BigDecimal totalCreditNotes = sumByType(children, FinancialDocumentType.CREDIT_NOTE);
         BigDecimal totalDebitNotes = sumByType(children, FinancialDocumentType.DEBIT_NOTE);
-        BigDecimal totalPaid = safe(allocationRepo.sumPaidByDocument(invoiceId));
+        BigDecimal invoiceItemPaid =
+                itemRepo.findByDocument_Id(invoiceId)
+                        .stream()
+                        .map(FinancialDocumentItem::getPaidAmount)
+                        .map(this::safe)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal debitNoteItemPaid =
+                children.stream()
+                        .filter(child -> child.getDocumentType() == FinancialDocumentType.DEBIT_NOTE)
+                        .flatMap(child -> itemRepo.findByDocument_Id(child.getId()).stream())
+                        .map(FinancialDocumentItem::getPaidAmount)
+                        .map(this::safe)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalPaid =
+                invoiceItemPaid
+                        .add(debitNoteItemPaid)
+                        .max(safe(allocationRepo.sumPaidByDocument(invoiceId)));
         BigDecimal outstanding = balanceService.calculateOutstanding(invoiceId);
 
         List<FinancialDocumentAdjustmentResponse> adjustments = children.stream()
@@ -282,10 +326,7 @@ public class FinancialDocumentAdjustmentService {
         String reason = normalizeReason(request.reason());
         validateAdjustmentLines(request.lines(), allowedActions);
 
-        List<FinancialDocumentItem> invoiceItems = itemRepo.findByDocument_Id(invoiceId);
-        Map<Long, FinancialDocumentItem> invoiceItemsById =
-                invoiceItems.stream()
-                        .collect(Collectors.toMap(FinancialDocumentItem::getId, Function.identity()));
+        Map<Long, FinancialDocumentItem> invoiceItemsById = loadCreditableItemsById(invoiceId);
 
         List<PreparedAdjustmentLine> preparedLines = new ArrayList<>();
         for (InvoiceLineAdjustmentRequest lineRequest : request.lines()) {
@@ -328,13 +369,27 @@ public class FinancialDocumentAdjustmentService {
                 buildAdjustmentDocument(invoice, documentType, totalAmount, reason)
         );
 
-        List<FinancialDocumentItem> savedItems = new ArrayList<>();
+        List<FinancialDocumentItem> draftItems = new ArrayList<>();
         for (PreparedAdjustmentLine preparedLine : preparedLines) {
-            FinancialDocumentItem item = buildAdjustmentItem(
-                    adjustmentDocument,
-                    invoice,
-                    preparedLine
+            draftItems.add(
+                    buildAdjustmentItem(adjustmentDocument, invoice, preparedLine)
             );
+        }
+
+        if (documentType == FinancialDocumentType.DEBIT_NOTE) {
+            applyDebitNoteApplicableOnAdjustments(invoice, draftItems);
+            totalAmount = draftItems.stream()
+                    .map(FinancialDocumentItem::getNetAmount)
+                    .map(this::money)
+                    .reduce(ZERO, BigDecimal::add);
+            adjustmentDocument.setTotalAmount(totalAmount);
+            documentRepo.save(adjustmentDocument);
+        }
+
+        List<FinancialDocumentItem> savedItems = new ArrayList<>();
+        for (int index = 0; index < preparedLines.size(); index++) {
+            PreparedAdjustmentLine preparedLine = preparedLines.get(index);
+            FinancialDocumentItem item = draftItems.get(index);
             savedItems.add(itemRepo.save(item));
 
             if (preparedLine.originalItem() != null && documentType == FinancialDocumentType.CREDIT_NOTE) {
@@ -566,7 +621,7 @@ public class FinancialDocumentAdjustmentService {
 
         BigDecimal quantity = requireQuantity(request.quantity());
         BigDecimal unitPrice = requireUnitPrice(request.unitPrice());
-        Currency currency = request.currency() != null ? request.currency() : invoice.getCurrency();
+        Currency currency = invoice.getCurrency();
         if (currency == null) {
             throw new BadRequestAlertException(
                     "Currency is required when adding a new service",
@@ -725,6 +780,44 @@ public class FinancialDocumentAdjustmentService {
         );
     }
 
+    private void applyDebitNoteApplicableOnAdjustments(
+            FinancialDocument invoice,
+            List<FinancialDocumentItem> items
+    ) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+
+        Long facilityId =
+                patientEncounterRepository
+                        .findById(invoice.getEncounterId())
+                        .map(PatientEncounter::getFacilityId)
+                        .orElse(null);
+
+        if (facilityId == null) {
+            LOG.warn(
+                    "[DEBIT_NOTE] Skipping invoice tax/discount — encounter {} has no facility",
+                    invoice.getEncounterId()
+            );
+            return;
+        }
+
+        LocalDate pricingDate =
+                invoice.getCreatedDate() != null
+                        ? invoice.getCreatedDate()
+                                .atZone(ZoneOffset.UTC)
+                                .toLocalDate()
+                        : LocalDate.now();
+
+        invoiceItemPricingSnapshotService.captureChargeLineSnapshots(items);
+        invoiceApplicableOnAdjustmentService.applyApplicableOnAdjustments(
+                items,
+                facilityId,
+                invoice.getCurrency(),
+                pricingDate
+        );
+    }
+
     private FinancialDocumentItem buildAdjustmentItem(
             FinancialDocument document,
             FinancialDocument invoice,
@@ -806,6 +899,141 @@ public class FinancialDocumentAdjustmentService {
         }
 
         itemRepo.save(originalItem);
+
+        syncCreditNoteToChargeLine(originalItem, creditAmount);
+    }
+
+    private void syncCreditNoteToChargeLine(
+            FinancialDocumentItem creditedItem,
+            BigDecimal creditAmount
+    ) {
+        Long chargeLineId = creditedItem.getBillingChargeLineId();
+
+        if (chargeLineId == null
+                && creditedItem.getPatientServiceProductId() != null) {
+            chargeLineId =
+                    chargeLineRepo
+                            .findFirstByPatientServiceProduct_IdAndStatusNotInOrderByIdAsc(
+                                    creditedItem.getPatientServiceProductId(),
+                                    EXCLUDED_LINE_STATUSES
+                            )
+                            .map(BillingChargeLine::getId)
+                            .orElse(null);
+        }
+
+        if (chargeLineId == null) {
+            return;
+        }
+
+        billingChargeService.applyCreditNoteChargeLineSync(
+                chargeLineId,
+                creditAmount,
+                money(creditedItem.getNetAmount())
+        );
+    }
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void reconcileCreditNoteChargeLineSyncForEncounter(Long encounterId) {
+        if (encounterId == null) {
+            return;
+        }
+
+        documentRepo
+                .findFirstByEncounterIdAndDocumentTypeOrderByIdDesc(
+                        encounterId,
+                        FinancialDocumentType.INVOICE
+                )
+                .ifPresent(invoice ->
+                        reconcileCreditNoteChargeLineSync(
+                                invoice.getId()
+                        )
+                );
+    }
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void reconcileCreditNoteChargeLineSync(Long invoiceId) {
+        FinancialDocument invoice = documentRepo.findById(invoiceId).orElse(null);
+        if (invoice == null) {
+            return;
+        }
+
+        List<FinancialDocument> creditNotes =
+                documentRepo.findAllByParentDocumentId(invoiceId).stream()
+                        .filter(document ->
+                                document.getDocumentType()
+                                        == FinancialDocumentType.CREDIT_NOTE
+                        )
+                        .toList();
+
+        for (FinancialDocument creditNote : creditNotes) {
+            itemRepo.findByDocument_Id(creditNote.getId()).forEach(
+                    creditItem -> {
+                        FinancialDocumentItem sourceItem =
+                                resolveCreditedSourceItem(creditItem);
+                        if (sourceItem == null) {
+                            return;
+                        }
+
+                        Long chargeLineId =
+                                sourceItem.getBillingChargeLineId();
+                        if (chargeLineId == null
+                                && sourceItem.getPatientServiceProductId() != null) {
+                            chargeLineId =
+                                    chargeLineRepo
+                                            .findFirstByPatientServiceProduct_IdAndStatusNotInOrderByIdAsc(
+                                                    sourceItem.getPatientServiceProductId(),
+                                                    EXCLUDED_LINE_STATUSES
+                                            )
+                                            .map(BillingChargeLine::getId)
+                                            .orElse(null);
+                        }
+
+                        if (chargeLineId == null) {
+                            return;
+                        }
+
+                        BillingChargeLine chargeLine =
+                                chargeLineRepo.findById(chargeLineId).orElse(null);
+                        if (chargeLine == null) {
+                            return;
+                        }
+
+                        BigDecimal chargeExposure =
+                                money(
+                                        chargeLine.getPatientResponsibilityAmount()
+                                );
+
+                        if (chargeExposure.signum() <= 0) {
+                            return;
+                        }
+
+                        BigDecimal creditApplied =
+                                money(creditItem.getNetAmount());
+
+                        if (creditApplied.signum() <= 0) {
+                            return;
+                        }
+
+                        billingChargeService.applyCreditNoteChargeLineSync(
+                                chargeLineId,
+                                creditApplied,
+                                money(sourceItem.getNetAmount())
+                        );
+                    }
+            );
+        }
+    }
+
+    private FinancialDocumentItem resolveCreditedSourceItem(
+            FinancialDocumentItem creditItem
+    ) {
+        if (creditItem.getParentDocumentItemId() != null) {
+            return itemRepo
+                    .findById(creditItem.getParentDocumentItemId())
+                    .orElse(null);
+        }
+
+        return null;
     }
 
     private FinancialDocumentItem requireInvoiceItem(
@@ -890,9 +1118,12 @@ public class FinancialDocumentAdjustmentService {
 
     private InvoiceLineItemResponse toInvoiceLineItemResponse(
             FinancialDocumentItem item,
-            Map<Long, BillingChargeLine> chargeLinesByPsp
+            Map<Long, BillingChargeLine> chargeLinesByPsp,
+            String lineSource
     ) {
         BillingChargeLine chargeLine = chargeLinesByPsp.get(item.getPatientServiceProductId());
+        InvoiceItemPricingAdjustmentSnapshot snapshot =
+                invoiceItemPricingSnapshotService.readSnapshot(item);
 
         return new InvoiceLineItemResponse(
                 item.getId(),
@@ -912,8 +1143,66 @@ public class FinancialDocumentAdjustmentService {
                 item.getPaidAmount(),
                 item.getRemainingAmount(),
                 item.getStatus() != null ? item.getStatus().name() : null,
-                item.getCurrency()
+                item.getCurrency(),
+                snapshot.discounts() == null
+                        ? List.of()
+                        : snapshot.discounts().stream()
+                                .map(entry ->
+                                        new InvoiceLineItemResponse.InvoiceLineAppliedDiscount(
+                                                entry.source(),
+                                                entry.ruleId(),
+                                                entry.code(),
+                                                entry.name(),
+                                                entry.applicableOn() == null
+                                                        ? null
+                                                        : entry.applicableOn().name(),
+                                                entry.discountType() == null
+                                                        ? null
+                                                        : entry.discountType().name(),
+                                                entry.rate(),
+                                                entry.fixedAmount(),
+                                                entry.appliedAmount()
+                                        )
+                                )
+                                .toList(),
+                snapshot.taxes() == null
+                        ? List.of()
+                        : snapshot.taxes().stream()
+                                .map(entry ->
+                                        new InvoiceLineItemResponse.InvoiceLineAppliedTax(
+                                                entry.source(),
+                                                entry.ruleId(),
+                                                entry.code(),
+                                                entry.name(),
+                                                entry.applicableOn() == null
+                                                        ? null
+                                                        : entry.applicableOn().name(),
+                                                entry.taxType() == null
+                                                        ? null
+                                                        : entry.taxType().name(),
+                                                entry.calculationType() == null
+                                                        ? null
+                                                        : entry.calculationType().name(),
+                                                entry.rate(),
+                                                entry.fixedAmount(),
+                                                entry.appliedAmount()
+                                        )
+                                )
+                                .toList(),
+                lineSource
         );
+    }
+
+    private Map<Long, FinancialDocumentItem> loadCreditableItemsById(Long invoiceId) {
+        List<FinancialDocumentItem> creditable = new ArrayList<>(itemRepo.findByDocument_Id(invoiceId));
+        documentRepo.findAllByParentDocumentId(invoiceId).stream()
+                .filter(child -> child.getDocumentType() == FinancialDocumentType.DEBIT_NOTE)
+                .forEach(debitNote ->
+                        creditable.addAll(itemRepo.findByDocument_Id(debitNote.getId()))
+                );
+
+        return creditable.stream()
+                .collect(Collectors.toMap(FinancialDocumentItem::getId, Function.identity()));
     }
 
     private FinancialDocument loadInvoice(Long invoiceId) {
@@ -1498,6 +1787,9 @@ public class FinancialDocumentAdjustmentService {
                                 item.getItemDescription(),
                                 item.getQuantity(),
                                 item.getUnitPrice(),
+                                item.getGrossAmount(),
+                                item.getDiscountAmount(),
+                                item.getTaxAmount(),
                                 item.getNetAmount(),
                                 item.getCurrency()
                         ))

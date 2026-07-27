@@ -27,6 +27,7 @@ import com.dazzle.asklepios.service.dto.billing.BillingResponsibilitySummary;
 import com.dazzle.asklepios.service.dto.billing.BillingWalletSummary;
 import com.dazzle.asklepios.service.dto.billing.EncounterBillingItemSummary;
 import com.dazzle.asklepios.service.dto.billing.EncounterBillingSummary;
+import com.dazzle.asklepios.service.dto.billing.EncounterInvoiceBalance;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -88,6 +89,9 @@ public class EncounterBillingSummaryService {
 
     private final BillingItemDisplayNameService
             billingItemDisplayNameService;
+
+    private final EncounterInvoiceBalanceService
+            encounterInvoiceBalanceService;
 
     /**
      * Returns an empty summary when the encounter does not yet have a
@@ -206,6 +210,11 @@ public class EncounterBillingSummaryService {
                         charge.getId()
                 );
 
+        EncounterInvoiceBalance invoiceBalance =
+                encounterInvoiceBalanceService.resolveForEncounter(
+                        encounterId
+                );
+
         return new EncounterBillingSummary(
                 charge.getId(),
                 charge.getChargeNumber(),
@@ -234,6 +243,11 @@ public class EncounterBillingSummaryService {
                 otherPayerTotals.allocatedAmount(),
                 otherPayerTotals.outstandingAmount(),
                 wallet,
+                invoiceBalance.invoiceId(),
+                invoiceBalance.invoiceNumber(),
+                invoiceBalance.totalAmount(),
+                invoiceBalance.paidAmount(),
+                invoiceBalance.outstandingAmount(),
                 items
         );
     }
@@ -437,6 +451,11 @@ public class EncounterBillingSummaryService {
                 zero(),
                 zero(),
                 emptyWallet(null),
+                null,
+                null,
+                zero(),
+                zero(),
+                zero(),
                 List.of()
         );
     }

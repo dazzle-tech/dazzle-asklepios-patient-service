@@ -70,6 +70,30 @@ public interface PatientServiceAndProductRepository
             Long sourceId
     );
 
+    boolean existsByEncounterIdAndBillingItemTypeAndBrandMedicationId(
+            Long encounterId,
+            BillingItemTypes billingItemType,
+            Long brandMedicationId
+    );
+
+    boolean existsByEncounterIdAndBillingItemTypeAndDiagnosticTestId(
+            Long encounterId,
+            BillingItemTypes billingItemType,
+            Long diagnosticTestId
+    );
+
+    boolean existsByEncounterIdAndBillingItemTypeAndServiceId(
+            Long encounterId,
+            BillingItemTypes billingItemType,
+            Long serviceId
+    );
+
+    boolean existsByEncounterIdAndBillingItemTypeAndProcedureId(
+            Long encounterId,
+            BillingItemTypes billingItemType,
+            Long procedureId
+    );
+
     List<PatientServiceAndProduct>
     findAllByEncounterIdAndIsDefaultServiceTrueOrderByIdAsc(
             Long encounterId
