@@ -1395,11 +1395,11 @@ public class AppointmentService {
                         savedAppointment.getNote(),
 
                         savedAppointment.getStartDatetime()
-                                .atZone(java.time.ZoneId.systemDefault())
+                                .atZone(ZoneId.systemDefault())
                                 .toLocalDate(),
 
                         savedAppointment.getStartDatetime()
-                                .atZone(java.time.ZoneId.systemDefault())
+                                .atZone(ZoneId.systemDefault())
                                 .toLocalTime(),
 
                         TreatmentStatus.NEW,
@@ -1727,7 +1727,11 @@ public class AppointmentService {
 
     private Map<String, Object> buildAppointmentNotificationData(Appointment appointment, DepartmentDTO department) {
         Map<String, Object> data = new LinkedHashMap<>();
-
+        FacilityDTO facilityDTO = null;
+        if (appointment.getFacilityId() != null) {
+            facilityDTO = facilityHelper.getFacility(appointment.getFacilityId());
+        }
+        data.put("facility_name", facilityDTO != null ? facilityDTO.name() : "");
         data.put("appointment_id", appointment.getId());
         data.put("appointment_number", appointment.getId());
         data.put("department_id", appointment.getDepartmentId());
