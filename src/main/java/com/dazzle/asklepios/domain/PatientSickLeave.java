@@ -43,6 +43,6 @@ public class PatientSickLeave extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "notes", columnDefinition = "text")
     private String notes;
 
-    @Column(name = "language", length = 5)
+    @Column(name = "language", length = 20)
     private String language;
 }
