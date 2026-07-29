@@ -292,17 +292,13 @@ public class InvoiceBalancePaymentService {
         List<FinancialDocumentItem> items =
                 loadItemsForBalancePayment(invoiceId);
 
-        invoiceChargePaymentSyncService.syncPreInvoicePayments(
-                items.stream()
-                        .filter(item ->
-                                item.getDocument().getId().equals(invoiceId)
-                        )
-                        .toList()
-        );
+        invoiceChargePaymentSyncService.syncPreInvoicePayments(items);
 
         distributePayment(items, amountToCollect);
 
         financialDocumentItemRepository.saveAll(items);
+
+        invoiceChargePaymentSyncService.syncPostInvoicePayments(items);
 
 
 
@@ -395,20 +391,17 @@ public class InvoiceBalancePaymentService {
 
 
         List<FinancialDocumentItem> items =
+                loadItemsForBalancePayment(invoiceId);
 
-                financialDocumentItemRepository
+        invoiceChargePaymentSyncService.syncPreInvoicePayments(
+                items.stream()
+                        .filter(item ->
+                                item.getDocument().getId().equals(invoiceId)
+                        )
+                        .toList()
+        );
 
-                        .findByDocument_Id(invoiceId)
-
-                        .stream()
-
-                        .sorted(Comparator.comparing(FinancialDocumentItem::getId))
-
-                        .toList();
-
-
-
-        invoiceChargePaymentSyncService.syncPreInvoicePayments(items);
+        invoiceChargePaymentSyncService.syncPostInvoicePayments(items);
 
         financialDocumentItemRepository.saveAll(items);
 
@@ -580,6 +573,26 @@ public class InvoiceBalancePaymentService {
 
 
 
+        paymentLeft =
+                distributeByRemainingBalance(
+                        items.stream()
+                                .filter(item ->
+                                        money(item.getRemainingAmount()).signum() > 0
+                                )
+                                .toList(),
+                        paymentLeft
+                );
+
+
+
+        if (paymentLeft.signum() <= 0) {
+
+            return;
+
+        }
+
+
+
         List<FinancialDocumentItem> invoiceItems =
 
                 items.stream()
@@ -642,49 +655,19 @@ public class InvoiceBalancePaymentService {
 
 
 
-        for (int index = 0; index < payableItems.size(); index++) {
+        for (FinancialDocumentItem item : payableItems) {
 
-            FinancialDocumentItem item = payableItems.get(index);
+            if (paymentLeft.signum() <= 0) {
+
+                break;
+
+            }
+
+
 
             BigDecimal lineRemaining = money(item.getRemainingAmount());
 
-            boolean isLast = index == payableItems.size() - 1;
-
-
-
-            BigDecimal linePayment =
-
-                    isLast
-
-                            ? paymentLeft.min(lineRemaining)
-
-                            : amountToCollect
-
-                                    .multiply(
-
-                                            lineRemaining.divide(
-
-                                                    totalRemaining,
-
-                                                    MONEY_SCALE,
-
-                                                    RoundingMode.HALF_UP
-
-                                            )
-
-                                    )
-
-                                    .setScale(
-
-                                            MONEY_SCALE,
-
-                                            RoundingMode.HALF_UP
-
-                                    )
-
-                                    .min(lineRemaining)
-
-                                    .min(paymentLeft);
+            BigDecimal linePayment = paymentLeft.min(lineRemaining);
 
 
 

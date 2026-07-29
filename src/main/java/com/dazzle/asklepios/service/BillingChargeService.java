@@ -21,6 +21,7 @@ import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -1070,6 +1071,7 @@ public class BillingChargeService {
         chargeLine.setGrossAmount(
                 grossAmount.subtract(grossReduction).max(BigDecimal.ZERO)
         );
+        syncChargeLineUnitPriceFromGross(chargeLine);
         chargeLine.setPatientResponsibilityAmount(
                 patientResponsibility.subtract(appliedCredit)
                         .max(BigDecimal.ZERO)
@@ -1098,6 +1100,10 @@ public class BillingChargeService {
             chargeLine.setReservedAmount(BigDecimal.ZERO);
             chargeLine.setStatus(BillingChargeLineStatus.CANCELLED);
             chargeLine.setCancelledDate(Instant.now());
+            chargeLine.setCancelledBy(
+                    SecurityUtils.getCurrentUserLogin()
+                            .orElse("system")
+            );
             chargeLine.setCancellationReason(
                     "Credited via invoice adjustment."
             );
@@ -1131,6 +1137,54 @@ public class BillingChargeService {
                 chargeLine.getNetAmount(),
                 chargeLine.getPatientResponsibilityAmount(),
                 chargeLine.getOutstandingAmount()
+        );
+    }
+
+    /**
+     * Keeps {@code gross_amount = ROUND(quantity * unit_price, 4)} and
+     * {@code net_amount = gross - discount - exemption + tax} after credits
+     * change the line total.
+     */
+    private void syncChargeLineUnitPriceFromGross(
+            BillingChargeLine chargeLine
+    ) {
+        BigDecimal quantity =
+                defaultZero(chargeLine.getQuantity());
+        BigDecimal gross =
+                defaultZero(chargeLine.getGrossAmount());
+
+        if (quantity.signum() <= 0) {
+            return;
+        }
+
+        if (gross.signum() == 0) {
+            chargeLine.setUnitPrice(BigDecimal.ZERO);
+            chargeLine.setGrossAmount(BigDecimal.ZERO);
+            chargeLine.setNetAmount(BigDecimal.ZERO);
+            return;
+        }
+
+        BigDecimal unitPrice =
+                gross.divide(quantity, MONEY_SCALE, RoundingMode.HALF_UP);
+        chargeLine.setUnitPrice(unitPrice);
+        chargeLine.setGrossAmount(
+                quantity.multiply(unitPrice)
+                        .setScale(MONEY_SCALE, RoundingMode.HALF_UP)
+        );
+
+        BigDecimal discount =
+                defaultZero(chargeLine.getDiscountAmount());
+        BigDecimal exemption =
+                defaultZero(chargeLine.getExemptionAmount());
+        BigDecimal tax =
+                defaultZero(chargeLine.getTaxAmount());
+
+        chargeLine.setNetAmount(
+                defaultZero(chargeLine.getGrossAmount())
+                        .subtract(discount)
+                        .subtract(exemption)
+                        .add(tax)
+                        .max(BigDecimal.ZERO)
         );
     }
 

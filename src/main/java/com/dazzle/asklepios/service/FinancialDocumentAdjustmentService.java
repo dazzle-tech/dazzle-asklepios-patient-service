@@ -251,6 +251,7 @@ public class FinancialDocumentAdjustmentService {
                 totalDebitNotes,
                 totalPaid,
                 outstanding,
+                outstanding.signum() > 0 || hasCreditableInvoiceLines(invoiceId),
                 invoice.getCurrency(),
                 adjustments
         );
@@ -349,14 +350,21 @@ public class FinancialDocumentAdjustmentService {
 
         if (documentType == FinancialDocumentType.CREDIT_NOTE) {
             BigDecimal outstanding = balanceService.calculateOutstanding(invoiceId);
-            if (outstanding.compareTo(ZERO) <= 0) {
+            BigDecimal outstandingReduction =
+                    calculateCreditOutstandingReduction(preparedLines);
+
+            if (outstanding.compareTo(ZERO) <= 0
+                    && outstandingReduction.signum() <= 0
+                    && !hasCreditableAdjustmentLines(preparedLines)) {
                 throw new BadRequestAlertException(
                         "Invoice has no outstanding balance to credit",
                         ENTITY,
                         "adjustment.credit.noOutstanding"
                 );
             }
-            if (totalAmount.compareTo(outstanding) > 0) {
+
+            if (outstandingReduction.signum() > 0
+                    && outstandingReduction.compareTo(outstanding) > 0) {
                 throw new BadRequestAlertException(
                         "Credit amount exceeds outstanding balance",
                         ENTITY,
@@ -393,7 +401,11 @@ public class FinancialDocumentAdjustmentService {
             savedItems.add(itemRepo.save(item));
 
             if (preparedLine.originalItem() != null && documentType == FinancialDocumentType.CREDIT_NOTE) {
-                applyCreditToOriginalItem(preparedLine.originalItem(), preparedLine.amount());
+                applyCreditToOriginalItem(
+                        preparedLine.originalItem(),
+                        preparedLine.amount(),
+                        preparedLine.action() == FinancialDocumentItemAdjustmentAction.REMOVE
+                );
             }
         }
 
@@ -438,8 +450,19 @@ public class FinancialDocumentAdjustmentService {
             Map<Long, FinancialDocumentItem> invoiceItemsById
     ) {
         FinancialDocumentItem original = requireInvoiceItem(request.documentItemId(), invoiceItemsById);
-        BigDecimal creditAmount = money(original.getRemainingAmount());
-        if (creditAmount.signum() <= 0) {
+        BigDecimal netAmount = money(original.getNetAmount());
+        BigDecimal remaining = money(original.getRemainingAmount());
+        BigDecimal paid = money(original.getPaidAmount());
+
+        if (netAmount.signum() <= 0) {
+            throw new BadRequestAlertException(
+                    "Invoice line has no amount to remove",
+                    ENTITY,
+                    "adjustment.line.noRemaining"
+            );
+        }
+
+        if (remaining.signum() <= 0 && paid.signum() <= 0) {
             throw new BadRequestAlertException(
                     "Invoice line has no remaining balance to remove",
                     ENTITY,
@@ -451,12 +474,72 @@ public class FinancialDocumentAdjustmentService {
                 FinancialDocumentItemAdjustmentAction.REMOVE,
                 original,
                 null,
-                creditAmount,
+                netAmount,
                 original.getQuantity(),
                 original.getUnitPrice(),
                 resolveItemCode(original),
-                resolveItemDescription(original)
+                resolveItemDescription(original),
+                money(original.getGrossAmount()),
+                money(original.getDiscountAmount()),
+                money(original.getTaxAmount())
         );
+    }
+
+    /**
+     * Full line removal credits the entire net (with tax/discount) but only
+     * reduces invoice outstanding by the line's remaining balance.
+     */
+    private BigDecimal calculateCreditOutstandingReduction(
+            List<PreparedAdjustmentLine> preparedLines
+    ) {
+        return preparedLines.stream()
+                .map(line -> {
+                    if (line.originalItem() == null) {
+                        return line.amount();
+                    }
+
+                    if (line.action() == FinancialDocumentItemAdjustmentAction.REMOVE) {
+                        return money(line.originalItem().getRemainingAmount());
+                    }
+
+                    return line.amount();
+                })
+                .reduce(ZERO, BigDecimal::add);
+    }
+
+    private boolean hasCreditableAdjustmentLines(
+            List<PreparedAdjustmentLine> preparedLines
+    ) {
+        return preparedLines.stream().anyMatch(this::isCreditableAdjustmentLine);
+    }
+
+    private boolean isCreditableAdjustmentLine(
+            PreparedAdjustmentLine line
+    ) {
+        if (line.amount() == null || line.amount().signum() <= 0) {
+            return false;
+        }
+
+        FinancialDocumentItem original = line.originalItem();
+        if (original == null) {
+            return true;
+        }
+
+        BigDecimal remaining = money(original.getRemainingAmount());
+        BigDecimal paid = money(original.getPaidAmount());
+        BigDecimal net = money(original.getNetAmount());
+
+        return remaining.signum() > 0
+                || (net.signum() > 0 && paid.signum() > 0);
+    }
+
+    private boolean hasCreditableInvoiceLines(Long invoiceId) {
+        return loadCreditableItemsById(invoiceId).values().stream()
+                .anyMatch(item ->
+                        money(item.getRemainingAmount()).signum() > 0
+                                || (money(item.getNetAmount()).signum() > 0
+                                        && money(item.getPaidAmount()).signum() > 0)
+                );
     }
 
     private PreparedAdjustmentLine preparePartialCreditLine(
@@ -881,21 +964,36 @@ public class FinancialDocumentAdjustmentService {
 
     private void applyCreditToOriginalItem(
             FinancialDocumentItem originalItem,
-            BigDecimal creditAmount
+            BigDecimal creditAmount,
+            boolean fullLineRemoval
     ) {
-        BigDecimal remaining = money(originalItem.getRemainingAmount()).subtract(creditAmount);
-        if (remaining.signum() < 0) {
-            remaining = ZERO;
-        }
+        BigDecimal priorRemaining =
+                money(originalItem.getRemainingAmount());
+        BigDecimal paid = money(originalItem.getPaidAmount());
 
-        originalItem.setRemainingAmount(remaining);
-
-        if (remaining.signum() == 0) {
+        if (fullLineRemoval) {
+            BigDecimal paidReduction =
+                    creditAmount.subtract(priorRemaining)
+                            .max(ZERO)
+                            .min(paid);
+            originalItem.setPaidAmount(paid.subtract(paidReduction));
+            originalItem.setRemainingAmount(ZERO);
             originalItem.setStatus(FinancialDocumentItemStatus.PAID);
-        } else if (money(originalItem.getPaidAmount()).signum() > 0) {
-            originalItem.setStatus(FinancialDocumentItemStatus.PARTIALLY_PAID);
         } else {
-            originalItem.setStatus(FinancialDocumentItemStatus.PENDING);
+            BigDecimal remaining = priorRemaining.subtract(creditAmount);
+            if (remaining.signum() < 0) {
+                remaining = ZERO;
+            }
+
+            originalItem.setRemainingAmount(remaining);
+
+            if (remaining.signum() == 0) {
+                originalItem.setStatus(FinancialDocumentItemStatus.PAID);
+            } else if (paid.signum() > 0) {
+                originalItem.setStatus(FinancialDocumentItemStatus.PARTIALLY_PAID);
+            } else {
+                originalItem.setStatus(FinancialDocumentItemStatus.PENDING);
+            }
         }
 
         itemRepo.save(originalItem);

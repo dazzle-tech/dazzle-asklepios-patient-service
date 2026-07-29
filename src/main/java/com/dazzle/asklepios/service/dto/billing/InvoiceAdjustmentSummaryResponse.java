@@ -28,6 +28,8 @@ public record InvoiceAdjustmentSummaryResponse(
 
         BigDecimal outstandingBalance,
 
+        boolean creditNoteAllowed,
+
         Currency currency,
 
         List<FinancialDocumentAdjustmentResponse> adjustments
