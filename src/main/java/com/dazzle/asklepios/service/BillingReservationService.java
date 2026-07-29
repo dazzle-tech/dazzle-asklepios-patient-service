@@ -1063,6 +1063,65 @@ public class BillingReservationService {
     }
 
     /**
+     * Points active charge-line reservations at the current patient
+     * responsibility after repricing supersedes older rows.
+     */
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class
+    )
+    public void relinkActiveReservationsToPatientResponsibility(
+            BillingProcessingContext context
+    ) {
+        if (context == null
+                || context.getChargeLine() == null
+                || context.getChargeLine().getId() == null
+                || context.getPatientResponsibility() == null) {
+            return;
+        }
+
+        BillingChargeResponsibility patientResponsibility =
+                context.getPatientResponsibility();
+
+        List<BillingReservation> reservations =
+                billingReservationRepository
+                        .findAllByChargeLine_IdAndStatusOrderByIdAsc(
+                                context.getChargeLine().getId(),
+                                BillingReservationStatus.ACTIVE
+                        );
+
+        if (reservations.isEmpty()) {
+            return;
+        }
+
+        for (BillingReservation reservation : reservations) {
+            if (reservation.getChargeResponsibility() == null
+                    || !reservation
+                    .getChargeResponsibility()
+                    .getId()
+                    .equals(
+                            patientResponsibility.getId()
+                    )) {
+                reservation.setChargeResponsibility(
+                        patientResponsibility
+                );
+            }
+        }
+
+        billingReservationRepository.saveAll(
+                reservations
+        );
+
+        LOG.info(
+                "[RELINK_RESERVATIONS] Active reservations linked "
+                        + "chargeLineId={} responsibilityId={} count={}",
+                context.getChargeLine().getId(),
+                patientResponsibility.getId(),
+                reservations.size()
+        );
+    }
+
+    /**
      * Adjusts reservations after repricing.
      *
      * If the new patient responsibility is lower, release the excess.
@@ -1096,8 +1155,21 @@ public class BillingReservationService {
                 );
 
         if (currentlyReserved.compareTo(required) <= 0) {
+            updateChargeLineReservedAmount(
+                    context.getChargeLine()
+            );
+
+            updatePatientServicePaymentStatus(
+                    context.getPatientServiceProduct(),
+                    context.getChargeLine()
+            );
+
             context.setReservedAmount(
-                    currentlyReserved
+                    money(
+                            context
+                                    .getChargeLine()
+                                    .getReservedAmount()
+                    )
             );
 
             return zero();

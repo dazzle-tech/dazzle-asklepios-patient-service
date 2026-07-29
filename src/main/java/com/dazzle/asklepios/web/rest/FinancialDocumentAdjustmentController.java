@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.web.rest;
 
+import com.dazzle.asklepios.service.CatalogItemPricingPreviewService;
 import com.dazzle.asklepios.service.FinancialDocumentAdjustmentService;
 import com.dazzle.asklepios.service.InvoiceBalancePaymentService;
 import com.dazzle.asklepios.service.InvoicePricingSummaryService;
@@ -12,6 +13,8 @@ import com.dazzle.asklepios.service.dto.billing.FinancialDocumentAdjustmentRespo
 import com.dazzle.asklepios.service.dto.billing.InvoiceAdjustmentSummaryResponse;
 import com.dazzle.asklepios.service.dto.billing.InvoiceLineItemResponse;
 import com.dazzle.asklepios.service.dto.billing.InvoicePricingSummaryResponse;
+import com.dazzle.asklepios.service.dto.billing.PreviewCatalogItemPricingRequest;
+import com.dazzle.asklepios.service.dto.billing.PreviewCatalogItemPricingResult;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,6 +36,7 @@ public class FinancialDocumentAdjustmentController {
     private final FinancialDocumentAdjustmentService adjustmentService;
     private final InvoicePricingSummaryService invoicePricingSummaryService;
     private final InvoiceBalancePaymentService invoiceBalancePaymentService;
+    private final CatalogItemPricingPreviewService catalogItemPricingPreviewService;
 
     @GetMapping("/financial-documents/{invoiceId}/items")
     public List<InvoiceLineItemResponse> listInvoiceItems(@PathVariable Long invoiceId) {
@@ -54,6 +58,13 @@ public class FinancialDocumentAdjustmentController {
             @PathVariable Long invoiceId
     ) {
         return invoicePricingSummaryService.getByInvoiceId(invoiceId);
+    }
+
+    @PostMapping("/financial-documents/preview-catalog-item-pricing")
+    public PreviewCatalogItemPricingResult previewCatalogItemPricing(
+            @Valid @RequestBody PreviewCatalogItemPricingRequest request
+    ) {
+        return catalogItemPricingPreviewService.preview(request);
     }
 
     @PostMapping("/financial-documents/{invoiceId}/credit-note")

@@ -120,6 +120,8 @@ public class InvoiceGenerationService {
     private final InvoiceItemPricingSnapshotService invoiceItemPricingSnapshotService;
     private final InvoiceChargePaymentSyncService invoiceChargePaymentSyncService;
 
+    private final EncounterChargeLineEnsuringService encounterChargeLineEnsuringService;
+
     @Transactional(readOnly = true)
     public List<BillableVisitResponse> findBillableVisits(Long patientId) {
         validatePatientId(patientId);
@@ -392,6 +394,11 @@ public class InvoiceGenerationService {
                     "encounter.alreadyInvoiced"
             );
         }
+
+        encounterChargeLineEnsuringService.ensureEncounterChargeLines(
+                encounterId,
+                request.requestId()
+        );
 
         syncFinancialCloseFromCharge(encounter);
 

@@ -20,6 +20,7 @@ import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.LedgerAccount;
 import com.dazzle.asklepios.domain.enumeration.LedgerEntryType;
@@ -44,6 +45,8 @@ import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.repository.PatientWalletRepository;
 import com.dazzle.asklepios.repository.WalletTransactionRepository;
 import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
+import com.dazzle.asklepios.repository.BillingChargeRepository;
+import com.dazzle.asklepios.repository.BillingDebitAccountRepository;
 import com.dazzle.asklepios.service.dto.InsuranceSplit;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientLedgerSummaryDTO;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentCreateDTO;
@@ -107,6 +110,9 @@ public class PatientPaymentsService {
 
     private final WaseelCoverageExtractionService coverageExtractionService;
     private final BillingWalletService billingWalletService;
+    private final FinancialDocumentBalanceService financialDocumentBalanceService;
+    private final BillingChargeRepository billingChargeRepository;
+    private final BillingDebitAccountRepository billingDebitAccountRepository;
 
     private static BigDecimal nonNullAmount(BigDecimal value) {
         return value == null ? ZERO_AMOUNT : value;
@@ -1182,23 +1188,105 @@ public class PatientPaymentsService {
             );
         }
 
-        BigDecimal totalDebt =
-                nonNullAmount(chargeRepository.sumOpenRemainingByPatient(patientId));
+        BigDecimal totalDebt = resolvePatientRemainingBalance(patientId);
 
-        BigDecimal walletBalance = resolveBillingWalletAvailableBalance(patientId);
+        BillingWallet billingWallet =
+                billingWalletService.findOptionalByPatient(patientId);
+
+        BigDecimal walletBalance =
+                billingWallet != null
+                        ? nonNullAmount(billingWallet.getAvailableBalance())
+                        : resolveBillingWalletAvailableBalance(patientId);
+
+        BigDecimal reservedBalance =
+                billingWallet != null
+                        ? nonNullAmount(billingWallet.getReservedBalance())
+                        : ZERO_AMOUNT;
+
+        BigDecimal consumedAmount =
+                billingWallet != null
+                        ? nonNullAmount(billingWallet.getConsumedAmount())
+                        : ZERO_AMOUNT;
 
         LOG.info(
-                "[LEDGER_SUMMARY] result patientId={} totalDebt={} walletBalance={}",
+                "[LEDGER_SUMMARY] result patientId={} totalDebt={} walletBalance={} reservedBalance={} consumedAmount={}",
                 patientId,
                 totalDebt,
-                walletBalance
+                walletBalance,
+                reservedBalance,
+                consumedAmount
         );
 
         return new PatientLedgerSummaryDTO(
                 patientId,
                 totalDebt,
-                walletBalance
+                walletBalance,
+                reservedBalance,
+                consumedAmount
         );
+    }
+
+    private BigDecimal resolvePatientRemainingBalance(Long patientId) {
+        BigDecimal legacyRemaining =
+                nonNullAmount(chargeRepository.sumOpenRemainingByPatient(patientId));
+
+        BigDecimal openBillingOutstanding =
+                nonNullAmount(
+                        billingChargeRepository.sumOpenOutstandingByPatient(patientId)
+                );
+
+        BigDecimal invoiceOutstanding =
+                nonNullAmount(sumPatientInvoiceOutstanding(patientId));
+
+        BigDecimal debitBalance =
+                nonNullAmount(
+                        billingDebitAccountRepository.sumActiveDebitBalanceByPatient(
+                                patientId
+                        )
+                );
+
+        BigDecimal remaining =
+                legacyRemaining.add(openBillingOutstanding);
+
+        if (invoiceOutstanding.signum() > 0) {
+            remaining = remaining.add(invoiceOutstanding);
+        } else if (debitBalance.signum() > 0) {
+            remaining = remaining.add(debitBalance);
+        }
+
+        return remaining;
+    }
+
+    private BigDecimal sumPatientInvoiceOutstanding(Long patientId) {
+        return documentRepository
+                .findAllByPatientIdOrderByCreatedDateDesc(patientId)
+                .stream()
+                .filter(
+                        document ->
+                                document.getDocumentType()
+                                        == FinancialDocumentType.INVOICE
+                )
+                .filter(
+                        document ->
+                                document.getDocumentSubtype()
+                                        == FinancialDocumentSubtype.PATIENT
+                )
+                .filter(
+                        document ->
+                                document.getStatus()
+                                        != FinancialDocumentStatus.CANCELLED
+                )
+                .map(
+                        document ->
+                                nonNullAmount(
+                                        financialDocumentBalanceService
+                                                .calculateOutstanding(
+                                                        document.getId()
+                                                )
+                                )
+                )
+                .filter(amount -> amount.signum() > 0)
+                .reduce(ZERO_AMOUNT, BigDecimal::add);
     }
 
     private BigDecimal resolveBillingWalletAvailableBalance(Long patientId) {

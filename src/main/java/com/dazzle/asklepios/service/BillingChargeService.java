@@ -534,23 +534,11 @@ public class BillingChargeService {
             line.setOutstandingAmount(
                     BigDecimal.ZERO
             );
+            line.setReservedAmount(
+                    BigDecimal.ZERO
+            );
         }
 
-        line.setStatus(
-                BillingChargeLineStatus.DRAFT
-        );
-
-        line.setPatientResponsibilityAmount(
-                BigDecimal.ZERO
-        );
-
-        line.setInsuranceResponsibilityAmount(
-                BigDecimal.ZERO
-        );
-
-        line.setOtherPayerResponsibilityAmount(
-                BigDecimal.ZERO
-        );
         BillingChargeLine saved =
                 billingChargeLineRepository.save(line);
 

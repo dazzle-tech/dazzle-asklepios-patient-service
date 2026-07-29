@@ -23,10 +23,11 @@ import com.dazzle.asklepios.service.dto.billing.BillingDebitCreationResult;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -37,7 +38,6 @@ import java.util.EnumSet;
 import java.util.List;
 
 @Service
-@RequiredArgsConstructor
 public class BillingCheckoutService {
 
     private static final Logger LOG =
@@ -53,7 +53,8 @@ public class BillingCheckoutService {
     private static final EnumSet<BillingResponsibilityStatus>
             EXCLUDED_RESPONSIBILITY_STATUSES =
             EnumSet.of(
-                    BillingResponsibilityStatus.CANCELLED
+                    BillingResponsibilityStatus.CANCELLED,
+                    BillingResponsibilityStatus.SUPERSEDED
             );
 
     private final BillingChargeRepository
@@ -80,7 +81,38 @@ public class BillingCheckoutService {
     private final PatientEncounterRepository
             patientEncounterRepository;
 
-    @Transactional(rollbackFor = Exception.class)
+    private final EncounterChargeLineEnsuringService
+            encounterChargeLineEnsuringService;
+
+    private final BillingCheckoutService self;
+
+    public BillingCheckoutService(
+            BillingChargeRepository billingChargeRepository,
+            BillingChargeResponsibilityRepository billingChargeResponsibilityRepository,
+            BillingReservationRepository billingReservationRepository,
+            BillingAllocationService billingAllocationService,
+            BillingDebitService billingDebitService,
+            BillingWalletService billingWalletService,
+            BillingChargeService billingChargeService,
+            PatientEncounterRepository patientEncounterRepository,
+            EncounterChargeLineEnsuringService encounterChargeLineEnsuringService,
+            @Lazy BillingCheckoutService self
+    ) {
+        this.billingChargeRepository = billingChargeRepository;
+        this.billingChargeResponsibilityRepository =
+                billingChargeResponsibilityRepository;
+        this.billingReservationRepository = billingReservationRepository;
+        this.billingAllocationService = billingAllocationService;
+        this.billingDebitService = billingDebitService;
+        this.billingWalletService = billingWalletService;
+        this.billingChargeService = billingChargeService;
+        this.patientEncounterRepository = patientEncounterRepository;
+        this.encounterChargeLineEnsuringService =
+                encounterChargeLineEnsuringService;
+        this.self = self;
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public BillingCheckoutResult checkout(
             BillingCheckoutRequest request
     ) {
@@ -88,7 +120,7 @@ public class BillingCheckoutService {
 
         BillingCharge charge =
                 billingChargeRepository
-                        .findById(request.chargeId())
+                        .findByIdWithoutLock(request.chargeId())
                         .orElseThrow(() ->
                                 new NotFoundAlertException(
                                         "Billing charge not found with id "
@@ -108,6 +140,42 @@ public class BillingCheckoutService {
                 charge.getEncounter().getId(),
                 charge.getPatient().getId(),
                 request.requestId()
+        );
+
+        encounterChargeLineEnsuringService.ensureEncounterChargeLines(
+                charge.getEncounter().getId(),
+                request.requestId()
+        );
+
+        return self.executeCheckoutTransactional(request);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public BillingCheckoutResult executeCheckoutTransactional(
+            BillingCheckoutRequest request
+    ) {
+        BillingCharge charge =
+                billingChargeRepository
+                        .findById(request.chargeId())
+                        .orElseThrow(() ->
+                                new NotFoundAlertException(
+                                        "Billing charge not found with id "
+                                                + request.chargeId(),
+                                        ENTITY_NAME,
+                                        "charge.notfound"
+                                )
+                        );
+
+        validateChargeForCheckout(charge);
+
+        billingChargeService.recalculateChargeTotals(
+                BillingProcessingContext.builder()
+                        .charge(charge)
+                        .idempotencyKey(
+                                "CHECKOUT:ENSURE:"
+                                        + request.requestId()
+                        )
+                        .build()
         );
 
         List<BillingChargeResponsibility>
@@ -353,7 +421,35 @@ public class BillingCheckoutService {
                                 BillingReservationStatus.ACTIVE
                         );
 
+        if (reservations.isEmpty()
+                && responsibility.getChargeLine() != null
+                && responsibility.getChargeLine().getId() != null) {
+            reservations =
+                    billingReservationRepository
+                            .findAllByChargeLine_IdAndStatusOrderByIdAsc(
+                                    responsibility
+                                            .getChargeLine()
+                                            .getId(),
+                                    BillingReservationStatus.ACTIVE
+                            );
+        }
+
         for (BillingReservation reservation : reservations) {
+            if (reservation.getChargeResponsibility() != null
+                    && !reservation
+                    .getChargeResponsibility()
+                    .getId()
+                    .equals(
+                            responsibility.getId()
+                    )) {
+                reservation.setChargeResponsibility(
+                        responsibility
+                );
+                billingReservationRepository.save(
+                        reservation
+                );
+            }
+
             responsibility =
                     reloadResponsibility(
                             responsibility.getId()
@@ -440,10 +536,20 @@ public class BillingCheckoutService {
                             wallet.getAvailableBalance()
                     );
 
+            BigDecimal lineOutstanding =
+                    responsibility.getChargeLine() == null
+                            ? outstandingAfterReservation
+                            : money(
+                            responsibility
+                                    .getChargeLine()
+                                    .getOutstandingAmount()
+                    );
+
             BigDecimal amount =
                     minimum(
                             outstandingAfterReservation,
-                            available
+                            available,
+                            lineOutstanding
                     );
 
             if (amount.signum() > 0) {

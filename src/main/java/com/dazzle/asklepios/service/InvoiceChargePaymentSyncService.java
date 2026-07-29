@@ -3,10 +3,14 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.BillingCharge;
 import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingChargeResponsibility;
+import com.dazzle.asklepios.domain.BillingAllocation;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
 import com.dazzle.asklepios.domain.FinancialDocumentItemStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.AllocationSourceType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingAllocationStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.ResponsiblePartyType;
+import com.dazzle.asklepios.repository.BillingAllocationRepository;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
@@ -38,7 +42,24 @@ public class InvoiceChargePaymentSyncService {
                     BillingResponsibilityStatus.SUPERSEDED
             );
 
+    private static final EnumSet<BillingAllocationStatus>
+            ACTIVE_ALLOCATION_STATUSES =
+            EnumSet.of(
+                    BillingAllocationStatus.ACTIVE,
+                    BillingAllocationStatus.PARTIALLY_REVERSED
+            );
+
+    private static final EnumSet<AllocationSourceType>
+            CASH_EQUIVALENT_ALLOCATION_SOURCES =
+            EnumSet.of(
+                    AllocationSourceType.RESERVATION,
+                    AllocationSourceType.WALLET_AVAILABLE,
+                    AllocationSourceType.PAYMENT
+            );
+
     private final BillingChargeLineRepository billingChargeLineRepository;
+
+    private final BillingAllocationRepository billingAllocationRepository;
 
     private final BillingChargeResponsibilityRepository
             billingChargeResponsibilityRepository;
@@ -131,18 +152,10 @@ public class InvoiceChargePaymentSyncService {
             return;
         }
 
-        BigDecimal chargeCollected = money(chargeLine.getAllocatedAmount());
-        if (chargeCollected.signum() <= 0) {
-            return;
-        }
-
         BigDecimal patientShare = money(item.getPatientShareAmount());
-        BigDecimal currentPaid = money(item.getPaidAmount());
-        BigDecimal syncedPaid = chargeCollected.min(patientShare);
-
-        if (syncedPaid.compareTo(currentPaid) <= 0) {
-            return;
-        }
+        BigDecimal cashCollected =
+                sumCashEquivalentCollections(chargeLineId);
+        BigDecimal syncedPaid = cashCollected.min(patientShare);
 
         BigDecimal remaining =
                 patientShare
@@ -152,7 +165,54 @@ public class InvoiceChargePaymentSyncService {
 
         item.setPaidAmount(syncedPaid);
         item.setRemainingAmount(remaining);
-        item.setStatus(resolveStatus(syncedPaid, patientShare, remaining));
+        item.setStatus(
+                resolveStatus(syncedPaid, patientShare, remaining)
+        );
+    }
+
+    /**
+     * Wallet reservations and direct payments count as invoice collections.
+     * Debit allocations only close the charge and must still be collected
+     * from the invoice / patient debit account.
+     */
+    private BigDecimal sumCashEquivalentCollections(
+            Long chargeLineId
+    ) {
+        if (chargeLineId == null) {
+            return money(BigDecimal.ZERO);
+        }
+
+        BigDecimal total = BigDecimal.ZERO;
+
+        List<BillingAllocation> allocations =
+                billingAllocationRepository
+                        .findAllByChargeLine_IdAndStatusInOrderByAllocationDateDescIdDesc(
+                                chargeLineId,
+                                ACTIVE_ALLOCATION_STATUSES
+                        );
+
+        for (BillingAllocation allocation : allocations) {
+            AllocationSourceType sourceType =
+                    allocation.getAllocationSourceType();
+
+            if (sourceType == null
+                    || !CASH_EQUIVALENT_ALLOCATION_SOURCES.contains(
+                            sourceType
+                    )) {
+                continue;
+            }
+
+            BigDecimal amount =
+                    money(
+                            allocation.getRemainingAllocatedAmount()
+                    );
+
+            if (amount.signum() > 0) {
+                total = total.add(amount);
+            }
+        }
+
+        return money(total);
     }
 
     private boolean syncItemToChargeLine(

@@ -20,31 +20,48 @@ import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
 import com.dazzle.asklepios.repository.BillingPricingSnapshotRepository;
 import com.dazzle.asklepios.repository.BillingWalletRepository;
 import com.dazzle.asklepios.domain.BillingPricingSnapshot;
+import com.dazzle.asklepios.domain.enumeration.PriceSource;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPricingSnapshotStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.PricingSource;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.dazzle.asklepios.client.setup.dto.BillingPricingResolveResponse;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingResponsibilitySummary;
 import com.dazzle.asklepios.service.dto.billing.BillingWalletSummary;
 import com.dazzle.asklepios.service.dto.billing.EncounterBillingItemSummary;
 import com.dazzle.asklepios.service.dto.billing.EncounterBillingSummary;
 import com.dazzle.asklepios.service.dto.billing.EncounterInvoiceBalance;
+import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class EncounterBillingSummaryService {
+
+    private static final Logger LOG =
+            LoggerFactory.getLogger(
+                    EncounterBillingSummaryService.class
+            );
 
     private static final String ENTITY_NAME =
             "encounterBillingSummary";
@@ -93,6 +110,12 @@ public class EncounterBillingSummaryService {
     private final EncounterInvoiceBalanceService
             encounterInvoiceBalanceService;
 
+    private final PatientServiceAndProductRepository
+            patientServiceAndProductRepository;
+
+    private final BillingEngineService
+            billingEngineService;
+
     /**
      * Returns an empty summary when the encounter does not yet have a
      * financial charge. This prevents the billing screen from receiving
@@ -123,7 +146,11 @@ public class EncounterBillingSummaryService {
 
         if (charge == null) {
             return emptySummary(
-                    encounter
+                    encounter,
+                    buildUnbilledItemSummaries(
+                            encounter,
+                            List.of()
+                    )
             );
         }
 
@@ -199,10 +226,18 @@ public class EncounterBillingSummaryService {
                 );
 
         List<EncounterBillingItemSummary> items =
-                buildItemSummaries(
-                        lines,
-                        responsibilitiesByChargeLineId
+                new ArrayList<>(
+                        buildItemSummaries(
+                                lines,
+                                responsibilitiesByChargeLineId
+                        )
                 );
+        items.addAll(
+                buildUnbilledItemSummaries(
+                        encounter,
+                        items
+                )
+        );
 
         SettlementTotals settlementTotals =
                 settlementTotalsFor(
@@ -286,6 +321,12 @@ public class EncounterBillingSummaryService {
                         line.getId()
                 );
 
+        String priceSource =
+                resolveEffectivePriceSource(
+                        pricingDisplay,
+                        item
+                );
+
         String itemName =
                 billingItemDisplayNameService.resolveDisplayName(
                         line.getBillingItemType(),
@@ -293,6 +334,13 @@ public class EncounterBillingSummaryService {
                         line.getSourceId(),
                         line.getItemDescription(),
                         displayNameCache
+                );
+
+        BigDecimal unitPrice =
+                resolveDisplayUnitPrice(
+                        line,
+                        item,
+                        pricingDisplay
                 );
 
         return new EncounterBillingItemSummary(
@@ -307,9 +355,9 @@ public class EncounterBillingSummaryService {
                 line.getItemCode(),
                 itemName,
                 money(line.getQuantity()),
-                money(line.getUnitPrice()),
+                unitPrice,
                 pricingDisplay.setupUnitPrice(),
-                pricingDisplay.priceSource(),
+                priceSource,
                 pricingDisplay.priceListItemCode(),
                 money(line.getGrossAmount()),
                 money(line.getDiscountAmount()),
@@ -415,8 +463,162 @@ public class EncounterBillingSummaryService {
         );
     }
 
+    private List<EncounterBillingItemSummary> buildUnbilledItemSummaries(
+            PatientEncounter encounter,
+            List<EncounterBillingItemSummary> billedItems
+    ) {
+        Set<Long> billedPspIds =
+                billedItems
+                        .stream()
+                        .map(
+                                EncounterBillingItemSummary::patientServiceProductId
+                        )
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+
+        Map<String, String> displayNameCache =
+                new HashMap<>();
+
+        return patientServiceAndProductRepository
+                .findByEncounterId(
+                        encounter.getId()
+                )
+                .stream()
+                .filter(item ->
+                        !billedPspIds.contains(
+                                item.getId()
+                        )
+                )
+                .map(item ->
+                        buildUnbilledItemSummary(
+                                encounter,
+                                item,
+                                displayNameCache
+                        )
+                )
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    private EncounterBillingItemSummary buildUnbilledItemSummary(
+            PatientEncounter encounter,
+            PatientServiceAndProduct item,
+            Map<String, String> displayNameCache
+    ) {
+        ResolvedBillingPrice resolvedPrice;
+
+        try {
+            resolvedPrice =
+                    billingEngineService.resolvePricing(
+                            item,
+                            encounter.getFacilityId()
+                    );
+        } catch (RuntimeException exception) {
+            LOG.debug(
+                    "[BILLING_SUMMARY] Unable to resolve pricing "
+                            + "for unbilled pspId={} reason={}",
+                    item.getId(),
+                    exception.getMessage()
+            );
+            return null;
+        }
+
+        BigDecimal quantity =
+                money(
+                        BigDecimal.valueOf(
+                                item.getQuantity()
+                        )
+                );
+        BigDecimal unitPrice =
+                money(
+                        resolvedPrice.unitPrice()
+                );
+        BigDecimal grossAmount =
+                money(
+                        unitPrice.multiply(
+                                quantity
+                        )
+                );
+        BigDecimal netAmount =
+                money(
+                        grossAmount
+                                .subtract(
+                                        money(
+                                                item.getDiscountAmount()
+                                        )
+                                )
+                                .subtract(
+                                        money(
+                                                item.getExemptionAmount()
+                                        )
+                                )
+                                .add(
+                                        money(
+                                                item.getTaxAmount()
+                                        )
+                                )
+                );
+
+        BillingPricingResolveResponse pricingResponse =
+                resolvedPrice.pricingResponse();
+        String priceListItemCode =
+                pricingResponse == null
+                        ? null
+                        : pricingResponse.priceListItemCode();
+        String priceSource =
+                resolvedPrice.priceSource() == null
+                        ? null
+                        : resolvedPrice.priceSource().name();
+
+        String itemName =
+                billingItemDisplayNameService.resolveDisplayName(
+                        item.getBillingItemType(),
+                        item,
+                        item.getSourceId(),
+                        null,
+                        displayNameCache
+                );
+
+        return new EncounterBillingItemSummary(
+                item.getId(),
+                null,
+                item.getBillingItemType() == null
+                        ? null
+                        : item.getBillingItemType().name(),
+                item.getSourceId(),
+                null,
+                itemName,
+                quantity,
+                unitPrice,
+                money(
+                        resolvedPrice.setupUnitPrice()
+                ),
+                priceSource,
+                priceListItemCode,
+                grossAmount,
+                money(item.getDiscountAmount()),
+                money(item.getExemptionAmount()),
+                money(item.getTaxAmount()),
+                netAmount,
+                netAmount,
+                zero(),
+                zero(),
+                zero(),
+                zero(),
+                netAmount,
+                Boolean.TRUE.equals(
+                        item.getIsExempted()
+                ),
+                item.getCurrency(),
+                BillingChargeLineStatus.DRAFT,
+                item.getCreatedDate(),
+                List.of()
+        );
+    }
+
     private EncounterBillingSummary emptySummary(
-            PatientEncounter encounter
+            PatientEncounter encounter,
+            List<EncounterBillingItemSummary> items
     ) {
         Long patientId =
                 encounter.getPatient() == null
@@ -456,7 +658,9 @@ public class EncounterBillingSummaryService {
                 zero(),
                 zero(),
                 zero(),
-                List.of()
+                items == null
+                        ? List.of()
+                        : items
         );
     }
 
@@ -638,6 +842,22 @@ public class EncounterBillingSummaryService {
                     JsonNode payload =
                             snapshot.getCalculationPayload();
 
+                    BigDecimal resolvedUnitPrice =
+                            readPayloadDecimal(
+                                    payload,
+                                    "unitPrice"
+                            );
+
+                    if (
+                            resolvedUnitPrice == null
+                                    || resolvedUnitPrice.signum() <= 0
+                    ) {
+                        resolvedUnitPrice =
+                                money(
+                                        snapshot.getBaseUnitPrice()
+                                );
+                    }
+
                     BigDecimal setupUnitPrice =
                             readPayloadDecimal(
                                     payload,
@@ -646,9 +866,7 @@ public class EncounterBillingSummaryService {
 
                     if (setupUnitPrice == null) {
                         setupUnitPrice =
-                                money(
-                                        snapshot.getBaseUnitPrice()
-                                );
+                                resolvedUnitPrice;
                     }
 
                     String priceSource =
@@ -663,6 +881,21 @@ public class EncounterBillingSummaryService {
                                     ? null
                                     : snapshot.getPriceSource().name();
 
+                    if (
+                            priceSource == null
+                                    && payload != null
+                                    && payload.hasNonNull(
+                                    "pricingSource"
+                            )
+                    ) {
+                        priceSource =
+                                mapPricingSourceToPriceSource(
+                                        payload.get(
+                                                "pricingSource"
+                                        ).asText()
+                                );
+                    }
+
                     String priceListItemCode =
                             payload != null
                                     && payload.hasNonNull(
@@ -673,8 +906,25 @@ public class EncounterBillingSummaryService {
                                     ).asText()
                                     : snapshot.getPriceListItemCode();
 
+                    if (
+                            priceSource == null
+                                    && (
+                                    snapshot.getPriceListItemId()
+                                            != null
+                                            || (
+                                            priceListItemCode
+                                                    != null
+                                                    && !priceListItemCode.isBlank()
+                                    )
+                            )
+                    ) {
+                        priceSource =
+                                BillingPriceSource.PRICE_LIST.name();
+                    }
+
                     return new PricingDisplayFields(
                             setupUnitPrice,
+                            resolvedUnitPrice,
                             priceSource,
                             priceListItemCode
                     );
@@ -682,6 +932,7 @@ public class EncounterBillingSummaryService {
                 .orElseGet(
                         () ->
                                 new PricingDisplayFields(
+                                        null,
                                         null,
                                         null,
                                         null
@@ -708,8 +959,113 @@ public class EncounterBillingSummaryService {
         );
     }
 
+    private BigDecimal resolveDisplayUnitPrice(
+            BillingChargeLine line,
+            PatientServiceAndProduct item,
+            PricingDisplayFields pricingDisplay
+    ) {
+        if (
+                pricingDisplay.resolvedUnitPrice() != null
+                        && pricingDisplay.resolvedUnitPrice().signum() > 0
+        ) {
+            return pricingDisplay.resolvedUnitPrice();
+        }
+
+        if (
+                item != null
+                        && line.getEncounter() != null
+                        && line.getEncounter().getFacilityId() != null
+        ) {
+            try {
+                ResolvedBillingPrice resolvedPrice =
+                        billingEngineService.resolvePricing(
+                                item,
+                                line.getEncounter().getFacilityId()
+                        );
+
+                if (
+                        resolvedPrice.unitPrice() != null
+                                && resolvedPrice.unitPrice().signum() > 0
+                ) {
+                    return money(
+                            resolvedPrice.unitPrice()
+                    );
+                }
+            } catch (RuntimeException exception) {
+                LOG.debug(
+                        "[BILLING_SUMMARY] Unable to resolve display unit price "
+                                + "for chargeLineId={} reason={}",
+                        line.getId(),
+                        exception.getMessage()
+                );
+            }
+        }
+
+        return money(
+                line.getUnitPrice()
+        );
+    }
+
+    private String resolveEffectivePriceSource(
+            PricingDisplayFields pricingDisplay,
+            PatientServiceAndProduct item
+    ) {
+        if (
+                pricingDisplay.priceSource() != null
+                        && !pricingDisplay.priceSource().isBlank()
+        ) {
+            return pricingDisplay.priceSource();
+        }
+
+        if (
+                pricingDisplay.priceListItemCode() != null
+                        && !pricingDisplay.priceListItemCode().isBlank()
+        ) {
+            return BillingPriceSource.PRICE_LIST.name();
+        }
+
+        if (item != null && item.getPriceSource() != null) {
+            return mapPatientPriceSource(item.getPriceSource());
+        }
+
+        return null;
+    }
+
+    private String mapPatientPriceSource(
+            PriceSource source
+    ) {
+        return switch (source) {
+            case PRICE_LIST, INSURANCE_CONTRACT, WASEEL_SBS ->
+                    BillingPriceSource.PRICE_LIST.name();
+            default ->
+                    BillingPriceSource.SETUP_FALLBACK.name();
+        };
+    }
+
+    private String mapPricingSourceToPriceSource(
+            String pricingSource
+    ) {
+        if (pricingSource == null || pricingSource.isBlank()) {
+            return null;
+        }
+
+        try {
+            return switch (PricingSource.valueOf(pricingSource)) {
+                case PRICE_LIST,
+                     INSURANCE_PRICE_LIST,
+                     CASH_PRICE_LIST ->
+                        BillingPriceSource.PRICE_LIST.name();
+                default ->
+                        BillingPriceSource.SETUP_FALLBACK.name();
+            };
+        } catch (IllegalArgumentException ex) {
+            return BillingPriceSource.SETUP_FALLBACK.name();
+        }
+    }
+
     private record PricingDisplayFields(
             BigDecimal setupUnitPrice,
+            BigDecimal resolvedUnitPrice,
             String priceSource,
             String priceListItemCode
     ) {

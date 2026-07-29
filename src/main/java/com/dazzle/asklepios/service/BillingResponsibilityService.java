@@ -1151,6 +1151,10 @@ public class BillingResponsibilityService {
                     BillingResponsibilityStatus.SUPERSEDED
             );
 
+            responsibility.setOutstandingAmount(
+                    BigDecimal.ZERO
+            );
+
             responsibility.setAdjustmentReason(
                     reason
             );

@@ -6,5 +6,7 @@ import java.math.BigDecimal;
 public record PatientLedgerSummaryDTO(
         Long patientId,
         BigDecimal totalDebt,
-        BigDecimal walletBalance
+        BigDecimal walletBalance,
+        BigDecimal reservedBalance,
+        BigDecimal consumedAmount
 ) {}

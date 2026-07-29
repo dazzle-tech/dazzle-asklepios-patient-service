@@ -6,8 +6,11 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -19,6 +22,11 @@ public interface BillingChargeRepository
     @Override
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<BillingCharge> findById(Long id);
+
+    @Query("SELECT bc FROM BillingCharge bc WHERE bc.id = :id")
+    Optional<BillingCharge> findByIdWithoutLock(
+            @Param("id") Long id
+    );
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<BillingCharge>
@@ -41,5 +49,28 @@ public interface BillingChargeRepository
             Long encounterId,
             Collection<BillingChargeStatus> excludedStatuses
     );
+
+    @Query("""
+        select coalesce(sum(c.outstandingAmount), 0)
+        from BillingCharge c
+        where c.patient.id = :patientId
+          and c.status not in :closedStatuses
+          and c.outstandingAmount > 0
+    """)
+    BigDecimal sumOpenOutstandingByPatient(
+            @Param("patientId") Long patientId,
+            @Param("closedStatuses") Collection<BillingChargeStatus> closedStatuses
+    );
+
+    default BigDecimal sumOpenOutstandingByPatient(Long patientId) {
+        return sumOpenOutstandingByPatient(
+                patientId,
+                List.of(
+                        BillingChargeStatus.CLOSED,
+                        BillingChargeStatus.CANCELLED,
+                        BillingChargeStatus.REVERSED
+                )
+        );
+    }
 
 }

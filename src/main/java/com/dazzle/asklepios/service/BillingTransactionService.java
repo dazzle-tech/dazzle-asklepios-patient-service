@@ -10,6 +10,8 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerScope;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerSourceChannel;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerTransactionType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.PricingReason;
+import com.dazzle.asklepios.domain.enumeration.billing.ReservationReleaseReason;
 import com.dazzle.asklepios.repository.BillingPaymentRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationRequest;
@@ -348,7 +350,51 @@ public class BillingTransactionService {
                 );
 
         /*
-         * 4. Recalculate the charge header.
+         * 4. Replace stale responsibility rows with values for the
+         * repriced net amount.
+         */
+        billingResponsibilityService
+                .supersedeActiveResponsibilities(
+                        context,
+                        "Charge line repriced"
+                );
+
+        billingResponsibilityService.calculate(
+                context
+        );
+
+        billingReservationService
+                .relinkActiveReservationsToPatientResponsibility(
+                        context
+                );
+
+        /*
+         * 5. Persist the new pricing snapshot.
+         */
+        billingPricingSnapshotService
+                .createRepricingSnapshot(
+                        context,
+                        PricingReason.PRICE_LIST_CHANGE,
+                        null
+                );
+
+        /*
+         * 6. Keep wallet reservations within the updated patient
+         * responsibility, then reserve any additional balance.
+         */
+        billingReservationService
+                .releaseExcessAfterRepricing(
+                        context,
+                        ReservationReleaseReason.AMOUNT_REDUCED,
+                        currentUser()
+                );
+
+        reserveAdvanceBalance(
+                context
+        );
+
+        /*
+         * 7. Recalculate the charge header.
          */
         billingChargeService
                 .recalculateChargeTotals(
