@@ -214,7 +214,7 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
     @Column(name = "patient_conditions", columnDefinition = "text")
     private String patientConditions;
 
-    @AssertTrue(message = "When patient is not unknown, firstName, lastName, sexAtBirth, dateOfBirth, primaryMobileNumber and email are required")
+    @AssertTrue(message = "When patient is not unknown, firstName, lastName, sexAtBirth, dateOfBirth and primaryMobileNumber are required")
     public boolean isValidWhenNotUnknown() {
         if (Boolean.TRUE.equals(isUnknown)) {
             return true;
@@ -224,7 +224,6 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
                 && lastName != null
                 && sexAtBirth != null
                 && dateOfBirth != null
-                && primaryMobileNumber != null
-                && email != null;
+                && primaryMobileNumber != null;
     }
 }
