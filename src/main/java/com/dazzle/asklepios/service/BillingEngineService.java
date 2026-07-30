@@ -52,6 +52,9 @@ public class BillingEngineService {
     private final SetupBillingRuleService
             setupBillingRuleService;
 
+    private final CatalogBillingRuleLookupService
+            catalogBillingRuleLookupService;
+
     private final BillingTriggerMatcher
             billingTriggerMatcher;
 
@@ -147,7 +150,7 @@ public class BillingEngineService {
          * It is not skipped.
          */
         BillingRuleResolveResponse billingRule =
-                setupBillingRuleService.resolve(
+                resolveBillingRule(
                         item
                 );
 
@@ -340,7 +343,7 @@ public class BillingEngineService {
                 );
 
         BillingRuleResolveResponse billingRule =
-                setupBillingRuleService.resolve(item);
+                resolveBillingRule(item);
 
         List<BillingEventType> eventCandidates =
                 buildChargeLineEventCandidates(billingRule);
@@ -528,7 +531,7 @@ public class BillingEngineService {
                 );
 
         BillingRuleResolveResponse billingRule =
-                setupBillingRuleService.resolve(
+                resolveBillingRule(
                         item
                 );
 
@@ -699,7 +702,7 @@ public class BillingEngineService {
         );
 
         BillingRuleResolveResponse billingRule =
-                setupBillingRuleService.resolve(
+                resolveBillingRule(
                         item
                 );
 
@@ -1349,6 +1352,20 @@ public class BillingEngineService {
          * phase by loading PatientInsurance and returning its payerId.
          */
         return null;
+    }
+
+    private BillingRuleResolveResponse resolveBillingRule(
+            PatientServiceAndProduct item
+    ) {
+        Long catalogBillingRuleId =
+                catalogBillingRuleLookupService.lookupBillingRuleId(
+                        item
+                );
+
+        return setupBillingRuleService.resolve(
+                item,
+                catalogBillingRuleId
+        );
     }
 
     private Long resolveSourceId(

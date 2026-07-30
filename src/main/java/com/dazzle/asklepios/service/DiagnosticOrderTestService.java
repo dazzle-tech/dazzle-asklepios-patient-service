@@ -4,6 +4,9 @@ import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestTechnicianNoteRepository;
@@ -62,6 +65,8 @@ public class DiagnosticOrderTestService {
     private final DepartmentHelper departmentHelper;
     private final ICDTreeHelper icdTreeHelper;
 
+    private final BillingRuleEvaluationService billingRuleEvaluationService;
+
     /**
      * Creates the service with required dependencies.
      *
@@ -71,7 +76,8 @@ public class DiagnosticOrderTestService {
     public DiagnosticOrderTestService(
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
             DiagnosticOrderStatusService diagnosticOrderStatusService, DiagnosticOrderTestTechnicianNoteRepository diagnosticOrderTestTechnicianNoteRepository,
-            DiagnosticOrderRepository diagnosticOrderRepository, DiagnosticTestHelper diagnosticTestHelper, DepartmentHelper departmentHelper, ICDTreeHelper icdTreeHelper) {
+            DiagnosticOrderRepository diagnosticOrderRepository, DiagnosticTestHelper diagnosticTestHelper, DepartmentHelper departmentHelper, ICDTreeHelper icdTreeHelper,
+            BillingRuleEvaluationService billingRuleEvaluationService) {
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
 
@@ -80,6 +86,7 @@ public class DiagnosticOrderTestService {
         this.diagnosticTestHelper = diagnosticTestHelper;
         this.departmentHelper = departmentHelper;
         this.icdTreeHelper = icdTreeHelper;
+        this.billingRuleEvaluationService = billingRuleEvaluationService;
     }
 
     /**
@@ -105,6 +112,12 @@ public class DiagnosticOrderTestService {
             departmentHelper.validateDepartmentExists(dto.receivedDepartmentId());
         if (dto.icdDiagnosisId() != null)
             icdTreeHelper.validateICDDiagnosisExists(dto.icdDiagnosisId());
+
+        billingRuleEvaluationService.requireConfiguredRule(
+                resolveDiagnosticBillingItemType(dto.orderType()),
+                dto.testId(),
+                BillingEventType.ITEM_ORDERED
+        );
 
         DiagnosticOrderTest orderTest = new DiagnosticOrderTest();
         orderTest.setOrderId(order.getId());
@@ -283,5 +296,19 @@ public class DiagnosticOrderTestService {
                         "diagnostic_orders",
                         "Order not found with id " + diagnosticOrderId
                 ));
+    }
+
+    private BillingItemTypes resolveDiagnosticBillingItemType(
+            TestType orderType
+    ) {
+        if (orderType == TestType.RADIOLOGY) {
+            return BillingItemTypes.RADIOLOGY;
+        }
+
+        if (orderType == TestType.PATHOLOGY) {
+            return BillingItemTypes.PATHOLOGY;
+        }
+
+        return BillingItemTypes.LABORATORY;
     }
 }

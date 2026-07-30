@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.service.BillingPaymentService;
+import com.dazzle.asklepios.service.BillingRuleEvaluationService;
 import com.dazzle.asklepios.service.BillingTransactionService;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationResult;
@@ -11,6 +12,8 @@ import com.dazzle.asklepios.service.dto.billing.BillingRefundRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingRefundResult;
 import com.dazzle.asklepios.service.dto.billing.BillingRefundReversalRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingRefundReversalResult;
+import com.dazzle.asklepios.service.dto.billing.BillingRuleEvaluationRequest;
+import com.dazzle.asklepios.service.dto.billing.BillingRuleEvaluationResponse;
 import com.dazzle.asklepios.service.dto.billing.CreateAdvancePaymentRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -42,6 +45,36 @@ public class BillingTransactionController {
 
     private final BillingPaymentService
             billingPaymentService;
+
+    private final BillingRuleEvaluationService
+            billingRuleEvaluationService;
+
+    /*
+     * ============================================================
+     * BILLING RULE EVALUATION
+     * ============================================================
+     */
+
+    @PostMapping("/evaluate-billing-rule")
+    public ResponseEntity<BillingRuleEvaluationResponse>
+    evaluateBillingRule(
+            @Valid
+            @RequestBody
+            @NotNull
+            BillingRuleEvaluationRequest request
+    ) {
+        LOG.debug(
+                "REST request to evaluate billing rule itemType={} event={}",
+                request.billingItemType(),
+                request.billingEvent()
+        );
+
+        return ResponseEntity.ok(
+                billingRuleEvaluationService.evaluate(
+                        request
+                )
+        );
+    }
 
     /*
      * ============================================================

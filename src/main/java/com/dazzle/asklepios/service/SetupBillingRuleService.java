@@ -28,6 +28,71 @@ public class SetupBillingRuleService {
     private final BillingRuleClient billingRuleClient;
 
     /**
+     * Resolve the billing rule for a catalog item.
+     *
+     * Uses the catalog-specific billingRuleId when present; otherwise falls
+     * back to the default rule for the billing item type.
+     */
+    public BillingRuleResolveResponse resolveForCatalogItem(
+            BillingItemTypes billingItemType,
+            Long catalogBillingRuleId
+    ) {
+        if (billingItemType == null) {
+            throw new BadRequestAlertException(
+                    "Billing item type is required.",
+                    ENTITY_NAME,
+                    "billingItemType.required"
+            );
+        }
+
+        BillingRuleResponse response =
+                catalogBillingRuleId != null
+                        ? loadRuleById(
+                                catalogBillingRuleId,
+                                billingItemType
+                        )
+                        : loadDefaultRule(
+                                billingItemType
+                        );
+
+        validateBasicResponse(response);
+
+        BillingItemTypes resolvedType =
+                parseBillingItemType(
+                        response.billingItemType()
+                );
+
+        if (resolvedType != billingItemType) {
+            throw new BadRequestAlertException(
+                    "Resolved billing rule item type "
+                            + resolvedType
+                            + " does not match requested item type "
+                            + billingItemType
+                            + ".",
+                    ENTITY_NAME,
+                    "billingRule.itemType.mismatch"
+            );
+        }
+
+        return mapToResolveResponse(response);
+    }
+
+    /**
+     * Resolve the billing rule for a persisted patient service/product.
+     */
+    public BillingRuleResolveResponse resolve(
+            PatientServiceAndProduct item,
+            Long catalogBillingRuleId
+    ) {
+        validateItem(item);
+
+        return resolveForCatalogItem(
+                item.getBillingItemType(),
+                catalogBillingRuleId
+        );
+    }
+
+    /**
      * Temporary resolution strategy:
      *
      * Always resolve the default billing rule
@@ -38,31 +103,10 @@ public class SetupBillingRuleService {
     ) {
         validateItem(item);
 
-        BillingRuleResponse response =
-                loadDefaultRule(
-                        item.getBillingItemType()
-                );
-
-        validateResponse(
-                item,
-                response
+        return resolveForCatalogItem(
+                item.getBillingItemType(),
+                null
         );
-
-        BillingRuleResolveResponse result =
-                mapToResolveResponse(response);
-
-        LOG.info(
-                "[RESOLVE_DEFAULT] Billing rule resolved "
-                        + "pspId={} ruleId={} ruleName={} "
-                        + "itemType={} trigger={}",
-                item.getId(),
-                result.billingRuleId(),
-                result.billingRuleName(),
-                result.billingItemType(),
-                result.billingTrigger()
-        );
-
-        return result;
     }
 
     /**
@@ -85,7 +129,7 @@ public class SetupBillingRuleService {
                         billingItemType
                 );
 
-        validateBasicResponse(response);
+        validateDefaultRuleResponse(response);
 
         BillingItemTypes resolvedType =
                 parseBillingItemType(
@@ -107,6 +151,55 @@ public class SetupBillingRuleService {
         return mapToResolveResponse(response);
     }
 
+    private BillingRuleResponse loadRuleById(
+            Long billingRuleId,
+            BillingItemTypes expectedItemType
+    ) {
+        try {
+            BillingRuleResponse response =
+                    billingRuleClient.getById(
+                            billingRuleId
+                    );
+
+            if (response == null) {
+                throw new NotFoundAlertException(
+                        "Billing rule was not found with id "
+                                + billingRuleId,
+                        ENTITY_NAME,
+                        "billingRule.notfound"
+                );
+            }
+
+            return response;
+
+        } catch (FeignException.NotFound exception) {
+            throw new NotFoundAlertException(
+                    "Billing rule was not found with id "
+                            + billingRuleId,
+                    ENTITY_NAME,
+                    "billingRule.notfound"
+            );
+
+        } catch (FeignException exception) {
+            LOG.error(
+                    "[LOAD_BY_ID] Setup Service call failed "
+                            + "ruleId={} itemType={} status={}",
+                    billingRuleId,
+                    expectedItemType,
+                    exception.status(),
+                    exception
+            );
+
+            throw new BadRequestAlertException(
+                    "Unable to retrieve billing rule "
+                            + billingRuleId
+                            + " from Setup Service.",
+                    ENTITY_NAME,
+                    "setupService.billingRule.failed"
+            );
+        }
+    }
+
     private BillingRuleResponse loadDefaultRule(
             BillingItemTypes billingItemType
     ) {
@@ -125,6 +218,8 @@ public class SetupBillingRuleService {
                         "defaultBillingRule.notfound"
                 );
             }
+
+            validateDefaultRuleResponse(response);
 
             return response;
 
@@ -195,28 +290,19 @@ public class SetupBillingRuleService {
         }
     }
 
-    private void validateResponse(
-            PatientServiceAndProduct item,
+    private void validateDefaultRuleResponse(
             BillingRuleResponse response
     ) {
         validateBasicResponse(response);
 
-        BillingItemTypes resolvedType =
-                parseBillingItemType(
-                        response.billingItemType()
-                );
-
-        if (resolvedType
-                != item.getBillingItemType()) {
-
+        if (!Boolean.TRUE.equals(
+                response.isDefault()
+        )) {
             throw new BadRequestAlertException(
-                    "Resolved billing rule item type "
-                            + resolvedType
-                            + " does not match patient item type "
-                            + item.getBillingItemType()
-                            + ".",
+                    "Setup Service returned a billing rule "
+                            + "that is not marked as default.",
                     ENTITY_NAME,
-                    "billingRule.itemType.mismatch"
+                    "billingRule.notDefault"
             );
         }
     }
@@ -263,17 +349,6 @@ public class SetupBillingRuleService {
                     "Resolved billing trigger is missing.",
                     ENTITY_NAME,
                     "billingTrigger.missing"
-            );
-        }
-
-        if (!Boolean.TRUE.equals(
-                response.isDefault()
-        )) {
-            throw new BadRequestAlertException(
-                    "Setup Service returned a billing rule "
-                            + "that is not marked as default.",
-                    ENTITY_NAME,
-                    "billingRule.notDefault"
             );
         }
     }

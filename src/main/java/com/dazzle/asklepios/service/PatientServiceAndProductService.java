@@ -7,6 +7,7 @@ import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.client.WaseelItemMappingClient;
 import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
@@ -54,6 +55,8 @@ public class PatientServiceAndProductService {
     private final PreAuthorizationSubmissionService preAuthorizationSubmissionService;
     private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
 
+    private final BillingRuleEvaluationService billingRuleEvaluationService;
+
     public PatientServiceAndProductService(
             PatientServiceAndProductRepository patientServiceAndProductRepository,
             PatientRepository patientRepository,
@@ -64,7 +67,8 @@ public class PatientServiceAndProductService {
             BrandMedicationHelper brandMedicationHelper,
             WaseelItemMappingClient waseelItemMappingClient,
             PreAuthorizationSubmissionService preAuthorizationSubmissionService,
-            EncounterInsuranceEligibilityService encounterInsuranceEligibilityService
+            EncounterInsuranceEligibilityService encounterInsuranceEligibilityService,
+            BillingRuleEvaluationService billingRuleEvaluationService
     ) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.patientRepository = patientRepository;
@@ -76,6 +80,7 @@ public class PatientServiceAndProductService {
         this.waseelItemMappingClient = waseelItemMappingClient;
         this.preAuthorizationSubmissionService = preAuthorizationSubmissionService;
         this.encounterInsuranceEligibilityService = encounterInsuranceEligibilityService;
+        this.billingRuleEvaluationService = billingRuleEvaluationService;
     }
 
     public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
@@ -97,6 +102,10 @@ public class PatientServiceAndProductService {
 
         validateReferences(dto);
         validateNoDuplicateEncounterItem(dto, encounter.getId());
+        billingRuleEvaluationService.requireConfiguredRule(
+                dto,
+                resolveBillingEvent(dto)
+        );
 
         PreAuthorizationStatus preAuthorizationStatus =
                 resolvePreAuthorizationStatus(
@@ -549,6 +558,22 @@ public class PatientServiceAndProductService {
         }
 
         preAuthorizationSubmissionService.submitIfRequired(item.getEncounterId());
+    }
+
+    private BillingEventType resolveBillingEvent(
+            PatientServiceProductCreateDTO dto
+    ) {
+        if (dto.serviceSource() == ServiceSource.CONSULTATION_PORTAL) {
+            return BillingEventType.ENCOUNTER_CREATED;
+        }
+
+        if (dto.serviceSource() == ServiceSource.LABORATORY
+                || dto.serviceSource() == ServiceSource.RADIOLOGY
+                || dto.serviceSource() == ServiceSource.PROCEDURE) {
+            return BillingEventType.ITEM_ORDERED;
+        }
+
+        return BillingEventType.ITEM_ORDERED;
     }
 
     private BigDecimal defaultZero(BigDecimal value) {

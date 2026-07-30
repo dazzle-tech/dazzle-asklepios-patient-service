@@ -19,6 +19,7 @@ public record ProcedureSetupDTO(
         Boolean isActive,
         Long facilityId,
         Currency currency,
-        BigDecimal price
+        BigDecimal price,
+        Long billingRuleId
 ) {
 }

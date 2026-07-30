@@ -15,7 +15,9 @@ import com.dazzle.asklepios.integration.waseel.client.WaseelItemMappingClient;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationSubmissionService;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.patientarrived.PatientArrivedCreateRequestDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
@@ -23,6 +25,7 @@ import com.dazzle.asklepios.web.rest.vm.diagnosticorders.PatientArrivedResponseV
 import feign.FeignException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,6 +49,12 @@ public class DiagnosticOrderTestStatusService {
     private final WaseelItemMappingClient waseelItemMappingClient;
     private final PreAuthorizationSubmissionService preAuthorizationSubmissionService;
 
+    private final PatientEncounterRepository patientEncounterRepository;
+
+    private final BillingEngineService billingEngineService;
+
+    private final BillingChargeService billingChargeService;
+
     public DiagnosticOrderTestStatusService(
             DiagnosticOrderRepository diagnosticOrderRepository,
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
@@ -53,7 +62,10 @@ public class DiagnosticOrderTestStatusService {
             PatientServiceAndProductRepository patientServiceAndProductRepository,
             DiagnosticTestClient diagnosticTestClient,
             WaseelItemMappingClient waseelItemMappingClient,
-            PreAuthorizationSubmissionService preAuthorizationSubmissionService
+            PreAuthorizationSubmissionService preAuthorizationSubmissionService,
+            PatientEncounterRepository patientEncounterRepository,
+            @Lazy BillingEngineService billingEngineService,
+            @Lazy BillingChargeService billingChargeService
     ) {
         this.diagnosticOrderRepository = diagnosticOrderRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
@@ -62,6 +74,9 @@ public class DiagnosticOrderTestStatusService {
         this.diagnosticTestClient = diagnosticTestClient;
         this.waseelItemMappingClient = waseelItemMappingClient;
         this.preAuthorizationSubmissionService = preAuthorizationSubmissionService;
+        this.patientEncounterRepository = patientEncounterRepository;
+        this.billingEngineService = billingEngineService;
+        this.billingChargeService = billingChargeService;
     }
 
     public DiagnosticOrderTest collectSample(Long testId) {
@@ -116,13 +131,20 @@ public class DiagnosticOrderTestStatusService {
         DiagnosticOrder order = getOrder(saved.getOrderId());
         DiagnosticTestSetupDTO setupDiagnostic = fetchDiagnosticTestSetup(saved.getTestId());
 
-        PatientServiceAndProduct billingItem = buildDiagnosticBillingItem(order, saved, setupDiagnostic);
-
         PatientServiceAndProduct savedBillingItem =
-                patientServiceAndProductRepository.saveAndFlush(billingItem);
+                findOrCreateDiagnosticBillingItem(
+                        order,
+                        saved,
+                        setupDiagnostic
+                );
 
         if (savedBillingItem.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL) {
             preAuthorizationSubmissionService.submitIfRequired(savedBillingItem.getEncounterId());
+        } else {
+            billDiagnosticItemOnAccept(
+                    savedBillingItem,
+                    order.getEncounterId()
+            );
         }
 
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
@@ -260,23 +282,8 @@ public class DiagnosticOrderTestStatusService {
     }
 
     public void bulkAccept(List<Long> testIds, String acceptedBy) {
-        Set<Long> orderIds = new HashSet<>();
-
         for (Long id : testIds) {
-            DiagnosticOrderTest test = getTest(id);
-
-            ensureTransition(test, DiagnosticStatus.ACCEPTED);
-
-            test.setProcessingStatus(DiagnosticStatus.ACCEPTED);
-            test.setAcceptedBy(acceptedBy);
-            test.setAcceptedDate(Instant.now());
-
-            DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
-            orderIds.add(saved.getOrderId());
-        }
-
-        for (Long orderId : orderIds) {
-            diagnosticOrderStatusService.recomputeLabRadStatuses(orderId);
+            accept(id, acceptedBy);
         }
     }
 
@@ -379,6 +386,100 @@ public class DiagnosticOrderTestStatusService {
                 .notes("Created on diagnostic test acceptance. OrderId="
                         + order.getId() + ", OrderTestId=" + test.getId())
                 .build();
+    }
+
+    private PatientServiceAndProduct findOrCreateDiagnosticBillingItem(
+            DiagnosticOrder order,
+            DiagnosticOrderTest test,
+            DiagnosticTestSetupDTO setupDiagnostic
+    ) {
+        BillingItemTypes billingItemType =
+                test.getOrderType() == TestType.RADIOLOGY
+                        ? BillingItemTypes.RADIOLOGY
+                        : BillingItemTypes.LABORATORY;
+
+        ServiceSource serviceSource =
+                test.getOrderType() == TestType.RADIOLOGY
+                        ? ServiceSource.RADIOLOGY
+                        : ServiceSource.LABORATORY;
+
+        return patientServiceAndProductRepository
+                .findByServiceSourceAndSourceIdAndBillingItemType(
+                        serviceSource,
+                        test.getId(),
+                        billingItemType
+                )
+                .orElseGet(() ->
+                        patientServiceAndProductRepository.saveAndFlush(
+                                buildDiagnosticBillingItem(
+                                        order,
+                                        test,
+                                        setupDiagnostic
+                                )
+                        )
+                );
+    }
+
+    private void billDiagnosticItemOnAccept(
+            PatientServiceAndProduct billingItem,
+            Long encounterId
+    ) {
+        if (billingItem == null || billingItem.getId() == null) {
+            return;
+        }
+
+        Long facilityId =
+                patientEncounterRepository
+                        .findById(encounterId)
+                        .map(encounter -> encounter.getFacilityId())
+                        .orElse(null);
+
+        if (facilityId == null) {
+            throw new BadRequestAlertException(
+                    "Encounter facility is required to bill diagnostic item.",
+                    "diagnostic_order_tests",
+                    "encounter.facility.required"
+            );
+        }
+
+        if (billingChargeService
+                .findActiveChargeLine(
+                        billingItem.getId(),
+                        encounterId
+                )
+                .isPresent()) {
+            LOG.info(
+                    "[DIAG_ACCEPT_BILLING] Charge line already exists pspId={} encounterId={}",
+                    billingItem.getId(),
+                    encounterId
+            );
+            return;
+        }
+
+        BillingOperationResult result =
+                billingEngineService.onItemOrdered(
+                        billingItem.getId(),
+                        facilityId,
+                        "DIAG-ACCEPT:" + billingItem.getId()
+                );
+
+        LOG.info(
+                "[DIAG_ACCEPT_BILLING] pspId={} processed={} chargeLineId={} message={}",
+                billingItem.getId(),
+                result.processed(),
+                result.chargeLineId(),
+                result.message()
+        );
+
+        if (!result.processed()) {
+            throw new BadRequestAlertException(
+                    result.message() == null
+                            ? "Diagnostic billing rule did not match on lab accept."
+                            : result.message(),
+                    "diagnostic_order_tests",
+                    "billingRule.notMatched"
+            );
+        }
     }
 
     private boolean requiresPreAuthorization(
