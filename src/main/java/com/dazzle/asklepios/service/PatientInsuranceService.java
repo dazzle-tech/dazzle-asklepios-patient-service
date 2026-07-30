@@ -121,6 +121,13 @@ public class PatientInsuranceService {
         return patientInsuranceRepository.findByPatientId(patientId, pageable);
     }
 
+
+    @Transactional(readOnly = true)
+    public Page<PatientInsurance> findAll(Pageable pageable) {
+        LOG.debug("[FIND_ALL] PatientInsurance pageable={}", pageable);
+        return patientInsuranceRepository.findAll(pageable);
+    }
+
     @Transactional(readOnly = true)
     public long countCoverages(Long insuranceId) {
         LOG.debug("[COUNT] insuranceId={} → counting coverages", insuranceId);

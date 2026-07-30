@@ -116,6 +116,20 @@ public class PatientInsuranceController {
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
+    @GetMapping("/insurances")
+    public ResponseEntity<List<PatientInsurance>> getAllInsurances(
+            @ParameterObject Pageable pageable
+    ) {
+        Page<PatientInsurance> page = patientInsuranceService.findAll(pageable);
+
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                page
+        );
+
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+    }
+
     @DeleteMapping("/insurances/{id}")
     public ResponseEntity<Void> deletePatientInsurance(
             @PathVariable Long id,
