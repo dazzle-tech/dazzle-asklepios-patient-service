@@ -155,18 +155,21 @@ public class InvoiceChargePaymentSyncService {
         BigDecimal patientShare = money(item.getPatientShareAmount());
         BigDecimal cashCollected =
                 sumCashEquivalentCollections(chargeLineId);
-        BigDecimal syncedPaid = cashCollected.min(patientShare);
+        BigDecimal syncedFromCharge = cashCollected.min(patientShare);
+        BigDecimal existingPaid = money(item.getPaidAmount());
+        // Keep direct invoice payments (e.g. invoice-level tax) when re-syncing from charge.
+        BigDecimal mergedPaid = existingPaid.max(syncedFromCharge);
 
         BigDecimal remaining =
                 patientShare
-                        .subtract(syncedPaid)
+                        .subtract(mergedPaid)
                         .max(BigDecimal.ZERO)
                         .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
 
-        item.setPaidAmount(syncedPaid);
+        item.setPaidAmount(mergedPaid);
         item.setRemainingAmount(remaining);
         item.setStatus(
-                resolveStatus(syncedPaid, patientShare, remaining)
+                resolveStatus(mergedPaid, patientShare, remaining)
         );
     }
 

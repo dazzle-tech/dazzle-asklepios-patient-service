@@ -1230,13 +1230,20 @@ public class PatientPaymentsService {
         BigDecimal legacyRemaining =
                 nonNullAmount(chargeRepository.sumOpenRemainingByPatient(patientId));
 
-        BigDecimal openBillingOutstanding =
-                nonNullAmount(
-                        billingChargeRepository.sumOpenOutstandingByPatient(patientId)
-                );
-
         BigDecimal invoiceOutstanding =
                 nonNullAmount(sumPatientInvoiceOutstanding(patientId));
+
+        List<Long> invoicedEncounterIds =
+                resolveInvoicedEncounterIds(patientId);
+
+        BigDecimal openBillingOutstanding =
+                nonNullAmount(
+                        billingChargeRepository
+                                .sumOpenOutstandingByPatientExcludingEncounters(
+                                        patientId,
+                                        invoicedEncounterIds
+                                )
+                );
 
         BigDecimal debitBalance =
                 nonNullAmount(
@@ -1245,16 +1252,44 @@ public class PatientPaymentsService {
                         )
                 );
 
+        // Invoice outstanding already reflects price-list net + tax + discount.
+        // Do not also count charge outstanding for the same invoiced encounter.
         BigDecimal remaining =
-                legacyRemaining.add(openBillingOutstanding);
+                legacyRemaining
+                        .add(openBillingOutstanding)
+                        .add(invoiceOutstanding);
 
-        if (invoiceOutstanding.signum() > 0) {
-            remaining = remaining.add(invoiceOutstanding);
-        } else if (debitBalance.signum() > 0) {
+        if (invoiceOutstanding.signum() <= 0 && debitBalance.signum() > 0) {
             remaining = remaining.add(debitBalance);
         }
 
         return remaining;
+    }
+
+    private List<Long> resolveInvoicedEncounterIds(Long patientId) {
+        return documentRepository
+                .findAllByPatientIdOrderByCreatedDateDesc(patientId)
+                .stream()
+                .filter(
+                        document ->
+                                document.getDocumentType()
+                                        == FinancialDocumentType.INVOICE
+                )
+                .filter(
+                        document ->
+                                document.getDocumentSubtype()
+                                        == FinancialDocumentSubtype.PATIENT
+                                        || document.getDocumentSubtype() == null
+                )
+                .filter(
+                        document ->
+                                document.getStatus()
+                                        != FinancialDocumentStatus.CANCELLED
+                )
+                .map(FinancialDocument::getEncounterId)
+                .filter(id -> id != null)
+                .distinct()
+                .toList();
     }
 
     private BigDecimal sumPatientInvoiceOutstanding(Long patientId) {

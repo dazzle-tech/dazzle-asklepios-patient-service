@@ -25,6 +25,12 @@ public record AddableChargeLineResponse(
 
         BigDecimal insuranceShareAmount,
 
+        BigDecimal grossAmount,
+
+        BigDecimal discountAmount,
+
+        BigDecimal taxAmount,
+
         Currency currency
 
 ) implements Serializable {

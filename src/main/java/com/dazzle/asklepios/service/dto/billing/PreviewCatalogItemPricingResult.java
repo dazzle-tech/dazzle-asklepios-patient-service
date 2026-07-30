@@ -15,7 +15,25 @@ public record PreviewCatalogItemPricingResult(
 
         String priceListItemCode,
 
-        Currency currency
+        Currency currency,
+
+        BigDecimal grossAmount,
+
+        BigDecimal discountAmount,
+
+        BigDecimal taxAmount,
+
+        BigDecimal netAmount,
+
+        BigDecimal itemGrossAmount,
+
+        BigDecimal itemDiscountAmount,
+
+        BigDecimal itemTaxAmount,
+
+        BigDecimal invoiceDiscountAmount,
+
+        BigDecimal invoiceTaxAmount
 
 ) implements Serializable {
 }

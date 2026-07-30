@@ -73,4 +73,37 @@ public interface BillingChargeRepository
         );
     }
 
+    @Query("""
+        select coalesce(sum(c.outstandingAmount), 0)
+        from BillingCharge c
+        where c.patient.id = :patientId
+          and c.status not in :closedStatuses
+          and c.outstandingAmount > 0
+          and c.encounter.id not in :excludedEncounterIds
+    """)
+    BigDecimal sumOpenOutstandingByPatientExcludingEncounters(
+            @Param("patientId") Long patientId,
+            @Param("closedStatuses") Collection<BillingChargeStatus> closedStatuses,
+            @Param("excludedEncounterIds") Collection<Long> excludedEncounterIds
+    );
+
+    default BigDecimal sumOpenOutstandingByPatientExcludingEncounters(
+            Long patientId,
+            Collection<Long> excludedEncounterIds
+    ) {
+        if (excludedEncounterIds == null || excludedEncounterIds.isEmpty()) {
+            return sumOpenOutstandingByPatient(patientId);
+        }
+
+        return sumOpenOutstandingByPatientExcludingEncounters(
+                patientId,
+                List.of(
+                        BillingChargeStatus.CLOSED,
+                        BillingChargeStatus.CANCELLED,
+                        BillingChargeStatus.REVERSED
+                ),
+                excludedEncounterIds
+        );
+    }
+
 }

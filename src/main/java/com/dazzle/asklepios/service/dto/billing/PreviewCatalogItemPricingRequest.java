@@ -37,7 +37,9 @@ public record PreviewCatalogItemPricingRequest(
 
         BillingCoverageType coverageType,
 
-        Long patientInsuranceId
+        Long patientInsuranceId,
+
+        Long invoiceId
 
 ) implements Serializable {
 }

@@ -196,6 +196,9 @@ public class FinancialDocumentAdjustmentService {
                         line.getNetAmount(),
                         money(line.getPatientResponsibilityAmount()),
                         money(line.getInsuranceResponsibilityAmount()),
+                        money(line.getGrossAmount()),
+                        money(line.getDiscountAmount()),
+                        money(line.getTaxAmount()),
                         line.getCurrency()
                 ))
                 .toList();
