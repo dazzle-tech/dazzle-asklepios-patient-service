@@ -1371,10 +1371,6 @@ public class BillingEngineService {
     private Long resolveSourceId(
             PatientServiceAndProduct item
     ) {
-        if (item.getSourceId() != null) {
-            return item.getSourceId();
-        }
-
         return switch (item.getBillingItemType()) {
 
             case SERVICE ->

@@ -1883,10 +1883,6 @@ public class BillingChargeService {
     private Long resolveSourceId(
             PatientServiceAndProduct item
     ) {
-        if (item.getSourceId() != null) {
-            return item.getSourceId();
-        }
-
         if (item.getServiceId() != null) {
             return item.getServiceId();
         }
@@ -1901,6 +1897,10 @@ public class BillingChargeService {
 
         if (item.getBrandMedicationId() != null) {
             return item.getBrandMedicationId();
+        }
+
+        if (item.getSourceId() != null) {
+            return item.getSourceId();
         }
 
         throw new BadRequestAlertException(
