@@ -852,6 +852,226 @@ public class BillingDebitService {
         );
     }
 
+    /**
+     * Settles patient debit when the payment amount was already applied
+     * (e.g. wallet consumed or cash credited then consumed during invoice
+     * collection). Does not consume wallet balance again.
+     */
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class
+    )
+    public BillingDebitSettlementResult settleDebitFromAppliedPayment(
+            Long debitAccountId,
+            BigDecimal requestedAmount,
+            BillingPayment payment,
+            BillingPaymentTransaction paymentTransaction,
+            String requestId,
+            BillingLedgerSourceChannel sourceChannel
+    ) {
+        validateSettlementInput(
+                debitAccountId,
+                requestedAmount,
+                payment,
+                requestId,
+                sourceChannel
+        );
+
+        String idempotencyKey =
+                "DEBIT:SETTLEMENT:APPLIED:ACCOUNT:"
+                        + debitAccountId
+                        + ":"
+                        + requestId.trim();
+
+        BillingDebitTransaction existing =
+                billingDebitTransactionRepository
+                        .findByIdempotencyKey(
+                                idempotencyKey
+                        )
+                        .orElse(null);
+
+        if (existing != null) {
+            return buildSettlementResult(existing);
+        }
+
+        BillingDebitAccount account =
+                lockAccount(debitAccountId);
+
+        validateAccountUsable(account);
+
+        if (!account.getPatient()
+                .getId()
+                .equals(
+                        payment.getPatient()
+                                .getId()
+                )) {
+            throw new BadRequestAlertException(
+                    "Payment does not belong to the debit-account patient.",
+                    ENTITY_NAME,
+                    "payment.patient.mismatch"
+            );
+        }
+
+        if (account.getCurrency()
+                != payment.getCurrency()) {
+            throw new BadRequestAlertException(
+                    "Payment currency does not match debit-account currency.",
+                    ENTITY_NAME,
+                    "payment.currency.mismatch"
+            );
+        }
+
+        BigDecimal balanceBefore =
+                money(
+                        account.getCurrentDebitBalance()
+                );
+
+        if (balanceBefore.signum() <= 0) {
+            return null;
+        }
+
+        BigDecimal paymentRemaining =
+                calculatePaymentRemainingForDebitSettlement(
+                        payment
+                );
+
+        BigDecimal amount =
+                minimum(
+                        positiveMoney(
+                                requestedAmount,
+                                "Settlement amount"
+                        ),
+                        balanceBefore,
+                        paymentRemaining
+                );
+
+        if (amount.signum() <= 0) {
+            return null;
+        }
+
+        BigDecimal balanceAfter =
+                balanceBefore.subtract(amount);
+
+        account.setCurrentDebitBalance(
+                balanceAfter
+        );
+
+        account.setAvailableCredit(
+                money(
+                        account.getCreditLimit()
+                ).subtract(balanceAfter)
+        );
+
+        account.setTotalDebitSettled(
+                money(
+                        account.getTotalDebitSettled()
+                ).add(amount)
+        );
+
+        validateAccountBalance(account);
+
+        billingDebitAccountRepository.save(account);
+
+        BillingDebitTransactionType type =
+                balanceAfter.signum() == 0
+                        ? BillingDebitTransactionType
+                        .DEBIT_SETTLEMENT
+                        : BillingDebitTransactionType
+                        .PARTIAL_SETTLEMENT;
+
+        BillingDebitTransaction transaction =
+                BillingDebitTransaction.builder()
+                        .transactionNumber(
+                                generateTransactionNumber()
+                        )
+                        .debitAccount(account)
+                        .patient(
+                                account.getPatient()
+                        )
+                        .encounter(
+                                payment.getEncounter()
+                        )
+                        .payment(payment)
+                        .paymentTransaction(
+                                paymentTransaction
+                        )
+                        .parentTransaction(null)
+                        .transactionType(type)
+                        .amount(amount)
+                        .currency(
+                                account.getCurrency()
+                        )
+                        .balanceBefore(
+                                balanceBefore
+                        )
+                        .balanceAfter(
+                                balanceAfter
+                        )
+                        .status(
+                                BillingDebitTransactionStatus
+                                        .COMPLETED
+                        )
+                        .transactionDate(
+                                Instant.now()
+                        )
+                        .settledDate(
+                                Instant.now()
+                        )
+                        .referenceType(
+                                "BILLING_PAYMENT"
+                        )
+                        .referenceId(
+                                payment.getId()
+                        )
+                        .referenceNumber(
+                                payment.getPaymentNumber()
+                        )
+                        .reason(
+                                "Patient debit settlement from invoice payment"
+                        )
+                        .idempotencyKey(
+                                idempotencyKey
+                        )
+                        .transactionGroupId(
+                                UUID.randomUUID()
+                        )
+                        .notes(
+                                "Debit account settled using applied invoice payment."
+                        )
+                        .build();
+
+        BillingDebitTransaction savedTransaction =
+                saveTransaction(
+                        transaction,
+                        idempotencyKey
+                );
+
+        recordDebitSettlementFromAppliedPaymentLedger(
+                savedTransaction,
+                payment,
+                paymentTransaction,
+                balanceBefore,
+                balanceAfter,
+                sourceChannel,
+                requestId
+        );
+
+        LOG.info(
+                "[SETTLE_DEBIT_APPLIED] Debit settled "
+                        + "accountId={} transactionId={} "
+                        + "amount={} balanceBefore={} balanceAfter={}",
+                account.getId(),
+                savedTransaction.getId(),
+                amount,
+                balanceBefore,
+                balanceAfter
+        );
+
+        return buildSettlementResult(
+                savedTransaction
+        );
+    }
+
     private void recordDebitCreatedLedger(
             BillingDebitTransaction transaction,
             BigDecimal balanceBefore,
@@ -1033,6 +1253,92 @@ public class BillingDebitService {
                         transaction.getTransactionNumber(),
 
                         "Patient debit settled using payment.",
+
+                        transaction.getReason(),
+
+                        sourceChannel
+                )
+        );
+    }
+
+    private void recordDebitSettlementFromAppliedPaymentLedger(
+            BillingDebitTransaction transaction,
+            BillingPayment payment,
+            BillingPaymentTransaction paymentTransaction,
+            BigDecimal balanceBefore,
+            BigDecimal balanceAfter,
+            BillingLedgerSourceChannel sourceChannel,
+            String requestId
+    ) {
+        /*
+         * Wallet movement was already recorded when the payment was
+         * confirmed. This entry only reflects debit-account settlement.
+         */
+        billingLedgerService.record(
+                new BillingLedgerEntryRequest(
+                        transaction.getTransactionGroupId(),
+                        requestId.trim(),
+                        "LEDGER:DEBIT:SETTLED:TX:"
+                                + transaction.getId(),
+
+                        transaction.getPatient(),
+                        transaction.getEncounter(),
+
+                        null,
+                        payment,
+                        paymentTransaction,
+
+                        null,
+                        null,
+                        null,
+
+                        null,
+                        null,
+
+                        transaction.getDebitAccount(),
+                        transaction,
+                        null,
+
+                        BillingLedgerTransactionType
+                                .DEBIT_SETTLED,
+
+                        BillingLedgerScope.DEBIT_ACCOUNT,
+
+                        transaction.getAmount(),
+                        transaction.getCurrency(),
+
+                        zero(),
+                        zero(),
+                        zero(),
+                        zero(),
+
+                        transaction.getAmount()
+                                .negate(),
+
+                        zero(),
+                        zero(),
+
+                        null,
+                        null,
+                        null,
+                        null,
+
+                        balanceBefore,
+                        balanceAfter,
+
+                        null,
+                        null,
+
+                        BillingLedgerEntryDirection.CREDIT,
+                        BillingLedgerEntryCategory.BUSINESS,
+
+                        null,
+
+                        "BILLING_DEBIT_TRANSACTION",
+                        transaction.getId(),
+                        transaction.getTransactionNumber(),
+
+                        "Patient debit settled using applied invoice payment.",
 
                         transaction.getReason(),
 

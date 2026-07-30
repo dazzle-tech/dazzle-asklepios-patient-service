@@ -105,6 +105,9 @@ public class InvoiceBalancePaymentService {
 
     private final PatientEncounterRepository patientEncounterRepository;
 
+    private final InvoicePaymentChargeSettlementService
+            invoicePaymentChargeSettlementService;
+
 
 
     @Transactional(rollbackFor = Exception.class)
@@ -300,7 +303,13 @@ public class InvoiceBalancePaymentService {
 
         invoiceChargePaymentSyncService.syncPostInvoicePayments(items);
 
-
+        invoicePaymentChargeSettlementService.settleFromInvoicePayment(
+                encounter.getId(),
+                paymentResult.paymentId(),
+                paymentResult.paymentTransactionId(),
+                amountToCollect,
+                request.requestId()
+        );
 
         FinancialDocumentStatus status =
 

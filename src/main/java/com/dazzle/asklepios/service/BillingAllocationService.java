@@ -6,6 +6,8 @@ import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingChargeResponsibility;
 import com.dazzle.asklepios.domain.BillingDebitTransaction;
 import com.dazzle.asklepios.domain.BillingLedger;
+import com.dazzle.asklepios.domain.BillingPayment;
+import com.dazzle.asklepios.domain.BillingPaymentTransaction;
 import com.dazzle.asklepios.domain.BillingReservation;
 import com.dazzle.asklepios.domain.BillingWallet;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
@@ -491,6 +493,180 @@ public class BillingAllocationService {
         return buildResult(
                 allocation,
                 updatedWallet
+        );
+    }
+
+    /*
+     * ============================================================
+     * ALLOCATION FROM CONFIRMED PAYMENT
+     * ============================================================
+     */
+
+    @Transactional(rollbackFor = Exception.class)
+    public BillingAllocationResult allocateFromPayment(
+            Long chargeResponsibilityId,
+            BillingPayment payment,
+            BillingPaymentTransaction paymentTransaction,
+            BigDecimal requestedAmount,
+            String requestId,
+            BillingLedgerSourceChannel sourceChannel
+    ) {
+        validatePaymentAllocationInput(
+                chargeResponsibilityId,
+                payment,
+                paymentTransaction,
+                requestedAmount,
+                requestId,
+                sourceChannel
+        );
+
+        String idempotencyKey =
+                buildPaymentAllocationIdempotencyKey(
+                        payment.getId(),
+                        chargeResponsibilityId,
+                        requestId
+                );
+
+        BillingAllocation existing =
+                billingAllocationRepository
+                        .findByIdempotencyKey(
+                                idempotencyKey
+                        )
+                        .orElse(null);
+
+        if (existing != null) {
+            BillingWallet existingWallet =
+                    billingWalletService.lockWallet(
+                            existing.getPatient().getId(),
+                            existing.getCurrency()
+                    );
+
+            return buildResult(
+                    existing,
+                    existingWallet
+            );
+        }
+
+        BillingChargeResponsibility responsibility =
+                lockResponsibility(
+                        chargeResponsibilityId
+                );
+
+        validatePatientResponsibility(
+                responsibility
+        );
+
+        if (!responsibility.getPatient()
+                .getId()
+                .equals(
+                        payment.getPatient().getId()
+                )) {
+            throw new BadRequestAlertException(
+                    "Payment does not belong to the responsibility patient.",
+                    ENTITY_NAME,
+                    "payment.patient.mismatch"
+            );
+        }
+
+        BillingChargeLine chargeLine =
+                lockChargeLine(
+                        responsibility
+                                .getChargeLine()
+                                .getId()
+                );
+
+        BillingCharge charge =
+                lockCharge(
+                        responsibility
+                                .getCharge()
+                                .getId()
+                );
+
+        PatientServiceAndProduct item =
+                loadPatientServiceProduct(
+                        responsibility
+                                .getPatientServiceProduct()
+                                .getId()
+                );
+
+        BillingWallet wallet =
+                billingWalletService.lockWallet(
+                        responsibility.getPatient().getId(),
+                        responsibility.getCurrency()
+                );
+
+        BigDecimal responsibilityOutstandingBefore =
+                money(
+                        responsibility.getOutstandingAmount()
+                );
+
+        BigDecimal amount =
+                resolvePaymentAllocationAmount(
+                        requestedAmount,
+                        responsibility,
+                        chargeLine
+                );
+
+        updateResponsibilityAfterAllocation(
+                responsibility,
+                amount
+        );
+
+        updateChargeLineAfterAvailableAllocation(
+                chargeLine,
+                amount
+        );
+
+        updateChargeAfterAllocation(
+                charge,
+                amount
+        );
+
+        updatePatientItem(
+                item,
+                responsibility
+        );
+
+        UUID transactionGroupId = UUID.randomUUID();
+
+        BillingAllocation allocation =
+                createPaymentAllocation(
+                        payment,
+                        paymentTransaction,
+                        responsibility,
+                        chargeLine,
+                        charge,
+                        item,
+                        amount,
+                        idempotencyKey,
+                        transactionGroupId
+                );
+
+        recordPaymentAllocationLedger(
+                allocation,
+                responsibility,
+                chargeLine,
+                charge,
+                amount,
+                responsibilityOutstandingBefore,
+                requestId,
+                sourceChannel
+        );
+
+        LOG.info(
+                "[ALLOCATE_PAYMENT] Allocation completed "
+                        + "allocationId={} paymentId={} responsibilityId={} "
+                        + "amount={} responsibilityOutstanding={}",
+                allocation.getId(),
+                payment.getId(),
+                responsibility.getId(),
+                amount,
+                responsibility.getOutstandingAmount()
+        );
+
+        return buildResult(
+                allocation,
+                wallet
         );
     }
 
@@ -1167,6 +1343,80 @@ public class BillingAllocationService {
                         )
                         .notes(
                                 "Allocation created directly from available patient wallet balance."
+                        )
+                        .build();
+
+        return saveAllocation(
+                allocation,
+                idempotencyKey
+        );
+    }
+
+    private BillingAllocation createPaymentAllocation(
+            BillingPayment payment,
+            BillingPaymentTransaction paymentTransaction,
+            BillingChargeResponsibility responsibility,
+            BillingChargeLine chargeLine,
+            BillingCharge charge,
+            PatientServiceAndProduct item,
+            BigDecimal amount,
+            String idempotencyKey,
+            UUID transactionGroupId
+    ) {
+        BillingAllocation allocation =
+                BillingAllocation.builder()
+                        .allocationNumber(
+                                generateAllocationNumber()
+                        )
+                        .charge(charge)
+                        .chargeLine(chargeLine)
+                        .chargeResponsibility(
+                                responsibility
+                        )
+                        .patientServiceProduct(item)
+                        .patient(
+                                responsibility.getPatient()
+                        )
+                        .encounter(
+                                responsibility.getEncounter()
+                        )
+                        .allocationSourceType(
+                                AllocationSourceType.PAYMENT
+                        )
+                        .reservation(null)
+                        .payment(payment)
+                        .paymentTransaction(paymentTransaction)
+                        .debitTransactionId(null)
+                        .sourceReferenceType(
+                                "BILLING_PAYMENT"
+                        )
+                        .sourceReferenceId(
+                                payment.getId()
+                        )
+                        .sourceReferenceNumber(
+                                payment.getPaymentNumber()
+                        )
+                        .allocatedAmount(amount)
+                        .remainingAllocatedAmount(amount)
+                        .reversedAmount(zero())
+                        .currency(
+                                responsibility.getCurrency()
+                        )
+                        .status(
+                                BillingAllocationStatus.ACTIVE
+                        )
+                        .allocationDate(
+                                Instant.now()
+                        )
+                        .originalAllocation(null)
+                        .idempotencyKey(
+                                idempotencyKey
+                        )
+                        .transactionGroupId(
+                                transactionGroupId
+                        )
+                        .notes(
+                                "Allocation created from confirmed invoice payment."
                         )
                         .build();
 
@@ -2006,6 +2256,148 @@ public class BillingAllocationService {
         );
     }
 
+    private void recordPaymentAllocationLedger(
+            BillingAllocation allocation,
+            BillingChargeResponsibility responsibility,
+            BillingChargeLine chargeLine,
+            BillingCharge charge,
+            BigDecimal amount,
+            BigDecimal responsibilityOutstandingBefore,
+            String requestId,
+            BillingLedgerSourceChannel sourceChannel
+    ) {
+        /*
+         * Wallet movement was already recorded when the payment was
+         * confirmed (credit/consume/reservation). This entry only
+         * reflects responsibility allocation from that payment.
+         */
+        billingLedgerService.record(
+                new BillingLedgerEntryRequest(
+                        allocation.getTransactionGroupId(),
+                        requestId.trim(),
+                        buildPaymentAllocationLedgerIdempotencyKey(
+                                allocation.getId()
+                        ),
+
+                        allocation.getPatient(),
+                        allocation.getEncounter(),
+
+                        null,
+                        allocation.getPayment(),
+                        allocation.getPaymentTransaction(),
+
+                        charge,
+                        chargeLine,
+                        responsibility,
+
+                        null,
+                        allocation,
+
+                        null,
+                        null,
+                        null,
+
+                        BillingLedgerTransactionType
+                                .ALLOCATION_CREATED,
+
+                        BillingLedgerScope.ALLOCATION,
+
+                        amount,
+                        allocation.getCurrency(),
+
+                        zero(),
+                        zero(),
+                        zero(),
+                        zero(),
+                        zero(),
+                        amount,
+                        amount.negate(),
+
+                        null,
+                        null,
+                        null,
+                        null,
+
+                        null,
+                        null,
+
+                        responsibilityOutstandingBefore,
+                        money(
+                                responsibility
+                                        .getOutstandingAmount()
+                        ),
+
+                        BillingLedgerEntryDirection.DEBIT,
+                        BillingLedgerEntryCategory.BUSINESS,
+
+                        null,
+
+                        "BILLING_PAYMENT",
+                        allocation.getPayment().getId(),
+                        allocation.getPayment().getPaymentNumber(),
+
+                        "Confirmed payment allocated to patient responsibility.",
+
+                        null,
+
+                        sourceChannel
+                )
+        );
+    }
+
+    private String buildPaymentAllocationIdempotencyKey(
+            Long paymentId,
+            Long chargeResponsibilityId,
+            String requestId
+    ) {
+        String suffix =
+                requestId == null
+                        ? ""
+                        : requestId.trim();
+
+        if (suffix.length() > 40) {
+            suffix =
+                    suffix.substring(
+                            suffix.length() - 40
+                    );
+        }
+
+        return truncateIdempotencyKey(
+                "ALLOC:PAY:"
+                        + paymentId
+                        + ":RESP:"
+                        + chargeResponsibilityId
+                        + ":"
+                        + suffix
+        );
+    }
+
+    private String buildPaymentAllocationLedgerIdempotencyKey(
+            Long allocationId
+    ) {
+        return truncateIdempotencyKey(
+                "LEDGER:ALLOC:PAY:"
+                        + allocationId
+        );
+    }
+
+    private String truncateIdempotencyKey(
+            String value
+    ) {
+        if (value == null) {
+            return "";
+        }
+
+        if (value.length() <= 150) {
+            return value;
+        }
+
+        return value.substring(
+                0,
+                150
+        );
+    }
+
     private void recordReversalLedger(
             BillingAllocation allocation,
             BillingWallet updatedWallet,
@@ -2527,6 +2919,91 @@ public class BillingAllocationService {
                 requestId,
                 sourceChannel
         );
+    }
+
+    private void validatePaymentAllocationInput(
+            Long chargeResponsibilityId,
+            BillingPayment payment,
+            BillingPaymentTransaction paymentTransaction,
+            BigDecimal requestedAmount,
+            String requestId,
+            BillingLedgerSourceChannel sourceChannel
+    ) {
+        if (chargeResponsibilityId == null) {
+            throw new BadRequestAlertException(
+                    "Charge responsibility ID is required.",
+                    ENTITY_NAME,
+                    "chargeResponsibilityId.required"
+            );
+        }
+
+        if (payment == null || payment.getId() == null) {
+            throw new BadRequestAlertException(
+                    "Payment is required.",
+                    ENTITY_NAME,
+                    "payment.required"
+            );
+        }
+
+        if (paymentTransaction != null
+                && (paymentTransaction.getPayment() == null
+                || !paymentTransaction
+                .getPayment()
+                .getId()
+                .equals(payment.getId()))) {
+            throw new BadRequestAlertException(
+                    "Payment transaction does not belong to the payment.",
+                    ENTITY_NAME,
+                    "paymentTransaction.payment.mismatch"
+            );
+        }
+
+        positiveMoney(
+                requestedAmount
+        );
+
+        validateRequestInformation(
+                requestId,
+                sourceChannel
+        );
+    }
+
+    private BigDecimal resolvePaymentAllocationAmount(
+            BigDecimal requestedAmount,
+            BillingChargeResponsibility responsibility,
+            BillingChargeLine chargeLine
+    ) {
+        BigDecimal requested =
+                positiveMoney(
+                        requestedAmount
+                );
+
+        BigDecimal responsibilityOutstanding =
+                money(
+                        responsibility.getOutstandingAmount()
+                );
+
+        BigDecimal lineOutstanding =
+                money(
+                        chargeLine.getOutstandingAmount()
+                );
+
+        BigDecimal amount =
+                minimum(
+                        requested,
+                        responsibilityOutstanding,
+                        lineOutstanding
+                );
+
+        if (amount.signum() <= 0) {
+            throw new BadRequestAlertException(
+                    "No outstanding responsibility balance is available for payment allocation.",
+                    ENTITY_NAME,
+                    "payment.allocation.zero"
+            );
+        }
+
+        return amount;
     }
 
     private void validateReversalInput(
