@@ -90,7 +90,7 @@ public class PatientInsuranceController {
 
         return ResponseEntity.ok(updated);
     }
-    
+
     @GetMapping("/insurances/patient/{patientId}")
     public ResponseEntity<List<PatientInsurance>> getInsurancesByPatient(
             @PathVariable Long patientId,
@@ -111,6 +111,20 @@ public class PatientInsuranceController {
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
+        );
+
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+    }
+
+    @GetMapping("/insurances")
+    public ResponseEntity<List<PatientInsurance>> getAllInsurances(
+            @ParameterObject Pageable pageable
+    ) {
+        Page<PatientInsurance> page = patientInsuranceService.findAll(pageable);
+
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                page
         );
 
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);

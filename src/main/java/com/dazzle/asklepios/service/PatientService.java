@@ -11,10 +11,7 @@ import com.dazzle.asklepios.repository.DuplicationCandidateRepository;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
-import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
-import com.dazzle.asklepios.service.dto.patient.PatientDuplicationLookupDTO;
-import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
-import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
+import com.dazzle.asklepios.service.dto.patient.*;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.InvalidPasswordException;
@@ -41,6 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -48,7 +46,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
-
+import com.dazzle.asklepios.domain.PatientInsurance;
+import com.dazzle.asklepios.service.dto.patient.FacilityPatientFilterDTO;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
@@ -345,6 +344,101 @@ public class PatientService {
         LOG.debug("[FIND UNKNOWN] Fetching unknown patients with pageable={}", pageable);
         return patientRepository.findByIsUnknownTrue(pageable);
     }
+
+    @Transactional(readOnly = true)
+    public Page<Patient> findAll(Pageable pageable) {
+        LOG.debug("[FIND ALL] Fetching all patients pageable={}", pageable);
+        return patientRepository.findAll(pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<Patient> findFacilityPatients(
+            FacilityPatientFilterDTO filter,
+            Pageable pageable
+    ) {
+
+        Specification<Patient> specification = (root, query, cb) -> {
+
+
+            List<Predicate> predicates = new ArrayList<>();
+
+            if (filter.patientName() != null && !filter.patientName().isBlank()) {
+
+                String[] tokens = filter.patientName().trim().split("\\s+");
+
+                for (String token : tokens) {
+
+                    String pattern = "%" + token.toLowerCase() + "%";
+
+                    predicates.add(
+                            cb.or(
+                                    cb.like(cb.lower(root.get("firstName")), pattern),
+                                    cb.like(cb.lower(root.get("secondName")), pattern),
+                                    cb.like(cb.lower(root.get("thirdName")), pattern),
+                                    cb.like(cb.lower(root.get("lastName")), pattern),
+                                    cb.like(cb.lower(root.get("firstNameSecondaryLang")), pattern),
+                                    cb.like(cb.lower(root.get("secondNameSecondaryLang")), pattern),
+                                    cb.like(cb.lower(root.get("thirdNameSecondaryLang")), pattern),
+                                    cb.like(cb.lower(root.get("lastNameSecondaryLang")), pattern)
+                            )
+                    );
+                }
+            }
+
+            if (filter.registrationDateFrom() != null) {
+
+                predicates.add(
+                        cb.greaterThanOrEqualTo(
+                                root.get("createdDate"),
+                                filter.registrationDateFrom()
+                                        .atStartOfDay()
+                                        .toInstant(ZoneOffset.UTC)
+                        )
+                );
+            }
+
+            if (filter.registrationDateTo() != null) {
+
+                predicates.add(
+                        cb.lessThan(
+                                root.get("createdDate"),
+                                filter.registrationDateTo()
+                                        .plusDays(1)
+                                        .atStartOfDay()
+                                        .toInstant(ZoneOffset.UTC)
+                        )
+                );
+            }
+
+            if (filter.insuranceId() != null) {
+
+                Subquery<Long> insuranceSubQuery = query.subquery(Long.class);
+
+                Root<PatientInsurance> insuranceRoot =
+                        insuranceSubQuery.from(PatientInsurance.class);
+
+                insuranceSubQuery.select(
+                        insuranceRoot.get("patient").get("id")
+                );
+
+                insuranceSubQuery.where(
+                        cb.equal(
+                                insuranceRoot.get("payorId"),
+                                filter.insuranceId()
+                        )
+                );
+
+                predicates.add(
+                        root.get("id").in(insuranceSubQuery)
+                );
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        return patientRepository.findAll(specification, pageable);
+    }
+
 
     @Transactional(readOnly = true)
     public Page<Patient> findByPrimaryDocumentNumber(String numberPart, Pageable pageable) {
