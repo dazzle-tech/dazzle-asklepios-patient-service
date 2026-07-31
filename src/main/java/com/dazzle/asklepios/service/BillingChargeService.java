@@ -21,6 +21,7 @@ import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
@@ -86,6 +87,8 @@ public class BillingChargeService {
     private final PatientInsuranceRepository patientInsuranceRepository;
     private final PatientServiceAndProductRepository
             patientServiceAndProductRepository;
+
+    private final PreAuthorizationResolutionService preAuthorizationResolutionService;
 
     /**
      * Finds the active encounter charge or creates a new charge header.
@@ -868,7 +871,9 @@ public class BillingChargeService {
         item.setInsuranceShareAmount(defaultZero(insuranceShareAmount));
         item.setPaidAmount(BigDecimal.ZERO);
         item.setRemainingAmount(defaultZero(patientShareAmount));
-        item.setPaymentStatus(PaymentStatus.PENDING);
+        item.setPaymentStatus(
+                preAuthorizationResolutionService.resolveBillingPaymentStatus(item)
+        );
         patientServiceAndProductRepository.save(item);
 
         BillingProcessingContext context =
@@ -1550,12 +1555,9 @@ public class BillingChargeService {
                     pricing.netAmount()
             );
 
-            if (item.getPaymentStatus()
-                    == PaymentStatus.EXEMPTED) {
-                item.setPaymentStatus(
-                        PaymentStatus.PENDING
-                );
-            }
+            item.setPaymentStatus(
+                    preAuthorizationResolutionService.resolveBillingPaymentStatus(item)
+            );
         }
 
         patientServiceAndProductRepository.save(item);

@@ -11,8 +11,8 @@ import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
-import com.dazzle.asklepios.integration.waseel.client.WaseelItemMappingClient;
-import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationSubmissionService;
+import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
@@ -22,7 +22,6 @@ import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.patientar
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.diagnosticorders.PatientArrivedResponseVM;
-import feign.FeignException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
@@ -46,8 +45,8 @@ public class DiagnosticOrderTestStatusService {
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final DiagnosticTestClient diagnosticTestClient;
-    private final WaseelItemMappingClient waseelItemMappingClient;
-    private final PreAuthorizationSubmissionService preAuthorizationSubmissionService;
+    private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
+    private final PreAuthorizationResolutionService preAuthorizationResolutionService;
 
     private final PatientEncounterRepository patientEncounterRepository;
 
@@ -61,8 +60,8 @@ public class DiagnosticOrderTestStatusService {
             DiagnosticOrderStatusService diagnosticOrderStatusService,
             PatientServiceAndProductRepository patientServiceAndProductRepository,
             DiagnosticTestClient diagnosticTestClient,
-            WaseelItemMappingClient waseelItemMappingClient,
-            PreAuthorizationSubmissionService preAuthorizationSubmissionService,
+            EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService,
+            PreAuthorizationResolutionService preAuthorizationResolutionService,
             PatientEncounterRepository patientEncounterRepository,
             @Lazy BillingEngineService billingEngineService,
             @Lazy BillingChargeService billingChargeService
@@ -72,8 +71,8 @@ public class DiagnosticOrderTestStatusService {
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.diagnosticTestClient = diagnosticTestClient;
-        this.waseelItemMappingClient = waseelItemMappingClient;
-        this.preAuthorizationSubmissionService = preAuthorizationSubmissionService;
+        this.encounterPreAuthorizationSyncService = encounterPreAuthorizationSyncService;
+        this.preAuthorizationResolutionService = preAuthorizationResolutionService;
         this.patientEncounterRepository = patientEncounterRepository;
         this.billingEngineService = billingEngineService;
         this.billingChargeService = billingChargeService;
@@ -139,7 +138,7 @@ public class DiagnosticOrderTestStatusService {
                 );
 
         if (savedBillingItem.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL) {
-            preAuthorizationSubmissionService.submitIfRequired(savedBillingItem.getEncounterId());
+            encounterPreAuthorizationSyncService.afterItemPersisted(savedBillingItem.getEncounterId());
         } else {
             billDiagnosticItemOnAccept(
                     savedBillingItem,
@@ -360,10 +359,7 @@ public class DiagnosticOrderTestStatusService {
 
         BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
 
-        boolean requiresPreAuth =
-                requiresPreAuthorization(billingItemType, setupDiagnostic.id());
-
-        return PatientServiceAndProduct.builder()
+        PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
                 .patientId(order.getPatientId())
                 .encounterId(order.getEncounterId())
                 .billingItemType(billingItemType)
@@ -377,15 +373,21 @@ public class DiagnosticOrderTestStatusService {
                 .taxAmount(BigDecimal.ZERO)
                 .totalAmount(totalAmount)
                 .currency(setupDiagnostic.currency())
-                .preAuthorizationStatus(
-                        requiresPreAuth
-                                ? PreAuthorizationStatus.PENDING_APPROVAL
-                                : PreAuthorizationStatus.NOT_REQUIRED
-                )
                 .isBilled(Boolean.FALSE)
                 .notes("Created on diagnostic test acceptance. OrderId="
-                        + order.getId() + ", OrderTestId=" + test.getId())
-                .build();
+                        + order.getId() + ", OrderTestId=" + test.getId());
+
+        preAuthorizationResolutionService.resolveAndPrepareNewItem(
+                builder,
+                order.getEncounterId(),
+                billingItemType,
+                null,
+                null,
+                setupDiagnostic.id(),
+                null
+        );
+
+        return builder.build();
     }
 
     private PatientServiceAndProduct findOrCreateDiagnosticBillingItem(
@@ -479,50 +481,6 @@ public class DiagnosticOrderTestStatusService {
                     "diagnostic_order_tests",
                     "billingRule.notMatched"
             );
-        }
-    }
-
-    private boolean requiresPreAuthorization(
-            BillingItemTypes billingItemType,
-            Long itemId
-    ) {
-        if (billingItemType == null || itemId == null) {
-            return false;
-        }
-
-        LOG.info(
-                "Checking diagnostic pre-authorization from Waseel mapping. billingItemType={}, itemId={}",
-                billingItemType,
-                itemId
-        );
-
-        try {
-            Boolean requiresPreAuth =
-                    waseelItemMappingClient.requiresPreauth(
-                            billingItemType,
-                            itemId
-                    );
-
-            LOG.info(
-                    "Diagnostic pre-authorization result from Waseel mapping. billingItemType={}, itemId={}, result={}",
-                    billingItemType,
-                    itemId,
-                    requiresPreAuth
-            );
-
-            return Boolean.TRUE.equals(requiresPreAuth);
-
-        } catch (FeignException ex) {
-            LOG.error(
-                    "[WASEEL_MAPPING] Failed to check diagnostic pre-authorization. billingItemType={}, itemId={}, status={}, body={}",
-                    billingItemType,
-                    itemId,
-                    ex.status(),
-                    ex.contentUTF8(),
-                    ex
-            );
-
-            return false;
         }
     }
 

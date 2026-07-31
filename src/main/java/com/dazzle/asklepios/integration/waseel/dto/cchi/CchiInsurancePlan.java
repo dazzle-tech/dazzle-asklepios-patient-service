@@ -49,7 +49,7 @@ public record CchiInsurancePlan(
 
         String policyHolder,
 
-        @JsonAlias({"coverageClassList", "coverageClass"})
+        @JsonAlias({"coverageClassList", "coverageClass", "classList"})
         List<CchiCoverageClass> coverageClassList,
 
         @JsonAlias({"newPlan", "isNewPlan"})

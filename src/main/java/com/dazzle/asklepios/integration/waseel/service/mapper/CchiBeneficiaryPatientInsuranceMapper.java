@@ -59,7 +59,10 @@ public class CchiBeneficiaryPatientInsuranceMapper {
 
         insurance.setMemberCardId(clean(source.memberCardId()));
         insurance.setPolicyNumber(requiredString(source.policyNumber(), "policyNumber"));
-        insurance.setGroupNumber(clean(source.groupNumber()));
+        insurance.setGroupNumber(firstNonBlank(
+                clean(source.groupNumber()),
+                resolveClassValue(source, "group")
+        ));
 
         insurance.setPayerNphiesId(clean(source.payerNphiesId()));
 
@@ -100,6 +103,12 @@ public class CchiBeneficiaryPatientInsuranceMapper {
             return directPolicyClassName;
         }
 
+        String planClassName = resolveClassName(source, "plan");
+
+        if (!isBlank(planClassName)) {
+            return planClassName;
+        }
+
         if (source.coverageClassList() == null || source.coverageClassList().isEmpty()) {
             return null;
         }
@@ -110,6 +119,42 @@ public class CchiBeneficiaryPatientInsuranceMapper {
                 clean(firstClass.name()),
                 clean(firstClass.value())
         );
+    }
+
+    private String resolveClassValue(CchiInsurancePlan source, String classType) {
+        if (source.coverageClassList() == null || source.coverageClassList().isEmpty()) {
+            return null;
+        }
+
+        for (CchiCoverageClass classItem : source.coverageClassList()) {
+            if (classItem == null || isBlank(classItem.type())) {
+                continue;
+            }
+
+            if (classType.equalsIgnoreCase(classItem.type().trim())) {
+                return clean(classItem.value());
+            }
+        }
+
+        return null;
+    }
+
+    private String resolveClassName(CchiInsurancePlan source, String classType) {
+        if (source.coverageClassList() == null || source.coverageClassList().isEmpty()) {
+            return null;
+        }
+
+        for (CchiCoverageClass classItem : source.coverageClassList()) {
+            if (classItem == null || isBlank(classItem.type())) {
+                continue;
+            }
+
+            if (classType.equalsIgnoreCase(classItem.type().trim())) {
+                return clean(classItem.name());
+            }
+        }
+
+        return null;
     }
 
     private LocalDate parseDate(Object value) {

@@ -10,12 +10,13 @@ import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
-import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPricingSnapshotStatus;
+import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingPricingSnapshotRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
@@ -69,6 +70,8 @@ public class DefaultServicePreparationService {
     private final BillingPricingSnapshotRepository billingPricingSnapshotRepository;
     private final ServiceClient serviceClient;
     private final BillingEngineService billingEngineService;
+    private final PreAuthorizationResolutionService preAuthorizationResolutionService;
+    private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
 
     /**
      * Creates/reuses selected default-service PSP records and sends each one
@@ -203,6 +206,13 @@ public class DefaultServicePreparationService {
                 processed
         );
 
+        if (request.coverageType() == BillingCoverageType.INSURANCE) {
+            encounterPreAuthorizationSyncService.scheduleSyncAfterCommit(
+                    encounterId,
+                    request.coverageType()
+            );
+        }
+
         return new PrepareDefaultServicesResult(
                 request.patientId(),
                 encounterId,
@@ -285,10 +295,26 @@ public class DefaultServicePreparationService {
 
         if (existing != null) {
             validateExistingItem(existing, request, requestedItem, insurance);
+
+            if (request.coverageType() == BillingCoverageType.INSURANCE) {
+                PreAuthorizationResolutionService.Resolution preAuthorizationResolution =
+                        preAuthorizationResolutionService.resolve(
+                                encounter.getId(),
+                                BillingItemTypes.SERVICE,
+                                null,
+                                requestedItem.serviceId(),
+                                null,
+                                null,
+                                true
+                        );
+                preAuthorizationResolutionService.apply(existing, preAuthorizationResolution);
+                existing = patientServiceAndProductRepository.saveAndFlush(existing);
+            }
+
             return existing;
         }
 
-        PatientServiceAndProduct item =
+        PatientServiceAndProduct.PatientServiceAndProductBuilder itemBuilder =
                 PatientServiceAndProduct.builder()
                         .patientId(request.patientId())
                         .encounterId(encounter.getId())
@@ -310,7 +336,6 @@ public class DefaultServicePreparationService {
                         .remainingAmount(BigDecimal.ZERO)
                         .currency(request.currency())
                         .isBilled(Boolean.FALSE)
-                        .paymentStatus(PaymentStatus.PENDING)
                         .coverageStatus(
                                 insurance == null
                                         ? CoverageStatus.NOT_CHECKED
@@ -323,9 +348,20 @@ public class DefaultServicePreparationService {
                         )
                         .isDefaultService(Boolean.TRUE)
                         .isExempted(requestedItem.exempted())
-                        .preAuthorizationRequired(Boolean.FALSE)
-                        .notes("Encounter default service: " + service.name())
-                        .build();
+                        .notes("Encounter default service: " + service.name());
+
+        preAuthorizationResolutionService.resolveAndPrepareNewItem(
+                itemBuilder,
+                encounter.getId(),
+                BillingItemTypes.SERVICE,
+                null,
+                requestedItem.serviceId(),
+                null,
+                null,
+                request.coverageType() == BillingCoverageType.INSURANCE
+        );
+
+        PatientServiceAndProduct item = itemBuilder.build();
 
         return patientServiceAndProductRepository.saveAndFlush(item);
     }

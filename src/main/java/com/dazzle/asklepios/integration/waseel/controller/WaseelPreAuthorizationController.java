@@ -6,6 +6,7 @@ import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.Eligibil
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.PreAuthorizationCancelRequest;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.PreAuthorizationCommunicationRequest;
 import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
+import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationTrackingService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelPreAuthorizationService;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,7 @@ public class WaseelPreAuthorizationController {
 
     private final WaseelPreAuthorizationService service;
     private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
+    private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
     private final PreAuthorizationTrackingService trackingService;
 
     @GetMapping("/internal/waseel/pre-authorizations/tracking")
@@ -59,5 +61,14 @@ public class WaseelPreAuthorizationController {
     @PostMapping("/internal/waseel/encounters/{encounterId}/eligibility")
     public EligibilityCheckResponse checkEncounterEligibility(@PathVariable Long encounterId) {
         return encounterInsuranceEligibilityService.checkEncounterEligibility(encounterId);
+    }
+
+    /**
+     * Internal/admin sync only. Normal flows submit pre-authorization
+     * automatically from the backend when items are added or eligibility succeeds.
+     */
+    @PostMapping("/internal/waseel/encounters/{encounterId}/pre-authorization/sync")
+    public void syncEncounterPreAuthorization(@PathVariable Long encounterId) {
+        encounterPreAuthorizationSyncService.syncEncounter(encounterId);
     }
 }

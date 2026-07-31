@@ -15,6 +15,7 @@ import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingPricingInput;
+import com.dazzle.asklepios.service.dto.InsuranceSplit;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
 import com.dazzle.asklepios.service.dto.billing.PrepareDefaultServiceItem;
 import com.dazzle.asklepios.service.dto.billing.PreviewDefaultServicePricingResult;
@@ -56,6 +57,7 @@ public class DefaultServicePricingPreviewService {
     private final BillingEngineService billingEngineService;
     private final BillingPricingInputFactory billingPricingInputFactory;
     private final BillingPricingService billingPricingService;
+    private final InsurancePatientShareCalculator insurancePatientShareCalculator;
 
     @Transactional(readOnly = true)
     public PreviewDefaultServicesPricingResult preview(
@@ -107,7 +109,9 @@ public class DefaultServicePricingPreviewService {
                     resolvePreviewForItem(
                             previewItem,
                             request.facilityId(),
-                            requestedItem
+                            requestedItem,
+                            insurance,
+                            service.category()
                     );
 
             itemResults.add(itemResult);
@@ -151,7 +155,9 @@ public class DefaultServicePricingPreviewService {
     private PreviewDefaultServicePricingResult resolvePreviewForItem(
             PatientServiceAndProduct previewItem,
             Long facilityId,
-            PrepareDefaultServiceItem requestedItem
+            PrepareDefaultServiceItem requestedItem,
+            PatientInsurance insurance,
+            String serviceCategory
     ) {
         ResolvedBillingPrice resolvedPrice =
                 billingEngineService.resolvePricing(
@@ -181,6 +187,23 @@ public class DefaultServicePricingPreviewService {
                         ? BillingPriceSource.SETUP_FALLBACK.name()
                         : pricingInput.priceSource().name();
 
+        BigDecimal patientShareAmount = BigDecimal.ZERO;
+        BigDecimal insuranceShareAmount = BigDecimal.ZERO;
+
+        if (insurance != null && !Boolean.TRUE.equals(previewItem.getIsExempted())) {
+            InsuranceSplit split =
+                    insurancePatientShareCalculator.calculateSplit(
+                            insurance,
+                            serviceCategory,
+                            previewItem.getServiceSource(),
+                            pricing.netAmount()
+                    );
+            patientShareAmount = split.patientShare();
+            insuranceShareAmount = split.insuranceShare();
+        } else if (!Boolean.TRUE.equals(previewItem.getIsExempted())) {
+            patientShareAmount = pricing.netAmount();
+        }
+
         return new PreviewDefaultServicePricingResult(
                 requestedItem.serviceId(),
                 requestedItem.sequence(),
@@ -191,7 +214,9 @@ public class DefaultServicePricingPreviewService {
                 pricing.taxAmount(),
                 pricing.netAmount(),
                 priceSource,
-                pricingInput.priceListItemCode()
+                pricingInput.priceListItemCode(),
+                patientShareAmount,
+                insuranceShareAmount
         );
     }
 

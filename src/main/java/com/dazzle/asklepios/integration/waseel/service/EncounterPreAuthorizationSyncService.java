@@ -1,0 +1,206 @@
+package com.dazzle.asklepios.integration.waseel.service;
+
+import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
+import com.dazzle.asklepios.integration.waseel.event.EligibilityCheckSucceededEvent;
+import com.dazzle.asklepios.integration.waseel.event.EncounterPreAuthorizationSyncEvent;
+import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import java.util.EnumSet;
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class EncounterPreAuthorizationSyncService {
+
+    private static final Logger LOG =
+            LoggerFactory.getLogger(EncounterPreAuthorizationSyncService.class);
+
+    private static final EnumSet<PreAuthorizationStatus> FINAL_PRE_AUTHORIZATION_STATUSES =
+            EnumSet.of(PreAuthorizationStatus.APPROVED, PreAuthorizationStatus.REJECTED);
+
+    private final PatientServiceAndProductRepository patientServiceAndProductRepository;
+    private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
+    private final PreAuthorizationResolutionService preAuthorizationResolutionService;
+    private final PreAuthorizationSubmissionService preAuthorizationSubmissionService;
+    private final ApplicationEventPublisher applicationEventPublisher;
+
+    public void syncEncounter(Long encounterId) {
+        syncEncounter(encounterId, null);
+    }
+
+    public void syncEncounter(Long encounterId, BillingCoverageType coverageType) {
+        if (encounterId == null) {
+            return;
+        }
+
+        if (!encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(
+                encounterId,
+                coverageType
+        )) {
+            LOG.info(
+                    "[PREAUTH_SYNC] Skipping encounterId={} — visit is not insurance",
+                    encounterId
+            );
+            return;
+        }
+
+        boolean insuranceVisitContext =
+                coverageType == BillingCoverageType.INSURANCE
+                        || encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(
+                                encounterId
+                        );
+
+        List<PatientServiceAndProduct> items =
+                patientServiceAndProductRepository.findByEncounterId(encounterId);
+
+        if (items == null || items.isEmpty()) {
+            LOG.debug("[PREAUTH_SYNC] No billing items found for encounterId={}", encounterId);
+            return;
+        }
+
+        boolean hasPendingItems = false;
+
+        for (PatientServiceAndProduct item : items) {
+            if (Boolean.TRUE.equals(item.getIsBilled())) {
+                continue;
+            }
+
+            if (item.getPreAuthorizationStatus() != null
+                    && FINAL_PRE_AUTHORIZATION_STATUSES.contains(item.getPreAuthorizationStatus())) {
+                continue;
+            }
+
+            PreAuthorizationResolutionService.Resolution resolution =
+                    preAuthorizationResolutionService.resolve(
+                            encounterId,
+                            item.getBillingItemType(),
+                            item.getProcedureId(),
+                            item.getServiceId(),
+                            item.getDiagnosticTestId(),
+                            item.getBrandMedicationId(),
+                            insuranceVisitContext
+                    );
+
+            preAuthorizationResolutionService.apply(item, resolution);
+
+            if (resolution.required()) {
+                hasPendingItems = true;
+
+                LOG.info(
+                        "[PREAUTH_SYNC] Item requires pre-authorization. encounterId={}, itemId={}, billingItemType={}, brandMedicationId={}, serviceId={}, procedureId={}, diagnosticTestId={}",
+                        encounterId,
+                        item.getId(),
+                        item.getBillingItemType(),
+                        item.getBrandMedicationId(),
+                        item.getServiceId(),
+                        item.getProcedureId(),
+                        item.getDiagnosticTestId()
+                );
+            }
+        }
+
+        patientServiceAndProductRepository.saveAll(items);
+        patientServiceAndProductRepository.flush();
+
+        if (!hasPendingItems) {
+            LOG.debug("[PREAUTH_SYNC] No pending pre-authorization items for encounterId={}", encounterId);
+            return;
+        }
+
+        submitPendingPreAuthorization(encounterId);
+    }
+
+    /**
+     * Schedules sync/submit after commit so pending PSP rows are visible
+     * to the REQUIRES_NEW pre-authorization submission transaction.
+     */
+    public void afterItemPersisted(Long encounterId) {
+        scheduleSyncAfterCommit(encounterId);
+    }
+
+    public void scheduleSyncAfterCommit(Long encounterId) {
+        scheduleSyncAfterCommit(encounterId, null);
+    }
+
+    public void scheduleSyncAfterCommit(
+            Long encounterId,
+            BillingCoverageType coverageType
+    ) {
+        if (encounterId == null) {
+            return;
+        }
+
+        LOG.info(
+                "[PREAUTH_SYNC] Scheduling backend sync after commit for encounterId={}",
+                encounterId
+        );
+
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            applicationEventPublisher.publishEvent(
+                    new EncounterPreAuthorizationSyncEvent(encounterId, coverageType)
+            );
+            return;
+        }
+
+        syncEncounter(encounterId, coverageType);
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onEncounterPreAuthorizationSync(EncounterPreAuthorizationSyncEvent event) {
+        if (event == null || event.encounterId() == null) {
+            return;
+        }
+
+        LOG.info(
+                "[PREAUTH_SYNC] Running post-commit sync for encounterId={}",
+                event.encounterId()
+        );
+
+        syncEncounter(event.encounterId(), event.coverageType());
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onEligibilityCheckSucceeded(EligibilityCheckSucceededEvent event) {
+        if (event == null || event.encounterId() == null) {
+            return;
+        }
+
+        syncEncounter(event.encounterId());
+    }
+
+    public void submitPendingPreAuthorization(Long encounterId) {
+        if (encounterId == null) {
+            return;
+        }
+
+        if (!encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(encounterId)) {
+            return;
+        }
+
+        LOG.info(
+                "[PREAUTH_SYNC] Backend auto-submit triggered for encounterId={}",
+                encounterId
+        );
+
+        try {
+            preAuthorizationSubmissionService.submitIfRequired(encounterId);
+        } catch (RuntimeException ex) {
+            LOG.warn(
+                    "[PREAUTH_SYNC] Pre-authorization submission failed for encounterId={}. Items remain pending. reason={}",
+                    encounterId,
+                    ex.getMessage(),
+                    ex
+            );
+        }
+    }
+}

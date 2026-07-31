@@ -1,27 +1,30 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.setup.ServiceClient;
+import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
 import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingChargeResponsibility;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.ResponsibilityRole;
 import com.dazzle.asklepios.domain.enumeration.billing.ResponsiblePartyType;
+import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
-import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
-import com.dazzle.asklepios.integration.waseel.dto.InsuranceCoverage;
-import com.dazzle.asklepios.integration.waseel.service.WaseelCoverageExtractionService;
-import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
+import com.dazzle.asklepios.service.dto.InsuranceSplit;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -65,11 +68,14 @@ public class BillingResponsibilityService {
     private final PatientServiceAndProductRepository
             patientServiceAndProductRepository;
 
-    private final WaseelEligibilityRequestRepository
-            waseelEligibilityRequestRepository;
+    private final InsurancePatientShareCalculator
+            insurancePatientShareCalculator;
 
-    private final WaseelCoverageExtractionService
-            waseelCoverageExtractionService;
+    private final ServiceClient serviceClient;
+
+    private final PreAuthorizationResolutionService preAuthorizationResolutionService;
+
+    private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
 
     /**
      * Calculates and persists responsibility rows.
@@ -117,6 +123,22 @@ public class BillingResponsibilityService {
                 item.getPatientInsuranceId(),
                 item.getIsExempted()
         );
+
+        if (item.getPatientInsuranceId() != null
+                || encounterInsuranceEligibilityService
+                        .shouldEvaluatePreAuthorization(item.getEncounterId())) {
+            preAuthorizationResolutionService.refreshForBillingItem(item);
+            patientServiceAndProductRepository.saveAndFlush(item);
+
+            LOG.info(
+                    "[CALCULATE] Pre-authorization refreshed for billing item "
+                            + "pspId={} required={} status={} paymentStatus={}",
+                    item.getId(),
+                    item.getPreAuthorizationRequired(),
+                    item.getPreAuthorizationStatus(),
+                    item.getPaymentStatus()
+            );
+        }
 
         if (Boolean.TRUE.equals(item.getIsExempted())
                 || netAmount.signum() == 0) {
@@ -297,7 +319,7 @@ public class BillingResponsibilityService {
         item.setRemainingAmount(netAmount);
 
         item.setPaymentStatus(
-                PaymentStatus.PENDING
+                preAuthorizationResolutionService.resolveBillingPaymentStatus(item)
         );
 
         patientServiceAndProductRepository.save(item);
@@ -340,6 +362,7 @@ public class BillingResponsibilityService {
         BigDecimal patientAmount =
                 calculatePatientInsuranceShare(
                         insurance,
+                        item,
                         netAmount
                 );
 
@@ -464,11 +487,11 @@ public class BillingResponsibilityService {
         );
 
         item.setRemainingAmount(
-                netAmount
+                patientAmount
         );
 
         item.setPaymentStatus(
-                PaymentStatus.PENDING
+                preAuthorizationResolutionService.resolveBillingPaymentStatus(item)
         );
 
         patientServiceAndProductRepository.save(item);
@@ -712,81 +735,48 @@ public class BillingResponsibilityService {
         }
     }
 
-    /**
-     * Resolves the patient copayment from the latest successful
-     * Waseel eligibility response.
-     *
-     * No payorId or planId is used in this first version.
-     */
     private BigDecimal calculatePatientInsuranceShare(
             PatientInsurance insurance,
+            PatientServiceAndProduct item,
             BigDecimal netAmount
     ) {
-        WaseelEligibilityRequest eligibility =
-                waseelEligibilityRequestRepository
-                        .findFirstByPatientIdAndRequestStatusAndEligibilityResponseIdIsNotNullOrderByCreatedDateDesc(
-                                insurance.getPatient().getId(),
-                                "SUCCESS"
-                        )
-                        .orElseThrow(() ->
-                                new BadRequestAlertException(
-                                        "A successful Waseel eligibility response is required before insurance billing.",
-                                        ENTITY_NAME,
-                                        "insurance.eligibility.required"
-                                )
-                        );
+        InsuranceSplit split =
+                insurancePatientShareCalculator.calculateSplit(
+                        insurance,
+                        resolveServiceCategory(item),
+                        item.getServiceSource(),
+                        netAmount
+                );
 
-        if (eligibility.getResponseJson() == null
-                || eligibility.getResponseJson().isBlank()) {
-            throw new BadRequestAlertException(
-                    "Waseel eligibility response JSON is missing.",
-                    ENTITY_NAME,
-                    "insurance.eligibility.response.missing"
-            );
+        return money(split.patientShare());
+    }
+
+    private String resolveServiceCategory(
+            PatientServiceAndProduct item
+    ) {
+        if (item == null
+                || item.getBillingItemType() != BillingItemTypes.SERVICE
+                || item.getServiceId() == null) {
+            return null;
         }
 
-        InsuranceCoverage coverage;
         try {
-            coverage = waseelCoverageExtractionService
-                    .extractCoverage(eligibility.getResponseJson());
+            ServiceSetupDTO service =
+                    serviceClient.getServiceDetails(
+                            item.getServiceId()
+                    );
+
+            return service == null
+                    ? null
+                    : service.category();
         } catch (RuntimeException exception) {
-            LOG.error(
-                    "[INSURANCE] Unable to extract Waseel coverage patientInsuranceId={} eligibilityId={}",
-                    insurance.getId(),
-                    eligibility.getId(),
+            LOG.warn(
+                    "[INSURANCE] Unable to resolve service category serviceId={}",
+                    item.getServiceId(),
                     exception
             );
-
-            throw new BadRequestAlertException(
-                    "Unable to extract insurance coverage from Waseel eligibility response.",
-                    ENTITY_NAME,
-                    "insurance.coverage.extract.failed"
-            );
+            return null;
         }
-
-        BigDecimal copaymentPercent = percentage(
-                coverage == null ? null : coverage.getCopaymentPercent()
-        );
-
-        BigDecimal patientAmount = money(
-                netAmount
-                        .multiply(copaymentPercent)
-                        .divide(
-                                BigDecimal.valueOf(100),
-                                MONEY_SCALE,
-                                RoundingMode.HALF_UP
-                        )
-        );
-
-        BigDecimal copaymentCap = money(
-                coverage == null ? null : coverage.getCopaymentCap()
-        );
-
-        if (copaymentCap.signum() > 0) {
-            patientAmount = patientAmount.min(copaymentCap);
-        }
-
-        return patientAmount.min(money(netAmount));
     }
 
     private PatientInsurance loadAndValidateInsurance(
@@ -1080,23 +1070,10 @@ public class BillingResponsibilityService {
                 );
             }
 
-            responsibility.setOutstandingAmount(
-                    BigDecimal.ZERO.setScale(
-                            4,
-                            RoundingMode.HALF_UP
-                    )
-            );
-
-            responsibility.setStatus(
-                    BillingResponsibilityStatus.CANCELLED
-            );
-
-            responsibility.setAdjustmentReason(
+            closeResponsibilityForReplacement(
+                    responsibility,
+                    BillingResponsibilityStatus.CANCELLED,
                     reason
-            );
-
-            responsibility.setClosedDate(
-                    Instant.now()
             );
         }
 
@@ -1147,20 +1124,10 @@ public class BillingResponsibilityService {
                 );
             }
 
-            responsibility.setStatus(
-                    BillingResponsibilityStatus.SUPERSEDED
-            );
-
-            responsibility.setOutstandingAmount(
-                    BigDecimal.ZERO
-            );
-
-            responsibility.setAdjustmentReason(
+            closeResponsibilityForReplacement(
+                    responsibility,
+                    BillingResponsibilityStatus.SUPERSEDED,
                     reason
-            );
-
-            responsibility.setClosedDate(
-                    Instant.now()
             );
         }
 
@@ -1170,6 +1137,48 @@ public class BillingResponsibilityService {
 
         context.setPatientResponsibility(null);
         context.setInsuranceResponsibility(null);
+    }
+
+    /**
+     * Closes a responsibility row while keeping
+     * {@code responsibility_amount = allocated_amount + outstanding_amount}.
+     */
+    private void closeResponsibilityForReplacement(
+            BillingChargeResponsibility responsibility,
+            BillingResponsibilityStatus status,
+            String reason
+    ) {
+        BigDecimal allocated =
+                money(responsibility.getAllocatedAmount());
+
+        BigDecimal zeroMoney =
+                BigDecimal.ZERO.setScale(
+                        MONEY_SCALE,
+                        RoundingMode.HALF_UP
+                );
+
+        BigDecimal zeroPercentage =
+                BigDecimal.ZERO.setScale(
+                        PERCENTAGE_SCALE,
+                        RoundingMode.HALF_UP
+                );
+
+        responsibility.setOutstandingAmount(zeroMoney);
+        responsibility.setResponsibilityAmount(allocated);
+        responsibility.setNonCoveredAmount(zeroMoney);
+        responsibility.setCopayAmount(zeroMoney);
+        responsibility.setCoinsuranceAmount(zeroMoney);
+        responsibility.setDeductibleAmount(zeroMoney);
+        responsibility.setContractualAdjustmentAmount(zeroMoney);
+        responsibility.setCoveragePercentage(zeroPercentage);
+
+        responsibility.setStatus(status);
+
+        responsibility.setAdjustmentReason(reason);
+
+        responsibility.setClosedDate(
+                Instant.now()
+        );
     }
 
 }

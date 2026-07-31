@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -16,8 +18,10 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.data.annotation.Transient;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 
 @Entity
@@ -35,6 +39,8 @@ public class PatientInsurance extends AbstractAuditingEntity<Long> {
 
     @ManyToOne(optional = false)
     @JoinColumn(name = "patient_id", nullable = false)
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    @JsonIgnore
     private Patient patient;
 
     @Column(name = "payor_id", nullable = false)
@@ -110,4 +116,39 @@ public class PatientInsurance extends AbstractAuditingEntity<Long> {
 
     @Column(name = "is_primary", nullable = false)
     private Boolean isPrimary = false;
+
+    @Column(name = "group_name", length = 255)
+    private String groupName;
+
+    @Column(name = "plan_code", length = 100)
+    private String planCode;
+
+    @Column(name = "eligibility_status", length = 50)
+    private String eligibilityStatus;
+
+    @Column(name = "site_eligibility", length = 50)
+    private String siteEligibility;
+
+    @Column(name = "inforce", length = 10)
+    private String inforce;
+
+    @Column(name = "gp_visit_copay", precision = 19, scale = 2)
+    private BigDecimal gpVisitCopay;
+
+    @Column(name = "specialist_visits_limit")
+    private Integer specialistVisitsLimit;
+
+    @Column(name = "eligibility_benefits_json", columnDefinition = "text")
+    private String eligibilityBenefitsJson;
+
+    @Column(name = "last_eligibility_request_id")
+    private Long lastEligibilityRequestId;
+
+    @Column(name = "last_eligibility_synced_at")
+    private Instant lastEligibilitySyncedAt;
+
+    @Transient
+    public Long getPatientId() {
+        return patient != null ? patient.getId() : null;
+    }
 }

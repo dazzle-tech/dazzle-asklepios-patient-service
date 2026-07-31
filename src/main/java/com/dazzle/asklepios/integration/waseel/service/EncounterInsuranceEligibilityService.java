@@ -3,15 +3,24 @@ package com.dazzle.asklepios.integration.waseel.service;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientPayments;
 import com.dazzle.asklepios.domain.enumeration.PaymentTypes;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.ResponsiblePartyType;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.request.EligibilityCheckRequest;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityCheckResponse;
+import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
+import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientPaymentsRepository;
+import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.EnumSet;
 
 import static org.hibernate.id.IdentifierGenerator.ENTITY_NAME;
 
@@ -19,7 +28,16 @@ import static org.hibernate.id.IdentifierGenerator.ENTITY_NAME;
 @RequiredArgsConstructor
 public class EncounterInsuranceEligibilityService {
 
+    private static final Logger LOG =
+            LoggerFactory.getLogger(EncounterInsuranceEligibilityService.class);
+
+    private static final EnumSet<BillingResponsibilityStatus> EXCLUDED_RESPONSIBILITY_STATUSES =
+            EnumSet.of(BillingResponsibilityStatus.CANCELLED);
+
     private final PatientPaymentsRepository patientPaymentsRepository;
+    private final PatientInsuranceRepository patientInsuranceRepository;
+    private final PatientServiceAndProductRepository patientServiceAndProductRepository;
+    private final BillingChargeResponsibilityRepository billingChargeResponsibilityRepository;
     private final WaseelEligibilityCheckService waseelEligibilityCheckService;
 
     @Transactional
@@ -47,6 +65,68 @@ public class EncounterInsuranceEligibilityService {
 
     @Transactional(readOnly = true)
     public boolean isInsuranceEncounter(Long encounterId) {
+        return shouldEvaluatePreAuthorization(encounterId);
+    }
+
+    /**
+     * Pre-authorization is evaluated only for insurance visits.
+     * Self-pay / cash visits must never be blocked by pre-authorization rules.
+     */
+    @Transactional(readOnly = true)
+    public boolean shouldEvaluatePreAuthorization(Long encounterId) {
+        if (encounterId == null) {
+            return false;
+        }
+
+        if (hasInsurancePayment(encounterId)) {
+            LOG.info("[PREAUTH] Insurance visit detected via patient payment. encounterId={}", encounterId);
+            return true;
+        }
+
+        if (patientServiceAndProductRepository.existsByEncounterIdAndPatientInsuranceIdIsNotNull(encounterId)) {
+            LOG.info("[PREAUTH] Insurance visit detected via billed item insurance link. encounterId={}", encounterId);
+            return true;
+        }
+
+        boolean hasInsuranceResponsibility =
+                billingChargeResponsibilityRepository
+                        .findAllByEncounter_IdAndStatusNotInOrderByIdAsc(
+                                encounterId,
+                                EXCLUDED_RESPONSIBILITY_STATUSES
+                        )
+                        .stream()
+                        .anyMatch(responsibility ->
+                                responsibility.getResponsiblePartyType() == ResponsiblePartyType.INSURANCE);
+
+        if (hasInsuranceResponsibility) {
+            LOG.info("[PREAUTH] Insurance visit detected via billing responsibility. encounterId={}", encounterId);
+            return true;
+        }
+
+        LOG.info("[PREAUTH] Visit treated as non-insurance for pre-authorization. encounterId={}", encounterId);
+        return false;
+    }
+
+    @Transactional(readOnly = true)
+    public Long resolveEncounterPatientInsuranceId(Long encounterId) {
+        if (encounterId == null) {
+            return null;
+        }
+
+        return patientPaymentsRepository
+                .findFirstByEncounterIdOrderByIdDesc(encounterId)
+                .filter(payment -> PaymentTypes.INSURANCE_PLAN.equals(payment.getPaymentTypes()))
+                .map(PatientPayments::getPlan)
+                .map(PatientInsurance::getId)
+                .or(() ->
+                        patientServiceAndProductRepository
+                                .findFirstByEncounterIdAndPatientInsuranceIdIsNotNullOrderByIdDesc(encounterId)
+                                .map(item -> item.getPatientInsuranceId())
+                )
+                .orElse(null);
+    }
+
+    private boolean hasInsurancePayment(Long encounterId) {
         return patientPaymentsRepository
                 .findFirstByEncounterIdOrderByIdDesc(encounterId)
                 .map(payment ->
@@ -56,12 +136,43 @@ public class EncounterInsuranceEligibilityService {
     }
 
     @Transactional(readOnly = true)
+    public boolean shouldEvaluatePreAuthorization(
+            Long encounterId,
+            BillingCoverageType coverageType
+    ) {
+        if (shouldEvaluatePreAuthorization(encounterId)) {
+            return true;
+        }
+
+        return encounterId != null
+                && coverageType == BillingCoverageType.INSURANCE;
+    }
+
+    @Transactional(readOnly = true)
     public PatientInsurance getValidatedInsuranceForPreAuthorization(Long encounterId) {
-        PatientPayments payment = getInsurancePayment(encounterId);
-        PatientInsurance insurance = payment.getPlan();
+        if (hasInsurancePayment(encounterId)) {
+            PatientInsurance insurance = getInsurancePayment(encounterId).getPlan();
+            validateInsuranceBeforeEligibility(insurance);
+            return insurance;
+        }
+
+        Long patientInsuranceId = resolveEncounterPatientInsuranceId(encounterId);
+        if (patientInsuranceId == null) {
+            throw new BadRequestAlertException(
+                    "Insurance is required for pre-authorization on this encounter.",
+                    ENTITY_NAME,
+                    "insurance.required"
+            );
+        }
+
+        PatientInsurance insurance = patientInsuranceRepository.findById(patientInsuranceId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "Patient insurance not found with id " + patientInsuranceId,
+                        ENTITY_NAME,
+                        "insurance.notFound"
+                ));
 
         validateInsuranceBeforeEligibility(insurance);
-
         return insurance;
     }
 

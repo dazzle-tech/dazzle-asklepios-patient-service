@@ -5,13 +5,11 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
-import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
-import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
-import com.dazzle.asklepios.integration.waseel.client.WaseelItemMappingClient;
 import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
-import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationSubmissionService;
+import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
@@ -23,7 +21,6 @@ import com.dazzle.asklepios.service.helper.ProcedureHelper;
 import com.dazzle.asklepios.service.helper.ServiceHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-import feign.FeignException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -51,8 +48,8 @@ public class PatientServiceAndProductService {
     private final ServiceHelper serviceHelper;
     private final ProcedureHelper procedureHelper;
     private final BrandMedicationHelper brandMedicationHelper;
-    private final WaseelItemMappingClient waseelItemMappingClient;
-    private final PreAuthorizationSubmissionService preAuthorizationSubmissionService;
+    private final PreAuthorizationResolutionService preAuthorizationResolutionService;
+    private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
     private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
 
     private final BillingRuleEvaluationService billingRuleEvaluationService;
@@ -65,8 +62,8 @@ public class PatientServiceAndProductService {
             ServiceHelper serviceHelper,
             ProcedureHelper procedureHelper,
             BrandMedicationHelper brandMedicationHelper,
-            WaseelItemMappingClient waseelItemMappingClient,
-            PreAuthorizationSubmissionService preAuthorizationSubmissionService,
+            PreAuthorizationResolutionService preAuthorizationResolutionService,
+            EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService,
             EncounterInsuranceEligibilityService encounterInsuranceEligibilityService,
             BillingRuleEvaluationService billingRuleEvaluationService
     ) {
@@ -77,8 +74,8 @@ public class PatientServiceAndProductService {
         this.serviceHelper = serviceHelper;
         this.procedureHelper = procedureHelper;
         this.brandMedicationHelper = brandMedicationHelper;
-        this.waseelItemMappingClient = waseelItemMappingClient;
-        this.preAuthorizationSubmissionService = preAuthorizationSubmissionService;
+        this.preAuthorizationResolutionService = preAuthorizationResolutionService;
+        this.encounterPreAuthorizationSyncService = encounterPreAuthorizationSyncService;
         this.encounterInsuranceEligibilityService = encounterInsuranceEligibilityService;
         this.billingRuleEvaluationService = billingRuleEvaluationService;
     }
@@ -107,27 +104,16 @@ public class PatientServiceAndProductService {
                 resolveBillingEvent(dto)
         );
 
-        PreAuthorizationStatus preAuthorizationStatus =
-                resolvePreAuthorizationStatus(
-                        encounter.getId(),
-                        dto.billingItemType(),
-                        dto.procedureId(),
-                        dto.serviceId(),
-                        dto.diagnosticTestId(),
-                        dto.brandMedicationId()
-                );
-
         PatientServiceAndProduct entity = buildEntityFromCreateDto(
                 dto,
                 patient.getId(),
-                encounter.getId(),
-                preAuthorizationStatus
+                encounter.getId()
         );
 
         try {
             PatientServiceAndProduct saved = patientServiceAndProductRepository.saveAndFlush(entity);
 
-            submitPreAuthorizationIfPending(saved);
+            submitPreAuthorizationIfPending(saved.getEncounterId());
 
             LOG.debug("Created Patient billing item : {}", saved);
             return saved;
@@ -190,8 +176,9 @@ public class PatientServiceAndProductService {
         entity.setTotalAmount(dto.totalAmount());
         entity.setCurrency(dto.currency());
 
-        entity.setPreAuthorizationStatus(
-                resolvePreAuthorizationStatus(
+        preAuthorizationResolutionService.apply(
+                entity,
+                preAuthorizationResolutionService.resolve(
                         entity.getEncounterId(),
                         dto.billingItemType(),
                         dto.procedureId(),
@@ -200,6 +187,15 @@ public class PatientServiceAndProductService {
                         dto.brandMedicationId()
                 )
         );
+
+        if (encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(entity.getEncounterId())) {
+            entity.setPatientInsuranceId(
+                    encounterInsuranceEligibilityService.resolveEncounterPatientInsuranceId(
+                            entity.getEncounterId()
+                    )
+            );
+            entity.setCoverageStatus(CoverageStatus.COVERED);
+        }
 
         if (dto.isBilled() != null) {
             entity.setIsBilled(dto.isBilled());
@@ -211,7 +207,7 @@ public class PatientServiceAndProductService {
         try {
             PatientServiceAndProduct updated = patientServiceAndProductRepository.saveAndFlush(entity);
 
-            submitPreAuthorizationIfPending(updated);
+            submitPreAuthorizationIfPending(updated.getEncounterId());
 
             LOG.debug("Updated Patient billing item : {}", updated);
             return updated;
@@ -253,21 +249,10 @@ public class PatientServiceAndProductService {
                         validateReferences(dto);
                         validateNoDuplicateEncounterItem(dto, encounter.getId());
 
-                        PreAuthorizationStatus preAuthorizationStatus =
-                                resolvePreAuthorizationStatus(
-                                        encounter.getId(),
-                                        dto.billingItemType(),
-                                        dto.procedureId(),
-                                        dto.serviceId(),
-                                        dto.diagnosticTestId(),
-                                        dto.brandMedicationId()
-                                );
-
                         return buildEntityFromCreateDto(
                                 dto,
                                 patient.getId(),
-                                encounter.getId(),
-                                preAuthorizationStatus
+                                encounter.getId()
                         );
                     })
                     .toList();
@@ -276,10 +261,9 @@ public class PatientServiceAndProductService {
             patientServiceAndProductRepository.flush();
 
             saved.stream()
-                    .filter(item -> item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL)
                     .map(PatientServiceAndProduct::getEncounterId)
                     .distinct()
-                    .forEach(preAuthorizationSubmissionService::submitIfRequired);
+                    .forEach(this::submitPreAuthorizationIfPending);
 
             LOG.debug("Bulk created Patient billing items : count={}", saved.size());
             return saved;
@@ -318,16 +302,13 @@ public class PatientServiceAndProductService {
     private PatientServiceAndProduct buildEntityFromCreateDto(
             PatientServiceProductCreateDTO dto,
             Long patientId,
-            Long encounterId,
-            PreAuthorizationStatus preAuthorizationStatus
+            Long encounterId
     ) {
         long quantity = dto.quantity() == null ? 1L : dto.quantity();
         BigDecimal unitPrice = defaultZero(dto.unitPrice());
         BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
-        boolean preAuthRequired =
-                preAuthorizationStatus == PreAuthorizationStatus.PENDING_APPROVAL;
 
-        return PatientServiceAndProduct.builder()
+        PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
                 .patientId(patientId)
                 .encounterId(encounterId)
                 .billingItemType(dto.billingItemType())
@@ -358,17 +339,20 @@ public class PatientServiceAndProductService {
                 .isBilled(Boolean.FALSE)
                 .billingInvoiceId(null)
                 .billingInvoiceItemId(null)
-                .paymentStatus(
-                        preAuthRequired
-                                ? PaymentStatus.SKIPPED_PENDING_PRE_AUTH
-                                : PaymentStatus.PENDING
-                )
-                .coverageStatus(CoverageStatus.NOT_CHECKED)
                 .isDefaultService(Boolean.FALSE)
-                .isExempted(Boolean.FALSE)
-                .preAuthorizationRequired(preAuthRequired)
-                .preAuthorizationStatus(preAuthorizationStatus)
-                .build();
+                .isExempted(Boolean.FALSE);
+
+        preAuthorizationResolutionService.resolveAndPrepareNewItem(
+                builder,
+                encounterId,
+                dto.billingItemType(),
+                dto.procedureId(),
+                dto.serviceId(),
+                dto.diagnosticTestId(),
+                dto.brandMedicationId()
+        );
+
+        return builder.build();
     }
 
     private void validateReferences(PatientServiceProductCreateDTO dto) {
@@ -457,107 +441,8 @@ public class PatientServiceAndProductService {
         }
     }
 
-    private PreAuthorizationStatus resolvePreAuthorizationStatus(
-            Long encounterId,
-            BillingItemTypes billingItemType,
-            Long procedureId,
-            Long serviceId,
-            Long diagnosticTestId,
-            Long brandMedicationId
-    ) {
-        if (!encounterInsuranceEligibilityService.isInsuranceEncounter(encounterId)) {
-            return PreAuthorizationStatus.NOT_REQUIRED;
-        }
-
-        if (billingItemType == BillingItemTypes.PROCEDURE && procedureId != null) {
-            return requiresPreAuthorization(billingItemType, procedureId)
-                    ? PreAuthorizationStatus.PENDING_APPROVAL
-                    : PreAuthorizationStatus.NOT_REQUIRED;
-        }
-
-        if (billingItemType == BillingItemTypes.SERVICE && serviceId != null) {
-            return requiresPreAuthorization(billingItemType, serviceId)
-                    ? PreAuthorizationStatus.PENDING_APPROVAL
-                    : PreAuthorizationStatus.NOT_REQUIRED;
-        }
-
-        if ((billingItemType == BillingItemTypes.LABORATORY
-                || billingItemType == BillingItemTypes.RADIOLOGY
-                || billingItemType == BillingItemTypes.PATHOLOGY)
-                && diagnosticTestId != null) {
-            return requiresPreAuthorization(billingItemType, diagnosticTestId)
-                    ? PreAuthorizationStatus.PENDING_APPROVAL
-                    : PreAuthorizationStatus.NOT_REQUIRED;
-        }
-
-        if (billingItemType == BillingItemTypes.MEDICATION && brandMedicationId != null) {
-            return requiresPreAuthorization(billingItemType, brandMedicationId)
-                    ? PreAuthorizationStatus.PENDING_APPROVAL
-                    : PreAuthorizationStatus.NOT_REQUIRED;
-        }
-
-        return PreAuthorizationStatus.NOT_REQUIRED;
-    }
-
-    private boolean requiresPreAuthorization(
-            BillingItemTypes billingItemType,
-            Long itemId
-    ) {
-        if (billingItemType == null || itemId == null) {
-            return false;
-        }
-
-        LOG.info(
-                "Checking pre-authorization from Waseel mapping. billingItemType={}, itemId={}",
-                billingItemType,
-                itemId
-        );
-
-        try {
-            Boolean requiresPreAuth =
-                    waseelItemMappingClient.requiresPreauth(
-                            billingItemType,
-                            itemId
-                    );
-
-            LOG.info(
-                    "Pre-authorization result from Waseel mapping. billingItemType={}, itemId={}, result={}",
-                    billingItemType,
-                    itemId,
-                    requiresPreAuth
-            );
-
-            return Boolean.TRUE.equals(requiresPreAuth);
-
-        } catch (FeignException ex) {
-            LOG.error(
-                    "[WASEEL_MAPPING] Failed to check pre-authorization. billingItemType={}, itemId={}, status={}, body={}",
-                    billingItemType,
-                    itemId,
-                    ex.status(),
-                    ex.contentUTF8(),
-                    ex
-            );
-
-            return false;
-        }
-    }
-
-    private void submitPreAuthorizationIfPending(PatientServiceAndProduct item) {
-        if (item == null || item.getPreAuthorizationStatus() != PreAuthorizationStatus.PENDING_APPROVAL) {
-            return;
-        }
-
-        if (!encounterInsuranceEligibilityService.isInsuranceEncounter(item.getEncounterId())) {
-            LOG.debug(
-                    "Skipping pre-authorization for billing item id={} on encounterId={} — cash/self-pay encounter",
-                    item.getId(),
-                    item.getEncounterId()
-            );
-            return;
-        }
-
-        preAuthorizationSubmissionService.submitIfRequired(item.getEncounterId());
+    private void submitPreAuthorizationIfPending(Long encounterId) {
+        encounterPreAuthorizationSyncService.afterItemPersisted(encounterId);
     }
 
     private BillingEventType resolveBillingEvent(

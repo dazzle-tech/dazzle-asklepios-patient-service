@@ -207,22 +207,52 @@ public class WaseelCoverageExtractionService {
                 EligibilityCostBeneficiaryDTO costBeneficiary
                         : costBeneficiaries
         ) {
+            String beneficiaryType =
+                    clean(costBeneficiary.costBeneficiaryType());
+
+            String value =
+                    costBeneficiary.costBeneficiaryMoney() == null
+                            ? costBeneficiary.costBeneficiaryQut()
+                            : costBeneficiary.costBeneficiaryMoney().toString();
+
+            String unit =
+                    costBeneficiary.costBeneficiaryMoney() != null
+                            ? "SAR"
+                            : null;
+
             benefits.add(
                     new WaseelBenefitDetail(
                             "Cost Beneficiary",
+                            formatCostBeneficiaryLabel(beneficiaryType),
                             null,
+                            beneficiaryType,
                             null,
-                            costBeneficiary.costBeneficiaryType(),
-                            null,
-                            costBeneficiary.costBeneficiaryQut(),
-                            costBeneficiary.costBeneficiaryMoney() == null
-                                    ? null
-                                    : costBeneficiary
-                                            .costBeneficiaryMoney()
-                                            .toString()
+                            value,
+                            unit
                     )
             );
         }
+    }
+
+    private String formatCostBeneficiaryLabel(String beneficiaryType) {
+        if (beneficiaryType == null || beneficiaryType.isBlank()) {
+            return "Cost Beneficiary";
+        }
+
+        return switch (beneficiaryType.trim().toLowerCase()) {
+            case "gpvisit" -> "GP Visit Copay";
+            case "spvisit" -> "Specialist Visit";
+            default -> beneficiaryType;
+        };
+    }
+
+    private String clean(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        String text = value.trim();
+        return text.isEmpty() ? null : text;
     }
 
     private void appendClassList(

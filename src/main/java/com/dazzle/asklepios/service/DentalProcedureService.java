@@ -1,6 +1,5 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.setup.PayorPlanItemClient;
 import com.dazzle.asklepios.client.setup.ProcedureClient;
 import com.dazzle.asklepios.client.setup.ServiceClient;
 import com.dazzle.asklepios.client.setup.dto.ProcedureSetupDTO;
@@ -11,9 +10,8 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
-import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
-import com.dazzle.asklepios.integration.waseel.client.WaseelItemMappingClient;
-import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationSubmissionService;
+import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.DentalProcedureRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -57,9 +55,8 @@ public class DentalProcedureService {
     private final CDTCodeHelper cdtCodeHelper;
     private final ProcedureClient procedureClient;
     private final ServiceClient serviceClient;
-    private final PayorPlanItemClient payorPlanItemClient;
-    private final PreAuthorizationSubmissionService preAuthorizationSubmissionService;
-    private final WaseelItemMappingClient waseelItemMappingClient;
+    private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
+    private final PreAuthorizationResolutionService preAuthorizationResolutionService;
 
     public DentalProcedureService(
             DentalProcedureRepository dentalProcedureRepository,
@@ -71,9 +68,8 @@ public class DentalProcedureService {
             CDTCodeHelper cdtCodeHelper,
             ProcedureClient procedureClient,
             ServiceClient serviceClient,
-            PayorPlanItemClient payorPlanItemClient,
-            PreAuthorizationSubmissionService preAuthorizationSubmissionService,
-            WaseelItemMappingClient waseelItemMappingClient) {
+            EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService,
+            PreAuthorizationResolutionService preAuthorizationResolutionService) {
         this.dentalProcedureRepository = dentalProcedureRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
@@ -83,9 +79,8 @@ public class DentalProcedureService {
         this.cdtCodeHelper = cdtCodeHelper;
         this.procedureClient = procedureClient;
         this.serviceClient = serviceClient;
-        this.payorPlanItemClient = payorPlanItemClient;
-        this.preAuthorizationSubmissionService = preAuthorizationSubmissionService;
-        this.waseelItemMappingClient = waseelItemMappingClient;
+        this.encounterPreAuthorizationSyncService = encounterPreAuthorizationSyncService;
+        this.preAuthorizationResolutionService = preAuthorizationResolutionService;
     }
 
     public DentalProcedure create(DentalProcedureCreateDTO dto) {
@@ -115,25 +110,10 @@ public class DentalProcedureService {
         try {
             DentalProcedure saved = dentalProcedureRepository.saveAndFlush(entity);
 
-            boolean hasPendingPreAuthorization = false;
+            createProcedureBillingItem(saved, setupProcedure, dto.notes(), dto.surface());
+            createServiceBillingItemIfExists(saved, setupService, dto.notes(), dto.surface());
 
-            PatientServiceAndProduct procedureBillingItem =
-                    createProcedureBillingItem(saved, setupProcedure, dto.notes(), dto.surface());
-
-            if (isPendingPreAuthorization(procedureBillingItem)) {
-                hasPendingPreAuthorization = true;
-            }
-
-            PatientServiceAndProduct serviceBillingItem =
-                    createServiceBillingItemIfExists(saved, setupService, dto.notes(), dto.surface());
-
-            if (isPendingPreAuthorization(serviceBillingItem)) {
-                hasPendingPreAuthorization = true;
-            }
-
-            if (hasPendingPreAuthorization) {
-                preAuthorizationSubmissionService.submitIfRequired(encounter.getId());
-            }
+            encounterPreAuthorizationSyncService.afterItemPersisted(encounter.getId());
 
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException e) {
@@ -198,25 +178,10 @@ public class DentalProcedureService {
         try {
             DentalProcedure updated = dentalProcedureRepository.saveAndFlush(entity);
 
-            boolean hasPendingPreAuthorization = false;
+            createProcedureBillingItem(updated, setupProcedure, dto.notes(), dto.surface());
+            createServiceBillingItemIfExists(updated, setupService, dto.notes(), dto.surface());
 
-            PatientServiceAndProduct newProcedureBillingItem =
-                    createProcedureBillingItem(updated, setupProcedure, dto.notes(), dto.surface());
-
-            if (isPendingPreAuthorization(newProcedureBillingItem)) {
-                hasPendingPreAuthorization = true;
-            }
-
-            PatientServiceAndProduct newServiceBillingItem =
-                    createServiceBillingItemIfExists(updated, setupService, dto.notes(), dto.surface());
-
-            if (isPendingPreAuthorization(newServiceBillingItem)) {
-                hasPendingPreAuthorization = true;
-            }
-
-            if (hasPendingPreAuthorization) {
-                preAuthorizationSubmissionService.submitIfRequired(updated.getEncounter().getId());
-            }
+            encounterPreAuthorizationSyncService.afterItemPersisted(updated.getEncounter().getId());
 
             return updated;
         } catch (DataIntegrityViolationException | JpaSystemException e) {
@@ -461,11 +426,7 @@ public class DentalProcedureService {
         BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
         String billingNotes = buildBillingNotesValue(notes, surface);
 
-        Boolean requiresPreAuth = waseelItemMappingClient.requiresPreauth(
-                        BillingItemTypes.PROCEDURE,
-                         setupProcedure.id()
-                );
-        return PatientServiceAndProduct.builder()
+        PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
                 .patientId(dentalProcedure.getPatient().getId())
                 .encounterId(dentalProcedure.getEncounter().getId())
                 .billingItemType(BillingItemTypes.PROCEDURE)
@@ -480,16 +441,22 @@ public class DentalProcedureService {
                 .taxAmount(BigDecimal.ZERO)
                 .totalAmount(totalAmount)
                 .currency(setupProcedure.currency())
-                .preAuthorizationStatus(
-                        requiresPreAuth
-                                ? PreAuthorizationStatus.PENDING_APPROVAL
-                                : PreAuthorizationStatus.NOT_REQUIRED
-                )
                 .isBilled(Boolean.FALSE)
                 .billingInvoiceId(null)
                 .billingInvoiceItemId(null)
-                .notes(billingNotes)
-                .build();
+                .notes(billingNotes);
+
+        preAuthorizationResolutionService.resolveAndPrepareNewItem(
+                builder,
+                dentalProcedure.getEncounter().getId(),
+                BillingItemTypes.PROCEDURE,
+                setupProcedure.id(),
+                null,
+                null,
+                null
+        );
+
+        return builder.build();
     }
 
     private PatientServiceAndProduct buildServiceBillingItem(
@@ -503,9 +470,7 @@ public class DentalProcedureService {
         BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
         String billingNotes = buildBillingNotesValue(notes, surface);
 
-        boolean requiresPreAuth = requiresPreAuthorizationForService(setupService.id());
-
-        return PatientServiceAndProduct.builder()
+        PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
                 .patientId(dentalProcedure.getPatient().getId())
                 .encounterId(dentalProcedure.getEncounter().getId())
                 .billingItemType(BillingItemTypes.SERVICE)
@@ -520,44 +485,22 @@ public class DentalProcedureService {
                 .taxAmount(BigDecimal.ZERO)
                 .totalAmount(totalAmount)
                 .currency(setupService.currency())
-                .preAuthorizationStatus(
-                        requiresPreAuth
-                                ? PreAuthorizationStatus.PENDING_APPROVAL
-                                : PreAuthorizationStatus.NOT_REQUIRED
-                )
                 .isBilled(Boolean.FALSE)
                 .billingInvoiceId(null)
                 .billingInvoiceItemId(null)
-                .notes(billingNotes)
-                .build();
-    }
+                .notes(billingNotes);
 
+        preAuthorizationResolutionService.resolveAndPrepareNewItem(
+                builder,
+                dentalProcedure.getEncounter().getId(),
+                BillingItemTypes.SERVICE,
+                null,
+                setupService.id(),
+                null,
+                null
+        );
 
-    private boolean requiresPreAuthorizationForService(Long serviceId) {
-        if (serviceId == null) {
-            return false;
-        }
-
-        try {
-            return Boolean.TRUE.equals(
-                    payorPlanItemClient.requiresPreAuthorizationForService(serviceId)
-            );
-        } catch (FeignException ex) {
-            LOG.error(
-                    "[SETUP_SERVICE] Failed to check dental service pre-authorization. serviceId={} status={} body={}",
-                    serviceId,
-                    ex.status(),
-                    ex.contentUTF8(),
-                    ex
-            );
-
-            return false;
-        }
-    }
-
-    private boolean isPendingPreAuthorization(PatientServiceAndProduct item) {
-        return item != null
-                && item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL;
+        return builder.build();
     }
 
     private Optional<PatientServiceAndProduct> findBillingItem(

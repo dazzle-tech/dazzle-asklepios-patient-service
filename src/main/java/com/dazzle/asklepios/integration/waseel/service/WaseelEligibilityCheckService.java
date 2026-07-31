@@ -11,6 +11,7 @@ import com.dazzle.asklepios.integration.waseel.dto.eligibility.request.Eligibili
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.request.EligibilityRequest;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityCheckResponse;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityResponse;
+import com.dazzle.asklepios.integration.waseel.event.EligibilityCheckSucceededEvent;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApLovMapperService;
 import com.dazzle.asklepios.integration.waseel.service.mapper.AsklepiosLovCodes;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
@@ -18,6 +19,7 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +39,8 @@ public class WaseelEligibilityCheckService {
     private final WaseelApiProperties properties;
     private final ObjectMapper objectMapper;
     private final ApLovMapperService apLovMapperService;
+    private final EligibilityPatientInsuranceSyncService eligibilityPatientInsuranceSyncService;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     @Transactional
     public EligibilityCheckResponse checkEligibility(EligibilityCheckRequest request) {
@@ -97,6 +101,16 @@ public class WaseelEligibilityCheckService {
 
             WaseelEligibilityRequest saved = eligibilityLogRepository.save(log);
 
+            if (response != null) {
+                eligibilityPatientInsuranceSyncService.syncFromEligibilityResponse(
+                        insurance,
+                        response,
+                        saved.getId()
+                );
+            }
+
+            triggerBackendPreAuthorizationSubmission(request);
+
             return toResult(saved);
 
         } catch (Exception e) {
@@ -106,6 +120,16 @@ public class WaseelEligibilityCheckService {
             eligibilityLogRepository.save(log);
             throw e;
         }
+    }
+
+    private void triggerBackendPreAuthorizationSubmission(EligibilityCheckRequest request) {
+        if (request == null || request.encounterId() == null) {
+            return;
+        }
+
+        applicationEventPublisher.publishEvent(
+                new EligibilityCheckSucceededEvent(request.encounterId())
+        );
     }
 
     private EligibilityRequest buildWaseelEligibilityRequest(

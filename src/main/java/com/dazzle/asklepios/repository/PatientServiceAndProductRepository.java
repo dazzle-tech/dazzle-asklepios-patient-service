@@ -70,6 +70,12 @@ public interface PatientServiceAndProductRepository
             Long sourceId
     );
 
+    boolean existsByEncounterIdAndPatientInsuranceIdIsNotNull(Long encounterId);
+
+    Optional<PatientServiceAndProduct> findFirstByEncounterIdAndPatientInsuranceIdIsNotNullOrderByIdDesc(
+            Long encounterId
+    );
+
     boolean existsByEncounterIdAndBillingItemTypeAndBrandMedicationId(
             Long encounterId,
             BillingItemTypes billingItemType,

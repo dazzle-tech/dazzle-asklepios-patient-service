@@ -37,6 +37,4 @@ public interface PatientInsuranceRepository
             Long patientId,
             LocalDate date
     );
-
-    Page<PatientInsurance> findByPatientId(Long patientId, Pageable pageable);
 }

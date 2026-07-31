@@ -23,7 +23,11 @@ public record PreviewDefaultServicePricingResult(
 
         String priceSource,
 
-        String priceListItemCode
+        String priceListItemCode,
+
+        BigDecimal patientShareAmount,
+
+        BigDecimal insuranceShareAmount
 
 ) implements Serializable {
 }

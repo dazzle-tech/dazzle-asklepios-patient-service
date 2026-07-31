@@ -1,12 +1,15 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.dto.BillingPricingResolveRequest;
+import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingTrigger;
 import com.dazzle.asklepios.domain.enumeration.billing.DiscountApplicableOn;
 import com.dazzle.asklepios.domain.enumeration.billing.TaxApplicableOn;
+import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
+import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationResult;
@@ -49,6 +52,8 @@ public class BillingEngineService {
     private final PatientServiceAndProductRepository
             patientServiceAndProductRepository;
 
+    private final PatientInsuranceRepository patientInsuranceRepository;
+
     private final SetupBillingRuleService
             setupBillingRuleService;
 
@@ -73,6 +78,9 @@ public class BillingEngineService {
 
     private final BillingChargeService
             billingChargeService;
+
+    private final EncounterPreAuthorizationSyncService
+            encounterPreAuthorizationSyncService;
 
     /*
      * ============================================================
@@ -257,6 +265,8 @@ public class BillingEngineService {
                 result.processed()
         );
 
+        submitPreAuthorizationAfterBilling(item.getEncounterId(), result);
+
         return result;
     }
 
@@ -377,39 +387,29 @@ public class BillingEngineService {
                     eventType
             );
 
-            try {
-                BillingOperationResult result =
-                        process(
-                                patientServiceProductId,
-                                eventType,
-                                facilityId,
-                                baseRequestId
-                                        + ":"
-                                        + eventType.name()
-                        );
-
-                lastResult = result;
-
-                if (result.processed()
-                        && result.chargeLineId() != null) {
-                    LOG.info(
-                            "[PREPARE_FALLBACK] Billing succeeded "
-                                    + "pspId={} eventType={} chargeLineId={}",
+            BillingOperationResult result =
+                    process(
                             patientServiceProductId,
                             eventType,
-                            result.chargeLineId()
+                            facilityId,
+                            baseRequestId
+                                    + ":"
+                                    + eventType.name()
                     );
 
-                    return result;
-                }
-            } catch (RuntimeException exception) {
-                LOG.warn(
-                        "[PREPARE_FALLBACK] Billing attempt failed "
-                                + "pspId={} eventType={} reason={}",
+            lastResult = result;
+
+            if (result.processed()
+                    && result.chargeLineId() != null) {
+                LOG.info(
+                        "[PREPARE_FALLBACK] Billing succeeded "
+                                + "pspId={} eventType={} chargeLineId={}",
                         patientServiceProductId,
                         eventType,
-                        exception.getMessage()
+                        result.chargeLineId()
                 );
+
+                return result;
             }
         }
 
@@ -564,43 +564,33 @@ public class BillingEngineService {
                     eventType
             );
 
-            try {
-                BillingOperationResult result =
-                        process(
-                                patientServiceProductId,
-                                eventType,
-                                facilityId,
-                                baseRequestId
-                                        + ":"
-                                        + eventType.name(),
-                                true
-                        );
-
-                if (result.chargeLineId() != null
-                        || billingChargeService
-                        .findActiveChargeLine(
-                                patientServiceProductId,
-                                encounterId
-                        )
-                        .isPresent()) {
-                    LOG.info(
-                            "[ENSURE_CHARGE] Charge line created "
-                                    + "pspId={} eventType={} chargeLineId={}",
+            BillingOperationResult result =
+                    process(
                             patientServiceProductId,
                             eventType,
-                            result.chargeLineId()
+                            facilityId,
+                            baseRequestId
+                                    + ":"
+                                    + eventType.name(),
+                            true
                     );
 
-                    return;
-                }
-            } catch (RuntimeException exception) {
-                LOG.warn(
-                        "[ENSURE_CHARGE] Billing attempt failed "
-                                + "pspId={} eventType={} reason={}",
+            if (result.chargeLineId() != null
+                    || billingChargeService
+                    .findActiveChargeLine(
+                            patientServiceProductId,
+                            encounterId
+                    )
+                    .isPresent()) {
+                LOG.info(
+                        "[ENSURE_CHARGE] Charge line created "
+                                + "pspId={} eventType={} chargeLineId={}",
                         patientServiceProductId,
                         eventType,
-                        exception.getMessage()
+                        result.chargeLineId()
                 );
+
+                return;
             }
         }
 
@@ -767,7 +757,20 @@ public class BillingEngineService {
                 resolvedPrice.priceSource()
         );
 
+        submitPreAuthorizationAfterBilling(item.getEncounterId(), result);
+
         return result;
+    }
+
+    private void submitPreAuthorizationAfterBilling(
+            Long encounterId,
+            BillingOperationResult result
+    ) {
+        if (encounterId == null || result == null || !result.processed()) {
+            return;
+        }
+
+        encounterPreAuthorizationSyncService.scheduleSyncAfterCommit(encounterId);
     }
 
     /*
@@ -1341,17 +1344,15 @@ public class BillingEngineService {
     private Long resolvePayerId(
             PatientServiceAndProduct item
     ) {
-        /*
-         * Temporary behavior:
-         *
-         * SELF_PAY:
-         * payerId = null
-         *
-         * INSURANCE:
-         * This must be replaced in the Default Service insurance
-         * phase by loading PatientInsurance and returning its payerId.
-         */
-        return null;
+        if (item.getPatientInsuranceId() == null) {
+            return null;
+        }
+
+        return patientInsuranceRepository
+                .findById(item.getPatientInsuranceId())
+                .map(PatientInsurance::getPayorId)
+                .filter(payorId -> payorId != null && payorId > 0)
+                .orElse(null);
     }
 
     private BillingRuleResolveResponse resolveBillingRule(

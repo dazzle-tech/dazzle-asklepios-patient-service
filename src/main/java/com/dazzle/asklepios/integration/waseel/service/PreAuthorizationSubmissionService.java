@@ -31,6 +31,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClientException;
 
@@ -41,7 +42,6 @@ import java.util.List;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class PreAuthorizationSubmissionService {
 
     private final ApprovalRequestBuilderService approvalRequestBuilderService;
@@ -63,6 +63,10 @@ public class PreAuthorizationSubmissionService {
     private final WaseelApiProperties waseelApiProperties;
     private final ObjectMapper objectMapper;
 
+    @Transactional(
+            propagation = Propagation.REQUIRES_NEW,
+            rollbackFor = Exception.class
+    )
     public ApprovalResponse submitIfRequired(Long encounterId) {
         if (!encounterInsuranceEligibilityService.isInsuranceEncounter(encounterId)) {
             log.debug(
@@ -85,6 +89,10 @@ public class PreAuthorizationSubmissionService {
         return submitIfRequired(eligibilityRequestId, encounterId);
     }
 
+    @Transactional(
+            propagation = Propagation.REQUIRES_NEW,
+            rollbackFor = Exception.class
+    )
     public ApprovalResponse submitIfRequired(Long eligibilityRequestId, Long encounterId) {
         List<PatientServiceAndProduct> pendingItems =
                 patientServiceAndProductRepository.findByEncounterIdAndPreAuthorizationStatus(
@@ -93,8 +101,18 @@ public class PreAuthorizationSubmissionService {
                 );
 
         if (pendingItems == null || pendingItems.isEmpty()) {
+            log.info(
+                    "[PREAUTH_SUBMIT] No PENDING_APPROVAL items for encounterId={} — skipping Waseel submission",
+                    encounterId
+            );
             return null;
         }
+
+        log.info(
+                "[PREAUTH_SUBMIT] Submitting pre-authorization to Waseel. encounterId={} pendingItemCount={}",
+                encounterId,
+                pendingItems.size()
+        );
 
         PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
                 .orElseThrow(() -> new BadRequestAlertException(

@@ -15,6 +15,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerScope;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerSourceChannel;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerTransactionType;
 import com.dazzle.asklepios.domain.enumeration.billing.PaymentCategory;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.BillingAllocationRepository;
 import com.dazzle.asklepios.repository.BillingPaymentRepository;
 import com.dazzle.asklepios.repository.BillingPaymentTransactionRepository;
@@ -102,6 +103,9 @@ public class BillingPaymentService {
             billingLedgerService;
 
     private final ObjectMapper objectMapper;
+
+    private final PreAuthorizationResolutionService
+            preAuthorizationResolutionService;
 
     @Transactional(rollbackFor = Exception.class)
     public BillingPaymentResult createAdvancePayment(
@@ -709,6 +713,33 @@ public class BillingPaymentService {
                     request,
                     item
             );
+
+            if (preAuthorizationResolutionService.isPendingPreAuthorization(item)) {
+                BigDecimal patientAmount =
+                        money(item.getPatientShareAmount());
+
+                LOG.info(
+                        "[PAYMENT] Skipping reservation for pre-authorization pending item "
+                                + "pspId={} patientShare={}",
+                        item.getId(),
+                        patientAmount
+                );
+
+                results.add(
+                        toReservationResult(
+                                item,
+                                null,
+                                null,
+                                null,
+                                patientAmount,
+                                zero(),
+                                patientAmount,
+                                false
+                        )
+                );
+
+                continue;
+            }
 
             BillingProcessingContext context =
                     BillingProcessingContext.builder()

@@ -31,6 +31,8 @@ import com.dazzle.asklepios.domain.enumeration.PaymentTypes;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.WalletTransactionType;
 import com.dazzle.asklepios.integration.waseel.dto.InsuranceCoverage;
+import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelCoverageExtractionService;
 import com.dazzle.asklepios.repository.FinancialDocumentItemRepository;
 import com.dazzle.asklepios.repository.FinancialDocumentRepository;
@@ -109,6 +111,8 @@ public class PatientPaymentsService {
     private final FinancialDocumentRepository documentRepository;
 
     private final WaseelCoverageExtractionService coverageExtractionService;
+    private final PreAuthorizationResolutionService preAuthorizationResolutionService;
+    private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
     private final BillingWalletService billingWalletService;
     private final FinancialDocumentBalanceService financialDocumentBalanceService;
     private final BillingChargeRepository billingChargeRepository;
@@ -839,6 +843,10 @@ public class PatientPaymentsService {
                     dueAmount
             );
 
+            if (dto.paymentTypes() == PaymentTypes.INSURANCE_PLAN) {
+                encounterPreAuthorizationSyncService.scheduleSyncAfterCommit(encounter.getId());
+            }
+
             List<FinancialDocumentItem> items = serviceRows.stream()
                     .map(service -> FinancialDocumentItem.builder()
                             .document(document)
@@ -1072,7 +1080,7 @@ public class PatientPaymentsService {
 
                     BigDecimal net = discounted.add(tax);
 
-                    PatientServiceAndProduct row = PatientServiceAndProduct.builder()
+                    PatientServiceAndProduct.PatientServiceAndProductBuilder rowBuilder = PatientServiceAndProduct.builder()
                             .patientId(payment.getPatient().getId())
                             .encounterId(payment.getEncounter().getId())
 
@@ -1110,25 +1118,28 @@ public class PatientPaymentsService {
                             .paymentId(payment.getId())
                             .paymentType(payment.getPaymentTypes().name())
 
-                            .paymentStatus(
-                                    Boolean.TRUE.equals(item.isExempted())
-                                            ? PaymentStatus.PAID
-                                            : PaymentStatus.PENDING
-                            )
-
                             .coverageStatus(CoverageStatus.NOT_CHECKED)
 
                             // ✅ Flags
                             .isDefaultService(Boolean.TRUE)
                             .isExempted(item.isExempted())
-                            .isBilled(Boolean.FALSE)
+                            .isBilled(Boolean.FALSE);
 
-                            // ✅ Future integration
-                            .preAuthorizationRequired(Boolean.FALSE)
+                    preAuthorizationResolutionService.resolveAndPrepareNewItem(
+                            rowBuilder,
+                            payment.getEncounter().getId(),
+                            BillingItemTypes.SERVICE,
+                            null,
+                            item.serviceId(),
+                            null,
+                            null
+                    );
 
-                            .build();
+                    if (Boolean.TRUE.equals(item.isExempted())) {
+                        rowBuilder.paymentStatus(PaymentStatus.PAID);
+                    }
 
-                    return row;
+                    return rowBuilder.build();
                 })
                 .toList();
 

@@ -12,6 +12,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerTransactionT
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.PricingReason;
 import com.dazzle.asklepios.domain.enumeration.billing.ReservationReleaseReason;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.BillingPaymentRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationRequest;
@@ -100,6 +101,9 @@ public class BillingTransactionService {
 
     private final BillingLedgerService
             billingLedgerService;
+
+    private final PreAuthorizationResolutionService
+            preAuthorizationResolutionService;
 
     /*
      * ============================================================
@@ -1261,6 +1265,20 @@ public class BillingTransactionService {
 
         PatientServiceAndProduct item =
                 context.getPatientServiceProduct();
+
+        if (preAuthorizationResolutionService.isPendingPreAuthorization(item)) {
+            LOG.info(
+                    "[RESERVE_ADVANCE] Skipping wallet reservation for pre-authorization pending item "
+                            + "pspId={}",
+                    item.getId()
+            );
+
+            context.setReservedAmount(
+                    BigDecimal.ZERO
+            );
+
+            return BigDecimal.ZERO;
+        }
 
         /*
          * Wallet may not exist when the patient has never made

@@ -1,6 +1,5 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.setup.PayorPlanItemClient;
 import com.dazzle.asklepios.client.setup.ProcedureClient;
 import com.dazzle.asklepios.client.setup.dto.ProcedureSetupDTO;
 import com.dazzle.asklepios.domain.Patient;
@@ -12,8 +11,8 @@ import com.dazzle.asklepios.domain.enumeration.ProcStatus;
 import com.dazzle.asklepios.domain.enumeration.ProcedureLevel;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
-import com.dazzle.asklepios.integration.waseel.client.WaseelItemMappingClient;
-import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationSubmissionService;
+import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientProcedureRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -55,9 +54,8 @@ public class PatientProcedureService {
     private final ProcedureClient procedureClient;
     private final FacilityHelper facilityHelper;
     private final DepartmentHelper departmentHelper;
-    private final PayorPlanItemClient payorPlanItemClient;
-    private final PreAuthorizationSubmissionService preAuthorizationSubmissionService;
-    private final WaseelItemMappingClient waseelItemMappingClient;
+    private final PreAuthorizationResolutionService preAuthorizationResolutionService;
+    private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
 
     private String currentUsername() {
         String username = SecurityUtils.getCurrentUserLogin().orElse(null);
@@ -129,9 +127,7 @@ public class PatientProcedureService {
             PatientServiceAndProduct savedBillingItem =
                     patientServiceAndProductRepository.saveAndFlush(billingItem);
 
-            if (savedBillingItem.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL) {
-                preAuthorizationSubmissionService.submitIfRequired(encounter.getId());
-            }
+            encounterPreAuthorizationSyncService.afterItemPersisted(encounter.getId());
 
             return savedProcedure;
 
@@ -310,12 +306,7 @@ public class PatientProcedureService {
                 .subtract(exemptionAmount)
                 .add(taxAmount);
 
-        Boolean requiresPreAuth = waseelItemMappingClient.requiresPreauth(
-                BillingItemTypes.PROCEDURE,
-                setupProcedure.id()
-        );
-
-        return PatientServiceAndProduct.builder()
+        PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
                 .patientId(patientId)
                 .encounterId(encounterId)
                 .billingItemType(BillingItemTypes.PROCEDURE)
@@ -336,18 +327,22 @@ public class PatientProcedureService {
                 .totalAmount(totalAmount)
 
                 .currency(setupProcedure.currency())
-
-                .preAuthorizationStatus(
-                        requiresPreAuth
-                                ? PreAuthorizationStatus.PENDING_APPROVAL
-                                : PreAuthorizationStatus.NOT_REQUIRED
-                )
-
                 .isBilled(Boolean.FALSE)
                 .billingInvoiceId(null)
                 .billingInvoiceItemId(null)
-                .notes(notes)
-                .build();
+                .notes(notes);
+
+        preAuthorizationResolutionService.resolveAndPrepareNewItem(
+                builder,
+                encounterId,
+                BillingItemTypes.PROCEDURE,
+                setupProcedure.id(),
+                null,
+                null,
+                null
+        );
+
+        return builder.build();
     }
 
     private void logBillingItemBeforeSave(PatientServiceAndProduct billingItem) {

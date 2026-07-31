@@ -16,6 +16,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerTransactionT
 import com.dazzle.asklepios.domain.enumeration.billing.BillingReservationStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.PaymentCategory;
 import com.dazzle.asklepios.domain.enumeration.billing.ReservationReleaseReason;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
 import com.dazzle.asklepios.repository.BillingReservationRepository;
@@ -71,6 +72,9 @@ public class BillingReservationService {
     private final BillingLedgerService
             billingLedgerService;
 
+    private final PreAuthorizationResolutionService
+            preAuthorizationResolutionService;
+
     /**
      * Reserves patient responsibility from one specific payment source.
      *
@@ -95,6 +99,20 @@ public class BillingReservationService {
                 context,
                 payment
         );
+
+        PatientServiceAndProduct item =
+                context.getPatientServiceProduct();
+
+        if (preAuthorizationResolutionService.isPendingPreAuthorization(item)) {
+            LOG.info(
+                    "[RESERVE] Skipping reservation for pre-authorization pending item "
+                            + "pspId={} preAuthorizationStatus={}",
+                    item.getId(),
+                    item.getPreAuthorizationStatus()
+            );
+
+            return null;
+        }
 
         BillingChargeResponsibility responsibility =
                 context.getPatientResponsibility();
@@ -1588,6 +1606,7 @@ public class BillingReservationService {
 
         item.setPaymentStatus(
                 resolvePaymentStatus(
+                        item,
                         patientAmount,
                         activeReserved
                 )
@@ -1661,6 +1680,7 @@ public class BillingReservationService {
 
         item.setPaymentStatus(
                 resolvePaymentStatus(
+                        item,
                         patientAmount,
                         reserved
                 )
@@ -1672,24 +1692,28 @@ public class BillingReservationService {
     }
 
     private PaymentStatus resolvePaymentStatus(
+            PatientServiceAndProduct item,
             BigDecimal patientAmount,
             BigDecimal reservedAmount
     ) {
+        PaymentStatus computed;
+
         if (patientAmount.signum() == 0) {
-            return PaymentStatus.PAID;
-        }
-
-        if (reservedAmount.signum() == 0) {
-            return PaymentStatus.PENDING;
-        }
-
-        if (reservedAmount.compareTo(
+            computed = PaymentStatus.PAID;
+        } else if (reservedAmount.signum() == 0) {
+            computed = PaymentStatus.PENDING;
+        } else if (reservedAmount.compareTo(
                 patientAmount
         ) >= 0) {
-            return PaymentStatus.RESERVED;
+            computed = PaymentStatus.RESERVED;
+        } else {
+            computed = PaymentStatus.PARTIALLY_RESERVED;
         }
 
-        return PaymentStatus.PARTIALLY_RESERVED;
+        return preAuthorizationResolutionService.resolveBillingPaymentStatus(
+                item,
+                computed
+        );
     }
 
     private BigDecimal calculateActiveReservedAmount(
