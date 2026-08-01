@@ -2,6 +2,8 @@ package com.dazzle.asklepios.integration.waseel.service;
 
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientPayments;
+import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.PaymentTypes;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStatus;
@@ -9,6 +11,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.ResponsiblePartyType;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.request.EligibilityCheckRequest;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityCheckResponse;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientPaymentsRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
@@ -35,6 +38,7 @@ public class EncounterInsuranceEligibilityService {
             EnumSet.of(BillingResponsibilityStatus.CANCELLED);
 
     private final PatientPaymentsRepository patientPaymentsRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
     private final PatientInsuranceRepository patientInsuranceRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final BillingChargeResponsibilityRepository billingChargeResponsibilityRepository;
@@ -78,6 +82,16 @@ public class EncounterInsuranceEligibilityService {
             return false;
         }
 
+        BillingCoverageType encounterCoverageType = resolveEncounterCoverageType(encounterId);
+        if (encounterCoverageType == BillingCoverageType.SELF_PAY) {
+            LOG.info("[PREAUTH] Self-pay encounter coverage stored on encounter. encounterId={}", encounterId);
+            return false;
+        }
+        if (encounterCoverageType == BillingCoverageType.INSURANCE) {
+            LOG.info("[PREAUTH] Insurance encounter coverage stored on encounter. encounterId={}", encounterId);
+            return true;
+        }
+
         if (hasInsurancePayment(encounterId)) {
             LOG.info("[PREAUTH] Insurance visit detected via patient payment. encounterId={}", encounterId);
             return true;
@@ -113,16 +127,30 @@ public class EncounterInsuranceEligibilityService {
             return null;
         }
 
-        return patientPaymentsRepository
-                .findFirstByEncounterIdOrderByIdDesc(encounterId)
-                .filter(payment -> PaymentTypes.INSURANCE_PLAN.equals(payment.getPaymentTypes()))
-                .map(PatientPayments::getPlan)
-                .map(PatientInsurance::getId)
+        return patientEncounterRepository.findById(encounterId)
+                .map(PatientEncounter::getPatientInsuranceId)
+                .filter(id -> id != null)
+                .or(() ->
+                        patientPaymentsRepository
+                                .findFirstByEncounterIdOrderByIdDesc(encounterId)
+                                .filter(payment ->
+                                        PaymentTypes.INSURANCE_PLAN.equals(payment.getPaymentTypes()))
+                                .map(PatientPayments::getPlan)
+                                .map(PatientInsurance::getId)
+                )
                 .or(() ->
                         patientServiceAndProductRepository
-                                .findFirstByEncounterIdAndPatientInsuranceIdIsNotNullOrderByIdDesc(encounterId)
-                                .map(item -> item.getPatientInsuranceId())
+                                .findFirstByEncounterIdAndPatientInsuranceIdIsNotNullOrderByIdDesc(
+                                        encounterId
+                                )
+                                .map(PatientServiceAndProduct::getPatientInsuranceId)
                 )
+                .orElse(null);
+    }
+
+    private BillingCoverageType resolveEncounterCoverageType(Long encounterId) {
+        return patientEncounterRepository.findById(encounterId)
+                .map(PatientEncounter::getCoverageType)
                 .orElse(null);
     }
 

@@ -28,6 +28,7 @@ import com.dazzle.asklepios.domain.enumeration.LedgerSource;
 import com.dazzle.asklepios.domain.enumeration.PaymentLifecycleStatus;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.PaymentTypes;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.WalletTransactionType;
 import com.dazzle.asklepios.integration.waseel.dto.InsuranceCoverage;
@@ -113,6 +114,7 @@ public class PatientPaymentsService {
     private final WaseelCoverageExtractionService coverageExtractionService;
     private final PreAuthorizationResolutionService preAuthorizationResolutionService;
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
+    private final EncounterCoverageService encounterCoverageService;
     private final BillingWalletService billingWalletService;
     private final FinancialDocumentBalanceService financialDocumentBalanceService;
     private final BillingChargeRepository billingChargeRepository;
@@ -793,6 +795,8 @@ public class PatientPaymentsService {
         try {
             PatientPayments saved = paymentRepository.saveAndFlush(payment);
 
+            encounterCoverageService.applyCoverageFromPayment(encounter, saved);
+
             // ==============================
 // ✅ CREATE OR LOAD MASTER INVOICE 💣
 // ==============================
@@ -844,7 +848,10 @@ public class PatientPaymentsService {
             );
 
             if (dto.paymentTypes() == PaymentTypes.INSURANCE_PLAN) {
-                encounterPreAuthorizationSyncService.scheduleSyncAfterCommit(encounter.getId());
+                encounterPreAuthorizationSyncService.scheduleSyncAfterCommit(
+                        encounter.getId(),
+                        BillingCoverageType.INSURANCE
+                );
             }
 
             List<FinancialDocumentItem> items = serviceRows.stream()
@@ -1116,11 +1123,21 @@ public class PatientPaymentsService {
                             )
 
                             .paymentId(payment.getId())
-                            .paymentType(payment.getPaymentTypes().name())
+                            .paymentType(payment.getPaymentTypes().name());
 
-                            .coverageStatus(CoverageStatus.NOT_CHECKED)
+                    boolean insurancePayment =
+                            PaymentTypes.INSURANCE_PLAN.equals(payment.getPaymentTypes());
 
-                            // ✅ Flags
+                    if (insurancePayment && payment.getPlan() != null) {
+                        rowBuilder
+                                .patientInsuranceId(payment.getPlan().getId())
+                                .coverageStatus(CoverageStatus.COVERED);
+                    } else {
+                        rowBuilder.coverageStatus(CoverageStatus.NOT_CHECKED);
+                    }
+
+                    // ✅ Flags
+                    rowBuilder
                             .isDefaultService(Boolean.TRUE)
                             .isExempted(item.isExempted())
                             .isBilled(Boolean.FALSE);
@@ -1132,7 +1149,8 @@ public class PatientPaymentsService {
                             null,
                             item.serviceId(),
                             null,
-                            null
+                            null,
+                            insurancePayment
                     );
 
                     if (Boolean.TRUE.equals(item.isExempted())) {

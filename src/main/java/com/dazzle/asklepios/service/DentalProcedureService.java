@@ -113,7 +113,7 @@ public class DentalProcedureService {
             createProcedureBillingItem(saved, setupProcedure, dto.notes(), dto.surface());
             createServiceBillingItemIfExists(saved, setupService, dto.notes(), dto.surface());
 
-            encounterPreAuthorizationSyncService.afterItemPersisted(encounter.getId());
+            submitDentalPreAuthorizationOrThrow(encounter.getId());
 
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException e) {
@@ -181,7 +181,7 @@ public class DentalProcedureService {
             createProcedureBillingItem(updated, setupProcedure, dto.notes(), dto.surface());
             createServiceBillingItemIfExists(updated, setupService, dto.notes(), dto.surface());
 
-            encounterPreAuthorizationSyncService.afterItemPersisted(updated.getEncounter().getId());
+            submitDentalPreAuthorizationOrThrow(updated.getEncounter().getId());
 
             return updated;
         } catch (DataIntegrityViolationException | JpaSystemException e) {
@@ -578,5 +578,19 @@ public class DentalProcedureService {
                 "dentalProcedure",
                 "Database constraint violated while saving dental procedure"
         );
+    }
+
+    private void submitDentalPreAuthorizationOrThrow(Long encounterId) {
+        try {
+            encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(encounterId);
+        } catch (BadRequestAlertException ex) {
+            throw new BadRequestAlertException(
+                    "Dental procedure requires pre-authorization but Waseel submission failed. "
+                            + "Please verify insurance eligibility and Waseel connectivity, then retry. "
+                            + "Details: " + ex.getMessage(),
+                    "dentalProcedure",
+                    "preAuthorization.waseelFailed"
+            );
+        }
     }
 }

@@ -6,11 +6,13 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.integration.waseel.event.EligibilityCheckSucceededEvent;
 import com.dazzle.asklepios.integration.waseel.event.EncounterPreAuthorizationSyncEvent;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -19,7 +21,6 @@ import java.util.EnumSet;
 import java.util.List;
 
 @Service
-@RequiredArgsConstructor
 public class EncounterPreAuthorizationSyncService {
 
     private static final Logger LOG =
@@ -33,12 +34,35 @@ public class EncounterPreAuthorizationSyncService {
     private final PreAuthorizationResolutionService preAuthorizationResolutionService;
     private final PreAuthorizationSubmissionService preAuthorizationSubmissionService;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final EncounterPreAuthorizationSyncService self;
 
-    public void syncEncounter(Long encounterId) {
-        syncEncounter(encounterId, null);
+    public EncounterPreAuthorizationSyncService(
+            PatientServiceAndProductRepository patientServiceAndProductRepository,
+            EncounterInsuranceEligibilityService encounterInsuranceEligibilityService,
+            PreAuthorizationResolutionService preAuthorizationResolutionService,
+            PreAuthorizationSubmissionService preAuthorizationSubmissionService,
+            ApplicationEventPublisher applicationEventPublisher,
+            @Lazy EncounterPreAuthorizationSyncService self
+    ) {
+        this.patientServiceAndProductRepository = patientServiceAndProductRepository;
+        this.encounterInsuranceEligibilityService = encounterInsuranceEligibilityService;
+        this.preAuthorizationResolutionService = preAuthorizationResolutionService;
+        this.preAuthorizationSubmissionService = preAuthorizationSubmissionService;
+        this.applicationEventPublisher = applicationEventPublisher;
+        this.self = self;
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void syncEncounter(Long encounterId) {
+        doSyncEncounter(encounterId, null);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void syncEncounter(Long encounterId, BillingCoverageType coverageType) {
+        doSyncEncounter(encounterId, coverageType);
+    }
+
+    private void doSyncEncounter(Long encounterId, BillingCoverageType coverageType) {
         if (encounterId == null) {
             return;
         }
@@ -92,6 +116,11 @@ public class EncounterPreAuthorizationSyncService {
                     );
 
             preAuthorizationResolutionService.apply(item, resolution);
+            preAuthorizationResolutionService.applyEncounterInsuranceLink(
+                    item,
+                    encounterId,
+                    insuranceVisitContext
+            );
 
             if (resolution.required()) {
                 hasPendingItems = true;
@@ -118,6 +147,45 @@ public class EncounterPreAuthorizationSyncService {
         }
 
         submitPendingPreAuthorization(encounterId);
+    }
+
+    public void submitPendingPreAuthorization(Long encounterId) {
+        if (encounterId == null) {
+            return;
+        }
+
+        LOG.info(
+                "[PREAUTH_SYNC] Backend auto-submit triggered for encounterId={}",
+                encounterId
+        );
+
+        try {
+            preAuthorizationSubmissionService.submitIfRequired(encounterId);
+        } catch (RuntimeException ex) {
+            LOG.warn(
+                    "[PREAUTH_SYNC] Pre-authorization submission failed for encounterId={}. Items remain pending. reason={}",
+                    encounterId,
+                    ex.getMessage(),
+                    ex
+            );
+        }
+    }
+
+    /**
+     * Submits pending pre-authorization synchronously within the caller transaction.
+     * Propagates failures so the caller can roll back the ordered item.
+     */
+    public void submitPendingPreAuthorizationOrThrow(Long encounterId) {
+        if (encounterId == null) {
+            return;
+        }
+
+        LOG.info(
+                "[PREAUTH_SYNC] Synchronous pre-authorization submit for encounterId={}",
+                encounterId
+        );
+
+        preAuthorizationSubmissionService.submitIfRequiredJoiningTransaction(encounterId);
     }
 
     /**
@@ -152,7 +220,7 @@ public class EncounterPreAuthorizationSyncService {
             return;
         }
 
-        syncEncounter(encounterId, coverageType);
+        self.syncEncounter(encounterId, coverageType);
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -166,7 +234,7 @@ public class EncounterPreAuthorizationSyncService {
                 event.encounterId()
         );
 
-        syncEncounter(event.encounterId(), event.coverageType());
+        self.syncEncounter(event.encounterId(), event.coverageType());
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -175,32 +243,6 @@ public class EncounterPreAuthorizationSyncService {
             return;
         }
 
-        syncEncounter(event.encounterId());
-    }
-
-    public void submitPendingPreAuthorization(Long encounterId) {
-        if (encounterId == null) {
-            return;
-        }
-
-        if (!encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(encounterId)) {
-            return;
-        }
-
-        LOG.info(
-                "[PREAUTH_SYNC] Backend auto-submit triggered for encounterId={}",
-                encounterId
-        );
-
-        try {
-            preAuthorizationSubmissionService.submitIfRequired(encounterId);
-        } catch (RuntimeException ex) {
-            LOG.warn(
-                    "[PREAUTH_SYNC] Pre-authorization submission failed for encounterId={}. Items remain pending. reason={}",
-                    encounterId,
-                    ex.getMessage(),
-                    ex
-            );
-        }
+        self.syncEncounter(event.encounterId());
     }
 }

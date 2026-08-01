@@ -72,6 +72,7 @@ public class DefaultServicePreparationService {
     private final BillingEngineService billingEngineService;
     private final PreAuthorizationResolutionService preAuthorizationResolutionService;
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
+    private final EncounterCoverageService encounterCoverageService;
 
     /**
      * Creates/reuses selected default-service PSP records and sends each one
@@ -93,6 +94,12 @@ public class DefaultServicePreparationService {
         );
 
         PatientInsurance insurance = resolveInsurance(request);
+
+        encounterCoverageService.applyCoverage(
+                encounter,
+                request.coverageType(),
+                insurance == null ? null : insurance.getId()
+        );
 
         List<PrepareDefaultServiceItem> orderedItems =
                 request.items()

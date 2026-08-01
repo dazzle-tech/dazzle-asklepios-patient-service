@@ -9,6 +9,7 @@ import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -159,4 +160,11 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @Column(name = "financially_closed_by", length = 50)
     private String financiallyClosedBy;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "coverage_type", length = 50)
+    private BillingCoverageType coverageType;
+
+    @Column(name = "patient_insurance_id")
+    private Long patientInsuranceId;
 }

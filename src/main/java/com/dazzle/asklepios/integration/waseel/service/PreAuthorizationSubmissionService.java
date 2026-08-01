@@ -9,7 +9,9 @@ import com.dazzle.asklepios.domain.PreAuthorizationRequest;
 import com.dazzle.asklepios.domain.PreAuthorizationSupportingInfo;
 import com.dazzle.asklepios.domain.PreAuthorizationTrack;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
+import com.dazzle.asklepios.integration.waseel.event.PreAuthorizationApprovedEvent;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalResponse;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalCareTeam;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalDiagnosis;
@@ -30,6 +32,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +41,7 @@ import org.springframework.web.client.RestClientException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 
 @Slf4j
 @Service
@@ -62,12 +66,29 @@ public class PreAuthorizationSubmissionService {
 
     private final WaseelApiProperties waseelApiProperties;
     private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     @Transactional(
             propagation = Propagation.REQUIRES_NEW,
             rollbackFor = Exception.class
     )
     public ApprovalResponse submitIfRequired(Long encounterId) {
+        return submitIfRequiredInternal(encounterId);
+    }
+
+    /**
+     * Submits pending pre-authorization items within the caller's transaction.
+     * Used when ordering items that must not persist if Waseel submission fails.
+     */
+    @Transactional(
+            propagation = Propagation.REQUIRED,
+            rollbackFor = Exception.class
+    )
+    public ApprovalResponse submitIfRequiredJoiningTransaction(Long encounterId) {
+        return submitIfRequiredInternal(encounterId);
+    }
+
+    private ApprovalResponse submitIfRequiredInternal(Long encounterId) {
         if (!encounterInsuranceEligibilityService.isInsuranceEncounter(encounterId)) {
             log.debug(
                     "Skipping pre-authorization submission for encounterId={} — not an insurance encounter",
@@ -86,14 +107,10 @@ public class PreAuthorizationSubmissionService {
         Long eligibilityRequestId =
                 eligibilityRequestResolverService.resolveLatestSuccessfulEligibilityId(encounter);
 
-        return submitIfRequired(eligibilityRequestId, encounterId);
+        return executeSubmitIfRequired(eligibilityRequestId, encounterId);
     }
 
-    @Transactional(
-            propagation = Propagation.REQUIRES_NEW,
-            rollbackFor = Exception.class
-    )
-    public ApprovalResponse submitIfRequired(Long eligibilityRequestId, Long encounterId) {
+    private ApprovalResponse executeSubmitIfRequired(Long eligibilityRequestId, Long encounterId) {
         List<PatientServiceAndProduct> pendingItems =
                 patientServiceAndProductRepository.findByEncounterIdAndPreAuthorizationStatus(
                         encounterId,
@@ -521,9 +538,29 @@ public class PreAuthorizationSubmissionService {
 
         for (PatientServiceAndProduct item : pendingItems) {
             item.setPreAuthorizationStatus(status);
+
+            if (status == PreAuthorizationStatus.APPROVED) {
+                item.setPreAuthorizationRequired(false);
+                item.setPaymentStatus(PaymentStatus.PENDING);
+            }
         }
 
         patientServiceAndProductRepository.saveAll(pendingItems);
+
+        if (status == PreAuthorizationStatus.APPROVED && !pendingItems.isEmpty()) {
+            List<Long> approvedItemIds =
+                    pendingItems.stream()
+                            .map(PatientServiceAndProduct::getId)
+                            .filter(Objects::nonNull)
+                            .toList();
+
+            applicationEventPublisher.publishEvent(
+                    new PreAuthorizationApprovedEvent(
+                            pendingItems.get(0).getEncounterId(),
+                            approvedItemIds
+                    )
+            );
+        }
     }
 
     private PreAuthorizationStatus mapResponseStatus(ApprovalResponse response) {

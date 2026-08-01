@@ -54,6 +54,11 @@ public interface PatientServiceAndProductRepository
             PreAuthorizationStatus preAuthorizationStatus
     );
 
+    boolean existsByEncounterIdAndPreAuthorizationStatus(
+            Long encounterId,
+            PreAuthorizationStatus preAuthorizationStatus
+    );
+
     List<PatientServiceAndProduct> findByPaymentId(Long paymentId);
 
     List<PatientServiceAndProduct> findByEncounterIdAndPaymentIdIsNull(Long encounterId);

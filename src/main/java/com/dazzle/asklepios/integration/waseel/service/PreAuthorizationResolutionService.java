@@ -3,9 +3,12 @@ package com.dazzle.asklepios.integration.waseel.service;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.client.setup.PayorPlanItemClient;
 import com.dazzle.asklepios.integration.waseel.client.WaseelItemMappingClient;
+import com.dazzle.asklepios.integration.waseel.client.dto.WaseelItemMappingSetupDTO;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -22,6 +25,8 @@ public class PreAuthorizationResolutionService {
     private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
 
     private final WaseelItemMappingClient waseelItemMappingClient;
+
+    private final PayorPlanItemClient payorPlanItemClient;
 
     public record Resolution(
             PreAuthorizationStatus status,
@@ -259,6 +264,51 @@ public class PreAuthorizationResolutionService {
         return resolution;
     }
 
+    /**
+     * Stores Waseel/SBS mapping metadata on the billing item when the visit is insurance.
+     */
+    public void enrichWaseelSbsMapping(
+            PatientServiceAndProduct.PatientServiceAndProductBuilder builder,
+            BillingItemTypes billingItemType,
+            Long sourceId
+    ) {
+        if (builder == null || billingItemType == null || sourceId == null) {
+            return;
+        }
+
+        try {
+            WaseelItemMappingSetupDTO mapping =
+                    waseelItemMappingClient.getMappingByItem(
+                            billingItemType.name(),
+                            sourceId
+                    );
+
+            if (mapping == null) {
+                return;
+            }
+
+            builder
+                    .waseelSbsMappingId(mapping.id())
+                    .waseelSbsCode(mapping.sbsCode());
+
+            LOG.info(
+                    "[PREAUTH] Applied SBS mapping. billingItemType={} sourceId={} sbsCode={} requiresPreauth={}",
+                    billingItemType,
+                    sourceId,
+                    mapping.sbsCode(),
+                    mapping.requiresPreauth()
+            );
+        } catch (FeignException ex) {
+            LOG.warn(
+                    "[PREAUTH] Unable to load SBS mapping. billingItemType={} sourceId={} status={}",
+                    billingItemType,
+                    sourceId,
+                    ex.status(),
+                    ex
+            );
+        }
+    }
+
     public void applyInsuranceVisitContext(
             PatientServiceAndProduct.PatientServiceAndProductBuilder builder,
             Long encounterId
@@ -275,12 +325,62 @@ public class PreAuthorizationResolutionService {
             return;
         }
 
-        if (!insuranceVisitContext
-                && !encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(encounterId)) {
+        if (!isInsuranceEncounter(encounterId, insuranceVisitContext)) {
             builder.coverageStatus(CoverageStatus.NOT_CHECKED);
             return;
         }
 
+        applyInsuranceFields(builder, encounterId);
+    }
+
+    /**
+     * Links encounter insurance context to an existing billing item.
+     * Used when insurance is selected after items were already ordered.
+     */
+    public void applyEncounterInsuranceLink(
+            PatientServiceAndProduct item,
+            Long encounterId
+    ) {
+        applyEncounterInsuranceLink(item, encounterId, false);
+    }
+
+    public void applyEncounterInsuranceLink(
+            PatientServiceAndProduct item,
+            Long encounterId,
+            boolean insuranceVisitContext
+    ) {
+        if (item == null || encounterId == null) {
+            return;
+        }
+
+        if (!isInsuranceEncounter(encounterId, insuranceVisitContext)) {
+            return;
+        }
+
+        Long insuranceId =
+                encounterInsuranceEligibilityService.resolveEncounterPatientInsuranceId(encounterId);
+
+        if (insuranceId != null) {
+            item.setPatientInsuranceId(insuranceId);
+            item.setCoverageStatus(CoverageStatus.COVERED);
+        }
+    }
+
+    public BillingCoverageType resolveEncounterCoverageType(Long encounterId) {
+        return isInsuranceEncounter(encounterId, false)
+                ? BillingCoverageType.INSURANCE
+                : BillingCoverageType.SELF_PAY;
+    }
+
+    private boolean isInsuranceEncounter(Long encounterId, boolean insuranceVisitContext) {
+        return insuranceVisitContext
+                || encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(encounterId);
+    }
+
+    private void applyInsuranceFields(
+            PatientServiceAndProduct.PatientServiceAndProductBuilder builder,
+            Long encounterId
+    ) {
         builder
                 .patientInsuranceId(
                         encounterInsuranceEligibilityService
@@ -297,6 +397,17 @@ public class PreAuthorizationResolutionService {
             return false;
         }
 
+        if (requiresPreAuthorizationFromWaseel(billingItemType, itemId)) {
+            return true;
+        }
+
+        return requiresPreAuthorizationFromPayorPlan(billingItemType, itemId);
+    }
+
+    private boolean requiresPreAuthorizationFromWaseel(
+            BillingItemTypes billingItemType,
+            Long itemId
+    ) {
         LOG.info(
                 "[PREAUTH] Checking Waseel item mapping. billingItemType={}, itemId={}",
                 billingItemType,
@@ -321,6 +432,51 @@ public class PreAuthorizationResolutionService {
         } catch (FeignException ex) {
             LOG.error(
                     "[PREAUTH] Failed to check Waseel mapping. billingItemType={}, itemId={}, status={}, body={}",
+                    billingItemType,
+                    itemId,
+                    ex.status(),
+                    ex.contentUTF8(),
+                    ex
+            );
+
+            return false;
+        }
+    }
+
+    private boolean requiresPreAuthorizationFromPayorPlan(
+            BillingItemTypes billingItemType,
+            Long itemId
+    ) {
+        LOG.info(
+                "[PREAUTH] Checking payor plan item mapping. billingItemType={}, itemId={}",
+                billingItemType,
+                itemId
+        );
+
+        try {
+            Boolean requiresPreAuth =
+                    switch (billingItemType) {
+                        case PROCEDURE ->
+                                payorPlanItemClient.requiresPreAuthorizationForProcedure(itemId);
+                        case SERVICE ->
+                                payorPlanItemClient.requiresPreAuthorizationForService(itemId);
+                        case LABORATORY, RADIOLOGY, PATHOLOGY ->
+                                payorPlanItemClient.requiresPreAuthorizationForDiagnosticTest(itemId);
+                        case MEDICATION ->
+                                payorPlanItemClient.requiresPreAuthorizationForMedication(itemId);
+                    };
+
+            LOG.info(
+                    "[PREAUTH] Payor plan result. billingItemType={}, itemId={}, requiresPreAuth={}",
+                    billingItemType,
+                    itemId,
+                    requiresPreAuth
+            );
+
+            return Boolean.TRUE.equals(requiresPreAuth);
+        } catch (FeignException ex) {
+            LOG.error(
+                    "[PREAUTH] Failed to check payor plan pre-authorization. billingItemType={}, itemId={}, status={}, body={}",
                     billingItemType,
                     itemId,
                     ex.status(),
