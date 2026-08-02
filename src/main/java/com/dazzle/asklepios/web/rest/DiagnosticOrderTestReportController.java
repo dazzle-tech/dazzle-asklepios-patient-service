@@ -10,6 +10,7 @@ import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportCreat
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportRejectDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportReviewDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportUpdateDTO;
+import com.dazzle.asklepios.service.dto.radiology.PacsStudyDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportImageStatusLogResponseVM;
 import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportResponseVM;
@@ -281,5 +282,16 @@ public class DiagnosticOrderTestReportController {
         LOG.info("REST image status log rows={} for reportId={}", body.size(), reportId);
         return ResponseEntity.ok(body);
 
+    }
+
+    @GetMapping("/radiology/reports/{id}/image-links")
+    public ResponseEntity<List<PacsStudyDTO>> getImageLinks(
+            @PathVariable Long id
+    ) {
+        LOG.debug("REST request to get image links for report : {}", id);
+
+        List<PacsStudyDTO> imageLinks = reportService.getImageLinks(id);
+
+        return ResponseEntity.ok(imageLinks);
     }
 }
