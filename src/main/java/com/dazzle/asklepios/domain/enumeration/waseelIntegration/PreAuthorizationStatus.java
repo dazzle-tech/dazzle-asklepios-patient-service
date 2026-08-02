@@ -4,5 +4,6 @@ public enum PreAuthorizationStatus {
     NOT_REQUIRED,
     PENDING_APPROVAL,
     APPROVED,
-    REJECTED
+    REJECTED,
+    CANCELLED
 }

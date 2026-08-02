@@ -5,14 +5,23 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingCancellationReason;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerSourceChannel;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.CancelReason;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationCancellationService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.billing.BillingCancellationRequest;
+import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductUpdateDTO;
 import com.dazzle.asklepios.service.helper.BrandMedicationHelper;
@@ -23,6 +32,7 @@ import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -31,7 +41,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -51,8 +64,9 @@ public class PatientServiceAndProductService {
     private final PreAuthorizationResolutionService preAuthorizationResolutionService;
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
     private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
-
+    private final PreAuthorizationCancellationService preAuthorizationCancellationService;
     private final BillingRuleEvaluationService billingRuleEvaluationService;
+    private final BillingEngineService billingEngineService;
 
     public PatientServiceAndProductService(
             PatientServiceAndProductRepository patientServiceAndProductRepository,
@@ -65,7 +79,9 @@ public class PatientServiceAndProductService {
             PreAuthorizationResolutionService preAuthorizationResolutionService,
             EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService,
             EncounterInsuranceEligibilityService encounterInsuranceEligibilityService,
-            BillingRuleEvaluationService billingRuleEvaluationService
+            PreAuthorizationCancellationService preAuthorizationCancellationService,
+            BillingRuleEvaluationService billingRuleEvaluationService,
+            @Lazy BillingEngineService billingEngineService
     ) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.patientRepository = patientRepository;
@@ -77,7 +93,9 @@ public class PatientServiceAndProductService {
         this.preAuthorizationResolutionService = preAuthorizationResolutionService;
         this.encounterPreAuthorizationSyncService = encounterPreAuthorizationSyncService;
         this.encounterInsuranceEligibilityService = encounterInsuranceEligibilityService;
+        this.preAuthorizationCancellationService = preAuthorizationCancellationService;
         this.billingRuleEvaluationService = billingRuleEvaluationService;
+        this.billingEngineService = billingEngineService;
     }
 
     public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
@@ -113,7 +131,7 @@ public class PatientServiceAndProductService {
         try {
             PatientServiceAndProduct saved = patientServiceAndProductRepository.saveAndFlush(entity);
 
-            submitPreAuthorizationIfPending(saved.getEncounterId());
+            completeItemBillingFlow(saved);
 
             LOG.debug("Created Patient billing item : {}", saved);
             return saved;
@@ -207,7 +225,7 @@ public class PatientServiceAndProductService {
         try {
             PatientServiceAndProduct updated = patientServiceAndProductRepository.saveAndFlush(entity);
 
-            submitPreAuthorizationIfPending(updated.getEncounterId());
+            completeItemBillingFlow(updated);
 
             LOG.debug("Updated Patient billing item : {}", updated);
             return updated;
@@ -262,8 +280,25 @@ public class PatientServiceAndProductService {
 
             saved.stream()
                     .map(PatientServiceAndProduct::getEncounterId)
+                    .filter(Objects::nonNull)
                     .distinct()
-                    .forEach(this::submitPreAuthorizationIfPending);
+                    .forEach(encounterId -> {
+                        boolean hasPending = saved.stream()
+                                .anyMatch(item ->
+                                        Objects.equals(item.getEncounterId(), encounterId)
+                                                && item.getPreAuthorizationStatus()
+                                                == PreAuthorizationStatus.PENDING_APPROVAL
+                                );
+                        if (hasPending) {
+                            submitPreAuthorizationOrThrow(encounterId);
+                        }
+                    });
+
+            for (PatientServiceAndProduct item : saved) {
+                if (item.getPreAuthorizationStatus() != PreAuthorizationStatus.PENDING_APPROVAL) {
+                    billItemNow(item);
+                }
+            }
 
             LOG.debug("Bulk created Patient billing items : count={}", saved.size());
             return saved;
@@ -275,28 +310,78 @@ public class PatientServiceAndProductService {
 
     @Transactional
     public void remove(Long id) {
-        LOG.debug("Request to delete Patient billing item : {}", id);
+        cancel(id, "Service/product item cancelled");
+    }
+
+    /**
+     * Cancels a patient service/product item financially and, when insurance pre-auth exists, via Waseel cancel API.
+     * Soft-cancels the billing row (does not hard-delete).
+     */
+    @Transactional
+    public void cancel(Long id, String reason) {
+        LOG.debug("Request to cancel Patient billing item : id={} reason={}", id, reason);
 
         PatientServiceAndProduct entity = patientServiceAndProductRepository.findById(id)
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "idNotFound",
+                        "Patient service/product not found with id " + id,
                         "patientServicesAndProducts",
-                        "Record not found"
+                        "idNotFound"
                 ));
 
-        if (Boolean.TRUE.equals(entity.getIsBilled())
-                || entity.getBillingInvoiceId() != null
-                || entity.getBillingInvoiceItemId() != null) {
-            throw new BadRequestAlertException(
-                    "deleteNotAllowed",
-                    "patientServicesAndProducts",
-                    "Cannot delete billed item or item linked to invoice"
-            );
+        if (entity.getPaymentStatus() == PaymentStatus.CANCELLED) {
+            LOG.debug("Patient billing item already cancelled : id={}", id);
+            return;
         }
 
-        patientServiceAndProductRepository.delete(entity);
+        String cancelReasonText =
+                reason == null || reason.isBlank()
+                        ? "Service/product item cancelled"
+                        : reason;
 
-        LOG.debug("Deleted Patient billing item : id={}", id);
+        try {
+            preAuthorizationCancellationService.cancelForItem(
+                    entity,
+                    CancelReason.SERVICE_NOT_PERFORMED
+            );
+
+            String cancelledBy = SecurityUtils.getCurrentUserLogin().orElse("system");
+            String requestId = "psp-cancel-" + id + "-" + Instant.now().toEpochMilli() + "-" + UUID.randomUUID();
+
+            billingEngineService.cancelPatientService(
+                    new BillingCancellationRequest(
+                            id,
+                            BillingCancellationReason.SERVICE_CANCELLED,
+                            cancelReasonText,
+                            cancelledBy,
+                            requestId,
+                            BillingLedgerSourceChannel.API
+                    )
+            );
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            throw handleConstraintViolation(ex);
+        }
+
+        LOG.debug("Cancelled Patient billing item : id={}", id);
+    }
+
+    @Transactional
+    public void cancelBySource(
+            ServiceSource serviceSource,
+            Long sourceId,
+            BillingItemTypes billingItemType,
+            String reason
+    ) {
+        if (serviceSource == null || sourceId == null || billingItemType == null) {
+            return;
+        }
+
+        patientServiceAndProductRepository
+                .findByServiceSourceAndSourceIdAndBillingItemType(
+                        serviceSource,
+                        sourceId,
+                        billingItemType
+                )
+                .ifPresent(item -> cancel(item.getId(), reason));
     }
 
     private PatientServiceAndProduct buildEntityFromCreateDto(
@@ -441,8 +526,92 @@ public class PatientServiceAndProductService {
         }
     }
 
-    private void submitPreAuthorizationIfPending(Long encounterId) {
-        encounterPreAuthorizationSyncService.afterItemPersisted(encounterId);
+    /**
+     * Same pre-auth flow as procedures for Medication / Laboratory / Radiology / Service / Procedure PSP lines:
+     * - PENDING_APPROVAL → sync Waseel submit (rollback on failure), defer billing
+     * - otherwise → bill immediately
+     */
+    private void completeItemBillingFlow(PatientServiceAndProduct item) {
+        if (item == null || item.getEncounterId() == null) {
+            return;
+        }
+
+        if (item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL) {
+            LOG.info(
+                    "[PSP_CREATE] Pre-auth required — submitting to Waseel. encounterId={} pspId={} type={}",
+                    item.getEncounterId(),
+                    item.getId(),
+                    item.getBillingItemType()
+            );
+            submitPreAuthorizationOrThrow(item.getEncounterId());
+            return;
+        }
+
+        billItemNow(item);
+    }
+
+    private void submitPreAuthorizationOrThrow(Long encounterId) {
+        try {
+            encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(encounterId);
+        } catch (BadRequestAlertException ex) {
+            String title = ex.getBody() != null && ex.getBody().getTitle() != null
+                    ? ex.getBody().getTitle()
+                    : ex.getMessage();
+            String errorKey = ex.getErrorKey() != null
+                    ? ex.getErrorKey()
+                    : "preAuthorization.failed";
+            throw new BadRequestAlertException(title, "patientServicesAndProducts", errorKey);
+        }
+    }
+
+    private void billItemNow(PatientServiceAndProduct item) {
+        if (item == null || item.getId() == null || item.getEncounterId() == null) {
+            return;
+        }
+
+        if (Boolean.TRUE.equals(item.getIsBilled())) {
+            return;
+        }
+
+        PatientEncounter encounter = patientEncounterRepository.findById(item.getEncounterId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Encounter not found with id " + item.getEncounterId(),
+                        "patientServicesAndProducts",
+                        "encounter.notfound"
+                ));
+
+        Long facilityId = encounter.getFacilityId();
+        if (facilityId == null) {
+            throw new BadRequestAlertException(
+                    "Encounter facility is required to bill this item.",
+                    "patientServicesAndProducts",
+                    "encounter.facility.required"
+            );
+        }
+
+        BillingOperationResult result = billingEngineService.onItemOrdered(
+                item.getId(),
+                facilityId,
+                "PSP-CREATE:" + item.getId()
+        );
+
+        LOG.info(
+                "[PSP_CREATE] Billed item. pspId={} type={} processed={} message={}",
+                item.getId(),
+                item.getBillingItemType(),
+                result.processed(),
+                result.message()
+        );
+
+        if (!result.processed()) {
+            throw new BadRequestAlertException(
+                    result.message() == null
+                            ? "Billing rule did not match for this item."
+                            : result.message(),
+                    "patientServicesAndProducts",
+                    "billing.failed"
+            );
+        }
     }
 
     private BillingEventType resolveBillingEvent(
@@ -496,10 +665,18 @@ public class PatientServiceAndProductService {
             return new BadRequestAlertException("billingInvoiceItemNotFound", "patient_services_and_products", "Billing invoice item does not exist");
         }
 
+        if (msgLower.contains("ck_billing_charge_line_allocation_balance")) {
+            return new BadRequestAlertException(
+                    "Cannot cancel billing item because charge-line allocation balances are inconsistent.",
+                    "patient_services_and_products",
+                    "billing.cancel.allocationBalance"
+            );
+        }
+
         return new BadRequestAlertException(
-                "db.constraint",
+                "Database constraint violated while saving patient billing item",
                 "patient_services_and_products",
-                "Database constraint violated while saving patient billing item"
+                "db.constraint"
         );
     }
 

@@ -1,12 +1,16 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientProcedure;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.ProcStatus;
+import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.event.PreAuthorizationApprovedEvent;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientProcedureRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.BillingChargeService;
 import com.dazzle.asklepios.service.BillingEngineService;
@@ -31,13 +35,17 @@ public class PreAuthorizationCompletionService {
 
     private static final EnumSet<BillingItemTypes> DEFERRED_BILLING_ITEM_TYPES =
             EnumSet.of(
+                    BillingItemTypes.MEDICATION,
                     BillingItemTypes.LABORATORY,
                     BillingItemTypes.RADIOLOGY,
+                    BillingItemTypes.PATHOLOGY,
+                    BillingItemTypes.SERVICE,
                     BillingItemTypes.PROCEDURE
             );
 
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
+    private final PatientProcedureRepository patientProcedureRepository;
     private final BillingChargeService billingChargeService;
     private final BillingEngineService billingEngineService;
     private final PreAuthorizationCompletionService self;
@@ -45,12 +53,14 @@ public class PreAuthorizationCompletionService {
     public PreAuthorizationCompletionService(
             PatientEncounterRepository patientEncounterRepository,
             PatientServiceAndProductRepository patientServiceAndProductRepository,
+            PatientProcedureRepository patientProcedureRepository,
             BillingChargeService billingChargeService,
             BillingEngineService billingEngineService,
             @Lazy PreAuthorizationCompletionService self
     ) {
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
+        this.patientProcedureRepository = patientProcedureRepository;
         this.billingChargeService = billingChargeService;
         this.billingEngineService = billingEngineService;
         this.self = self;
@@ -95,6 +105,8 @@ public class PreAuthorizationCompletionService {
         }
 
         for (PatientServiceAndProduct item : approvedItems) {
+            releaseProcedureAfterPreAuthorization(item);
+
             if (!shouldBillDeferredItem(item, encounterId)) {
                 continue;
             }
@@ -128,6 +140,30 @@ public class PreAuthorizationCompletionService {
                 );
             }
         }
+    }
+
+    private void releaseProcedureAfterPreAuthorization(PatientServiceAndProduct item) {
+        if (item == null
+                || item.getBillingItemType() != BillingItemTypes.PROCEDURE
+                || item.getServiceSource() != ServiceSource.PROCEDURE
+                || item.getSourceId() == null) {
+            return;
+        }
+
+        patientProcedureRepository.findById(item.getSourceId()).ifPresent(procedure -> {
+            if (procedure.getStatus() != ProcStatus.WAITING_PRE_AUTHORIZATION) {
+                return;
+            }
+
+            procedure.setStatus(ProcStatus.REQUESTED);
+            patientProcedureRepository.save(procedure);
+
+            LOG.info(
+                    "[PREAUTH_COMPLETE] Procedure released after approval. procedureId={} status={}",
+                    procedure.getId(),
+                    procedure.getStatus()
+            );
+        });
     }
 
     private boolean shouldBillDeferredItem(

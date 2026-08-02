@@ -8,5 +8,6 @@ public enum ProcStatus {
     AWAITING_CONSENT,
     IN_PROGRESS,
     SUBMITTED,
+    WAITING_PRE_AUTHORIZATION,
     RETURNED_TO_BED
 }

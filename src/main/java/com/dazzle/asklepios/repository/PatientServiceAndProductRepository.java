@@ -109,4 +109,6 @@ public interface PatientServiceAndProductRepository
     findAllByEncounterIdAndIsDefaultServiceTrueOrderByIdAsc(
             Long encounterId
     );
+
+    List<PatientServiceAndProduct> findByPreAuthorizationRequestId(Long preAuthorizationRequestId);
 }

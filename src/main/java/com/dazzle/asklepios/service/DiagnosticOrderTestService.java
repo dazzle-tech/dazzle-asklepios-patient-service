@@ -66,6 +66,7 @@ public class DiagnosticOrderTestService {
     private final ICDTreeHelper icdTreeHelper;
 
     private final BillingRuleEvaluationService billingRuleEvaluationService;
+    private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
 
     /**
      * Creates the service with required dependencies.
@@ -75,9 +76,15 @@ public class DiagnosticOrderTestService {
      */
     public DiagnosticOrderTestService(
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
-            DiagnosticOrderStatusService diagnosticOrderStatusService, DiagnosticOrderTestTechnicianNoteRepository diagnosticOrderTestTechnicianNoteRepository,
-            DiagnosticOrderRepository diagnosticOrderRepository, DiagnosticTestHelper diagnosticTestHelper, DepartmentHelper departmentHelper, ICDTreeHelper icdTreeHelper,
-            BillingRuleEvaluationService billingRuleEvaluationService) {
+            DiagnosticOrderStatusService diagnosticOrderStatusService,
+            DiagnosticOrderTestTechnicianNoteRepository diagnosticOrderTestTechnicianNoteRepository,
+            DiagnosticOrderRepository diagnosticOrderRepository,
+            DiagnosticTestHelper diagnosticTestHelper,
+            DepartmentHelper departmentHelper,
+            ICDTreeHelper icdTreeHelper,
+            BillingRuleEvaluationService billingRuleEvaluationService,
+            @org.springframework.context.annotation.Lazy DiagnosticOrderTestStatusService diagnosticOrderTestStatusService
+    ) {
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
 
@@ -87,6 +94,7 @@ public class DiagnosticOrderTestService {
         this.departmentHelper = departmentHelper;
         this.icdTreeHelper = icdTreeHelper;
         this.billingRuleEvaluationService = billingRuleEvaluationService;
+        this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
     }
 
     /**
@@ -139,10 +147,14 @@ public class DiagnosticOrderTestService {
         orderTest.setIcdDiagnosisId(dto.icdDiagnosisId());
 
         // Persist the entity
-        DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(orderTest);
+        DiagnosticOrderTest saved = diagnosticOrderTestRepository.saveAndFlush(orderTest);
 
         LOG.debug("[DiagnosticOrderTestService] CREATE - saved. id={} orderId={} testId={} status={} processingStatus={}",
                 saved.getId(), saved.getOrderId(), saved.getTestId(), saved.getStatus(), saved.getProcessingStatus());
+
+        // Create billing + submit pre-auth immediately when the test is added (not on accept).
+        diagnosticOrderTestStatusService.onTestAddedToOrder(saved);
+
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
         LOG.debug("[DiagnosticOrderTestService] CREATE - recompute status done. orderId={}", saved.getOrderId());
 

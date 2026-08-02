@@ -70,14 +70,22 @@ public class ApLovMapperService {
             return null;
         }
 
-        List<ApLovValue> values = apLovValueRepository.findByLovCodeAndIsValidTrue(lovCode);
         String normalizedKey = normalizeKey(key);
 
-        return values.stream()
-                .filter(v -> normalizeKey(v.getKey()).equals(normalizedKey))
+        // Primary lookup by PK (ap_lov_values.key) — practitioner stores this id.
+        return apLovValueRepository.findById(normalizedKey)
+                .filter(v -> lovCode.equalsIgnoreCase(normalizeKey(v.getLovCode())))
+                .filter(v -> !Boolean.FALSE.equals(v.getIsValid()))
                 .map(ApLovValue::getValueCode)
-                .findFirst()
-                .orElse(null);
+                .orElseGet(() -> {
+                    List<ApLovValue> values = apLovValueRepository.findByLovCode(lovCode);
+                    return values.stream()
+                            .filter(v -> !Boolean.FALSE.equals(v.getIsValid()))
+                            .filter(v -> normalizeKey(v.getKey()).equals(normalizedKey))
+                            .map(ApLovValue::getValueCode)
+                            .findFirst()
+                            .orElse(null);
+                });
     }
 
     public String mapMaritalStatusKeyToNphies(String maritalStatusKey) {
@@ -96,6 +104,50 @@ public class ApLovMapperService {
         );
 
         return mapOccupationValueCodeToNphies(valueCode);
+    }
+
+    /**
+     * Resolves practitioner sub-specialty from either:
+     * - LOV key (e.g. 515674776343000), or
+     * - value code (e.g. SUB_SPC_001 / FAMILY_MEDICINE)
+     * into the Asklepios value_code used by {@link WaseelPracticeCodeMapper}.
+     */
+    public String resolvePractSubSpecialtyValueCode(String keyOrValueCode) {
+        if (isBlank(keyOrValueCode)) {
+            return null;
+        }
+
+        String trimmed = keyOrValueCode.trim();
+        String upper = trimmed.toUpperCase(Locale.ROOT);
+
+        if (upper.startsWith("SUB_SPC_") || WaseelPracticeCodeMapper.hasSubSpecialtyMapping(upper)) {
+            return upper;
+        }
+
+        String valueCode = getValueCodeByLovCodeAndKey(
+                AsklepiosLovCodes.PRACT_SUB_SPECIALTY,
+                trimmed
+        );
+
+        if (isBlank(valueCode)) {
+            return null;
+        }
+
+        return valueCode.trim().toUpperCase(Locale.ROOT);
+    }
+
+    public String getDisplayValueByLovCodeAndKey(String lovCode, String key) {
+        if (isBlank(lovCode) || isBlank(key)) {
+            return null;
+        }
+
+        String normalizedKey = normalizeKey(key);
+
+        return apLovValueRepository.findById(normalizedKey)
+                .filter(v -> lovCode.equalsIgnoreCase(normalizeKey(v.getLovCode())))
+                .filter(v -> !Boolean.FALSE.equals(v.getIsValid()))
+                .map(ApLovValue::getLovDisplayVale)
+                .orElse(null);
     }
 
     public String mapMaritalStatusValueCodeToNphies(String valueCode) {

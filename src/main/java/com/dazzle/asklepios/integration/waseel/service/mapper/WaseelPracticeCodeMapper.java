@@ -143,12 +143,17 @@ public final class WaseelPracticeCodeMapper {
             Map.entry("ANESTHESIOLOGY", "Anesthesiology Specialty")
     );
 
+    public static boolean hasSubSpecialtyMapping(String subSpecialty) {
+        return SUB_SPECIALTY_TO_WASEEL_CODE.containsKey(clean(subSpecialty));
+    }
+
     public static String mapSubSpecialtyCode(String subSpecialty) {
         String code = SUB_SPECIALTY_TO_WASEEL_CODE.get(clean(subSpecialty));
 
         if (code == null) {
             throw new BadRequestAlertException(
-                    "No Waseel mapping found for practitioner sub specialty: " + subSpecialty,
+                    "No Waseel mapping found for practitioner sub specialty: " + subSpecialty
+                            + ". Expected a SUB_SPC_XXX value code after resolving PRACT_SUB_SPECIALTY LOV.",
                     "preAuthorization",
                     "practitioner.subSpecialty.waseelMapping.notFound"
             );

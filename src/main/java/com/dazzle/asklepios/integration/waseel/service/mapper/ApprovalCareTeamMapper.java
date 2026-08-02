@@ -17,7 +17,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ApprovalCareTeamMapper {
 
-    private static final String PRACT_SUB_SPECIALTY = "PRACT_SUB_SPECIALTY";
     private static final Logger log = LoggerFactory.getLogger(ApprovalCareTeamMapper.class);
 
     private final PractitionerClient practitionerClient;
@@ -94,10 +93,26 @@ public class ApprovalCareTeamMapper {
                 )
         );
 
-        String subSpecialtyValueCode = required(
+        String subSpecialtyRaw = required(
                 practitioner.subSpecialty(),
                 "Practitioner sub specialty is required",
                 "practitioner.subSpecialty.required"
+        );
+
+        // Practitioner stores LOV key (e.g. 515674776343000); Waseel needs SUB_SPC_XXX.
+        String subSpecialtyValueCode = apLovMapperService.resolvePractSubSpecialtyValueCode(subSpecialtyRaw);
+        if (isBlank(subSpecialtyValueCode)) {
+            throw badRequest(
+                    "Unknown practitioner sub specialty LOV value: " + subSpecialtyRaw
+                            + ". Expected PRACT_SUB_SPECIALTY key or SUB_SPC_XXX value code.",
+                    "practitioner.subSpecialty.invalid"
+            );
+        }
+
+        log.info(
+                "[PREAUTH_CARE_TEAM] Resolved sub specialty. raw={} valueCode={}",
+                subSpecialtyRaw,
+                subSpecialtyValueCode
         );
 
         String specialityCode = required(
@@ -106,20 +121,22 @@ public class ApprovalCareTeamMapper {
                 "practitioner.specialityCode.required"
         );
 
-        String specialityDisplay =
+        String specialityDisplay = firstNonBlank(
+                apLovMapperService.getDisplayValueByLovCodeAndKey(
+                        AsklepiosLovCodes.PRACT_SUB_SPECIALTY,
+                        subSpecialtyRaw
+                ),
                 apLovMapperService.getDisplayValueByLovCodeAndValueCode(
-                        PRACT_SUB_SPECIALTY,
+                        AsklepiosLovCodes.PRACT_SUB_SPECIALTY,
                         subSpecialtyValueCode
-                );
-
-        if (isBlank(specialityDisplay)) {
-            specialityDisplay = WaseelPracticeCodeMapper.mapSubSpecialtyDisplay(subSpecialtyValueCode);
-        }
+                ),
+                WaseelPracticeCodeMapper.mapSubSpecialtyDisplay(subSpecialtyValueCode)
+        );
 
         if (isBlank(specialityDisplay)) {
             log.warn(
                     "No display value found for LOV '{}' value code '{}'. Falling back to specialty code '{}'.",
-                    PRACT_SUB_SPECIALTY,
+                    AsklepiosLovCodes.PRACT_SUB_SPECIALTY,
                     subSpecialtyValueCode,
                     specialityCode
             );

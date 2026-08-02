@@ -14,4 +14,6 @@ public final class AsklepiosLovCodes {
     public static final String OCCUPATION = "OCCP";
 
     public static final String LANG = "LANG";
+
+    public static final String PRACT_SUB_SPECIALTY = "PRACT_SUB_SPECIALTY";
 }

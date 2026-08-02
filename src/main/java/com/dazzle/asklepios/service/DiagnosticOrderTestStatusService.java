@@ -54,6 +54,8 @@ public class DiagnosticOrderTestStatusService {
 
     private final BillingChargeService billingChargeService;
 
+    private final PatientServiceAndProductService patientServiceAndProductService;
+
     public DiagnosticOrderTestStatusService(
             DiagnosticOrderRepository diagnosticOrderRepository,
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
@@ -64,7 +66,8 @@ public class DiagnosticOrderTestStatusService {
             PreAuthorizationResolutionService preAuthorizationResolutionService,
             PatientEncounterRepository patientEncounterRepository,
             @Lazy BillingEngineService billingEngineService,
-            @Lazy BillingChargeService billingChargeService
+            @Lazy BillingChargeService billingChargeService,
+            @Lazy PatientServiceAndProductService patientServiceAndProductService
     ) {
         this.diagnosticOrderRepository = diagnosticOrderRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
@@ -76,6 +79,7 @@ public class DiagnosticOrderTestStatusService {
         this.patientEncounterRepository = patientEncounterRepository;
         this.billingEngineService = billingEngineService;
         this.billingChargeService = billingChargeService;
+        this.patientServiceAndProductService = patientServiceAndProductService;
     }
 
     public DiagnosticOrderTest collectSample(Long testId) {
@@ -117,6 +121,55 @@ public class DiagnosticOrderTestStatusService {
         );
     }
 
+    /**
+     * Creates the billing item and runs pre-auth / billing when a test is added to an order.
+     * Pre-authorization is submitted here (not on accept).
+     */
+    public PatientServiceAndProduct onTestAddedToOrder(DiagnosticOrderTest test) {
+        if (test == null || test.getId() == null || test.getOrderId() == null) {
+            throw new BadRequestAlertException(
+                    "Diagnostic order test is required",
+                    "diagnostic_order_tests",
+                    "test.required"
+            );
+        }
+
+        DiagnosticOrder order = getOrder(test.getOrderId());
+        DiagnosticTestSetupDTO setupDiagnostic = fetchDiagnosticTestSetup(test.getTestId());
+
+        PatientServiceAndProduct savedBillingItem =
+                findOrCreateDiagnosticBillingItem(order, test, setupDiagnostic);
+
+        if (savedBillingItem.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL) {
+            LOG.info(
+                    "[DIAGNOSTIC_ORDER] Pre-auth required — submitting to Waseel. encounterId={} pspId={} testId={}",
+                    savedBillingItem.getEncounterId(),
+                    savedBillingItem.getId(),
+                    test.getId()
+            );
+            try {
+                encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(
+                        savedBillingItem.getEncounterId()
+                );
+            } catch (BadRequestAlertException ex) {
+                String title = ex.getBody() != null && ex.getBody().getTitle() != null
+                        ? ex.getBody().getTitle()
+                        : ex.getMessage();
+                String errorKey = ex.getErrorKey() != null
+                        ? ex.getErrorKey()
+                        : "preAuthorization.failed";
+                throw new BadRequestAlertException(title, "diagnostic_order_tests", errorKey);
+            }
+        } else {
+            billDiagnosticItemOnOrder(
+                    savedBillingItem,
+                    order.getEncounterId()
+            );
+        }
+
+        return savedBillingItem;
+    }
+
     public DiagnosticOrderTest accept(Long testId, String acceptedBy) {
         DiagnosticOrderTest test = getTest(testId);
         ensureTransition(test, DiagnosticStatus.ACCEPTED);
@@ -127,25 +180,7 @@ public class DiagnosticOrderTestStatusService {
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.saveAndFlush(test);
 
-        DiagnosticOrder order = getOrder(saved.getOrderId());
-        DiagnosticTestSetupDTO setupDiagnostic = fetchDiagnosticTestSetup(saved.getTestId());
-
-        PatientServiceAndProduct savedBillingItem =
-                findOrCreateDiagnosticBillingItem(
-                        order,
-                        saved,
-                        setupDiagnostic
-                );
-
-        if (savedBillingItem.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL) {
-            encounterPreAuthorizationSyncService.afterItemPersisted(savedBillingItem.getEncounterId());
-        } else {
-            billDiagnosticItemOnAccept(
-                    savedBillingItem,
-                    order.getEncounterId()
-            );
-        }
-
+        // Billing + pre-auth already happen when the test is added to the order.
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
 
         return saved;
@@ -214,10 +249,32 @@ public class DiagnosticOrderTestStatusService {
             );
         }
 
+        String cancelReason =
+                cancellationReason == null || cancellationReason.isBlank()
+                        ? "Diagnostic test cancelled"
+                        : cancellationReason;
+
+        BillingItemTypes billingItemType =
+                test.getOrderType() == TestType.RADIOLOGY
+                        ? BillingItemTypes.RADIOLOGY
+                        : BillingItemTypes.LABORATORY;
+
+        ServiceSource serviceSource =
+                test.getOrderType() == TestType.RADIOLOGY
+                        ? ServiceSource.RADIOLOGY
+                        : ServiceSource.LABORATORY;
+
+        patientServiceAndProductService.cancelBySource(
+                serviceSource,
+                test.getId(),
+                billingItemType,
+                cancelReason
+        );
+
         test.setStatus(DiagnosticOrderTestStatus.CANCELLED);
         test.setCancelledBy(cancelledBy);
         test.setCancelledDate(Instant.now());
-        test.setCancellationReason(cancellationReason);
+        test.setCancellationReason(cancelReason);
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
@@ -268,12 +325,12 @@ public class DiagnosticOrderTestStatusService {
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.saveAndFlush(test);
 
-        patientServiceAndProductRepository
-                .deleteByPatientIdAndEncounterIdAndDiagnosticTestIdAndIsBilledFalse(
-                        order.getPatientId(),
-                        order.getEncounterId(),
-                        setupDiagnostic.id()
-                );
+        // Billing / pre-auth are created when the test is added to the order — do not delete them here.
+        LOG.info(
+                "[DIAGNOSTIC_UNDO_ACCEPT] testId={} — keeping billing item for diagnosticTestId={}",
+                saved.getId(),
+                setupDiagnostic.id()
+        );
 
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
 
@@ -374,7 +431,7 @@ public class DiagnosticOrderTestStatusService {
                 .totalAmount(totalAmount)
                 .currency(setupDiagnostic.currency())
                 .isBilled(Boolean.FALSE)
-                .notes("Created on diagnostic test acceptance. OrderId="
+                .notes("Created when diagnostic test was added to order. OrderId="
                         + order.getId() + ", OrderTestId=" + test.getId());
 
         preAuthorizationResolutionService.resolveAndPrepareNewItem(
@@ -422,7 +479,7 @@ public class DiagnosticOrderTestStatusService {
                 );
     }
 
-    private void billDiagnosticItemOnAccept(
+    private void billDiagnosticItemOnOrder(
             PatientServiceAndProduct billingItem,
             Long encounterId
     ) {
@@ -451,7 +508,7 @@ public class DiagnosticOrderTestStatusService {
                 )
                 .isPresent()) {
             LOG.info(
-                    "[DIAG_ACCEPT_BILLING] Charge line already exists pspId={} encounterId={}",
+                    "[DIAG_ORDER_BILLING] Charge line already exists pspId={} encounterId={}",
                     billingItem.getId(),
                     encounterId
             );
@@ -462,11 +519,11 @@ public class DiagnosticOrderTestStatusService {
                 billingEngineService.onItemOrdered(
                         billingItem.getId(),
                         facilityId,
-                        "DIAG-ACCEPT:" + billingItem.getId()
+                        "DIAG-ORDER:" + billingItem.getId()
                 );
 
         LOG.info(
-                "[DIAG_ACCEPT_BILLING] pspId={} processed={} chargeLineId={} message={}",
+                "[DIAG_ORDER_BILLING] pspId={} processed={} chargeLineId={} message={}",
                 billingItem.getId(),
                 result.processed(),
                 result.chargeLineId(),
@@ -476,7 +533,7 @@ public class DiagnosticOrderTestStatusService {
         if (!result.processed()) {
             throw new BadRequestAlertException(
                     result.message() == null
-                            ? "Diagnostic billing rule did not match on lab accept."
+                            ? "Diagnostic billing rule did not match when adding the test."
                             : result.message(),
                     "diagnostic_order_tests",
                     "billingRule.notMatched"

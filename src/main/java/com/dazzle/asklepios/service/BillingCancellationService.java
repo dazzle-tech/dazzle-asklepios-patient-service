@@ -316,19 +316,22 @@ public class BillingCancellationService {
         );
 
         /*
-         * Financial values remain for audit.
-         * Operational open balances become zero.
+         * Zero accounting amounts while keeping DB checks valid:
+         *   gross = quantity * unit_price
+         *   net = gross - discount - exemption + tax
+         *   net = patient + insurance + other
+         *   net = allocated + outstanding
+         *   reserved <= patient - allocated
+         * Quantity stays > 0 (entity/DB minimum); unit price goes to zero.
          */
-        chargeLine.setReservedAmount(
-                zero()
-        );
+        zeroChargeLineAmounts(chargeLine);
 
-        chargeLine.setAllocatedAmount(
-                zero()
-        );
-
-        chargeLine.setOutstandingAmount(
-                zero()
+        chargeLine.setNotes(
+                appendNote(
+                        chargeLine.getNotes(),
+                        "Cancelled/removed from billing-accounting. Amounts zeroed. "
+                                + request.reason().trim()
+                )
         );
 
         billingChargeLineRepository.save(
@@ -336,17 +339,30 @@ public class BillingCancellationService {
         );
     }
 
+    private void zeroChargeLineAmounts(BillingChargeLine chargeLine) {
+        BigDecimal z = zero();
+
+        chargeLine.setUnitPrice(z);
+        chargeLine.setGrossAmount(z);
+        chargeLine.setDiscountAmount(z);
+        chargeLine.setExemptionAmount(z);
+        chargeLine.setTaxAmount(z);
+        chargeLine.setNetAmount(z);
+
+        chargeLine.setPatientResponsibilityAmount(z);
+        chargeLine.setInsuranceResponsibilityAmount(z);
+        chargeLine.setOtherPayerResponsibilityAmount(z);
+
+        chargeLine.setAllocatedAmount(z);
+        chargeLine.setOutstandingAmount(z);
+        chargeLine.setReservedAmount(z);
+    }
+
     private void cancelPatientItem(
             PatientServiceAndProduct item,
             BillingCancellationRequest request
     ) {
-        item.setPaidAmount(
-                zero()
-        );
-
-        item.setRemainingAmount(
-                zero()
-        );
+        zeroPatientItemAmounts(item);
 
         item.setPaymentStatus(
                 PaymentStatus.CANCELLED
@@ -362,20 +378,12 @@ public class BillingCancellationService {
         item.setBillingInvoiceItemId(null);
         item.setPaymentId(null);
 
-        String existingNotes =
-                item.getNotes();
-
-        String cancellationNote =
-                "Billing cancelled: "
-                        + request.reason();
-
         item.setNotes(
-                existingNotes == null
-                        || existingNotes.isBlank()
-                        ? cancellationNote
-                        : existingNotes
-                        + System.lineSeparator()
-                        + cancellationNote
+                appendNote(
+                        item.getNotes(),
+                        "Billing cancelled/removed. Amounts zeroed. Remaining=0. "
+                                + request.reason()
+                )
         );
 
         patientServiceAndProductRepository.save(
@@ -387,8 +395,7 @@ public class BillingCancellationService {
             PatientServiceAndProduct item,
             BillingCancellationRequest request
     ) {
-        item.setPaidAmount(zero());
-        item.setRemainingAmount(zero());
+        zeroPatientItemAmounts(item);
         item.setPaymentStatus(
                 PaymentStatus.CANCELLED
         );
@@ -400,7 +407,7 @@ public class BillingCancellationService {
         item.setNotes(
                 appendNote(
                         item.getNotes(),
-                        "Uncharged service cancelled: "
+                        "Uncharged service cancelled/removed. Amounts zeroed. Remaining=0. "
                                 + request.reason()
                 )
         );
@@ -408,6 +415,22 @@ public class BillingCancellationService {
         patientServiceAndProductRepository.save(
                 item
         );
+    }
+
+    private void zeroPatientItemAmounts(PatientServiceAndProduct item) {
+        BigDecimal z = zero();
+
+        item.setUnitPrice(z);
+        item.setDiscountAmount(z);
+        item.setExemptionAmount(z);
+        item.setTaxAmount(z);
+        item.setTotalAmount(z);
+        item.setGrossAmount(z);
+        item.setNetAmount(z);
+        item.setPatientShareAmount(z);
+        item.setInsuranceShareAmount(z);
+        item.setPaidAmount(z);
+        item.setRemainingAmount(z);
     }
 
     private void recalculateChargeHeader(

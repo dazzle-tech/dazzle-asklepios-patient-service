@@ -34,7 +34,11 @@ public class BadRequestAlertException extends ErrorResponseException {
                         .withStatus(HttpStatus.BAD_REQUEST.value())
                         .withType(type)
                         .withTitle(defaultMessage)
-                        .withProperty("message", "error." + errorKey)
+                        .withDetail(defaultMessage)
+                        // Human-readable text so UI canasts show a clean message
+                        // even when frontend i18n is missing for error.<key>.
+                        .withProperty("message", defaultMessage)
+                        .withProperty("messageKey", "error." + errorKey)
                         .withProperty("params", entityName)
                         .build(),
                 null
@@ -54,7 +58,9 @@ public class BadRequestAlertException extends ErrorResponseException {
                         .withStatus(status.value())
                         .withType(type)
                         .withTitle(defaultMessage)
-                        .withProperty("message", "error." + errorKey)
+                        .withDetail(defaultMessage)
+                        .withProperty("message", defaultMessage)
+                        .withProperty("messageKey", "error." + errorKey)
                         .withProperty("params", entityName)
                         .build(),
                 null

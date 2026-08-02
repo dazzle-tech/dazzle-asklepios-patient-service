@@ -4,15 +4,18 @@ import static org.springframework.core.annotation.AnnotatedElementUtils.findMerg
 
 import com.dazzle.asklepios.config.Constants;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.MessageSourceResolvable;
 import org.springframework.core.env.Environment;
 import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataAccessException;
@@ -25,6 +28,7 @@ import org.springframework.http.converter.HttpMessageConversionException;
 import org.springframework.lang.Nullable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.validation.FieldError;
 import org.springframework.web.ErrorResponse;
 import org.springframework.web.ErrorResponseException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -34,6 +38,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
@@ -79,6 +84,35 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
         return super.handleExceptionInternal(ex, body, headers, statusCode, request);
     }
 
+    @Override
+    protected ResponseEntity<Object> handleHandlerMethodValidationException(
+        HandlerMethodValidationException ex,
+        HttpHeaders headers,
+        HttpStatusCode status,
+        WebRequest request
+    ) {
+        List<FieldErrorVM> fieldErrors = getHandlerMethodFieldErrors(ex);
+        String detail = fieldErrors.isEmpty()
+            ? "Request validation failed"
+            : fieldErrors.stream()
+                .map(fe -> fe.getField() + ": " + fe.getMessage())
+                .collect(Collectors.joining("; "));
+
+        LOG.warn("[VALIDATION] Handler method validation failed: {}", detail);
+
+        ProblemDetailWithCause problem = ProblemDetailWithCause.ProblemDetailWithCauseBuilder.instance()
+            .withStatus(HttpStatus.BAD_REQUEST.value())
+            .withType(ErrorConstants.CONSTRAINT_VIOLATION_TYPE)
+            .withTitle("Validation failure")
+            .withDetail(detail)
+            .withProperty(MESSAGE_KEY, detail)
+            .withProperty(FIELD_ERRORS_KEY, fieldErrors)
+            .withProperty(PATH_KEY, "")
+            .build();
+
+        return handleExceptionInternal(ex, problem, headers, HttpStatus.BAD_REQUEST, request);
+    }
+
     protected ProblemDetailWithCause wrapAndCustomizeProblem(Throwable ex, NativeWebRequest request) {
         return customizeProblem(getProblemDetailWithCause(ex), ex, request);
     }
@@ -118,6 +152,22 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
             (problemProperties == null || !problemProperties.containsKey(FIELD_ERRORS_KEY))
         ) problem.setProperty(FIELD_ERRORS_KEY, getFieldErrors(fieldException));
 
+        if (
+            (err instanceof HandlerMethodValidationException handlerValidationException) &&
+            (problemProperties == null || !problemProperties.containsKey(FIELD_ERRORS_KEY))
+        ) {
+            List<FieldErrorVM> fieldErrors = getHandlerMethodFieldErrors(handlerValidationException);
+            problem.setProperty(FIELD_ERRORS_KEY, fieldErrors);
+            if (!fieldErrors.isEmpty()) {
+                String detail = fieldErrors.stream()
+                    .map(fe -> fe.getField() + ": " + fe.getMessage())
+                    .collect(Collectors.joining("; "));
+                problem.setDetail(detail);
+                problem.setProperty(MESSAGE_KEY, detail);
+                problem.setTitle("Validation failure");
+            }
+        }
+
         problem.setCause(buildCause(err.getCause(), null).orElse(null));
 
         return problem;
@@ -140,6 +190,46 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
                 )
             )
             .toList();
+    }
+
+    private List<FieldErrorVM> getHandlerMethodFieldErrors(HandlerMethodValidationException ex) {
+        List<FieldErrorVM> fieldErrors = new ArrayList<>();
+
+        ex.getParameterValidationResults().forEach(result -> {
+            String objectName = result.getMethodParameter().getParameterType().getSimpleName()
+                .replaceFirst("DTO$", "");
+
+            for (MessageSourceResolvable error : result.getResolvableErrors()) {
+                if (error instanceof FieldError fieldError) {
+                    fieldErrors.add(
+                        new FieldErrorVM(
+                            objectName,
+                            fieldError.getField(),
+                            StringUtils.isNotBlank(fieldError.getDefaultMessage())
+                                ? fieldError.getDefaultMessage()
+                                : fieldError.getCode()
+                        )
+                    );
+                } else {
+                    String codes = error.getCodes() != null && error.getCodes().length > 0
+                        ? error.getCodes()[0]
+                        : "invalid";
+                    fieldErrors.add(
+                        new FieldErrorVM(
+                            objectName,
+                            result.getMethodParameter().getParameterName() != null
+                                ? result.getMethodParameter().getParameterName()
+                                : "request",
+                            StringUtils.isNotBlank(error.getDefaultMessage())
+                                ? error.getDefaultMessage()
+                                : codes
+                        )
+                    );
+                }
+            }
+        });
+
+        return fieldErrors;
     }
 
     private String extractTitleForResponseStatus(Throwable err, int statusCode) {
@@ -165,12 +255,14 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
     }
 
     private URI getMappedType(Throwable err) {
-        if (err instanceof MethodArgumentNotValidException) return ErrorConstants.CONSTRAINT_VIOLATION_TYPE;
+        if (err instanceof MethodArgumentNotValidException || err instanceof HandlerMethodValidationException) {
+            return ErrorConstants.CONSTRAINT_VIOLATION_TYPE;
+        }
         return ErrorConstants.DEFAULT_TYPE;
     }
 
     private String getMappedMessageKey(Throwable err) {
-        if (err instanceof MethodArgumentNotValidException) {
+        if (err instanceof MethodArgumentNotValidException || err instanceof HandlerMethodValidationException) {
             return ErrorConstants.ERR_VALIDATION;
         } else if (err instanceof ConcurrencyFailureException || err.getCause() instanceof ConcurrencyFailureException) {
             return ErrorConstants.ERR_CONCURRENCY_FAILURE;
@@ -182,6 +274,7 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
 
     private String getCustomizedTitle(Throwable err) {
         if (err instanceof MethodArgumentNotValidException) return "Method argument not valid";
+        if (err instanceof HandlerMethodValidationException) return "Validation failure";
         return null;
     }
 
@@ -208,15 +301,24 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
     }
 
     private HttpHeaders buildHeaders(Throwable err) {
-        return err instanceof BadRequestAlertException badRequestAlertException
-            ? HeaderUtil.createFailureAlert(
+        if (!(err instanceof BadRequestAlertException badRequestAlertException)) {
+            return null;
+        }
+
+        // Prefer the human-readable title so the UI toast does not show raw keys
+        // like "error.diagnosis.required" when frontend i18n is missing.
+        String alertMessage = Optional.ofNullable(badRequestAlertException.getBody())
+            .map(body -> body.getTitle())
+            .filter(StringUtils::isNotBlank)
+            .orElse(badRequestAlertException.getMessage());
+
+        return HeaderUtil.createFailureAlert(
             applicationName,
-            true,
+            false,
             badRequestAlertException.getEntityName(),
             badRequestAlertException.getErrorKey(),
-            badRequestAlertException.getMessage()
-        )
-            : null;
+            alertMessage
+        );
     }
 
     private HttpHeaders updateContentType(HttpHeaders headers) {

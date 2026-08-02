@@ -39,6 +39,7 @@ public record PatientEncounterUpdateDTO(
         Long followUpEncounterId,
 
         @NotNull
+        @JsonAlias("priority")
         EncounterPriority priorityLevel,
 
         String originType,

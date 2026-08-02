@@ -60,6 +60,7 @@ public class PatientProcedureService {
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
     private final BillingChargeService billingChargeService;
     private final BillingEngineService billingEngineService;
+    private final PatientServiceAndProductService patientServiceAndProductService;
 
     public PatientProcedureService(
             PatientProcedureRepository procedureRepository,
@@ -72,7 +73,8 @@ public class PatientProcedureService {
             PreAuthorizationResolutionService preAuthorizationResolutionService,
             EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService,
             BillingChargeService billingChargeService,
-            @Lazy BillingEngineService billingEngineService
+            @Lazy BillingEngineService billingEngineService,
+            @Lazy PatientServiceAndProductService patientServiceAndProductService
     ) {
         this.procedureRepository = procedureRepository;
         this.patientRepository = patientRepository;
@@ -85,6 +87,7 @@ public class PatientProcedureService {
         this.encounterPreAuthorizationSyncService = encounterPreAuthorizationSyncService;
         this.billingChargeService = billingChargeService;
         this.billingEngineService = billingEngineService;
+        this.patientServiceAndProductService = patientServiceAndProductService;
     }
 
     private String currentUsername() {
@@ -178,7 +181,12 @@ public class PatientProcedureService {
                     savedBillingItem.getWaseelSbsCode()
             );
 
-            completeProcedureBillingFlow(encounter, savedBillingItem, encounterCoverage);
+            completeProcedureBillingFlow(
+                    encounter,
+                    savedProcedure,
+                    savedBillingItem,
+                    encounterCoverage
+            );
 
             return savedProcedure;
 
@@ -229,12 +237,24 @@ public class PatientProcedureService {
                         "notfound"
                 ));
 
-        procedureEntity.setStatus(ProcStatus.CANCELLED);
-        procedureEntity.setCancelledDate(Instant.now());
-        procedureEntity.setCancelledBy(currentUsername());
-        procedureEntity.setCancellationReason(reason);
+        String cancelReason =
+                reason == null || reason.isBlank()
+                        ? "Procedure cancelled"
+                        : reason;
 
         try {
+            patientServiceAndProductService.cancelBySource(
+                    ServiceSource.PROCEDURE,
+                    procedureEntity.getId(),
+                    BillingItemTypes.PROCEDURE,
+                    cancelReason
+            );
+
+            procedureEntity.setStatus(ProcStatus.CANCELLED);
+            procedureEntity.setCancelledDate(Instant.now());
+            procedureEntity.setCancelledBy(currentUsername());
+            procedureEntity.setCancellationReason(cancelReason);
+
             return procedureRepository.saveAndFlush(procedureEntity);
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
@@ -284,10 +304,12 @@ public class PatientProcedureService {
     /**
      * Step 4 — after procedure + billing item are saved:
      * - Self pay, or insurance without pre-auth → run billing engine immediately.
-     * - Insurance with pending pre-auth → submit to Waseel synchronously; rollback on failure.
+     * - Insurance with pending pre-auth → submit to Waseel synchronously; on success set
+     *   procedure status to WAITING_PRE_AUTHORIZATION; rollback on failure.
      */
     private void completeProcedureBillingFlow(
             PatientEncounter encounter,
+            PatientProcedure procedure,
             PatientServiceAndProduct billingItem,
             BillingCoverageType encounterCoverage
     ) {
@@ -312,14 +334,17 @@ public class PatientProcedureService {
                         encounter.getId()
                 );
             } catch (BadRequestAlertException ex) {
-                throw new BadRequestAlertException(
-                        "Procedure requires pre-authorization but Waseel submission failed. "
-                                + "Please verify insurance eligibility and Waseel connectivity, then retry. "
-                                + "Details: " + ex.getMessage(),
-                        "procedure",
-                        "preAuthorization.waseelFailed"
-                );
+                throw mapPreAuthorizationFailure(ex, "procedure");
             }
+
+            procedure.setStatus(ProcStatus.WAITING_PRE_AUTHORIZATION);
+            procedureRepository.saveAndFlush(procedure);
+
+            LOG.info(
+                    "[PROCEDURE_CREATE] Step 4 — pre-auth submitted. procedureId={} status={}",
+                    procedure.getId(),
+                    procedure.getStatus()
+            );
             return;
         }
 
@@ -529,6 +554,30 @@ public class PatientProcedureService {
         return builder.build();
     }
 
+    /**
+     * Surfaces the original pre-auth failure reason to the UI
+     * (missing diagnosis, LOV mapping, Waseel API body, etc.).
+     */
+    private BadRequestAlertException mapPreAuthorizationFailure(
+            BadRequestAlertException ex,
+            String entityName
+    ) {
+        String errorKey = ex.getErrorKey() != null
+                ? ex.getErrorKey()
+                : "preAuthorization.failed";
+        String title = ex.getBody() != null && ex.getBody().getTitle() != null
+                ? ex.getBody().getTitle()
+                : ex.getMessage();
+
+        LOG.warn(
+                "[PROCEDURE_CREATE] Pre-authorization blocked create. errorKey={} message={}",
+                errorKey,
+                title
+        );
+
+        return new BadRequestAlertException(title, entityName, errorKey);
+    }
+
     private RuntimeException handleConstraintViolation(Exception exception) {
         Throwable root = getRootCause(exception);
 
@@ -675,6 +724,15 @@ public class PatientProcedureService {
                     "Cancellation reason is required when cancelling a procedure.",
                     "procedure",
                     "cancellationReason.required"
+            );
+        }
+
+        if (m.contains("ck_billing_charge_line_allocation_balance")) {
+            return new BadRequestAlertException(
+                    "Cannot cancel procedure billing because charge-line allocation balances are inconsistent. "
+                            + "Please retry or contact support if this persists.",
+                    "procedure",
+                    "billing.cancel.allocationBalance"
             );
         }
 

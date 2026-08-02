@@ -10,6 +10,7 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.DentalProcedureRepository;
@@ -17,6 +18,7 @@ import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
 import com.dazzle.asklepios.service.dto.dentalProcedure.DentalProcedureCreateDTO;
 import com.dazzle.asklepios.service.dto.dentalProcedure.DentalProcedureUpdateDTO;
 import com.dazzle.asklepios.service.helper.CDTCodeHelper;
@@ -26,6 +28,7 @@ import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import feign.FeignException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -36,6 +39,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -57,6 +62,8 @@ public class DentalProcedureService {
     private final ServiceClient serviceClient;
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
     private final PreAuthorizationResolutionService preAuthorizationResolutionService;
+    private final BillingEngineService billingEngineService;
+    private final PatientServiceAndProductService patientServiceAndProductService;
 
     public DentalProcedureService(
             DentalProcedureRepository dentalProcedureRepository,
@@ -69,7 +76,10 @@ public class DentalProcedureService {
             ProcedureClient procedureClient,
             ServiceClient serviceClient,
             EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService,
-            PreAuthorizationResolutionService preAuthorizationResolutionService) {
+            PreAuthorizationResolutionService preAuthorizationResolutionService,
+            @Lazy BillingEngineService billingEngineService,
+            @Lazy PatientServiceAndProductService patientServiceAndProductService
+    ) {
         this.dentalProcedureRepository = dentalProcedureRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
@@ -81,6 +91,8 @@ public class DentalProcedureService {
         this.serviceClient = serviceClient;
         this.encounterPreAuthorizationSyncService = encounterPreAuthorizationSyncService;
         this.preAuthorizationResolutionService = preAuthorizationResolutionService;
+        this.billingEngineService = billingEngineService;
+        this.patientServiceAndProductService = patientServiceAndProductService;
     }
 
     public DentalProcedure create(DentalProcedureCreateDTO dto) {
@@ -110,10 +122,12 @@ public class DentalProcedureService {
         try {
             DentalProcedure saved = dentalProcedureRepository.saveAndFlush(entity);
 
-            createProcedureBillingItem(saved, setupProcedure, dto.notes(), dto.surface());
-            createServiceBillingItemIfExists(saved, setupService, dto.notes(), dto.surface());
+            PatientServiceAndProduct procedureBilling =
+                    createProcedureBillingItem(saved, setupProcedure, dto.notes(), dto.surface());
+            PatientServiceAndProduct serviceBilling =
+                    createServiceBillingItemIfExists(saved, setupService, dto.notes(), dto.surface());
 
-            submitDentalPreAuthorizationOrThrow(encounter.getId());
+            completeDentalBillingFlow(encounter, procedureBilling, serviceBilling);
 
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException e) {
@@ -178,10 +192,12 @@ public class DentalProcedureService {
         try {
             DentalProcedure updated = dentalProcedureRepository.saveAndFlush(entity);
 
-            createProcedureBillingItem(updated, setupProcedure, dto.notes(), dto.surface());
-            createServiceBillingItemIfExists(updated, setupService, dto.notes(), dto.surface());
+            PatientServiceAndProduct procedureBilling =
+                    createProcedureBillingItem(updated, setupProcedure, dto.notes(), dto.surface());
+            PatientServiceAndProduct serviceBilling =
+                    createServiceBillingItemIfExists(updated, setupService, dto.notes(), dto.surface());
 
-            submitDentalPreAuthorizationOrThrow(updated.getEncounter().getId());
+            completeDentalBillingFlow(updated.getEncounter(), procedureBilling, serviceBilling);
 
             return updated;
         } catch (DataIntegrityViolationException | JpaSystemException e) {
@@ -197,36 +213,26 @@ public class DentalProcedureService {
 
         if (entity.isCancelled()) {
             throw new BadRequestAlertException(
-                    "alreadyCancelled",
+                    "DentalProcedure is already cancelled",
                     "dentalProcedure",
-                    "DentalProcedure is already cancelled"
+                    "alreadyCancelled"
             );
         }
 
-        Optional<PatientServiceAndProduct> procedureBillingItem =
-                findBillingItem(entity.getId(), BillingItemTypes.PROCEDURE);
+        String cancelReason = "Dental procedure cancelled";
 
-        Optional<PatientServiceAndProduct> serviceBillingItem =
-                findBillingItem(entity.getId(), BillingItemTypes.SERVICE);
-
-        if (procedureBillingItem.isPresent() && Boolean.TRUE.equals(procedureBillingItem.get().getIsBilled())) {
-            throw new BadRequestAlertException(
-                    "procedureAlreadyBilled",
-                    "dentalProcedure",
-                    "Cannot cancel dental procedure because procedure billing item is already billed"
-            );
-        }
-
-        if (serviceBillingItem.isPresent() && Boolean.TRUE.equals(serviceBillingItem.get().getIsBilled())) {
-            throw new BadRequestAlertException(
-                    "serviceAlreadyBilled",
-                    "dentalProcedure",
-                    "Cannot cancel dental procedure because service billing item is already billed"
-            );
-        }
-
-        deleteBillingItemIfNotBilled(procedureBillingItem);
-        deleteBillingItemIfNotBilled(serviceBillingItem);
+        patientServiceAndProductService.cancelBySource(
+                ServiceSource.DENTAL_PROCEDURE,
+                entity.getId(),
+                BillingItemTypes.PROCEDURE,
+                cancelReason
+        );
+        patientServiceAndProductService.cancelBySource(
+                ServiceSource.DENTAL_PROCEDURE,
+                entity.getId(),
+                BillingItemTypes.SERVICE,
+                cancelReason
+        );
 
         entity.setCancelled(true);
 
@@ -580,17 +586,99 @@ public class DentalProcedureService {
         );
     }
 
-    private void submitDentalPreAuthorizationOrThrow(Long encounterId) {
-        try {
-            encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(encounterId);
-        } catch (BadRequestAlertException ex) {
+    private void completeDentalBillingFlow(
+            PatientEncounter encounter,
+            PatientServiceAndProduct procedureBilling,
+            PatientServiceAndProduct serviceBilling
+    ) {
+        List<PatientServiceAndProduct> items = new ArrayList<>();
+        if (procedureBilling != null) {
+            items.add(procedureBilling);
+        }
+        if (serviceBilling != null) {
+            items.add(serviceBilling);
+        }
+
+        boolean needsPreAuth = items.stream().anyMatch(item ->
+                item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
+        );
+
+        if (needsPreAuth) {
+            LOG.info(
+                    "[DENTAL_PROCEDURE] Pre-auth required — submitting to Waseel. encounterId={}",
+                    encounter.getId()
+            );
+            try {
+                encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(
+                        encounter.getId()
+                );
+            } catch (BadRequestAlertException ex) {
+                throw mapPreAuthorizationFailure(ex);
+            }
+            return;
+        }
+
+        for (PatientServiceAndProduct item : items) {
+            billDentalItem(item, encounter);
+        }
+    }
+
+    private void billDentalItem(
+            PatientServiceAndProduct item,
+            PatientEncounter encounter
+    ) {
+        if (item == null || item.getId() == null || encounter == null) {
+            return;
+        }
+
+        Long facilityId = encounter.getFacilityId();
+        if (facilityId == null) {
             throw new BadRequestAlertException(
-                    "Dental procedure requires pre-authorization but Waseel submission failed. "
-                            + "Please verify insurance eligibility and Waseel connectivity, then retry. "
-                            + "Details: " + ex.getMessage(),
+                    "Encounter facility is required to bill dental item.",
                     "dentalProcedure",
-                    "preAuthorization.waseelFailed"
+                    "encounter.facility.required"
             );
         }
+
+        BillingOperationResult result = billingEngineService.onItemOrdered(
+                item.getId(),
+                facilityId,
+                "DENTAL-CREATE:" + item.getId()
+        );
+
+        LOG.info(
+                "[DENTAL_PROCEDURE] Billed item. pspId={} type={} processed={} message={}",
+                item.getId(),
+                item.getBillingItemType(),
+                result.processed(),
+                result.message()
+        );
+
+        if (!result.processed()) {
+            throw new BadRequestAlertException(
+                    result.message() == null
+                            ? "Dental billing rule did not match."
+                            : result.message(),
+                    "dentalProcedure",
+                    "billing.failed"
+            );
+        }
+    }
+
+    private BadRequestAlertException mapPreAuthorizationFailure(BadRequestAlertException ex) {
+        String errorKey = ex.getErrorKey() != null
+                ? ex.getErrorKey()
+                : "preAuthorization.failed";
+        String title = ex.getBody() != null && ex.getBody().getTitle() != null
+                ? ex.getBody().getTitle()
+                : ex.getMessage();
+
+        LOG.warn(
+                "[DENTAL_PROCEDURE] Pre-authorization blocked save. errorKey={} message={}",
+                errorKey,
+                title
+        );
+
+        return new BadRequestAlertException(title, "dentalProcedure", errorKey);
     }
 }

@@ -90,7 +90,8 @@ public class ApprovalRequestBuilderService {
 
         if (diagnoses == null || diagnoses.isEmpty()) {
             throw new BadRequestAlertException(
-                    "Diagnosis is required before submitting pre-authorization",
+                    "Diagnosis is required before submitting pre-authorization. "
+                            + "Please add a diagnosis for this encounter, then try again.",
                     "preAuthorization",
                     "diagnosis.required"
             );

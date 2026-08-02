@@ -36,6 +36,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
 
 import java.math.BigDecimal;
@@ -166,20 +167,50 @@ public class PreAuthorizationSubmissionService {
 
             updatePreAuthorizationSuccess(preAuthorization, response, responseJson);
             saveTrack(preAuthorization, "SUBMIT", requestJson, responseJson, response);
-            updateItemsAfterResponse(pendingItems, response);
+            updateItemsAfterResponse(pendingItems, preAuthorization, response);
 
             return response;
 
-        } catch (RestClientException ex) {
-            updatePreAuthorizationFailure(preAuthorization, ex.getMessage());
-            saveTrackFailure(preAuthorization, "SUBMIT", requestJson, ex.getMessage());
+        } catch (HttpStatusCodeException ex) {
+            String waseelBody = ex.getResponseBodyAsString();
+            String details = buildWaseelFailureMessage(ex.getStatusCode().value(), waseelBody, ex.getMessage());
+
+            updatePreAuthorizationFailure(preAuthorization, details);
+            saveTrackFailure(preAuthorization, "SUBMIT", requestJson, details);
 
             throw new BadRequestAlertException(
-                    "Failed to submit pre-authorization to Waseel: " + ex.getMessage(),
+                    details,
+                    "preAuthorization",
+                    "waseel.submit.failed"
+            );
+        } catch (RestClientException ex) {
+            String details = "Failed to submit pre-authorization to Waseel: " + ex.getMessage();
+
+            updatePreAuthorizationFailure(preAuthorization, details);
+            saveTrackFailure(preAuthorization, "SUBMIT", requestJson, details);
+
+            throw new BadRequestAlertException(
+                    details,
                     "preAuthorization",
                     "waseel.submit.failed"
             );
         }
+    }
+
+    private String buildWaseelFailureMessage(int statusCode, String responseBody, String fallback) {
+        String body = responseBody == null ? "" : responseBody.trim();
+        if (!body.isEmpty() && body.length() > 500) {
+            body = body.substring(0, 500) + "...";
+        }
+
+        if (!body.isEmpty()) {
+            return "Waseel rejected pre-authorization (HTTP " + statusCode + "): " + body;
+        }
+
+        return "Failed to submit pre-authorization to Waseel (HTTP "
+                + statusCode
+                + "): "
+                + (fallback == null ? "unknown error" : fallback);
     }
 
     private void logPreAuthorizationRequest(
@@ -532,12 +563,15 @@ public class PreAuthorizationSubmissionService {
 
     private void updateItemsAfterResponse(
             List<PatientServiceAndProduct> pendingItems,
+            PreAuthorizationRequest preAuthorization,
             ApprovalResponse response
     ) {
         PreAuthorizationStatus status = mapResponseStatus(response);
 
         for (PatientServiceAndProduct item : pendingItems) {
             item.setPreAuthorizationStatus(status);
+            item.setPreAuthorizationRequestId(preAuthorization.getId());
+            item.setPreAuthorizationReferenceNo(preAuthorization.getPreAuthRefNo());
 
             if (status == PreAuthorizationStatus.APPROVED) {
                 item.setPreAuthorizationRequired(false);

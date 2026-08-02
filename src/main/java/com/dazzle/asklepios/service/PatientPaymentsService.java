@@ -30,6 +30,7 @@ import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.PaymentTypes;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.domain.enumeration.WalletTransactionType;
 import com.dazzle.asklepios.integration.waseel.dto.InsuranceCoverage;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
@@ -848,10 +849,14 @@ public class PatientPaymentsService {
             );
 
             if (dto.paymentTypes() == PaymentTypes.INSURANCE_PLAN) {
-                encounterPreAuthorizationSyncService.scheduleSyncAfterCommit(
-                        encounter.getId(),
-                        BillingCoverageType.INSURANCE
+                boolean hasPendingPreAuth = serviceRows.stream().anyMatch(row ->
+                        row.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
                 );
+                if (hasPendingPreAuth) {
+                    encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(
+                            encounter.getId()
+                    );
+                }
             }
 
             List<FinancialDocumentItem> items = serviceRows.stream()

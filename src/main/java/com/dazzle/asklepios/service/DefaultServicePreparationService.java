@@ -15,6 +15,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPricingSnapshotStatus;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
@@ -111,6 +112,7 @@ public class DefaultServicePreparationService {
 
         List<PrepareDefaultServicesResult.PreparedDefaultServiceResult> results =
                 new ArrayList<>();
+        boolean hasPendingPreAuth = false;
 
         for (PrepareDefaultServiceItem requestedItem : orderedItems) {
             ServiceSetupDTO service = loadAndValidateSetupService(
@@ -170,6 +172,33 @@ public class DefaultServicePreparationService {
                                     chargeLine
                             );
                 }
+            } else if (item.getPreAuthorizationStatus()
+                    == PreAuthorizationStatus.PENDING_APPROVAL) {
+                hasPendingPreAuth = true;
+                LOG.info(
+                        "[PREPARE_DEFAULT_SERVICES] Deferring billing — pre-auth required. "
+                                + "pspId={} encounterId={} serviceId={}",
+                        item.getId(),
+                        encounterId,
+                        requestedItem.serviceId()
+                );
+                billingResult =
+                        new BillingOperationResult(
+                                item.getId(),
+                                null,
+                                null,
+                                null,
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                true,
+                                "Billing deferred — waiting for pre-authorization."
+                        );
             } else {
                 String itemRequestId =
                         request.requestId().trim()
@@ -197,6 +226,26 @@ public class DefaultServicePreparationService {
             );
         }
 
+        if (hasPendingPreAuth) {
+            LOG.info(
+                    "[PREPARE_DEFAULT_SERVICES] Submitting pending pre-authorization. encounterId={}",
+                    encounterId
+            );
+            try {
+                encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(
+                        encounterId
+                );
+            } catch (BadRequestAlertException ex) {
+                String title = ex.getBody() != null && ex.getBody().getTitle() != null
+                        ? ex.getBody().getTitle()
+                        : ex.getMessage();
+                String errorKey = ex.getErrorKey() != null
+                        ? ex.getErrorKey()
+                        : "preAuthorization.failed";
+                throw new BadRequestAlertException(title, ENTITY_NAME, errorKey);
+            }
+        }
+
         boolean processed =
                 results.stream()
                         .allMatch(result ->
@@ -205,20 +254,14 @@ public class DefaultServicePreparationService {
                         );
 
         LOG.info(
-                "[PREPARE_DEFAULT_SERVICES] encounterId={} patientId={} coverageType={} itemCount={} processed={}",
+                "[PREPARE_DEFAULT_SERVICES] encounterId={} patientId={} coverageType={} itemCount={} processed={} pendingPreAuth={}",
                 encounterId,
                 request.patientId(),
                 request.coverageType(),
                 results.size(),
-                processed
+                processed,
+                hasPendingPreAuth
         );
-
-        if (request.coverageType() == BillingCoverageType.INSURANCE) {
-            encounterPreAuthorizationSyncService.scheduleSyncAfterCommit(
-                    encounterId,
-                    request.coverageType()
-            );
-        }
 
         return new PrepareDefaultServicesResult(
                 request.patientId(),
