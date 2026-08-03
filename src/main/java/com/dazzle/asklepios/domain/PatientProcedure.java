@@ -110,6 +110,9 @@ public class PatientProcedure extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "extra_documentation")
     private String extraDocumentation;
 
+    @Column(name = "result", columnDefinition = "text")
+    private String result;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private ProcStatus status;

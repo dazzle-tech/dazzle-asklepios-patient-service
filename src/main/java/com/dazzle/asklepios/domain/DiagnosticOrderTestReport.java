@@ -87,4 +87,8 @@ public class DiagnosticOrderTestReport extends AbstractAuditingEntity implements
     @Enumerated(EnumType.STRING)
     @Column(name = "image_status", length = 50)
     private RadiologyImageStatus imageStatus;
+
+
+    @Column(name = "accession_number", length = 100)
+    private String accessionNumber;
 }

@@ -53,7 +53,7 @@ public record PatientUpdateDTO(
         String homePhone,
         String workPhone,
 
-        @NotEmpty  @Email
+        @Email
         String email,
         Boolean receiveEmail,
         PreferredWayOfContact preferredWayOfContact,

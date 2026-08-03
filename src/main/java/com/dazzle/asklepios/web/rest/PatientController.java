@@ -2,6 +2,8 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.service.PatientService;
+import com.dazzle.asklepios.service.dto.patient.FacilityPatientFilterDTO;
+import com.dazzle.asklepios.service.dto.patient.KeyAndPasswordDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientDuplicationLookupDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
@@ -182,6 +184,64 @@ public class PatientController {
         );
     }
 
+    @GetMapping("/patients")
+    public ResponseEntity<List<Patient>> getPatients(@ParameterObject Pageable pageable) {
+
+        Page<Patient> page = patientService.findAll(pageable);
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        return new ResponseEntity<>(
+                page.getContent(),
+                headers,
+                HttpStatus.OK
+        );
+    }
+
+    @GetMapping("/facility-patients")
+    public ResponseEntity<List<Patient>> getFacilityPatients(
+
+            @RequestParam(required = false) String patientName,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate registrationDateFrom,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate registrationDateTo,
+
+            @RequestParam(required = false) Long insuranceId,
+
+            @ParameterObject Pageable pageable
+    ) {
+
+        FacilityPatientFilterDTO filter = new FacilityPatientFilterDTO(
+                patientName,
+                registrationDateFrom,
+                registrationDateTo,
+                insuranceId
+        );
+
+        Page<Patient> page =
+                patientService.findFacilityPatients(filter, pageable);
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        return new ResponseEntity<>(
+                page.getContent(),
+                headers,
+                HttpStatus.OK
+        );
+    }
 
     @GetMapping("/by-date-of-birth/{date}")
     public ResponseEntity<List<Patient>> getByDateOfBirth(

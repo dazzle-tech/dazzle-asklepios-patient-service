@@ -27,6 +27,7 @@ public record DiagnosticOrderTestReportResponseVM(
         String createdBy,
         Instant lastModifiedDate,
         String lastModifiedBy,
+        String accessionNumber,
         boolean hasNote
 ) implements Serializable {
 
@@ -51,6 +52,7 @@ public record DiagnosticOrderTestReportResponseVM(
                 diagnosticOrderTestReport.getCreatedBy(),
                 diagnosticOrderTestReport.getLastModifiedDate(),
                 diagnosticOrderTestReport.getLastModifiedBy(),
+                diagnosticOrderTestReport.getAccessionNumber(),
                 false
         );
     }
@@ -75,6 +77,7 @@ public record DiagnosticOrderTestReportResponseVM(
                 diagnosticOrderTestReport.getCreatedBy(),
                 diagnosticOrderTestReport.getLastModifiedDate(),
                 diagnosticOrderTestReport.getLastModifiedBy(),
+                diagnosticOrderTestReport.getAccessionNumber(),
                 hasNote
 
         );

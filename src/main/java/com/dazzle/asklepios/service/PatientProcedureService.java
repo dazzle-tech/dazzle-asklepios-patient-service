@@ -150,6 +150,7 @@ public class PatientProcedureService {
                 .scheduledDateTime(procedureCreateDTO.scheduledDateTime())
                 .notes(procedureCreateDTO.notes())
                 .extraDocumentation(procedureCreateDTO.extraDocumentation())
+                .result(procedureCreateDTO.result())
                 .status(ProcStatus.REQUESTED)
                 .build();
 
@@ -221,6 +222,7 @@ public class PatientProcedureService {
         procedureEntity.setScheduledDateTime(procedureUpdateDTO.scheduledDateTime());
         procedureEntity.setNotes(procedureUpdateDTO.notes());
         procedureEntity.setExtraDocumentation(procedureUpdateDTO.extraDocumentation());
+        procedureEntity.setResult(procedureUpdateDTO.result());
 
         try {
             return procedureRepository.saveAndFlush(procedureEntity);

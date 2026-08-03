@@ -167,4 +167,45 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @Column(name = "patient_insurance_id")
     private Long patientInsuranceId;
+
+    @PrePersist
+    @PreUpdate
+
+    private void syncEncounterStatus() {
+
+        if (status != null) {
+
+            this.encounterStatus = computeEncounterStatus(status);
+
+        }
+
+    }
+
+
+    private EncounterStatus computeEncounterStatus(TreatmentStatus status) {
+        if (status == null) {
+            return EncounterStatus.OPEN;
+        }
+
+        return switch (status) {
+            case NEW,
+                 PENDING_PAYMENT,
+                 WAITING_TRIAGE ->
+                    EncounterStatus.OPEN;
+
+            case TRIAGE_STARTED,
+                 DISCHARGED,
+                 ASSIGNED_TO_BED,
+                 ONGOING ->
+                    EncounterStatus.IN_PROGRESS;
+
+            case CANCELLED ->
+                    EncounterStatus.CANCELLED;
+
+
+
+            default ->
+                    this.encounterStatus;
+        };
+    }
 }

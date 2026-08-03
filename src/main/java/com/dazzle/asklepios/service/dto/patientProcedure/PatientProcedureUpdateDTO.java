@@ -27,6 +27,7 @@ public record PatientProcedureUpdateDTO(
         @FutureOrPresent
         Instant scheduledDateTime,
         String notes,
-        String extraDocumentation
+        String extraDocumentation,
+        String result
 
 ) implements Serializable {}

@@ -15,9 +15,12 @@ import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportCreat
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportRejectDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportReviewDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportUpdateDTO;
+import com.dazzle.asklepios.service.dto.radiology.PacsStudyDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportResponseVM;
 import com.dazzle.asklepios.web.rest.vm.radiology.RadiologyImageStatusResponseVM;
+import io.micrometer.common.util.StringUtils;
 import jakarta.persistence.criteria.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +31,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -729,4 +733,37 @@ public class DiagnosticOrderTestReportService {
             return DiagnosticOrderTestReportResponseVM.ofEntityWithNote(report, hasNote);
         });
     }
+    public List<PacsStudyDTO> getImageLinks(Long reportId) {
+
+        DiagnosticOrderTestReport report = diagnosticOrderTestReportRepository
+                .findById(reportId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Report not found: " + reportId,
+                        "diagnosticOrderTestReport",
+                        "notfound"
+                ));
+
+        if (StringUtils.isBlank(report.getAccessionNumber())) {
+            return List.of();
+        }
+
+        return getStudiesByAccessionNumber(
+                report.getAccessionNumber()
+        );
+    }
+
+    private List<PacsStudyDTO> getStudiesByAccessionNumber(
+            String accessionNumber
+    ) {
+        return List.of(
+                new PacsStudyDTO(
+                        "Test Patient",
+                        "12345",
+                        "STUDY001",
+                        LocalDate.now(),
+                        "https://demo.ohif.org/viewer"
+                )
+        );
+    }
+
 }

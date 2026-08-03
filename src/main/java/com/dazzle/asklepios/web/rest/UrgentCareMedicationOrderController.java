@@ -10,6 +10,8 @@ import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.commands.UrgentCareMedicationOrderSubmitDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.persistence.criteria.Predicate;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -133,6 +135,10 @@ public class UrgentCareMedicationOrderController {
             @RequestParam(name = "statusNotIn", required = false) List<MedicationOrderStatus> statusNotIn,
             @RequestParam(name = "route", required = false) String route,
             @RequestParam(name = "frequency", required = false) String frequency,
+            @RequestParam(required = false) LocalDate orderDateFrom,
+            @RequestParam(required = false) LocalDate orderDateTo,
+            @RequestParam(required = false) List<Long> patientIds,
+
             Pageable pageable
     ) {
         LOG.debug(
@@ -156,6 +162,30 @@ public class UrgentCareMedicationOrderController {
                 LOG.debug("[FILTER] apply patientId={}", patientId);
                 predicates.add(cb.equal(root.get("patient").get("id"), patientId));
             }
+
+            if (patientIds != null && !patientIds.isEmpty()) {
+                predicates.add(root.get("patient").get("id").in(patientIds));
+            }
+
+
+            if (orderDateFrom != null) {
+                predicates.add(
+                        cb.greaterThanOrEqualTo(
+                                root.get("createdDate"),
+                                orderDateFrom.atStartOfDay(ZoneOffset.UTC).toInstant()
+                        )
+                );
+            }
+
+            if (orderDateTo != null) {
+                predicates.add(
+                        cb.lessThan(
+                                root.get("createdDate"),
+                                orderDateTo.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant()
+                        )
+                );
+            }
+
 
             if (encounterId != null) {
                 LOG.debug("[FILTER] apply encounterId={}", encounterId);

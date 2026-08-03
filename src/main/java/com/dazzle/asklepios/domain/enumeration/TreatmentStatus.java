@@ -16,7 +16,8 @@ public enum TreatmentStatus {
     SENT_TO_ER,
     WAITING_TRIAGE,
     WAITING_LIST,
-    PENDING_PAYMENT;
+    PENDING_PAYMENT,
+    ASSIGNED_TO_BED
 
     public static TreatmentStatus fromDatabaseValue(String value) {
         if (value == null) {

@@ -610,7 +610,9 @@ public class DiagnosticOrderTestStatusService {
         }
 
         if (to == DiagnosticStatus.RESULT_APPROVED) {
-            if (!(from == DiagnosticStatus.RESULT_READY || from == DiagnosticStatus.PARTIALLY)) {
+            if (!(from == DiagnosticStatus.RESULT_READY
+                    || from == DiagnosticStatus.EXAM_DONE
+                    || from == DiagnosticStatus.PARTIALLY)) {
                 throw invalid(from, to);
             }
             return;
