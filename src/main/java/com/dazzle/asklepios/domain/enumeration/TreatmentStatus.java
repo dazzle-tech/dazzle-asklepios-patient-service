@@ -17,7 +17,7 @@ public enum TreatmentStatus {
     WAITING_TRIAGE,
     WAITING_LIST,
     PENDING_PAYMENT,
-    ASSIGNED_TO_BED
+    ASSIGNED_TO_BED;
 
     public static TreatmentStatus fromDatabaseValue(String value) {
         if (value == null) {
