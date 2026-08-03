@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.client.setup;
 
+import com.dazzle.asklepios.client.setup.dto.BrandMedicationDTO;
 import com.dazzle.asklepios.client.setup.dto.BrandMedicationSetupDTO;
 import com.dazzle.asklepios.config.SetupServiceFeignConfig;
 import jakarta.validation.constraints.NotNull;
@@ -25,4 +26,5 @@ public interface BrandMedicationClient {
     BrandMedicationSetupDTO getBrandMedication(
             @PathVariable("id") @NotNull Long brandMedicationId
     );
-}
+
+    }

@@ -829,7 +829,7 @@ public class NotificationHelper {
                 .recipientName(getPatientName(patient))
                 .recipientEmail(patient.getEmail())
                 .toEmails(List.of(patient.getEmail()))
-                .language(patient.getNativeLanguage() != null && !patient.getNativeLanguage().isBlank() ? patient.getNativeLanguage() : finalOrganizationDefinitionDTO != null ? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
+                .language(patient.getPreferredLanguage() != null && !patient.getPreferredLanguage().isBlank() ? patient.getPreferredLanguage() : finalOrganizationDefinitionDTO != null ? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
                 .build();
     }
 
@@ -848,7 +848,7 @@ public class NotificationHelper {
                 .recipientName(getPatientName(patient))
                 .recipientPhone(patient.getPrimaryMobileNumber())
                 .toPhone(patient.getPrimaryMobileNumber())
-                .language(patient.getNativeLanguage() != null && !patient.getNativeLanguage().isBlank() ? patient.getNativeLanguage() : finalOrganizationDefinitionDTO != null ? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
+                .language(patient.getPreferredLanguage() != null && !patient.getPreferredLanguage().isBlank() ? patient.getPreferredLanguage() : finalOrganizationDefinitionDTO != null ? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
                 .build();
     }
 

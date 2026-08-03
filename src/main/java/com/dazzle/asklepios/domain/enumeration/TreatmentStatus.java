@@ -1,14 +1,12 @@
 package com.dazzle.asklepios.domain.enumeration;
 
-/**
- * Clinical workflow status for a patient encounter (Treatment Status).
- */
+
 public enum TreatmentStatus {
     NEW,
     ONGOING,
     CANCELLED,
     CLOSED,
-    DISCHARGED,
+    COMPLETED,DISCHARGED,
     IN_OPERATION,
     CONFIRM_RETURN,
     TEMP_DC,
@@ -27,5 +25,4 @@ public enum TreatmentStatus {
             return ONGOING;
         }
         return valueOf(value);
-    }
-}
+    }}

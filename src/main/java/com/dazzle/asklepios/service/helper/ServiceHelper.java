@@ -48,4 +48,16 @@ public class ServiceHelper {
             );
         }
     }
+
+    public ServiceSetupDTO getService(Long serviceId) {
+        try {
+            return serviceClient.getServiceDetails(serviceId);
+        } catch (feign.FeignException.NotFound ex) {
+            throw new NotFoundAlertException(
+                    "Service not found: " + serviceId,
+                    "service",
+                    "notfound"
+            );
+        }
+    }
 }

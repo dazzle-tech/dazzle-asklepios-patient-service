@@ -7,6 +7,7 @@ import com.dazzle.asklepios.domain.enumeration.EncounterBillingStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterLifecycleStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
+import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
@@ -22,6 +23,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -73,7 +76,7 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "appointment_id", nullable = false)
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-    private AppointmentFromTemplate appointment;
+    private Appointment appointment;
 
     @NotNull
     @Enumerated(EnumType.STRING)
@@ -114,15 +117,19 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "encounter_time", nullable = false, updatable = false)
     private LocalTime encounterTime;
 
-    @NotNull
-    @Convert(converter = EncounterLifecycleStatusConverter.class)
-    @Column(name = "encounter_status", nullable = false, length = 50)
-    private EncounterLifecycleStatus encounterStatus;
+//    @NotNull
+//    @Convert(converter = EncounterLifecycleStatusConverter.class)
+//    @Column(name = "encounter_status", nullable = false, length = 50)
+//    private EncounterLifecycleStatus encounterStatus;
 
     @NotNull
     @Convert(converter = TreatmentStatusConverter.class)
     @Column(name = "treatment_status", nullable = false, length = 50)
     private TreatmentStatus treatmentStatus;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 50)
+    private TreatmentStatus status;
 
     @Column(name = "chief_complaint", columnDefinition = "text")
     private String chiefComplaint;
@@ -142,7 +149,7 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @Column(name = "physical_examination_summery")
     private String physicalExaminationSummery;
-
+    
     @Column(name = "completed_by", length = 50)
     private String completedBy;
 
@@ -167,6 +174,13 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @Column(name = "patient_insurance_id")
     private Long patientInsuranceId;
+    @Column(name = "history_of_present_illness")
+    private String historyOfPresentIllness;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "encounter_status")
+    private EncounterStatus encounterStatus = EncounterStatus.OPEN;
+
 
     @PrePersist
     @PreUpdate

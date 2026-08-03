@@ -64,7 +64,13 @@ public class PatientObservationsComplaintsService {
                 .build();
 
         try {
-            return patientObservationsComplaintsRepository.saveAndFlush(entity);
+            PatientObservationsComplaints saved = patientObservationsComplaintsRepository.saveAndFlush(entity);
+            if (dto.bloodGroup() != null) {
+                patient.setBloodGroup(dto.bloodGroup());
+            }
+            patient.setPatientConditions(dto.patientConditions());
+            patientRepository.save(patient);
+            return saved;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
         }
@@ -93,7 +99,13 @@ public class PatientObservationsComplaintsService {
             entity.setIsActive(dto.isActive());
 
             try {
-                return patientObservationsComplaintsRepository.saveAndFlush(entity);
+                PatientObservationsComplaints updated = patientObservationsComplaintsRepository.saveAndFlush(entity);
+                if (dto.bloodGroup() != null) {
+                    patient.setBloodGroup(dto.bloodGroup());
+                }
+                patient.setPatientConditions(dto.patientConditions());
+                patientRepository.save(patient);
+                return updated;
             } catch (DataIntegrityViolationException | JpaSystemException ex) {
                 throw handleConstraintViolation(ex);
             }

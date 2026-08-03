@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.EncounterLifecycleStatus;
+import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import org.springframework.stereotype.Service;
@@ -33,7 +34,7 @@ public class EncounterBillingGuardService {
             );
         }
 
-        if (encounter.getEncounterStatus() == EncounterLifecycleStatus.CLOSED) {
+        if (encounter.getEncounterStatus() == EncounterStatus.CLOSED) {
             return;
         }
 

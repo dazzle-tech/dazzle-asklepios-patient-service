@@ -24,7 +24,7 @@ public record PatientProcedureUpdateDTO(
         @NotNull Long toDepartmentId,
 
         @NotNull
-        @FutureOrPresent
+//        @FutureOrPresent
         Instant scheduledDateTime,
         String notes,
         String extraDocumentation,

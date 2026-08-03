@@ -45,5 +45,6 @@ public record AvailabilityTemplateResponseVM(
     List<WorkingDayJson> workingDays,
 
     List<AvailabilityTemplateAllowedServiceResponseVM> allowedServices,
-    Long resourceId
+    Long resourceId,
+    Boolean allowWalkInBooking
 ){}

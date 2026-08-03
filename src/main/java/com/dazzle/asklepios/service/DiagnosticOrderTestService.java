@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
@@ -14,9 +15,11 @@ import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.Diagnosti
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestUpdateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.DiagnosticTestHelper;
+import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.service.helper.ICDTreeHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.diagnosticorders.DiagnosticOrderTestResponseVM;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -64,6 +67,7 @@ public class DiagnosticOrderTestService {
     private final DiagnosticTestHelper diagnosticTestHelper;
     private final DepartmentHelper departmentHelper;
     private final ICDTreeHelper icdTreeHelper;
+    private final FacilityHelper facilityHelper;
 
     private final BillingRuleEvaluationService billingRuleEvaluationService;
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
@@ -81,7 +85,7 @@ public class DiagnosticOrderTestService {
             DiagnosticOrderRepository diagnosticOrderRepository,
             DiagnosticTestHelper diagnosticTestHelper,
             DepartmentHelper departmentHelper,
-            ICDTreeHelper icdTreeHelper,
+            ICDTreeHelper icdTreeHelper, FacilityHelper facilityHelper,
             BillingRuleEvaluationService billingRuleEvaluationService,
             @org.springframework.context.annotation.Lazy DiagnosticOrderTestStatusService diagnosticOrderTestStatusService
     ) {
@@ -93,6 +97,7 @@ public class DiagnosticOrderTestService {
         this.diagnosticTestHelper = diagnosticTestHelper;
         this.departmentHelper = departmentHelper;
         this.icdTreeHelper = icdTreeHelper;
+        this.facilityHelper = facilityHelper;
         this.billingRuleEvaluationService = billingRuleEvaluationService;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
     }
@@ -116,8 +121,15 @@ public class DiagnosticOrderTestService {
         // Build a new entity instance from DTO fields
         DiagnosticOrder order = getDiagnosticOrder(dto.orderId());
         diagnosticTestHelper.getDiagnosticTest(dto.testId());
-        if (dto.receivedDepartmentId() != null)
+        Long finalReceivedDepartmentId = null;
+        if (dto.receivedDepartmentId() != null) {
+            finalReceivedDepartmentId = dto.receivedDepartmentId();
             departmentHelper.validateDepartmentExists(dto.receivedDepartmentId());
+        } else {
+            FacilityDTO facilityDTO = facilityHelper.getFacility(order.getFromFacilityId());
+
+            finalReceivedDepartmentId = dto.orderType() == TestType.LABORATORY ? facilityDTO.defaultLabDepartmentId() : dto.orderType() == TestType.RADIOLOGY ? facilityDTO.defaultRadDepartmentId() : null;
+        }
         if (dto.icdDiagnosisId() != null)
             icdTreeHelper.validateICDDiagnosisExists(dto.icdDiagnosisId());
 
@@ -140,7 +152,7 @@ public class DiagnosticOrderTestService {
 
 
         // Additional metadata and routing information
-        orderTest.setReceivedDepartmentId(dto.receivedDepartmentId());
+        orderTest.setReceivedDepartmentId(finalReceivedDepartmentId);
         orderTest.setReason(dto.reason());
         orderTest.setNotes(dto.notes());
         orderTest.setOrderType(dto.orderType());

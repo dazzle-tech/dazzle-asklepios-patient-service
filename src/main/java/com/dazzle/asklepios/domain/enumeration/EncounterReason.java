@@ -9,6 +9,7 @@ public enum EncounterReason
     VACCINATION,
     DIAGNOSTIC_TEST,
     FIRST_TIME_VISIT,
-    VIRTUAL_VISIT
+    VIRTUAL_VISIT,
+    REFERRAL
 }
 

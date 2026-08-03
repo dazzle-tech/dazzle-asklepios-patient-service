@@ -16,8 +16,7 @@ import com.dazzle.asklepios.domain.BillingWallet;
 import com.dazzle.asklepios.domain.WalletTransaction;
 import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
-import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
-import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
+import com.dazzle.asklepios.domain.enumeration.CoverageStatus;import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
@@ -736,10 +735,11 @@ public class PatientPaymentsService {
             );
 
             if (encounter.getEncounterType().equals(EncounterType.EMERGENCY)) {
+
                 encounter.setTreatmentStatus(TreatmentStatus.WAITING_TRIAGE);
             } else {
                 encounter.setTreatmentStatus(TreatmentStatus.NEW);
-            }
+           }
 
             encounterRepository.saveAndFlush(encounter);
 
@@ -914,6 +914,7 @@ public class PatientPaymentsService {
                 encounter.setTreatmentStatus(TreatmentStatus.WAITING_TRIAGE);
             } else {
                 encounter.setTreatmentStatus(TreatmentStatus.NEW);
+
             }
 
             encounterRepository.saveAndFlush(encounter);

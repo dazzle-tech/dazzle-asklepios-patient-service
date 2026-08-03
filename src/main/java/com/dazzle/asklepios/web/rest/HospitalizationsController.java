@@ -2,13 +2,15 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.Hospitalization;
 import com.dazzle.asklepios.service.HospitalizationsService;
+import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationCancelDTO;
 import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationsCreateDTO;
 import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationsUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.vm.Hospitalization.HospitalizationsResponseVM;
 import jakarta.validation.Valid;
+
 import java.net.URI;
 import java.util.List;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
@@ -41,12 +43,12 @@ public class HospitalizationsController {
         this.hospitalizationsService = service;
     }
 
-
     @PostMapping("/hospitalizations")
-    public ResponseEntity<HospitalizationsResponseVM> create(
+    public ResponseEntity<Hospitalization> create(
             @Valid @RequestBody HospitalizationsCreateDTO hospitalizationsCreateDTO
     ) {
         LOG.debug("REST create Hospitalization payload={}", hospitalizationsCreateDTO);
+
         if (hospitalizationsCreateDTO == null) {
             throw new BadRequestAlertException(
                     "Patient admission payload is required",
@@ -55,47 +57,83 @@ public class HospitalizationsController {
             );
         }
 
-        Hospitalization created = hospitalizationsService.create(hospitalizationsCreateDTO);
+        Hospitalization created =
+                hospitalizationsService.create(hospitalizationsCreateDTO);
+
         LOG.info("REST create Hospitalization - created id={}", created.getId());
 
         return ResponseEntity
-                .created(URI.create("/api/patient/admissions/" + created.getId()))
-                .body(HospitalizationsResponseVM.ofEntity(created));
+                .created(
+                        URI.create(
+                                "/api/patient/hospitalizations/" + created.getId()
+                        )
+                )
+                .body(created);
     }
 
-
     @PutMapping("/hospitalizations")
-    public ResponseEntity<HospitalizationsResponseVM> update(
+    public ResponseEntity<Hospitalization> update(
             @Valid @RequestBody HospitalizationsUpdateDTO hospitalizationsUpdateDTO
     ) {
         LOG.debug("REST update Hospitalization payload={}", hospitalizationsUpdateDTO);
-        Hospitalization updated = hospitalizationsService.update(hospitalizationsUpdateDTO);
+
+        Hospitalization updated =
+                hospitalizationsService.update(hospitalizationsUpdateDTO);
+
         LOG.info("REST update Hospitalization - updated id={}", updated.getId());
 
-        return ResponseEntity.ok(
-                HospitalizationsResponseVM.ofEntity(updated)
-        );
+        return ResponseEntity.ok(updated);
     }
 
+    @PutMapping("/hospitalizations/cancel")
+    public ResponseEntity<Hospitalization> cancel(
+            @Valid @RequestBody HospitalizationCancelDTO hospitalizationCancelDTO
+    ) {
+        LOG.debug("REST cancel Hospitalization payload={}", hospitalizationCancelDTO);
+
+        Hospitalization cancelled =
+                hospitalizationsService.cancel(hospitalizationCancelDTO);
+
+        LOG.info("REST cancel Hospitalization - cancelled id={}", cancelled.getId());
+
+        return ResponseEntity.ok(cancelled);
+    }
 
     @DeleteMapping("/hospitalizations/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         LOG.debug("REST delete Hospitalization id={}", id);
+
         hospitalizationsService.delete(id);
+
         LOG.info("REST delete Hospitalization - deleted id={}", id);
+
         return ResponseEntity.noContent().build();
     }
 
-
     @GetMapping("/hospitalizations")
-    public ResponseEntity<List<HospitalizationsResponseVM>> list(
+    public ResponseEntity<List<Hospitalization>> list(
             @RequestParam Long patientId,
+            @RequestParam(defaultValue = "false") boolean showCancelled,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST list Hospitalization patientId={} pageable={}", patientId, pageable);
+        LOG.debug(
+                "REST list Hospitalization patientId={} showCancelled={} pageable={}",
+                patientId,
+                showCancelled,
+                pageable
+        );
+
         Page<Hospitalization> page =
-                hospitalizationsService.findByPatientId(patientId, pageable);
-        LOG.info("REST list Hospitalization - returned {} items", page.getContent().size());
+                hospitalizationsService.findByPatientId(
+                        patientId,
+                        showCancelled,
+                        pageable
+                );
+
+        LOG.info(
+                "REST list Hospitalization - returned {} items",
+                page.getContent().size()
+        );
 
         HttpHeaders headers =
                 com.dazzle.asklepios.web.rest.Helper.PaginationUtil
@@ -104,11 +142,7 @@ public class HospitalizationsController {
                                 page
                         );
 
-        List<HospitalizationsResponseVM> body =
-                page.getContent()
-                        .stream()
-                        .map(HospitalizationsResponseVM::ofEntity)
-                        .toList();
+        List<Hospitalization> body = page.getContent();
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }

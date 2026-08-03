@@ -1,6 +1,6 @@
 package com.dazzle.asklepios.web.rest.vm.patientEncounter;
 
-import com.dazzle.asklepios.domain.AppointmentFromTemplate;
+import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.EncounterLifecycleStatus;
@@ -12,6 +12,7 @@ import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 public record PatientEncounterVM(
 
@@ -22,21 +23,19 @@ public record PatientEncounterVM(
         Long departmentId,
         Long practitionerId,
 
-        AppointmentFromTemplate appointment,
+        Appointment appointment,
 
         EncounterType encounterType,
         EncounterReason encounterReason,
         EncounterPriority priorityLevel,
-        EncounterLifecycleStatus encounterStatus,
-        TreatmentStatus treatmentStatus,
-
+        TreatmentStatus status,
         String originType,
         String originName,
         String notes,
 
         Integer departmentDailySequenceNumber,
         LocalDate encounterDate,
-
+        LocalTime encounterTime,
         Instant startedDate,
         String startedBy,
 
@@ -46,12 +45,20 @@ public record PatientEncounterVM(
         Boolean hasOrder,
         Boolean isObserved,
         Instant createdAt,
-        LocalDateTime dischargeAt
+        LocalDateTime dischargeAt,
+        String historyOfPresentIllness
 
 ) {
 
-    public static PatientEncounterVM ofEntity(PatientEncounter encounter, Boolean hasOrder, Boolean hasPrescription, Boolean hasObservation) {
-        if (encounter == null) return null;
+    public static PatientEncounterVM ofEntity(
+            PatientEncounter encounter,
+            Boolean hasOrder,
+            Boolean hasPrescription,
+            Boolean hasObservation
+    ) {
+        if (encounter == null) {
+            return null;
+        }
 
         return new PatientEncounterVM(
                 encounter.getId(),
@@ -62,13 +69,12 @@ public record PatientEncounterVM(
                 encounter.getDepartmentId(),
                 encounter.getPractitionerId(),
 
-                encounter.getAppointment()!=null? encounter.getAppointment() : null,
+                encounter.getAppointment(),
 
                 encounter.getEncounterType(),
                 encounter.getEncounterReason(),
                 encounter.getPriorityLevel(),
-                encounter.getEncounterStatus(),
-                encounter.getTreatmentStatus(),
+                encounter.getStatus(),
 
                 encounter.getOriginType(),
                 encounter.getOriginName(),
@@ -76,15 +82,19 @@ public record PatientEncounterVM(
 
                 encounter.getDepartmentDailySequenceNumber(),
                 encounter.getEncounterDate(),
+                encounter.getEncounterTime(),
                 encounter.getStartedDate(),
                 encounter.getStartedBy(),
+
                 encounter.getChiefComplaint(),
+
                 hasPrescription,
                 hasOrder,
                 hasObservation,
-                encounter.getCreatedDate(),
-                encounter.getDischargeAt()
 
+                encounter.getCreatedDate(),
+                encounter.getDischargeAt(),
+                encounter.getHistoryOfPresentIllness()
         );
     }
-}
+   }

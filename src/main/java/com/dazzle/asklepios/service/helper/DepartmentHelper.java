@@ -6,6 +6,8 @@ import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 
 @Service
 public class DepartmentHelper {
@@ -40,4 +42,27 @@ public class DepartmentHelper {
             );
         }
     }
+    public List<DepartmentDTO> getBookableDepartment() {
+        try {
+            return departmentClient.getBookableDepartments();
+        } catch (feign.FeignException.NotFound ex) {
+            throw new NotFoundAlertException(
+                    "Department issue " + ex.getMessage(),
+                    "department",
+                    "notfound"
+            );
+        }
+    }
+    public DepartmentDTO getDepartmentInternal(Long departmentId) {
+        try {
+            return departmentClient.getDepartmentInternal(departmentId);
+        } catch (feign.FeignException.NotFound ex) {
+            throw new NotFoundAlertException(
+                    "Department not found: " + departmentId,
+                    "department",
+                    "notfound"
+            );
+        }
+    }
+
 }

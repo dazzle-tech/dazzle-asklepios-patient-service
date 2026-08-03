@@ -11,11 +11,13 @@ public record PractitionerDTO(
         String firstName,
         String lastName,
         String email,
+        String phoneNumber,
         String specialty,
         String subSpecialty,
         String defaultMedicalLicense,
         String secondaryMedicalLicense,
         String educationalLevel,
         String jobRole,
-        List<WorkingDayJson> workingDays
+        List<WorkingDayJson> workingDays,
+        Long userId
 ) {}

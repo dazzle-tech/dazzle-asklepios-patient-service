@@ -2,11 +2,16 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.CurrentMedication;
 import com.dazzle.asklepios.service.CurrentMedicationService;
+import com.dazzle.asklepios.service.dto.currentMedication.CurrentMedicationCancelDTO;
 import com.dazzle.asklepios.service.dto.currentMedication.CurrentMedicationCreateDTO;
 import com.dazzle.asklepios.service.dto.currentMedication.CurrentMedicationUpdateDTO;
-import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.validation.Valid;
+
+import java.net.URI;
+import java.util.List;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springdoc.core.annotations.ParameterObject;
@@ -15,21 +20,29 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
-
-import java.net.URI;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/patient")
 public class CurrentMedicationController {
 
-    private static final Logger LOG = LoggerFactory.getLogger(CurrentMedicationController.class);
+    private static final Logger LOG =
+            LoggerFactory.getLogger(CurrentMedicationController.class);
 
     private final CurrentMedicationService currentMedicationService;
 
-    public CurrentMedicationController(CurrentMedicationService currentMedicationService) {
+    public CurrentMedicationController(
+            CurrentMedicationService currentMedicationService
+    ) {
         this.currentMedicationService = currentMedicationService;
     }
 
@@ -47,12 +60,21 @@ public class CurrentMedicationController {
             );
         }
 
-        CurrentMedication created = currentMedicationService.create(createDTO);
+        CurrentMedication created =
+                currentMedicationService.create(createDTO);
 
-        LOG.info("REST create CurrentMedication - created id={}", created.getId());
+        LOG.info(
+                "REST create CurrentMedication - created id={}",
+                created.getId()
+        );
 
         return ResponseEntity
-                .created(URI.create("/api/patient/current-medication/" + created.getId()))
+                .created(
+                        URI.create(
+                                "/api/patient/current-medication/"
+                                        + created.getId()
+                        )
+                )
                 .body(created);
     }
 
@@ -62,11 +84,37 @@ public class CurrentMedicationController {
     ) {
         LOG.debug("REST update CurrentMedication payload={}", updateDTO);
 
-        CurrentMedication updated = currentMedicationService.update(updateDTO);
+        CurrentMedication updated =
+                currentMedicationService.update(updateDTO);
 
-        LOG.info("REST update CurrentMedication - updated id={}", updated.getId());
+        LOG.info(
+                "REST update CurrentMedication - updated id={}",
+                updated.getId()
+        );
 
         return ResponseEntity.ok(updated);
+    }
+
+    @PutMapping("/current-medication/cancel")
+    public ResponseEntity<CurrentMedication> cancel(
+            @Valid @RequestBody CurrentMedicationCancelDTO currentMedicationCancelDTO
+    ) {
+        LOG.debug(
+                "REST cancel CurrentMedication payload={}",
+                currentMedicationCancelDTO
+        );
+
+        CurrentMedication cancelled =
+                currentMedicationService.cancel(
+                        currentMedicationCancelDTO
+                );
+
+        LOG.info(
+                "REST cancel CurrentMedication - cancelled id={}",
+                cancelled.getId()
+        );
+
+        return ResponseEntity.ok(cancelled);
     }
 
     @DeleteMapping("/current-medication/{id}")
@@ -75,7 +123,10 @@ public class CurrentMedicationController {
 
         currentMedicationService.delete(id);
 
-        LOG.info("REST delete CurrentMedication - deleted id={}", id);
+        LOG.info(
+                "REST delete CurrentMedication - deleted id={}",
+                id
+        );
 
         return ResponseEntity.noContent().build();
     }
@@ -83,12 +134,22 @@ public class CurrentMedicationController {
     @GetMapping("/current-medication")
     public ResponseEntity<List<CurrentMedication>> list(
             @RequestParam Long patientId,
+            @RequestParam(defaultValue = "false") boolean showCancelled,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST list CurrentMedication patientId={} pageable={}", patientId, pageable);
+        LOG.debug(
+                "REST list CurrentMedication patientId={} showCancelled={} pageable={}",
+                patientId,
+                showCancelled,
+                pageable
+        );
 
         Page<CurrentMedication> page =
-                currentMedicationService.findByPatientId(patientId, pageable);
+                currentMedicationService.findByPatientId(
+                        patientId,
+                        showCancelled,
+                        pageable
+                );
 
         HttpHeaders headers =
                 PaginationUtil.generatePaginationHttpHeaders(
@@ -96,20 +157,36 @@ public class CurrentMedicationController {
                         page
                 );
 
-        LOG.debug("REST list CurrentMedication - returning {} records", page.getContent().size());
+        LOG.debug(
+                "REST list CurrentMedication - returning {} records",
+                page.getContent().size()
+        );
 
-        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+        List<CurrentMedication> body = page.getContent();
+
+        return new ResponseEntity<>(
+                body,
+                headers,
+                HttpStatus.OK
+        );
     }
+
     @GetMapping("/current-medication/exists")
     public ResponseEntity<Boolean> exists(
             @RequestParam Long patientId,
             @RequestParam Long activeIngredientId
     ) {
-        LOG.debug("REST check CurrentMedication exists patientId={} activeIngredientId={}",
-                patientId, activeIngredientId);
+        LOG.debug(
+                "REST check CurrentMedication exists patientId={} activeIngredientId={}",
+                patientId,
+                activeIngredientId
+        );
 
-        boolean exists = currentMedicationService
-                .existsByPatientAndIngredient(patientId, activeIngredientId);
+        boolean exists =
+                currentMedicationService.existsByPatientAndIngredient(
+                        patientId,
+                        activeIngredientId
+                );
 
         return ResponseEntity.ok(exists);
     }

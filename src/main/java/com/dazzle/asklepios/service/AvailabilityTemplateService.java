@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.AvailabilityTemplate;
 import com.dazzle.asklepios.domain.AvailabilityTemplateAllowedService;
 import com.dazzle.asklepios.domain.AvailabilityTemplateInterval;
@@ -25,6 +26,7 @@ import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.service.helper.ServiceHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -46,6 +48,7 @@ import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class AvailabilityTemplateService {
 
     private static final Logger LOG = LoggerFactory.getLogger(AvailabilityTemplateService.class);
@@ -62,29 +65,6 @@ public class AvailabilityTemplateService {
 
     private final AvailabilityTemplateIntervalBreakRepository availabilityTemplateIntervalBreakRepository;
 
-
-    public AvailabilityTemplateService(
-            AvailabilityTemplateRepository availabilityTemplateRepository,
-            FacilityHelper facilityHelper,
-            DepartmentHelper departmentHelper,
-            ServiceHelper serviceHelper,
-            PractitionerHelper practitionerHelper,
-            AvailabilityTemplateAllowedServiceRepository availabilityTemplateAllowedServiceRepository,
-            AvailabilityTemplateIntervalRepository availabilityTemplateIntervalRepository,
-            AvailabilityTemplateLogRepository availabilityTemplateLogRepository,
-            AvailabilityTemplateIntervalBreakRepository availabilityTemplateIntervalBreakRepository
-    ) {
-        this.availabilityTemplateRepository = availabilityTemplateRepository;
-        this.facilityHelper = facilityHelper;
-        this.departmentHelper = departmentHelper;
-        this.serviceHelper = serviceHelper;
-        this.practitionerHelper = practitionerHelper;
-        this.availabilityTemplateAllowedServiceRepository = availabilityTemplateAllowedServiceRepository;
-        this.availabilityTemplateIntervalRepository = availabilityTemplateIntervalRepository;
-        this.availabilityTemplateLogRepository = availabilityTemplateLogRepository;
-
-        this.availabilityTemplateIntervalBreakRepository = availabilityTemplateIntervalBreakRepository;
-    }
 
     public AvailabilityTemplate create(AvailabilityTemplateCreateDTO dto) {
         LOG.debug("create availability template {}", dto);
@@ -161,14 +141,23 @@ public class AvailabilityTemplateService {
 
     public AvailabilityTemplate cloneTemplate(Long sourceTemplateId) {
         LOG.debug("clone availability template sourceTemplateId={}", sourceTemplateId);
+        try {
+            AvailabilityTemplate source = getAvailabilityTemplate(sourceTemplateId);
 
-        AvailabilityTemplate source = getAvailabilityTemplate(sourceTemplateId);
+            AvailabilityTemplate savedClone = cloneSingleTemplate(source, null, resolveCloneName(source));
 
-        AvailabilityTemplate savedClone = cloneSingleTemplate(source, null, resolveCloneName(source));
+            cloneResourceTemplates(source, savedClone);
 
-        cloneResourceTemplates(source, savedClone);
+            return savedClone;
+        } catch (DataIntegrityViolationException | JpaSystemException constraintException) {
+            handleConstraintsOnCreateOrUpdate(constraintException);
 
-        return savedClone;
+            throw new BadRequestAlertException(
+                    "db.constraint",
+                    ENTITY_NAME,
+                    "Database constraint violated while saving availability template (check required fields or unique constraints)."
+            );
+        }
     }
 
 
@@ -340,6 +329,48 @@ public class AvailabilityTemplateService {
         return availabilityTemplateLogRepository.findAllByTemplateIdOrderByLogDateDesc(templateId);
     }
 
+    @Transactional(readOnly = true)
+    public Page<AvailabilityTemplate> getAllPublishedTemplate(Pageable pageable) {
+        LOG.debug("Get availability templates by status=PUBLISHED");
+
+        Long facilityId = getFacility();
+
+        String login = SecurityUtils
+                .getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException("user", ENTITY_NAME, "Current user is required"));
+
+        List<Long> bookableDepartmentIds = departmentHelper.getBookableDepartment().stream()
+                .map(DepartmentDTO::id)
+                .toList();
+
+        if (bookableDepartmentIds == null || bookableDepartmentIds.isEmpty()) {
+            LOG.debug("[PUBLISHED_TEMPLATE] No bookable departments found for logged-in user={}", login);
+            return Page.empty(pageable);
+        }
+
+        Page<AvailabilityTemplate> page =
+                availabilityTemplateRepository.findAllByFacilityIdAndStatusAndDepartmentIdIn(
+                        facilityId,
+                        TemplateStatus.PUBLISHED,
+                        bookableDepartmentIds,
+                        pageable
+                );
+
+        page.getContent().forEach(this::initializeAllowedServices);
+
+        return page;
+    }
+
+    @Transactional(readOnly = true)
+    public Page<AvailabilityTemplate> getAllForDepartmentAndActiveAndPublish(Long departmentId, Pageable pageable) {
+        LOG.debug("get all availability templates for departmentId={}, status={} and active", departmentId, TemplateStatus.PUBLISHED);
+
+        Page<AvailabilityTemplate> page = availabilityTemplateRepository.findAllByDepartmentIdAndIsActiveTrueAndStatus(departmentId, TemplateStatus.PUBLISHED, pageable);
+        page.getContent().forEach(this::initializeAllowedServices);
+
+        return page;
+    }
+
     private void validateTemplateOrSubTemplateHasIntervals(Long templateId) {
         boolean templateHasIntervals = availabilityTemplateIntervalRepository.existsByTemplate_Id(templateId);
 
@@ -437,6 +468,7 @@ public class AvailabilityTemplateService {
 
         validateWorkingDays(dto.workingDays());
         entity.setWorkingDays(dto.workingDays() == null ? List.of() : dto.workingDays());
+        entity.setAllowWalkInBooking(dto.allowWalkInBooking());
         return entity;
     }
 
@@ -482,6 +514,10 @@ public class AvailabilityTemplateService {
         if (dto.workingDays() != null) {
             validateWorkingDays(dto.workingDays());
             entity.setWorkingDays(dto.workingDays());
+        }
+
+        if(dto.allowWalkInBooking()!=null){
+            entity.setAllowWalkInBooking(dto.allowWalkInBooking());
         }
     }
 

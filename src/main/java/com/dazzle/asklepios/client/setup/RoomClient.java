@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.client.setup;
 
+import com.dazzle.asklepios.client.setup.dto.RoomDTO;
 import com.dazzle.asklepios.config.SetupServiceFeignConfig;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -12,4 +13,7 @@ public interface RoomClient {
 
     @GetMapping("/api/setup/room/{id}")
     ResponseEntity<Void> existsRoom(@PathVariable("id") @NotNull Long bedId );
+
+    @GetMapping("/api/setup/room/{id}")
+    RoomDTO getRoom(@PathVariable("id") Long id);
 }

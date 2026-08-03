@@ -42,7 +42,6 @@ public class PatientPrescriptionMedicationService {
 
         if (prescriptionMedicationCreateDTO.activeIngredientId != null)
             activeIngredientClient.existsActiveIngredient(prescriptionMedicationCreateDTO.activeIngredientId);
-
         if (prescriptionMedicationCreateDTO.medicationsId != null)
             brandMedicationHelper.validateBrandMedicationExists(prescriptionMedicationCreateDTO.medicationsId);
         if (prescriptionMedicationCreateDTO.indicationIcd != null)
@@ -84,7 +83,6 @@ public class PatientPrescriptionMedicationService {
 
         PatientPrescriptionMedication entity = patientPrescriptionMedicationRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescriptionMedication not found: " + id));
-
         if (prescriptionMedicationUpdateDTO.instructionsType != null)
             entity.setInstructionsType(prescriptionMedicationUpdateDTO.instructionsType);
 
@@ -143,8 +141,8 @@ public class PatientPrescriptionMedicationService {
             entity.setExtraDocumentation(prescriptionMedicationUpdateDTO.extraDocumentation);
         if (prescriptionMedicationUpdateDTO.medicationsId != null) {
             brandMedicationHelper.validateBrandMedicationExists(prescriptionMedicationUpdateDTO.medicationsId);
-            entity.setMedicationsId(prescriptionMedicationUpdateDTO.medicationsId);
         }
+        entity.setMedicationsId(prescriptionMedicationUpdateDTO.medicationsId);
         if (prescriptionMedicationUpdateDTO.activeIngredientId != null) {
             activeIngredientClient.existsActiveIngredient(prescriptionMedicationUpdateDTO.activeIngredientId);
             entity.setActiveIngredientId(prescriptionMedicationUpdateDTO.activeIngredientId);

@@ -1,15 +1,21 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
+import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.PainAssessment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.PainLevel;
 import com.dazzle.asklepios.domain.enumeration.Severity;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.PainAssessmentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.painAssessment.PainAssessmentCreateDTO;
 import com.dazzle.asklepios.service.dto.painAssessment.PainAssessmentUpdateDTO;
+import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +27,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -35,6 +44,8 @@ public class PainAssessmentService {
     private final PainAssessmentRepository painAssessmentRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final NotificationHelper notificationHelper;
+    private final DepartmentHelper departmentHelper;
 
     public PainAssessment create(PainAssessmentCreateDTO dto) {
         LOG.info("[CREATE] PainAssessment payload={}", dto);
@@ -65,8 +76,12 @@ public class PainAssessmentService {
                     .isActive(true)
                     .build();
 
-            return painAssessmentRepository.saveAndFlush(entity);
+            PainAssessment saved = painAssessmentRepository.saveAndFlush(entity);
 
+
+            notificationForSeverePain(saved, patient, encounter);
+
+            return saved;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
         }
@@ -99,7 +114,11 @@ public class PainAssessmentService {
             entity.setIsActive(dto.isActive());
 
             try {
-                return painAssessmentRepository.saveAndFlush(entity);
+                PainAssessment saved = painAssessmentRepository.saveAndFlush(entity);
+
+                notificationForSeverePain(saved, patient, encounter);
+
+                return saved;
             } catch (DataIntegrityViolationException | JpaSystemException ex) {
                 throw handleConstraintViolation(ex);
             }
@@ -171,5 +190,60 @@ public class PainAssessmentService {
             case LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7 -> Severity.MODERATE;
             case LEVEL_8, LEVEL_9, LEVEL_10 -> Severity.SEVERE;
         };
+    }
+
+    private void notificationForSeverePain(PainAssessment painAssessment, Patient patient, PatientEncounter encounter) {
+        if (painAssessment == null || patient == null || encounter == null) {
+            return;
+        }
+
+        if (!isSeverePain(painAssessment.getPainDegree())) {
+            return;
+        }
+
+        Long departmentId = encounter.getDepartmentId();
+        DepartmentDTO departmentDTO = null;
+        if (departmentId == null) {
+            LOG.warn("Skip severe pain notification because encounter department is missing. painAssessmentId={}, encounterId={}", painAssessment.getId(), encounter.getId());
+            return;
+        } else {
+            departmentDTO = departmentHelper.getDepartment(departmentId);
+        }
+
+        try {
+            String login = SecurityUtils.getCurrentUserLogin().orElse(null);
+
+            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, painAssessment.getCreatedBy(), patient, null,false);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("patient_id", patient.getId());
+            data.put("patient_name", notificationHelper.getPatientName(patient));
+            data.put("encounter_id", encounter.getId());
+            data.put("department_id", departmentId);
+            data.put("department_name", departmentDTO.name());
+            data.put("pain_assessment_id", painAssessment.getId());
+            data.put("pain_level", painAssessment.getPainLevel());
+            data.put("pain_degree", painAssessment.getPainDegree() != null ? painAssessment.getPainDegree().toString() : "");
+            data.put("pain_pattern", painAssessment.getPainPattern() != null ? painAssessment.getPainPattern().toString() : "");
+            data.put("pain_description", painAssessment.getPainDescription() != null ? painAssessment.getPainDescription() : "");
+            LOG.debug(
+                    "Creating severe pain  notification. painAssessmentId={}, patientId={}, departmentId={}, recipientsByRule={}",
+                    painAssessment.getId(),
+                    patient.getId(),
+                    departmentId,
+                    recipientsByRule
+            );
+
+            notificationHelper.sendNotification(null, NotificationCode.PAIN_LEVEL_SEVERE, recipientsByRule, data, "PAIN_ASSESSMENT", painAssessment.getId());
+        } catch (Exception e) {
+            LOG.warn("Failed to create severe pain  notification. painAssessmentId={}, error={}", painAssessment.getId(), e.getMessage());
+        }
+    }
+
+    private boolean isSeverePain(Severity painDegree) {
+        if (painDegree == null) {
+            return false;
+        }
+
+        return Severity.SEVERE == painDegree;
     }
 }

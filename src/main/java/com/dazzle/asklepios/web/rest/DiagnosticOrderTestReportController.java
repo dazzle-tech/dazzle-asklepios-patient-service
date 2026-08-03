@@ -1,10 +1,9 @@
 package com.dazzle.asklepios.web.rest;
 
-import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.RadiologyImageStatus;
-import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.domain.enumeration.Severity;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportImageStatusLogRepository;
 import com.dazzle.asklepios.service.DiagnosticOrderTestReportService;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportCreateDTO;
@@ -13,7 +12,6 @@ import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportRevie
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportUpdateDTO;
 import com.dazzle.asklepios.service.dto.radiology.PacsStudyDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
-import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportImageStatusLogResponseVM;
 import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportResponseVM;
 import com.dazzle.asklepios.web.rest.vm.radiology.RadiologyImageStatusResponseVM;
@@ -62,6 +60,7 @@ public class DiagnosticOrderTestReportController {
 
     private final DiagnosticOrderTestReportService reportService;
     private final DiagnosticOrderTestReportImageStatusLogRepository logRepository;
+
     public DiagnosticOrderTestReportController(DiagnosticOrderTestReportService reportService, DiagnosticOrderTestReportImageStatusLogRepository logRepository) {
         this.reportService = reportService;
 
@@ -79,7 +78,7 @@ public class DiagnosticOrderTestReportController {
             @RequestParam(name = "orderIdIn", required = false) List<Long> orderIdIn,
             @RequestParam(name = "orderTestId", required = false) Long orderTestId,
 
-            @RequestParam(name = "severity", required = false) String severity,
+            @RequestParam(name = "severity", required = false) Severity severity,
 
             @RequestParam(name = "approvedBy", required = false) String approvedBy,
             @RequestParam(name = "rejectedBy", required = false) String rejectedBy,
@@ -107,11 +106,13 @@ public class DiagnosticOrderTestReportController {
             @RequestParam(name = "fromDepartmentIn", required = false) List<Long> fromDepartmentIn,
             @RequestParam(name = "patientName", required = false) String patientName,
             @RequestParam(name = "mrn", required = false) String mrn,
+            @RequestParam(name = "patientIdIn", required = false) List<Long> patientIdIn,
+            @RequestParam(name = "orderNumber", required = false) Long orderNumber,
 
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("[RadiologyReport] FILTER orderIdIn={} orderTestId={} fromDepartmentIn={} patientName={} mrn={}",
-                orderIdIn, orderTestId, fromDepartmentIn, patientName, mrn);
+        LOG.debug("[RadiologyReport] FILTER orderIdIn={} orderTestId={} fromDepartmentIn={} patientName={} mrn={} patientIdIn={} orderNumber={}",
+                orderIdIn, orderTestId, fromDepartmentIn, patientName, mrn, patientIdIn, orderNumber);
 
         Page<DiagnosticOrderTestReportResponseVM> page = reportService.filterReports(
                 id,
@@ -139,6 +140,8 @@ public class DiagnosticOrderTestReportController {
                 fromDepartmentIn,
                 patientName,
                 mrn,
+                patientIdIn,
+                orderNumber,
                 pageable
         );
 
@@ -147,7 +150,6 @@ public class DiagnosticOrderTestReportController {
         );
 
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
-
     }
 
     @GetMapping("/radiology/reports/by-test/{orderTestId}")
@@ -167,6 +169,7 @@ public class DiagnosticOrderTestReportController {
                 DiagnosticOrderTestReportResponseVM.ofEntity(reportOpt.get())
         );
     }
+
     @PostMapping("/radiology/reports")
     public ResponseEntity<DiagnosticOrderTestReportResponseVM> create(@Valid @RequestBody DiagnosticOrderTestReportCreateDTO orderTestReportCreateDTO) {
         LOG.debug("[RadiologyReport] CREATE payload={}", orderTestReportCreateDTO);
