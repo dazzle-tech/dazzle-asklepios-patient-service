@@ -39,9 +39,9 @@ import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -66,7 +66,6 @@ import java.util.stream.Collectors;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
-@RequiredArgsConstructor
 @Transactional
 public class PatientEncounterService {
 
@@ -86,6 +85,41 @@ public class PatientEncounterService {
     private final DepartmentHelper departmentHelper;
     private final PractitionerHelper practitionerHelper;
     private final PractitionerClient practitionerClient;
+    private final BillingEngineService billingEngineService;
+
+    public PatientEncounterService(
+            PatientEncounterRepository patientEncounterRepository,
+            PatientRepository patientRepository,
+            EntityManager entityManager,
+            EncounterAssignToBedService encounterAssignToBedService,
+            AdditionalMeasurementsRepository additionalMeasurementsRepository,
+            PainAssessmentRepository painAssessmentRepository,
+            VitalSignsRepository vitalSignsRepository,
+            PatientObservationsComplaintsRepository patientObservationsComplaintsRepository,
+            BodyMeasurementsRepository bodyMeasurementsRepository,
+            AppointmentFromTemplateRepository appointmentFromTemplateRepository,
+            FacilityHelper facilityHelper,
+            DepartmentHelper departmentHelper,
+            PractitionerHelper practitionerHelper,
+            PractitionerClient practitionerClient,
+            @Lazy BillingEngineService billingEngineService
+    ) {
+        this.patientEncounterRepository = patientEncounterRepository;
+        this.patientRepository = patientRepository;
+        this.entityManager = entityManager;
+        this.encounterAssignToBedService = encounterAssignToBedService;
+        this.additionalMeasurementsRepository = additionalMeasurementsRepository;
+        this.painAssessmentRepository = painAssessmentRepository;
+        this.vitalSignsRepository = vitalSignsRepository;
+        this.patientObservationsComplaintsRepository = patientObservationsComplaintsRepository;
+        this.bodyMeasurementsRepository = bodyMeasurementsRepository;
+        this.appointmentFromTemplateRepository = appointmentFromTemplateRepository;
+        this.facilityHelper = facilityHelper;
+        this.departmentHelper = departmentHelper;
+        this.practitionerHelper = practitionerHelper;
+        this.practitionerClient = practitionerClient;
+        this.billingEngineService = billingEngineService;
+    }
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
         LOG.info("[CREATE] PatientEncounter payload={}", createDTO);
@@ -496,6 +530,12 @@ public class PatientEncounterService {
                     "cancel.notAllowed.hasObservation"
             );
         }
+
+        billingEngineService.cancelEncounter(
+                encounterId,
+                "Clinical encounter cancelled",
+                "ENCOUNTER-CANCEL:" + encounterId
+        );
 
         encounter.setTreatmentStatus(TreatmentStatus.CANCELLED);
         encounter.setEncounterStatus(EncounterLifecycleStatus.CANCELLED);

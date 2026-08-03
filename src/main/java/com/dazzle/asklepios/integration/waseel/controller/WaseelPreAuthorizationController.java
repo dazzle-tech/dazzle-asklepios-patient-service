@@ -1,12 +1,14 @@
 package com.dazzle.asklepios.integration.waseel.controller;
 
 
+import com.dazzle.asklepios.integration.waseel.dto.PreAuthorizationCommunicationHistoryResponse;
 import com.dazzle.asklepios.integration.waseel.dto.PreAuthorizationTrackingResponse;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityCheckResponse;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.PreAuthorizationCancelRequest;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.PreAuthorizationCommunicationRequest;
 import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationCommunicationHistoryService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationTrackingService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelPreAuthorizationService;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +22,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/patient")
 @RequiredArgsConstructor
@@ -29,6 +33,7 @@ public class WaseelPreAuthorizationController {
     private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
     private final PreAuthorizationTrackingService trackingService;
+    private final PreAuthorizationCommunicationHistoryService communicationHistoryService;
 
     @GetMapping("/internal/waseel/pre-authorizations/tracking")
     public Page<PreAuthorizationTrackingResponse> getAll(Pageable pageable) {
@@ -40,9 +45,16 @@ public class WaseelPreAuthorizationController {
         return trackingService.findById(id);
     }
 
+    @GetMapping("/internal/waseel/pre-authorizations/{preAuthorizationId}/communications")
+    public List<PreAuthorizationCommunicationHistoryResponse> getCommunications(
+            @PathVariable Long preAuthorizationId
+    ) {
+        return communicationHistoryService.list(preAuthorizationId);
+    }
+
     @GetMapping("/internal/waseel/pre-authorizations/search")
     public Object search(
-            @RequestParam("preAuthorizationId") Long preAuthorizationId,
+            @RequestParam(value = "preAuthorizationId", required = false) Long preAuthorizationId,
             @RequestParam("requestId") Long requestId
     ) {
         return service.searchAndUpdate(preAuthorizationId, requestId);

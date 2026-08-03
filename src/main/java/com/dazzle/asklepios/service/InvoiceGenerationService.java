@@ -43,7 +43,9 @@ import com.dazzle.asklepios.service.dto.billing.GenerateInvoiceResult;
 import com.dazzle.asklepios.service.dto.billing.PatientFinancialDocumentResponse;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import com.dazzle.asklepios.integration.waseel.event.InsuranceInvoiceIssuedEvent;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -121,6 +123,8 @@ public class InvoiceGenerationService {
     private final InvoiceChargePaymentSyncService invoiceChargePaymentSyncService;
 
     private final EncounterChargeLineEnsuringService encounterChargeLineEnsuringService;
+    private final ApplicationEventPublisher applicationEventPublisher;
+    private final EncounterBillingGuardService encounterBillingGuardService;
 
     @Transactional(readOnly = true)
     public List<BillableVisitResponse> findBillableVisits(Long patientId) {
@@ -283,6 +287,9 @@ public class InvoiceGenerationService {
     ) {
         PatientEncounter encounter = requireEncounter(encounterId);
 
+        encounterBillingGuardService
+                .requireClinicallyCompleteForFinancialSettlement(encounter);
+
         if (resolveBillingStatus(encounter) == EncounterBillingStatus.INVOICED) {
             throw new BadRequestAlertException(
                     "Encounter is already invoiced.",
@@ -387,6 +394,9 @@ public class InvoiceGenerationService {
         PatientEncounter encounter = requireEncounter(encounterId);
         Patient patient = requirePatient(encounter);
 
+        encounterBillingGuardService
+                .requireClinicallyCompleteForFinancialSettlement(encounter);
+
         if (resolveBillingStatus(encounter) == EncounterBillingStatus.INVOICED) {
             throw new BadRequestAlertException(
                     "Encounter is already invoiced.",
@@ -466,16 +476,21 @@ public class InvoiceGenerationService {
                                 + "-"
                                 + Instant.now().toEpochMilli();
 
-                createdInvoices.add(
-                        mapFinancialDocument(
-                                createInvoiceDocument(
-                                        encounter,
-                                        patient,
-                                        chargeLines,
-                                        FinancialDocumentSubtype.INSURANCE_CLAIM,
-                                        eligibilityReference,
-                                        claimReference
-                                )
+                FinancialDocument insuranceInvoice = createInvoiceDocument(
+                        encounter,
+                        patient,
+                        chargeLines,
+                        FinancialDocumentSubtype.INSURANCE_CLAIM,
+                        eligibilityReference,
+                        claimReference
+                );
+
+                createdInvoices.add(mapFinancialDocument(insuranceInvoice));
+
+                applicationEventPublisher.publishEvent(
+                        new InsuranceInvoiceIssuedEvent(
+                                encounter.getId(),
+                                insuranceInvoice.getId()
                         )
                 );
             }

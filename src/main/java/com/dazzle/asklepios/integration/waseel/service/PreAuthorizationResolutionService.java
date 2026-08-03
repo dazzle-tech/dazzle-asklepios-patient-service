@@ -153,9 +153,43 @@ public class PreAuthorizationResolutionService {
     }
 
     public boolean isPendingPreAuthorization(PatientServiceAndProduct item) {
-        return item != null
-                && (item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
-                || Boolean.TRUE.equals(item.getPreAuthorizationRequired()));
+        if (item == null) {
+            return false;
+        }
+
+        PreAuthorizationStatus status = item.getPreAuthorizationStatus();
+        if (status == PreAuthorizationStatus.APPROVED
+                || status == PreAuthorizationStatus.NOT_REQUIRED
+                || status == PreAuthorizationStatus.REJECTED) {
+            return false;
+        }
+
+        return status == PreAuthorizationStatus.PENDING_APPROVAL
+                || Boolean.TRUE.equals(item.getPreAuthorizationRequired());
+    }
+
+    /**
+     * Insurance pre-authorization items must calculate responsibilities but must
+     * not post ledger debt until the authorization decision is financially valid.
+     */
+    public boolean shouldDeferLedgerPosting(PatientServiceAndProduct item) {
+        if (item == null) {
+            return false;
+        }
+
+        if (item.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH) {
+            return true;
+        }
+
+        PreAuthorizationStatus status = item.getPreAuthorizationStatus();
+        if (status == PreAuthorizationStatus.APPROVED
+                || status == PreAuthorizationStatus.NOT_REQUIRED
+                || status == PreAuthorizationStatus.REJECTED) {
+            return false;
+        }
+
+        return status == PreAuthorizationStatus.PENDING_APPROVAL
+                || Boolean.TRUE.equals(item.getPreAuthorizationRequired());
     }
 
     public PaymentStatus resolveBillingPaymentStatus(PatientServiceAndProduct item) {

@@ -33,6 +33,19 @@ public class ApprovalItemMapper {
             PatientEncounter encounter,
             List<WaseelApprovalSupportingInfo> supportingInfo
     ) {
+        return toWaseelItems(items, patientSharePercent, encounter, supportingInfo, false);
+    }
+
+    /**
+     * @param includeBilled when true, includes already-billed items (used for claim generation)
+     */
+    public List<WaseelApprovalItem> toWaseelItems(
+            List<PatientServiceAndProduct> items,
+            BigDecimal patientSharePercent,
+            PatientEncounter encounter,
+            List<WaseelApprovalSupportingInfo> supportingInfo,
+            boolean includeBilled
+    ) {
         if (items == null || items.isEmpty()) {
             return List.of();
         }
@@ -57,7 +70,7 @@ public class ApprovalItemMapper {
         AtomicInteger supportingInfoSequence = new AtomicInteger(nextSupportingInfoSequence);
 
         return items.stream()
-                .filter(item -> Boolean.FALSE.equals(item.getIsBilled()))
+                .filter(item -> includeBilled || Boolean.FALSE.equals(item.getIsBilled()))
                 .map(item -> toWaseelItem(
                         item,
                         sequence.getAndIncrement(),
@@ -68,6 +81,65 @@ public class ApprovalItemMapper {
                         supportingInfoSequence
                 ))
                 .toList();
+    }
+
+    public WaseelApprovalItem withInvoiceAmounts(
+            WaseelApprovalItem item,
+            String invoiceNo,
+            BigDecimal unitPrice,
+            BigDecimal discount,
+            BigDecimal tax,
+            BigDecimal net,
+            BigDecimal patientShare,
+            BigDecimal payerShare,
+            Integer quantity
+    ) {
+        if (item == null) {
+            return null;
+        }
+
+        BigDecimal safeNet = money(net);
+        BigDecimal safePatientShare = money(patientShare);
+        BigDecimal safePayerShare = money(payerShare);
+        BigDecimal safeUnitPrice = money(unitPrice);
+        BigDecimal safeDiscount = money(discount);
+        BigDecimal safeTax = money(tax);
+
+        Integer qty = quantity == null || quantity <= 0 ? item.quantity() : quantity;
+        BigDecimal quantityValue = BigDecimal.valueOf(qty == null ? 1 : qty);
+        BigDecimal gross = quantityValue.multiply(safeUnitPrice);
+        BigDecimal factor = calculateFactor(gross, safeDiscount);
+
+        return new WaseelApprovalItem(
+                item.sequence(),
+                item.type(),
+                item.itemCode(),
+                item.itemDescription(),
+                item.nonStandardCode(),
+                item.nonStandardDesc(),
+                item.isPackage(),
+                item.isMaternity(),
+                item.bodySite(),
+                item.subSite(),
+                qty,
+                item.quantityCode(),
+                safeUnitPrice,
+                safeDiscount,
+                factor,
+                item.taxPercent(),
+                item.patientSharePercent(),
+                safeNet,
+                safeTax,
+                safePatientShare,
+                safePayerShare,
+                item.startDate(),
+                item.endDate(),
+                item.supportingInfoSequence(),
+                item.careTeamSequence(),
+                item.diagnosisSequence(),
+                invoiceNo,
+                item.itemDetails() == null ? List.of() : item.itemDetails()
+        );
     }
 
     private WaseelApprovalItem toWaseelItem(

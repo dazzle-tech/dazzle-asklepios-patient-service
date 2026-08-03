@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.dto.BillingPricingResolveRequest;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
@@ -9,6 +10,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingTrigger;
 import com.dazzle.asklepios.domain.enumeration.billing.DiscountApplicableOn;
 import com.dazzle.asklepios.domain.enumeration.billing.TaxApplicableOn;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationRequest;
@@ -53,6 +55,8 @@ public class BillingEngineService {
             patientServiceAndProductRepository;
 
     private final PatientInsuranceRepository patientInsuranceRepository;
+
+    private final PatientEncounterRepository patientEncounterRepository;
 
     private final SetupBillingRuleService
             setupBillingRuleService;
@@ -202,6 +206,17 @@ public class BillingEngineService {
                 resolvePayerId(
                         item
                 );
+
+        if (resolveCoverageType(item) == BillingCoverageType.INSURANCE
+                && payerId == null) {
+            LOG.warn(
+                    "[PROCESS] Insurance item missing payer — "
+                            + "pricing will fall back to default setup. "
+                            + "pspId={} encounterId={}",
+                    item.getId(),
+                    item.getEncounterId()
+            );
+        }
 
         BillingPricingResolveRequest pricingRequest =
                 buildPricingRequest(
@@ -1344,12 +1359,22 @@ public class BillingEngineService {
     private Long resolvePayerId(
             PatientServiceAndProduct item
     ) {
-        if (item.getPatientInsuranceId() == null) {
+        Long patientInsuranceId = item.getPatientInsuranceId();
+
+        if (patientInsuranceId == null && item.getEncounterId() != null) {
+            patientInsuranceId =
+                    patientEncounterRepository
+                            .findById(item.getEncounterId())
+                            .map(PatientEncounter::getPatientInsuranceId)
+                            .orElse(null);
+        }
+
+        if (patientInsuranceId == null) {
             return null;
         }
 
         return patientInsuranceRepository
-                .findById(item.getPatientInsuranceId())
+                .findById(patientInsuranceId)
                 .map(PatientInsurance::getPayorId)
                 .filter(payorId -> payorId != null && payorId > 0)
                 .orElse(null);

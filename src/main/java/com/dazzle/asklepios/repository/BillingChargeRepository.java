@@ -50,6 +50,11 @@ public interface BillingChargeRepository
             Collection<BillingChargeStatus> excludedStatuses
     );
 
+    Optional<BillingCharge>
+    findFirstByEncounter_IdOrderByIdDesc(
+            Long encounterId
+    );
+
     @Query("""
         select coalesce(sum(c.outstandingAmount), 0)
         from BillingCharge c

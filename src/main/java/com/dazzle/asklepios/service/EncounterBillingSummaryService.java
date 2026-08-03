@@ -8,6 +8,7 @@ import com.dazzle.asklepios.domain.BillingWallet;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.Currency;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingAllocationStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.AllocationSourceType;
@@ -142,6 +143,12 @@ public class EncounterBillingSummaryService {
                                 encounterId,
                                 EXCLUDED_CHARGE_STATUSES
                         )
+                        .or(() ->
+                                billingChargeRepository
+                                        .findFirstByEncounter_IdOrderByIdDesc(
+                                                encounterId
+                                        )
+                        )
                         .orElse(null);
 
         if (charge == null) {
@@ -159,8 +166,7 @@ public class EncounterBillingSummaryService {
                         .findAllByEncounter_IdAndStatusNotInOrderByIdAsc(
                                 encounterId,
                                 EnumSet.of(
-                                        com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus.CANCELLED,
-                                        com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus.REVERSED
+                                        BillingChargeLineStatus.REVERSED
                                 )
                         )
                         .stream()
@@ -489,6 +495,7 @@ public class EncounterBillingSummaryService {
                                 item.getId()
                         )
                 )
+                .filter(this::isEligibleUnbilledItem)
                 .map(item ->
                         buildUnbilledItemSummary(
                                 encounter,
@@ -498,6 +505,21 @@ public class EncounterBillingSummaryService {
                 )
                 .filter(Objects::nonNull)
                 .toList();
+    }
+
+    private boolean isEligibleUnbilledItem(PatientServiceAndProduct item) {
+        if (item == null || item.getId() == null) {
+            return false;
+        }
+
+        PaymentStatus paymentStatus = item.getPaymentStatus();
+        if (paymentStatus == PaymentStatus.CANCELLED
+                || paymentStatus == PaymentStatus.EXEMPTED
+                || paymentStatus == PaymentStatus.SKIPPED_PENDING_PRE_AUTH) {
+            return false;
+        }
+
+        return true;
     }
 
     private EncounterBillingItemSummary buildUnbilledItemSummary(
@@ -964,6 +986,16 @@ public class EncounterBillingSummaryService {
             PatientServiceAndProduct item,
             PricingDisplayFields pricingDisplay
     ) {
+        /*
+         * Cancelled/reversed lines keep accounting zeros.
+         * Never re-resolve catalog/setup pricing for them — that resurrects
+         * "Setup Fallback" and unpaid remaining in the billing UI.
+         */
+        if (line.getStatus() == BillingChargeLineStatus.CANCELLED
+                || line.getStatus() == BillingChargeLineStatus.REVERSED) {
+            return money(line.getUnitPrice());
+        }
+
         if (
                 pricingDisplay.resolvedUnitPrice() != null
                         && pricingDisplay.resolvedUnitPrice().signum() > 0

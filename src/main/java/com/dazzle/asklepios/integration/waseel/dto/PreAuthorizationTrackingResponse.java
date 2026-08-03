@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.enumeration.waseelIntegration.CancelReason;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 
 public record PreAuthorizationTrackingResponse(
         Long id,
@@ -65,6 +66,13 @@ public record PreAuthorizationTrackingResponse(
         String cancelStatus,
         String cancelOutcome,
         String cancelMessage,
+
+        Boolean searchCompleted,
+        Boolean canCommunicate,
+        Boolean canCancel,
+        List<Long> waseelClaimItemIds,
+        List<PreAuthorizationTrackingItemResponse> items,
+        Long communicationCount,
 
         Instant createdDate,
         String createdBy,

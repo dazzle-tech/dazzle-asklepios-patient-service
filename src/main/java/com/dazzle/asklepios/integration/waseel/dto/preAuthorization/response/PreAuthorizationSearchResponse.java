@@ -1,9 +1,14 @@
 package com.dazzle.asklepios.integration.waseel.dto.preAuthorization.response;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record PreAuthorizationSearchResponse(
         Long approvalRequestId,
         Long approvalResponseId,
@@ -24,7 +29,9 @@ public record PreAuthorizationSearchResponse(
         OffsetDateTime transactionLogDate,
         String cancelStatus,
         String cancelResponseReason,
-        List<Object> item,
+        @JsonProperty("item")
+        @JsonAlias({"items", "approvalItems", "claimItems"})
+        List<PreAuthorizationSearchItem> item,
         List<Object> diagnosis,
         List<Object> careTeam,
         List<Object> supportingInfo,

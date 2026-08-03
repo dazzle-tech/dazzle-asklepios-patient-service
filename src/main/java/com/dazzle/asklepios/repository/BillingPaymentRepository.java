@@ -55,4 +55,6 @@ public interface BillingPaymentRepository
             Long patientId,
             Collection<BillingPaymentStatus> statuses
     );
+
+    List<BillingPayment> findAllByEncounter_IdOrderByIdAsc(Long encounterId);
 }

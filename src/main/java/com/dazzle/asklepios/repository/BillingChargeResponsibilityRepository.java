@@ -6,6 +6,8 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStat
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
@@ -70,5 +72,42 @@ public interface BillingChargeResponsibilityRepository
     findAllByCharge_IdAndStatusNotInOrderByIdAsc(
             Long chargeId,
             Collection<BillingResponsibilityStatus> excludedStatuses
+    );
+
+    @Query("""
+            SELECT r.payerId, r.currency,
+                   COALESCE(SUM(r.responsibilityAmount), 0),
+                   COALESCE(SUM(r.allocatedAmount), 0),
+                   COALESCE(SUM(r.outstandingAmount), 0)
+            FROM BillingChargeResponsibility r
+            WHERE r.responsiblePartyType = :partyType
+              AND r.status NOT IN :excludedStatuses
+              AND r.payerId IS NOT NULL
+              AND (:facilityId IS NULL OR r.encounter.facilityId = :facilityId)
+            GROUP BY r.payerId, r.currency
+            """)
+    List<Object[]> aggregateInsuranceTotalsByPayer(
+            @Param("partyType") ResponsiblePartyType partyType,
+            @Param("excludedStatuses")
+            Collection<BillingResponsibilityStatus> excludedStatuses,
+            @Param("facilityId") Long facilityId
+    );
+
+    @Query("""
+            SELECT r.payerId, COUNT(DISTINCT r.claimId)
+            FROM BillingChargeResponsibility r
+            WHERE r.responsiblePartyType = :partyType
+              AND r.claimId IS NOT NULL
+              AND r.allocatedAmount > 0
+              AND r.outstandingAmount > 0
+              AND r.status NOT IN :excludedStatuses
+              AND (:facilityId IS NULL OR r.encounter.facilityId = :facilityId)
+            GROUP BY r.payerId
+            """)
+    List<Object[]> countPartiallyPaidClaimsByPayer(
+            @Param("partyType") ResponsiblePartyType partyType,
+            @Param("excludedStatuses")
+            Collection<BillingResponsibilityStatus> excludedStatuses,
+            @Param("facilityId") Long facilityId
     );
 }

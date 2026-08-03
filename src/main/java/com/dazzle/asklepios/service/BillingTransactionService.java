@@ -3,6 +3,8 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.BillingPayment;
 import com.dazzle.asklepios.domain.BillingWallet;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingCancellationReason;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryCategory;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryDirection;
@@ -31,6 +33,7 @@ import com.dazzle.asklepios.service.dto.billing.BillingRuleResolveResponse;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import com.dazzle.asklepios.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -232,11 +235,24 @@ public class BillingTransactionService {
          * Zero-net/exempted lines are intentionally not posted as a
          * monetary ledger entry; their audit remains in charge and
          * pricing-snapshot records.
+         *
+         * Insurance pre-authorization items defer ledger posting until
+         * the service is financially valid (authorization approved).
          */
-        recordChargeCreatedLedger(
-                context,
-                requestId
-        );
+        if (!preAuthorizationResolutionService.shouldDeferLedgerPosting(
+                context.getPatientServiceProduct()
+        )) {
+            recordChargeCreatedLedger(
+                    context,
+                    requestId
+            );
+        } else {
+            LOG.info(
+                    "[LEDGER_CHARGE] Skipping ledger for pre-authorization "
+                            + "pending item pspId={}",
+                    context.getPatientServiceProduct().getId()
+            );
+        }
 
         /*
          * 8. Header totals after responsibility and reservation
@@ -697,17 +713,9 @@ public class BillingTransactionService {
      */
 
     /**
-     * Temporary legacy encounter cancellation.
-     *
-     * This method only succeeds if all encounter charge lines have:
-     *
-     * allocatedAmount = 0
-     * reservedAmount = 0
-     *
-     * A complete encounter-cancellation coordinator will later cancel
-     * every PSP through BillingCancellationService.
+     * Cancels all financial activity for an encounter by routing each
+     * patient service/product through BillingCancellationService.
      */
-    @Deprecated
     @Transactional(rollbackFor = Exception.class)
     public void cancelEncounterBilling(
             Long encounterId,
@@ -727,25 +735,55 @@ public class BillingTransactionService {
                 requestId
         );
 
-        LOG.warn(
-                "[CANCEL_ENCOUNTER_LEGACY] Legacy encounter "
-                        + "cancellation started encounterId={} "
-                        + "reason={} requestId={}",
-                encounterId,
-                reason,
-                requestId
-        );
+        String cancelledBy =
+                SecurityUtils.getCurrentUserLogin()
+                        .orElse("system");
 
-        billingChargeService.cancelEncounterCharges(
-                encounterId,
-                reason.trim(),
-                currentUser()
-        );
+        String trimmedReason = reason.trim();
+        String trimmedRequestId = requestId.trim();
 
         LOG.info(
-                "[CANCEL_ENCOUNTER_LEGACY] Legacy encounter "
-                        + "cancellation completed encounterId={}",
-                encounterId
+                "[CANCEL_ENCOUNTER] Encounter billing cancellation "
+                        + "started encounterId={} requestId={}",
+                encounterId,
+                trimmedRequestId
+        );
+
+        List<PatientServiceAndProduct> encounterItems =
+                patientServiceAndProductRepository
+                        .findByEncounterId(encounterId);
+
+        int cancelledCount = 0;
+
+        for (PatientServiceAndProduct item : encounterItems) {
+            if (item == null
+                    || item.getId() == null
+                    || item.getPaymentStatus() == PaymentStatus.CANCELLED) {
+                continue;
+            }
+
+            BillingCancellationRequest cancellationRequest =
+                    new BillingCancellationRequest(
+                            item.getId(),
+                            BillingCancellationReason.ENCOUNTER_CANCELLED,
+                            trimmedReason,
+                            cancelledBy,
+                            trimmedRequestId + ":PSP:" + item.getId(),
+                            BillingLedgerSourceChannel.BILLING_ENGINE
+                    );
+
+            billingCancellationService.cancelPatientService(
+                    cancellationRequest
+            );
+
+            cancelledCount++;
+        }
+
+        LOG.info(
+                "[CANCEL_ENCOUNTER] Encounter billing cancellation "
+                        + "completed encounterId={} cancelledItems={}",
+                encounterId,
+                cancelledCount
         );
     }
 
