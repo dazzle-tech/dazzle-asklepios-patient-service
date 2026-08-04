@@ -12,6 +12,7 @@ import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patient.FacilityPatientFilterDTO;
+import com.dazzle.asklepios.service.dto.patient.PatientConditionsDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientDuplicationLookupDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
@@ -22,6 +23,7 @@ import com.dazzle.asklepios.web.rest.errors.InvalidPasswordException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.errors.PatientAlreadyActiveException;
 import com.dazzle.asklepios.web.rest.vm.patient.CreatePasswordKeyValidationVM;
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
@@ -823,5 +825,21 @@ public class PatientService {
 
         return patient.getId() != null ? String.valueOf(patient.getId()) : "";
     }
+    @Transactional
 
+    public Patient updatePatientConditions(Long patientId, PatientConditionsDTO dto) {
+
+        Patient patient = patientRepository
+
+                .findById(patientId)
+
+                .orElseThrow(() -> new EntityNotFoundException("Patient not found"));
+
+        patient.setPatientConditions(dto.patientConditions());
+
+
+
+        return patientRepository.save(patient);
+
+    }
 }
