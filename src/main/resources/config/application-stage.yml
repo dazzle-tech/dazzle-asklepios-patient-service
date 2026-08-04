@@ -17,7 +17,9 @@ management:
 service:
   asklepios-setup-service-url: http://asklepios-api-setup-service:8082
   asklepios-notification-service-url: http://asklepios-notification-service:8080
-
+pacs:
+  base-url: https://him.onehealth.com.sa/api/method/casting.casting.dicom_share.get_dicom_studies_by_accession_number
+  token: YmNhYTQ4ZTVjODQ5MWZiOjQ2MzU1ODU5MTM0NDcyMw==
 application:
   asklepios-application-url: http://asklepios.nereuscloud.de//#
 appointment:
