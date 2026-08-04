@@ -1,6 +1,6 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.radiologyImage.PacsIntegrationService;
+import com.dazzle.asklepios.client.radiologyImage.PacsIntegrationClient;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
@@ -33,7 +33,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -56,7 +55,7 @@ public class DiagnosticOrderTestReportService {
 
     private final DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
-    private final PacsIntegrationService pacsIntegrationService;
+    private final PacsIntegrationClient pacsIntegrationService;
 
 
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
@@ -65,7 +64,7 @@ public class DiagnosticOrderTestReportService {
 
     public DiagnosticOrderTestReportService(
             DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository,
-            DiagnosticOrderTestRepository diagnosticOrderTestRepository, PacsIntegrationService pacsIntegrationService,
+            DiagnosticOrderTestRepository diagnosticOrderTestRepository, PacsIntegrationClient pacsIntegrationService,
             DiagnosticOrderStatusService diagnosticOrderStatusService,
             DiagnosticOrderTestStatusService diagnosticOrderTestStatusService, DiagnosticOrderTestReportCommentsRepository diagnosticOrderTestReportCommentsRepository
     ) {

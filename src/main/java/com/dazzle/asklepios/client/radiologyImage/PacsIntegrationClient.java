@@ -12,13 +12,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class PacsIntegrationService {
+public class PacsIntegrationClient {
 
     private final RestTemplate restTemplate;
 
@@ -27,6 +28,9 @@ public class PacsIntegrationService {
 
     @Value("${pacs.token}")
     private String token;
+
+    @Value("${pacs.expires-in-hours}")
+    private Integer expiresInHours;
 
     public List<PacsStudyDTO> getStudiesByAccessionNumber(
             String accessionNumber
@@ -42,10 +46,11 @@ public class PacsIntegrationService {
         HttpEntity<Void> request =
                 new HttpEntity<>(headers);
 
-        String url =
-                baseUrl
-                        + "?accession_number=" + accessionNumber
-                        + "&expires_in_hours=48";
+        String url = UriComponentsBuilder
+                .fromHttpUrl(baseUrl)
+                .queryParam("accession_number", accessionNumber)
+                .queryParam("expires_in_hours", expiresInHours)
+                .toUriString();
 
         log.debug(
                 "Calling PACS API. accessionNumber={}, url={}",

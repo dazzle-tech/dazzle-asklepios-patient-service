@@ -61,6 +61,8 @@ server:
 pacs:
   base-url: https://him.onehealth.com.sa/api/method/casting.casting.dicom_share.get_dicom_studies_by_accession_number
   token: YmNhYTQ4ZTVjODQ5MWZiOjQ2MzU1ODU5MTM0NDcyMw==
+  expires-in-hours: 48
+
 patient:
   security:
     authentication:
