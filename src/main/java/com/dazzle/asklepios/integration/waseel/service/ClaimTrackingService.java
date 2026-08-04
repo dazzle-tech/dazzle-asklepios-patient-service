@@ -5,9 +5,12 @@ import com.dazzle.asklepios.domain.ClaimRequest;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimTrackingItemResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimTrackingResponse;
+import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimValidationError;
 import com.dazzle.asklepios.repository.ClaimItemRepository;
 import com.dazzle.asklepios.repository.ClaimRequestRepository;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -24,6 +27,7 @@ public class ClaimTrackingService {
 
     private final ClaimRequestRepository claimRequestRepository;
     private final ClaimItemRepository claimItemRepository;
+    private final ObjectMapper objectMapper;
 
     public Page<ClaimTrackingResponse> findAll(Pageable pageable) {
         return claimRequestRepository.findAll(pageable).map(this::toResponse);
@@ -95,8 +99,38 @@ public class ClaimTrackingService {
                 e.getLastModifiedBy(),
                 canResubmit,
                 canRefreshUpload,
-                itemResponses
+                itemResponses,
+                readValidationErrors(e.getValidationErrorsJson()),
+                resolveStatusDescription(e)
         );
+    }
+
+    private List<ClaimValidationError> readValidationErrors(String validationErrorsJson) {
+        if (validationErrorsJson == null || validationErrorsJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            List<ClaimValidationError> parsed = objectMapper.readValue(
+                    validationErrorsJson,
+                    new TypeReference<>() {}
+            );
+            return parsed == null ? List.of() : parsed;
+        } catch (Exception ex) {
+            return List.of();
+        }
+    }
+
+    private String resolveStatusDescription(ClaimRequest claim) {
+        if (claim.getStatus() == ClaimStatus.REJECTED || "NOT_ACCEPTED".equalsIgnoreCase(claim.getOutcome())) {
+            List<ClaimValidationError> errors = readValidationErrors(claim.getValidationErrorsJson());
+            if (!errors.isEmpty()) {
+                return errors.get(0).message();
+            }
+            return claim.getMessage() == null || claim.getMessage().isBlank()
+                    ? "Claim Is Not Saved Successfully."
+                    : claim.getMessage();
+        }
+        return claim.getMessage();
     }
 
     private ClaimTrackingItemResponse toItemResponse(ClaimItem item) {

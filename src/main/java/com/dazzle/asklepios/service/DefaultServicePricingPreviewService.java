@@ -11,6 +11,7 @@ import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -58,8 +59,9 @@ public class DefaultServicePricingPreviewService {
     private final BillingPricingInputFactory billingPricingInputFactory;
     private final BillingPricingService billingPricingService;
     private final InsurancePatientShareCalculator insurancePatientShareCalculator;
+    private final EncounterCoverageService encounterCoverageService;
 
-    @Transactional(readOnly = true)
+    @Transactional
     public PreviewDefaultServicesPricingResult preview(
             Long encounterId,
             PreviewDefaultServicesPricingRequest request
@@ -73,6 +75,29 @@ public class DefaultServicePricingPreviewService {
                 patient
         );
         PatientInsurance insurance = resolveInsurance(request);
+
+        if (request.coverageType() == BillingCoverageType.INSURANCE
+                && insurance != null) {
+            encounterCoverageService.applyCoverage(
+                    encounter,
+                    BillingCoverageType.INSURANCE,
+                    insurance.getId()
+            );
+
+            LOG.info(
+                    "[PREVIEW_PRICING] Applied insurance coverage encounterId={} patientInsuranceId={} payorId={} payerNphiesId={}",
+                    encounterId,
+                    insurance.getId(),
+                    insurance.getPayorId(),
+                    insurance.getPayerNphiesId()
+            );
+        } else if (request.coverageType() == BillingCoverageType.SELF_PAY) {
+            encounterCoverageService.applyCoverage(
+                    encounter,
+                    BillingCoverageType.SELF_PAY,
+                    null
+            );
+        }
 
         List<PrepareDefaultServiceItem> orderedItems =
                 request.items()
@@ -181,6 +206,28 @@ public class DefaultServicePricingPreviewService {
 
         PriceCalculationResult pricing =
                 context.getPricingResult();
+
+        if (insurance != null
+                && resolvedPrice.priceSource() == BillingPriceSource.SETUP_FALLBACK) {
+            LOG.warn(
+                    "[PREVIEW_PRICING] Insurance visit resolved to setup fallback "
+                            + "serviceId={} patientInsuranceId={} payorId={} setupUnitPrice={} resolvedUnitPrice={}",
+                    requestedItem.serviceId(),
+                    insurance.getId(),
+                    insurance.getPayorId(),
+                    resolvedPrice.setupUnitPrice(),
+                    resolvedPrice.unitPrice()
+            );
+        } else {
+            LOG.info(
+                    "[PREVIEW_PRICING] serviceId={} priceSource={} setupUnitPrice={} resolvedUnitPrice={} netAmount={}",
+                    requestedItem.serviceId(),
+                    resolvedPrice.priceSource(),
+                    resolvedPrice.setupUnitPrice(),
+                    pricing.unitPrice(),
+                    pricing.netAmount()
+            );
+        }
 
         String priceSource =
                 pricingInput.priceSource() == null

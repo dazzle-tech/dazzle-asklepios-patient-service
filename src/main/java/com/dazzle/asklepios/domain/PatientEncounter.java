@@ -1,10 +1,7 @@
 package com.dazzle.asklepios.domain;
 
-import com.dazzle.asklepios.domain.converter.EncounterLifecycleStatusConverter;
-import com.dazzle.asklepios.domain.converter.TreatmentStatusConverter;
 import com.dazzle.asklepios.domain.enumeration.DischargeType;
 import com.dazzle.asklepios.domain.enumeration.EncounterBillingStatus;
-import com.dazzle.asklepios.domain.enumeration.EncounterLifecycleStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
@@ -14,7 +11,6 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.Convert;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
@@ -117,16 +113,7 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "encounter_time", nullable = false, updatable = false)
     private LocalTime encounterTime;
 
-//    @NotNull
-//    @Convert(converter = EncounterLifecycleStatusConverter.class)
-//    @Column(name = "encounter_status", nullable = false, length = 50)
-//    private EncounterLifecycleStatus encounterStatus;
-
     @NotNull
-    @Convert(converter = TreatmentStatusConverter.class)
-    @Column(name = "treatment_status", nullable = false, length = 50)
-    private TreatmentStatus treatmentStatus;
-
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
     private TreatmentStatus status;
@@ -208,18 +195,20 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
                     EncounterStatus.OPEN;
 
             case TRIAGE_STARTED,
-                 DISCHARGED,
                  ASSIGNED_TO_BED,
                  ONGOING ->
                     EncounterStatus.IN_PROGRESS;
 
+            case COMPLETED,
+                 CLOSED,
+                 DISCHARGED ->
+                    EncounterStatus.CLOSED;
+
             case CANCELLED ->
                     EncounterStatus.CANCELLED;
 
-
-
             default ->
-                    this.encounterStatus;
+                    EncounterStatus.IN_PROGRESS;
         };
     }
 }

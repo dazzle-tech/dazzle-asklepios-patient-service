@@ -46,6 +46,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -280,6 +281,7 @@ public class ClaimRequestBuilderService {
                     withSequences(base, sequence++, supportingInfoSequences, careTeamSequences, diagnosisSequences),
                     insuranceInvoice.getDocumentNumber(),
                     invoiceItem.getUnitPrice(),
+                    invoiceItem.getGrossAmount(),
                     invoiceItem.getDiscountAmount(),
                     invoiceItem.getTaxAmount(),
                     net,
@@ -293,13 +295,15 @@ public class ClaimRequestBuilderService {
         LocalDate claimDate = encounter.getEncounterDate() != null
                 ? encounter.getEncounterDate()
                 : LocalDate.now();
+        LocalDate accountingPeriod = resolveAccountingPeriod(claimDate);
 
         WaseelClaimPreAuthorizationInfo preAuthInfo = buildClaimPreAuthorizationInfo(
                 snapshot,
                 primaryPreAuth,
                 nphiesId,
                 encounter,
-                claimDate
+                claimDate,
+                accountingPeriod
         );
 
         WaseelClaimEncounter claimEncounter = buildClaimEncounter(encounter, nphiesId, claimDate);
@@ -463,7 +467,8 @@ public class ClaimRequestBuilderService {
             PreAuthorizationRequest preAuth,
             String nphiesId,
             PatientEncounter encounter,
-            LocalDate claimDate
+            LocalDate claimDate,
+            LocalDate accountingPeriod
     ) {
         String eligibilityResponseId = snapshot.eligibilityResponseId();
         String eligibilityResponseUrl = snapshot.eligibilityResponseUrl();
@@ -529,8 +534,17 @@ public class ClaimRequestBuilderService {
                 eligibilityResponseUrl,
                 null,
                 episodeId,
-                claimDate
+                accountingPeriod
         );
+    }
+
+    private LocalDate resolveAccountingPeriod(LocalDate claimDate) {
+        LocalDate today = LocalDate.now();
+        LocalDate candidate = claimDate == null ? today : claimDate;
+        if (!candidate.isBefore(today)) {
+            return today.minusDays(1);
+        }
+        return candidate;
     }
 
     private WaseelClaimEncounter buildClaimEncounter(

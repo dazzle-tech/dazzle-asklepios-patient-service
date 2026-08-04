@@ -259,7 +259,7 @@ public class WaseelCchiService {
                                 null,
                                 "false",
                                 null,
-                                "Insurance Company Testing Payer",
+                                "Tawuniya - One Health",
                                 "INS-FHIR",
                                 null,
                                 "self",

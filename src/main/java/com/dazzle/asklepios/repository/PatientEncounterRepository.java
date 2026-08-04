@@ -7,7 +7,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
-import org.springframework.security.core.parameters.P;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
@@ -19,7 +18,7 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
 
 
     @EntityGraph(attributePaths = "appointment")
-    Page<PatientEncounter> findByPatientIdAndDepartmentIdAndTreatmentStatusInOrderByCreatedDateDesc(
+    Page<PatientEncounter> findByPatientIdAndDepartmentIdAndStatusInOrderByCreatedDateDesc(
             Long patientId,
             Long departmentId,
             List<TreatmentStatus> statuses,
@@ -33,13 +32,13 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
             LocalDate encounterDate
     );
 
-    long countByDepartmentIdAndEncounterDateAndTreatmentStatusIn(
+    long countByDepartmentIdAndEncounterDateAndStatusIn(
             Long departmentId,
             LocalDate encounterDate,
             List<TreatmentStatus> statuses
     );
 
-    long countByDepartmentIdAndEncounterDateAndTreatmentStatus(
+    long countByDepartmentIdAndEncounterDateAndStatus(
             Long departmentId,
             LocalDate encounterDate,
             TreatmentStatus status
@@ -55,7 +54,7 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
     PatientEncounter findByAppointment_Id(Long appointmentId);
 
     @EntityGraph(attributePaths = "appointment")
-    Optional<PatientEncounter> findFirstByPatientIdAndTreatmentStatusAndEncounterDateLessThanEqualOrderByEncounterDateDesc(
+    Optional<PatientEncounter> findFirstByPatientIdAndStatusAndEncounterDateLessThanEqualOrderByEncounterDateDesc(
             Long patientId,
             TreatmentStatus status,
             LocalDate encounterDate
@@ -67,14 +66,14 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
             LocalDate toDate
     );
 
-    long countByDepartmentIdAndEncounterDateBetweenAndTreatmentStatus(
+    long countByDepartmentIdAndEncounterDateBetweenAndStatus(
             Long departmentId,
             LocalDate fromDate,
             LocalDate toDate,
             TreatmentStatus status
     );
 
-    long countByDepartmentIdAndEncounterDateBetweenAndTreatmentStatusIn(
+    long countByDepartmentIdAndEncounterDateBetweenAndStatusIn(
             Long departmentId,
             LocalDate fromDate,
             LocalDate toDate,

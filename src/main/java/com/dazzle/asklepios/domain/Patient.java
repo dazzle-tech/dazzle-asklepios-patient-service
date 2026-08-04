@@ -203,8 +203,6 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
     @Column(name = "security_access_level")
     private SecurityLevel securityAccessLevel;
 
-    @AssertTrue(message = "When patient is not unknown, firstName, lastName, sexAtBirth, dateOfBirth and primaryMobileNumber are required")
-
     @Enumerated(EnumType.STRING)
     @Column(name = "patient_status", length = 30, nullable = false)
     @Builder.Default
@@ -229,7 +227,8 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
     @Column(name = "patient_conditions", columnDefinition = "text")
     private String patientConditions;
 
-   public boolean isValidWhenNotUnknown() {
+    @AssertTrue(message = "When patient is not unknown, firstName, lastName, sexAtBirth, dateOfBirth and primaryMobileNumber are required")
+    public boolean isValidWhenNotUnknown() {
         if (Boolean.TRUE.equals(isUnknown)) {
             return true;
         }

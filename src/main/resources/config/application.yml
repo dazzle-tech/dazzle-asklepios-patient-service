@@ -192,4 +192,14 @@ patient:
         description: "Main server"
       - url: "https://backup.asklepios.com/api"
         description: "Backup server"
+  appointment:
+    auto-no-show:
+      job-zone: Asia/Hebron
+      system-job-user: SYSTEM_JOB
+      no-show-reason: Not Specified
+    template-interval-ended:
+      cron: "0 0 7 * * *"
+      zone: "Asia/Gaza"
+      springdoc:
+      pre-loading-enabled: true
   security:

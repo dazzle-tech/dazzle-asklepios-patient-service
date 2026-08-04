@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.ClaimRequest;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimSubmissionResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimTrackingResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimUploadResponse;
+import com.dazzle.asklepios.integration.waseel.service.ClaimStatusRefreshService;
 import com.dazzle.asklepios.integration.waseel.service.ClaimSubmissionService;
 import com.dazzle.asklepios.integration.waseel.service.ClaimTrackingService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelClaimService;
@@ -26,6 +27,7 @@ public class WaseelClaimController {
 
     private final ClaimSubmissionService claimSubmissionService;
     private final ClaimTrackingService claimTrackingService;
+    private final ClaimStatusRefreshService claimStatusRefreshService;
     private final WaseelClaimService waseelClaimService;
 
     @GetMapping("/internal/waseel/claims/tracking")
@@ -66,6 +68,12 @@ public class WaseelClaimController {
     @GetMapping("/internal/waseel/claims/uploads/{uploadId}")
     public WaseelClaimUploadResponse uploadSummary(@PathVariable Long uploadId) {
         return waseelClaimService.getUploadSummary(uploadId);
+    }
+
+    @PostMapping("/internal/waseel/claims/tracking/{id}/refresh")
+    public ClaimTrackingResponse refreshClaimStatus(@PathVariable Long id) {
+        claimStatusRefreshService.refresh(id);
+        return claimTrackingService.findById(id);
     }
 
     private ClaimSubmissionResponse toSubmissionResponse(ClaimRequest claim) {

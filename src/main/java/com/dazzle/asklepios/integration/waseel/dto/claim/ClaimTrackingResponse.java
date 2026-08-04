@@ -30,5 +30,7 @@ public record ClaimTrackingResponse(
         String lastModifiedBy,
         boolean canResubmit,
         boolean canRefreshUpload,
-        List<ClaimTrackingItemResponse> items
+        List<ClaimTrackingItemResponse> items,
+        List<ClaimValidationError> validationErrors,
+        String statusDescription
 ) {}

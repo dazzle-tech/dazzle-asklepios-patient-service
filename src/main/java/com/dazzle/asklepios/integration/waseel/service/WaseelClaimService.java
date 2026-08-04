@@ -143,6 +143,41 @@ public class WaseelClaimService {
         }
     }
 
+    /**
+     * Loads claim transaction details from Waseel (status, disposition, validation errors).
+     */
+    public String searchClaimByProvClaimNo(String provClaimNo) {
+        String token = tokenService.getToken();
+
+        String url = UriComponentsBuilder
+                .fromHttpUrl(properties.baseUrl()
+                        + "/nphies-rest-external/providers/"
+                        + properties.providerId()
+                        + "/external/claim")
+                .queryParam("provClaimNo", provClaimNo)
+                .toUriString();
+
+        HttpEntity<Void> entity = new HttpEntity<>(buildHeaders(token));
+
+        try {
+            log.info("========== WASEEL CLAIM SEARCH ==========");
+            log.info("URL: {}", url);
+            log.info("=========================================");
+
+            ResponseEntity<String> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    entity,
+                    String.class
+            );
+            return response.getBody();
+
+        } catch (HttpStatusCodeException ex) {
+            logWaseelError("CLAIM_SEARCH", ex, null);
+            throw ex;
+        }
+    }
+
     private HttpHeaders buildHeaders(String token) {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);

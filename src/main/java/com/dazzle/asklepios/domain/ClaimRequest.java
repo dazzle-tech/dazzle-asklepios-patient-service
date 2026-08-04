@@ -84,6 +84,9 @@ public class ClaimRequest extends AbstractAuditingEntity<Long> implements Serial
     @Column(name = "response_json", columnDefinition = "TEXT")
     private String responseJson;
 
+    @Column(name = "validation_errors_json", columnDefinition = "TEXT")
+    private String validationErrorsJson;
+
     @Column(name = "submitted_at")
     private Instant submittedAt;
 }

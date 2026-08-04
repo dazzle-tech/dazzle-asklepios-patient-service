@@ -9,6 +9,7 @@ import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalItem;
+import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimValidationError;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimRequest;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimUploadRequest;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimUploadResponse;
@@ -51,6 +52,8 @@ public class ClaimSubmissionService {
     private final ClaimRequestRepository claimRequestRepository;
     private final ClaimItemRepository claimItemRepository;
     private final ObjectMapper objectMapper;
+    private final ClaimPayloadValidationService claimPayloadValidationService;
+    private final ClaimStatusRefreshService claimStatusRefreshService;
     private final ClaimSubmissionService self;
 
     public ClaimSubmissionService(
@@ -61,6 +64,8 @@ public class ClaimSubmissionService {
             ClaimRequestRepository claimRequestRepository,
             ClaimItemRepository claimItemRepository,
             ObjectMapper objectMapper,
+            ClaimPayloadValidationService claimPayloadValidationService,
+            ClaimStatusRefreshService claimStatusRefreshService,
             @Lazy ClaimSubmissionService self
     ) {
         this.claimRequestBuilderService = claimRequestBuilderService;
@@ -70,6 +75,8 @@ public class ClaimSubmissionService {
         this.claimRequestRepository = claimRequestRepository;
         this.claimItemRepository = claimItemRepository;
         this.objectMapper = objectMapper;
+        this.claimPayloadValidationService = claimPayloadValidationService;
+        this.claimStatusRefreshService = claimStatusRefreshService;
         this.self = self;
     }
 
@@ -147,19 +154,24 @@ public class ClaimSubmissionService {
 
         ClaimRequest claimRequest = persistDraft(invoice, built, uploadName, requestJson, claimModel);
 
+        List<ClaimValidationError> validationErrors = claimPayloadValidationService.validate(claimModel);
+        if (!validationErrors.isEmpty()) {
+            claimRequest.setValidationErrorsJson(toJson(validationErrors));
+            claimRequest.setStatus(ClaimStatus.REJECTED);
+            claimRequest.setOutcome("NOT_ACCEPTED");
+            claimRequest.setMessage(buildValidationFailureMessage(validationErrors));
+            return claimRequestRepository.save(claimRequest);
+        }
+
         try {
             WaseelClaimUploadResponse response = waseelClaimService.uploadClaims(uploadRequest);
             String responseJson = toJson(response);
 
-            claimRequest.setStatus(ClaimStatus.SUBMITTED);
-            claimRequest.setUploadId(response == null ? null : response.uploadId());
-            claimRequest.setUploadName(response == null ? uploadName : response.uploadName());
-            claimRequest.setResponseJson(responseJson);
-            claimRequest.setOutcome(resolveOutcome(response));
-            claimRequest.setMessage(response == null ? null : response.message());
+            applyUploadOutcome(claimRequest, response, responseJson);
             claimRequest.setSubmittedAt(Instant.now());
+            claimRequest = claimRequestRepository.save(claimRequest);
 
-            return claimRequestRepository.save(claimRequest);
+            return claimStatusRefreshService.refresh(claimRequest.getId());
 
         } catch (HttpStatusCodeException ex) {
             String details = buildWaseelFailureMessage(
@@ -298,6 +310,50 @@ public class ClaimSubmissionService {
     private String buildWaseelFailureMessage(int statusCode, String responseBody, String fallback) {
         String body = responseBody == null || responseBody.isBlank() ? fallback : responseBody;
         return "Waseel claim upload failed (HTTP " + statusCode + "): " + body;
+    }
+
+    private void applyUploadOutcome(
+            ClaimRequest claimRequest,
+            WaseelClaimUploadResponse response,
+            String responseJson
+    ) {
+        claimRequest.setUploadId(response == null ? claimRequest.getUploadId() : response.uploadId());
+        claimRequest.setUploadName(response == null ? claimRequest.getUploadName() : response.uploadName());
+        claimRequest.setResponseJson(responseJson);
+        claimRequest.setMessage(response == null ? null : response.message());
+
+        if (response != null
+                && response.noOfNotAcceptedClaims() != null
+                && response.noOfNotAcceptedClaims() > 0) {
+            claimRequest.setStatus(ClaimStatus.REJECTED);
+            claimRequest.setOutcome("NOT_ACCEPTED");
+            if (claimRequest.getMessage() == null || claimRequest.getMessage().isBlank()) {
+                claimRequest.setMessage("Waseel rejected " + response.noOfNotAcceptedClaims() + " claim(s).");
+            }
+            return;
+        }
+
+        if (response != null
+                && response.noOfAcceptedClaims() != null
+                && response.noOfAcceptedClaims() > 0) {
+            claimRequest.setStatus(ClaimStatus.ACCEPTED);
+            claimRequest.setOutcome("ACCEPTED");
+            return;
+        }
+
+        claimRequest.setStatus(ClaimStatus.SUBMITTED);
+        claimRequest.setOutcome(resolveOutcome(response));
+    }
+
+    private String buildValidationFailureMessage(List<ClaimValidationError> validationErrors) {
+        if (validationErrors == null || validationErrors.isEmpty()) {
+            return "Claim validation failed before Waseel upload.";
+        }
+        ClaimValidationError first = validationErrors.get(0);
+        if (validationErrors.size() == 1) {
+            return first.message();
+        }
+        return first.message() + " (" + validationErrors.size() + " validation issue(s) found).";
     }
 
     private String toJson(Object value) {

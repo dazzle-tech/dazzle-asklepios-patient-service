@@ -87,6 +87,7 @@ public class ApprovalItemMapper {
             WaseelApprovalItem item,
             String invoiceNo,
             BigDecimal unitPrice,
+            BigDecimal grossAmount,
             BigDecimal discount,
             BigDecimal tax,
             BigDecimal net,
@@ -107,12 +108,36 @@ public class ApprovalItemMapper {
 
         Integer qty = quantity == null || quantity <= 0 ? item.quantity() : quantity;
         BigDecimal quantityValue = BigDecimal.valueOf(qty == null ? 1 : qty);
-        BigDecimal gross = quantityValue.multiply(safeUnitPrice);
+
+        // Insurance invoice lines store unitPrice as the payer-share rate while gross/discount
+        // remain proportional to the full charge line — use grossAmount when present.
+        BigDecimal gross = grossAmount != null && grossAmount.signum() > 0
+                ? money(grossAmount)
+                : quantityValue.multiply(safeUnitPrice);
+
         BigDecimal factor = calculateFactor(gross, safeDiscount);
+        BigDecimal formulaNet = gross.multiply(factor).add(safeTax).setScale(2, RoundingMode.HALF_UP);
+
+        if (formulaNet.compareTo(safeNet) != 0 && gross.signum() > 0) {
+            factor = safeNet
+                    .subtract(safeTax)
+                    .divide(gross, 6, RoundingMode.HALF_UP)
+                    .max(BigDecimal.ZERO);
+        }
+
+        if (safePatientShare.signum() == 0 && safePayerShare.signum() == 0 && safeNet.signum() > 0) {
+            safePayerShare = safeNet;
+        } else if (safePatientShare.add(safePayerShare).compareTo(safeNet) != 0 && safeNet.signum() > 0) {
+            safePayerShare = safeNet.subtract(safePatientShare).setScale(2, RoundingMode.HALF_UP);
+        }
+
+        BigDecimal waseelUnitPrice = gross.signum() > 0 && qty != null && qty > 0
+                ? gross.divide(quantityValue, 2, RoundingMode.HALF_UP)
+                : safeUnitPrice;
 
         return new WaseelApprovalItem(
                 item.sequence(),
-                item.type(),
+                WaseelItemTypeNormalizer.normalize(item.type()),
                 item.itemCode(),
                 item.itemDescription(),
                 item.nonStandardCode(),
@@ -123,7 +148,7 @@ public class ApprovalItemMapper {
                 item.subSite(),
                 qty,
                 item.quantityCode(),
-                safeUnitPrice,
+                waseelUnitPrice,
                 safeDiscount,
                 factor,
                 item.taxPercent(),
@@ -232,7 +257,7 @@ public class ApprovalItemMapper {
 
         return new WaseelApprovalItem(
                 sequence,
-                emptyToNull(type),
+                WaseelItemTypeNormalizer.normalize(type),
                 emptyToNull(itemCode),
                 emptyToNull(itemDescription),
                 null,

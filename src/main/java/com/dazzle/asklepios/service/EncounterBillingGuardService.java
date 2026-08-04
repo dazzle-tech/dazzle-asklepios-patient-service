@@ -1,7 +1,6 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.PatientEncounter;
-import com.dazzle.asklepios.domain.enumeration.EncounterLifecycleStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -20,6 +19,7 @@ public class EncounterBillingGuardService {
     private static final Set<TreatmentStatus> CLINICALLY_COMPLETED_TREATMENT_STATUSES =
             Set.of(
                     TreatmentStatus.CLOSED,
+                    TreatmentStatus.COMPLETED,
                     TreatmentStatus.DISCHARGED
             );
 
@@ -38,10 +38,15 @@ public class EncounterBillingGuardService {
             return;
         }
 
-        TreatmentStatus treatmentStatus = encounter.getTreatmentStatus();
-        if (treatmentStatus != null
+        if (encounter.getCompletedAt() != null
+                || encounter.getDischargeAt() != null) {
+            return;
+        }
+
+        TreatmentStatus status = encounter.getStatus();
+        if (status != null
                 && CLINICALLY_COMPLETED_TREATMENT_STATUSES.contains(
-                treatmentStatus
+                status
         )) {
             return;
         }

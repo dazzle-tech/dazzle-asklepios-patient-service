@@ -25,6 +25,7 @@ import com.dazzle.asklepios.service.dto.billing.BillingRefundReversalRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingRefundReversalResult;
 import com.dazzle.asklepios.service.dto.billing.BillingRuleResolveResponse;
 import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
+import com.dazzle.asklepios.service.helper.NphiesPayerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -69,6 +70,8 @@ public class BillingEngineService {
 
     private final SetupBillingPricingService
             setupBillingPricingService;
+
+    private final NphiesPayerHelper nphiesPayerHelper;
 
     private final BillingPricingInputFactory
             billingPricingInputFactory;
@@ -1060,7 +1063,7 @@ public class BillingEngineService {
                 item.getEncounterId(),
                 item.getBillingItemType(),
                 sourceId,
-                item.getPatientInsuranceId(),
+                resolvePatientInsuranceId(item),
                 payerId,
                 resolveCoverageType(item),
                 item.getCurrency(),
@@ -1074,12 +1077,52 @@ public class BillingEngineService {
         );
     }
 
+    private Long resolvePatientInsuranceId(
+            PatientServiceAndProduct item
+    ) {
+        if (item.getPatientInsuranceId() != null) {
+            return item.getPatientInsuranceId();
+        }
+
+        if (item.getEncounterId() == null) {
+            return null;
+        }
+
+        return patientEncounterRepository
+                .findById(item.getEncounterId())
+                .map(PatientEncounter::getPatientInsuranceId)
+                .orElse(null);
+    }
+
     private BillingCoverageType resolveCoverageType(
             PatientServiceAndProduct item
     ) {
-        return item.getPatientInsuranceId() == null
-                ? BillingCoverageType.SELF_PAY
-                : BillingCoverageType.INSURANCE;
+        if (item.getPatientInsuranceId() != null) {
+            return BillingCoverageType.INSURANCE;
+        }
+
+        if (item.getEncounterId() == null) {
+            return BillingCoverageType.SELF_PAY;
+        }
+
+        return patientEncounterRepository
+                .findById(item.getEncounterId())
+                .map(this::resolveEncounterCoverageType)
+                .orElse(BillingCoverageType.SELF_PAY);
+    }
+
+    private BillingCoverageType resolveEncounterCoverageType(
+            PatientEncounter encounter
+    ) {
+        if (encounter.getCoverageType() != null) {
+            return encounter.getCoverageType();
+        }
+
+        if (encounter.getPatientInsuranceId() != null) {
+            return BillingCoverageType.INSURANCE;
+        }
+
+        return BillingCoverageType.SELF_PAY;
     }
 
     /*
@@ -1359,15 +1402,7 @@ public class BillingEngineService {
     private Long resolvePayerId(
             PatientServiceAndProduct item
     ) {
-        Long patientInsuranceId = item.getPatientInsuranceId();
-
-        if (patientInsuranceId == null && item.getEncounterId() != null) {
-            patientInsuranceId =
-                    patientEncounterRepository
-                            .findById(item.getEncounterId())
-                            .map(PatientEncounter::getPatientInsuranceId)
-                            .orElse(null);
-        }
+        Long patientInsuranceId = resolvePatientInsuranceId(item);
 
         if (patientInsuranceId == null) {
             return null;
@@ -1375,8 +1410,13 @@ public class BillingEngineService {
 
         return patientInsuranceRepository
                 .findById(patientInsuranceId)
-                .map(PatientInsurance::getPayorId)
-                .filter(payorId -> payorId != null && payorId > 0)
+                .map(insurance ->
+                        nphiesPayerHelper.resolvePriceListPayerId(
+                                insurance.getPayorId(),
+                                insurance.getPayerNphiesId()
+                        )
+                )
+                .filter(payerId -> payerId != null && payerId > 0)
                 .orElse(null);
     }
 

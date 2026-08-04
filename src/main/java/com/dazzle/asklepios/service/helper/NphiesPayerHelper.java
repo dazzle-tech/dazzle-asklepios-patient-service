@@ -9,9 +9,14 @@ import org.springframework.stereotype.Service;
 public class NphiesPayerHelper {
 
     private final NphiesPayerClient nphiesPayerClient;
+    private final PayorHelper payorHelper;
 
-    public NphiesPayerHelper(NphiesPayerClient nphiesPayerClient) {
+    public NphiesPayerHelper(
+            NphiesPayerClient nphiesPayerClient,
+            PayorHelper payorHelper
+    ) {
         this.nphiesPayerClient = nphiesPayerClient;
+        this.payorHelper = payorHelper;
     }
 
     public NphiesPayerDTO findByNphiesId(String payerNphiesId) {
@@ -34,6 +39,32 @@ public class NphiesPayerHelper {
         } catch (feign.FeignException.NotFound ex) {
             return null;
         }
+    }
+
+    /**
+     * Price lists in setup reference {@code nphies_payers.id}, while patient
+     * insurance stores {@code payor.id}. Resolve the NPHIES payer row used for
+     * price-list matching via the shared NPHIES identifier.
+     */
+    public Long resolvePriceListPayerId(
+            Long payorId,
+            String payerNphiesId
+    ) {
+        String nphiesId = payerNphiesId;
+
+        if (nphiesId == null || nphiesId.isBlank()) {
+            var payor = payorHelper.findPayor(payorId, null);
+            if (payor != null && payor.nphiesId() != null) {
+                nphiesId = payor.nphiesId();
+            }
+        }
+
+        NphiesPayerDTO nphiesPayer = findByNphiesId(nphiesId);
+        if (nphiesPayer == null || nphiesPayer.id() == null || nphiesPayer.id() <= 0) {
+            return null;
+        }
+
+        return nphiesPayer.id();
     }
 
     public String resolvePayerDisplayName(String payerNphiesId, String existingPayerName) {

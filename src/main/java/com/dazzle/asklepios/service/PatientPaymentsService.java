@@ -16,6 +16,7 @@ import com.dazzle.asklepios.domain.BillingWallet;
 import com.dazzle.asklepios.domain.WalletTransaction;
 import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
@@ -51,6 +52,7 @@ import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
 import com.dazzle.asklepios.repository.BillingChargeRepository;
 import com.dazzle.asklepios.repository.BillingDebitAccountRepository;
 import com.dazzle.asklepios.service.dto.InsuranceSplit;
+import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientLedgerSummaryDTO;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentCreateDTO;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentDetailsDTO;
@@ -63,6 +65,7 @@ import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.PreparedStatementCallback;
@@ -119,6 +122,7 @@ public class PatientPaymentsService {
     private final FinancialDocumentBalanceService financialDocumentBalanceService;
     private final BillingChargeRepository billingChargeRepository;
     private final BillingDebitAccountRepository billingDebitAccountRepository;
+    private final @Lazy BillingEngineService billingEngineService;
 
     private static BigDecimal nonNullAmount(BigDecimal value) {
         return value == null ? ZERO_AMOUNT : value;
@@ -217,6 +221,75 @@ public class PatientPaymentsService {
         BigDecimal tax = ZERO_AMOUNT;       // لاحقًا من tax
 
         return unitPrice.multiply(quantity).multiply(factor).add(tax);
+    }
+
+    private BigDecimal resolveServiceAmountForPayment(
+            PatientPaymentServiceItemDTO item,
+            PatientEncounter encounter,
+            PatientInsurance plan,
+            Currency currency,
+            PaymentTypes paymentTypes
+    ) {
+        BigDecimal unitPrice = resolveUnitPriceForPaymentItem(
+                item,
+                encounter,
+                plan,
+                currency,
+                paymentTypes
+        );
+        return unitPrice.multiply(BigDecimal.ONE);
+    }
+
+    private BigDecimal resolveUnitPriceForPaymentItem(
+            PatientPaymentServiceItemDTO item,
+            PatientEncounter encounter,
+            PatientInsurance plan,
+            Currency currency,
+            PaymentTypes paymentTypes
+    ) {
+        if (paymentTypes == PaymentTypes.INSURANCE_PLAN && plan != null) {
+            ResolvedBillingPrice resolvedPrice =
+                    billingEngineService.resolvePricing(
+                            buildPricingProbe(
+                                    item,
+                                    encounter,
+                                    plan,
+                                    currency
+                            ),
+                            encounter.getFacilityId()
+                    );
+
+            LOG.info(
+                    "[CREATE] Resolved insurance unit price serviceId={} setupPrice={} resolvedPrice={} priceSource={}",
+                    item.serviceId(),
+                    item.price(),
+                    resolvedPrice.unitPrice(),
+                    resolvedPrice.priceSource()
+            );
+
+            return nonNullAmount(resolvedPrice.unitPrice());
+        }
+
+        return nonNullAmount(item.price());
+    }
+
+    private PatientServiceAndProduct buildPricingProbe(
+            PatientPaymentServiceItemDTO item,
+            PatientEncounter encounter,
+            PatientInsurance plan,
+            Currency currency
+    ) {
+        return PatientServiceAndProduct.builder()
+                .patientId(encounter.getPatient().getId())
+                .encounterId(encounter.getId())
+                .billingItemType(BillingItemTypes.SERVICE)
+                .serviceId(item.serviceId())
+                .sourceId(item.serviceId())
+                .serviceSource(ServiceSource.ENCOUNTER_DEFAULT_SERVICE)
+                .quantity(1L)
+                .currency(currency)
+                .patientInsuranceId(plan.getId())
+                .build();
     }
 
     private void lockPatientLedger(Long patientId) {
@@ -706,11 +779,11 @@ public class PatientPaymentsService {
                     );
                 });
 
-        if (encounter.getTreatmentStatus() != TreatmentStatus.PENDING_PAYMENT) {
+        if (encounter.getStatus() != TreatmentStatus.PENDING_PAYMENT) {
             LOG.warn(
                     "[CREATE] PatientPayments rejected: encounter treatment status invalid encounterId={} treatmentStatus={}",
                     dto.encounterId(),
-                    encounter.getTreatmentStatus()
+                    encounter.getStatus()
             );
             throw new BadRequestAlertException(
                     "Encounter is not in PENDING_PAYMENT status",
@@ -723,9 +796,17 @@ public class PatientPaymentsService {
         List<PatientPaymentServiceItemDTO> services =
                 dto.services() == null ? List.of() : dto.services();
 
+        PatientInsurance plan = resolvePlan(dto);
+
         BigDecimal dueAmount = services.stream()
                 .filter(serviceItem -> !Boolean.TRUE.equals(serviceItem.isExempted()))
-                .map(this::resolveServiceAmountFromDTO)
+                .map(serviceItem -> resolveServiceAmountForPayment(
+                        serviceItem,
+                        encounter,
+                        plan,
+                        dto.currency(),
+                        dto.paymentTypes()
+                ))
                 .reduce(ZERO_AMOUNT, BigDecimal::add);
 
         if (services.isEmpty() || dueAmount.compareTo(ZERO_AMOUNT) == 0) {
@@ -736,9 +817,9 @@ public class PatientPaymentsService {
 
             if (encounter.getEncounterType().equals(EncounterType.EMERGENCY)) {
 
-                encounter.setTreatmentStatus(TreatmentStatus.WAITING_TRIAGE);
+                encounter.setStatus(TreatmentStatus.WAITING_TRIAGE);
             } else {
-                encounter.setTreatmentStatus(TreatmentStatus.NEW);
+                encounter.setStatus(TreatmentStatus.NEW);
            }
 
             encounterRepository.saveAndFlush(encounter);
@@ -760,8 +841,6 @@ public class PatientPaymentsService {
                     skippedServiceRows
             );
         }
-
-        PatientInsurance plan = resolvePlan(dto);
 
         PatientPayments payment = PatientPayments.builder()
                 .patient(patient)
@@ -911,9 +990,9 @@ public class PatientPaymentsService {
 
             // ✅ update encounter status
             if (encounter.getEncounterType().equals(EncounterType.EMERGENCY)) {
-                encounter.setTreatmentStatus(TreatmentStatus.WAITING_TRIAGE);
+                encounter.setStatus(TreatmentStatus.WAITING_TRIAGE);
             } else {
-                encounter.setTreatmentStatus(TreatmentStatus.NEW);
+                encounter.setStatus(TreatmentStatus.NEW);
 
             }
 
@@ -1068,13 +1147,28 @@ public class PatientPaymentsService {
             PatientPayments payment,
             List<PatientPaymentServiceItemDTO> services
     ) {
+        PatientEncounter encounter = payment.getEncounter();
+        boolean insurancePayment =
+                PaymentTypes.INSURANCE_PLAN.equals(payment.getPaymentTypes());
 
         List<PatientServiceAndProduct> rows = services.stream()
                 .map(item -> {
 
-                    BigDecimal unitPrice = item.price() == null
-                            ? ZERO_AMOUNT
-                            : item.price();
+                    BigDecimal unitPrice;
+
+                    if (insurancePayment && payment.getPlan() != null) {
+                        unitPrice = resolveUnitPriceForPaymentItem(
+                                item,
+                                encounter,
+                                payment.getPlan(),
+                                payment.getCurrency(),
+                                payment.getPaymentTypes()
+                        );
+                    } else {
+                        unitPrice = item.price() == null
+                                ? ZERO_AMOUNT
+                                : item.price();
+                    }
 
                     BigDecimal quantity = BigDecimal.ONE;
 
@@ -1130,9 +1224,6 @@ public class PatientPaymentsService {
 
                             .paymentId(payment.getId())
                             .paymentType(payment.getPaymentTypes().name());
-
-                    boolean insurancePayment =
-                            PaymentTypes.INSURANCE_PLAN.equals(payment.getPaymentTypes());
 
                     if (insurancePayment && payment.getPlan() != null) {
                         rowBuilder

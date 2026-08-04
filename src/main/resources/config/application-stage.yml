@@ -16,6 +16,13 @@ management:
       probability: 1.0 # report 100% of traces
 service:
   asklepios-setup-service-url: http://asklepios-api-setup-service:8082
+  asklepios-notification-service-url: http://asklepios-notification-service:8080
+
+application:
+  asklepios-application-url: http://asklepios.nereuscloud.de//#
+appointment:
+  template-interval-ended:
+    fixed-delay: 60000
 spring:
   devtools:
     restart:
@@ -85,3 +92,14 @@ patient:
       host: localhost
       port: 5000
       ring-buffer-size: 512
+  appointment:
+    auto-no-show:
+      job-zone: Asia/Hebron
+      system-job-user: SYSTEM_JOB
+      no-show-reason: Not Specified
+    template-interval-ended:
+      cron: "0 0 7 * * *"
+      zone: "Asia/Gaza"
+      springdoc:
+      pre-loading-enabled: true
+

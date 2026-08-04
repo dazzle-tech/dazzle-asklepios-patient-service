@@ -12,6 +12,8 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
 
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
+
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentStatus;
@@ -121,6 +123,14 @@ public class InvoiceBalancePaymentService {
     ) {
 
         FinancialDocument invoice = loadInvoice(invoiceId);
+
+        if (invoice.getDocumentSubtype() == FinancialDocumentSubtype.INSURANCE_CLAIM) {
+            throw new BadRequestAlertException(
+                    "Insurance claim invoices are settled through payer remittance, not patient payment.",
+                    ENTITY_NAME,
+                    "invoice.insuranceClaimPaymentNotAllowed"
+            );
+        }
 
         PatientEncounter encounter = requireEncounter(invoice.getEncounterId());
 

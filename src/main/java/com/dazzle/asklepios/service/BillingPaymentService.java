@@ -107,6 +107,9 @@ public class BillingPaymentService {
     private final PreAuthorizationResolutionService
             preAuthorizationResolutionService;
 
+    private final EncounterTreatmentAdvanceService
+            encounterTreatmentAdvanceService;
+
     @Transactional(rollbackFor = Exception.class)
     public BillingPaymentResult createAdvancePayment(
             CreateAdvancePaymentRequest request
@@ -328,6 +331,12 @@ public class BillingPaymentService {
                 finalWallet.getReservedBalance(),
                 reservationResults.size()
         );
+
+        if (request.encounterId() != null) {
+            encounterTreatmentAdvanceService.tryAdvanceFromPendingPayment(
+                    request.encounterId()
+            );
+        }
 
         return buildResult(
                 payment,

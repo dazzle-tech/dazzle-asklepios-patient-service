@@ -108,6 +108,9 @@ public class BillingTransactionService {
     private final PreAuthorizationResolutionService
             preAuthorizationResolutionService;
 
+    private final EncounterTreatmentAdvanceService
+            encounterTreatmentAdvanceService;
+
     /*
      * ============================================================
      * CREATE PATIENT ITEM BILLING
@@ -260,6 +263,10 @@ public class BillingTransactionService {
          */
         billingChargeService.recalculateChargeTotals(
                 context
+        );
+
+        encounterTreatmentAdvanceService.tryAdvanceFromPendingPayment(
+                item.getEncounterId()
         );
 
         BillingOperationResult result =
@@ -420,6 +427,10 @@ public class BillingTransactionService {
                 .recalculateChargeTotals(
                         context
                 );
+
+        encounterTreatmentAdvanceService.tryAdvanceFromPendingPayment(
+                item.getEncounterId()
+        );
 
         BillingOperationResult result =
                 buildResult(
