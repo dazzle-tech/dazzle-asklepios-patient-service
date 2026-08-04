@@ -5,6 +5,7 @@ import com.dazzle.asklepios.service.PatientAuthenticationService;
 import com.dazzle.asklepios.service.PatientService;
 import com.dazzle.asklepios.service.dto.patient.FacilityPatientFilterDTO;
 import com.dazzle.asklepios.service.dto.patient.KeyAndPasswordDTO;
+import com.dazzle.asklepios.service.dto.patient.PatientConditionsDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientDuplicationLookupDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientLoginDTO;
@@ -474,7 +475,14 @@ public class PatientController {
 
         return ResponseEntity.noContent().build();
     }
-
+    @PutMapping("/{id}/conditions")
+    public ResponseEntity<Patient> updatePatientConditions(
+            @PathVariable Long id,
+            @RequestBody PatientConditionsDTO dto
+    ) {
+        Patient updatedPatient = patientService.updatePatientConditions(id, dto);
+        return ResponseEntity.ok(updatedPatient);
+    }
     @GetMapping(value = "/create-patient-password/validate", produces = MediaType.APPLICATION_JSON_VALUE)
     public CreatePasswordKeyValidationVM validate(@RequestParam("key") String key) {
         return patientService.validateCreatePasswordKey(key);
