@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.radiologyImage.PacsIntegrationClient;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
@@ -32,7 +33,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -55,6 +55,7 @@ public class DiagnosticOrderTestReportService {
 
     private final DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
+    private final PacsIntegrationClient pacsIntegrationService;
 
 
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
@@ -63,12 +64,13 @@ public class DiagnosticOrderTestReportService {
 
     public DiagnosticOrderTestReportService(
             DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository,
-            DiagnosticOrderTestRepository diagnosticOrderTestRepository,
+            DiagnosticOrderTestRepository diagnosticOrderTestRepository, PacsIntegrationClient pacsIntegrationService,
             DiagnosticOrderStatusService diagnosticOrderStatusService,
             DiagnosticOrderTestStatusService diagnosticOrderTestStatusService, DiagnosticOrderTestReportCommentsRepository diagnosticOrderTestReportCommentsRepository
     ) {
         this.diagnosticOrderTestReportRepository = diagnosticOrderTestReportRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
+        this.pacsIntegrationService = pacsIntegrationService;
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
         this.diagnosticOrderTestReportCommentsRepository = diagnosticOrderTestReportCommentsRepository;
@@ -765,34 +767,47 @@ public class DiagnosticOrderTestReportService {
     }
     public List<PacsStudyDTO> getImageLinks(Long reportId) {
 
-        DiagnosticOrderTestReport report = diagnosticOrderTestReportRepository
-                .findById(reportId)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Report not found: " + reportId,
-                        "diagnosticOrderTestReport",
-                        "notfound"
-                ));
+        LOG.debug("Getting image links for reportId={}", reportId);
 
-        if (StringUtils.isBlank(report.getAccessionNumber())) {
-            return List.of();
+        DiagnosticOrderTestReport report =
+                diagnosticOrderTestReportRepository
+                        .findById(reportId)
+                        .orElseThrow(() ->
+                                new NotFoundAlertException(
+                                        "Report not found: " + reportId,
+                                        "diagnosticOrderTestReport",
+                                        "notfound"
+                                )
+                        );
+
+        LOG.debug(
+                "Report found. id={}, accessionNumber='{}'",
+                report.getId(),
+                report.getOrderTestId()
+        );
+
+        if (StringUtils.isBlank(report.getOrderTestId().toString())) {
+
+            LOG.warn(
+                    "Accession Number is missing for reportId={}",
+                    reportId
+            );
+
+            throw new BadRequestAlertException(
+                    "Accession Number is missing",
+                    "diagnosticOrderTestReport",
+                    "accessionnumbermissing"
+            );
         }
 
-        return getStudiesByAccessionNumber(
-                report.getAccessionNumber()
+        LOG.debug(
+                "Calling PACS using accessionNumber={}",
+                report.getOrderTestId()
         );
-    }
 
-    private List<PacsStudyDTO> getStudiesByAccessionNumber(
-            String accessionNumber
-    ) {
-        return List.of(
-                new PacsStudyDTO(
-                        "Test Patient",
-                        "12345",
-                        "STUDY001",
-                        LocalDate.now(),
-                        "https://demo.ohif.org/viewer"
-                )
+        return pacsIntegrationService.getStudiesByAccessionNumber(
+
+                report.getOrderTestId().toString()
         );
     }
 
