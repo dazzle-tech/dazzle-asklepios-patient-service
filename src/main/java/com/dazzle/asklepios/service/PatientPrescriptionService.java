@@ -61,6 +61,7 @@ public class PatientPrescriptionService {
     private final ActiveIngredientClient activeIngredientClient;
     private final BrandMedicationClient brandMedicationClient;
     private final NotificationHelper notificationHelper;
+    private final PatientServiceAndProductService patientServiceAndProductService;
 
     private String currentUsername() {
         String username = SecurityUtils.getCurrentUserLogin().orElse(null);
@@ -242,6 +243,8 @@ public class PatientPrescriptionService {
         PatientPrescription saved = prescriptionRepository.save(entity);
 
         notificationForHighAlertMedication(saved);
+
+        patientServiceAndProductService.syncPrescriptionMedicationsForPreAuthorization(saved);
 
         return toDto(saved);
     }

@@ -135,6 +135,20 @@ public class BillingRuleEvaluationService {
     }
 
     public void requireConfiguredRule(
+            BillingRuleEvaluationRequest request
+    ) {
+        BillingRuleEvaluationResponse evaluation = evaluate(request);
+
+        if (!evaluation.ruleFound()) {
+            throw new BadRequestAlertException(
+                    evaluation.message(),
+                    ENTITY_NAME,
+                    "billingRule.notConfigured"
+            );
+        }
+    }
+
+    public void requireConfiguredRule(
             BillingItemTypes billingItemType,
             Long diagnosticTestId,
             BillingEventType billingEvent

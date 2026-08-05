@@ -3,7 +3,6 @@ package com.dazzle.asklepios.service.dto.billing;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
@@ -32,7 +31,7 @@ public record PrepareDefaultServicesRequest(
 
         Long patientInsuranceId,
 
-        @NotEmpty
+        @NotNull
         List<@Valid PrepareDefaultServiceItem> items,
 
         @NotNull

@@ -74,6 +74,7 @@ public class DefaultServicePreparationService {
     private final PreAuthorizationResolutionService preAuthorizationResolutionService;
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
     private final EncounterCoverageService encounterCoverageService;
+    private final EncounterTreatmentAdvanceService encounterTreatmentAdvanceService;
 
     /**
      * Creates/reuses selected default-service PSP records and sends each one
@@ -247,11 +248,19 @@ public class DefaultServicePreparationService {
         }
 
         boolean processed =
-                results.stream()
-                        .allMatch(result ->
-                                result.billingResult() != null
-                                        && result.billingResult().processed()
-                        );
+                orderedItems.isEmpty()
+                        || results.stream()
+                                .allMatch(result ->
+                                        result.billingResult() != null
+                                                && result.billingResult().processed()
+                                );
+
+        if (orderedItems.isEmpty()) {
+            encounterTreatmentAdvanceService
+                    .advanceFromPendingPaymentWhenNothingToBill(
+                            encounterId
+                    );
+        }
 
         LOG.info(
                 "[PREPARE_DEFAULT_SERVICES] encounterId={} patientId={} coverageType={} itemCount={} processed={} pendingPreAuth={}",
@@ -263,6 +272,13 @@ public class DefaultServicePreparationService {
                 hasPendingPreAuth
         );
 
+        String message =
+                orderedItems.isEmpty()
+                        ? "Encounter billing completed. No default services to bill."
+                        : processed
+                                ? "Default services prepared successfully."
+                                : "Default services were prepared, but one or more billing rules could not be matched.";
+
         return new PrepareDefaultServicesResult(
                 request.patientId(),
                 encounterId,
@@ -271,9 +287,7 @@ public class DefaultServicePreparationService {
                 insurance == null ? null : insurance.getId(),
                 List.copyOf(results),
                 processed,
-                processed
-                        ? "Default services prepared successfully."
-                        : "Default services were prepared, but one or more billing rules could not be matched."
+                message
         );
     }
 
@@ -636,9 +650,9 @@ public class DefaultServicePreparationService {
             );
         }
 
-        if (request.items() == null || request.items().isEmpty()) {
+        if (request.items() == null) {
             throw new BadRequestAlertException(
-                    "At least one default service must be selected.",
+                    "Default-service items are required.",
                     ENTITY_NAME,
                     "items.required"
             );
@@ -650,6 +664,10 @@ public class DefaultServicePreparationService {
                     ENTITY_NAME,
                     "requestId.required"
             );
+        }
+
+        if (request.items().isEmpty()) {
+            return;
         }
 
         Set<Long> serviceIds = new HashSet<>();

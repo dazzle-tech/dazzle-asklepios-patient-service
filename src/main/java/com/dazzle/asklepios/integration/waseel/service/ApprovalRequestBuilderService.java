@@ -2,9 +2,13 @@ package com.dazzle.asklepios.integration.waseel.service;
 
 import com.dazzle.asklepios.domain.PatientDiagnosis;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientPrescription;
+import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.domain.PatientRelation;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.RelationType;
+import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalEncounterMapper;
@@ -20,6 +24,8 @@ import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalSubscriber
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalSupportingInfoMapper;
 import com.dazzle.asklepios.repository.PatientDiagnosisRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientPrescriptionMedicationRepository;
+import com.dazzle.asklepios.repository.PatientPrescriptionRepository;
 import com.dazzle.asklepios.repository.PatientRelationRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -44,6 +50,8 @@ public class ApprovalRequestBuilderService {
     private final PatientDiagnosisRepository patientDiagnosisRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final PatientRelationRepository patientRelationRepository;
+    private final PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository;
+    private final PatientPrescriptionRepository patientPrescriptionRepository;
 
     private final ApprovalPreAuthorizationInfoMapper preAuthorizationInfoMapper;
     private final ApprovalEncounterMapper encounterMapper;
@@ -134,7 +142,11 @@ public class ApprovalRequestBuilderService {
                 subscriber,
                 null,
                 snapshot.insurancePlan(),
-                preAuthorizationInfoMapper.toPreAuthorizationInfo(snapshot, nphiesId),
+                preAuthorizationInfoMapper.toPreAuthorizationInfo(
+                        snapshot,
+                        nphiesId,
+                        resolvePrescriptionReference(items)
+                ),
                 supportingInfo,
                 approvalDiagnosisMapper.toWaseelDiagnosisList(diagnoses),
                 approvalCareTeamMapper.toWaseelCareTeam(encounter),
@@ -257,5 +269,49 @@ public class ApprovalRequestBuilderService {
                 .filter(value -> value != null)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private String resolvePrescriptionReference(List<PatientServiceAndProduct> items) {
+        if (items == null || items.isEmpty()) {
+            return null;
+        }
+
+        for (PatientServiceAndProduct item : items) {
+            if (item.getBillingItemType() != BillingItemTypes.MEDICATION) {
+                continue;
+            }
+
+            if (item.getServiceSource() != ServiceSource.PRESCRIPTION
+                    || item.getSourceId() == null) {
+                continue;
+            }
+
+            PatientPrescriptionMedication prescriptionMedication =
+                    patientPrescriptionMedicationRepository
+                            .findById(item.getSourceId())
+                            .orElse(null);
+
+            if (prescriptionMedication == null
+                    || prescriptionMedication.getPrescriptionHeader() == null) {
+                continue;
+            }
+
+            PatientPrescription prescription =
+                    patientPrescriptionRepository.findById(
+                            prescriptionMedication.getPrescriptionHeader().getId()
+                    ).orElse(null);
+
+            if (prescription == null) {
+                continue;
+            }
+
+            if (prescription.getPrescriptionNum() != null) {
+                return String.valueOf(prescription.getPrescriptionNum());
+            }
+
+            return String.valueOf(prescription.getId());
+        }
+
+        return null;
     }
 }
