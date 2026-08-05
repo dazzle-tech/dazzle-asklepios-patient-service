@@ -683,7 +683,7 @@ public class InvoiceGenerationService {
                             .patientShareAmount(patientShare)
                             .insuranceShareAmount(insuranceShare)
                             .paidAmount(BigDecimal.ZERO)
-                            .remainingAmount(patientShare)
+                            .remainingAmount(shareAmount)
                             .insurancePaidAmount(BigDecimal.ZERO)
                             .insuranceRemainingAmount(insuranceShare)
                             .status(FinancialDocumentItemStatus.PENDING)

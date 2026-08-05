@@ -17,6 +17,11 @@ import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -24,7 +29,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -77,8 +81,12 @@ public class WaseelCchiService {
         }
 
         try {
-            // TODO real API call later
-            return mockCchiInquiryResponse();
+            try {
+                return doFetchBeneficiary(documentId);
+            } catch (HttpClientErrorException.Unauthorized ex) {
+                tokenService.clearToken();
+                return doFetchBeneficiary(documentId);
+            }
 
         } catch (HttpClientErrorException.BadRequest ex) {
             LOG.warn("[CCHI] Bad request documentId={} response={}", documentId, ex.getResponseBodyAsString());
@@ -142,6 +150,39 @@ public class WaseelCchiService {
 
         return fallback;
     }
+
+    private CchiInquiryResponse doFetchBeneficiary(String documentId) {
+        String systemType = properties.systemType() != null
+                ? String.valueOf(properties.systemType())
+                : "1";
+
+        String url = properties.baseUrl()
+                + "/beneficiaries/providers/"
+                + properties.providerId()
+                + "/patientKey/"
+                + documentId.trim()
+                + "/systemType/"
+                + systemType;
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(tokenService.getToken());
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+        headers.set("User-Agent", "PostmanRuntime/7.43.0");
+
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        LOG.info("[CCHI] Fetching beneficiary documentId={} url={}", documentId, url);
+
+        ResponseEntity<CchiInquiryResponse> response = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                entity,
+                CchiInquiryResponse.class
+        );
+
+        return response.getBody();
+    }
+
     public Patient fetchPatientByDocumentId(String documentId) {
         CchiMappedPatientResponse mapped = fetchMappedPatientByDocumentId(documentId);
 
@@ -195,91 +236,4 @@ public class WaseelCchiService {
 
         return result;
     }
-
-    // =========================================================
-    // TEST MOCK DATA
-    // Temporary mock response used during development/testing.
-    // Keep until real Waseel CCHI API integration is completed.
-    // =========================================================
-
-    private CchiInquiryResponse mockCchiInquiryResponse() {
-        CchiBeneficiaryData data = new CchiBeneficiaryData(
-                "2456789123",          // documentId
-                "PRC",               // documentType
-
-                "Mohammed Ahmed Saleh Alharbi", // fullName
-                "Mohammed",            // firstName
-                "Ahmed",               // middleName
-                "Saleh",               // lastName
-                "Alharbi",             // familyName
-
-                "240600003",           // beneficiaryFileId
-                "",                    // systemType
-                "",                    // passportNumber
-                "",                    // borderNumber
-                "",                    // visaNumber
-                "",                    // visaType
-                "",                    // visitTitle
-                "2034-01-01",          // visaExpiryDate
-
-                "1995-05-18",          // dob
-                "",                    // eHealthId
-                "Saudi",               // nationality
-                "Resident",            // residencyType
-
-                "966501234567",        // contactNumber
-                "mohammed@test.com",   // email
-                "966500000000",        // emergencyNumber
-
-                "Building 25, Al Olaya", // addressLine
-                "King Fahad Road",       // streetLine
-                "Riyadh",                // city
-                "Riyadh",                // state
-                "Saudi Arabia",          // country
-                "12211",                 // postalCode
-
-                "Married",             // martialStatus
-                "male",                // gender
-                "O+",                  // bloodGroup
-                "Arabic",              // preferredLanguage
-                "Islam",               // religion
-                "Business",            // occupation
-
-                0L,                    // nphiesId
-                "",                    // providerId
-                false,                 // isNewBorn
-
-                List.of(
-                        new CchiInsurancePlan(
-                                null,
-                                "74915036",
-                                "17452394",
-                                null,
-                                "2028-03-16",
-                                null,
-                                "false",
-                                null,
-                                "Tawuniya - One Health",
-                                "INS-FHIR",
-                                null,
-                                "self",
-                                "EHCPOL",
-                                BigDecimal.ZERO,
-                                BigDecimal.ZERO,
-                                null,
-                                null,
-                                null,
-                                "ELAL CONSTRUCTION",
-                                List.of(),
-                                false
-                        )
-                )
-        );
-        return new CchiInquiryResponse(
-                "Success",
-                "200",
-                "Request successful",
-                false,
-                data
-        );
-    }}
+}

@@ -20,5 +20,7 @@ public enum BillingEventType {
 
     CHECKOUT,
 
-    MANUAL
+    MANUAL,
+
+    DEBIT_NOTE
 }

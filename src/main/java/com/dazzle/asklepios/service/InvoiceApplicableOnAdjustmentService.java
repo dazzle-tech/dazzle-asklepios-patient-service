@@ -57,6 +57,30 @@ public class InvoiceApplicableOnAdjustmentService {
                 DiscountApplicableOn.INVOICE_LINE
         );
 
+        applyInvoiceScopeAdjustmentsOnly(
+                items,
+                facilityId,
+                currency,
+                pricingDate
+        );
+
+        return items;
+    }
+
+    /**
+     * Applies only invoice-wide tax/discount rules. Used for debit-note catalog
+     * lines where line-level setup discounts must not reduce the price.
+     */
+    public List<FinancialDocumentItem> applyInvoiceScopeAdjustmentsOnly(
+            List<FinancialDocumentItem> items,
+            Long facilityId,
+            Currency currency,
+            LocalDate pricingDate
+    ) {
+        if (items == null || items.isEmpty()) {
+            return items;
+        }
+
         applyScopeAdjustments(
                 items,
                 facilityId,

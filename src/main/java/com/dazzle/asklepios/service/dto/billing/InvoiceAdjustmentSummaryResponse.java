@@ -30,6 +30,12 @@ public record InvoiceAdjustmentSummaryResponse(
 
         boolean creditNoteAllowed,
 
+        /** True when post-issuance discount credit notes are allowed (patient invoices only). */
+        boolean discountCreditNoteAllowed,
+
+        /** True when credit/debit/discount adjustments are blocked by an active Waseel claim. */
+        boolean adjustmentsBlockedByClaim,
+
         Currency currency,
 
         List<FinancialDocumentAdjustmentResponse> adjustments

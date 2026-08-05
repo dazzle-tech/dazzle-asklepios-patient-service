@@ -226,7 +226,8 @@ public class BillingEngineService {
                         item,
                         facilityId,
                         sourceId,
-                        payerId
+                        payerId,
+                        null
                 );
 
         /*
@@ -319,17 +320,32 @@ public class BillingEngineService {
             PatientServiceAndProduct item,
             Long facilityId
     ) {
+        return resolvePricing(item, facilityId, null);
+    }
+
+    /**
+     * Resolves pricing with an optional coverage override (e.g. cash payment on
+     * an encounter that still carries insurance metadata).
+     */
+    public ResolvedBillingPrice resolvePricing(
+            PatientServiceAndProduct item,
+            Long facilityId,
+            BillingCoverageType coverageOverride
+    ) {
         validatePatientItem(item);
 
         Long sourceId = resolveSourceId(item);
-        Long payerId = resolvePayerId(item);
+        Long payerId = coverageOverride == BillingCoverageType.SELF_PAY
+                ? null
+                : resolvePayerId(item);
 
         BillingPricingResolveRequest pricingRequest =
                 buildPricingRequest(
                         item,
                         facilityId,
                         sourceId,
-                        payerId
+                        payerId,
+                        coverageOverride
                 );
 
         ResolvedBillingPrice resolvedPrice =
@@ -636,6 +652,7 @@ public class BillingEngineService {
             );
         }
 
+        candidates.add(BillingEventType.DEBIT_NOTE);
         candidates.add(BillingEventType.ITEM_ORDERED);
         candidates.add(BillingEventType.ITEM_DISPENSED);
         candidates.add(BillingEventType.ENCOUNTER_CREATED);
@@ -670,6 +687,9 @@ public class BillingEngineService {
 
             case MANUAL ->
                     BillingEventType.MANUAL;
+
+            case DEBIT_NOTE ->
+                    BillingEventType.DEBIT_NOTE;
         };
     }
 
@@ -734,7 +754,8 @@ public class BillingEngineService {
                         item,
                         facilityId,
                         sourceId,
-                        payerId
+                        payerId,
+                        null
                 );
 
         ResolvedBillingPrice resolvedPrice =
@@ -1055,17 +1076,30 @@ public class BillingEngineService {
             PatientServiceAndProduct item,
             Long facilityId,
             Long sourceId,
-            Long payerId
+            Long payerId,
+            BillingCoverageType coverageOverride
     ) {
+        BillingCoverageType coverage = coverageOverride != null
+                ? coverageOverride
+                : resolveCoverageType(item);
+
+        Long patientInsuranceId = coverage == BillingCoverageType.INSURANCE
+                ? resolvePatientInsuranceId(item)
+                : null;
+
+        Long effectivePayerId = coverage == BillingCoverageType.INSURANCE
+                ? payerId
+                : null;
+
         return new BillingPricingResolveRequest(
                 facilityId,
                 item.getPatientId(),
                 item.getEncounterId(),
                 item.getBillingItemType(),
                 sourceId,
-                resolvePatientInsuranceId(item),
-                payerId,
-                resolveCoverageType(item),
+                patientInsuranceId,
+                effectivePayerId,
+                coverage,
                 item.getCurrency(),
                 resolveTaxApplicableOn(
                         item

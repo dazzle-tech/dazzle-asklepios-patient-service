@@ -6,10 +6,12 @@ import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.PriceSource;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCancellationReason;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerSourceChannel;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.CancelReason;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
@@ -22,6 +24,7 @@ import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
+import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductUpdateDTO;
 import com.dazzle.asklepios.service.helper.BrandMedicationHelper;
@@ -125,7 +128,7 @@ public class PatientServiceAndProductService {
         PatientServiceAndProduct entity = buildEntityFromCreateDto(
                 dto,
                 patient.getId(),
-                encounter.getId()
+                encounter
         );
 
         try {
@@ -164,6 +167,13 @@ public class PatientServiceAndProductService {
                         "Record not found with id " + dto.id()
                 ));
 
+        PatientEncounter encounter = patientEncounterRepository.findById(entity.getEncounterId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Encounter not found with id " + entity.getEncounterId(),
+                        "patientServicesAndProducts",
+                        "encounter.notfound"
+                ));
+
         entity.setBillingItemType(dto.billingItemType());
 
         if (dto.brandMedicationId() != null) {
@@ -187,12 +197,10 @@ public class PatientServiceAndProductService {
         }
 
         entity.setQuantity(dto.quantity());
-        entity.setUnitPrice(dto.unitPrice());
+        entity.setCurrency(dto.currency());
         entity.setDiscountAmount(defaultZero(dto.discountAmount()));
         entity.setExemptionAmount(defaultZero(dto.exemptionAmount()));
         entity.setTaxAmount(defaultZero(dto.taxAmount()));
-        entity.setTotalAmount(dto.totalAmount());
-        entity.setCurrency(dto.currency());
 
         preAuthorizationResolutionService.apply(
                 entity,
@@ -214,6 +222,8 @@ public class PatientServiceAndProductService {
             );
             entity.setCoverageStatus(CoverageStatus.COVERED);
         }
+
+        applyResolvedPricing(entity, encounter, dto.quantity());
 
         if (dto.isBilled() != null) {
             entity.setIsBilled(dto.isBilled());
@@ -270,7 +280,7 @@ public class PatientServiceAndProductService {
                         return buildEntityFromCreateDto(
                                 dto,
                                 patient.getId(),
-                                encounter.getId()
+                                encounter
                         );
                     })
                     .toList();
@@ -387,32 +397,30 @@ public class PatientServiceAndProductService {
     private PatientServiceAndProduct buildEntityFromCreateDto(
             PatientServiceProductCreateDTO dto,
             Long patientId,
-            Long encounterId
+            PatientEncounter encounter
     ) {
         long quantity = dto.quantity() == null ? 1L : dto.quantity();
-        BigDecimal unitPrice = defaultZero(dto.unitPrice());
-        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
 
         PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
                 .patientId(patientId)
-                .encounterId(encounterId)
+                .encounterId(encounter.getId())
                 .billingItemType(dto.billingItemType())
                 .brandMedicationId(dto.brandMedicationId())
                 .diagnosticTestId(dto.diagnosticTestId())
                 .serviceId(dto.serviceId())
                 .procedureId(dto.procedureId())
                 .quantity(quantity)
-                .unitPrice(unitPrice)
+                .unitPrice(BigDecimal.ZERO)
                 .discountAmount(BigDecimal.ZERO)
                 .exemptionAmount(BigDecimal.ZERO)
                 .taxAmount(BigDecimal.ZERO)
-                .totalAmount(totalAmount)
-                .grossAmount(totalAmount)
-                .netAmount(totalAmount)
+                .totalAmount(BigDecimal.ZERO)
+                .grossAmount(BigDecimal.ZERO)
+                .netAmount(BigDecimal.ZERO)
                 .patientShareAmount(BigDecimal.ZERO)
                 .insuranceShareAmount(BigDecimal.ZERO)
                 .paidAmount(BigDecimal.ZERO)
-                .remainingAmount(totalAmount)
+                .remainingAmount(BigDecimal.ZERO)
                 .currency(dto.currency())
                 .serviceSource(
                         dto.serviceSource() != null
@@ -429,7 +437,7 @@ public class PatientServiceAndProductService {
 
         preAuthorizationResolutionService.resolveAndPrepareNewItem(
                 builder,
-                encounterId,
+                encounter.getId(),
                 dto.billingItemType(),
                 dto.procedureId(),
                 dto.serviceId(),
@@ -437,7 +445,73 @@ public class PatientServiceAndProductService {
                 dto.brandMedicationId()
         );
 
-        return builder.build();
+        PatientServiceAndProduct entity = builder.build();
+
+        if (encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(encounter.getId())) {
+            entity.setPatientInsuranceId(
+                    encounterInsuranceEligibilityService.resolveEncounterPatientInsuranceId(
+                            encounter.getId()
+                    )
+            );
+            entity.setCoverageStatus(CoverageStatus.COVERED);
+        }
+
+        applyResolvedPricing(entity, encounter, quantity);
+
+        return entity;
+    }
+
+    private void applyResolvedPricing(
+            PatientServiceAndProduct item,
+            PatientEncounter encounter,
+            long quantity
+    ) {
+        Long facilityId = encounter.getFacilityId();
+        if (facilityId == null) {
+            throw new BadRequestAlertException(
+                    "Encounter facility is required to resolve item pricing.",
+                    "patientServicesAndProducts",
+                    "encounter.facility.required"
+            );
+        }
+
+        if (item.getCurrency() == null) {
+            throw new BadRequestAlertException(
+                    "Currency is required to resolve item pricing.",
+                    "patientServicesAndProducts",
+                    "currency.required"
+            );
+        }
+
+        ResolvedBillingPrice resolvedPrice =
+                billingEngineService.resolvePricing(item, facilityId);
+
+        BigDecimal unitPrice = resolvedPrice.unitPrice();
+        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
+
+        item.setUnitPrice(unitPrice);
+        item.setCurrency(resolvedPrice.currency());
+        item.setTotalAmount(totalAmount);
+        item.setGrossAmount(totalAmount);
+        item.setNetAmount(totalAmount);
+        item.setRemainingAmount(totalAmount);
+        item.setPriceSource(mapPriceSource(resolvedPrice.priceSource()));
+
+        LOG.info(
+                "[PSP_PRICING] Resolved unitPrice={} currency={} priceSource={} billingItemType={}",
+                unitPrice,
+                resolvedPrice.currency(),
+                resolvedPrice.priceSource(),
+                item.getBillingItemType()
+        );
+    }
+
+    private PriceSource mapPriceSource(BillingPriceSource source) {
+        if (source == BillingPriceSource.PRICE_LIST) {
+            return PriceSource.PRICE_LIST;
+        }
+
+        return PriceSource.DEFAULT;
     }
 
     private void validateReferences(PatientServiceProductCreateDTO dto) {

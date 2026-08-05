@@ -15,5 +15,7 @@ public enum BillingTrigger {
 
     CHECKOUT,
 
-    MANUAL
+    MANUAL,
+
+    DEBIT_NOTE
 }

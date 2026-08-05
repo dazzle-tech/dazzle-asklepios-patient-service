@@ -247,49 +247,69 @@ public class PatientPaymentsService {
             Currency currency,
             PaymentTypes paymentTypes
     ) {
+        BillingCoverageType pricingCoverage =
+                resolvePaymentPricingCoverage(paymentTypes, plan);
+
+        ResolvedBillingPrice resolvedPrice =
+                billingEngineService.resolvePricing(
+                        buildPricingProbe(
+                                item,
+                                encounter,
+                                plan,
+                                currency,
+                                paymentTypes
+                        ),
+                        encounter.getFacilityId(),
+                        pricingCoverage
+                );
+
+        LOG.info(
+                "[CREATE] Resolved unit price serviceId={} setupPrice={} resolvedPrice={} priceSource={} paymentTypes={} pricingCoverage={}",
+                item.serviceId(),
+                item.price(),
+                resolvedPrice.unitPrice(),
+                resolvedPrice.priceSource(),
+                paymentTypes,
+                pricingCoverage
+        );
+
+        return nonNullAmount(resolvedPrice.unitPrice());
+    }
+
+    private BillingCoverageType resolvePaymentPricingCoverage(
+            PaymentTypes paymentTypes,
+            PatientInsurance plan
+    ) {
         if (paymentTypes == PaymentTypes.INSURANCE_PLAN && plan != null) {
-            ResolvedBillingPrice resolvedPrice =
-                    billingEngineService.resolvePricing(
-                            buildPricingProbe(
-                                    item,
-                                    encounter,
-                                    plan,
-                                    currency
-                            ),
-                            encounter.getFacilityId()
-                    );
-
-            LOG.info(
-                    "[CREATE] Resolved insurance unit price serviceId={} setupPrice={} resolvedPrice={} priceSource={}",
-                    item.serviceId(),
-                    item.price(),
-                    resolvedPrice.unitPrice(),
-                    resolvedPrice.priceSource()
-            );
-
-            return nonNullAmount(resolvedPrice.unitPrice());
+            return BillingCoverageType.INSURANCE;
         }
 
-        return nonNullAmount(item.price());
+        return BillingCoverageType.SELF_PAY;
     }
 
     private PatientServiceAndProduct buildPricingProbe(
             PatientPaymentServiceItemDTO item,
             PatientEncounter encounter,
             PatientInsurance plan,
-            Currency currency
+            Currency currency,
+            PaymentTypes paymentTypes
     ) {
-        return PatientServiceAndProduct.builder()
-                .patientId(encounter.getPatient().getId())
-                .encounterId(encounter.getId())
-                .billingItemType(BillingItemTypes.SERVICE)
-                .serviceId(item.serviceId())
-                .sourceId(item.serviceId())
-                .serviceSource(ServiceSource.ENCOUNTER_DEFAULT_SERVICE)
-                .quantity(1L)
-                .currency(currency)
-                .patientInsuranceId(plan.getId())
-                .build();
+        PatientServiceAndProduct.PatientServiceAndProductBuilder builder =
+                PatientServiceAndProduct.builder()
+                        .patientId(encounter.getPatient().getId())
+                        .encounterId(encounter.getId())
+                        .billingItemType(BillingItemTypes.SERVICE)
+                        .serviceId(item.serviceId())
+                        .sourceId(item.serviceId())
+                        .serviceSource(ServiceSource.ENCOUNTER_DEFAULT_SERVICE)
+                        .quantity(1L)
+                        .currency(currency);
+
+        if (paymentTypes == PaymentTypes.INSURANCE_PLAN && plan != null) {
+            builder.patientInsuranceId(plan.getId());
+        }
+
+        return builder.build();
     }
 
     private void lockPatientLedger(Long patientId) {
@@ -1154,21 +1174,13 @@ public class PatientPaymentsService {
         List<PatientServiceAndProduct> rows = services.stream()
                 .map(item -> {
 
-                    BigDecimal unitPrice;
-
-                    if (insurancePayment && payment.getPlan() != null) {
-                        unitPrice = resolveUnitPriceForPaymentItem(
-                                item,
-                                encounter,
-                                payment.getPlan(),
-                                payment.getCurrency(),
-                                payment.getPaymentTypes()
-                        );
-                    } else {
-                        unitPrice = item.price() == null
-                                ? ZERO_AMOUNT
-                                : item.price();
-                    }
+                    BigDecimal unitPrice = resolveUnitPriceForPaymentItem(
+                            item,
+                            encounter,
+                            payment.getPlan(),
+                            payment.getCurrency(),
+                            payment.getPaymentTypes()
+                    );
 
                     BigDecimal quantity = BigDecimal.ONE;
 

@@ -444,6 +444,85 @@ public class BillingWalletService {
         return saved;
     }
 
+    /**
+     * Consumes wallet spendable balance (available first, then reserved).
+     * Returns the amount actually consumed, which may be less than requested.
+     */
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class
+    )
+    public BillingWallet consumeSpendable(
+            BillingWallet wallet,
+            BigDecimal requestedAmount
+    ) {
+        BillingWallet lockedWallet =
+                reloadAndLock(wallet);
+
+        BigDecimal amount =
+                requirePositiveAmount(
+                        requestedAmount,
+                        "Spendable consumption amount"
+                );
+
+        BigDecimal available =
+                money(lockedWallet.getAvailableBalance());
+        BigDecimal reserved =
+                money(lockedWallet.getReservedBalance());
+        BigDecimal spendable = available.add(reserved);
+
+        BigDecimal toConsume = amount.min(spendable);
+        if (toConsume.signum() <= 0) {
+            throw new BadRequestAlertException(
+                    "No wallet balance available to consume.",
+                    ENTITY_NAME,
+                    "wallet.insufficientAvailableBalance"
+            );
+        }
+
+        BigDecimal fromAvailable = toConsume.min(available);
+        BigDecimal fromReserved =
+                toConsume.subtract(fromAvailable);
+
+        lockedWallet.setAvailableBalance(
+                available.subtract(fromAvailable)
+        );
+        lockedWallet.setReservedBalance(
+                reserved.subtract(fromReserved)
+        );
+        lockedWallet.setConsumedAmount(
+                money(lockedWallet.getConsumedAmount()).add(toConsume)
+        );
+
+        validateWalletBalance(lockedWallet);
+
+        BillingWallet saved =
+                billingWalletRepository.save(lockedWallet);
+
+        LOG.info(
+                "[CONSUME_SPENDABLE] walletId={} requested={} consumed={} "
+                        + "fromAvailable={} fromReserved={} available={} reserved={}",
+                saved.getId(),
+                amount,
+                toConsume,
+                fromAvailable,
+                fromReserved,
+                saved.getAvailableBalance(),
+                saved.getReservedBalance()
+        );
+
+        return saved;
+    }
+
+    public BigDecimal spendableBalance(BillingWallet wallet) {
+        if (wallet == null) {
+            return BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        }
+
+        return money(wallet.getAvailableBalance())
+                .add(money(wallet.getReservedBalance()));
+    }
+
     @Transactional(
             propagation = Propagation.MANDATORY,
             rollbackFor = Exception.class

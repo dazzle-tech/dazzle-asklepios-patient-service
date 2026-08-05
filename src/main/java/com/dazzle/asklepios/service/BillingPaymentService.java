@@ -223,30 +223,35 @@ public class BillingPaymentService {
                 if (isPatientLevelPayment(request)) {
                     /*
                      * Invoice balance and other document-level wallet
-                     * payments have no PSP lines — consume available
-                     * balance directly instead of service reservations.
+                     * payments have no PSP lines — consume spendable
+                     * balance (available + reserved) directly.
                      */
-                    BigDecimal amountToConsume =
-                            money(request.amount());
+                    BigDecimal spendableBefore =
+                            billingWalletService.spendableBalance(wallet);
 
                     walletAfterPayment =
-                            billingWalletService.consumeAvailable(
+                            billingWalletService.consumeSpendable(
                                     wallet,
-                                    amountToConsume
+                                    money(request.amount())
+                            );
+
+                    walletMovementAmount =
+                            spendableBefore.subtract(
+                                    billingWalletService.spendableBalance(
+                                            walletAfterPayment
+                                    )
                             );
 
                     recordWalletPaymentLedger(
                             payment,
                             paymentTransaction,
                             walletAfterPayment,
-                            amountToConsume,
+                            walletMovementAmount,
                             walletAvailableBefore,
                             walletReservedBefore,
                             transactionGroupId,
                             request.requestId()
                     );
-
-                    walletMovementAmount = amountToConsume;
                 } else {
                     throw new BadRequestAlertException(
                             "No service balance could be reserved from the wallet payment. "

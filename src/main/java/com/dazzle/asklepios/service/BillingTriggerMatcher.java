@@ -36,6 +36,9 @@ public class BillingTriggerMatcher {
 
             case MANUAL ->
                     eventType == BillingEventType.MANUAL;
+
+            case DEBIT_NOTE ->
+                    eventType == BillingEventType.DEBIT_NOTE;
         };
     }
 }

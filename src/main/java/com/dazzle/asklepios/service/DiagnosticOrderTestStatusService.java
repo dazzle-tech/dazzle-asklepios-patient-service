@@ -8,8 +8,10 @@ import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.PriceSource;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
@@ -18,6 +20,7 @@ import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
+import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.patientarrived.PatientArrivedCreateRequestDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
@@ -402,7 +405,6 @@ public class DiagnosticOrderTestStatusService {
             DiagnosticOrderTest test,
             DiagnosticTestSetupDTO setupDiagnostic
     ) {
-        BigDecimal unitPrice = setupDiagnostic.price() != null ? setupDiagnostic.price() : BigDecimal.ZERO;
         long quantity = 1L;
 
         BillingItemTypes billingItemType;
@@ -416,8 +418,6 @@ public class DiagnosticOrderTestStatusService {
             serviceSource = ServiceSource.LABORATORY;
         }
 
-        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
-
         PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
                 .patientId(order.getPatientId())
                 .encounterId(order.getEncounterId())
@@ -426,11 +426,17 @@ public class DiagnosticOrderTestStatusService {
                 .serviceSource(serviceSource)
                 .sourceId(test.getId())
                 .quantity(quantity)
-                .unitPrice(unitPrice)
+                .unitPrice(BigDecimal.ZERO)
                 .discountAmount(BigDecimal.ZERO)
                 .exemptionAmount(BigDecimal.ZERO)
                 .taxAmount(BigDecimal.ZERO)
-                .totalAmount(totalAmount)
+                .totalAmount(BigDecimal.ZERO)
+                .grossAmount(BigDecimal.ZERO)
+                .netAmount(BigDecimal.ZERO)
+                .patientShareAmount(BigDecimal.ZERO)
+                .insuranceShareAmount(BigDecimal.ZERO)
+                .paidAmount(BigDecimal.ZERO)
+                .remainingAmount(BigDecimal.ZERO)
                 .currency(setupDiagnostic.currency())
                 .isBilled(Boolean.FALSE)
                 .notes("Created when diagnostic test was added to order. OrderId="
@@ -446,7 +452,67 @@ public class DiagnosticOrderTestStatusService {
                 null
         );
 
-        return builder.build();
+        PatientServiceAndProduct billingItem = builder.build();
+        applyResolvedDiagnosticPricing(billingItem, order.getEncounterId(), quantity);
+
+        return billingItem;
+    }
+
+    private void applyResolvedDiagnosticPricing(
+            PatientServiceAndProduct item,
+            Long encounterId,
+            long quantity
+    ) {
+        Long facilityId = patientEncounterRepository
+                .findById(encounterId)
+                .map(encounter -> encounter.getFacilityId())
+                .orElse(null);
+
+        if (facilityId == null) {
+            throw new BadRequestAlertException(
+                    "Encounter facility is required to resolve diagnostic item pricing.",
+                    "diagnostic_order_tests",
+                    "encounter.facility.required"
+            );
+        }
+
+        if (item.getCurrency() == null) {
+            throw new BadRequestAlertException(
+                    "Currency is required to resolve diagnostic item pricing.",
+                    "diagnostic_order_tests",
+                    "currency.required"
+            );
+        }
+
+        ResolvedBillingPrice resolvedPrice =
+                billingEngineService.resolvePricing(item, facilityId);
+
+        BigDecimal unitPrice = resolvedPrice.unitPrice();
+        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
+
+        item.setUnitPrice(unitPrice);
+        item.setCurrency(resolvedPrice.currency());
+        item.setTotalAmount(totalAmount);
+        item.setGrossAmount(totalAmount);
+        item.setNetAmount(totalAmount);
+        item.setRemainingAmount(totalAmount);
+        item.setPriceSource(mapDiagnosticPriceSource(resolvedPrice.priceSource()));
+
+        LOG.info(
+                "[DIAG_PSP_PRICING] Resolved unitPrice={} currency={} priceSource={} diagnosticTestId={}",
+                unitPrice,
+                resolvedPrice.currency(),
+                resolvedPrice.priceSource(),
+                item.getDiagnosticTestId()
+        );
+    }
+
+    private PriceSource mapDiagnosticPriceSource(BillingPriceSource source) {
+        if (source == BillingPriceSource.PRICE_LIST) {
+            return PriceSource.PRICE_LIST;
+        }
+
+        return PriceSource.DEFAULT;
     }
 
     private PatientServiceAndProduct findOrCreateDiagnosticBillingItem(

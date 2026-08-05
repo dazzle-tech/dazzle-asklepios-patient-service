@@ -50,7 +50,12 @@ public class EncounterInvoiceBalanceService {
             return EncounterInvoiceBalance.empty();
         }
 
-        BigDecimal totalAmount = money(invoice.getTotalAmount());
+        BigDecimal adjustedTotal =
+                money(
+                        financialDocumentBalanceService.calculateAdjustedTotal(
+                                invoice.getId()
+                        )
+                );
         BigDecimal outstanding =
                 money(
                         financialDocumentBalanceService.calculateOutstanding(
@@ -58,15 +63,16 @@ public class EncounterInvoiceBalanceService {
                         )
                 );
         BigDecimal paidAmount =
-                totalAmount
-                        .subtract(outstanding)
-                        .max(BigDecimal.ZERO)
-                        .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+                money(
+                        financialDocumentBalanceService.calculatePaidAmount(
+                                invoice.getId()
+                        )
+                );
 
         return new EncounterInvoiceBalance(
                 invoice.getId(),
                 invoice.getDocumentNumber(),
-                totalAmount,
+                adjustedTotal,
                 paidAmount,
                 outstanding
         );

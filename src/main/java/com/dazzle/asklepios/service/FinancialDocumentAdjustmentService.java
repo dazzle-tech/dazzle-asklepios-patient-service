@@ -10,10 +10,13 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
 import com.dazzle.asklepios.domain.FinancialDocumentItemStatus;
 import com.dazzle.asklepios.domain.PatientLedgerEntry;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerTransactionType;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.Currency;
-import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentItemAdjustmentAction;
+import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.domain.enumeration.DiscountCreditScope;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
@@ -27,7 +30,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryCategor
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryDirection;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerScope;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerSourceChannel;
-import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerTransactionType;
+import com.dazzle.asklepios.domain.enumeration.billing.ReservationReleaseReason;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.repository.BillingAllocationRepository;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
@@ -38,11 +41,16 @@ import com.dazzle.asklepios.repository.FinancialDocumentRepository;
 import com.dazzle.asklepios.repository.PatientLedgerRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientPaymentAllocationRepository;
+import com.dazzle.asklepios.repository.ClaimRequestRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.billing.CreateFinancialDocumentAdjustmentRequest;
+import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
 import com.dazzle.asklepios.service.dto.billing.BillingLedgerEntryRequest;
 import com.dazzle.asklepios.service.dto.billing.AddableChargeLineResponse;
-import com.dazzle.asklepios.service.dto.billing.CreateFinancialDocumentAdjustmentRequest;
+import com.dazzle.asklepios.service.dto.billing.CreateDiscountCreditNoteRequest;
+import com.dazzle.asklepios.service.dto.billing.DiscountCreditNoteLinePreview;
+import com.dazzle.asklepios.service.dto.billing.DiscountCreditNotePreviewResponse;
 import com.dazzle.asklepios.service.dto.billing.FinancialDocumentAdjustmentItemResponse;
 import com.dazzle.asklepios.service.dto.billing.FinancialDocumentAdjustmentResponse;
 import com.dazzle.asklepios.service.dto.billing.InvoiceAdjustmentSummaryResponse;
@@ -107,6 +115,7 @@ public class FinancialDocumentAdjustmentService {
             EnumSet.of(
                     FinancialDocumentItemAdjustmentAction.REMOVE,
                     FinancialDocumentItemAdjustmentAction.PARTIAL_CREDIT,
+                    FinancialDocumentItemAdjustmentAction.LINE_DISCOUNT,
                     FinancialDocumentItemAdjustmentAction.REDUCE
             );
 
@@ -116,6 +125,12 @@ public class FinancialDocumentAdjustmentService {
                     FinancialDocumentItemAdjustmentAction.ADD_NEW,
                     FinancialDocumentItemAdjustmentAction.INCREASE
             );
+
+    private static final List<ClaimStatus> ACTIVE_CLAIM_STATUSES = List.of(
+            ClaimStatus.SUBMITTING,
+            ClaimStatus.SUBMITTED,
+            ClaimStatus.ACCEPTED
+    );
 
     private final FinancialDocumentRepository documentRepo;
     private final FinancialDocumentItemRepository itemRepo;
@@ -129,6 +144,8 @@ public class FinancialDocumentAdjustmentService {
     private final PatientPaymentAllocationRepository allocationRepo;
     private final PatientServiceAndProductService patientServiceAndProductService;
     private final BillingChargeService billingChargeService;
+    private final BillingEngineService billingEngineService;
+    private final CatalogItemPricingPreviewService catalogItemPricingPreviewService;
     private final FinancialDocumentNumberAssignmentService documentNumberAssignmentService;
     private final BillingWalletService billingWalletService;
     private final BillingLedgerService billingLedgerService;
@@ -136,6 +153,9 @@ public class FinancialDocumentAdjustmentService {
     private final BillingDebitService billingDebitService;
     private final InvoiceItemPricingSnapshotService invoiceItemPricingSnapshotService;
     private final InvoiceApplicableOnAdjustmentService invoiceApplicableOnAdjustmentService;
+    private final InvoiceChargePaymentSyncService invoiceChargePaymentSyncService;
+    private final BillingReservationService billingReservationService;
+    private final ClaimRequestRepository claimRequestRepository;
 
     @Transactional(readOnly = true)
     public List<InvoiceLineItemResponse> listInvoiceLineItems(Long invoiceId) {
@@ -244,6 +264,15 @@ public class FinancialDocumentAdjustmentService {
                 .map(this::toAdjustmentResponse)
                 .toList();
 
+        boolean adjustmentsBlockedByClaim = isAdjustmentsBlockedByClaim(invoice);
+        boolean creditNoteAllowed =
+                !adjustmentsBlockedByClaim
+                        && (outstanding.signum() > 0 || hasCreditableInvoiceLines(invoiceId));
+        boolean discountCreditNoteAllowed =
+                !adjustmentsBlockedByClaim
+                        && invoice.getDocumentSubtype() == FinancialDocumentSubtype.PATIENT
+                        && hasDiscountableInvoiceLines(invoiceId);
+
         return new InvoiceAdjustmentSummaryResponse(
                 invoice.getId(),
                 invoice.getDocumentNumber(),
@@ -254,7 +283,9 @@ public class FinancialDocumentAdjustmentService {
                 totalDebitNotes,
                 totalPaid,
                 outstanding,
-                outstanding.signum() > 0 || hasCreditableInvoiceLines(invoiceId),
+                creditNoteAllowed,
+                discountCreditNoteAllowed,
+                adjustmentsBlockedByClaim,
                 invoice.getCurrency(),
                 adjustments
         );
@@ -271,6 +302,410 @@ public class FinancialDocumentAdjustmentService {
                 CREDIT_ACTIONS
         );
     }
+
+    @Transactional(readOnly = true)
+    public DiscountCreditNotePreviewResponse previewDiscountCreditNote(
+            Long invoiceId,
+            CreateDiscountCreditNoteRequest request
+    ) {
+        FinancialDocument invoice = loadPatientInvoiceForDiscount(invoiceId);
+        DiscountCreditBuildResult build = buildDiscountCreditLines(invoice, request);
+
+        List<DiscountCreditNoteLinePreview> linePreviews = build.preparedLines().stream()
+                .map(line -> {
+                    FinancialDocumentItem original = line.originalItem();
+                    BigDecimal discountBaseBefore = resolveLineDiscountBase(original);
+                    return new DiscountCreditNoteLinePreview(
+                            original.getId(),
+                            line.itemCode(),
+                            line.itemDescription(),
+                            discountBaseBefore,
+                            line.amount(),
+                            discountBaseBefore.subtract(line.amount()).max(ZERO)
+                    );
+                })
+                .toList();
+
+        BigDecimal outstandingBefore = balanceService.calculateOutstanding(invoiceId);
+
+        return new DiscountCreditNotePreviewResponse(
+                invoiceId,
+                invoice.getDocumentSubtype(),
+                request.scope(),
+                invoice.getCurrency(),
+                outstandingBefore,
+                build.totalDiscount(),
+                outstandingBefore.subtract(build.totalDiscount()).max(ZERO),
+                linePreviews
+        );
+    }
+
+    public FinancialDocumentAdjustmentResponse createDiscountCreditNote(
+            Long invoiceId,
+            CreateDiscountCreditNoteRequest request
+    ) {
+        FinancialDocument invoice = loadPatientInvoiceForDiscount(invoiceId);
+        validateIssuedInvoice(invoice);
+        assertAdjustmentsAllowed(invoice);
+
+        DiscountCreditBuildResult build = buildDiscountCreditLines(invoice, request);
+        String reason = normalizeDiscountReason(request);
+
+        return executeCreditNote(invoiceId, reason, build.preparedLines());
+    }
+
+    private FinancialDocumentAdjustmentResponse executeCreditNote(
+            Long invoiceId,
+            String reason,
+            List<PreparedAdjustmentLine> preparedLines
+    ) {
+        FinancialDocument invoice = loadInvoice(invoiceId);
+
+        BigDecimal totalAmount = preparedLines.stream()
+                .map(PreparedAdjustmentLine::amount)
+                .reduce(ZERO, BigDecimal::add);
+
+        if (totalAmount.compareTo(ZERO) <= 0) {
+            throw new BadRequestAlertException(
+                    "Discount credit total must be greater than zero",
+                    ENTITY,
+                    "adjustment.discount.invalidAmount"
+            );
+        }
+
+        BigDecimal outstanding = balanceService.calculateOutstanding(invoiceId);
+        BigDecimal outstandingReduction = calculateCreditOutstandingReduction(preparedLines);
+
+        if (outstanding.compareTo(ZERO) <= 0
+                && outstandingReduction.signum() <= 0
+                && !hasCreditableAdjustmentLines(preparedLines)) {
+            throw new BadRequestAlertException(
+                    "Invoice has no outstanding balance to credit",
+                    ENTITY,
+                    "adjustment.credit.noOutstanding"
+            );
+        }
+
+        if (outstandingReduction.signum() > 0
+                && outstanding.compareTo(ZERO) > 0
+                && outstandingReduction.compareTo(outstanding) > 0) {
+            throw new BadRequestAlertException(
+                    "Discount credit exceeds outstanding balance",
+                    ENTITY,
+                    "adjustment.discount.exceedsOutstanding"
+            );
+        }
+
+        FinancialDocument adjustmentDocument = documentRepo.save(
+                buildAdjustmentDocument(
+                        invoice,
+                        FinancialDocumentType.CREDIT_NOTE,
+                        totalAmount,
+                        reason
+                )
+        );
+
+        List<FinancialDocumentItem> savedItems = new ArrayList<>();
+        for (PreparedAdjustmentLine preparedLine : preparedLines) {
+            FinancialDocumentItem item = buildAdjustmentItem(
+                    adjustmentDocument,
+                    invoice,
+                    preparedLine
+            );
+            savedItems.add(itemRepo.save(item));
+
+            if (preparedLine.originalItem() != null) {
+                applyCreditToOriginalItem(
+                        preparedLine.originalItem(),
+                        preparedLine.amount(),
+                        preparedLine.action() == FinancialDocumentItemAdjustmentAction.REMOVE
+                );
+            }
+        }
+
+        applyCreditNoteLedger(adjustmentDocument);
+        updateInvoiceStatus(invoiceId);
+
+        return toAdjustmentResponse(adjustmentDocument);
+    }
+
+    private BigDecimal resolveLineDiscountBase(FinancialDocumentItem item) {
+        BigDecimal net = money(item.getNetAmount());
+        if (net.signum() <= 0) {
+            return ZERO;
+        }
+
+        BigDecimal remaining = money(item.getRemainingAmount());
+        BigDecimal paid = money(item.getPaidAmount());
+        BigDecimal collected = remaining.add(paid);
+
+        if (collected.signum() <= 0) {
+            return net;
+        }
+
+        return collected.min(net);
+    }
+
+    private boolean hasDiscountableInvoiceLines(Long invoiceId) {
+        return loadCreditableItemsById(invoiceId).values().stream()
+                .anyMatch(item -> resolveLineDiscountBase(item).signum() > 0);
+    }
+
+    private DiscountCreditBuildResult buildDiscountCreditLines(
+            FinancialDocument invoice,
+            CreateDiscountCreditNoteRequest request
+    ) {
+        if (request.scope() == null) {
+            throw new BadRequestAlertException(
+                    "Discount scope is required",
+                    ENTITY,
+                    "adjustment.discount.scopeRequired"
+            );
+        }
+
+        validateDiscountAmountInput(request.discountAmount(), request.discountPercent());
+
+        Map<Long, FinancialDocumentItem> invoiceItemsById =
+                loadCreditableItemsById(invoice.getId());
+
+        List<PreparedAdjustmentLine> preparedLines = switch (request.scope()) {
+            case LINE -> List.of(
+                    prepareLineDiscountLine(
+                            request,
+                            invoiceItemsById
+                    )
+            );
+            case INVOICE -> prepareInvoiceDiscountLines(
+                    request,
+                    invoiceItemsById
+            );
+        };
+
+        BigDecimal totalDiscount = preparedLines.stream()
+                .map(PreparedAdjustmentLine::amount)
+                .reduce(ZERO, BigDecimal::add);
+
+        if (totalDiscount.signum() <= 0) {
+            throw new BadRequestAlertException(
+                    "Discount amount must be greater than zero",
+                    ENTITY,
+                    "adjustment.discount.invalidAmount"
+            );
+        }
+
+        return new DiscountCreditBuildResult(preparedLines, totalDiscount);
+    }
+
+    private PreparedAdjustmentLine prepareLineDiscountLine(
+            CreateDiscountCreditNoteRequest request,
+            Map<Long, FinancialDocumentItem> invoiceItemsById
+    ) {
+        if (request.documentItemId() == null) {
+            throw new BadRequestAlertException(
+                    "Invoice line is required for line-level discount",
+                    ENTITY,
+                    "adjustment.discount.lineRequired"
+            );
+        }
+
+        FinancialDocumentItem original =
+                requireInvoiceItem(request.documentItemId(), invoiceItemsById);
+        BigDecimal discountBase = resolveLineDiscountBase(original);
+
+        if (discountBase.signum() <= 0) {
+            throw new BadRequestAlertException(
+                    "Invoice line has no amount available for discount",
+                    ENTITY,
+                    "adjustment.line.noRemaining"
+            );
+        }
+
+        BigDecimal creditAmount = resolveDiscountAmount(
+                discountBase,
+                request.discountAmount(),
+                request.discountPercent()
+        );
+
+        if (creditAmount.compareTo(discountBase) > 0) {
+            throw new BadRequestAlertException(
+                    "Line discount exceeds the available line amount",
+                    ENTITY,
+                    "adjustment.discount.exceedsLineRemaining"
+            );
+        }
+
+        return buildLineDiscountPreparedLine(original, creditAmount);
+    }
+
+    private List<PreparedAdjustmentLine> prepareInvoiceDiscountLines(
+            CreateDiscountCreditNoteRequest request,
+            Map<Long, FinancialDocumentItem> invoiceItemsById
+    ) {
+        List<FinancialDocumentItem> discountableLines = invoiceItemsById.values().stream()
+                .filter(item -> resolveLineDiscountBase(item).signum() > 0)
+                .sorted(Comparator.comparing(FinancialDocumentItem::getId))
+                .toList();
+
+        if (discountableLines.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "Invoice has no lines available for discount",
+                    ENTITY,
+                    "adjustment.discount.noRemainingLines"
+            );
+        }
+
+        BigDecimal totalDiscountBase = discountableLines.stream()
+                .map(this::resolveLineDiscountBase)
+                .reduce(ZERO, BigDecimal::add);
+
+        BigDecimal discountTotal = resolveDiscountAmount(
+                totalDiscountBase,
+                request.discountAmount(),
+                request.discountPercent()
+        );
+
+        if (discountTotal.compareTo(totalDiscountBase) > 0) {
+            throw new BadRequestAlertException(
+                    "Invoice discount exceeds total available line amount",
+                    ENTITY,
+                    "adjustment.discount.exceedsOutstanding"
+            );
+        }
+
+        return distributeInvoiceDiscount(discountableLines, totalDiscountBase, discountTotal);
+    }
+
+    private List<PreparedAdjustmentLine> distributeInvoiceDiscount(
+            List<FinancialDocumentItem> discountableLines,
+            BigDecimal totalDiscountBase,
+            BigDecimal discountTotal
+    ) {
+        List<PreparedAdjustmentLine> preparedLines = new ArrayList<>();
+        BigDecimal allocated = ZERO;
+
+        for (int index = 0; index < discountableLines.size(); index++) {
+            FinancialDocumentItem item = discountableLines.get(index);
+            BigDecimal lineBase = resolveLineDiscountBase(item);
+            boolean isLast = index == discountableLines.size() - 1;
+
+            BigDecimal lineDiscount = isLast
+                    ? discountTotal.subtract(allocated)
+                    : discountTotal
+                            .multiply(lineBase)
+                            .divide(totalDiscountBase, 4, RoundingMode.HALF_UP);
+
+            lineDiscount = lineDiscount.min(lineBase).max(ZERO);
+            if (lineDiscount.signum() <= 0) {
+                continue;
+            }
+
+            allocated = allocated.add(lineDiscount);
+            preparedLines.add(buildLineDiscountPreparedLine(item, lineDiscount));
+        }
+
+        if (preparedLines.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "No discount could be applied to invoice lines",
+                    ENTITY,
+                    "adjustment.discount.invalidAmount"
+            );
+        }
+
+        return preparedLines;
+    }
+
+    private PreparedAdjustmentLine buildLineDiscountPreparedLine(
+            FinancialDocumentItem original,
+            BigDecimal creditAmount
+    ) {
+        return new PreparedAdjustmentLine(
+                FinancialDocumentItemAdjustmentAction.LINE_DISCOUNT,
+                original,
+                null,
+                creditAmount,
+                original.getQuantity(),
+                original.getUnitPrice(),
+                resolveItemCode(original),
+                resolveItemDescription(original),
+                creditAmount,
+                creditAmount,
+                ZERO
+        );
+    }
+
+    private void validateDiscountAmountInput(
+            BigDecimal discountAmount,
+            BigDecimal discountPercent
+    ) {
+        boolean hasAmount = discountAmount != null && discountAmount.signum() > 0;
+        boolean hasPercent = discountPercent != null && discountPercent.signum() > 0;
+
+        if (hasAmount == hasPercent) {
+            throw new BadRequestAlertException(
+                    "Provide either discountAmount or discountPercent, not both",
+                    ENTITY,
+                    "adjustment.discount.amountOrPercentRequired"
+            );
+        }
+    }
+
+    private BigDecimal resolveDiscountAmount(
+            BigDecimal baseAmount,
+            BigDecimal discountAmount,
+            BigDecimal discountPercent
+    ) {
+        if (discountAmount != null && discountAmount.signum() > 0) {
+            return money(discountAmount);
+        }
+
+        if (discountPercent != null && discountPercent.signum() > 0) {
+            return money(
+                    baseAmount
+                            .multiply(discountPercent)
+                            .divide(
+                                    BigDecimal.valueOf(100),
+                                    4,
+                                    RoundingMode.HALF_UP
+                            )
+            );
+        }
+
+        throw new BadRequestAlertException(
+                "Discount amount or percent is required",
+                ENTITY,
+                "adjustment.discount.amountOrPercentRequired"
+        );
+    }
+
+    private FinancialDocument loadPatientInvoiceForDiscount(Long invoiceId) {
+        FinancialDocument invoice = loadInvoice(invoiceId);
+
+        if (invoice.getDocumentSubtype() != FinancialDocumentSubtype.PATIENT) {
+            throw new BadRequestAlertException(
+                    "Discount credit notes are only allowed on patient (customer) invoices",
+                    ENTITY,
+                    "adjustment.discount.patientInvoiceOnly"
+            );
+        }
+
+        return invoice;
+    }
+
+    private String normalizeDiscountReason(CreateDiscountCreditNoteRequest request) {
+        String reason = normalizeReason(request.reason());
+        if (StringUtils.hasText(reason)) {
+            return reason;
+        }
+
+        return request.scope() == DiscountCreditScope.INVOICE
+                ? "Invoice-level discount credit note"
+                : "Line-level discount credit note";
+    }
+
+    private record DiscountCreditBuildResult(
+            List<PreparedAdjustmentLine> preparedLines,
+            BigDecimal totalDiscount
+    ) {}
 
     public FinancialDocumentAdjustmentResponse createDebitNote(
             Long invoiceId,
@@ -326,6 +761,7 @@ public class FinancialDocumentAdjustmentService {
     ) {
         FinancialDocument invoice = loadInvoice(invoiceId);
         validateIssuedInvoice(invoice);
+        assertAdjustmentsAllowed(invoice);
 
         String reason = normalizeReason(request.reason());
         validateAdjustmentLines(request.lines(), allowedActions);
@@ -416,6 +852,7 @@ public class FinancialDocumentAdjustmentService {
             applyCreditNoteLedger(adjustmentDocument);
         } else {
             applyDebitNoteLedger(adjustmentDocument);
+            syncEncounterChargesAfterDebitNote(invoiceId, savedItems);
         }
 
         updateInvoiceStatus(invoiceId);
@@ -441,6 +878,7 @@ public class FinancialDocumentAdjustmentService {
         return switch (action) {
             case REMOVE -> prepareRemoveLine(lineRequest, invoiceItemsById);
             case PARTIAL_CREDIT -> preparePartialCreditLine(lineRequest, invoiceItemsById);
+            case LINE_DISCOUNT -> prepareLineDiscountFromRequest(lineRequest, invoiceItemsById);
             case REDUCE -> prepareReduceLine(lineRequest, invoiceItemsById);
             case ADD -> prepareAddLine(invoice, lineRequest);
             case ADD_NEW -> prepareAddNewLine(invoice, lineRequest);
@@ -571,6 +1009,25 @@ public class FinancialDocumentAdjustmentService {
                 resolveItemCode(original),
                 resolveItemDescription(original)
         );
+    }
+
+    private PreparedAdjustmentLine prepareLineDiscountFromRequest(
+            InvoiceLineAdjustmentRequest request,
+            Map<Long, FinancialDocumentItem> invoiceItemsById
+    ) {
+        FinancialDocumentItem original = requireInvoiceItem(request.documentItemId(), invoiceItemsById);
+        BigDecimal creditAmount = normalizeAmount(request.amount());
+        BigDecimal remaining = money(original.getRemainingAmount());
+
+        if (creditAmount.compareTo(remaining) > 0) {
+            throw new BadRequestAlertException(
+                    "Line discount exceeds the line remaining amount",
+                    ENTITY,
+                    "adjustment.line.creditExceedsRemaining"
+            );
+        }
+
+        return buildLineDiscountPreparedLine(original, creditAmount);
     }
 
     private PreparedAdjustmentLine prepareReduceLine(
@@ -706,7 +1163,6 @@ public class FinancialDocumentAdjustmentService {
         }
 
         BigDecimal quantity = requireQuantity(request.quantity());
-        BigDecimal unitPrice = requireUnitPrice(request.unitPrice());
         Currency currency = invoice.getCurrency();
         if (currency == null) {
             throw new BadRequestAlertException(
@@ -727,7 +1183,7 @@ public class FinancialDocumentAdjustmentService {
                 request.serviceId(),
                 request.procedureId(),
                 quantity.setScale(0, RoundingMode.HALF_UP).longValue(),
-                unitPrice,
+                BigDecimal.ZERO,
                 currency,
                 request.serviceSource() != null
                         ? request.serviceSource()
@@ -738,28 +1194,64 @@ public class FinancialDocumentAdjustmentService {
 
         var createdService = patientServiceAndProductService.create(createDto);
 
-        BigDecimal netAmount = money(quantity.multiply(unitPrice));
+        Long facilityId =
+                patientEncounterRepository
+                        .findById(invoice.getEncounterId())
+                        .map(PatientEncounter::getFacilityId)
+                        .orElse(null);
+
+        if (facilityId == null) {
+            throw new BadRequestAlertException(
+                    "Encounter facility is required when adding a new service",
+                    ENTITY,
+                    "adjustment.service.facilityRequired"
+            );
+        }
+
+        ResolvedBillingPrice resolvedPrice =
+                billingEngineService.resolvePricing(
+                        createdService,
+                        facilityId
+                );
+        BigDecimal unitPrice = money(resolvedPrice.unitPrice());
+        BigDecimal grossAmount = money(quantity.multiply(unitPrice));
+
         BigDecimal patientShare =
                 invoice.getDocumentSubtype() == FinancialDocumentSubtype.PATIENT
-                        ? netAmount
+                        ? grossAmount
                         : ZERO;
         BigDecimal insuranceShare =
                 invoice.getDocumentSubtype() == FinancialDocumentSubtype.INSURANCE_CLAIM
-                        ? netAmount
+                        ? grossAmount
                         : ZERO;
 
         BillingChargeLine chargeLine =
-                billingChargeService.createDebitNoteAdjustmentChargeLine(
-                        createdService,
-                        quantity,
-                        unitPrice,
-                        patientShare,
-                        insuranceShare,
-                        "debit-note-add-new-" + createdService.getId()
-                );
+                billingChargeService
+                        .findActiveChargeLine(
+                                createdService.getId(),
+                                invoice.getEncounterId()
+                        )
+                        .map(line ->
+                                billingChargeService.normalizeDebitNoteChargeLine(
+                                        line,
+                                        quantity,
+                                        unitPrice,
+                                        patientShare,
+                                        insuranceShare
+                                )
+                        )
+                        .orElseGet(() ->
+                                billingChargeService.createDebitNoteAdjustmentChargeLine(
+                                        createdService,
+                                        quantity,
+                                        unitPrice,
+                                        patientShare,
+                                        insuranceShare,
+                                        "debit-note-add-new-" + createdService.getId()
+                                )
+                        );
 
-        BigDecimal debitAmount = shareForSubtype(chargeLine, invoice.getDocumentSubtype());
-        if (debitAmount.signum() <= 0) {
+        if (shareForSubtype(chargeLine, invoice.getDocumentSubtype()).signum() <= 0) {
             throw new BadRequestAlertException(
                     "Selected service has no billable amount for this invoice type",
                     ENTITY,
@@ -767,23 +1259,18 @@ public class FinancialDocumentAdjustmentService {
             );
         }
 
-        BigDecimal lineNet = money(chargeLine.getNetAmount());
-        BigDecimal grossAmount = proportional(chargeLine.getGrossAmount(), debitAmount, lineNet);
-        BigDecimal discountAmount = proportional(chargeLine.getDiscountAmount(), debitAmount, lineNet);
-        BigDecimal taxAmount = proportional(chargeLine.getTaxAmount(), debitAmount, lineNet);
-
         return new PreparedAdjustmentLine(
                 FinancialDocumentItemAdjustmentAction.ADD_NEW,
                 null,
                 chargeLine,
-                debitAmount,
+                grossAmount,
                 chargeLine.getQuantity().setScale(0, RoundingMode.HALF_UP).longValue(),
-                debitAmount.divide(chargeLine.getQuantity(), 4, RoundingMode.HALF_UP),
+                unitPrice,
                 chargeLine.getItemCode(),
                 chargeLine.getItemDescription(),
                 grossAmount,
-                discountAmount,
-                taxAmount
+                ZERO,
+                ZERO
         );
     }
 
@@ -896,8 +1383,9 @@ public class FinancialDocumentAdjustmentService {
                         : LocalDate.now();
 
         invoiceItemPricingSnapshotService.captureChargeLineSnapshots(items);
-        invoiceApplicableOnAdjustmentService.applyApplicableOnAdjustments(
+        catalogItemPricingPreviewService.applyDebitNoteInvoiceAdjustments(
                 items,
+                invoice.getId(),
                 facilityId,
                 invoice.getCurrency(),
                 pricingDate
@@ -983,16 +1471,24 @@ public class FinancialDocumentAdjustmentService {
             originalItem.setRemainingAmount(ZERO);
             originalItem.setStatus(FinancialDocumentItemStatus.PAID);
         } else {
-            BigDecimal remaining = priorRemaining.subtract(creditAmount);
-            if (remaining.signum() < 0) {
-                remaining = ZERO;
-            }
+            reduceOriginalItemAmounts(originalItem, creditAmount);
+
+            BigDecimal creditFromRemaining = creditAmount.min(priorRemaining);
+            BigDecimal creditFromPaid =
+                    creditAmount.subtract(creditFromRemaining).max(ZERO);
+            BigDecimal paidReduction = creditFromPaid.min(paid);
+
+            BigDecimal remaining =
+                    priorRemaining.subtract(creditFromRemaining).max(ZERO);
 
             originalItem.setRemainingAmount(remaining);
+            originalItem.setPaidAmount(paid.subtract(paidReduction));
 
-            if (remaining.signum() == 0) {
+            if (remaining.signum() == 0 && paid.subtract(paidReduction).signum() == 0) {
                 originalItem.setStatus(FinancialDocumentItemStatus.PAID);
-            } else if (paid.signum() > 0) {
+            } else if (remaining.signum() == 0) {
+                originalItem.setStatus(FinancialDocumentItemStatus.PAID);
+            } else if (paid.subtract(paidReduction).signum() > 0) {
                 originalItem.setStatus(FinancialDocumentItemStatus.PARTIALLY_PAID);
             } else {
                 originalItem.setStatus(FinancialDocumentItemStatus.PENDING);
@@ -1002,6 +1498,40 @@ public class FinancialDocumentAdjustmentService {
         itemRepo.save(originalItem);
 
         syncCreditNoteToChargeLine(originalItem, creditAmount);
+    }
+
+    /**
+     * Keeps invoice line net/patient share aligned with discount credits so
+     * outstanding and billing workspace totals stay consistent with charge lines.
+     */
+    private void reduceOriginalItemAmounts(
+            FinancialDocumentItem originalItem,
+            BigDecimal creditAmount
+    ) {
+        if (creditAmount == null || creditAmount.signum() <= 0) {
+            return;
+        }
+
+        BigDecimal net = money(originalItem.getNetAmount());
+        BigDecimal newNet = net.subtract(creditAmount).max(ZERO);
+        originalItem.setNetAmount(newNet);
+        originalItem.setDiscountAmount(
+                money(originalItem.getDiscountAmount()).add(creditAmount)
+        );
+
+        BigDecimal patientShare = money(originalItem.getPatientShareAmount());
+        if (patientShare.signum() > 0) {
+            originalItem.setPatientShareAmount(
+                    patientShare.subtract(creditAmount).max(ZERO)
+            );
+        }
+
+        BigDecimal gross = money(originalItem.getGrossAmount());
+        if (gross.compareTo(newNet) > 0) {
+            originalItem.setGrossAmount(
+                    gross.subtract(creditAmount).max(newNet)
+            );
+        }
     }
 
     private void syncCreditNoteToChargeLine(
@@ -1031,6 +1561,55 @@ public class FinancialDocumentAdjustmentService {
                 creditAmount,
                 money(creditedItem.getNetAmount())
         );
+    }
+
+    private void syncEncounterChargesAfterDebitNote(
+            Long invoiceId,
+            List<FinancialDocumentItem> debitNoteItems
+    ) {
+        reconcileCreditNoteChargeLineSync(invoiceId);
+
+        for (FinancialDocumentItem debitNoteItem : debitNoteItems) {
+            billingChargeService.syncChargeLineFromDebitNoteItem(debitNoteItem);
+        }
+
+        List<FinancialDocumentItem> syncItems = new ArrayList<>(
+                itemRepo.findByDocument_Id(invoiceId)
+        );
+        syncItems.addAll(debitNoteItems);
+
+        invoiceChargePaymentSyncService.syncPostInvoicePayments(syncItems);
+
+        releaseDebitNoteChargeLineReservations(debitNoteItems);
+    }
+
+    private void releaseDebitNoteChargeLineReservations(
+            List<FinancialDocumentItem> debitNoteItems
+    ) {
+        for (FinancialDocumentItem item : debitNoteItems) {
+            Long chargeLineId = item.getBillingChargeLineId();
+            if (chargeLineId == null && item.getPatientServiceProductId() != null) {
+                chargeLineId =
+                        chargeLineRepo
+                                .findFirstByPatientServiceProduct_IdAndStatusNotInOrderByIdAsc(
+                                        item.getPatientServiceProductId(),
+                                        EXCLUDED_LINE_STATUSES
+                                )
+                                .map(BillingChargeLine::getId)
+                                .orElse(null);
+            }
+
+            if (chargeLineId == null) {
+                continue;
+            }
+
+            billingReservationService.releaseActiveReservationsForChargeLine(
+                    chargeLineId,
+                    ReservationReleaseReason.OTHER,
+                    "Debit note issued — collect via invoice, not encounter reservation.",
+                    SecurityUtils.getCurrentUserLogin().orElse("DEBIT_NOTE")
+            );
+        }
     }
 
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
@@ -1341,6 +1920,29 @@ public class FinancialDocumentAdjustmentService {
                     "adjustment.invoiceCancelled"
             );
         }
+    }
+
+    private boolean isAdjustmentsBlockedByClaim(FinancialDocument invoice) {
+        if (invoice == null || invoice.getId() == null) {
+            return false;
+        }
+
+        return claimRequestRepository.existsByFinancialDocumentIdAndStatusIn(
+                invoice.getId(),
+                ACTIVE_CLAIM_STATUSES
+        );
+    }
+
+    private void assertAdjustmentsAllowed(FinancialDocument invoice) {
+        if (!isAdjustmentsBlockedByClaim(invoice)) {
+            return;
+        }
+
+        throw new BadRequestAlertException(
+                "Invoice adjustments are locked while a Waseel claim is active",
+                ENTITY,
+                "adjustment.claimLocked"
+        );
     }
 
     private FinancialDocument buildAdjustmentDocument(

@@ -5,6 +5,7 @@ import com.dazzle.asklepios.service.DefaultServicePricingPreviewService;
 import com.dazzle.asklepios.service.EncounterBillingSummaryService;
 import com.dazzle.asklepios.service.EncounterTreatmentAdvanceService;
 import com.dazzle.asklepios.service.FinancialDocumentAdjustmentService;
+import com.dazzle.asklepios.service.InvoiceChargePaymentSyncService;
 import com.dazzle.asklepios.service.dto.billing.EncounterBillingSummary;
 import com.dazzle.asklepios.service.dto.billing.PrepareDefaultServicesRequest;
 import com.dazzle.asklepios.service.dto.billing.PrepareDefaultServicesResult;
@@ -48,6 +49,9 @@ public class DefaultServiceBillingController {
     private final EncounterTreatmentAdvanceService
             encounterTreatmentAdvanceService;
 
+    private final InvoiceChargePaymentSyncService
+            invoiceChargePaymentSyncService;
+
     @GetMapping("/{encounterId}/summary")
     public ResponseEntity<EncounterBillingSummary>
     getEncounterBillingSummary(
@@ -62,6 +66,11 @@ public class DefaultServiceBillingController {
 
         financialDocumentAdjustmentService
                 .reconcileCreditNoteChargeLineSyncForEncounter(
+                        encounterId
+                );
+
+        invoiceChargePaymentSyncService
+                .reconcileInvoicePaymentsForEncounter(
                         encounterId
                 );
 

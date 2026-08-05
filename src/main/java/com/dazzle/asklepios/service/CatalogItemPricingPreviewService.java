@@ -8,6 +8,7 @@ import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
+import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
@@ -21,12 +22,9 @@ import com.dazzle.asklepios.repository.FinancialDocumentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
-import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
-import com.dazzle.asklepios.service.dto.billing.BillingPricingInput;
 import com.dazzle.asklepios.service.dto.billing.InvoiceItemPricingAdjustmentSnapshot;
 import com.dazzle.asklepios.service.dto.billing.PreviewCatalogItemPricingRequest;
 import com.dazzle.asklepios.service.dto.billing.PreviewCatalogItemPricingResult;
-import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
 import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
@@ -61,8 +59,6 @@ public class CatalogItemPricingPreviewService {
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientInsuranceRepository patientInsuranceRepository;
     private final BillingEngineService billingEngineService;
-    private final BillingPricingInputFactory billingPricingInputFactory;
-    private final BillingPricingService billingPricingService;
     private final InvoiceApplicableOnAdjustmentService invoiceApplicableOnAdjustmentService;
     private final FinancialDocumentRepository financialDocumentRepository;
     private final FinancialDocumentItemRepository financialDocumentItemRepository;
@@ -105,32 +101,23 @@ public class CatalogItemPricingPreviewService {
                         request.facilityId()
                 );
 
-        BillingPricingInput pricingInput =
-                billingPricingInputFactory.create(
-                        previewItem,
-                        resolvedPrice
-                );
-
-        BillingProcessingContext pricingContext =
-                BillingProcessingContext.builder()
-                        .patientServiceProduct(previewItem)
-                        .pricingInput(pricingInput)
-                        .build();
-
-        billingPricingService.calculate(pricingContext);
-
-        PriceCalculationResult pricingResult =
-                pricingContext.getPricingResult();
-
-        BigDecimal itemGross = money(pricingResult.grossAmount());
-        BigDecimal itemDiscount = money(pricingResult.discountAmount());
-        BigDecimal itemTax = money(pricingResult.taxAmount());
+        long quantity = defaultQuantity(request.quantity());
+        BigDecimal unitPrice = money(resolvedPrice.unitPrice());
+        BigDecimal itemGross =
+                unitPrice
+                        .multiply(BigDecimal.valueOf(quantity))
+                        .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        BigDecimal itemDiscount =
+                BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        BigDecimal itemTax =
+                BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
 
         FinancialDocumentItem draftItem =
                 buildDraftPreviewItem(
                         previewItem,
-                        pricingResult,
-                        request.quantity()
+                        quantity,
+                        unitPrice,
+                        itemGross
                 );
 
         applyInvoiceScopeAdjustments(
@@ -197,6 +184,59 @@ public class CatalogItemPricingPreviewService {
         );
     }
 
+    /**
+     * Applies invoice-wide tax/discount to debit-note draft lines, inferring
+     * rates from the parent invoice when active setup rules are unavailable.
+     */
+    public void applyDebitNoteInvoiceAdjustments(
+            List<FinancialDocumentItem> items,
+            Long invoiceId,
+            Long facilityId,
+            Currency currency,
+            LocalDate pricingDate
+    ) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+
+        List<BigDecimal> baselineDiscounts = new ArrayList<>();
+        List<BigDecimal> baselineTaxes = new ArrayList<>();
+        for (FinancialDocumentItem item : items) {
+            baselineDiscounts.add(money(item.getDiscountAmount()));
+            baselineTaxes.add(money(item.getTaxAmount()));
+        }
+
+        invoiceApplicableOnAdjustmentService.applyInvoiceScopeAdjustmentsOnly(
+                items,
+                facilityId,
+                currency,
+                pricingDate
+        );
+
+        if (invoiceId == null) {
+            return;
+        }
+
+        for (int index = 0; index < items.size(); index++) {
+            FinancialDocumentItem item = items.get(index);
+            BigDecimal itemDiscount = baselineDiscounts.get(index);
+            BigDecimal itemTax = baselineTaxes.get(index);
+            BigDecimal invoiceDiscount =
+                    money(item.getDiscountAmount()).subtract(itemDiscount);
+            BigDecimal invoiceTax =
+                    money(item.getTaxAmount()).subtract(itemTax);
+
+            if (invoiceDiscount.signum() <= 0 && invoiceTax.signum() <= 0) {
+                applyInferredInvoiceAdjustmentsFromInvoice(
+                        item,
+                        invoiceId,
+                        itemDiscount,
+                        itemTax
+                );
+            }
+        }
+    }
+
     private void applyInvoiceScopeAdjustments(
             FinancialDocumentItem draftItem,
             PreviewCatalogItemPricingRequest request,
@@ -206,7 +246,7 @@ public class CatalogItemPricingPreviewService {
         List<FinancialDocumentItem> adjustmentItems =
                 new ArrayList<>(List.of(draftItem));
 
-        invoiceApplicableOnAdjustmentService.applyApplicableOnAdjustments(
+        invoiceApplicableOnAdjustmentService.applyInvoiceScopeAdjustmentsOnly(
                 adjustmentItems,
                 request.facilityId(),
                 request.currency(),
@@ -534,26 +574,24 @@ public class CatalogItemPricingPreviewService {
 
     private FinancialDocumentItem buildDraftPreviewItem(
             PatientServiceAndProduct previewItem,
-            PriceCalculationResult pricingResult,
-            BigDecimal requestQuantity
+            long quantity,
+            BigDecimal unitPrice,
+            BigDecimal grossAmount
     ) {
-        long quantity =
-                requestQuantity == null || requestQuantity.signum() <= 0
-                        ? previewItem.getQuantity()
-                        : requestQuantity.setScale(0, RoundingMode.HALF_UP).longValue();
-
-        BigDecimal netAmount = money(pricingResult.netAmount());
-
         return FinancialDocumentItem.builder()
                 .patientServiceProductId(0L)
                 .quantity(quantity)
-                .unitPrice(money(pricingResult.unitPrice()))
-                .grossAmount(money(pricingResult.grossAmount()))
-                .discountAmount(money(pricingResult.discountAmount()))
-                .taxAmount(money(pricingResult.taxAmount()))
-                .netAmount(netAmount)
-                .patientShareAmount(netAmount)
-                .remainingAmount(netAmount)
+                .unitPrice(unitPrice)
+                .grossAmount(grossAmount)
+                .discountAmount(
+                        BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP)
+                )
+                .taxAmount(
+                        BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP)
+                )
+                .netAmount(grossAmount)
+                .patientShareAmount(grossAmount)
+                .remainingAmount(grossAmount)
                 .currency(previewItem.getCurrency())
                 .build();
     }

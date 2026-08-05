@@ -8,7 +8,9 @@ import com.dazzle.asklepios.service.dto.billing.AddableChargeLineResponse;
 import com.dazzle.asklepios.service.dto.billing.CollectInvoiceBalanceRequest;
 import com.dazzle.asklepios.service.dto.billing.CollectInvoiceBalanceResult;
 import com.dazzle.asklepios.service.dto.billing.SyncInvoicePaymentsResult;
+import com.dazzle.asklepios.service.dto.billing.CreateDiscountCreditNoteRequest;
 import com.dazzle.asklepios.service.dto.billing.CreateFinancialDocumentAdjustmentRequest;
+import com.dazzle.asklepios.service.dto.billing.DiscountCreditNotePreviewResponse;
 import com.dazzle.asklepios.service.dto.billing.FinancialDocumentAdjustmentResponse;
 import com.dazzle.asklepios.service.dto.billing.InvoiceAdjustmentSummaryResponse;
 import com.dazzle.asklepios.service.dto.billing.InvoiceLineItemResponse;
@@ -65,6 +67,22 @@ public class FinancialDocumentAdjustmentController {
             @Valid @RequestBody PreviewCatalogItemPricingRequest request
     ) {
         return catalogItemPricingPreviewService.preview(request);
+    }
+
+    @PostMapping("/financial-documents/{invoiceId}/discount-credit-note/preview")
+    public DiscountCreditNotePreviewResponse previewDiscountCreditNote(
+            @PathVariable Long invoiceId,
+            @Valid @RequestBody CreateDiscountCreditNoteRequest request
+    ) {
+        return adjustmentService.previewDiscountCreditNote(invoiceId, request);
+    }
+
+    @PostMapping("/financial-documents/{invoiceId}/discount-credit-note")
+    public FinancialDocumentAdjustmentResponse createDiscountCreditNote(
+            @PathVariable Long invoiceId,
+            @Valid @RequestBody CreateDiscountCreditNoteRequest request
+    ) {
+        return adjustmentService.createDiscountCreditNote(invoiceId, request);
     }
 
     @PostMapping("/financial-documents/{invoiceId}/credit-note")

@@ -206,6 +206,28 @@ public class InvoiceBalancePaymentService {
 
         }
 
+        if (PaymentCategory.WALLET.equals(
+                resolvePaymentCategory(request.paymentMethodCode())
+        )) {
+            var wallet =
+                    billingWalletService.getOrCreateWallet(
+                            invoice.getPatientId(),
+                            invoice.getCurrency()
+                    );
+            BigDecimal spendable =
+                    billingWalletService.spendableBalance(wallet);
+
+            if (spendable.signum() <= 0) {
+                throw new BadRequestAlertException(
+                        "No wallet balance available for this payment.",
+                        ENTITY_NAME,
+                        "wallet.insufficientAvailableBalance"
+                );
+            }
+
+            amountToCollect = amountToCollect.min(spendable);
+        }
+
 
 
         PaymentCategory paymentCategory =

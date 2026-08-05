@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingChargeResponsibility;
 import com.dazzle.asklepios.domain.BillingAllocation;
 import com.dazzle.asklepios.domain.BillingWallet;
+import com.dazzle.asklepios.domain.FinancialDocumentItem;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.Currency;
@@ -18,6 +19,7 @@ import com.dazzle.asklepios.repository.BillingAllocationRepository;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingChargeRepository;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
+import com.dazzle.asklepios.repository.FinancialDocumentItemRepository;
 import com.dazzle.asklepios.repository.BillingPricingSnapshotRepository;
 import com.dazzle.asklepios.repository.BillingWalletRepository;
 import com.dazzle.asklepios.domain.BillingPricingSnapshot;
@@ -111,6 +113,9 @@ public class EncounterBillingSummaryService {
     private final EncounterInvoiceBalanceService
             encounterInvoiceBalanceService;
 
+    private final FinancialDocumentItemRepository
+            financialDocumentItemRepository;
+
     private final PatientServiceAndProductRepository
             patientServiceAndProductRepository;
 
@@ -152,12 +157,18 @@ public class EncounterBillingSummaryService {
                         .orElse(null);
 
         if (charge == null) {
+            EncounterInvoiceBalance invoiceBalance =
+                    encounterInvoiceBalanceService.resolveForEncounter(
+                            encounterId
+                    );
+
             return emptySummary(
                     encounter,
                     buildUnbilledItemSummaries(
                             encounter,
                             List.of()
-                    )
+                    ),
+                    invoiceBalance
             );
         }
 
@@ -256,6 +267,23 @@ public class EncounterBillingSummaryService {
                         encounterId
                 );
 
+        if (invoiceBalance.invoiceId() != null) {
+            items = enrichItemsFromInvoice(
+                    items,
+                    invoiceBalance.invoiceId()
+            );
+        }
+
+        BigDecimal walletSettledAmount =
+                settlementTotals.walletSettledAmount();
+
+        if (invoiceBalance.invoiceId() != null) {
+            walletSettledAmount =
+                    walletSettledAmount.max(
+                            money(invoiceBalance.paidAmount())
+                    );
+        }
+
         return new EncounterBillingSummary(
                 charge.getId(),
                 charge.getChargeNumber(),
@@ -275,7 +303,7 @@ public class EncounterBillingSummaryService {
                 patientTotals.responsibilityAmount(),
                 patientTotals.allocatedAmount(),
                 patientTotals.outstandingAmount(),
-                settlementTotals.walletSettledAmount(),
+                walletSettledAmount,
                 settlementTotals.debitSettledAmount(),
                 insuranceTotals.responsibilityAmount(),
                 insuranceTotals.allocatedAmount(),
@@ -640,12 +668,18 @@ public class EncounterBillingSummaryService {
 
     private EncounterBillingSummary emptySummary(
             PatientEncounter encounter,
-            List<EncounterBillingItemSummary> items
+            List<EncounterBillingItemSummary> items,
+            EncounterInvoiceBalance invoiceBalance
     ) {
         Long patientId =
                 encounter.getPatient() == null
                         ? null
                         : encounter.getPatient().getId();
+
+        EncounterInvoiceBalance resolvedInvoiceBalance =
+                invoiceBalance == null
+                        ? EncounterInvoiceBalance.empty()
+                        : invoiceBalance;
 
         return new EncounterBillingSummary(
                 null,
@@ -675,14 +709,113 @@ public class EncounterBillingSummaryService {
                 zero(),
                 zero(),
                 emptyWallet(null),
-                null,
-                null,
-                zero(),
-                zero(),
-                zero(),
+                resolvedInvoiceBalance.invoiceId(),
+                resolvedInvoiceBalance.invoiceNumber(),
+                resolvedInvoiceBalance.totalAmount(),
+                resolvedInvoiceBalance.paidAmount(),
+                resolvedInvoiceBalance.outstandingAmount(),
                 items == null
                         ? List.of()
                         : items
+        );
+    }
+
+    private List<EncounterBillingItemSummary> enrichItemsFromInvoice(
+            List<EncounterBillingItemSummary> items,
+            Long invoiceId
+    ) {
+        Map<Long, FinancialDocumentItem> invoiceItemsByChargeLine =
+                financialDocumentItemRepository
+                        .findByDocument_Id(invoiceId)
+                        .stream()
+                        .filter(item -> item.getBillingChargeLineId() != null)
+                        .collect(Collectors.toMap(
+                                FinancialDocumentItem::getBillingChargeLineId,
+                                item -> item,
+                                (left, right) -> left
+                        ));
+
+        if (invoiceItemsByChargeLine.isEmpty()) {
+            return items;
+        }
+
+        return items.stream()
+                .map(item -> overlayInvoiceCollections(
+                        item,
+                        invoiceItemsByChargeLine.get(item.chargeLineId())
+                ))
+                .toList();
+    }
+
+    private EncounterBillingItemSummary overlayInvoiceCollections(
+            EncounterBillingItemSummary item,
+            FinancialDocumentItem invoiceItem
+    ) {
+        if (invoiceItem == null || item.chargeLineId() == null) {
+            return item;
+        }
+
+        BigDecimal patientShare =
+                money(item.patientResponsibilityAmount());
+
+        if (patientShare.signum() <= 0) {
+            patientShare = money(item.netAmount());
+        }
+
+        BigDecimal paidOnInvoice =
+                money(invoiceItem.getPaidAmount());
+
+        if (paidOnInvoice.signum() <= 0) {
+            return item;
+        }
+
+        BigDecimal allocated =
+                paidOnInvoice.min(patientShare);
+
+        BigDecimal storedRemaining =
+                money(invoiceItem.getRemainingAmount());
+
+        BigDecimal outstanding =
+                storedRemaining.signum() > 0
+                        ? storedRemaining
+                        : patientShare
+                                .subtract(allocated)
+                                .max(zero());
+
+        if (allocated.compareTo(
+                money(item.allocatedAmount())
+        ) <= 0) {
+            return item;
+        }
+
+        return new EncounterBillingItemSummary(
+                item.patientServiceProductId(),
+                item.chargeLineId(),
+                item.billingItemType(),
+                item.sourceId(),
+                item.itemCode(),
+                item.itemName(),
+                item.quantity(),
+                item.unitPrice(),
+                item.setupUnitPrice(),
+                item.priceSource(),
+                item.priceListItemCode(),
+                item.grossAmount(),
+                item.discountAmount(),
+                item.exemptionAmount(),
+                item.taxAmount(),
+                item.netAmount(),
+                item.patientResponsibilityAmount(),
+                item.insuranceResponsibilityAmount(),
+                item.otherPayerResponsibilityAmount(),
+                item.reservedAmount(),
+                allocated,
+                outstanding,
+                item.exempted(),
+                item.currency(),
+                item.status(),
+                item.chargedAt(),
+                item.responsibilities()
         );
     }
 

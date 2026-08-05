@@ -4,15 +4,20 @@ import com.dazzle.asklepios.domain.BillingCharge;
 import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingChargeResponsibility;
 import com.dazzle.asklepios.domain.BillingAllocation;
+import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
 import com.dazzle.asklepios.domain.FinancialDocumentItemStatus;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.billing.AllocationSourceType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingAllocationStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.ResponsiblePartyType;
 import com.dazzle.asklepios.repository.BillingAllocationRepository;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
+import com.dazzle.asklepios.repository.FinancialDocumentItemRepository;
+import com.dazzle.asklepios.repository.FinancialDocumentRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -21,10 +26,12 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +41,12 @@ public class InvoiceChargePaymentSyncService {
             LoggerFactory.getLogger(InvoiceChargePaymentSyncService.class);
 
     private static final int MONEY_SCALE = 4;
+
+    private static final EnumSet<BillingChargeLineStatus> EXCLUDED_LINE_STATUSES =
+            EnumSet.of(
+                    BillingChargeLineStatus.CANCELLED,
+                    BillingChargeLineStatus.REVERSED
+            );
 
     private static final EnumSet<BillingResponsibilityStatus>
             EXCLUDED_RESPONSIBILITY_STATUSES =
@@ -66,6 +79,57 @@ public class InvoiceChargePaymentSyncService {
 
     private final BillingChargeService billingChargeService;
 
+    private final FinancialDocumentRepository financialDocumentRepository;
+
+    private final FinancialDocumentItemRepository financialDocumentItemRepository;
+
+    /**
+     * Keeps charge-line allocation state aligned with issued invoice payments.
+     */
+    public void reconcileInvoicePaymentsForEncounter(Long encounterId) {
+        if (encounterId == null) {
+            return;
+        }
+
+        financialDocumentRepository
+                .findFirstByEncounterIdAndDocumentTypeOrderByIdDesc(
+                        encounterId,
+                        FinancialDocumentType.INVOICE
+                )
+                .ifPresent(invoice ->
+                        syncPostInvoicePayments(
+                                loadBalancePaymentItems(invoice.getId())
+                        )
+                );
+    }
+
+    private List<FinancialDocumentItem> loadBalancePaymentItems(Long invoiceId) {
+        List<FinancialDocumentItem> invoiceItems =
+                financialDocumentItemRepository.findByDocument_Id(invoiceId);
+
+        List<FinancialDocumentItem> debitNoteItems =
+                financialDocumentRepository
+                        .findAllByParentDocumentId(invoiceId)
+                        .stream()
+                        .filter(document ->
+                                document.getDocumentType()
+                                        == FinancialDocumentType.DEBIT_NOTE
+                        )
+                        .flatMap(document ->
+                                financialDocumentItemRepository
+                                        .findByDocument_Id(document.getId())
+                                        .stream()
+                        )
+                        .toList();
+
+        return Stream.concat(
+                        invoiceItems.stream(),
+                        debitNoteItems.stream()
+                )
+                .sorted(Comparator.comparing(FinancialDocumentItem::getId))
+                .toList();
+    }
+
     /**
      * Credits charge-line collections toward invoice line balances.
      */
@@ -96,16 +160,7 @@ public class InvoiceChargePaymentSyncService {
         Set<Long> chargeIds = new HashSet<>();
 
         for (FinancialDocumentItem item : items) {
-            Long chargeLineId = item.getBillingChargeLineId();
-            if (chargeLineId == null) {
-                continue;
-            }
-
-            BillingChargeLine line =
-                    billingChargeLineRepository
-                            .findById(chargeLineId)
-                            .orElse(null);
-
+            BillingChargeLine line = resolveChargeLine(item);
             if (line == null) {
                 continue;
             }
@@ -153,15 +208,19 @@ public class InvoiceChargePaymentSyncService {
         }
 
         BigDecimal patientShare = money(item.getPatientShareAmount());
+        BigDecimal collectibleShare =
+                patientShare.signum() > 0
+                        ? patientShare
+                        : money(item.getNetAmount());
         BigDecimal cashCollected =
                 sumCashEquivalentCollections(chargeLineId);
-        BigDecimal syncedFromCharge = cashCollected.min(patientShare);
+        BigDecimal syncedFromCharge = cashCollected.min(collectibleShare);
         BigDecimal existingPaid = money(item.getPaidAmount());
         // Keep direct invoice payments (e.g. invoice-level tax) when re-syncing from charge.
         BigDecimal mergedPaid = existingPaid.max(syncedFromCharge);
 
         BigDecimal remaining =
-                patientShare
+                collectibleShare
                         .subtract(mergedPaid)
                         .max(BigDecimal.ZERO)
                         .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
@@ -169,7 +228,7 @@ public class InvoiceChargePaymentSyncService {
         item.setPaidAmount(mergedPaid);
         item.setRemainingAmount(remaining);
         item.setStatus(
-                resolveStatus(mergedPaid, patientShare, remaining)
+                resolveStatus(mergedPaid, collectibleShare, remaining)
         );
     }
 
@@ -233,6 +292,11 @@ public class InvoiceChargePaymentSyncService {
 
         BigDecimal documentShare = money(item.getPatientShareAmount());
         BigDecimal lineNet = money(chargeLine.getNetAmount());
+        BigDecimal patientExposure =
+                money(chargeLine.getPatientResponsibilityAmount());
+        if (patientExposure.signum() <= 0) {
+            patientExposure = lineNet;
+        }
         BigDecimal currentAllocated =
                 money(chargeLine.getAllocatedAmount());
 
@@ -241,19 +305,22 @@ public class InvoiceChargePaymentSyncService {
                         item,
                         documentPaid,
                         documentShare,
-                        lineNet
+                        patientExposure
                 );
 
-        if (targetAllocated.compareTo(currentAllocated) <= 0) {
+        if (targetAllocated.compareTo(currentAllocated) == 0) {
+            releaseExcessReservation(chargeLine, patientExposure, targetAllocated);
+            billingChargeLineRepository.save(chargeLine);
             return false;
         }
 
         chargeLine.setAllocatedAmount(targetAllocated);
         chargeLine.setOutstandingAmount(
-                lineNet
+                patientExposure
                         .subtract(targetAllocated)
                         .max(BigDecimal.ZERO)
         );
+        releaseExcessReservation(chargeLine, patientExposure, targetAllocated);
 
         billingChargeLineRepository.save(chargeLine);
 
@@ -265,6 +332,28 @@ public class InvoiceChargePaymentSyncService {
         );
 
         return true;
+    }
+
+    private BillingChargeLine resolveChargeLine(FinancialDocumentItem item) {
+        if (item == null) {
+            return null;
+        }
+
+        Long chargeLineId = item.getBillingChargeLineId();
+        if (chargeLineId != null) {
+            return billingChargeLineRepository.findById(chargeLineId).orElse(null);
+        }
+
+        if (item.getPatientServiceProductId() == null) {
+            return null;
+        }
+
+        return billingChargeLineRepository
+                .findFirstByPatientServiceProduct_IdAndStatusNotInOrderByIdAsc(
+                        item.getPatientServiceProductId(),
+                        EXCLUDED_LINE_STATUSES
+                )
+                .orElse(null);
     }
 
     private void syncPatientResponsibility(
@@ -326,6 +415,30 @@ public class InvoiceChargePaymentSyncService {
             billingChargeResponsibilityRepository.save(
                     responsibility
             );
+        }
+    }
+
+    /**
+     * Reserved + allocated must not exceed patient exposure
+     * (ck_billing_charge_line_reserved_limit).
+     */
+    private void releaseExcessReservation(
+            BillingChargeLine chargeLine,
+            BigDecimal patientExposure,
+            BigDecimal targetAllocated
+    ) {
+        BigDecimal reserved = money(chargeLine.getReservedAmount());
+        if (reserved.signum() <= 0) {
+            return;
+        }
+
+        BigDecimal maxReserved =
+                patientExposure
+                        .subtract(targetAllocated)
+                        .max(BigDecimal.ZERO);
+
+        if (reserved.compareTo(maxReserved) > 0) {
+            chargeLine.setReservedAmount(maxReserved);
         }
     }
 
