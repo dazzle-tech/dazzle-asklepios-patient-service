@@ -92,6 +92,15 @@ patient:
       host: localhost
       port: 5000
       ring-buffer-size: 512
+  attachments:
+    bucket: ${ATTACHMENTS_BUCKET}
+    region: ${ATTACHMENTS_REGION}
+    endpoint: ${ATTACHMENTS_ENDPOINT}
+    accessKeyId: ${ATTACHMENTS_ACCESS_KEY_ID}
+    secretAccessKey: ${ATTACHMENTS_SECRET_ACCESS_KEY}
+    presignExpirySeconds: 300
+    maxBytes: 52428800
+    allowed: application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png,text/plain
   appointment:
     template-interval-ended:
       cron: "0 0 7 * * *"
