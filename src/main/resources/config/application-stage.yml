@@ -106,6 +106,15 @@ patient:
       host: localhost
       port: 5000
       ring-buffer-size: 512
+  attachments:
+    bucket: ${ATTACHMENTS_BUCKET:asklepios}
+    region: ${ATTACHMENTS_REGION:sfo3}
+    endpoint: ${ATTACHMENTS_ENDPOINT:https://sfo3.digitaloceanspaces.com}
+    accessKeyId: ${ATTACHMENTS_ACCESS_KEY_ID:DO00TRNC7U4TLLL6ZAN2}
+    secretAccessKey: ${ATTACHMENTS_SECRET_ACCESS_KEY:mNFZKBA/BPXTHVUsde8y/2MslOn7zZEiPzwfIuhLrx4}
+    presignExpirySeconds: 300
+    maxBytes: 52428800
+    allowed: application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png,text/plain
   appointment:
     auto-no-show:
       job-zone: Asia/Hebron
