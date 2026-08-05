@@ -1,12 +1,16 @@
 package com.dazzle.asklepios.integration.waseel.service.mapper;
 
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.integration.waseel.client.WaseelItemMappingClient;
 import com.dazzle.asklepios.integration.waseel.client.dto.WaseelItemMappingSetupDTO;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalItem;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalSupportingInfo;
+import com.dazzle.asklepios.repository.PatientDiagnosisRepository;
+import com.dazzle.asklepios.repository.PatientPrescriptionMedicationRepository;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -24,8 +28,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ApprovalItemMapper {
 
     private static final String WASEEL_MEDICATION_CODES = "medication-codes";
+    private static final String OUTPATIENT_QUANTITY_CODE = "package";
 
     private final WaseelItemMappingClient waseelItemMappingClient;
+    private final PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository;
+    private final PatientDiagnosisRepository patientDiagnosisRepository;
+    private final MedicationDaysSupplyResolver medicationDaysSupplyResolver;
 
     public List<WaseelApprovalItem> toWaseelItems(
             List<PatientServiceAndProduct> items,
@@ -207,7 +215,8 @@ public class ApprovalItemMapper {
                 safe(mapping.sbsDescription()),
                 patientSharePercent,
                 itemDate,
-                itemSupportingInfoSequences
+                itemSupportingInfoSequences,
+                resolveDiagnosisSequences(item)
         );
     }
 
@@ -219,7 +228,8 @@ public class ApprovalItemMapper {
             String itemDescription,
             BigDecimal patientSharePercent,
             LocalDate itemDate,
-            List<Integer> supportingInfoSequences
+            List<Integer> supportingInfoSequences,
+            List<Integer> diagnosisSequences
     ) {
         Integer quantity = item.getQuantity() == null
                 ? 1
@@ -267,7 +277,7 @@ public class ApprovalItemMapper {
                 null,
                 null,
                 quantity,
-                isMedicationCode(type) ? "package" : null,
+                isMedicationCode(type) ? OUTPATIENT_QUANTITY_CODE : null,
                 unitPrice,
                 discount,
                 factor,
@@ -281,7 +291,9 @@ public class ApprovalItemMapper {
                 itemDate,
                 safeSupportingInfoSequences,
                 List.of(1),
-                List.of(1),
+                diagnosisSequences == null || diagnosisSequences.isEmpty()
+                        ? List.of(1)
+                        : diagnosisSequences,
                 null,
                 List.of()
         );
@@ -321,7 +333,59 @@ public class ApprovalItemMapper {
     }
 
     private Integer resolveMedicationDaysSupply(PatientServiceAndProduct item) {
-        return 30;
+        PatientPrescriptionMedication prescriptionMedication =
+                resolvePrescriptionMedication(item);
+
+        if (prescriptionMedication != null) {
+            return medicationDaysSupplyResolver.resolve(prescriptionMedication);
+        }
+
+        return medicationDaysSupplyResolver.resolve(null);
+    }
+
+    private PatientPrescriptionMedication resolvePrescriptionMedication(
+            PatientServiceAndProduct item
+    ) {
+        if (item == null || item.getSourceId() == null) {
+            return null;
+        }
+
+        if (item.getServiceSource() == ServiceSource.PRESCRIPTION) {
+            return patientPrescriptionMedicationRepository
+                    .findById(item.getSourceId())
+                    .orElse(null);
+        }
+
+        return null;
+    }
+
+    private List<Integer> resolveDiagnosisSequences(
+            PatientServiceAndProduct item
+    ) {
+        if (item == null
+                || item.getBillingItemType() != BillingItemTypes.MEDICATION
+                || item.getEncounterId() == null) {
+            return List.of(1);
+        }
+
+        PatientPrescriptionMedication prescriptionMedication =
+                resolvePrescriptionMedication(item);
+
+        if (prescriptionMedication == null || prescriptionMedication.getIndicationIcd() == null) {
+            return List.of(1);
+        }
+
+        Long indicationIcd = prescriptionMedication.getIndicationIcd();
+        AtomicInteger sequence = new AtomicInteger(1);
+
+        for (var diagnosis : patientDiagnosisRepository.findByEncounterId(item.getEncounterId())) {
+            int currentSequence = sequence.getAndIncrement();
+            if (Objects.equals(diagnosis.getDiagnosisId(), indicationIcd)) {
+                return List.of(currentSequence);
+            }
+        }
+
+        return List.of(1);
     }
 
     private BigDecimal calculateFactor(BigDecimal gross, BigDecimal discount) {

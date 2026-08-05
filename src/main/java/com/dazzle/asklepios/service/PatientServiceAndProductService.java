@@ -2,10 +2,14 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientPrescription;
+import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
+import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
 import com.dazzle.asklepios.domain.enumeration.PriceSource;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCancellationReason;
@@ -19,11 +23,13 @@ import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorization
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationCancellationService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientPrescriptionMedicationRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
+import com.dazzle.asklepios.service.dto.billing.BillingRuleEvaluationRequest;
 import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductUpdateDTO;
@@ -45,6 +51,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -70,6 +77,7 @@ public class PatientServiceAndProductService {
     private final PreAuthorizationCancellationService preAuthorizationCancellationService;
     private final BillingRuleEvaluationService billingRuleEvaluationService;
     private final BillingEngineService billingEngineService;
+    private final PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository;
 
     public PatientServiceAndProductService(
             PatientServiceAndProductRepository patientServiceAndProductRepository,
@@ -84,7 +92,8 @@ public class PatientServiceAndProductService {
             EncounterInsuranceEligibilityService encounterInsuranceEligibilityService,
             PreAuthorizationCancellationService preAuthorizationCancellationService,
             BillingRuleEvaluationService billingRuleEvaluationService,
-            @Lazy BillingEngineService billingEngineService
+            @Lazy BillingEngineService billingEngineService,
+            PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository
     ) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.patientRepository = patientRepository;
@@ -99,6 +108,7 @@ public class PatientServiceAndProductService {
         this.preAuthorizationCancellationService = preAuthorizationCancellationService;
         this.billingRuleEvaluationService = billingRuleEvaluationService;
         this.billingEngineService = billingEngineService;
+        this.patientPrescriptionMedicationRepository = patientPrescriptionMedicationRepository;
     }
 
     public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
@@ -318,6 +328,108 @@ public class PatientServiceAndProductService {
         }
     }
 
+    /**
+     * When a prescription is submitted on an insurance visit, create billing rows for each
+     * medication and run the same Waseel pre-authorization flow used for services/procedures.
+     */
+    @Transactional
+    public void syncPrescriptionMedicationsForPreAuthorization(PatientPrescription prescription) {
+        if (prescription == null
+                || prescription.getId() == null
+                || prescription.getEncounterId() == null
+                || prescription.getPatient() == null) {
+            return;
+        }
+
+        if (!encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(
+                prescription.getEncounterId()
+        )) {
+            return;
+        }
+
+        PatientEncounter encounter = patientEncounterRepository.findById(prescription.getEncounterId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Encounter not found with id " + prescription.getEncounterId(),
+                        "patientServicesAndProducts",
+                        "encounter.notfound"
+                ));
+
+        List<PatientPrescriptionMedication> medications =
+                patientPrescriptionMedicationRepository.findByPrescriptionHeader_Id(prescription.getId());
+
+        if (medications == null || medications.isEmpty()) {
+            return;
+        }
+
+        List<PatientServiceAndProduct> createdItems = new ArrayList<>();
+
+        for (PatientPrescriptionMedication medication : medications) {
+            if (medication == null
+                    || PrescriptionStatus.CANCELLED.equals(medication.getStatus())
+                    || medication.getMedicationsId() == null) {
+                continue;
+            }
+
+            if (patientServiceAndProductRepository
+                    .findByServiceSourceAndSourceIdAndBillingItemType(
+                            ServiceSource.PRESCRIPTION,
+                            medication.getId(),
+                            BillingItemTypes.MEDICATION
+                    ).isPresent()) {
+                continue;
+            }
+
+            if (patientServiceAndProductRepository.existsByEncounterIdAndBillingItemTypeAndBrandMedicationId(
+                    prescription.getEncounterId(),
+                    BillingItemTypes.MEDICATION,
+                    medication.getMedicationsId()
+            )) {
+                continue;
+            }
+
+            billingRuleEvaluationService.requireConfiguredRule(
+                    new BillingRuleEvaluationRequest(
+                            BillingItemTypes.MEDICATION,
+                            BillingEventType.ITEM_ORDERED,
+                            null,
+                            null,
+                            null,
+                            medication.getMedicationsId()
+                    )
+            );
+
+            PatientServiceAndProduct entity =
+                    buildMedicationEntityFromPrescription(
+                            prescription,
+                            encounter,
+                            medication
+                    );
+
+            createdItems.add(
+                    patientServiceAndProductRepository.saveAndFlush(entity)
+            );
+        }
+
+        if (createdItems.isEmpty()) {
+            return;
+        }
+
+        boolean hasPendingPreAuthorization = createdItems.stream()
+                .anyMatch(item ->
+                        item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
+                );
+
+        if (hasPendingPreAuthorization) {
+            submitPreAuthorizationOrThrow(prescription.getEncounterId());
+        }
+
+        for (PatientServiceAndProduct item : createdItems) {
+            if (item.getPreAuthorizationStatus() != PreAuthorizationStatus.PENDING_APPROVAL) {
+                billItemNow(item);
+            }
+        }
+    }
+
     @Transactional
     public void remove(Long id) {
         cancel(id, "Service/product item cancelled");
@@ -445,6 +557,15 @@ public class PatientServiceAndProductService {
                 dto.brandMedicationId()
         );
 
+        if (dto.billingItemType() == BillingItemTypes.MEDICATION
+                && dto.brandMedicationId() != null) {
+            preAuthorizationResolutionService.enrichWaseelSbsMapping(
+                    builder,
+                    BillingItemTypes.MEDICATION,
+                    dto.brandMedicationId()
+            );
+        }
+
         PatientServiceAndProduct entity = builder.build();
 
         if (encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(encounter.getId())) {
@@ -458,6 +579,72 @@ public class PatientServiceAndProductService {
 
         applyResolvedPricing(entity, encounter, quantity);
 
+        return entity;
+    }
+
+    private PatientServiceAndProduct buildMedicationEntityFromPrescription(
+            PatientPrescription prescription,
+            PatientEncounter encounter,
+            PatientPrescriptionMedication medication
+    ) {
+        brandMedicationHelper.validateBrandMedicationExists(medication.getMedicationsId());
+
+        long quantity = 1L;
+
+        PatientServiceAndProduct.PatientServiceAndProductBuilder builder =
+                PatientServiceAndProduct.builder()
+                        .patientId(prescription.getPatient().getId())
+                        .encounterId(encounter.getId())
+                        .billingItemType(BillingItemTypes.MEDICATION)
+                        .brandMedicationId(medication.getMedicationsId())
+                        .serviceSource(ServiceSource.PRESCRIPTION)
+                        .sourceId(medication.getId())
+                        .quantity(quantity)
+                        .unitPrice(BigDecimal.ZERO)
+                        .discountAmount(BigDecimal.ZERO)
+                        .exemptionAmount(BigDecimal.ZERO)
+                        .taxAmount(BigDecimal.ZERO)
+                        .totalAmount(BigDecimal.ZERO)
+                        .grossAmount(BigDecimal.ZERO)
+                        .netAmount(BigDecimal.ZERO)
+                        .patientShareAmount(BigDecimal.ZERO)
+                        .insuranceShareAmount(BigDecimal.ZERO)
+                        .paidAmount(BigDecimal.ZERO)
+                        .remainingAmount(BigDecimal.ZERO)
+                        .currency(Currency.SAR)
+                        .notes(medication.getInstructions())
+                        .isBilled(Boolean.FALSE)
+                        .isDefaultService(Boolean.FALSE)
+                        .isExempted(Boolean.FALSE);
+
+        preAuthorizationResolutionService.resolveAndPrepareNewItem(
+                builder,
+                encounter.getId(),
+                BillingItemTypes.MEDICATION,
+                null,
+                null,
+                null,
+                medication.getMedicationsId()
+        );
+
+        preAuthorizationResolutionService.enrichWaseelSbsMapping(
+                builder,
+                BillingItemTypes.MEDICATION,
+                medication.getMedicationsId()
+        );
+
+        PatientServiceAndProduct entity = builder.build();
+
+        if (encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(encounter.getId())) {
+            entity.setPatientInsuranceId(
+                    encounterInsuranceEligibilityService.resolveEncounterPatientInsuranceId(
+                            encounter.getId()
+                    )
+            );
+            entity.setCoverageStatus(CoverageStatus.COVERED);
+        }
+
+        applyResolvedPricing(entity, encounter, quantity);
         return entity;
     }
 

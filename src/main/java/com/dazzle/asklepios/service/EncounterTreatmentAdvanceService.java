@@ -50,6 +50,47 @@ public class EncounterTreatmentAdvanceService {
                 billingChargeLineRepository;
     }
 
+    /**
+     * Advances registration encounters that have no billable default services
+     * once the payment step is confirmed with an empty service list.
+     */
+    public void advanceFromPendingPaymentWhenNothingToBill(
+            Long encounterId
+    ) {
+        if (encounterId == null) {
+            return;
+        }
+
+        PatientEncounter encounter =
+                patientEncounterRepository
+                        .findById(encounterId)
+                        .orElse(null);
+
+        if (encounter == null
+                || encounter.getStatus()
+                != TreatmentStatus.PENDING_PAYMENT) {
+            return;
+        }
+
+        List<BillingChargeLine> activeLines =
+                billingChargeLineRepository
+                        .findAllByEncounter_IdAndStatusNotInOrderByIdAsc(
+                                encounterId,
+                                EXCLUDED_LINE_STATUSES
+                        );
+
+        if (!activeLines.isEmpty()) {
+            tryAdvanceFromPendingPayment(
+                    encounterId
+            );
+            return;
+        }
+
+        advanceEncounter(
+                encounter
+        );
+    }
+
     public void tryAdvanceFromPendingPayment(
             Long encounterId
     ) {
@@ -94,6 +135,14 @@ public class EncounterTreatmentAdvanceService {
             return;
         }
 
+        advanceEncounter(
+                encounter
+        );
+    }
+
+    private void advanceEncounter(
+            PatientEncounter encounter
+    ) {
         TreatmentStatus nextStatus =
                 EncounterType.EMERGENCY.equals(
                         encounter.getEncounterType()
@@ -108,7 +157,7 @@ public class EncounterTreatmentAdvanceService {
                 "[ADVANCE_ENCOUNTER] Moved encounter from PENDING_PAYMENT "
                         + "to {} encounterId={} encounterStatus={}",
                 nextStatus,
-                encounterId,
+                encounter.getId(),
                 encounter.getEncounterStatus()
         );
     }

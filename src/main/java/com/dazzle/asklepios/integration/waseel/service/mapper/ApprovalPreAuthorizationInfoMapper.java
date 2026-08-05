@@ -14,6 +14,14 @@ public class ApprovalPreAuthorizationInfoMapper {
             WaseelApprovalEligibilitySnapshot snapshot,
             String providerNphiesId
     ) {
+        return toPreAuthorizationInfo(snapshot, providerNphiesId, null);
+    }
+
+    public WaseelApprovalPreAuthorizationInfo toPreAuthorizationInfo(
+            WaseelApprovalEligibilitySnapshot snapshot,
+            String providerNphiesId,
+            String prescriptionReference
+    ) {
         if (snapshot == null) {
             throw new BadRequestAlertException(
                     "Eligibility snapshot is required",
@@ -36,13 +44,17 @@ public class ApprovalPreAuthorizationInfoMapper {
                 "provider",
                 "professional",
                 "op",
-                null,
+                emptyToNull(prescriptionReference),
                 null,
                 null,
                 snapshot.eligibilityResponseId(),
                 snapshot.eligibilityResponseUrl(),
                 null
         );
+    }
+
+    private String emptyToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private Long parseLong(String value) {
