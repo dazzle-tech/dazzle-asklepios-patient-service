@@ -67,7 +67,7 @@ public class SurgicalHistory extends AbstractAuditingEntity<Long>
     @Column(name = "anesthesia_type", length = 100)
     private String anesthesiaType;
 
-    @Column(name = "complications", length = 255)
+    @Column(name = "complications", length = 1000)
     private String complications;
 
     @Column(name = "adverse_reactions_to_anesthesia", length = 1000)
