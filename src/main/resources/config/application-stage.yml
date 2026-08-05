@@ -22,6 +22,16 @@ pacs:
   token: YmNhYTQ4ZTVjODQ5MWZiOjQ2MzU1ODU5MTM0NDcyMw==
   expires-in-hours: 48
 
+waseel:
+  api:
+    base-url: ${WASEEL_API_BASE_URL:https://api.stg-eclaims.waseel.com}
+    username: ${WASEEL_USERNAME:abh706}
+    password: ${WASEEL_PASSWORD:abhclm706}
+    provider-id: ${WASEEL_PROVIDER_ID:706}
+    nphies-id: ${WASEEL_NPHIES_ID:10000000003170}
+    system-type: ${WASEEL_SYSTEM_TYPE:1}
+    timeout-seconds: 90
+
 application:
   asklepios-application-url: http://asklepios.nereuscloud.de//#
 appointment:
