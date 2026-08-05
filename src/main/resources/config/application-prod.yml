@@ -3,6 +3,16 @@ logging:
     ROOT: INFO
     com.dazzle.asklepios: INFO
 
+waseel:
+  api:
+    base-url: ${WASEEL_API_BASE_URL}
+    username: ${WASEEL_USERNAME}
+    password: ${WASEEL_PASSWORD}
+    provider-id: ${WASEEL_PROVIDER_ID}
+    nphies-id: ${WASEEL_NPHIES_ID}
+    system-type: ${WASEEL_SYSTEM_TYPE:1}
+    timeout-seconds: 90
+
 management:
   prometheus:
     metrics:
