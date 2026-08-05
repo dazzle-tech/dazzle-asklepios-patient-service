@@ -20,8 +20,10 @@ import java.time.Instant;
 @Entity
 @Table(
         name = "patient_payment_allocations",
-        uniqueConstraints = @UniqueConstraint(name = "uq_alloc_payment_charge", columnNames = {"payment_id", "charge_id"})
-)
+        uniqueConstraints = @UniqueConstraint(
+                name = "uq_alloc_payment_item",
+                columnNames = {"payment_id", "document_item_id"}
+        ))
 @Getter
 @Setter
 @Builder
@@ -36,8 +38,9 @@ public class PatientPaymentAllocation implements Serializable {
     @Column(name = "payment_id", nullable = false)
     private Long paymentId;
 
-    @Column(name = "charge_id", nullable = false)
-    private Long chargeId;
+    @Column(name = "charge_id")
+    private Long chargeId;   // nullable ✅
+
 
     @Column(name = "paid_from_amount", nullable = false, precision = 19, scale = 4)
     @Builder.Default
@@ -46,6 +49,9 @@ public class PatientPaymentAllocation implements Serializable {
     @Column(name = "paid_from_balance", nullable = false, precision = 19, scale = 4)
     @Builder.Default
     private BigDecimal paidFromBalance = BigDecimal.ZERO;
+
+    @Column(name = "document_item_id", nullable = false)
+    private Long documentItemId;
 
     @Column(name = "last_modified_date", nullable = false)
     @Builder.Default

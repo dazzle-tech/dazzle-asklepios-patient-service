@@ -5,6 +5,7 @@ import com.dazzle.asklepios.client.setup.ActiveIngredientClient;
 import com.dazzle.asklepios.client.setup.BrandMedicationClient;
 import com.dazzle.asklepios.client.setup.dto.ActiveIngredientDTO;
 import com.dazzle.asklepios.client.setup.dto.BrandMedicationDTO;
+import com.dazzle.asklepios.client.setup.dto.BrandMedicationSetupDTO;
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
@@ -381,7 +382,7 @@ public class PatientPrescriptionService {
             return "";
         }
         if (med.getMedicationsId() != null) {
-            BrandMedicationDTO brandMedicationDTO = brandMedicationClient.getBrandMedication(med.getMedicationsId());
+            BrandMedicationSetupDTO brandMedicationDTO = brandMedicationClient.getBrandMedication(med.getMedicationsId());
 
             if (brandMedicationDTO.name() != null && !brandMedicationDTO.name().isBlank()) {
                 return brandMedicationDTO.name();

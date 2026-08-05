@@ -3,6 +3,7 @@ package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.service.DiagnosticOrderService;
+import com.dazzle.asklepios.service.EncounterCoverageService;
 import com.dazzle.asklepios.service.PatientEncounterService;
 import com.dazzle.asklepios.service.PatientPrescriptionService;
 import com.dazzle.asklepios.service.dto.patientEncounter.EncounterHistoryOfPresentIllnessDTO;
@@ -10,6 +11,8 @@ import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateD
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
+import com.dazzle.asklepios.service.dto.billing.EncounterCoverageDTO;
+import com.dazzle.asklepios.service.dto.billing.UpdateEncounterCoverageRequest;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.patientEncounter.PatientEncounterVM;
@@ -48,10 +51,18 @@ public class PatientEncounterController {
     private final PatientEncounterService patientEncounterService;
     private final DiagnosticOrderService diagnosticOrderService;
     private final PatientPrescriptionService patientPrescriptionService;
-    public PatientEncounterController(PatientEncounterService patientEncounterService, DiagnosticOrderService diagnosticOrderService, PatientPrescriptionService patientPrescriptionService) {
+    private final EncounterCoverageService encounterCoverageService;
+
+    public PatientEncounterController(
+            PatientEncounterService patientEncounterService,
+            DiagnosticOrderService diagnosticOrderService,
+            PatientPrescriptionService patientPrescriptionService,
+            EncounterCoverageService encounterCoverageService
+    ) {
         this.patientEncounterService = patientEncounterService;
         this.diagnosticOrderService = diagnosticOrderService;
         this.patientPrescriptionService = patientPrescriptionService;
+        this.encounterCoverageService = encounterCoverageService;
     }
 
     @PostMapping("/encounter")
@@ -117,6 +128,30 @@ public class PatientEncounterController {
 
         PatientEncounter updatedPatientEncounter = patientEncounterService.update(id, patientEncounterUpdateDTO);
         return ResponseEntity.ok(updatedPatientEncounter);
+    }
+
+    @GetMapping("/encounter/{encounterId}/coverage")
+    public ResponseEntity<EncounterCoverageDTO> getEncounterCoverage(
+            @PathVariable @NotNull Long encounterId
+    ) {
+        LOG.debug("REST get encounter coverage encounterId={}", encounterId);
+        return ResponseEntity.ok(encounterCoverageService.getEncounterCoverage(encounterId));
+    }
+
+    @PutMapping("/encounter/{encounterId}/coverage")
+    public ResponseEntity<EncounterCoverageDTO> setEncounterCoverage(
+            @PathVariable @NotNull Long encounterId,
+            @Valid @RequestBody @NotNull UpdateEncounterCoverageRequest request
+    ) {
+        LOG.debug(
+                "REST set encounter coverage encounterId={} coverageType={} patientInsuranceId={}",
+                encounterId,
+                request.coverageType(),
+                request.patientInsuranceId()
+        );
+        return ResponseEntity.ok(
+                encounterCoverageService.setEncounterCoverage(encounterId, request)
+        );
     }
 
     @GetMapping("/encounter/{id}/previous-encounter-completed")
@@ -309,6 +344,17 @@ public class PatientEncounterController {
 
         PatientEncounter existing = patientEncounterService.completeEncounter(encounterId);
         return ResponseEntity.ok(existing);
+    }
+
+    @PostMapping("/encounter/{id}/close-billing")
+    public ResponseEntity<PatientEncounter> closeEncounterForBilling(
+            @PathVariable("id") @NotNull Long encounterId
+    ) {
+        LOG.debug("REST close PatientEncounter for billing id={}", encounterId);
+
+        PatientEncounter closed =
+                patientEncounterService.closeEncounterForBilling(encounterId);
+        return ResponseEntity.ok(closed);
     }
 
     @GetMapping("/encounter/patient/{patientId}")

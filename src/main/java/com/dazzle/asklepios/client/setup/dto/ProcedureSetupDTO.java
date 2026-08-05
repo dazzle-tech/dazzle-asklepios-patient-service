@@ -3,6 +3,8 @@ package com.dazzle.asklepios.client.setup.dto;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
+import java.math.BigDecimal;
+
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record ProcedureSetupDTO(
         Long id,
@@ -17,6 +19,7 @@ public record ProcedureSetupDTO(
         Boolean isActive,
         Long facilityId,
         Currency currency,
-        Long price
+        BigDecimal price,
+        Long billingRuleId
 ) {
 }

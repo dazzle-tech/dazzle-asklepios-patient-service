@@ -1,16 +1,15 @@
 package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.BodyMeasurements;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 
 @Repository
 public interface BodyMeasurementsRepository extends JpaRepository<BodyMeasurements, Long> {
@@ -43,9 +42,11 @@ public interface BodyMeasurementsRepository extends JpaRepository<BodyMeasuremen
             Pageable pageable
     );
 
-
     Optional<BodyMeasurements> findFirstByPatientIdAndHeightIsNotNullOrderByCreatedDateDesc(Long patientId);
 
     Optional<BodyMeasurements> findFirstByPatientIdAndWeightIsNotNullOrderByCreatedDateDesc(Long patientId);
+
     Set<BodyMeasurements> findDistinctByEncounterIdIn(List<Long> encounterIds);
+
+    Optional<BodyMeasurements> findTopByEncounterIdAndIsActiveTrueOrderByIdDesc(Long encounterId);
 }

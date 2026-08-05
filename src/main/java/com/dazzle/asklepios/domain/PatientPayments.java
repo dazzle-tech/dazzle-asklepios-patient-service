@@ -1,7 +1,9 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.Currency;
+import com.dazzle.asklepios.domain.enumeration.PaymentLifecycleStatus;
 import com.dazzle.asklepios.domain.enumeration.PaymentMethods;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.PaymentTypes;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -152,6 +154,18 @@ public class PatientPayments extends AbstractAuditingEntity<Long> implements Ser
     @OneToMany(mappedBy = "payment", fetch = FetchType.LAZY)
     @Builder.Default
     private Set<PatientPaymentServices> services = new HashSet<>();
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    @Builder.Default
+    private PaymentLifecycleStatus status = PaymentLifecycleStatus.CREATED;
+
+    @Column(name = "document_id")
+    private Long documentId;
+    @Enumerated(EnumType.STRING)
+
+    @Column(name = "payment_status")
+    private PaymentStatus paymentStatus;
 
     @AssertTrue(message = "plan is required when paymentType is INSURANCE_PLAN")
     private boolean isPlanValid() {

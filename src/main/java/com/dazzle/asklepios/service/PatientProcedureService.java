@@ -7,14 +7,20 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientProcedure;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ProcStatus;
 import com.dazzle.asklepios.domain.enumeration.ProcedureLevel;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientProcedureRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
 import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedureCreateDTO;
 import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedureUpdateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
@@ -22,9 +28,9 @@ import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import feign.FeignException;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -38,7 +44,6 @@ import java.time.Instant;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
-@RequiredArgsConstructor
 @Transactional
 public class PatientProcedureService {
 
@@ -51,46 +56,79 @@ public class PatientProcedureService {
     private final ProcedureClient procedureClient;
     private final FacilityHelper facilityHelper;
     private final DepartmentHelper departmentHelper;
+    private final PreAuthorizationResolutionService preAuthorizationResolutionService;
+    private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
+    private final BillingChargeService billingChargeService;
+    private final BillingEngineService billingEngineService;
+    private final PatientServiceAndProductService patientServiceAndProductService;
+
+    public PatientProcedureService(
+            PatientProcedureRepository procedureRepository,
+            PatientRepository patientRepository,
+            PatientEncounterRepository patientEncounterRepository,
+            PatientServiceAndProductRepository patientServiceAndProductRepository,
+            ProcedureClient procedureClient,
+            FacilityHelper facilityHelper,
+            DepartmentHelper departmentHelper,
+            PreAuthorizationResolutionService preAuthorizationResolutionService,
+            EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService,
+            BillingChargeService billingChargeService,
+            @Lazy BillingEngineService billingEngineService,
+            @Lazy PatientServiceAndProductService patientServiceAndProductService
+    ) {
+        this.procedureRepository = procedureRepository;
+        this.patientRepository = patientRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
+        this.patientServiceAndProductRepository = patientServiceAndProductRepository;
+        this.procedureClient = procedureClient;
+        this.facilityHelper = facilityHelper;
+        this.departmentHelper = departmentHelper;
+        this.preAuthorizationResolutionService = preAuthorizationResolutionService;
+        this.encounterPreAuthorizationSyncService = encounterPreAuthorizationSyncService;
+        this.billingChargeService = billingChargeService;
+        this.billingEngineService = billingEngineService;
+        this.patientServiceAndProductService = patientServiceAndProductService;
+    }
 
     private String currentUsername() {
         String username = SecurityUtils.getCurrentUserLogin().orElse(null);
         if (username == null) {
-            LOG.warn("[PatientProcedureService] AUTH - unauthenticated request");
             throw new BadRequestAlertException(
-                    "unauthenticated",
+                    "No authenticated user",
                     "procedure",
-                    "No authenticated user"
+                    "unauthenticated"
             );
         }
         return username;
     }
 
     public PatientProcedure create(PatientProcedureCreateDTO procedureCreateDTO) {
-        LOG.info("[CREATE] PatientProcedure payload={}", procedureCreateDTO);
-
         Patient patient = patientRepository.findById(procedureCreateDTO.patientId())
-                .orElseThrow(() -> {
-                    LOG.warn(
-                            "[CREATE] PatientProcedure rejected: patient not found patientId={}",
-                            procedureCreateDTO.patientId()
-                    );
-                    return new NotFoundAlertException(
-                            "Patient not found with id " + procedureCreateDTO.patientId(),
-                            "procedure",
-                            "patient.notfound"
-                    );
-                });
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found with id " + procedureCreateDTO.patientId(),
+                        "procedure",
+                        "patient.notfound"
+                ));
 
         PatientEncounter encounter = patientEncounterRepository.findById(procedureCreateDTO.encounterId())
-                .orElseThrow(() ->
-                        new NotFoundAlertException(
-                                "Encounter not found with id " + procedureCreateDTO.encounterId(),
-                                "procedure",
-                                "encounter.notfound"
-                        )
-                );
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Encounter not found with id " + procedureCreateDTO.encounterId(),
+                        "procedure",
+                        "encounter.notfound"
+                ));
+
+        BillingCoverageType encounterCoverage = resolveEncounterCoverageType(encounter);
+
+        LOG.info(
+                "[PROCEDURE_CREATE] Step 1 — encounter coverage. encounterId={} coverageType={} patientInsuranceId={}",
+                encounter.getId(),
+                encounterCoverage,
+                encounter.getPatientInsuranceId()
+        );
 
         ProcedureSetupDTO setupProcedure = fetchProcedureSetup(procedureCreateDTO.procedureId());
+        validateProcedureSetupForBilling(setupProcedure);
+
         facilityHelper.validateFacilityExists(procedureCreateDTO.fromFacilityId());
         facilityHelper.validateFacilityExists(procedureCreateDTO.toFacilityId());
         departmentHelper.validateDepartmentExists(procedureCreateDTO.fromDepartmentId());
@@ -119,37 +157,53 @@ public class PatientProcedureService {
         try {
             PatientProcedure savedProcedure = procedureRepository.saveAndFlush(procedureEntity);
 
+            LOG.info(
+                    "[PROCEDURE_CREATE] Step 2 — procedure saved. procedureId={} setupProcedureId={}",
+                    savedProcedure.getId(),
+                    setupProcedure.id()
+            );
+
             PatientServiceAndProduct billingItem = buildProcedureBillingItem(
                     patient.getId(),
-                    encounter.getId(),
+                    encounter,
                     savedProcedure.getId(),
                     setupProcedure,
-                    procedureCreateDTO.notes()
+                    procedureCreateDTO.notes(),
+                    encounterCoverage
             );
 
-            patientServiceAndProductRepository.saveAndFlush(billingItem);
+            PatientServiceAndProduct savedBillingItem =
+                    patientServiceAndProductRepository.saveAndFlush(billingItem);
 
             LOG.info(
-                    "[CREATE] PatientProcedure success id={} with billing item created",
-                    savedProcedure.getId()
+                    "[PROCEDURE_CREATE] Step 3 — billing item saved. pspId={} preAuthorizationStatus={} waseelSbsCode={}",
+                    savedBillingItem.getId(),
+                    savedBillingItem.getPreAuthorizationStatus(),
+                    savedBillingItem.getWaseelSbsCode()
             );
+
+            completeProcedureBillingFlow(
+                    encounter,
+                    savedProcedure,
+                    savedBillingItem,
+                    encounterCoverage
+            );
+
             return savedProcedure;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
-            LOG.warn("[CREATE] PatientProcedure failed (constraint) payload={}", procedureCreateDTO, ex);
             throw handleConstraintViolation(ex);
         }
     }
 
     public PatientProcedure update(Long id, PatientProcedureUpdateDTO procedureUpdateDTO) {
-        LOG.info("[UPDATE] PatientProcedure id={} payload={}", id, procedureUpdateDTO);
-
         PatientProcedure procedureEntity = procedureRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Procedure not found with id " + id,
                         "procedure",
                         "notfound"
                 ));
+
         facilityHelper.validateFacilityExists(procedureUpdateDTO.toFacilityId());
         departmentHelper.validateDepartmentExists(procedureUpdateDTO.toDepartmentId());
 
@@ -171,18 +225,13 @@ public class PatientProcedureService {
         procedureEntity.setResult(procedureUpdateDTO.result());
 
         try {
-            PatientProcedure saved = procedureRepository.saveAndFlush(procedureEntity);
-            LOG.info("[UPDATE] PatientProcedure success id={}", saved.getId());
-            return saved;
+            return procedureRepository.saveAndFlush(procedureEntity);
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
-            LOG.warn("[UPDATE] PatientProcedure failed (constraint) id={} payload={}", id, procedureUpdateDTO, ex);
             throw handleConstraintViolation(ex);
         }
     }
 
     public PatientProcedure cancel(Long id, String reason) {
-        LOG.info("[CANCEL] PatientProcedure id={} reason={}", id, reason);
-
         PatientProcedure procedureEntity = procedureRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Procedure not found with id " + id,
@@ -190,19 +239,26 @@ public class PatientProcedureService {
                         "notfound"
                 ));
 
-        procedureEntity.setStatus(ProcStatus.CANCELLED);
-        procedureEntity.setCancelledDate(Instant.now());
-        procedureEntity.setCancelledBy(currentUsername());
-        procedureEntity.setCancellationReason(reason);
-
-        LOG.debug("[CANCEL] PatientProcedure cancelledBy={}", procedureEntity.getCancelledBy());
+        String cancelReason =
+                reason == null || reason.isBlank()
+                        ? "Procedure cancelled"
+                        : reason;
 
         try {
-            PatientProcedure saved = procedureRepository.saveAndFlush(procedureEntity);
-            LOG.info("[CANCEL] PatientProcedure success id={}", saved.getId());
-            return saved;
+            patientServiceAndProductService.cancelBySource(
+                    ServiceSource.PROCEDURE,
+                    procedureEntity.getId(),
+                    BillingItemTypes.PROCEDURE,
+                    cancelReason
+            );
+
+            procedureEntity.setStatus(ProcStatus.CANCELLED);
+            procedureEntity.setCancelledDate(Instant.now());
+            procedureEntity.setCancelledBy(currentUsername());
+            procedureEntity.setCancellationReason(cancelReason);
+
+            return procedureRepository.saveAndFlush(procedureEntity);
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
-            LOG.warn("[CANCEL] PatientProcedure failed (constraint) id={}", id, ex);
             throw handleConstraintViolation(ex);
         }
     }
@@ -239,18 +295,128 @@ public class PatientProcedureService {
 
     @Transactional(readOnly = true)
     public PatientProcedure findById(Long id) {
-        LOG.info("[GET] PatientProcedure id={}", id);
-        PatientProcedure procedure = procedureRepository.findById(id)
-                .orElseThrow(() -> {
-                    LOG.warn("[GET] PatientProcedure not found id={}", id);
-                    return new NotFoundAlertException(
-                            "Procedure not found",
-                            "procedure",
-                            "notfound"
-                    );
-                });
-        LOG.info("[GET] PatientProcedure found id={}", procedure.getId());
-        return procedure;
+        return procedureRepository.findById(id)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Procedure not found",
+                        "procedure",
+                        "notfound"
+                ));
+    }
+
+    /**
+     * Step 4 — after procedure + billing item are saved:
+     * - Self pay, or insurance without pre-auth → run billing engine immediately.
+     * - Insurance with pending pre-auth → submit to Waseel synchronously; on success set
+     *   procedure status to WAITING_PRE_AUTHORIZATION; rollback on failure.
+     */
+    private void completeProcedureBillingFlow(
+            PatientEncounter encounter,
+            PatientProcedure procedure,
+            PatientServiceAndProduct billingItem,
+            BillingCoverageType encounterCoverage
+    ) {
+        if (encounterCoverage != BillingCoverageType.INSURANCE) {
+            LOG.info(
+                    "[PROCEDURE_CREATE] Step 4 — self pay, continuing billing. encounterId={} pspId={}",
+                    encounter.getId(),
+                    billingItem.getId()
+            );
+            billProcedureItem(billingItem, encounter);
+            return;
+        }
+
+        if (billingItem.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL) {
+            LOG.info(
+                    "[PROCEDURE_CREATE] Step 4 — insurance pre-auth required, submitting to Waseel. encounterId={} pspId={}",
+                    encounter.getId(),
+                    billingItem.getId()
+            );
+            try {
+                encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(
+                        encounter.getId()
+                );
+            } catch (BadRequestAlertException ex) {
+                throw mapPreAuthorizationFailure(ex, "procedure");
+            }
+
+            procedure.setStatus(ProcStatus.WAITING_PRE_AUTHORIZATION);
+            procedureRepository.saveAndFlush(procedure);
+
+            LOG.info(
+                    "[PROCEDURE_CREATE] Step 4 — pre-auth submitted. procedureId={} status={}",
+                    procedure.getId(),
+                    procedure.getStatus()
+            );
+            return;
+        }
+
+        LOG.info(
+                "[PROCEDURE_CREATE] Step 4 — insurance without pre-auth, continuing billing. encounterId={} pspId={}",
+                encounter.getId(),
+                billingItem.getId()
+        );
+        billProcedureItem(billingItem, encounter);
+    }
+
+    private void billProcedureItem(
+            PatientServiceAndProduct billingItem,
+            PatientEncounter encounter
+    ) {
+        if (billingItem == null || billingItem.getId() == null || encounter == null) {
+            return;
+        }
+
+        Long facilityId = encounter.getFacilityId();
+        if (facilityId == null) {
+            throw new BadRequestAlertException(
+                    "Encounter facility is required to bill procedure.",
+                    "procedure",
+                    "encounter.facility.required"
+            );
+        }
+
+        if (billingChargeService
+                .findActiveChargeLine(billingItem.getId(), encounter.getId())
+                .isPresent()) {
+            LOG.info(
+                    "[PROCEDURE_BILLING] Charge line already exists pspId={} encounterId={}",
+                    billingItem.getId(),
+                    encounter.getId()
+            );
+            return;
+        }
+
+        BillingOperationResult result =
+                billingEngineService.onItemOrdered(
+                        billingItem.getId(),
+                        facilityId,
+                        "PROCEDURE-CREATE:" + billingItem.getId()
+                );
+
+        LOG.info(
+                "[PROCEDURE_BILLING] pspId={} processed={} chargeLineId={} message={}",
+                billingItem.getId(),
+                result.processed(),
+                result.chargeLineId(),
+                result.message()
+        );
+
+        if (!result.processed()) {
+            throw new BadRequestAlertException(
+                    result.message() == null
+                            ? "Procedure billing rule did not match."
+                            : result.message(),
+                    "procedure",
+                    "billing.failed"
+            );
+        }
+    }
+
+    private BillingCoverageType resolveEncounterCoverageType(PatientEncounter encounter) {
+        if (encounter == null || encounter.getCoverageType() == null) {
+            return BillingCoverageType.SELF_PAY;
+        }
+        return encounter.getCoverageType();
     }
 
     private ProcedureSetupDTO fetchProcedureSetup(Long procedureId) {
@@ -268,14 +434,6 @@ public class PatientProcedureService {
             return response;
 
         } catch (FeignException.NotFound ex) {
-            LOG.error(
-                    "[SETUP_SERVICE] Procedure not found. id={} status={} body={}",
-                    procedureId,
-                    ex.status(),
-                    ex.contentUTF8(),
-                    ex
-            );
-
             throw new NotFoundAlertException(
                     "Procedure setup not found with id " + procedureId,
                     "procedure",
@@ -283,14 +441,6 @@ public class PatientProcedureService {
             );
 
         } catch (FeignException ex) {
-            LOG.error(
-                    "[SETUP_SERVICE] Failed to fetch procedure. id={} status={} body={}",
-                    procedureId,
-                    ex.status(),
-                    ex.contentUTF8(),
-                    ex
-            );
-
             throw new BadRequestAlertException(
                     "Unable to fetch procedure setup data: " + ex.contentUTF8(),
                     "procedure",
@@ -299,46 +449,205 @@ public class PatientProcedureService {
         }
     }
 
+    private void validateProcedureSetupForBilling(ProcedureSetupDTO setupProcedure) {
+        if (setupProcedure == null || setupProcedure.id() == null) {
+            throw new BadRequestAlertException(
+                    "Procedure setup is required.",
+                    "procedure",
+                    "procedureSetup.required"
+            );
+        }
+
+        if (setupProcedure.price() == null) {
+            throw new BadRequestAlertException(
+                    "Procedure price is required.",
+                    "procedure",
+                    "price.required"
+            );
+        }
+
+        if (setupProcedure.currency() == null) {
+            throw new BadRequestAlertException(
+                    "Procedure currency is required.",
+                    "procedure",
+                    "currency.required"
+            );
+        }
+    }
+
+    /**
+     * Step 2 (billing build) — self pay: no pre-auth changes.
+     * Insurance: check SBS/payor plan, attach insurance + SBS code, set pre-auth status.
+     */
     private PatientServiceAndProduct buildProcedureBillingItem(
             Long patientId,
-            Long encounterId,
+            PatientEncounter encounter,
             Long sourceId,
             ProcedureSetupDTO setupProcedure,
-            String notes
+            String notes,
+            BillingCoverageType encounterCoverage
     ) {
-        BigDecimal unitPrice = BigDecimal.valueOf(
-                setupProcedure.price() == null ? 0L : setupProcedure.price()
-        );
+        Long encounterId = encounter.getId();
+        BigDecimal unitPrice = setupProcedure.price();
         Long quantity = 1L;
-        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
 
-        return PatientServiceAndProduct.builder()
+        BigDecimal discountAmount = BigDecimal.ZERO;
+        BigDecimal exemptionAmount = BigDecimal.ZERO;
+        BigDecimal taxAmount = BigDecimal.ZERO;
+
+        BigDecimal totalAmount = unitPrice
+                .multiply(BigDecimal.valueOf(quantity))
+                .subtract(discountAmount)
+                .subtract(exemptionAmount)
+                .add(taxAmount);
+
+        PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
                 .patientId(patientId)
                 .encounterId(encounterId)
                 .billingItemType(BillingItemTypes.PROCEDURE)
+                .brandMedicationId(null)
+                .diagnosticTestId(null)
+                .serviceId(null)
                 .procedureId(setupProcedure.id())
                 .serviceSource(ServiceSource.PROCEDURE)
                 .sourceId(sourceId)
                 .quantity(quantity)
                 .unitPrice(unitPrice)
-                .discountAmount(BigDecimal.ZERO)
-                .exemptionAmount(BigDecimal.ZERO)
-                .taxAmount(BigDecimal.ZERO)
+                .discountAmount(discountAmount)
+                .exemptionAmount(exemptionAmount)
+                .taxAmount(taxAmount)
                 .totalAmount(totalAmount)
                 .currency(setupProcedure.currency())
                 .isBilled(Boolean.FALSE)
                 .billingInvoiceId(null)
                 .billingInvoiceItemId(null)
-                .notes(notes)
-                .build();
+                .notes(notes);
+
+        if (encounterCoverage != BillingCoverageType.INSURANCE) {
+            builder
+                    .preAuthorizationStatus(PreAuthorizationStatus.NOT_REQUIRED)
+                    .preAuthorizationRequired(false)
+                    .paymentStatus(PaymentStatus.PENDING);
+            return builder.build();
+        }
+
+        LOG.info(
+                "[PROCEDURE_CREATE] Insurance encounter — checking SBS pre-authorization for procedureId={}",
+                setupProcedure.id()
+        );
+
+        preAuthorizationResolutionService.resolveAndPrepareNewItem(
+                builder,
+                encounterId,
+                BillingItemTypes.PROCEDURE,
+                setupProcedure.id(),
+                null,
+                null,
+                null,
+                true
+        );
+
+        preAuthorizationResolutionService.enrichWaseelSbsMapping(
+                builder,
+                BillingItemTypes.PROCEDURE,
+                setupProcedure.id()
+        );
+
+        return builder.build();
+    }
+
+    /**
+     * Surfaces the original pre-auth failure reason to the UI
+     * (missing diagnosis, LOV mapping, Waseel API body, etc.).
+     */
+    private BadRequestAlertException mapPreAuthorizationFailure(
+            BadRequestAlertException ex,
+            String entityName
+    ) {
+        String errorKey = ex.getErrorKey() != null
+                ? ex.getErrorKey()
+                : "preAuthorization.failed";
+        String title = ex.getBody() != null && ex.getBody().getTitle() != null
+                ? ex.getBody().getTitle()
+                : ex.getMessage();
+
+        LOG.warn(
+                "[PROCEDURE_CREATE] Pre-authorization blocked create. errorKey={} message={}",
+                errorKey,
+                title
+        );
+
+        return new BadRequestAlertException(title, entityName, errorKey);
     }
 
     private RuntimeException handleConstraintViolation(Exception exception) {
         Throwable root = getRootCause(exception);
-        String msg = root != null ? root.getMessage() : exception.getMessage();
+
+        String msg = root != null
+                ? root.getMessage()
+                : exception.getMessage();
+
         String m = msg != null ? msg.toLowerCase() : "";
 
-        LOG.warn("[DB_CONSTRAINT] PatientProcedure violated rootMessage={}", msg, exception);
+        LOG.error("========== REAL DATABASE ERROR ==========");
+        LOG.error("{}", msg);
+        LOG.error("=========================================", exception);
+
+        if (m.contains("patient_services_and_products") && m.contains("currency")) {
+            return new BadRequestAlertException(
+                    "Procedure currency is required or invalid.",
+                    "procedure",
+                    "currency.required"
+            );
+        }
+
+        if (m.contains("patient_services_and_products") && m.contains("unit_price")) {
+            return new BadRequestAlertException(
+                    "Procedure price is required.",
+                    "procedure",
+                    "price.required"
+            );
+        }
+
+        if (m.contains("patient_services_and_products") && m.contains("service_source")) {
+            return new BadRequestAlertException(
+                    "Service source is required.",
+                    "procedure",
+                    "serviceSource.required"
+            );
+        }
+
+        if (m.contains("patient_services_and_products") && m.contains("billing_item_type")) {
+            return new BadRequestAlertException(
+                    "Billing item type is required.",
+                    "procedure",
+                    "billingItemType.required"
+            );
+        }
+
+        if (m.contains("patient_services_and_products") && m.contains("patient_id")) {
+            return new BadRequestAlertException(
+                    "Invalid patient id for billing item.",
+                    "procedure",
+                    "patient.invalid"
+            );
+        }
+
+        if (m.contains("patient_services_and_products") && m.contains("encounter_id")) {
+            return new BadRequestAlertException(
+                    "Invalid encounter id for billing item.",
+                    "procedure",
+                    "encounter.invalid"
+            );
+        }
+
+        if (m.contains("fk_psp_procedure")) {
+            return new BadRequestAlertException(
+                    "Procedure setup does not exist in billing table reference.",
+                    "procedure",
+                    "procedure.invalid"
+            );
+        }
 
         if (m.contains("uk_procedure_unique_context_active")) {
             return new BadRequestAlertException(
@@ -347,6 +656,7 @@ public class PatientProcedureService {
                     "duplicate"
             );
         }
+
         if (m.contains("fk_procedure_patient")) {
             return new BadRequestAlertException(
                     "Invalid patient id.",
@@ -354,6 +664,7 @@ public class PatientProcedureService {
                     "patient.invalid"
             );
         }
+
         if (m.contains("fk_procedure_from_facility")) {
             return new BadRequestAlertException(
                     "Invalid from facility id.",
@@ -361,6 +672,7 @@ public class PatientProcedureService {
                     "fromFacility.invalid"
             );
         }
+
         if (m.contains("fk_procedure_to_facility")) {
             return new BadRequestAlertException(
                     "Invalid to facility id.",
@@ -368,6 +680,7 @@ public class PatientProcedureService {
                     "toFacility.invalid"
             );
         }
+
         if (m.contains("fk_procedure_from_department")) {
             return new BadRequestAlertException(
                     "Invalid from department id.",
@@ -375,6 +688,7 @@ public class PatientProcedureService {
                     "fromDepartment.invalid"
             );
         }
+
         if (m.contains("fk_procedure_to_department")) {
             return new BadRequestAlertException(
                     "Invalid to department id.",
@@ -382,13 +696,15 @@ public class PatientProcedureService {
                     "toDepartment.invalid"
             );
         }
+
         if (m.contains("fk_procedure_indication_icd")) {
             return new BadRequestAlertException(
-                    "Invalid indication (ICD) id.",
+                    "Invalid indication ICD id.",
                     "procedure",
                     "indication.invalid"
             );
         }
+
         if (m.contains("ck_procedure_level_enum")) {
             return new BadRequestAlertException(
                     "Invalid procedure level.",
@@ -396,6 +712,7 @@ public class PatientProcedureService {
                     "procedureLevel.invalid"
             );
         }
+
         if (m.contains("ck_procedure_status_enum")) {
             return new BadRequestAlertException(
                     "Invalid procedure status.",
@@ -403,6 +720,7 @@ public class PatientProcedureService {
                     "status.invalid"
             );
         }
+
         if (m.contains("ck_procedure_cancellation_reason")) {
             return new BadRequestAlertException(
                     "Cancellation reason is required when cancelling a procedure.",
@@ -410,6 +728,16 @@ public class PatientProcedureService {
                     "cancellationReason.required"
             );
         }
+
+        if (m.contains("ck_billing_charge_line_allocation_balance")) {
+            return new BadRequestAlertException(
+                    "Cannot cancel procedure billing because charge-line allocation balances are inconsistent. "
+                            + "Please retry or contact support if this persists.",
+                    "procedure",
+                    "billing.cancel.allocationBalance"
+            );
+        }
+
         if (m.contains("scheduled_date_time") && m.contains("not-null")) {
             return new BadRequestAlertException(
                     "Scheduled date time is required.",
@@ -417,6 +745,7 @@ public class PatientProcedureService {
                     "schedule.required"
             );
         }
+
         if (m.contains("body_part") && m.contains("not-null")) {
             return new BadRequestAlertException(
                     "Body part is required.",
@@ -426,7 +755,7 @@ public class PatientProcedureService {
         }
 
         return new BadRequestAlertException(
-                "Database constraint violated while saving procedure.",
+                msg != null ? msg : "Database constraint violated while saving procedure.",
                 "procedure",
                 "db.constraint"
         );

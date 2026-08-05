@@ -1,11 +1,12 @@
 package com.dazzle.asklepios.domain.enumeration;
 
+
 public enum TreatmentStatus {
     NEW,
     ONGOING,
     CANCELLED,
-    COMPLETED,
-    DISCHARGED,
+    CLOSED,
+    COMPLETED,DISCHARGED,
     IN_OPERATION,
     CONFIRM_RETURN,
     TEMP_DC,
@@ -14,6 +15,14 @@ public enum TreatmentStatus {
     WAITING_TRIAGE,
     WAITING_LIST,
     PENDING_PAYMENT,
-    ASSIGNED_TO_BED
+    ASSIGNED_TO_BED;
 
-}
+    public static TreatmentStatus fromDatabaseValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        if ("OPEN".equals(value)) {
+            return ONGOING;
+        }
+        return valueOf(value);
+    }}

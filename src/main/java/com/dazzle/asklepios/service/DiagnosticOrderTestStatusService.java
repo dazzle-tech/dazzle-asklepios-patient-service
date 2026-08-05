@@ -8,17 +8,26 @@ import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.PriceSource;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
+import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.patientarrived.PatientArrivedCreateRequestDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.diagnosticorders.PatientArrivedResponseVM;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,15 +37,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/**
- * Service responsible for managing the lifecycle (status transitions) of a {@link DiagnosticOrderTest}.
- *
- * <p>This class enforces allowed transitions for {@link DiagnosticStatus} (processingStatus) and updates
- * audit fields (acceptedBy/date, readyDate, approvedDate, rejectedBy/date/reason, etc.).</p>
- *
- * <p>After each successful transition, it triggers recomputation of the aggregated Lab/Radiology statuses
- * for the parent order via {@link DiagnosticOrderStatusService}.</p>
- */
 @Service
 @Transactional
 public class DiagnosticOrderTestStatusService {
@@ -48,22 +48,44 @@ public class DiagnosticOrderTestStatusService {
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final DiagnosticTestClient diagnosticTestClient;
+    private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
+    private final PreAuthorizationResolutionService preAuthorizationResolutionService;
 
-    public DiagnosticOrderTestStatusService(DiagnosticOrderRepository diagnosticOrderRepository, DiagnosticOrderTestRepository diagnosticOrderTestRepository, DiagnosticOrderStatusService diagnosticOrderStatusService, PatientServiceAndProductRepository patientServiceAndProductRepository, DiagnosticTestClient diagnosticTestClient) {
+    private final PatientEncounterRepository patientEncounterRepository;
+
+    private final BillingEngineService billingEngineService;
+
+    private final BillingChargeService billingChargeService;
+
+    private final PatientServiceAndProductService patientServiceAndProductService;
+
+    public DiagnosticOrderTestStatusService(
+            DiagnosticOrderRepository diagnosticOrderRepository,
+            DiagnosticOrderTestRepository diagnosticOrderTestRepository,
+            DiagnosticOrderStatusService diagnosticOrderStatusService,
+            PatientServiceAndProductRepository patientServiceAndProductRepository,
+            DiagnosticTestClient diagnosticTestClient,
+            EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService,
+            PreAuthorizationResolutionService preAuthorizationResolutionService,
+            PatientEncounterRepository patientEncounterRepository,
+            @Lazy BillingEngineService billingEngineService,
+            @Lazy BillingChargeService billingChargeService,
+            @Lazy PatientServiceAndProductService patientServiceAndProductService
+    ) {
         this.diagnosticOrderRepository = diagnosticOrderRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.diagnosticTestClient = diagnosticTestClient;
+        this.encounterPreAuthorizationSyncService = encounterPreAuthorizationSyncService;
+        this.preAuthorizationResolutionService = preAuthorizationResolutionService;
+        this.patientEncounterRepository = patientEncounterRepository;
+        this.billingEngineService = billingEngineService;
+        this.billingChargeService = billingChargeService;
+        this.patientServiceAndProductService = patientServiceAndProductService;
     }
 
-    // ---------------------------------------------------------------------
-    // Standard transitions
-    // ---------------------------------------------------------------------
-
     public DiagnosticOrderTest collectSample(Long testId) {
-        LOG.debug("[DiagnosticOrderTestStatus] COLLECT_SAMPLE - start. testId={}", testId);
-
         DiagnosticOrderTest test = getTest(testId);
         ensureTransition(test, DiagnosticStatus.SAMPLE_COLLECTED);
 
@@ -72,21 +94,13 @@ public class DiagnosticOrderTestStatusService {
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
 
-        LOG.debug("[DiagnosticOrderTestStatus] COLLECT_SAMPLE - done. testId={} orderId={} status={}", saved.getId(), saved.getOrderId(), saved.getProcessingStatus());
-
         return saved;
     }
 
-    /**
-     * Radiology-only: patient arrival. Sets processingStatus to PATIENT_ARRIVED and stores arrival metadata.
-     */
     public PatientArrivedResponseVM patientArrived(Long testId, PatientArrivedCreateRequestDTO dto) {
-        LOG.debug("[DiagnosticOrderTestStatus] PATIENT_ARRIVED - start. testId={} payload={}", testId, dto);
-
         DiagnosticOrderTest test = getTest(testId);
 
         if (test.getOrderType() != TestType.RADIOLOGY) {
-            LOG.warn("[DiagnosticOrderTestStatus] PATIENT_ARRIVED - rejected. testId={} reason=not_radiology", testId);
             throw new BadRequestAlertException(
                     "not_radiology",
                     "diagnostic_order_tests",
@@ -103,8 +117,6 @@ public class DiagnosticOrderTestStatusService {
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
 
-        LOG.debug("[DiagnosticOrderTestStatus] PATIENT_ARRIVED - done. testId={} orderId={} status={} arrivedDate={}", saved.getId(), saved.getOrderId(), saved.getProcessingStatus(), saved.getPatientArrivedDate());
-
         return new PatientArrivedResponseVM(
                 saved.getId(),
                 saved.getPatientArrivedDate(),
@@ -112,9 +124,56 @@ public class DiagnosticOrderTestStatusService {
         );
     }
 
-    public DiagnosticOrderTest accept(Long testId, String acceptedBy) {
-        LOG.debug("[DiagnosticOrderTestStatus] ACCEPT - start. testId={} acceptedBy={}", testId, acceptedBy);
+    /**
+     * Creates the billing item and runs pre-auth / billing when a test is added to an order.
+     * Pre-authorization is submitted here (not on accept).
+     */
+    public PatientServiceAndProduct onTestAddedToOrder(DiagnosticOrderTest test) {
+        if (test == null || test.getId() == null || test.getOrderId() == null) {
+            throw new BadRequestAlertException(
+                    "Diagnostic order test is required",
+                    "diagnostic_order_tests",
+                    "test.required"
+            );
+        }
 
+        DiagnosticOrder order = getOrder(test.getOrderId());
+        DiagnosticTestSetupDTO setupDiagnostic = fetchDiagnosticTestSetup(test.getTestId());
+
+        PatientServiceAndProduct savedBillingItem =
+                findOrCreateDiagnosticBillingItem(order, test, setupDiagnostic);
+
+        if (savedBillingItem.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL) {
+            LOG.info(
+                    "[DIAGNOSTIC_ORDER] Pre-auth required — submitting to Waseel. encounterId={} pspId={} testId={}",
+                    savedBillingItem.getEncounterId(),
+                    savedBillingItem.getId(),
+                    test.getId()
+            );
+            try {
+                encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(
+                        savedBillingItem.getEncounterId()
+                );
+            } catch (BadRequestAlertException ex) {
+                String title = ex.getBody() != null && ex.getBody().getTitle() != null
+                        ? ex.getBody().getTitle()
+                        : ex.getMessage();
+                String errorKey = ex.getErrorKey() != null
+                        ? ex.getErrorKey()
+                        : "preAuthorization.failed";
+                throw new BadRequestAlertException(title, "diagnostic_order_tests", errorKey);
+            }
+        } else {
+            billDiagnosticItemOnOrder(
+                    savedBillingItem,
+                    order.getEncounterId()
+            );
+        }
+
+        return savedBillingItem;
+    }
+
+    public DiagnosticOrderTest accept(Long testId, String acceptedBy) {
         DiagnosticOrderTest test = getTest(testId);
         ensureTransition(test, DiagnosticStatus.ACCEPTED);
 
@@ -124,47 +183,13 @@ public class DiagnosticOrderTestStatusService {
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.saveAndFlush(test);
 
-        LOG.debug(
-                "[DiagnosticOrderTestStatus] ACCEPT - test status persisted. testId={} orderId={} status={}",
-                saved.getId(),
-                saved.getOrderId(),
-                saved.getProcessingStatus()
-        );
-
-        DiagnosticOrder order = getOrder(saved.getOrderId());
-        DiagnosticTestSetupDTO setupDiagnostic = fetchDiagnosticTestSetup(saved.getTestId());
-
-        PatientServiceAndProduct billingItem = buildDiagnosticBillingItem(order, saved, setupDiagnostic);
-        patientServiceAndProductRepository.saveAndFlush(billingItem);
-
-        LOG.info(
-                "[DiagnosticOrderTestStatus] ACCEPT - billing created. testId={} orderId={} diagnosticTestId={} sourceId={} billingType={} source={} unitPrice={} totalAmount={}",
-                saved.getId(),
-                saved.getOrderId(),
-                setupDiagnostic.id(),
-                billingItem.getSourceId(),
-                billingItem.getBillingItemType(),
-                billingItem.getServiceSource(),
-                billingItem.getUnitPrice(),
-                billingItem.getTotalAmount()
-        );
-
+        // Billing + pre-auth already happen when the test is added to the order.
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
-
-        LOG.debug(
-                "[DiagnosticOrderTestStatus] ACCEPT - done. testId={} orderId={} status={} acceptedBy={}",
-                saved.getId(),
-                saved.getOrderId(),
-                saved.getProcessingStatus(),
-                saved.getAcceptedBy()
-        );
 
         return saved;
     }
 
     public DiagnosticOrderTest markReady(Long testId) {
-        LOG.debug("[DiagnosticOrderTestStatus] MARK_READY - start. testId={}", testId);
-
         DiagnosticOrderTest test = getTest(testId);
         ensureTransition(test, DiagnosticStatus.EXAM_DONE);
 
@@ -174,38 +199,19 @@ public class DiagnosticOrderTestStatusService {
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
 
-        LOG.debug(
-                "[DiagnosticOrderTestStatus] MARK_READY - done. testId={} orderId={} status={} readyDate={}",
-                saved.getId(),
-                saved.getOrderId(),
-                saved.getProcessingStatus(),
-                saved.getReadyDate()
-        );
-
         return saved;
     }
 
     public DiagnosticOrderTest review(Long testId) {
-        LOG.debug("[DiagnosticOrderTestStatus] REVIEW - start. testId={}", testId);
-
         DiagnosticOrderTest test = getTest(testId);
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
 
-        LOG.debug(
-                "[DiagnosticOrderTestStatus] REVIEW - done. testId={} orderId={} status={}",
-                saved.getId(),
-                saved.getOrderId(),
-                saved.getProcessingStatus()
-        );
-
         return saved;
     }
 
     public DiagnosticOrderTest approve(Long testId) {
-        LOG.debug("[DiagnosticOrderTestStatus] APPROVE - start. testId={}", testId);
-
         DiagnosticOrderTest test = getTest(testId);
         ensureTransition(test, DiagnosticStatus.RESULT_APPROVED);
 
@@ -215,25 +221,10 @@ public class DiagnosticOrderTestStatusService {
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
 
-        LOG.debug(
-                "[DiagnosticOrderTestStatus] APPROVE - done. testId={} orderId={} status={} approvedDate={}",
-                saved.getId(),
-                saved.getOrderId(),
-                saved.getProcessingStatus(),
-                saved.getApprovedDate()
-        );
-
         return saved;
     }
 
     public DiagnosticOrderTest reject(Long testId, String rejectedBy, String rejectedReason) {
-        LOG.debug(
-                "[DiagnosticOrderTestStatus] REJECT - start. testId={} rejectedBy={} reason={}",
-                testId,
-                rejectedBy,
-                rejectedReason
-        );
-
         DiagnosticOrderTest test = getTest(testId);
         ensureTransition(test, DiagnosticStatus.REJECTED);
 
@@ -245,30 +236,15 @@ public class DiagnosticOrderTestStatusService {
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
 
-        LOG.debug(
-                "[DiagnosticOrderTestStatus] REJECT - done. testId={} orderId={} status={} rejectedBy={}",
-                saved.getId(),
-                saved.getOrderId(),
-                saved.getProcessingStatus(),
-                saved.getRejectedBy()
-        );
-
         return saved;
     }
 
     public DiagnosticOrderTest cancel(Long testId, String cancelledBy, String cancellationReason) {
-        LOG.debug(
-                "[DiagnosticOrderTestStatus] CANCEL - start. testId={} cancelledBy={} reason={}",
-                testId,
-                cancelledBy,
-                cancellationReason
-        );
-
         DiagnosticOrderTest test = getTest(testId);
 
         DiagnosticOrderTestStatus current = test.getStatus() == null ? DiagnosticOrderTestStatus.NEW : test.getStatus();
+
         if (current == DiagnosticOrderTestStatus.CANCELLED) {
-            LOG.warn("[DiagnosticOrderTestStatus] CANCEL - rejected. testId={} reason=already_cancelled", testId);
             throw new BadRequestAlertException(
                     "Already cancelled",
                     "diagnostic_order_tests",
@@ -276,42 +252,45 @@ public class DiagnosticOrderTestStatusService {
             );
         }
 
+        String cancelReason =
+                cancellationReason == null || cancellationReason.isBlank()
+                        ? "Diagnostic test cancelled"
+                        : cancellationReason;
+
+        BillingItemTypes billingItemType =
+                test.getOrderType() == TestType.RADIOLOGY
+                        ? BillingItemTypes.RADIOLOGY
+                        : BillingItemTypes.LABORATORY;
+
+        ServiceSource serviceSource =
+                test.getOrderType() == TestType.RADIOLOGY
+                        ? ServiceSource.RADIOLOGY
+                        : ServiceSource.LABORATORY;
+
+        patientServiceAndProductService.cancelBySource(
+                serviceSource,
+                test.getId(),
+                billingItemType,
+                cancelReason
+        );
+
         test.setStatus(DiagnosticOrderTestStatus.CANCELLED);
         test.setProcessingStatus(DiagnosticStatus.CANCELLED);
 
         test.setCancelledBy(cancelledBy);
         test.setCancelledDate(Instant.now());
-        test.setCancellationReason(cancellationReason);
+        test.setCancellationReason(cancelReason);
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
 
-        LOG.debug(
-                "[DiagnosticOrderTestStatus] CANCEL - done. testId={} orderId={} status={} cancelledBy={}",
-                saved.getId(),
-                saved.getOrderId(),
-                saved.getStatus(),
-                saved.getCancelledBy()
-        );
-
         return saved;
     }
 
-    // ---------------------------------------------------------------------
-    // Undo Accept
-    // ---------------------------------------------------------------------
-
     public DiagnosticOrderTest undoAccept(Long testId, String username, String undoAcceptReason) {
-        LOG.debug("[DiagnosticOrderTestStatus] UNDO_ACCEPT - start. testId={}", testId);
-
         DiagnosticOrderTest test = getTest(testId);
 
         if (test.getProcessingStatus() != DiagnosticStatus.ACCEPTED) {
-            LOG.warn(
-                    "[DiagnosticOrderTestStatus] UNDO_ACCEPT - rejected. testId={} currentStatus={}",
-                    testId,
-                    test.getProcessingStatus()
-            );
             throw new BadRequestAlertException(
                     "invalid_transition",
                     "diagnostic_order_tests",
@@ -329,22 +308,7 @@ public class DiagnosticOrderTestStatusService {
                         setupDiagnostic.id()
                 );
 
-        LOG.debug(
-                "[DiagnosticOrderTestStatus] UNDO_ACCEPT - billing check. testId={} patientId={} encounterId={} diagnosticTestId={} billed={}",
-                test.getId(),
-                order.getPatientId(),
-                order.getEncounterId(),
-                setupDiagnostic.id(),
-                billed
-        );
-
         if (billed) {
-            LOG.warn(
-                    "[DiagnosticOrderTestStatus] UNDO_ACCEPT - blocked because billed. testId={} orderId={} diagnosticTestId={}",
-                    test.getId(),
-                    test.getOrderId(),
-                    setupDiagnostic.id()
-            );
             throw new BadRequestAlertException(
                     "billed_item_cannot_undo_accept",
                     "diagnostic_order_tests",
@@ -366,77 +330,25 @@ public class DiagnosticOrderTestStatusService {
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.saveAndFlush(test);
 
-        int deletedCount = patientServiceAndProductRepository
-                .deleteByPatientIdAndEncounterIdAndDiagnosticTestIdAndIsBilledFalse(
-                        order.getPatientId(),
-                        order.getEncounterId(),
-                        setupDiagnostic.id()
-                );
-
+        // Billing / pre-auth are created when the test is added to the order — do not delete them here.
         LOG.info(
-                "[DiagnosticOrderTestStatus] UNDO_ACCEPT - deleted unbilled billing items. testId={} orderId={} diagnosticTestId={} deletedCount={}",
+                "[DIAGNOSTIC_UNDO_ACCEPT] testId={} — keeping billing item for diagnosticTestId={}",
                 saved.getId(),
-                saved.getOrderId(),
-                setupDiagnostic.id(),
-                deletedCount
+                setupDiagnostic.id()
         );
 
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
 
-        LOG.info(
-                "[DiagnosticOrderTestStatus] UNDO_ACCEPT - done. testId={} orderId={} revertedStatus={}",
-                saved.getId(),
-                saved.getOrderId(),
-                saved.getProcessingStatus()
-        );
-
         return saved;
     }
 
-    // ---------------------------------------------------------------------
-    // Bulk actions
-    // ---------------------------------------------------------------------
-
     public void bulkAccept(List<Long> testIds, String acceptedBy) {
-        LOG.debug("[DiagnosticOrderTestStatus] BULK_ACCEPT - start. testIds={} acceptedBy={}", testIds, acceptedBy);
-
-        Set<Long> orderIds = new HashSet<>();
-
         for (Long id : testIds) {
-            DiagnosticOrderTest test = getTest(id);
-
-            ensureTransition(test, DiagnosticStatus.ACCEPTED);
-
-            test.setProcessingStatus(DiagnosticStatus.ACCEPTED);
-            test.setAcceptedBy(acceptedBy);
-            test.setAcceptedDate(Instant.now());
-
-            DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
-            orderIds.add(saved.getOrderId());
-
-            LOG.debug(
-                    "[DiagnosticOrderTestStatus] BULK_ACCEPT - item done. testId={} orderId={} status={}",
-                    saved.getId(),
-                    saved.getOrderId(),
-                    saved.getProcessingStatus()
-            );
+            accept(id, acceptedBy);
         }
-
-        for (Long orderId : orderIds) {
-            diagnosticOrderStatusService.recomputeLabRadStatuses(orderId);
-        }
-
-        LOG.debug("[DiagnosticOrderTestStatus] BULK_ACCEPT - done. affectedOrders={}", orderIds);
     }
 
     public void bulkReject(List<Long> testIds, String rejectedBy, String rejectedReason) {
-        LOG.debug(
-                "[DiagnosticOrderTestStatus] BULK_REJECT - start. testIds={} rejectedBy={} reason={}",
-                testIds,
-                rejectedBy,
-                rejectedReason
-        );
-
         Set<Long> orderIds = new HashSet<>();
 
         for (Long id : testIds) {
@@ -451,71 +363,35 @@ public class DiagnosticOrderTestStatusService {
 
             DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
             orderIds.add(saved.getOrderId());
-
-            LOG.debug(
-                    "[DiagnosticOrderTestStatus] BULK_REJECT - item done. testId={} orderId={} status={}",
-                    saved.getId(),
-                    saved.getOrderId(),
-                    saved.getProcessingStatus()
-            );
         }
 
         for (Long orderId : orderIds) {
             diagnosticOrderStatusService.recomputeLabRadStatuses(orderId);
         }
-
-        LOG.debug("[DiagnosticOrderTestStatus] BULK_REJECT - done. affectedOrders={}", orderIds);
     }
 
-    // ---------------------------------------------------------------------
-    // Reads / Helpers
-    // ---------------------------------------------------------------------
-
     private DiagnosticOrderTest getTest(Long testId) {
-        LOG.debug("[DiagnosticOrderTestStatus] GET_TEST - testId={}", testId);
-
         return diagnosticOrderTestRepository.findById(testId)
-                .orElseThrow(() -> {
-                    LOG.warn("[DiagnosticOrderTestStatus] GET_TEST - not found. testId={}", testId);
-                    return new BadRequestAlertException(
-                            "notfound",
-                            "diagnostic_order_tests",
-                            "DiagnosticOrderTest not found with id " + testId
-                    );
-                });
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_order_tests",
+                        "DiagnosticOrderTest not found with id " + testId
+                ));
     }
 
     private DiagnosticOrder getOrder(Long orderId) {
-        LOG.debug("[DiagnosticOrderTestStatus] GET_ORDER - orderId={}", orderId);
-
         return diagnosticOrderRepository.findById(orderId)
-                .orElseThrow(() -> {
-                    LOG.warn("[DiagnosticOrderTestStatus] GET_ORDER - not found. orderId={}", orderId);
-                    return new NotFoundAlertException(
-                            "Diagnostic order not found with id " + orderId,
-                            "diagnosticOrder",
-                            "notfound"
-                    );
-                });
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Diagnostic order not found with id " + orderId,
+                        "diagnosticOrder",
+                        "notfound"
+                ));
     }
 
     private DiagnosticTestSetupDTO fetchDiagnosticTestSetup(Long diagnosticTestId) {
-        LOG.debug("[DiagnosticOrderTestStatus] FETCH_SETUP - diagnosticTestId={}", diagnosticTestId);
-
         try {
-            DiagnosticTestSetupDTO dto = diagnosticTestClient.getDiagnosticTest(diagnosticTestId);
-
-            LOG.debug(
-                    "[DiagnosticOrderTestStatus] FETCH_SETUP - success. diagnosticTestId={} name={} price={} currency={}",
-                    diagnosticTestId,
-                    dto.name(),
-                    dto.price(),
-                    dto.currency()
-            );
-
-            return dto;
+            return diagnosticTestClient.getDiagnosticTest(diagnosticTestId);
         } catch (Exception ex) {
-            LOG.warn("[DiagnosticOrderTestStatus] FETCH_SETUP - failed. diagnosticTestId={}", diagnosticTestId, ex);
             throw new NotFoundAlertException(
                     "Diagnostic test setup not found with id " + diagnosticTestId,
                     "diagnosticTest",
@@ -524,31 +400,11 @@ public class DiagnosticOrderTestStatusService {
         }
     }
 
-    private boolean isDiagnosticTestBilled(Long patientId, Long encounterId, Long diagnosticTestId) {
-        boolean billed = patientServiceAndProductRepository
-                .existsByPatientIdAndEncounterIdAndDiagnosticTestIdAndIsBilledTrue(
-                        patientId,
-                        encounterId,
-                        diagnosticTestId
-                );
-
-        LOG.debug(
-                "[DiagnosticOrderTestStatus] CHECK_BILLED - patientId={} encounterId={} diagnosticTestId={} billed={}",
-                patientId,
-                encounterId,
-                diagnosticTestId,
-                billed
-        );
-
-        return billed;
-    }
-
     private PatientServiceAndProduct buildDiagnosticBillingItem(
             DiagnosticOrder order,
             DiagnosticOrderTest test,
             DiagnosticTestSetupDTO setupDiagnostic
     ) {
-        BigDecimal unitPrice = setupDiagnostic.price() != null ? setupDiagnostic.price() : BigDecimal.ZERO;
         long quantity = 1L;
 
         BillingItemTypes billingItemType;
@@ -562,23 +418,7 @@ public class DiagnosticOrderTestStatusService {
             serviceSource = ServiceSource.LABORATORY;
         }
 
-        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
-
-        LOG.debug(
-                "[DiagnosticOrderTestStatus] BUILD_BILLING - orderId={} testId={} diagnosticTestId={} sourceId={} orderType={} billingType={} serviceSource={} unitPrice={} quantity={} totalAmount={}",
-                order.getId(),
-                test.getId(),
-                setupDiagnostic.id(),
-                test.getId(),
-                test.getOrderType(),
-                billingItemType,
-                serviceSource,
-                unitPrice,
-                quantity,
-                totalAmount
-        );
-
-        return PatientServiceAndProduct.builder()
+        PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
                 .patientId(order.getPatientId())
                 .encounterId(order.getEncounterId())
                 .billingItemType(billingItemType)
@@ -586,22 +426,191 @@ public class DiagnosticOrderTestStatusService {
                 .serviceSource(serviceSource)
                 .sourceId(test.getId())
                 .quantity(quantity)
-                .unitPrice(unitPrice)
+                .unitPrice(BigDecimal.ZERO)
                 .discountAmount(BigDecimal.ZERO)
                 .exemptionAmount(BigDecimal.ZERO)
                 .taxAmount(BigDecimal.ZERO)
-                .totalAmount(totalAmount)
+                .totalAmount(BigDecimal.ZERO)
+                .grossAmount(BigDecimal.ZERO)
+                .netAmount(BigDecimal.ZERO)
+                .patientShareAmount(BigDecimal.ZERO)
+                .insuranceShareAmount(BigDecimal.ZERO)
+                .paidAmount(BigDecimal.ZERO)
+                .remainingAmount(BigDecimal.ZERO)
                 .currency(setupDiagnostic.currency())
                 .isBilled(Boolean.FALSE)
-                .notes("Created on diagnostic test acceptance. OrderId="
-                        + order.getId() + ", OrderTestId=" + test.getId())
-                .build();
+                .notes("Created when diagnostic test was added to order. OrderId="
+                        + order.getId() + ", OrderTestId=" + test.getId());
+
+        preAuthorizationResolutionService.resolveAndPrepareNewItem(
+                builder,
+                order.getEncounterId(),
+                billingItemType,
+                null,
+                null,
+                setupDiagnostic.id(),
+                null
+        );
+
+        PatientServiceAndProduct billingItem = builder.build();
+        applyResolvedDiagnosticPricing(billingItem, order.getEncounterId(), quantity);
+
+        return billingItem;
+    }
+
+    private void applyResolvedDiagnosticPricing(
+            PatientServiceAndProduct item,
+            Long encounterId,
+            long quantity
+    ) {
+        Long facilityId = patientEncounterRepository
+                .findById(encounterId)
+                .map(encounter -> encounter.getFacilityId())
+                .orElse(null);
+
+        if (facilityId == null) {
+            throw new BadRequestAlertException(
+                    "Encounter facility is required to resolve diagnostic item pricing.",
+                    "diagnostic_order_tests",
+                    "encounter.facility.required"
+            );
+        }
+
+        if (item.getCurrency() == null) {
+            throw new BadRequestAlertException(
+                    "Currency is required to resolve diagnostic item pricing.",
+                    "diagnostic_order_tests",
+                    "currency.required"
+            );
+        }
+
+        ResolvedBillingPrice resolvedPrice =
+                billingEngineService.resolvePricing(item, facilityId);
+
+        BigDecimal unitPrice = resolvedPrice.unitPrice();
+        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
+
+        item.setUnitPrice(unitPrice);
+        item.setCurrency(resolvedPrice.currency());
+        item.setTotalAmount(totalAmount);
+        item.setGrossAmount(totalAmount);
+        item.setNetAmount(totalAmount);
+        item.setRemainingAmount(totalAmount);
+        item.setPriceSource(mapDiagnosticPriceSource(resolvedPrice.priceSource()));
+
+        LOG.info(
+                "[DIAG_PSP_PRICING] Resolved unitPrice={} currency={} priceSource={} diagnosticTestId={}",
+                unitPrice,
+                resolvedPrice.currency(),
+                resolvedPrice.priceSource(),
+                item.getDiagnosticTestId()
+        );
+    }
+
+    private PriceSource mapDiagnosticPriceSource(BillingPriceSource source) {
+        if (source == BillingPriceSource.PRICE_LIST) {
+            return PriceSource.PRICE_LIST;
+        }
+
+        return PriceSource.DEFAULT;
+    }
+
+    private PatientServiceAndProduct findOrCreateDiagnosticBillingItem(
+            DiagnosticOrder order,
+            DiagnosticOrderTest test,
+            DiagnosticTestSetupDTO setupDiagnostic
+    ) {
+        BillingItemTypes billingItemType =
+                test.getOrderType() == TestType.RADIOLOGY
+                        ? BillingItemTypes.RADIOLOGY
+                        : BillingItemTypes.LABORATORY;
+
+        ServiceSource serviceSource =
+                test.getOrderType() == TestType.RADIOLOGY
+                        ? ServiceSource.RADIOLOGY
+                        : ServiceSource.LABORATORY;
+
+        return patientServiceAndProductRepository
+                .findByServiceSourceAndSourceIdAndBillingItemType(
+                        serviceSource,
+                        test.getId(),
+                        billingItemType
+                )
+                .orElseGet(() ->
+                        patientServiceAndProductRepository.saveAndFlush(
+                                buildDiagnosticBillingItem(
+                                        order,
+                                        test,
+                                        setupDiagnostic
+                                )
+                        )
+                );
+    }
+
+    private void billDiagnosticItemOnOrder(
+            PatientServiceAndProduct billingItem,
+            Long encounterId
+    ) {
+        if (billingItem == null || billingItem.getId() == null) {
+            return;
+        }
+
+        Long facilityId =
+                patientEncounterRepository
+                        .findById(encounterId)
+                        .map(encounter -> encounter.getFacilityId())
+                        .orElse(null);
+
+        if (facilityId == null) {
+            throw new BadRequestAlertException(
+                    "Encounter facility is required to bill diagnostic item.",
+                    "diagnostic_order_tests",
+                    "encounter.facility.required"
+            );
+        }
+
+        if (billingChargeService
+                .findActiveChargeLine(
+                        billingItem.getId(),
+                        encounterId
+                )
+                .isPresent()) {
+            LOG.info(
+                    "[DIAG_ORDER_BILLING] Charge line already exists pspId={} encounterId={}",
+                    billingItem.getId(),
+                    encounterId
+            );
+            return;
+        }
+
+        BillingOperationResult result =
+                billingEngineService.onItemOrdered(
+                        billingItem.getId(),
+                        facilityId,
+                        "DIAG-ORDER:" + billingItem.getId()
+                );
+
+        LOG.info(
+                "[DIAG_ORDER_BILLING] pspId={} processed={} chargeLineId={} message={}",
+                billingItem.getId(),
+                result.processed(),
+                result.chargeLineId(),
+                result.message()
+        );
+
+        if (!result.processed()) {
+            throw new BadRequestAlertException(
+                    result.message() == null
+                            ? "Diagnostic billing rule did not match when adding the test."
+                            : result.message(),
+                    "diagnostic_order_tests",
+                    "billingRule.notMatched"
+            );
+        }
     }
 
     @Transactional(readOnly = true)
     public PatientArrivedResponseVM getPatientArrived(Long testId) {
-        LOG.debug("[DiagnosticOrderTestStatus] GET_PATIENT_ARRIVED - testId={}", testId);
-
         DiagnosticOrderTest test = diagnosticOrderTestRepository.findById(testId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "notfound",
@@ -620,19 +629,9 @@ public class DiagnosticOrderTestStatusService {
         return status == null ? DiagnosticStatus.NEW : status;
     }
 
-    /**
-     * Validates whether a transition to {@code to} is allowed for the given test.
-     * <p>
-     * Rules:
-     * - Laboratory: NEW -> SAMPLE_COLLECTED -> ACCEPTED -> RESULT_READY -> REVIEWED -> RESULT_APPROVED
-     * - Radiology: NEW -> PATIENT_ARRIVED -> ACCEPTED -> EXAM_DONE -> REVIEWED -> RESULT_APPROVED
-     * - Radiology: SAMPLE_COLLECTED is not allowed
-     */
     private void ensureTransition(DiagnosticOrderTest test, DiagnosticStatus to) {
         DiagnosticStatus from = normalize(test.getProcessingStatus());
         TestType type = test.getOrderType();
-
-        LOG.debug("[DiagnosticOrderTestStatus] ENSURE_TRANSITION - type={} from={} to={}", type, from, to);
 
         if (to == DiagnosticStatus.SAMPLE_COLLECTED) {
             if (type == TestType.RADIOLOGY) {
@@ -682,7 +681,7 @@ public class DiagnosticOrderTestStatusService {
             if (!(from == DiagnosticStatus.RESULT_READY
                     || from == DiagnosticStatus.EXAM_DONE
                     || from == DiagnosticStatus.PARTIALLY)) {
-                throw invalid(from, to);
+               throw invalid(from, to);
             }
             return;
         }
@@ -702,8 +701,6 @@ public class DiagnosticOrderTestStatusService {
     }
 
     private BadRequestAlertException invalid(DiagnosticStatus from, DiagnosticStatus to) {
-        LOG.debug("[DiagnosticOrderTestStatus] INVALID_TRANSITION - from={} to={}", from, to);
-
         return new BadRequestAlertException(
                 "invalid_transition",
                 "diagnostic_order_tests",

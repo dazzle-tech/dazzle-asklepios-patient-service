@@ -1,16 +1,15 @@
 package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.VitalSigns;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 
 @Repository
 public interface VitalSignsRepository extends JpaRepository<VitalSigns, Long> {
@@ -37,6 +36,7 @@ public interface VitalSignsRepository extends JpaRepository<VitalSigns, Long> {
             Instant dayStart,
             Instant dayEnd
     );
+
     Optional<VitalSigns> findFirstByEncounterIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateDesc(
             Long encounterId,
             Instant dayStart,
@@ -47,6 +47,8 @@ public interface VitalSignsRepository extends JpaRepository<VitalSigns, Long> {
             Long patientId,
             Pageable pageable
     );
+
     Set<VitalSigns> findDistinctByEncounterIdIn(List<Long> encounterIds);
 
+    Optional<VitalSigns> findTopByEncounterIdAndIsActiveTrueOrderByIdDesc(Long encounterId);
 }

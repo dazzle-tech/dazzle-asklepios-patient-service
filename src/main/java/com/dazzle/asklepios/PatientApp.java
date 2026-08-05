@@ -2,6 +2,7 @@ package com.dazzle.asklepios;
 
 import com.dazzle.asklepios.config.CRLFLogConverter;
 import com.dazzle.asklepios.config.Constants;
+import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import jakarta.annotation.PostConstruct;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -15,12 +16,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.core.env.Environment;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 
+@EnableConfigurationProperties(WaseelApiProperties.class)
 @SpringBootApplication
 @EnableCaching
 @EnableFeignClients

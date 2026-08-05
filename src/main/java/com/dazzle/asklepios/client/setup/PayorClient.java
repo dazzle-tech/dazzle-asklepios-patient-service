@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.client.setup;
 
+import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.config.SetupServiceFeignConfig;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -12,4 +13,9 @@ public interface PayorClient {
     @GetMapping("/api/setup/payor/{id}")
     ResponseEntity<Void> existsPayor(@PathVariable("id") @NotNull Long payorId );
 
+    @GetMapping("/api/setup/payor/{id}")
+    PayorDTO getPayorById(@PathVariable("id") @NotNull Long payorId);
+
+    @GetMapping("/api/setup/payor/cchi/by-nphies/{nphiesId}")
+    PayorDTO getPayorByNphiesId(@PathVariable String nphiesId);
 }

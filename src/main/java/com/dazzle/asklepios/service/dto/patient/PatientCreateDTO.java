@@ -56,7 +56,7 @@ public record PatientCreateDTO(
         Boolean receiveEmail,
         PreferredWayOfContact preferredWayOfContact,
 
-        String nativeLanguage,
+        String preferredLanguage,
         String emergencyContactName,
         String emergencyContactRelation,
         String emergencyContactPhone,
@@ -77,9 +77,12 @@ public record PatientCreateDTO(
         Boolean isUnknown,
         Boolean isVerified,
         Boolean isCompletedPatient,
+        Boolean isCchiPatient,
+        String documentId,
         SecurityLevel securityAccessLevel,
         BloodGroup bloodGroup,
-        String patientConditions)
+        String patientConditions
+)
 
      implements Serializable {
 

@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.repository.PatientInsuranceCoverageRepository;
@@ -7,6 +8,7 @@ import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.patientInsurance.PatientInsuranceCreateDTO;
 import com.dazzle.asklepios.service.dto.patientInsurance.PatientInsuranceUpdateDTO;
+import com.dazzle.asklepios.service.helper.NphiesPayerHelper;
 import com.dazzle.asklepios.service.helper.PayorHelper;
 import com.dazzle.asklepios.service.helper.PayorPlanHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -33,34 +35,83 @@ public class PatientInsuranceService {
     private final PatientRepository patientRepository;
     private final PayorHelper payorHelper;
     private final PayorPlanHelper payorPlanHelper;
+    private final NphiesPayerHelper nphiesPayerHelper;
 
     public PatientInsuranceService(
             PatientInsuranceRepository patientInsuranceRepository,
             PatientInsuranceCoverageRepository patientInsuranceCoverageRepository,
-            PatientRepository patientRepository, PayorHelper payorHelper, PayorPlanHelper payorPlanHelper) {
+            PatientRepository patientRepository,
+            PayorHelper payorHelper,
+            PayorPlanHelper payorPlanHelper,
+            NphiesPayerHelper nphiesPayerHelper) {
         this.patientInsuranceRepository = patientInsuranceRepository;
         this.patientInsuranceCoverageRepository = patientInsuranceCoverageRepository;
         this.patientRepository = patientRepository;
         this.payorHelper = payorHelper;
         this.payorPlanHelper = payorPlanHelper;
+        this.nphiesPayerHelper = nphiesPayerHelper;
     }
 
     public PatientInsurance create(PatientInsuranceCreateDTO dto) {
         LOG.info("[CREATE] PatientInsurance payload={}", dto);
 
-        payorHelper.validatePayorExists(dto.payorId());
-        payorPlanHelper.validatePayorPlanExists(dto.planId());
+        Long payorId = payorHelper.resolvePayorId(dto.payorId(), dto.payerNphiesId());
+        if (payorId == null) {
+            throw new BadRequestAlertException(
+                    "Payor could not be resolved from the provided payor or payer NPHIES ID.",
+                    "patientInsurance",
+                    "payor.unresolved"
+            );
+        }
+
+        Long planId = payorPlanHelper.resolvePlanId(
+                payorId,
+                dto.planId(),
+                dto.networkId(),
+                dto.policyClassName(),
+                dto.coverageType()
+        );
+
+        PayorDTO payor = payorHelper.findPayor(payorId, dto.payerNphiesId());
+        String payerName = nphiesPayerHelper.resolvePayerDisplayName(dto.payerNphiesId(), null);
+        if (payerName == null && payor != null) {
+            payerName = payor.name();
+        }
+
+        Patient policyHolder = dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId());
 
         PatientInsurance entity = PatientInsurance.builder()
                 .patient(refPatient(dto.patientId()))
-                .payorId(dto.payorId())
-                .planId(dto.planId())
-                .policyHolderId(dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId()).getId())
+                .payorId(payorId)
+                .planId(planId)
+
+                .policyHolderId(policyHolder == null ? null : policyHolder.getId())
+                .policyHolderName(
+                        policyHolder == null
+                                ? dto.policyHolderName()
+                                : buildFullName(policyHolder)
+                )
+
                 .policyNumber(dto.policyNumber())
                 .groupNumber(dto.groupNumber())
                 .expirationDate(dto.expirationDate())
+
                 .remainingBenefits(dto.remainingBenefits())
                 .remainingDeductibles(dto.remainingDeductibles())
+
+                .memberCardId(dto.memberCardId())
+                .payerNphiesId(dto.payerNphiesId())
+                .payerName(payerName)
+                .networkId(dto.networkId())
+                .sponsorNumber(dto.sponsorNumber())
+                .coverageType(dto.coverageType())
+                .relationWithSubscriber(dto.relationWithSubscriber())
+                .policyClassName(dto.policyClassName())
+                .issueDate(dto.issueDate())
+                .patientShare(dto.patientShare())
+                .maxLimit(dto.maxLimit())
+                .waseelNewPlan(dto.waseelNewPlan())
+
                 .isPrimary(Boolean.TRUE.equals(dto.isPrimary()))
                 .build();
 
@@ -88,18 +139,35 @@ public class PatientInsuranceService {
                         "patientInsurance",
                         "notfound"
                 ));
-        payorHelper.validatePayorExists(dto.payorId());
-        payorPlanHelper.validatePayorPlanExists(dto.planId());
 
         existing.setPatient(refPatient(dto.patientId()));
         existing.setPayorId(dto.payorId());
         existing.setPlanId(dto.planId());
-        existing.setPolicyHolderId(dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId()).getId());
+//        existing.setPolicyHolderId(dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId()).getId());
+        Patient policyHolder = dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId());
+
+        existing.setPolicyHolderId(policyHolder == null ? null : policyHolder.getId());
+        existing.setPolicyHolderName(
+                policyHolder == null
+                        ? dto.policyHolderName()
+                        : buildFullName(policyHolder)
+        );
         existing.setPolicyNumber(dto.policyNumber());
         existing.setGroupNumber(dto.groupNumber());
         existing.setExpirationDate(dto.expirationDate());
         existing.setRemainingBenefits(dto.remainingBenefits());
         existing.setRemainingDeductibles(dto.remainingDeductibles());
+        existing.setMemberCardId(dto.memberCardId());
+        existing.setPayerNphiesId(dto.payerNphiesId());
+        existing.setNetworkId(dto.networkId());
+        existing.setSponsorNumber(dto.sponsorNumber());
+        existing.setCoverageType(dto.coverageType());
+        existing.setRelationWithSubscriber(dto.relationWithSubscriber());
+        existing.setPolicyClassName(dto.policyClassName());
+        existing.setIssueDate(dto.issueDate());
+        existing.setPatientShare(dto.patientShare());
+        existing.setMaxLimit(dto.maxLimit());
+        existing.setWaseelNewPlan(dto.waseelNewPlan());
         existing.setIsPrimary(Boolean.TRUE.equals(dto.isPrimary()));
 
         try {
@@ -118,7 +186,7 @@ public class PatientInsuranceService {
     @Transactional(readOnly = true)
     public Page<PatientInsurance> getInsurancesByPatient(Long patientId, Pageable pageable) {
         LOG.debug("[FIND_BY_PATIENT] PatientInsurance patientId={} pageable={}", patientId, pageable);
-        return patientInsuranceRepository.findByPatientId(patientId, pageable);
+        return patientInsuranceRepository.findByPatient_Id(patientId, pageable);
     }
 
 
@@ -192,6 +260,26 @@ public class PatientInsuranceService {
                         "patient",
                         "notfound"
                 ));
+    }
+
+    private String buildFullName(Patient patient) {
+        if (patient == null) {
+            return null;
+        }
+
+        String fullName = String.join(
+                " ",
+                nullToEmpty(patient.getFirstName()),
+                nullToEmpty(patient.getSecondName()),
+                nullToEmpty(patient.getThirdName()),
+                nullToEmpty(patient.getLastName())
+        ).trim();
+
+        return fullName.isEmpty() ? null : fullName;
+    }
+
+    private String nullToEmpty(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private RuntimeException handleConstraintViolation(Exception exception) {

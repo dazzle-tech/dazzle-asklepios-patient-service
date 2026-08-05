@@ -1,7 +1,10 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.Currency;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -50,8 +53,9 @@ public class PatientCharge implements Serializable {
     @Builder.Default
     private BigDecimal remaining = BigDecimal.ZERO;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "currency", nullable = false, length = 10)
-    private String currency;
+    private Currency currency;
 
     @Column(name = "facility_default_currency", nullable = false, length = 10)
     private String facilityDefaultCurrency;

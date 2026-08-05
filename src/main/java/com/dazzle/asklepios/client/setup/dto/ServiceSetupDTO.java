@@ -1,16 +1,19 @@
 package com.dazzle.asklepios.client.setup.dto;
 
 import com.dazzle.asklepios.domain.enumeration.Currency;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record ServiceSetupDTO(
         Long id,
         String name,
         String abbreviation,
         String code,
         String category,
-        Long price,
+        BigDecimal price,
         Currency currency,
         Boolean isActive,
         Long facilityId,
@@ -18,6 +21,7 @@ public record ServiceSetupDTO(
         Integer parallelCapacityValue,
         Integer defaultDurationMinutes,
         Integer defaultBufferBeforeMinutes,
-        Integer defaultBufferAfterMinutes
+        Integer defaultBufferAfterMinutes,
+        Long billingRuleId
 ) implements Serializable {
 }

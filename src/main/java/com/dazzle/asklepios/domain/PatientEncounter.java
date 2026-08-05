@@ -1,11 +1,13 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.DischargeType;
+import com.dazzle.asklepios.domain.enumeration.EncounterBillingStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -106,9 +108,11 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @Column(name = "encounter_date", updatable = false)
     private LocalDate encounterDate;
+
     @NotNull
-    @Column(name = "encounter_time", nullable = false)
+    @Column(name = "encounter_time", nullable = false, updatable = false)
     private LocalTime encounterTime;
+
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
@@ -132,6 +136,31 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @Column(name = "physical_examination_summery")
     private String physicalExaminationSummery;
+    
+    @Column(name = "completed_by", length = 50)
+    private String completedBy;
+
+    @Column(name = "completed_at")
+    private Instant completedAt;
+
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(name = "billing_status", nullable = false, length = 50)
+    @Builder.Default
+    private EncounterBillingStatus billingStatus = EncounterBillingStatus.OPEN;
+
+    @Column(name = "financially_closed_at")
+    private Instant financiallyClosedAt;
+
+    @Column(name = "financially_closed_by", length = 50)
+    private String financiallyClosedBy;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "coverage_type", length = 50)
+    private BillingCoverageType coverageType;
+
+    @Column(name = "patient_insurance_id")
+    private Long patientInsuranceId;
     @Column(name = "history_of_present_illness")
     private String historyOfPresentIllness;
 
@@ -166,18 +195,20 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
                     EncounterStatus.OPEN;
 
             case TRIAGE_STARTED,
-                 DISCHARGED,
                  ASSIGNED_TO_BED,
                  ONGOING ->
                     EncounterStatus.IN_PROGRESS;
 
+            case COMPLETED,
+                 CLOSED,
+                 DISCHARGED ->
+                    EncounterStatus.CLOSED;
+
             case CANCELLED ->
                     EncounterStatus.CANCELLED;
 
-
-
             default ->
-                    this.encounterStatus;
+                    EncounterStatus.IN_PROGRESS;
         };
     }
 }

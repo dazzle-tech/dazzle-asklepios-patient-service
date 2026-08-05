@@ -6,6 +6,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
 @Repository
 public interface ProgressNoteRepository
         extends JpaRepository<ProgressNote, Long> {
@@ -21,4 +23,6 @@ public interface ProgressNoteRepository
             Long encounterId,
             Pageable pageable
     );
+
+    Optional<ProgressNote> findTopByEncounterIdAndCancelledDateIsNullOrderByCreatedDateDesc(Long encounterId);
 }

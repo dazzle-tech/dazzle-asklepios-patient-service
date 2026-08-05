@@ -5,7 +5,9 @@ import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestTechnicianNoteRepository;
@@ -43,7 +45,6 @@ import java.util.Set;
  */
 @Service
 @Transactional
-@RequiredArgsConstructor
 public class DiagnosticOrderTestService {
 
     /**
@@ -68,6 +69,38 @@ public class DiagnosticOrderTestService {
     private final ICDTreeHelper icdTreeHelper;
     private final FacilityHelper facilityHelper;
 
+    private final BillingRuleEvaluationService billingRuleEvaluationService;
+    private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
+
+    /**
+     * Creates the service with required dependencies.
+     *
+     * @param diagnosticOrderTestRepository repository used to persist and query DiagnosticOrderTest
+     * @param diagnosticOrderStatusService  service used to recompute aggregated lab/radiology statuses
+     */
+    public DiagnosticOrderTestService(
+            DiagnosticOrderTestRepository diagnosticOrderTestRepository,
+            DiagnosticOrderStatusService diagnosticOrderStatusService,
+            DiagnosticOrderTestTechnicianNoteRepository diagnosticOrderTestTechnicianNoteRepository,
+            DiagnosticOrderRepository diagnosticOrderRepository,
+            DiagnosticTestHelper diagnosticTestHelper,
+            DepartmentHelper departmentHelper,
+            ICDTreeHelper icdTreeHelper, FacilityHelper facilityHelper,
+            BillingRuleEvaluationService billingRuleEvaluationService,
+            @org.springframework.context.annotation.Lazy DiagnosticOrderTestStatusService diagnosticOrderTestStatusService
+    ) {
+        this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
+        this.diagnosticOrderStatusService = diagnosticOrderStatusService;
+
+        this.diagnosticOrderTestTechnicianNoteRepository = diagnosticOrderTestTechnicianNoteRepository;
+        this.diagnosticOrderRepository = diagnosticOrderRepository;
+        this.diagnosticTestHelper = diagnosticTestHelper;
+        this.departmentHelper = departmentHelper;
+        this.icdTreeHelper = icdTreeHelper;
+        this.facilityHelper = facilityHelper;
+        this.billingRuleEvaluationService = billingRuleEvaluationService;
+        this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
+    }
 
     /**
      * Creates and persists a new {@link DiagnosticOrderTest} from the provided DTO.
@@ -100,6 +133,12 @@ public class DiagnosticOrderTestService {
         if (dto.icdDiagnosisId() != null)
             icdTreeHelper.validateICDDiagnosisExists(dto.icdDiagnosisId());
 
+        billingRuleEvaluationService.requireConfiguredRule(
+                resolveDiagnosticBillingItemType(dto.orderType()),
+                dto.testId(),
+                BillingEventType.ITEM_ORDERED
+        );
+
         DiagnosticOrderTest orderTest = new DiagnosticOrderTest();
         orderTest.setOrderId(order.getId());
         orderTest.setTestId(dto.testId());
@@ -120,10 +159,14 @@ public class DiagnosticOrderTestService {
         orderTest.setIcdDiagnosisId(dto.icdDiagnosisId());
 
         // Persist the entity
-        DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(orderTest);
+        DiagnosticOrderTest saved = diagnosticOrderTestRepository.saveAndFlush(orderTest);
 
         LOG.debug("[DiagnosticOrderTestService] CREATE - saved. id={} orderId={} testId={} status={} processingStatus={}",
                 saved.getId(), saved.getOrderId(), saved.getTestId(), saved.getStatus(), saved.getProcessingStatus());
+
+        // Create billing + submit pre-auth immediately when the test is added (not on accept).
+        diagnosticOrderTestStatusService.onTestAddedToOrder(saved);
+
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
         LOG.debug("[DiagnosticOrderTestService] CREATE - recompute status done. orderId={}", saved.getOrderId());
 
@@ -277,5 +320,19 @@ public class DiagnosticOrderTestService {
                         "diagnostic_orders",
                         "Order not found with id " + diagnosticOrderId
                 ));
+    }
+
+    private BillingItemTypes resolveDiagnosticBillingItemType(
+            TestType orderType
+    ) {
+        if (orderType == TestType.RADIOLOGY) {
+            return BillingItemTypes.RADIOLOGY;
+        }
+
+        if (orderType == TestType.PATHOLOGY) {
+            return BillingItemTypes.PATHOLOGY;
+        }
+
+        return BillingItemTypes.LABORATORY;
     }
 }

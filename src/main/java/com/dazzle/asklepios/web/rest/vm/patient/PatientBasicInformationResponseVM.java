@@ -20,6 +20,7 @@ public class PatientBasicInformationResponseVM {
     private String medicalRecordNumber;
     private LocalDate dateOfBirth;
     private Gender sexAtBirth;
+    private String primaryMobileNumber;
     private PatientStatus patientStatus;
 
     public static PatientBasicInformationResponseVM ofEntity(Patient patient) {
@@ -35,6 +36,7 @@ public class PatientBasicInformationResponseVM {
                 .lastName(patient.getLastName())
                 .sexAtBirth(patient.getSexAtBirth())
                 .dateOfBirth(patient.getDateOfBirth())
+                .primaryMobileNumber(patient.getPrimaryMobileNumber())
                 .patientStatus(patient.getPatientStatus())
                 .build();
     }

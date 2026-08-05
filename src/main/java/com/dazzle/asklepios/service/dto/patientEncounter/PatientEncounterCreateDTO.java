@@ -4,6 +4,8 @@ import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
+import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.NotNull;
 
@@ -37,6 +39,7 @@ public record PatientEncounterCreateDTO(
         Long followUpEncounterId,
 
         @NotNull
+        @JsonAlias("priority")
         EncounterPriority priorityLevel,
 
         String originType,
@@ -50,7 +53,6 @@ public record PatientEncounterCreateDTO(
 
         @NotNull
         TreatmentStatus status,
-
         String chiefComplaint
 
 ) implements Serializable {

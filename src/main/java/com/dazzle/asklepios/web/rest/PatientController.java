@@ -69,10 +69,10 @@ public class PatientController {
 
     private final JwtEncoder jwtEncoder;
 
-    @Value("${patient.security.authentication.jwt.token-validity-in-seconds:86400}")
+    @Value("${patient.security.authentication.jwt.token-validity-in-seconds:0}")
     private long tokenValidityInSeconds;
 
-    @Value("${patient.security.authentication.jwt.token-validity-in-seconds-for-remember-me:2592000}")
+    @Value("${patient.security.authentication.jwt.token-validity-in-seconds-for-remember-me:0}")
     private long tokenValidityInSecondsForRememberMe;
 
     public PatientController(PatientService patientService, PatientAuthenticationService patientAuthenticationService, JwtEncoder jwtEncoder) {
@@ -260,7 +260,8 @@ public class PatientController {
         );
     }
 
-    @GetMapping("/by-date-of-birth/{date}")
+
+  @GetMapping("/by-date-of-birth/{date}")
     public ResponseEntity<List<Patient>> getByDateOfBirth(@PathVariable("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateOfBirth, @ParameterObject Pageable pageable) {
         LOG.debug(
                 "REST list Patients by dateOfBirth='{}' pageable={}",

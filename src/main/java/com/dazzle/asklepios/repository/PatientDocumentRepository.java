@@ -1,6 +1,8 @@
 package com.dazzle.asklepios.repository;
 
+import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.PatientDocument;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -17,6 +19,9 @@ public interface PatientDocumentRepository extends JpaRepository<PatientDocument
     );
 
     Page<PatientDocument> findByNumberContainingIgnoreCase(String numberPart, Pageable pageable);
+
+
+
 
     Optional<PatientDocument> findFirstByPatient_IdAndIsPrimaryTrue(Long patientId);
     Optional<PatientDocument> findFirstByPatient_IdOrderByIdAsc(Long patientId);

@@ -1,0 +1,46 @@
+package com.dazzle.asklepios.domain.enumeration.billing;
+
+public enum BillingLedgerTransactionType {
+
+    PAYMENT_CREDITED,
+
+    PAYMENT_CANCELLED,
+
+    PAYMENT_REFUNDED,
+
+    WALLET_CREDITED,
+
+    WALLET_RESERVED,
+
+    WALLET_AVAILABLE_CONSUMED,
+
+    RESERVATION_CONSUMED,
+
+    RESERVATION_RELEASED,
+
+    CHARGE_CREATED,
+
+    CHARGE_CONFIRMED,
+
+    CHARGE_ALLOCATED,
+
+    ALLOCATION_CREATED,
+
+    ALLOCATION_REVERSED,
+
+    DEBIT_CREATED,
+
+    DEBIT_SETTLED,
+
+    DEBIT_REVERSED,
+
+    REFUND_REQUESTED,
+
+    REFUND_COMPLETED,
+
+    REFUND_REVERSED,
+
+    ADJUSTMENT,
+
+    REVERSAL
+}

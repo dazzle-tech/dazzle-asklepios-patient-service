@@ -1,6 +1,6 @@
 package com.dazzle.asklepios.service.dto.patientPayments;
 
-import com.dazzle.asklepios.domain.PatientPaymentServices;
+import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -14,8 +14,7 @@ public record PatientPaymentDetailsDTO(
         BigDecimal amountPaid,
         BigDecimal remaining,
         BigDecimal refunds,
-        // NEW
         BigDecimal paidFromAmount,
         BigDecimal paidFromBalance,
-        List<PatientPaymentServices> services
+        List<PatientServiceAndProduct> services
 ) {}

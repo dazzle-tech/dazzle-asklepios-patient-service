@@ -14,7 +14,18 @@ management:
       probability: 1.0 # report 100% of traces
 service:
   asklepios-setup-service-url: http://localhost:8082
-  asklepios-notification-service-url: http://localhost:8090
+  asklepios-notification-service-url: http://localhost:8085
+
+waseel:
+  api:
+    base-url: https://api.stg-eclaims.waseel.com
+    username: ${WASEEL_USERNAME:abh706}
+    password: ${WASEEL_PASSWORD:abhclm706}
+    provider-id: ${WASEEL_PROVIDER_ID:706}
+    nphies-id: ${WASEEL_NPHIES_ID:10000000003170}
+    system-type: ${WASEEL_SYSTEM_TYPE:1}
+    timeout-seconds: 90
+
 application:
   asklepios-application-url: http://localhost:3100//#
 pacs:
@@ -34,9 +45,10 @@ spring:
       indent-output: true
   datasource:
     type: com.zaxxer.hikari.HikariDataSource
-    url: jdbc:postgresql://localhost:5433/postgres
+    url: jdbc:postgresql://localhost:5433/test
     username: postgres
-    password: qse123H
+    password: root
+
     hikari:
       poolName: Hikari
       auto-commit: false
@@ -66,6 +78,10 @@ patient:
       host: localhost
       port: 5000
       ring-buffer-size: 512
+    level:
+      com.dazzle.asklepios.integration.waseel: DEBUG
+      feign: DEBUG
+
   attachments:
     bucket: asklepios
     region: sfo3

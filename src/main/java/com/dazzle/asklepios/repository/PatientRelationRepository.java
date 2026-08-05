@@ -9,6 +9,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
 import java.util.Optional;
 
 public interface PatientRelationRepository extends JpaRepository<PatientRelation, Long> {
@@ -30,5 +31,10 @@ public interface PatientRelationRepository extends JpaRepository<PatientRelation
             Long patientId,
             FamilyMemberCategory categoryType,
             Pageable pageable
+    );
+
+    Optional<PatientRelation> findFirstByPatientIdAndRelationTypeInOrderByIdAsc(
+            Long patientId,
+            Collection<RelationType> relationTypes
     );
 }

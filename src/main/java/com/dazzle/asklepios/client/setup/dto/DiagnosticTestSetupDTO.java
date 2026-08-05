@@ -14,6 +14,7 @@ public record DiagnosticTestSetupDTO(
         String internalCode,
         BigDecimal price,
         Currency currency,
-        Boolean isActive
+        Boolean isActive,
+        Long billingRuleId
 ) {
 }

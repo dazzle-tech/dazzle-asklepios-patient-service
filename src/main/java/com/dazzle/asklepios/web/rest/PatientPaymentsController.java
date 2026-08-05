@@ -1,10 +1,17 @@
 package com.dazzle.asklepios.web.rest;
 
+import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
+import com.dazzle.asklepios.integration.waseel.dto.InsuranceCoverage;
+import com.dazzle.asklepios.integration.waseel.service.WaseelCoverageExtractionService;
+import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
 import com.dazzle.asklepios.service.PatientPaymentsService;
+import com.dazzle.asklepios.service.dto.patientPayments.InsuranceAmountDTO;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientLedgerSummaryDTO;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentCreateDTO;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentDetailsDTO;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentFormDTO;
+import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentServiceItemDTO;
+import com.dazzle.asklepios.service.dto.patientPayments.PaymentAllocationDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.validation.Valid;
@@ -20,6 +27,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/patient")
@@ -28,9 +37,13 @@ public class PatientPaymentsController {
     private static final Logger LOG = LoggerFactory.getLogger(PatientPaymentsController.class);
 
     private final PatientPaymentsService patientPaymentsService;
+    private final WaseelEligibilityRequestRepository waseelEligibilityRequestRepository;
+    private final WaseelCoverageExtractionService coverageExtractionService;
 
-    public PatientPaymentsController(PatientPaymentsService patientPaymentsService) {
+    public PatientPaymentsController(PatientPaymentsService patientPaymentsService, WaseelEligibilityRequestRepository waseelEligibilityRequestRepository, WaseelCoverageExtractionService coverageExtractionService) {
         this.patientPaymentsService = patientPaymentsService;
+        this.waseelEligibilityRequestRepository = waseelEligibilityRequestRepository;
+        this.coverageExtractionService = coverageExtractionService;
     }
 
     @PostMapping("/payment")
@@ -105,5 +118,66 @@ public class PatientPaymentsController {
         } catch (NotFoundAlertException e) {
             return ResponseEntity.noContent().build();
         }
+    }
+
+    @PostMapping("/insurance/calculate")
+    public InsuranceAmountDTO calculateInsuranceAmount(@RequestBody PatientPaymentCreateDTO dto) {
+
+        List<PatientPaymentServiceItemDTO> services =
+                dto.services() == null ? List.of() : dto.services();
+
+        BigDecimal totalDue = services.stream()
+                .filter(s -> !Boolean.TRUE.equals(s.isExempted()))
+                .map(this::resolveServiceAmountFromDTO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        WaseelEligibilityRequest eligibility =
+                waseelEligibilityRequestRepository
+                        .findFirstByPatientIdAndRequestStatusAndEligibilityResponseIdIsNotNullOrderByCreatedDateDesc(
+                                dto.patientId(),
+                                "SUCCESS"
+                        )
+                        .orElseThrow(() -> new IllegalStateException("No valid eligibility"));
+
+        InsuranceCoverage coverage =
+                coverageExtractionService.extractCoverage(eligibility.getResponseJson());
+
+        BigDecimal totalPatientShare = BigDecimal.ZERO;
+
+        for (PatientPaymentServiceItemDTO service : services) {
+
+            BigDecimal net = resolveServiceAmountFromDTO(service);
+
+            BigDecimal copay =
+                    net.multiply(coverage.getCopaymentPercent())
+                            .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP)
+                            .min(coverage.getCopaymentCap());
+
+            totalPatientShare = totalPatientShare.add(copay);
+        }
+
+        return new InsuranceAmountDTO(
+                totalDue,
+                totalPatientShare,
+                totalDue.subtract(totalPatientShare)
+        );
+    }
+    private BigDecimal resolveServiceAmountFromDTO(PatientPaymentServiceItemDTO item) {
+
+        BigDecimal unitPrice = item.price() == null
+                ? BigDecimal.ZERO
+                : item.price();
+
+        BigDecimal quantity = BigDecimal.ONE;
+
+        return unitPrice.multiply(quantity);
+    }
+
+    @PostMapping("/{paymentId}/manual-allocate")
+    public void manualAllocate(
+            @PathVariable Long paymentId,
+            @RequestBody List<PaymentAllocationDTO> allocations
+    ) {
+        patientPaymentsService.allocatePaymentManually(paymentId, allocations);
     }
 }
