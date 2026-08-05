@@ -28,6 +28,10 @@ waseel:
 
 application:
   asklepios-application-url: http://localhost:3100//#
+pacs:
+  base-url: https://him.onehealth.com.sa/api/method/casting.casting.dicom_share.get_dicom_studies_by_accession_number
+  token: YmNhYTQ4ZTVjODQ5MWZiOjQ2MzU1ODU5MTM0NDcyMw==
+  expires-in-hours: 48
 
 spring:
   devtools:
@@ -44,6 +48,7 @@ spring:
     url: jdbc:postgresql://localhost:5433/test
     username: postgres
     password: root
+
     hikari:
       poolName: Hikari
       auto-commit: false

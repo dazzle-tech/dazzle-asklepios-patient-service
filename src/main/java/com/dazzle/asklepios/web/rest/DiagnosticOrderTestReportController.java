@@ -288,10 +288,8 @@ public class DiagnosticOrderTestReportController {
     public ResponseEntity<List<PacsStudyDTO>> getImageLinks(
             @PathVariable Long id
     ) {
-        LOG.debug("REST request to get image links for report : {}", id);
-
-        List<PacsStudyDTO> imageLinks = reportService.getImageLinks(id);
-
-        return ResponseEntity.ok(imageLinks);
+        return ResponseEntity.ok(
+                reportService.getImageLinks(id)
+        );
     }
 }
