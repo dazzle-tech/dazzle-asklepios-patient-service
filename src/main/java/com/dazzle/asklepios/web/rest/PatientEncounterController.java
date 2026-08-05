@@ -130,6 +130,14 @@ public class PatientEncounterController {
         return ResponseEntity.ok(updatedPatientEncounter);
     }
 
+    @PutMapping("/encounter/{id}/start-triage")
+    public ResponseEntity<PatientEncounter> StartTriageEncounter(@PathVariable @NotNull Long id) {
+        LOG.debug("REST start triage PatientEncounter id={} ", id);
+
+        PatientEncounter updatedPatientEncounter = patientEncounterService.StartTriageEncounter(id);
+        return ResponseEntity.ok(updatedPatientEncounter);
+    }
+
     @GetMapping("/encounter/{encounterId}/coverage")
     public ResponseEntity<EncounterCoverageDTO> getEncounterCoverage(
             @PathVariable @NotNull Long encounterId
@@ -194,7 +202,7 @@ public class PatientEncounterController {
                 .toList();
         Set<Long> orderEncounterIds = diagnosticOrderService.findEncounterIdsWithOrders(encounterIds);
         Set<Long> prescriptionEncounterIds = patientPrescriptionService.findEncounterIdsWithOrders(encounterIds);
-        Set<Long> observasionEncounterIds=patientEncounterService.findEncounterIdsWithObservation(encounterIds);
+        Set<Long> observasionEncounterIds = patientEncounterService.findEncounterIdsWithObservation(encounterIds);
         List<PatientEncounterVM> vmList = page.getContent().stream()
                 .map(encounter -> PatientEncounterVM.ofEntity(
                         encounter,
@@ -479,6 +487,7 @@ public class PatientEncounterController {
 
         return ResponseEntity.ok(total);
     }
+
     @PostMapping("/encounter/by-ids")
     public ResponseEntity<List<PatientEncounter>> getEncountersByIds(
             @RequestBody(required = false) List<Long> encounterIds
@@ -494,6 +503,7 @@ public class PatientEncounterController {
 
         return ResponseEntity.ok(encounters);
     }
+
     @PatchMapping("/encounter/{id}/history-of-present-illness")
     public ResponseEntity<PatientEncounter> updateHistoryOfPresentIllness(
             @PathVariable Long id,

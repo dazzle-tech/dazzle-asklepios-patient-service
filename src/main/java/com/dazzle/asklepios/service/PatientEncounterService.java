@@ -11,7 +11,6 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientObservationsComplaints;
 import com.dazzle.asklepios.domain.VitalSigns;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
-import com.dazzle.asklepios.domain.enumeration.EncounterLifecycleStatus;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.repository.AdditionalMeasurementsRepository;
 import com.dazzle.asklepios.repository.AppointmentRepository;
@@ -80,7 +79,7 @@ public class PatientEncounterService {
     private final VitalSignsRepository vitalSignsRepository;
     private final PatientObservationsComplaintsRepository patientObservationsComplaintsRepository;
     private final BodyMeasurementsRepository bodyMeasurementsRepository;
-    private final AppointmentRepository appointmentRepository ;
+    private final AppointmentRepository appointmentRepository;
     private final FacilityHelper facilityHelper;
     private final DepartmentHelper departmentHelper;
     private final PractitionerHelper practitionerHelper;
@@ -261,7 +260,8 @@ public class PatientEncounterService {
             LOG.info("[UPDATE] PatientEncounter success id={} patientId={} departmentId={} status={}",
                     updatedPatientEncounter.getId(),
                     updateDTO.patientId(),
-                    updateDTO.departmentId()
+                    updateDTO.departmentId(),
+                    updateDTO.status()
             );
             return updatedPatientEncounter;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -273,6 +273,54 @@ public class PatientEncounterService {
         }
     }
 
+    public PatientEncounter StartTriageEncounter(Long patientEncounterId) {
+        LOG.info("[UPDATE] PatientEncounter id={}", patientEncounterId);
+
+        PatientEncounter existingPatientEncounter = patientEncounterRepository.findById(patientEncounterId)
+                .orElseThrow(() -> {
+                    LOG.warn("[UPDATE] PatientEncounter rejected: not found id={}", patientEncounterId);
+                    return new NotFoundAlertException(
+                            "id.notfound",
+                            "patientEncounter",
+                            "PatientEncounter not found with id " + patientEncounterId
+                    );
+                });
+        if (existingPatientEncounter.getStatus() == TreatmentStatus.TRIAGE_STARTED) {
+
+            throw new BadRequestAlertException(
+                    "triage.alreadyStarted",
+                    "patientEncounter",
+                    "Triage already started for this encounter"
+            );
+        } else if (existingPatientEncounter.getStatus() != TreatmentStatus.WAITING_TRIAGE) {
+            throw new BadRequestAlertException(
+                    "triage.notAllowed",
+                    "patientEncounter",
+                    "Triage can only be started when status is WAITING_TRIAGE."
+            );
+        }
+        existingPatientEncounter.setStatus(TreatmentStatus.TRIAGE_STARTED);
+
+
+        try {
+            PatientEncounter updatedPatientEncounter = patientEncounterRepository.saveAndFlush(existingPatientEncounter);
+            LOG.info("[Start Triage] PatientEncounter success id={} patientId={} departmentId={} status={}",
+                    updatedPatientEncounter.getId(),
+                    updatedPatientEncounter.getPatient().getId(),
+                    updatedPatientEncounter.getDepartmentId(),
+                    updatedPatientEncounter.getStatus()
+            );
+            return updatedPatientEncounter;
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            LOG.warn("[UPDATE] PatientEncounter failed (constraint) id={}", patientEncounterId, ex);
+            throw handleConstraintViolation(ex);
+        } catch (RuntimeException ex) {
+            LOG.error("[UPDATE] PatientEncounter failed (unexpected) id={} ", patientEncounterId, ex);
+            throw ex;
+        }
+    }
+
+
     @Transactional(readOnly = true)
     public Page<PatientEncounter> filterEncounters(PatientEncounterSearchFilterDTO filter, Pageable pageable) {
         LOG.debug("Service filter PatientEncounters filter={} pageable={}", filter, pageable);
@@ -283,7 +331,7 @@ public class PatientEncounterService {
         LocalDate effectiveTo = filter.toDate() != null ? filter.toDate() : today;
 
         List<TreatmentStatus> effectiveStatuses =
-(filter.statuses() != null && !filter.statuses().isEmpty())
+                (filter.statuses() != null && !filter.statuses().isEmpty())
                         ? filter.statuses()
                         : List.of(TreatmentStatus.NEW, TreatmentStatus.ONGOING);
 
@@ -417,7 +465,7 @@ public class PatientEncounterService {
             throw new BadRequestAlertException(
                     "Encounter is already ongoing",
                     "patientEncounter",
-                    "encounter.alreadyOngoing"  );
+                    "encounter.alreadyOngoing");
 
         }
 
@@ -553,7 +601,7 @@ public class PatientEncounterService {
                 ));
 
         if (encounter.getStatus() != TreatmentStatus.ONGOING) {
-             throw new BadRequestAlertException(
+            throw new BadRequestAlertException(
                     "Discharge allowed only when status is ONGOING.",
                     "patientEncounter",
                     "discharge.notAllowed"
@@ -659,7 +707,7 @@ public class PatientEncounterService {
                         departmentId,
                         today,
                         TreatmentStatus.COMPLETED
-                          );
+                );
 
         LOG.debug("[DASHBOARD] COUNT_COMPLETED_RESULT departmentId={} date={} total={}",
                 departmentId, today, completed);
@@ -1010,7 +1058,7 @@ public class PatientEncounterService {
                 .findFirstByPatientIdAndStatusAndEncounterDateLessThanEqualOrderByEncounterDateDesc(
                         currentEncounter.getPatient().getId(),
                         TreatmentStatus.COMPLETED,
-                         currentEncounter.getEncounterDate()
+                        currentEncounter.getEncounterDate()
                 );
     }
 
