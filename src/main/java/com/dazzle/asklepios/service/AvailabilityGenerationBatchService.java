@@ -55,7 +55,8 @@ public class AvailabilityGenerationBatchService {
     private String defaultSchedulingZone;
 
     private ZoneId resolveZone(Long facilityId) {
-        return facilityHelper.getFacilityZoneId(facilityId, defaultSchedulingZone);
+        String timeZone = facilityId != null ? facilityHelper.getFacility(facilityId).timeZone() : null;
+        return ZoneId.of(timeZone != null && !timeZone.isBlank() ? timeZone : defaultSchedulingZone);
     }
 
     private final AvailabilityTemplateRepository availabilityTemplateRepository;
