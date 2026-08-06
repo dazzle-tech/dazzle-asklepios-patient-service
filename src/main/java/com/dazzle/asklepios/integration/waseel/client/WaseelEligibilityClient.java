@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 )
 public interface WaseelEligibilityClient {
 
+    
     @PostMapping(
             value = "/eligibilities/providers/{providerId}/request",
             consumes = "application/json",
