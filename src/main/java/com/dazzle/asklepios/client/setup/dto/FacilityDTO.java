@@ -9,8 +9,7 @@ public record FacilityDTO(
         Long defaultLabDepartmentId,
         String defaultLabDepartmentName,
         Long defaultRadDepartmentId,
-        String defaultRadDepartmentName,
-        String timeZone
+        String defaultRadDepartmentName
 ) {
 
 }

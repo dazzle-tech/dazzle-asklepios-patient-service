@@ -67,7 +67,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -98,17 +97,6 @@ public class AppointmentService {
     private static final String SYSTEM_RESCHEDULE_REASON = "rescheduled due to availability change ";
     DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm").withZone(ZoneId.systemDefault());
     private static final Logger LOG = LoggerFactory.getLogger(AppointmentService.class);
-
-    // fallback only - real zone is resolved per-facility (see resolveZone), since different
-    // facilities can be in different real-world time zones. Relying on ZoneId.systemDefault()
-    // here made appointment/encounter times shift by the server's UTC offset in some places.
-    @Value("${patient.appointment.scheduling.zone}")
-    private String defaultSchedulingZone;
-
-    private ZoneId resolveZone(Long facilityId) {
-        String timeZone = facilityId != null ? facilityHelper.getFacility(facilityId).timeZone() : null;
-        return ZoneId.of(timeZone != null && !timeZone.isBlank() ? timeZone : defaultSchedulingZone);
-    }
 
     private final PatientRepository patientRepository;
     private final DepartmentHelper departmentHelper;
@@ -778,9 +766,9 @@ public class AppointmentService {
                 templateName
         );
 
-        AvailabilityGenerationBatch previewBatch = getBatch(availabilityGenerationBatchId);
+        getBatch(availabilityGenerationBatchId);
 
-        Instant tomorrowStart = tomorrowStartInstant(resolveZone(previewBatch.getTemplate().getFacilityId()));
+        Instant tomorrowStart = tomorrowStartInstant();
 
         List<AppointmentStatus> statuses = includeFreeSlots
                 ? List.of(AppointmentStatus.NEW, AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED)
@@ -836,9 +824,9 @@ public class AppointmentService {
     public void cancelBulkRescheduleAppointments(Long availabilityGenerationBatchId) {
         LOG.debug("[BULK_RESCHEDULE_CANCEL] batchId={}", availabilityGenerationBatchId);
 
-        AvailabilityGenerationBatch cancelBatch = getBatch(availabilityGenerationBatchId);
+        getBatch(availabilityGenerationBatchId);
 
-        Instant tomorrowStart = tomorrowStartInstant(resolveZone(cancelBatch.getTemplate().getFacilityId()));
+        Instant tomorrowStart = tomorrowStartInstant();
 
         List<Appointment> appointmentsToCancel =
                 appointmentRepository
@@ -887,7 +875,7 @@ public class AppointmentService {
             );
         }
 
-        Instant tomorrowStart = tomorrowStartInstant(resolveZone(originalBatch.getTemplate().getFacilityId()));
+        Instant tomorrowStart = tomorrowStartInstant();
 
         List<Appointment> oldAppointments =
                 appointmentRepository.findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(originalBatch.getId(), List.of(AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED), tomorrowStart);
@@ -1103,10 +1091,10 @@ public class AppointmentService {
     }
 
 
-    private Instant tomorrowStartInstant(ZoneId zone) {
-        return LocalDate.now(zone)
+    private Instant tomorrowStartInstant() {
+        return LocalDate.now(ZoneId.systemDefault())
                 .plusDays(1)
-                .atStartOfDay(zone)
+                .atStartOfDay(ZoneId.systemDefault())
                 .toInstant();
     }
 
@@ -1407,11 +1395,11 @@ public class AppointmentService {
                         savedAppointment.getNote(),
 
                         savedAppointment.getStartDatetime()
-                                .atZone(resolveZone(savedAppointment.getFacilityId()))
+                                .atZone(ZoneId.systemDefault())
                                 .toLocalDate(),
 
                         savedAppointment.getStartDatetime()
-                                .atZone(resolveZone(savedAppointment.getFacilityId()))
+                                .atZone(ZoneId.systemDefault())
                                 .toLocalTime(),
 
                         TreatmentStatus.NEW,
@@ -1488,12 +1476,11 @@ public class AppointmentService {
             );
         }
 
-        ZoneId checkInZone = resolveZone(appointment.getFacilityId());
         LocalDate appointmentDate = appointment.getStartDatetime()
-                .atZone(checkInZone)
+                .atZone(ZoneId.systemDefault())
                 .toLocalDate();
 
-        LocalDate today = LocalDate.now(checkInZone);
+        LocalDate today = LocalDate.now(ZoneId.systemDefault());
 
         if (!today.equals(appointmentDate)) {
             throw new BadRequestAlertException(

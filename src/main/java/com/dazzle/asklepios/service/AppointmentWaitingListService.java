@@ -14,7 +14,6 @@ import com.dazzle.asklepios.repository.AvailabilityTemplateRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.appointmentWaitingList.AppointmentWaitingListCreateDTO;
 import com.dazzle.asklepios.service.dto.appointmentWaitingList.AppointmentWaitingListRemoveDTO;
-import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointmentWaitingList.AppointmentWaitingListVM;
@@ -22,7 +21,6 @@ import com.dazzle.asklepios.web.rest.vm.appointmentWaitingList.WaitingListAvaila
 import com.dazzle.asklepios.web.rest.vm.appointmentWaitingList.WaitingListAvailableSlotVM;
 import com.dazzle.asklepios.web.rest.vm.appointmentWaitingList.WaitingListAvailableSlotsByBookingModeVM;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,17 +41,6 @@ public class AppointmentWaitingListService {
     private final AvailabilityTemplateRepository availabilityTemplateRepository;
     private final AppointmentRepository appointmentRepository;
     private final PatientRepository patientRepository;
-    private final FacilityHelper facilityHelper;
-
-    // fallback only - real zone is resolved per-facility, since different facilities
-    // can be in different real-world time zones.
-    @Value("${patient.appointment.scheduling.zone}")
-    private String defaultSchedulingZone;
-
-    private ZoneId resolveZone(Long facilityId) {
-        String timeZone = facilityId != null ? facilityHelper.getFacility(facilityId).timeZone() : null;
-        return ZoneId.of(timeZone != null && !timeZone.isBlank() ? timeZone : defaultSchedulingZone);
-    }
 
     public AppointmentWaitingListVM create(AppointmentWaitingListCreateDTO dto) {
 
@@ -167,7 +154,7 @@ public class AppointmentWaitingListService {
         List<Appointment> candidates;
 
         if (searchDate != null) {
-            ZoneId zoneId = resolveZone(waitingList.getFacilityId());
+            ZoneId zoneId = ZoneId.systemDefault();
 
             Instant dayStart = searchDate
                     .atStartOfDay(zoneId)
