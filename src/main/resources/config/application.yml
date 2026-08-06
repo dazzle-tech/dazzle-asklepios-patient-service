@@ -200,6 +200,8 @@ patient:
     template-interval-ended:
       cron: "0 0 7 * * *"
       zone: "Asia/Gaza"
+    scheduling:
+      zone: Asia/Hebron
       springdoc:
       pre-loading-enabled: true
   security:
