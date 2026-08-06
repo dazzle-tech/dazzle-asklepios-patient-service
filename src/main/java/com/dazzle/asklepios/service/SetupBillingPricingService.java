@@ -112,16 +112,28 @@ public class SetupBillingPricingService {
 
                     priceListResponse,
 
-                    setupUnitPrice
+                    setupUnitPrice,
+
+                    priceListResponse.itemCode(),
+
+                    priceListResponse.itemName()
             );
         }
 
         LOG.info(
                 "[RESOLVE] No applicable Price List item found. "
-                        + "Using Setup fallback itemType={} sourceId={} "
+                        + "Using Setup fallback facilityId={} encounterId={} "
+                        + "coverageType={} itemType={} sourceId={} "
+                        + "patientInsuranceId={} payerId={} currency={} "
                         + "setupUnitPrice={}",
+                request.facilityId(),
+                request.encounterId(),
+                request.coverageType(),
                 request.billingItemType(),
                 request.sourceId(),
+                request.patientInsuranceId(),
+                request.payerId(),
+                request.currency(),
                 setupUnitPrice
         );
 
@@ -319,7 +331,9 @@ public class SetupBillingPricingService {
                 request,
                 price,
                 service.currency(),
-                service.id()
+                service.id(),
+                service.code(),
+                service.name()
         );
     }
 
@@ -356,7 +370,9 @@ public class SetupBillingPricingService {
                 request,
                 price,
                 procedure.currency(),
-                procedure.id()
+                procedure.id(),
+                procedure.code(),
+                procedure.name()
         );
     }
 
@@ -396,7 +412,9 @@ public class SetupBillingPricingService {
                 request,
                 diagnosticTest.price(),
                 diagnosticTest.currency(),
-                diagnosticTest.id()
+                diagnosticTest.id(),
+                diagnosticTest.internalCode(),
+                diagnosticTest.name()
         );
     }
 
@@ -436,7 +454,9 @@ public class SetupBillingPricingService {
                 request,
                 medication.price(),
                 currency,
-                medication.id()
+                medication.id(),
+                medication.code(),
+                medication.name()
         );
     }
 
@@ -450,7 +470,9 @@ public class SetupBillingPricingService {
             BillingPricingResolveRequest request,
             BigDecimal setupUnitPrice,
             Currency setupCurrency,
-            Long setupSourceId
+            Long setupSourceId,
+            String setupItemCode,
+            String setupItemName
     ) {
         if (setupUnitPrice == null
                 || setupUnitPrice.signum() < 0) {
@@ -525,8 +547,20 @@ public class SetupBillingPricingService {
 
                 null,
 
-                setupUnitPrice
+                setupUnitPrice,
+
+                blankToNull(setupItemCode),
+
+                blankToNull(setupItemName)
         );
+    }
+
+    private String blankToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        return value.trim();
     }
 
     private BigDecimal readSetupUnitPrice(

@@ -162,8 +162,14 @@ public class BillingPricingInputFactory {
                 RoundingModeType.HALF_UP,
                 4,
 
-                resolveFallbackItemCode(item),
-                resolveFallbackItemName(item)
+                resolveFallbackItemCode(
+                        item,
+                        resolvedPrice
+                ),
+                resolveFallbackItemName(
+                        item,
+                        resolvedPrice
+                )
         );
     }
 
@@ -266,8 +272,23 @@ public class BillingPricingInputFactory {
     }
 
     private String resolveFallbackItemCode(
-            PatientServiceAndProduct item
+            PatientServiceAndProduct item,
+            ResolvedBillingPrice resolvedPrice
     ) {
+        if (resolvedPrice.setupItemCode() != null) {
+            return resolvedPrice.setupItemCode();
+        }
+
+        if (item.getBillingItemType() != null) {
+            Long catalogSourceId = resolveCatalogSourceId(item);
+
+            if (catalogSourceId != null) {
+                return item.getBillingItemType().name()
+                        + "-"
+                        + catalogSourceId;
+            }
+        }
+
         if (item.getSourceId() != null) {
             return item.getBillingItemType().name()
                     + "-"
@@ -280,13 +301,31 @@ public class BillingPricingInputFactory {
     }
 
     private String resolveFallbackItemName(
-            PatientServiceAndProduct item
+            PatientServiceAndProduct item,
+            ResolvedBillingPrice resolvedPrice
     ) {
+        if (resolvedPrice.setupItemName() != null) {
+            return resolvedPrice.setupItemName();
+        }
+
         return item.getBillingItemType().name()
                 .replace(
                         '_',
                         ' '
                 );
+    }
+
+    private Long resolveCatalogSourceId(
+            PatientServiceAndProduct item
+    ) {
+        return switch (item.getBillingItemType()) {
+            case SERVICE -> item.getServiceId();
+            case PROCEDURE -> item.getProcedureId();
+            case MEDICATION -> item.getBrandMedicationId();
+            case LABORATORY,
+                 RADIOLOGY,
+                 PATHOLOGY -> item.getDiagnosticTestId();
+        };
     }
 
     private CalculationOrder resolveCalculationOrder(
