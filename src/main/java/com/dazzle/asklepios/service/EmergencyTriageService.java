@@ -25,6 +25,7 @@ import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.service.helper.PractitionerHelper;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -167,6 +168,17 @@ public class EmergencyTriageService {
             throw new NotFoundAlertException("EmergencyTriage not found: " + id, ENTITY_NAME, "notfound");
         }
         emergencyTriageRepository.deleteById(id);
+    }
+
+
+    @Transactional
+    public EmergencyTriage completeEmergencyTriage(Long id) {
+        EmergencyTriage triage = emergencyTriageRepository.findById(id)
+                .orElseThrow(() -> new BadRequestAlertException("notfound", ENTITY_NAME , "EmergencyTriage not found with id: " + id));
+
+        triage.setCompletedDate(Instant.now());
+
+        return emergencyTriageRepository.save(triage);
     }
 
     // -----------------------

@@ -118,4 +118,15 @@ public class EmergencyTriageController {
         LOG.debug("REST get EmergencyTriage bulk by encounterIds={}", encounterIds);
         return ResponseEntity.ok(emergencyTriageService.getAllByEncounterIds(encounterIds));
     }
+
+    /**
+     * {@code PUT /emergency-triage/{id}/complete} : Complete the emergency triage.
+     */
+    @PutMapping("/emergency-triage/{id}/complete")
+    public ResponseEntity<EmergencyTriage> completeEmergencyTriage(@PathVariable Long id) {
+        LOG.debug("REST complete EmergencyTriage id={}", id);
+
+        EmergencyTriage result = emergencyTriageService.completeEmergencyTriage(id);
+        return ResponseEntity.ok(result);
+    }
 }
