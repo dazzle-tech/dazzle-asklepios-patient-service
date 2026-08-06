@@ -25,6 +25,7 @@ import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.service.helper.PractitionerHelper;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -169,6 +170,17 @@ public class EmergencyTriageService {
         emergencyTriageRepository.deleteById(id);
     }
 
+
+    @Transactional
+    public EmergencyTriage completeEmergencyTriage(Long id) {
+        EmergencyTriage triage = emergencyTriageRepository.findById(id)
+                .orElseThrow(() -> new BadRequestAlertException("notfound", ENTITY_NAME , "EmergencyTriage not found with id: " + id));
+
+        triage.setCompletedDate(Instant.now());
+
+        return emergencyTriageRepository.save(triage);
+    }
+
     // -----------------------
     // Matrix Emergency Level calculation
     // -----------------------
@@ -244,7 +256,7 @@ public class EmergencyTriageService {
         String login = SecurityUtils.getCurrentUserLogin().orElse(null);
         PractitionerDTO practitionerDTO = null;
         if(triage.getEncounter().getPractitionerId()!=null){
-             practitionerDTO = practitionerHelper.getPractitioner(triage.getEncounter().getPractitionerId());
+            practitionerDTO = practitionerHelper.getPractitioner(triage.getEncounter().getPractitionerId());
         }
         FacilityDTO facilityDTO= facilityHelper.getFacility(triage.getEncounter().getFacilityId());
         DepartmentDTO department = departmentHelper.getDepartment(triage.getEncounter().getDepartmentId());
