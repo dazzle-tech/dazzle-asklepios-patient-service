@@ -667,15 +667,15 @@ public class PatientService {
             );
         }
 
-        if (lower.contains("chk_patients_required_fields_when_not_unknown")
-                || (lower.contains("check constraint")
-                && (lower.contains("required_fields") || lower.contains("unknown")))) {
-            throw new BadRequestAlertException(
-                    "Required patient fields are missing: first name, last name, gender, date of birth, primary mobile number, and email are required unless the patient is marked as unknown.",
-                    "patient",
-                    "required.fields.when.not.unknown"
-            );
-        }
+            if (lower.contains("chk_patients_required_fields_when_not_unknown")
+                    || (lower.contains("check constraint")
+                    && (lower.contains("required_fields") || lower.contains("unknown")))) {
+                throw new BadRequestAlertException(
+                        "Required patient fields are missing: first name, last name, gender, date of birth, primary mobile number, and email are required unless the patient is marked as unknown.",
+                        "patient",
+                        "required.fields.when.not.unknown"
+                );
+            }
 
         if ((lower.contains("medical_record_number") || lower.contains("medicalrecordnumber"))
                 && (lower.contains("null value") || lower.contains("not-null") || lower.contains("not null"))) {
