@@ -51,8 +51,7 @@ public class AppointmentWaitingListService {
     private String defaultSchedulingZone;
 
     private ZoneId resolveZone(Long facilityId) {
-        String timeZone = facilityId != null ? facilityHelper.getFacility(facilityId).timeZone() : null;
-        return ZoneId.of(timeZone != null && !timeZone.isBlank() ? timeZone : defaultSchedulingZone);
+        return facilityHelper.getFacilityZoneId(facilityId, defaultSchedulingZone);
     }
 
     public AppointmentWaitingListVM create(AppointmentWaitingListCreateDTO dto) {
