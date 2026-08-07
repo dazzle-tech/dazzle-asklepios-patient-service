@@ -122,7 +122,7 @@ patient:
       no-show-reason: Not Specified
     template-interval-ended:
       cron: "0 0 7 * * *"
-      zone: "Asia/Gaza"
+      zone: "Asia/Hebron"
       springdoc:
       pre-loading-enabled: true
 
