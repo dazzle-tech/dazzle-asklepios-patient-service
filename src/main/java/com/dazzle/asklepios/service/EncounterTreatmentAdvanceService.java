@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
@@ -140,12 +141,37 @@ public class EncounterTreatmentAdvanceService {
         );
     }
 
+    /**
+     * Moves a registration encounter out of {@link TreatmentStatus#PENDING_PAYMENT}
+     * once reception confirms payment — including collect-zero / defer collection.
+     */
+    public void advanceFromPendingPaymentAfterRegistrationAcknowledged(
+            Long encounterId
+    ) {
+        if (encounterId == null) {
+            return;
+        }
+
+        PatientEncounter encounter =
+                patientEncounterRepository
+                        .findById(encounterId)
+                        .orElse(null);
+
+        if (encounter == null
+                || encounter.getStatus()
+                != TreatmentStatus.PENDING_PAYMENT) {
+            return;
+        }
+
+        advanceEncounter(encounter);
+    }
+
     private void advanceEncounter(
             PatientEncounter encounter
     ) {
         TreatmentStatus nextStatus =
-                EncounterType.EMERGENCY.equals(
-                        encounter.getEncounterType()
+                resolvesToWaitingTriageAfterRegistrationPayment(
+                        encounter
                 )
                         ? TreatmentStatus.WAITING_TRIAGE
                         : TreatmentStatus.NEW;
@@ -191,6 +217,17 @@ public class EncounterTreatmentAdvanceService {
         }
 
         return money(total);
+    }
+
+    private boolean resolvesToWaitingTriageAfterRegistrationPayment(
+            PatientEncounter encounter
+    ) {
+        return EncounterType.EMERGENCY.equals(
+                encounter.getEncounterType()
+        )
+                || EncounterReason.URGENT_VISIT.equals(
+                        encounter.getEncounterReason()
+                );
     }
 
     private BigDecimal money(

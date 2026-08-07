@@ -11,6 +11,8 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientObservationsComplaints;
 import com.dazzle.asklepios.domain.VitalSigns;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
+import com.dazzle.asklepios.domain.enumeration.EncounterReason;
+import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.repository.AdditionalMeasurementsRepository;
 import com.dazzle.asklepios.repository.AppointmentRepository;
@@ -254,6 +256,11 @@ public class PatientEncounterService {
             existingPatientEncounter.setFollowUpEncounter(null);
         }
 
+        applyTreatmentStatusUpdate(
+                existingPatientEncounter,
+                updateDTO.status()
+        );
+
         try {
             PatientEncounter updatedPatientEncounter = patientEncounterRepository.saveAndFlush(existingPatientEncounter);
             entityManager.refresh(updatedPatientEncounter); // keep ONLY here (update)
@@ -261,7 +268,7 @@ public class PatientEncounterService {
                     updatedPatientEncounter.getId(),
                     updateDTO.patientId(),
                     updateDTO.departmentId(),
-                    updateDTO.status()
+                    updatedPatientEncounter.getStatus()
             );
             return updatedPatientEncounter;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -1140,6 +1147,65 @@ public class PatientEncounterService {
             );
         }
         return username;
+    }
+
+    /**
+     * Applies treatment-status changes from the update payload.
+     * Registration payment (including collect-zero / defer collection) moves
+     * {@link TreatmentStatus#PENDING_PAYMENT} to {@link TreatmentStatus#WAITING_TRIAGE}
+     * for triage encounters, or {@link TreatmentStatus#NEW} otherwise.
+     */
+    private void applyTreatmentStatusUpdate(
+            PatientEncounter encounter,
+            TreatmentStatus requestedStatus
+    ) {
+        if (requestedStatus == null) {
+            return;
+        }
+
+        TreatmentStatus currentStatus = encounter.getStatus();
+        if (requestedStatus.equals(currentStatus)) {
+            return;
+        }
+
+        if (currentStatus == TreatmentStatus.PENDING_PAYMENT) {
+            TreatmentStatus allowedTarget =
+                    resolvesToWaitingTriageAfterRegistrationPayment(encounter)
+                            ? TreatmentStatus.WAITING_TRIAGE
+                            : TreatmentStatus.NEW;
+
+            if (requestedStatus != allowedTarget
+                    && requestedStatus != TreatmentStatus.WAITING_TRIAGE
+                    && requestedStatus != TreatmentStatus.NEW) {
+                throw new BadRequestAlertException(
+                        "status.transition.notAllowed",
+                        "patientEncounter",
+                        "Treatment status cannot move from PENDING_PAYMENT to "
+                                + requestedStatus
+                );
+            }
+
+            encounter.setStatus(requestedStatus);
+            LOG.info(
+                    "[UPDATE] PatientEncounter treatment status advanced "
+                            + "id={} from={} to={}",
+                    encounter.getId(),
+                    currentStatus,
+                    requestedStatus
+            );
+            return;
+        }
+
+        encounter.setStatus(requestedStatus);
+    }
+
+    private boolean resolvesToWaitingTriageAfterRegistrationPayment(
+            PatientEncounter encounter
+    ) {
+        return EncounterType.EMERGENCY.equals(encounter.getEncounterType())
+                || EncounterReason.URGENT_VISIT.equals(
+                        encounter.getEncounterReason()
+                );
     }
 
     public List<PatientEncounter> getEncountersByIds(List<Long> encounterIds) {

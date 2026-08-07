@@ -260,6 +260,11 @@ public class DefaultServicePreparationService {
                     .advanceFromPendingPaymentWhenNothingToBill(
                             encounterId
                     );
+        } else if (Boolean.TRUE.equals(request.payZeroNow())) {
+            encounterTreatmentAdvanceService
+                    .advanceFromPendingPaymentAfterRegistrationAcknowledged(
+                            encounterId
+                    );
         }
 
         LOG.info(
