@@ -57,4 +57,25 @@ public interface BillingPaymentRepository
     );
 
     List<BillingPayment> findAllByEncounter_IdOrderByIdAsc(Long encounterId);
+
+    @Query(
+            value = """
+                    SELECT MAX(
+                        CAST(
+                            SUBSTRING(bp.receipt_number FROM '([0-9]+)$')
+                            AS BIGINT
+                        )
+                    )
+                    FROM billing_payment bp
+                    INNER JOIN patient_encounters pe ON pe.id = bp.encounter_id
+                    WHERE pe.facility_id = :facilityId
+                      AND bp.receipt_number IS NOT NULL
+                      AND EXTRACT(YEAR FROM bp.payment_date) = :year
+                    """,
+            nativeQuery = true
+    )
+    Optional<Long> findMaxIssuedReceiptSequenceForYear(
+            @Param("facilityId") Long facilityId,
+            @Param("year") int year
+    );
 }

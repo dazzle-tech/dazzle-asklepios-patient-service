@@ -23,6 +23,8 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -85,7 +87,13 @@ public class InvoiceChargePaymentSyncService {
 
     /**
      * Keeps charge-line allocation state aligned with issued invoice payments.
+     * Runs in its own read-write transaction so pessimistic charge-line locks
+     * are not attempted inside Spring Data's default read-only repository tx.
      */
+    @Transactional(
+            propagation = Propagation.REQUIRES_NEW,
+            rollbackFor = Exception.class
+    )
     public void reconcileInvoicePaymentsForEncounter(Long encounterId) {
         if (encounterId == null) {
             return;

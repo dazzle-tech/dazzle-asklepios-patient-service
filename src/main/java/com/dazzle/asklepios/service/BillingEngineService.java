@@ -76,6 +76,8 @@ public class BillingEngineService {
     private final BillingPricingInputFactory
             billingPricingInputFactory;
 
+    private final EncounterCoverageService encounterCoverageService;
+
     /*
      * All local financial transactions are orchestrated
      * through BillingTransactionService.
@@ -1139,24 +1141,9 @@ public class BillingEngineService {
             return BillingCoverageType.SELF_PAY;
         }
 
-        return patientEncounterRepository
-                .findById(item.getEncounterId())
-                .map(this::resolveEncounterCoverageType)
-                .orElse(BillingCoverageType.SELF_PAY);
-    }
-
-    private BillingCoverageType resolveEncounterCoverageType(
-            PatientEncounter encounter
-    ) {
-        if (encounter.getCoverageType() != null) {
-            return encounter.getCoverageType();
-        }
-
-        if (encounter.getPatientInsuranceId() != null) {
-            return BillingCoverageType.INSURANCE;
-        }
-
-        return BillingCoverageType.SELF_PAY;
+        return encounterCoverageService
+                .getEncounterCoverage(item.getEncounterId())
+                .coverageType();
     }
 
     /*

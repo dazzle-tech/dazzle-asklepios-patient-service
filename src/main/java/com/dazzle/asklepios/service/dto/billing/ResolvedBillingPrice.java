@@ -36,7 +36,18 @@ public record ResolvedBillingPrice(
          * Base unit price from Setup configuration, regardless of whether
          * billing ultimately used the Price List or Setup fallback.
          */
-        BigDecimal setupUnitPrice
+        BigDecimal setupUnitPrice,
+
+        /**
+         * Catalog code from Setup when pricing falls back to the item definition
+         * (e.g. diagnostic internalCode, service code).
+         */
+        String setupItemCode,
+
+        /**
+         * Catalog display name from Setup when pricing falls back to the item definition.
+         */
+        String setupItemName
 
 ) implements Serializable {
 

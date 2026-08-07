@@ -244,6 +244,8 @@ public class InvoiceBalancePaymentService {
 
                         encounter.getId(),
 
+                        encounter.getFacilityId(),
+
                         paymentCategory,
 
                         PayerType.PATIENT,
@@ -412,6 +414,8 @@ public class InvoiceBalancePaymentService {
                 paymentResult.paymentId(),
 
                 paymentResult.paymentNumber(),
+
+                paymentResult.receiptNumber(),
 
                 paymentResult.transactionNumber(),
 

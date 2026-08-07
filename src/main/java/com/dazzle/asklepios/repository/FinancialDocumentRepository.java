@@ -5,6 +5,8 @@ import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
@@ -61,5 +63,27 @@ public interface FinancialDocumentRepository extends JpaRepository<FinancialDocu
             Long encounterId,
             FinancialDocumentType documentType,
             FinancialDocumentSubtype documentSubtype
+    );
+
+    @Query(
+            value = """
+                    SELECT MAX(
+                        CAST(
+                            SUBSTRING(fd.document_number FROM '([0-9]+)$')
+                            AS BIGINT
+                        )
+                    )
+                    FROM financial_documents fd
+                    INNER JOIN patient_encounters pe ON pe.id = fd.encounter_id
+                    WHERE pe.facility_id = :facilityId
+                      AND fd.document_type = :documentType
+                      AND EXTRACT(YEAR FROM fd.created_date) = :year
+                    """,
+            nativeQuery = true
+    )
+    Optional<Long> findMaxIssuedSequenceForYear(
+            @Param("facilityId") Long facilityId,
+            @Param("documentType") String documentType,
+            @Param("year") int year
     );
 }

@@ -5,6 +5,8 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingAllocationStatus;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
@@ -53,6 +55,23 @@ public interface BillingAllocationRepository extends JpaRepository<BillingAlloca
     List<BillingAllocation>
     findAllByPayment_IdOrderByAllocationDateAscIdAsc(
             Long paymentId
+    );
+
+    /*
+     * Read query used by the billing payment GET endpoint.
+     * No pessimistic lock is required for this view operation.
+     */
+    @Query("""
+            SELECT a FROM BillingAllocation a
+            JOIN FETCH a.chargeLine
+            JOIN FETCH a.patientServiceProduct
+            LEFT JOIN FETCH a.reservation
+            WHERE a.payment.id = :paymentId
+            ORDER BY a.allocationDate ASC, a.id ASC
+            """)
+    List<BillingAllocation>
+    findAllByPayment_IdForReadOrderByAllocationDateAscIdAsc(
+            @Param("paymentId") Long paymentId
     );
 
 

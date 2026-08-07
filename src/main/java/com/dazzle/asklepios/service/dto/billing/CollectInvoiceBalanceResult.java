@@ -26,6 +26,8 @@ public record CollectInvoiceBalanceResult(
 
         String paymentNumber,
 
+        String receiptNumber,
+
         String paymentTransactionNumber,
 
         BigDecimal walletAvailableBalance

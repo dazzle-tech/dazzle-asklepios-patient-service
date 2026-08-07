@@ -14,7 +14,11 @@ public record CreateFinancialDocumentAdjustmentRequest(
 
         @NotEmpty
         @Valid
-        List<InvoiceLineAdjustmentRequest> lines
+        List<InvoiceLineAdjustmentRequest> lines,
+
+        Long facilityId,
+
+        String requestId
 
 ) implements Serializable {
 }
