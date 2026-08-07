@@ -13,7 +13,7 @@ public record PatientProblemCreateDTO(
         @NotNull Long patientId,
         @NotBlank String condition,
         @NotNull Date dateOfDiagnosis,
-        @NotNull EncounterVaccinationStatus conditionStatus,
+        @NotNull String conditionStatus,
         @NotNull String type,
         Date dateOfResolution,
         @NotNull Boolean byPatient,

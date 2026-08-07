@@ -58,9 +58,8 @@ public class PatientProblem extends AbstractAuditingEntity<Long>
     @Column(name = "date_of_diagnosis", nullable = false)
     private Date dateOfDiagnosis;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "condition_status", nullable = false)
-    private EncounterVaccinationStatus conditionStatus;
+    private String conditionStatus;
 
     @NotNull
     @Column(name = "type", nullable = false)
