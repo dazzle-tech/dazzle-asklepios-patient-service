@@ -172,13 +172,9 @@ public class AvailabilityGenerationBatchService {
     }
 
     @Transactional(readOnly = true)
-    public Page<AvailabilityGenerationBatch> getListByTemplateExcludingBatch(
-            Long templateId,
-            Long batchId,
-            Pageable pageable
-    ) {
+    public Page<AvailabilityGenerationBatch> getListByTemplateExcludingBatch(Long templateId, Long batchId, Pageable pageable) {
         return availabilityGenerationBatchRepository
-                .findAllByTemplate_IdAndIdNotOrderByApplyStartDateTimeDesc(templateId, batchId, pageable);
+                .findAllByTemplate_IdAndIdNotAndApplyStartDateTimeGreaterThanEqualOrderByApplyStartDateTimeAsc(templateId, batchId, Instant.now(), pageable);
     }
 
     private List<Appointment> generateAppointments(AvailabilityTemplate template, AvailabilityGenerationBatch batch, Instant startDate, Instant endDate, boolean deferred, Instant deferredAt, HolidayHandlingMode holidayHandlingMode, List<OrganizationHolidayDTO> holidays, ZoneId zone) {
