@@ -1969,16 +1969,24 @@ public class FinancialDocumentAdjustmentService {
     }
 
     private void assignConfiguredDocumentNumber(FinancialDocument document) {
-        patientEncounterRepository.findById(document.getEncounterId())
+        Long facilityId = patientEncounterRepository.findById(document.getEncounterId())
                 .map(PatientEncounter::getFacilityId)
-                .flatMap(facilityId ->
-                        documentNumberAssignmentService.assignNextDocumentNumber(
-                                facilityId,
-                                document.getDocumentType(),
-                                LocalDate.now()
-                        )
+                .orElseThrow(
+                        () ->
+                                new BadRequestAlertException(
+                                        "Encounter not found for financial document numbering",
+                                        ENTITY,
+                                        "encounter.notfound"
+                                )
+                );
+
+        document.setDocumentNumber(
+                documentNumberAssignmentService.requireNextDocumentNumber(
+                        facilityId,
+                        document.getDocumentType(),
+                        LocalDate.now()
                 )
-                .ifPresent(document::setDocumentNumber);
+        );
     }
 
     private BigDecimal shareForSubtype(

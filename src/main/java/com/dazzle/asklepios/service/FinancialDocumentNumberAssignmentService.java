@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,7 +24,29 @@ public class FinancialDocumentNumberAssignmentService {
     private static final Logger LOG =
             LoggerFactory.getLogger(FinancialDocumentNumberAssignmentService.class);
 
+    private static final String ENTITY_NAME = "financialDocumentNumbering";
+
     private final JdbcTemplate jdbcTemplate;
+
+    @Transactional
+    public String requireNextDocumentNumber(
+            Long facilityId,
+            FinancialDocumentType documentType,
+            LocalDate documentDate
+    ) {
+        return assignNextDocumentNumber(facilityId, documentType, documentDate)
+                .orElseThrow(
+                        () ->
+                                new BadRequestAlertException(
+                                        "Unable to assign a financial document number for facility "
+                                                + facilityId
+                                                + " and document type "
+                                                + documentType,
+                                        ENTITY_NAME,
+                                        "numbering.assign.failed"
+                                )
+                );
+    }
 
     @Transactional
     public Optional<String> assignNextDocumentNumber(
@@ -35,47 +58,44 @@ public class FinancialDocumentNumberAssignmentService {
             return Optional.empty();
         }
 
-        try {
-            NumberingConfig config = loadActiveConfig(facilityId, documentType.name());
-            if (config == null) {
-                return Optional.empty();
-            }
-
-            LocalDate effectiveDate =
-                    documentDate != null ? documentDate : LocalDate.now();
-
-            String periodKey = resolvePeriodKey(config.resetFrequency(), effectiveDate);
-            long nextSequence = reserveNextSequence(
-                    facilityId,
-                    documentType.name(),
-                    periodKey,
-                    config.startingNumber()
-            );
-
-            String documentNumber = formatDocumentNumber(
-                    config,
-                    nextSequence,
-                    effectiveDate,
-                    facilityId
-            );
-
-            LOG.debug(
-                    "Assigned financial document number facilityId={} type={} number={}",
-                    facilityId,
-                    documentType,
-                    documentNumber
-            );
-
-            return Optional.of(documentNumber);
-        } catch (RuntimeException exception) {
+        NumberingConfig config = loadActiveConfig(facilityId, documentType.name());
+        if (config == null) {
             LOG.warn(
-                    "Unable to assign configured financial document number for facility {} and type {}: {}",
+                    "Active financial document numbering is not configured for facility {} and type {}",
                     facilityId,
-                    documentType,
-                    exception.getMessage()
+                    documentType
             );
             return Optional.empty();
         }
+
+        LocalDate effectiveDate =
+                documentDate != null ? documentDate : LocalDate.now();
+
+        String periodKey = resolvePeriodKey(config.resetFrequency(), effectiveDate);
+        long nextSequence = reserveNextSequence(
+                facilityId,
+                documentType.name(),
+                periodKey,
+                config.startingNumber()
+        );
+
+        String documentNumber = formatDocumentNumber(
+                config,
+                nextSequence,
+                effectiveDate,
+                facilityId
+        );
+
+        LOG.debug(
+                "Assigned financial document number facilityId={} type={} periodKey={} sequence={} number={}",
+                facilityId,
+                documentType,
+                periodKey,
+                nextSequence,
+                documentNumber
+        );
+
+        return Optional.of(documentNumber);
     }
 
     private NumberingConfig loadActiveConfig(Long facilityId, String documentType) {
@@ -119,39 +139,23 @@ public class FinancialDocumentNumberAssignmentService {
             String periodKey,
             long startingNumber
     ) {
-        Long existingId = jdbcTemplate.query(
+        jdbcTemplate.update(
                 """
-                SELECT id
-                FROM financial_document_sequence
-                WHERE facility_id = ?
-                  AND document_type = ?
-                  AND period_key = ?
-                FOR UPDATE
+                INSERT INTO financial_document_sequence (
+                    facility_id,
+                    document_type,
+                    period_key,
+                    last_number,
+                    created_by,
+                    created_date
+                ) VALUES (?, ?, ?, ?, 'system', NOW())
+                ON CONFLICT (facility_id, document_type, period_key) DO NOTHING
                 """,
-                rs -> rs.next() ? rs.getLong("id") : null,
                 facilityId,
                 documentType,
-                periodKey
+                periodKey,
+                startingNumber - 1
         );
-
-        if (existingId == null) {
-            jdbcTemplate.update(
-                    """
-                    INSERT INTO financial_document_sequence (
-                        facility_id,
-                        document_type,
-                        period_key,
-                        last_number,
-                        created_by,
-                        created_date
-                    ) VALUES (?, ?, ?, ?, 'system', NOW())
-                    """,
-                    facilityId,
-                    documentType,
-                    periodKey,
-                    startingNumber - 1
-            );
-        }
 
         Long nextNumber = jdbcTemplate.queryForObject(
                 """
@@ -170,12 +174,26 @@ public class FinancialDocumentNumberAssignmentService {
                 periodKey
         );
 
-        return nextNumber != null ? nextNumber : startingNumber;
+        if (nextNumber == null) {
+            throw new BadRequestAlertException(
+                    "Unable to reserve the next financial document sequence for facility "
+                            + facilityId
+                            + ", document type "
+                            + documentType
+                            + ", period "
+                            + periodKey,
+                    ENTITY_NAME,
+                    "sequence.reserve.failed"
+            );
+        }
+
+        return nextNumber;
     }
 
     private String resolvePeriodKey(String resetFrequency, LocalDate documentDate) {
         return switch (String.valueOf(resetFrequency).toUpperCase(Locale.ROOT)) {
             case "NEVER" -> "ALL";
+            case "YEARLY" -> String.valueOf(documentDate.getYear());
             case "MONTHLY" ->
                     documentDate.format(DateTimeFormatter.ofPattern("yyyy-MM"));
             case "DAILY" -> documentDate.format(DateTimeFormatter.ISO_LOCAL_DATE);

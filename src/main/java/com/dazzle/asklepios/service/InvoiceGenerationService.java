@@ -570,13 +570,13 @@ public class InvoiceGenerationService {
                         .createdDate(Instant.now())
                         .build();
 
-        documentNumberAssignmentService
-                .assignNextDocumentNumber(
+        document.setDocumentNumber(
+                documentNumberAssignmentService.requireNextDocumentNumber(
                         encounter.getFacilityId(),
                         FinancialDocumentType.INVOICE,
                         LocalDate.now()
                 )
-                .ifPresent(document::setDocumentNumber);
+        );
 
         document = financialDocumentRepository.save(document);
 

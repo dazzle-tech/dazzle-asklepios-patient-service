@@ -1069,7 +1069,7 @@ public class BillingPaymentService {
     ) {
         List<BillingPaymentReservationResult> reservations =
                 billingReservationRepository
-                        .findAllByPayment_IdOrderByIdAsc(payment.getId())
+                        .findAllByPayment_IdForReadOrderByIdAsc(payment.getId())
                         .stream()
                         .map(reservation -> {
                             PatientServiceAndProduct item =
@@ -1111,7 +1111,7 @@ public class BillingPaymentService {
         }
 
         return billingAllocationRepository
-                .findAllByPayment_IdOrderByAllocationDateAscIdAsc(payment.getId())
+                .findAllByPayment_IdForReadOrderByAllocationDateAscIdAsc(payment.getId())
                 .stream()
                 .map(this::toReservationResultFromAllocation)
                 .filter(result ->
