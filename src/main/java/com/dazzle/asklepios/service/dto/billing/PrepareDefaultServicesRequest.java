@@ -36,7 +36,13 @@ public record PrepareDefaultServicesRequest(
 
         @NotNull
         @Size(max = 150)
-        String requestId
+        String requestId,
+
+        /**
+         * When true, reception confirmed payment with collect-zero / deferred collection.
+         * The encounter advances to WAITING_TRIAGE (or NEW) after services are prepared.
+         */
+        Boolean payZeroNow
 
 ) implements Serializable {
 }
