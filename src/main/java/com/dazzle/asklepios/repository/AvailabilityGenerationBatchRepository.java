@@ -14,7 +14,8 @@ import java.util.List;
 public interface AvailabilityGenerationBatchRepository extends JpaRepository<AvailabilityGenerationBatch, Long> {
     Page<AvailabilityGenerationBatch> findAllByTemplate_IdInOrderByApplyStartDateTimeDesc(List<Long> templateIds, Pageable pageable);
 
-    Page<AvailabilityGenerationBatch> findAllByTemplate_IdAndIdNotOrderByApplyStartDateTimeDesc(Long templateId, Long batchId, Pageable pageable);
+    Page<AvailabilityGenerationBatch>
+    findAllByTemplate_IdAndIdNotAndApplyStartDateTimeGreaterThanEqualOrderByApplyStartDateTimeAsc(Long templateId, Long batchId, Instant now, Pageable pageable);
 
     List<AvailabilityGenerationBatch>
     findTop100ByApplyEndDateTimeLessThanEqualAndIntervalEndedNotificationSentFalseAndExecutionStatusOrderByApplyEndDateTimeAsc(
