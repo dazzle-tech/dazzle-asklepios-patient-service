@@ -9,6 +9,7 @@ import com.dazzle.asklepios.domain.BillingWallet;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryCategory;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryDirection;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerScope;
@@ -43,6 +44,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -109,6 +111,9 @@ public class BillingPaymentService {
 
     private final EncounterTreatmentAdvanceService
             encounterTreatmentAdvanceService;
+
+    private final FinancialDocumentNumberAssignmentService
+            documentNumberAssignmentService;
 
     @Transactional(rollbackFor = Exception.class)
     public BillingPaymentResult createAdvancePayment(
@@ -502,8 +507,9 @@ public class BillingPaymentService {
                                 Instant.now()
                         )
                         .receiptNumber(
-                                trimToNull(
-                                        request.receiptNumber()
+                                resolveReceiptNumber(
+                                        request,
+                                        encounter
                                 )
                         )
                         .externalReference(
@@ -528,9 +534,10 @@ public class BillingPaymentService {
 
             LOG.info(
                     "[CREATE_PAYMENT] Payment created "
-                            + "paymentId={} paymentNumber={} amount={} status={}",
+                            + "paymentId={} paymentNumber={} receiptNumber={} amount={} status={}",
                     saved.getId(),
                     saved.getPaymentNumber(),
+                    saved.getReceiptNumber(),
                     saved.getAmount(),
                     saved.getStatus()
             );
@@ -969,7 +976,7 @@ public class BillingPaymentService {
             CreateAdvancePaymentRequest request,
             Patient patient
     ) {
-        if (request.encounterId() == null) {
+        if (request.encounterId() == null || request.encounterId() <= 0) {
             return null;
         }
 
@@ -1199,6 +1206,7 @@ public class BillingPaymentService {
         return new BillingPaymentResult(
                 payment.getId(),
                 payment.getPaymentNumber(),
+                payment.getReceiptNumber(),
 
                 transaction == null
                         ? null
@@ -1470,6 +1478,78 @@ public class BillingPaymentService {
     ) {
         return "ADVANCE_PAYMENT:"
                 + requestId.trim();
+    }
+
+    private String resolveReceiptNumber(
+            CreateAdvancePaymentRequest request,
+            PatientEncounter encounter
+    ) {
+        String requestedReceiptNumber =
+                trimToNull(
+                        request.receiptNumber()
+                );
+
+        if (requestedReceiptNumber != null) {
+            return requestedReceiptNumber;
+        }
+
+        Long facilityId =
+                resolveFacilityIdForNumbering(
+                        request,
+                        encounter
+                );
+
+        if (facilityId == null) {
+            throw new BadRequestAlertException(
+                    "Facility is required to assign a receipt number from setup.",
+                    ENTITY_NAME,
+                    "receipt.facility.required"
+            );
+        }
+
+        return documentNumberAssignmentService.requireNextDocumentNumber(
+                facilityId,
+                FinancialDocumentType.RECEIPT,
+                LocalDate.now()
+        );
+    }
+
+    private Long resolveFacilityIdForNumbering(
+            CreateAdvancePaymentRequest request,
+            PatientEncounter encounter
+    ) {
+        if (encounter != null && encounter.getFacilityId() != null) {
+            return encounter.getFacilityId();
+        }
+
+        if (request.facilityId() != null && request.facilityId() > 0) {
+            return request.facilityId();
+        }
+
+        if (
+                request.patientServiceProductIds() != null
+                        && !request.patientServiceProductIds().isEmpty()
+        ) {
+            for (Long patientServiceProductId : request.patientServiceProductIds()) {
+                if (patientServiceProductId == null) {
+                    continue;
+                }
+
+                Long facilityId =
+                        patientServiceAndProductRepository
+                                .findById(patientServiceProductId)
+                                .map(PatientServiceAndProduct::getEncounterId)
+                                .flatMap(patientEncounterRepository::findById)
+                                .map(PatientEncounter::getFacilityId)
+                                .orElse(null);
+
+                if (facilityId != null) {
+                    return facilityId;
+                }
+            }
+        }
+
+        return null;
     }
 
     private String generatePaymentNumber() {

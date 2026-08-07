@@ -7,7 +7,9 @@ import java.io.Serializable;
 public record GenerateInvoiceRequest(
 
         @NotBlank
-        String requestId
+        String requestId,
+
+        Long facilityId
 
 ) implements Serializable {
 }

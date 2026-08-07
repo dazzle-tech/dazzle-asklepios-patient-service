@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.BillingCharge;
 import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingChargeResponsibility;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentItemAdjustmentAction;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
@@ -1074,6 +1075,21 @@ public class BillingChargeService {
             patientShare = documentNet;
         }
 
+        boolean mergeWithExistingLine =
+                debitNoteItem.getAdjustmentAction()
+                        == FinancialDocumentItemAdjustmentAction.INCREASE;
+
+        if (mergeWithExistingLine) {
+            documentNet = money(chargeLine.getNetAmount()).add(documentNet);
+            documentGross = money(chargeLine.getGrossAmount()).add(documentGross);
+            documentDiscount =
+                    money(chargeLine.getDiscountAmount()).add(documentDiscount);
+            documentTax = money(chargeLine.getTaxAmount()).add(documentTax);
+            patientShare =
+                    money(chargeLine.getPatientResponsibilityAmount())
+                            .add(patientShare);
+        }
+
         BigDecimal quantity =
                 debitNoteItem.getQuantity() == null
                         ? BigDecimal.ONE
@@ -1103,8 +1119,10 @@ public class BillingChargeService {
         chargeLine.setReservedAmount(BigDecimal.ZERO);
 
         BigDecimal allocatedAmount =
-                defaultZero(chargeLine.getAllocatedAmount())
-                        .min(documentNet);
+                defaultZero(chargeLine.getAllocatedAmount());
+        if (!mergeWithExistingLine) {
+            allocatedAmount = allocatedAmount.min(documentNet);
+        }
         chargeLine.setAllocatedAmount(allocatedAmount);
         chargeLine.setOutstandingAmount(
                 documentNet.subtract(allocatedAmount).max(BigDecimal.ZERO)

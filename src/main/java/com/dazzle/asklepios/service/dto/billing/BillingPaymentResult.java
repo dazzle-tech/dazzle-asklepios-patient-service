@@ -14,6 +14,8 @@ public record BillingPaymentResult(
 
         String paymentNumber,
 
+        String receiptNumber,
+
         Long paymentTransactionId,
 
         String transactionNumber,

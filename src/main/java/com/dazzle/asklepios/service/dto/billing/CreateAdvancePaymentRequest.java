@@ -23,6 +23,8 @@ public record CreateAdvancePaymentRequest(
 
         Long encounterId,
 
+        Long facilityId,
+
         @NotNull
         PaymentCategory paymentCategory,
 

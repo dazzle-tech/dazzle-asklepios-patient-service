@@ -412,6 +412,16 @@ public class FinancialDocumentAdjustmentService {
                     invoice,
                     preparedLine
             );
+            if (preparedLine.originalItem() != null) {
+                item.setPaidAmount(
+                        calculatePaidCreditForLine(
+                                preparedLine.originalItem(),
+                                preparedLine.amount(),
+                                preparedLine.action()
+                                        == FinancialDocumentItemAdjustmentAction.REMOVE
+                        )
+                );
+            }
             savedItems.add(itemRepo.save(item));
 
             if (preparedLine.originalItem() != null) {
@@ -837,6 +847,17 @@ public class FinancialDocumentAdjustmentService {
         for (int index = 0; index < preparedLines.size(); index++) {
             PreparedAdjustmentLine preparedLine = preparedLines.get(index);
             FinancialDocumentItem item = draftItems.get(index);
+            if (preparedLine.originalItem() != null
+                    && documentType == FinancialDocumentType.CREDIT_NOTE) {
+                item.setPaidAmount(
+                        calculatePaidCreditForLine(
+                                preparedLine.originalItem(),
+                                preparedLine.amount(),
+                                preparedLine.action()
+                                        == FinancialDocumentItemAdjustmentAction.REMOVE
+                        )
+                );
+            }
             savedItems.add(itemRepo.save(item));
 
             if (preparedLine.originalItem() != null && documentType == FinancialDocumentType.CREDIT_NOTE) {
@@ -1037,11 +1058,12 @@ public class FinancialDocumentAdjustmentService {
         FinancialDocumentItem original = requireInvoiceItem(request.documentItemId(), invoiceItemsById);
         BigDecimal newQuantity = requireQuantity(request.quantity());
         BigDecimal newUnitPrice = requireUnitPrice(request.unitPrice());
-        BigDecimal newNet = money(newQuantity.multiply(newUnitPrice));
         BigDecimal oldNet = money(original.getNetAmount());
+        BigDecimal projectedNet =
+                projectLineNetAfterChange(original, newQuantity, newUnitPrice);
         BigDecimal remaining = money(original.getRemainingAmount());
 
-        if (newNet.compareTo(oldNet) >= 0) {
+        if (projectedNet.compareTo(oldNet) >= 0) {
             throw new BadRequestAlertException(
                     "Reduced line amount must be lower than the current line amount",
                     ENTITY,
@@ -1049,7 +1071,7 @@ public class FinancialDocumentAdjustmentService {
             );
         }
 
-        BigDecimal creditAmount = oldNet.subtract(newNet);
+        BigDecimal creditAmount = oldNet.subtract(projectedNet);
         if (creditAmount.compareTo(remaining) > 0) {
             creditAmount = remaining;
         }
@@ -1328,10 +1350,11 @@ public class FinancialDocumentAdjustmentService {
         FinancialDocumentItem original = requireInvoiceItem(request.documentItemId(), invoiceItemsById);
         BigDecimal newQuantity = requireQuantity(request.quantity());
         BigDecimal newUnitPrice = requireUnitPrice(request.unitPrice());
-        BigDecimal newNet = money(newQuantity.multiply(newUnitPrice));
         BigDecimal oldNet = money(original.getNetAmount());
+        BigDecimal projectedNet =
+                projectLineNetAfterChange(original, newQuantity, newUnitPrice);
 
-        if (newNet.compareTo(oldNet) <= 0) {
+        if (projectedNet.compareTo(oldNet) <= 0) {
             throw new BadRequestAlertException(
                     "Increased line amount must be higher than the current line amount",
                     ENTITY,
@@ -1339,7 +1362,19 @@ public class FinancialDocumentAdjustmentService {
             );
         }
 
-        BigDecimal debitAmount = newNet.subtract(oldNet);
+        BigDecimal debitAmount = projectedNet.subtract(oldNet);
+        BigDecimal oldQuantity = resolveLineQuantity(original);
+        BigDecimal oldGross = resolveLineGrossBasis(original, oldQuantity);
+        BigDecimal newGross = money(newQuantity.multiply(newUnitPrice));
+        BigDecimal deltaGross = newGross.subtract(oldGross).max(ZERO);
+        BigDecimal deltaDiscount =
+                proportional(original.getDiscountAmount(), newGross, oldGross)
+                        .subtract(money(original.getDiscountAmount()))
+                        .max(ZERO);
+        BigDecimal deltaTax =
+                proportional(original.getTaxAmount(), newGross, oldGross)
+                        .subtract(money(original.getTaxAmount()))
+                        .max(ZERO);
 
         return new PreparedAdjustmentLine(
                 FinancialDocumentItemAdjustmentAction.INCREASE,
@@ -1349,7 +1384,10 @@ public class FinancialDocumentAdjustmentService {
                 newQuantity.setScale(0, RoundingMode.HALF_UP).longValue(),
                 newUnitPrice,
                 resolveItemCode(original),
-                resolveItemDescription(original)
+                resolveItemDescription(original),
+                deltaGross.signum() > 0 ? deltaGross : debitAmount,
+                deltaDiscount,
+                deltaTax
         );
     }
 
@@ -1451,6 +1489,39 @@ public class FinancialDocumentAdjustmentService {
                 .status(FinancialDocumentItemStatus.PENDING)
                 .currency(document.getCurrency())
                 .build();
+    }
+
+    /**
+     * Portion of a credit note line that reverses previously collected payment.
+     * Unpaid credits reduce outstanding only and must not refund the wallet.
+     */
+    private BigDecimal calculatePaidCreditForLine(
+            FinancialDocumentItem originalItem,
+            BigDecimal creditAmount,
+            boolean fullLineRemoval
+    ) {
+        if (originalItem == null || creditAmount == null || creditAmount.signum() <= 0) {
+            return ZERO;
+        }
+
+        BigDecimal priorRemaining = money(originalItem.getRemainingAmount());
+        BigDecimal paid = money(originalItem.getPaidAmount());
+
+        if (fullLineRemoval) {
+            return creditAmount.subtract(priorRemaining).max(ZERO).min(paid);
+        }
+
+        BigDecimal creditFromRemaining = creditAmount.min(priorRemaining);
+        BigDecimal creditFromPaid =
+                creditAmount.subtract(creditFromRemaining).max(ZERO);
+        return creditFromPaid.min(paid);
+    }
+
+    private BigDecimal resolvePaidCreditAmount(FinancialDocument creditNote) {
+        return itemRepo.findByDocument_Id(creditNote.getId()).stream()
+                .map(FinancialDocumentItem::getPaidAmount)
+                .map(this::money)
+                .reduce(ZERO, BigDecimal::add);
     }
 
     private void applyCreditToOriginalItem(
@@ -1998,6 +2069,53 @@ public class FinancialDocumentAdjustmentService {
                 : money(line.getPatientResponsibilityAmount());
     }
 
+    private BigDecimal resolveLineQuantity(FinancialDocumentItem item) {
+        if (item.getQuantity() != null && item.getQuantity() > 0) {
+            return BigDecimal.valueOf(item.getQuantity());
+        }
+        return BigDecimal.ONE;
+    }
+
+    private BigDecimal resolveLineGrossBasis(
+            FinancialDocumentItem item,
+            BigDecimal quantity
+    ) {
+        BigDecimal gross = money(item.getGrossAmount());
+        if (gross.signum() > 0) {
+            return gross;
+        }
+
+        BigDecimal qty =
+                quantity != null && quantity.signum() > 0
+                        ? quantity
+                        : resolveLineQuantity(item);
+        return qty.multiply(money(item.getUnitPrice()));
+    }
+
+    private BigDecimal projectLineNetAfterChange(
+            FinancialDocumentItem original,
+            BigDecimal newQuantity,
+            BigDecimal newUnitPrice
+    ) {
+        BigDecimal oldNet = money(original.getNetAmount());
+        BigDecimal oldQuantity = resolveLineQuantity(original);
+        BigDecimal oldGross = resolveLineGrossBasis(original, oldQuantity);
+        BigDecimal newGross = money(newQuantity.multiply(newUnitPrice));
+
+        if (oldGross.signum() <= 0) {
+            if (newQuantity.compareTo(oldQuantity) <= 0
+                    && newUnitPrice.compareTo(money(original.getUnitPrice())) <= 0) {
+                return oldNet;
+            }
+            if (oldQuantity.signum() <= 0) {
+                return newGross;
+            }
+            return proportional(oldNet, newQuantity, oldQuantity);
+        }
+
+        return proportional(oldNet, newGross, oldGross);
+    }
+
     private BigDecimal proportional(
             BigDecimal amount,
             BigDecimal share,
@@ -2108,8 +2226,17 @@ public class FinancialDocumentAdjustmentService {
             return;
         }
 
+        BigDecimal paidCreditAmount = resolvePaidCreditAmount(creditNote);
+        if (paidCreditAmount.compareTo(creditAmount) > 0) {
+            paidCreditAmount = creditAmount;
+        }
+
+        if (paidCreditAmount.signum() <= 0) {
+            return;
+        }
+
         BigDecimal remainingAfterWallet =
-                applyCreditNoteWalletRefund(creditNote, creditAmount);
+                applyCreditNoteWalletRefund(creditNote, paidCreditAmount);
 
         if (remainingAfterWallet.signum() > 0) {
             applyCreditNoteDebitReduction(creditNote, remainingAfterWallet);

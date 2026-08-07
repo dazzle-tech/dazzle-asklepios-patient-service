@@ -27,7 +27,11 @@ public record CreateDiscountCreditNoteRequest(
         BigDecimal discountPercent,
 
         @Size(max = 500)
-        String reason
+        String reason,
+
+        Long facilityId,
+
+        String requestId
 
 ) implements Serializable {
 }
