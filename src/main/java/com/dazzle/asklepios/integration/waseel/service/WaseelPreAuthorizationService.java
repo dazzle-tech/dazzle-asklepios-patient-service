@@ -345,6 +345,10 @@ public class WaseelPreAuthorizationService {
                 local.setItemDecision(searchItem.decision());
             } else if (searchItem.status() != null && !searchItem.status().isBlank()) {
                 local.setItemDecision(searchItem.status());
+            } else if (searchItem.itemDecision() != null
+                    && searchItem.itemDecision().status() != null
+                    && !searchItem.itemDecision().status().isBlank()) {
+                local.setItemDecision(searchItem.itemDecision().status());
             }
             if (searchItem.reasonCodes() != null) {
                 local.setReasonCodes(searchItem.reasonCodes());
@@ -402,7 +406,13 @@ public class WaseelPreAuthorizationService {
                 .net(searchItem.net() == null ? BigDecimal.ZERO : searchItem.net())
                 .waseelItemId(searchItem.itemId())
                 .itemDecision(
-                        firstNonBlank(searchItem.decision(), searchItem.status())
+                        firstNonBlank(
+                                searchItem.decision(),
+                                searchItem.status(),
+                                searchItem.itemDecision() == null
+                                        ? null
+                                        : searchItem.itemDecision().status()
+                        )
                 )
                 .reasonCodes(searchItem.reasonCodes())
                 .rawJson(toJsonWithoutNulls(searchItem))

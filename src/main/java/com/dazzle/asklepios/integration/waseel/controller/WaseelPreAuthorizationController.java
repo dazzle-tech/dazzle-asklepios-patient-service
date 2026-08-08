@@ -6,11 +6,15 @@ import com.dazzle.asklepios.integration.waseel.dto.PreAuthorizationTrackingRespo
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityCheckResponse;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.PreAuthorizationCancelRequest;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.PreAuthorizationCommunicationRequest;
+import com.dazzle.asklepios.integration.waseel.dto.EncounterPreAuthorizationRefreshResponse;
 import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationCommunicationHistoryService;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationRejectedItemService;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationStatusRefreshService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationTrackingService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelPreAuthorizationService;
+import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -34,6 +38,8 @@ public class WaseelPreAuthorizationController {
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
     private final PreAuthorizationTrackingService trackingService;
     private final PreAuthorizationCommunicationHistoryService communicationHistoryService;
+    private final PreAuthorizationStatusRefreshService preAuthorizationStatusRefreshService;
+    private final PreAuthorizationRejectedItemService preAuthorizationRejectedItemService;
 
     @GetMapping("/internal/waseel/pre-authorizations/tracking")
     public Page<PreAuthorizationTrackingResponse> getAll(Pageable pageable) {
@@ -73,6 +79,35 @@ public class WaseelPreAuthorizationController {
     @PostMapping("/internal/waseel/encounters/{encounterId}/eligibility")
     public EligibilityCheckResponse checkEncounterEligibility(@PathVariable Long encounterId) {
         return encounterInsuranceEligibilityService.checkEncounterEligibility(encounterId);
+    }
+
+    @PostMapping("/internal/waseel/encounters/{encounterId}/pre-authorization/refresh")
+    public EncounterPreAuthorizationRefreshResponse refreshEncounterPreAuthorization(
+            @PathVariable Long encounterId
+    ) {
+        return preAuthorizationStatusRefreshService.refreshEncounter(encounterId);
+    }
+
+    @PostMapping("/internal/waseel/encounters/{encounterId}/pre-authorization/items/{patientServiceProductId}/pay-as-cash")
+    public BillingOperationResult payRejectedPreAuthorizationItemAsCash(
+            @PathVariable Long encounterId,
+            @PathVariable Long patientServiceProductId
+    ) {
+        return preAuthorizationRejectedItemService.payRejectedItemAsCash(
+                encounterId,
+                patientServiceProductId
+        );
+    }
+
+    @PostMapping("/internal/waseel/encounters/{encounterId}/pre-authorization/items/{patientServiceProductId}/clone")
+    public void cloneRejectedPreAuthorizationItem(
+            @PathVariable Long encounterId,
+            @PathVariable Long patientServiceProductId
+    ) {
+        preAuthorizationRejectedItemService.clonePreAuthorization(
+                encounterId,
+                patientServiceProductId
+        );
     }
 
     /**

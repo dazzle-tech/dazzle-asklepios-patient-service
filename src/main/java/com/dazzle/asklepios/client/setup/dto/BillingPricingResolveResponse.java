@@ -38,7 +38,9 @@ public record BillingPricingResolveResponse(
 
         String calculationOrder,
         String roundingMode,
-        Integer roundingScale
+        Integer roundingScale,
+
+        Boolean requiresPreAuthorization
 
 ) implements Serializable {
 }

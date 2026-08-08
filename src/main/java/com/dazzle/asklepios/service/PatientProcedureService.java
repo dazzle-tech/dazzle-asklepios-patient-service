@@ -477,7 +477,7 @@ public class PatientProcedureService {
 
     /**
      * Step 2 (billing build) — self pay: no pre-auth changes.
-     * Insurance: check SBS/payor plan, attach insurance + SBS code, set pre-auth status.
+     * Insurance: check price list/payor plan, attach insurance + SBS code, set pre-auth status.
      */
     private PatientServiceAndProduct buildProcedureBillingItem(
             Long patientId,
@@ -532,7 +532,7 @@ public class PatientProcedureService {
         }
 
         LOG.info(
-                "[PROCEDURE_CREATE] Insurance encounter — checking SBS pre-authorization for procedureId={}",
+                "[PROCEDURE_CREATE] Insurance encounter — checking price list pre-authorization for procedureId={}",
                 setupProcedure.id()
         );
 
@@ -544,7 +544,8 @@ public class PatientProcedureService {
                 null,
                 null,
                 null,
-                true
+                true,
+                setupProcedure.currency()
         );
 
         preAuthorizationResolutionService.enrichWaseelSbsMapping(

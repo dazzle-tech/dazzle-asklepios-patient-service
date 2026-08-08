@@ -112,7 +112,8 @@ public class EncounterPreAuthorizationSyncService {
                             item.getServiceId(),
                             item.getDiagnosticTestId(),
                             item.getBrandMedicationId(),
-                            insuranceVisitContext
+                            insuranceVisitContext,
+                            item.getCurrency()
                     );
 
             preAuthorizationResolutionService.apply(item, resolution);

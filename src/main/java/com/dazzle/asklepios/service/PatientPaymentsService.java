@@ -1259,7 +1259,8 @@ public class PatientPaymentsService {
                             item.serviceId(),
                             null,
                             null,
-                            insurancePayment
+                            insurancePayment,
+                            payment.getCurrency()
                     );
 
                     if (Boolean.TRUE.equals(item.isExempted())) {

@@ -6,6 +6,7 @@ import com.dazzle.asklepios.domain.PatientDocument;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiBeneficiaryData;
+import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiFetchPatientResponse;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiInquiryResponse;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiInsurancePlan;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiMappedPatientResponse;
@@ -15,6 +16,10 @@ import com.dazzle.asklepios.integration.waseel.service.mapper.CchiBeneficiaryPat
 import com.dazzle.asklepios.integration.waseel.service.mapper.CchiBeneficiaryPatientMapper;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.http.HttpEntity;
@@ -23,14 +28,13 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestTemplate;
+
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class WaseelCchiService {
@@ -48,6 +52,7 @@ public class WaseelCchiService {
 
     private final PatientRepository patientRepository;
     private final PatientInsuranceRepository patientInsuranceRepository;
+    private final CchiPatientLookupService cchiPatientLookupService;
 
     public WaseelCchiService(
             RestTemplate restTemplate,
@@ -58,7 +63,8 @@ public class WaseelCchiService {
             CchiBeneficiaryPatientDocumentMapper patientDocumentMapper,
             CchiBeneficiaryPatientInsuranceMapper insuranceMapper,
             PatientRepository patientRepository,
-            PatientInsuranceRepository patientInsuranceRepository
+            PatientInsuranceRepository patientInsuranceRepository,
+            CchiPatientLookupService cchiPatientLookupService
     ) {
         this.restTemplate = restTemplate;
         this.tokenService = tokenService;
@@ -69,6 +75,127 @@ public class WaseelCchiService {
         this.insuranceMapper = insuranceMapper;
         this.patientRepository = patientRepository;
         this.patientInsuranceRepository = patientInsuranceRepository;
+        this.cchiPatientLookupService = cchiPatientLookupService;
+    }
+
+    public CchiFetchPatientResponse fetchPatientForRegistration(String documentId) {
+        Optional<Patient> existingPatient = cchiPatientLookupService.resolveExistingPatient(documentId);
+        if (existingPatient.isPresent()) {
+            Patient patient = existingPatient.get();
+            LOG.info(
+                    "[CCHI] Patient already exists locally documentId={} patientId={}",
+                    documentId,
+                    patient.getId()
+            );
+            return new CchiFetchPatientResponse(
+                    true,
+                    "Patient already exists in the system",
+                    patient,
+                    null,
+                    null,
+                    List.of()
+            );
+        }
+
+        CchiMappedPatientResponse mapped = fetchMappedPatientByDocumentId(documentId);
+        if (mapped == null) {
+            return new CchiFetchPatientResponse(
+                    false,
+                    null,
+                    null,
+                    null,
+                    null,
+                    List.of()
+            );
+        }
+
+        return new CchiFetchPatientResponse(
+                false,
+                null,
+                mapped.patient(),
+                mapped.address(),
+                mapped.document(),
+                mapped.insurances()
+        );
+    }
+
+    public CchiMappedPatientResponse fetchInsuranceForPatient(Long patientId) {
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found with id " + patientId,
+                        "patient",
+                        "notfound"
+                ));
+
+        String documentId = cchiPatientLookupService.resolveDocumentIdForPatient(patient);
+        if (documentId == null || documentId.isBlank()) {
+            throw new BadRequestAlertException(
+                    "Patient document ID is required to fetch insurance from CCHI",
+                    "waseelCchi",
+                    "documentId.missing"
+            );
+        }
+
+        cchiPatientLookupService.markAsCchiPatient(patient);
+
+        CchiMappedPatientResponse mapped = fetchMappedPatientByDocumentId(documentId);
+        if (mapped == null) {
+            return new CchiMappedPatientResponse(patient, null, null, List.of());
+        }
+
+        List<PatientInsurance> insurances = mapped.insurances() == null
+                ? List.of()
+                : mapped.insurances();
+
+        return new CchiMappedPatientResponse(
+                patient,
+                null,
+                null,
+                insurances
+        );
+    }
+
+    public CchiMappedPatientResponse refreshPatientFromCchi(Long patientId) {
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found with id " + patientId,
+                        "patient",
+                        "notfound"
+                ));
+
+        String documentId = cchiPatientLookupService.resolveDocumentIdForPatient(patient);
+        if (documentId == null || documentId.isBlank()) {
+            throw new BadRequestAlertException(
+                    "Patient document ID is required to refresh data from CCHI",
+                    "waseelCchi",
+                    "documentId.missing"
+            );
+        }
+
+        cchiPatientLookupService.markAsCchiPatient(patient);
+
+        CchiMappedPatientResponse mapped = fetchMappedPatientByDocumentId(documentId);
+        if (mapped == null) {
+            return new CchiMappedPatientResponse(patient, null, null, List.of());
+        }
+
+        Patient refreshedPatient = mapped.patient();
+        if (refreshedPatient != null) {
+            refreshedPatient.setId(patient.getId());
+            refreshedPatient.setMedicalRecordNumber(patient.getMedicalRecordNumber());
+            refreshedPatient.setIsCchiPatient(true);
+            refreshedPatient.setIsVerified(patient.getIsVerified());
+            refreshedPatient.setIsCompletedPatient(patient.getIsCompletedPatient());
+            refreshedPatient.setActivated(patient.isActivated());
+            refreshedPatient.setIsUnknown(patient.getIsUnknown());
+        }
+
+        return new CchiMappedPatientResponse(
+                refreshedPatient,
+                mapped.address(),
+                mapped.document(),
+                mapped.insurances()
+        );
     }
 
     public CchiInquiryResponse fetchBeneficiaryByDocumentId(String documentId) {

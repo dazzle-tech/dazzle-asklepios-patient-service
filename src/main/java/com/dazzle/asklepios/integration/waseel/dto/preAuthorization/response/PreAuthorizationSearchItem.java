@@ -32,5 +32,6 @@ public record PreAuthorizationSearchItem(
         BigDecimal net,
         String status,
         String decision,
-        String reasonCodes
+        String reasonCodes,
+        PreAuthorizationSearchItemDecision itemDecision
 ) {}
