@@ -449,6 +449,17 @@ public class DiagnosticOrderTestStatusService {
                 null,
                 null,
                 setupDiagnostic.id(),
+                null,
+                true,
+                setupDiagnostic.currency()
+        );
+
+        preAuthorizationResolutionService.enrichWaseelSbsMappingForBillingItem(
+                builder,
+                billingItemType,
+                null,
+                null,
+                setupDiagnostic.id(),
                 null
         );
 

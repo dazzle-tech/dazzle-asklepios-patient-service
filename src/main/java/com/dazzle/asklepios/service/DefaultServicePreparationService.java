@@ -374,7 +374,8 @@ public class DefaultServicePreparationService {
                                 requestedItem.serviceId(),
                                 null,
                                 null,
-                                true
+                                true,
+                                request.currency()
                         );
                 preAuthorizationResolutionService.apply(existing, preAuthorizationResolution);
                 existing = patientServiceAndProductRepository.saveAndFlush(existing);
@@ -427,7 +428,8 @@ public class DefaultServicePreparationService {
                 requestedItem.serviceId(),
                 null,
                 null,
-                request.coverageType() == BillingCoverageType.INSURANCE
+                request.coverageType() == BillingCoverageType.INSURANCE,
+                request.currency()
         );
 
         PatientServiceAndProduct item = itemBuilder.build();
