@@ -232,6 +232,12 @@ public class PatientService {
         existing.setIsUnknown(Boolean.TRUE.equals(dto.isUnknown()));
         existing.setIsVerified(Boolean.TRUE.equals(dto.isVerified()));
         existing.setIsCompletedPatient(Boolean.TRUE.equals(dto.isCompletedPatient()));
+        if (dto.isCchiPatient() != null) {
+            existing.setIsCchiPatient(Boolean.TRUE.equals(dto.isCchiPatient()));
+        }
+        if (dto.documentId() != null) {
+            existing.setDocumentId(normalizeDocumentId(dto.documentId()));
+        }
         existing.setSecurityAccessLevel(dto.securityAccessLevel());
 
         if (dto.bloodGroup() != null) {

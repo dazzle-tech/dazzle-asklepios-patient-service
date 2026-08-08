@@ -1,0 +1,1567 @@
+{
+  "info": {
+    "_postman_id": "19e44b41-97f2-41f0-95b2-357e53648823",
+    "name": "Waseel APIs",
+    "description": "## Overview\n\n**Waseel APIs v4.0** — an executable Postman collection covering:\n\n1. **CCHI Inquiry**\n    \n2. **Eligibility**\n    \n3. **Pre-Authorization** (request, search, communication, cancel)\n    \n4. **Claims Upload** (upload, upload summary, extraction name check)\n    \n\n---\n\n## Base URL\n\nStaging URL:\n\n- `stg-eclaims.waseel.com`\n    \n\nProduction URL:\n\n- `eclaims.waseel.com`\n    \n\n---\n\n## Authentication\n\n### Collection auth (Bearer token)\n\nThis collection is configured with **Bearer Token** auth at the collection level.\n\n``` http\nAuthorization: Bearer {{token}}\n\n ```\n\n> Note: a couple of requests also include an explicit `Authorization` header. Prefer using the **collection-level auth** to avoid duplication and casing mismatches. \n  \n\n### Obtain token\n\nRun [<b>0 - Authentication</b>](https://request/47120593-04039381-fe0c-4115-9b3b-2cebbeb8455e) first.\n\nThat request saves the access token to the active environment variable:\n\n- `token`\n    \n\n---\n\n## Environment variables (Staging)\n\nThe **Staging** environment (UID `47120593-1d6f8f17-33a1-41a1-b6d8-72568bfc00c5`) defines the variables below. Use placeholder/example values only (don’t commit real secrets into docs).\n\n| Variable key | Purpose / what it is | Where it is used | Example placeholder value | Mark sensitive? |\n| --- | --- | --- | --- | --- |\n| `baseUrl` | Hostname (and optional domain) used to build the request URLs for Waseel endpoints. | **Request URL** (e.g., `https://api.{{baseUrl}}/...` and `https://{{baseUrl}}/...`) | `stg-eclaims.waseel.com` | No |\n| `username` | API username used to obtain an OAuth access token. | **Request body** for authentication (the [<b>0 - Authentication</b>](https://request/47120593-04039381-fe0c-4115-9b3b-2cebbeb8455e) request). | `your-stg-username` | Yes |\n| `password` | Password for the API username used during authentication. | **Request body** for authentication (the [<b>0 - Authentication</b>](https://request/47120593-04039381-fe0c-4115-9b3b-2cebbeb8455e) request). | `your-stg-password` | Yes |\n| `providerID` | Waseel Provider identifier (tenant/context) used in many endpoint paths. | **Request URL path** (e.g., `/providers/{{providerID}}/...`) across multiple requests. | `706` | No |\n| `nphiesID` | NPHIES identifier used by NPHIES-related workflows (e.g., correlating or identifying an entity within the NPHIES domain). | Typically **request body** and/or **request URL** depending on the specific NPHIES endpoint used in this collection. | `10000000003170` | No |\n| `documentID` | Patient document / national ID (used as `patientKey`) for CCHI inquiry. | **Request URL path** in [<b>1 - CCHI Inquiry</b>](https://request/47120593-d768d775-f616-4c15-b736-68948cb54369) (e.g., `/patientKey/{{documentID}}/...`). | `1000000000` | Yes |\n| `token` | OAuth access token used for Bearer authentication. | **Authorization header** via collection auth: `Authorization: Bearer {{token}}`. Set by the [<b>0 - Authentication</b>](https://request/47120593-04039381-fe0c-4115-9b3b-2cebbeb8455e) request. | `eyJhbGciOi......` | Yes |\n\n---\n\n## Quick start (recommended order)\n\n1. [<b>0 - Authentication</b>](https://request/47120593-04039381-fe0c-4115-9b3b-2cebbeb8455e)\n    \n2. [<b>1 - CCHI Inquiry</b>](https://request/47120593-d768d775-f616-4c15-b736-68948cb54369)\n    \n3. [<b>2 - Eligbility Request</b>](https://request/47120593-68248780-27e1-408c-af28-e900a8efc6fc)\n    \n4. **Pre-Auth**: [<b>3 - Pre Authorization Request</b>](https://request/47120593-b3e9a8de-232e-44e0-843f-0233b1b74fcf) then optionally [<b>3.1</b>](https://request/47120593-39911e77-840d-4e20-8092-bdf9e368f478) / [<b>3.2</b>](https://request/47120593-476d64a7-5996-41dd-a783-30b5ade54e48) / [<b>3.3</b>](https://request/47120593-d07b1edb-7c2c-46b9-b2e8-7cc4506d40ac)\n    \n5. **Claims**: [<b>4 - Claims Upload</b>](https://request/47120593-9d53ea5c-863c-4f6e-bae5-d4f5aa240b2b) then [<b>4.1</b>](https://request/47120593-2e8cf7a2-0965-40cb-81d7-80555350292f) and [<b>4.2</b>](https://request/47120593-72f8e79f-5cbb-481d-9ba0-b31d59e3e439)\n    \n\n---\n\n## Common errors\n\nTypical error categories you may encounter:\n\n- **401 Unauthorized / 403 Forbidden**: missing/expired `token` or invalid credentials\n    \n- **400 Bad Request**: validation errors (missing required IDs/fields)\n    \n- **404 Not Found**: invalid `providerID` / `patientID` / `uploadID` / `RequestID`\n    \n- **5xx**: server-side issues; retry later or contact Waseel support\n    \n\n---\n\n## Rate limits\n\nNo explicit rate-limit information is included in this collection. If your integration has contractual limits, document them here later.\n\n---\n\n## Examples (Documentation & Mocks)\n\nFor richer documentation (and to support mock servers), save at least one **Example** per request (success + common error cases). If examples are missing, create them by sending the request in a safe environment or by importing known sample responses.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "47120593",
+    "_collection_link": "https://go.postman.co/collection/47120593-19e44b41-97f2-41f0-95b2-357e53648823?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "0 Authentication",
+      "item": [
+        {
+          "name": "0.0 - Authentication",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Parse response",
+                  "const data = pm.response.json();",
+                  "",
+                  "// Save tokens",
+                  "pm.environment.set(\"token\", data.access_token);",
+                  "//pm.environment.set(\"RefreshToken\", data.refresh_token);",
+                  "",
+                  "// Basic checks (optional but recommended)",
+                  "pm.test(\"Access token is present\", () => {",
+                  "    pm.expect(data).to.have.property(\"access_token\");",
+                  "    pm.expect(data.access_token).to.be.a(\"string\").and.not.be.empty;",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://api.{{baseUrl}}/oauth/authenticate",
+              "protocol": "https",
+              "host": [
+                "api",
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "oauth",
+                "authenticate"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "0 - Authentication Example",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "https://api.{{baseUrl}}/oauth/authenticate",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "oauth",
+                    "authenticate"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Date",
+                  "value": "Wed, 25 Feb 2026 08:29:08 GMT"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "description": "",
+                  "type": "text"
+                },
+                {
+                  "key": "Transfer-Encoding",
+                  "value": "chunked"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Set-Cookie",
+                  "value": "HWWAFSESTIME=1772008148213; path=/"
+                },
+                {
+                  "key": "Set-Cookie",
+                  "value": "HWWAFSESID=f6232739dea56108a7; path=/"
+                },
+                {
+                  "key": "Set-Cookie",
+                  "value": "refresh_token=HWWAFSESTIME=1772008148227; Domain=waseel.com; Path=/; Secure; HttpOnly"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "X-Content-Type-Options",
+                  "value": "nosniff"
+                },
+                {
+                  "key": "X-XSS-Protection",
+                  "value": "1; mode=block"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-cache, no-store, max-age=0, must-revalidate"
+                },
+                {
+                  "key": "Pragma",
+                  "value": "no-cache"
+                },
+                {
+                  "key": "Expires",
+                  "value": "0"
+                },
+                {
+                  "key": "X-Frame-Options",
+                  "value": "DENY"
+                },
+                {
+                  "key": "Server",
+                  "value": "elb"
+                },
+                {
+                  "key": "Content-Encoding",
+                  "value": "br"
+                }
+              ],
+              "cookie": [
+                {
+                  "expires": "Invalid Date",
+                  "domain": "",
+                  "path": ""
+                }
+              ],
+              "body": "{\n    \"timestamp\": null,\n    \"status\": null,\n    \"error\": null,\n    \"path\": null,\n    \"location\": null,\n    \"access_token\": \"eyJ0eXBlIjoiYWNjZXNzX3Rva2VuIiwiYWxnIjoiSFM1MTIifQ.eyJwYXJ0T2YiOiIxIiwic3ViIjoiYWJoNzA2IiwicHJvdl9pZCI6IjcwNiIsInByb3ZfY29kZSI6IkFCSCIsImlzTnBoaWVzVHJhbnNhY3Rpb25zRW5hYmxlZCI6IjEiLCJyb2wiOlt7ImF1dGhvcml0eSI6IjcwNnwxLjB8MjAxIn0seyJhdXRob3JpdHkiOiI3MDZ8NTQuMnwxMDIifSx7ImF1dGhvcml0eSI6IjcwNnwzLjB8MTAyIn0seyJhdXRob3JpdHkiOiI3MDZ8MS4wfDEwMiJ9LHsiYXV0aG9yaXR5IjoiNzA2fDgxLjE0MnwxMDEifSx7ImF1dGhvcml0eSI6IjcwNnw4MS4xfDEwMSJ9LHsiYXV0aG9yaXR5IjoiNzA2fDI1Ljd8MTAxIn0seyJhdXRob3JpdHkiOiI3MDZ8MjUuMHwxMDEifSx7ImF1dGhvcml0eSI6IjcwNnw4MS4xMTF8MTAxIn0seyJhdXRob3JpdHkiOiI3MDZ8MjUuNjJ8MTAxIn0seyJhdXRob3JpdHkiOiI3MDZ8MjEuMTEyfDEwMSJ9LHsiYXV0aG9yaXR5IjoiNzA2fDI1LjN8MTAxIn0seyJhdXRob3JpdHkiOiI3MDZ8ODEuMTR8MTAxIn0seyJhdXRob3JpdHkiOiI3MDZ8MzMuMHwxMDEifSx7ImF1dGhvcml0eSI6IjcwNnwyNS42NXwxMDEifSx7ImF1dGhvcml0eSI6IjcwNnw3OC4wfDEwMSJ9LHsiYXV0aG9yaXR5IjoiNzA2fDgxLjExMnwxMDEifSx7ImF1dGhvcml0eSI6IjcwNnw4MS4xNTF8MTAxIn0seyJhdXRob3JpdHkiOiI3MDZ8MjUuMXwxMDEifSx7ImF1dGhvcml0eSI6IjcwNnw4MS4xNDF8MTAxIn0seyJhdXRob3JpdHkiOiI3MDZ8ODEuMTUyfDEwMSJ9LHsiYXV0aG9yaXR5IjoiNzA2fDI1LjcyfDEwMSJ9LHsiYXV0aG9yaXR5IjoiNzA2fDI1LjR8MTAxIn0seyJhdXRob3JpdHkiOiI3MDZ8MjUuNnwxMDEifSx7ImF1dGhvcml0eSI6IjcwNnw4MS4xM3wxMDEifSx7ImF1dGhvcml0eSI6IjcwNnw4MS4xMXwxMDEifSx7ImF1dGhvcml0eSI6IjcwNnwyNS42MXwxMDEifSx7ImF1dGhvcml0eSI6IjcwNnw4MS4xMzF8MTAxIn0seyJhdXRob3JpdHkiOiI3MDZ8ODEuMTMyfDEwMSJ9LHsiYXV0aG9yaXR5IjoiNzA2fDgwLjB8MTAxIn0seyJhdXRob3JpdHkiOiI3MDZ8ODEuMTQzfDEwMSJ9LHsiYXV0aG9yaXR5IjoiNzA2fDI1LjcxfDEwMSJ9LHsiYXV0aG9yaXR5IjoiNzA2fDMyLjB8MTAxIn0seyJhdXRob3JpdHkiOiI3MDZ8MjEuMTE0fDEwMSJ9LHsiYXV0aG9yaXR5IjoiNzA2fDgxLjEzM3wxMDEifSx7ImF1dGhvcml0eSI6IjcwNnw4MS4xMjF8MTAxIn0seyJhdXRob3JpdHkiOiI3MDZ8MjUuMnwxMDEifSx7ImF1dGhvcml0eSI6IjcwNnwyMS4xMTF8MTAxIn0seyJhdXRob3JpdHkiOiI3MDZ8MjUuNjR8MTAxIn0seyJhdXRob3JpdHkiOiI3MDZ8MjEuMTEzfDEwMSJ9LHsiYXV0aG9yaXR5IjoiNzA2fDEuMHwxMDEifSx7ImF1dGhvcml0eSI6IjcwNnwyNS42M3wxMDEifSx7ImF1dGhvcml0eSI6IjcwNnw4MS4xMjJ8MTAxIn0seyJhdXRob3JpdHkiOiI3MDZ8MjUuNXwxMDEifSx7ImF1dGhvcml0eSI6IjcwNnw4MS4xMnwxMDEifSx7ImF1dGhvcml0eSI6IjcwNnwyMS4xMXwxMDEifV0sInBheWVycyI6eyIyMDEiOiJNYWxhdGgs2YXZhNin2LAsbnVsbCxTRUxGLU9SR0FOSVpFRCwxIiwiMTAyIjoiVGF3dW5peWEs2KfZhNiq2LnYp9mI2YbZitipLG51bGwsU0VMRi1PUkdBTklaRUQsMSJ9LCJvcmdhbml6YXRpb25JZCI6IjU2IiwiZnVsbF9uYW1lIjoiQUJIIEhvc3BpdGFsIiwiY2hpbGRCcmFuY2hQcm92aWRlcklkcyI6WzE2NTAsMTY0OCw3MDYsNjE2LDYxNSw2MTQsNzMwLDcwOCw2ODcsNjg0LDE5NzIsNjE4LDE2NTEsMTA0NiwxNjQ3LDE2NDksNjAxXSwiaGVhZE9mZmljZVByb3ZpZGVySWQiOiI3MDYiLCJpc0NsYWltc0VuYWJsZWQiOiIxIiwiaXNIZWFkT2ZmaWNlIjoiMSIsImNjaGlfaWQiOiIxMDQwIiwiZXhwIjoxNzcyMDExNzQ4LCJwcm92IjoiQWJoYSBQcml2YXRlIEhvc3BpdGFsIiwicGFyZW50UHJvdmlkZXJJZCI6IjcwNiIsImN1cnJlbmN5Q29kZSI6IkFFRCIsImlhdCI6MTc3MjAwODE0OH0.4S8mAQQPUap6IZezipjsldDY6iAKD00qtOuhotieJELaIqv4uQoezSqiaRfvcClbQpitYBPiA5wn692eT8NI4Q\",\n    \"refresh_token\": \"eyJ0eXBlIjoicmVmZXJzaF90b2tlbiIsImFsZyI6IkhTNTEyIn0.eyJzdWIiOiI0UzhtQVFRUFVhcDZJWmV6aXBqc2xkRFk2aUFLRDAwcXRPdWhvdGllSkVMYUlxdjR1UW9lelNxaWFSZnZjQ2xiUXBpdFlCUGlBNXduNjkyZVQ4Tkk0USIsInN3aXRjaGVkIjpmYWxzZSwiZXhwIjoxNzcyMDE1MzQ4LCJpYXQiOjE3NzIwMDgxNDh9.sDTu0ta-LlorhuA8h8-vLnMI6P8DrdIHUGuZLZh6TD_yHm0q_ZQKvkt03ZtO-WuGQfPa-P-eiDfTMuEb8BsmaQ\",\n    \"token_type\": \"Bearer\",\n    \"expires_in\": \"2026-02-25T12:29:08.000+0300\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1 CHI Inquiry",
+      "item": [
+        {
+          "name": "1.0 - CCHI Inquiry",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://api.{{baseUrl}}/beneficiaries/providers/{{providerID}}/patientKey/{{documentID}}/systemType/1",
+              "protocol": "https",
+              "host": [
+                "api",
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "beneficiaries",
+                "providers",
+                "{{providerID}}",
+                "patientKey",
+                "{{documentID}}",
+                "systemType",
+                "1"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "1 - CCHI Inquiry Example",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "https://api.{{baseUrl}}/beneficiaries/providers/{{providerID}}/patientKey/{{patientID}}/systemType/1",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "beneficiaries",
+                    "providers",
+                    "{{providerID}}",
+                    "patientKey",
+                    "{{patientID}}",
+                    "systemType",
+                    "1"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Date",
+                  "value": "Wed, 25 Feb 2026 08:29:49 GMT"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "description": "",
+                  "type": "text"
+                },
+                {
+                  "key": "Transfer-Encoding",
+                  "value": "chunked"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "X-Content-Type-Options",
+                  "value": "nosniff"
+                },
+                {
+                  "key": "X-XSS-Protection",
+                  "value": "1; mode=block"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-cache, no-store, max-age=0, must-revalidate"
+                },
+                {
+                  "key": "Pragma",
+                  "value": "no-cache"
+                },
+                {
+                  "key": "Expires",
+                  "value": "0"
+                },
+                {
+                  "key": "Strict-Transport-Security",
+                  "value": "max-age=31536000 ; includeSubDomains"
+                },
+                {
+                  "key": "X-Frame-Options",
+                  "value": "DENY"
+                },
+                {
+                  "key": "Server",
+                  "value": "elb"
+                },
+                {
+                  "key": "Content-Encoding",
+                  "value": "br"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"apiStatus\": \"Success\",\n    \"statusCode\": \"200\",\n    \"message\": \"Request successful\",\n    \"fromWaseelDB\": false,\n    \"data\": {\n        \"documentId\": \"1093772497\",\n        \"firstName\": null,\n        \"middleName\": null,\n        \"lastName\": null,\n        \"familyName\": null,\n        \"fullName\": \"JAWAD JASIM AL SAEED\",\n        \"beneficiaryFileId\": null,\n        \"systemType\": null,\n        \"passportNumber\": null,\n        \"borderNumber\": null,\n        \"visaNumber\": null,\n        \"visaType\": null,\n        \"visitTitle\": null,\n        \"visaExpiryDate\": null,\n        \"dob\": null,\n        \"eHealthId\": null,\n        \"nationality\": \"113\",\n        \"residencyType\": null,\n        \"documentType\": \"NI\",\n        \"contactNumber\": null,\n        \"martialStatus\": null,\n        \"gender\": \"MALE\",\n        \"bloodGroup\": null,\n        \"preferredLanguage\": null,\n        \"emergencyNumber\": null,\n        \"email\": null,\n        \"addressLine\": null,\n        \"streetLine\": null,\n        \"city\": null,\n        \"state\": null,\n        \"country\": null,\n        \"postalCode\": null,\n        \"insurancePlans\": [\n            {\n                \"memberCardId\": \"001093772497001\",\n                \"policyNumber\": \"48095070\",\n                \"expiryDate\": \"2026-08-21T21:00:00.000+0000\",\n                \"isPrimary\": \"true\",\n                \"payerId\": null,\n                \"relationWithSubscriber\": \"SELF\",\n                \"coverageType\": \"EHCPOL\",\n                \"patientShare\": 20,\n                \"maxLimit\": 100,\n                \"issueDate\": \"2025-08-22T21:00:00.000+0000\",\n                \"networkId\": \"12\",\n                \"sponsorNumber\": \"7001454136\",\n                \"policyClassName\": \"a\",\n                \"policyHolder\": \"waseel application service prov.\",\n                \"insuranceStatus\": null,\n                \"insuranceDuration\": null,\n                \"insuranceType\": null,\n                \"payerNphiesId\": \"7000911508\",\n                \"newPlan\": false\n            }\n        ],\n        \"nphiesId\": null,\n        \"providerId\": null,\n        \"isNewBorn\": null,\n        \"religion\": null,\n        \"occupation\": null\n    }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 Eligibility",
+      "item": [
+        {
+          "name": "2.0 - Eligbility Request",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"isNewBorn\": false,\r\n    \"beneficiary\": {\r\n        \"id\": 3583,\r\n        \"name\": \"Akhil Nair\",\r\n        \"documentId\": \"11111111\",\r\n        \"documentType\": \"PPN\",\r\n        \"firstName\": \"Akhil\",\r\n        \"secondName\": null,\r\n        \"thirdName\": null,\r\n        \"familyName\": null,\r\n        \"fullName\": \"Akhil Nair\",\r\n        \"dob\": \"2001-11-14T00:00:00.000+0300\",\r\n        \"gender\": \"MALE\",\r\n        \"nationality\": null,\r\n        \"contactNumber\": null,\r\n        \"email\": null,\r\n        \"emergencyPhoneNumber\": null,\r\n        \"bloodGroup\": \"O+\",\r\n        \"fileId\": null,\r\n        \"eHealthId\": null,\r\n        \"residencyType\": null,\r\n        \"maritalStatus\": \"U\",\r\n        \"religion\": null,\r\n        \"occupation\": \"unknown\",\r\n        \"preferredLanguage\": null,\r\n        \"addressLine\": \"home\",\r\n        \"streetLine\": \"home\",\r\n        \"city\": \"mexico\",\r\n        \"state\": \"albama\",\r\n        \"country\": null,\r\n        \"postalCode\": \"123123\",\r\n        \"isNewBorn\": null,\r\n        \"plans\": [\r\n            {\r\n                \"planId\": \"3793\",\r\n                \"payerId\": \"INS-FHIR\",\r\n                \"payerName\": \"Insurance Company Testing Payer\",\r\n                \"memberCardId\": \"12121212\",\r\n                \"policyNumber\": \"357159456\",\r\n                \"payerNphiesId\": \"INS-FHIR\",\r\n                \"tpaNphiesId\": \"-1\",\r\n                \"expiryDate\": \"2028-09-28\",\r\n                \"relationWithSubscriber\": \"other\",\r\n                \"coverageType\": \"EHCPOL\",\r\n                \"patientShare\": null,\r\n                \"maxLimit\": null,\r\n                \"coverageClassList\": [\r\n                    {\r\n                        \"type\": \"plan\",\r\n                        \"value\": \"a\",\r\n                        \"name\": \"\"\r\n                    }\r\n                ],\r\n                \"policyHolder\": \"123456789\",\r\n                \"primary\": true\r\n            },\r\n            {\r\n                \"planId\": \"3792\",\r\n                \"payerId\": \"INS-FHIR\",\r\n                \"payerName\": \"Insurance Company Testing Payer\",\r\n                \"memberCardId\": \"12121212\",\r\n                \"policyNumber\": \"12121212\",\r\n                \"payerNphiesId\": \"INS-FHIR\",\r\n                \"tpaNphiesId\": \"-1\",\r\n                \"expiryDate\": \"2030-03-21\",\r\n                \"relationWithSubscriber\": \"OTHER\",\r\n                \"coverageType\": \"EHCPOL\",\r\n                \"patientShare\": null,\r\n                \"maxLimit\": null,\r\n                \"coverageClassList\": [\r\n                    {\r\n                        \"type\": \"plan\",\r\n                        \"value\": \"a\",\r\n                        \"name\": \"\"\r\n                    }\r\n                ],\r\n                \"policyHolder\": \"12121212\",\r\n                \"primary\": false\r\n            }\r\n        ],\r\n        \"isEligibilityDone\": true\r\n    },\r\n    \"subscriber\": null,\r\n    \"insurancePlan\": {\r\n        \"planId\": \"3793\",\r\n        \"payerId\": \"INS-FHIR\",\r\n        \"payerName\": \"Insurance Company Testing Payer\",\r\n        \"memberCardId\": \"12121212\",\r\n        \"policyNumber\": \"357159456\",\r\n        \"payerNphiesId\": \"INS-FHIR\",\r\n        \"tpaNphiesId\": \"-1\",\r\n        \"expiryDate\": \"2028-09-28\",\r\n        \"relationWithSubscriber\": \"other\",\r\n        \"coverageType\": \"EHCPOL\",\r\n        \"patientShare\": null,\r\n        \"maxLimit\": null,\r\n        \"coverageClassList\": [\r\n            {\r\n                \"type\": \"plan\",\r\n                \"value\": \"a\",\r\n                \"name\": \"\"\r\n            }\r\n        ],\r\n        \"policyHolder\": \"123456789\",\r\n        \"primary\": true\r\n    },\r\n    \"serviceDate\": \"{{currentDate}}\",\r\n    \"toDate\": null,\r\n    \"benefits\": false,\r\n    \"discovery\": false,\r\n    \"validation\": true,\r\n    \"transfer\": false,\r\n    \"isEmergency\": false,\r\n    \"referral\": false,\r\n    \"referredClinic\": {},\r\n    \"destinationId\": \"-1\"\r\n}\r\n ",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://api.{{baseUrl}}/eligibilities/providers/{{providerID}}/request",
+              "protocol": "https",
+              "host": [
+                "api",
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "eligibilities",
+                "providers",
+                "{{providerID}}",
+                "request"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "2.0 - Eligbility Request Example",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"isNewBorn\": false,\r\n    \"beneficiary\": {\r\n        \"id\": 3583,\r\n        \"name\": \"Akhil Nair\",\r\n        \"documentId\": \"11111111\",\r\n        \"documentType\": \"PPN\",\r\n        \"firstName\": \"Akhil\",\r\n        \"secondName\": null,\r\n        \"thirdName\": null,\r\n        \"familyName\": null,\r\n        \"fullName\": \"Akhil Nair\",\r\n        \"dob\": \"2001-11-14T00:00:00.000+0300\",\r\n        \"gender\": \"MALE\",\r\n        \"nationality\": null,\r\n        \"contactNumber\": null,\r\n        \"email\": null,\r\n        \"emergencyPhoneNumber\": null,\r\n        \"bloodGroup\": \"O+\",\r\n        \"fileId\": null,\r\n        \"eHealthId\": null,\r\n        \"residencyType\": null,\r\n        \"maritalStatus\": \"U\",\r\n        \"religion\": null,\r\n        \"occupation\": \"unknown\",\r\n        \"preferredLanguage\": null,\r\n        \"addressLine\": \"home\",\r\n        \"streetLine\": \"home\",\r\n        \"city\": \"mexico\",\r\n        \"state\": \"albama\",\r\n        \"country\": null,\r\n        \"postalCode\": \"123123\",\r\n        \"isNewBorn\": null,\r\n        \"plans\": [\r\n            {\r\n                \"planId\": \"3793\",\r\n                \"payerId\": \"INS-FHIR\",\r\n                \"payerName\": \"Insurance Company Testing Payer\",\r\n                \"memberCardId\": \"12121212\",\r\n                \"policyNumber\": \"357159456\",\r\n                \"payerNphiesId\": \"INS-FHIR\",\r\n                \"tpaNphiesId\": \"-1\",\r\n                \"expiryDate\": \"2028-09-28\",\r\n                \"relationWithSubscriber\": \"other\",\r\n                \"coverageType\": \"EHCPOL\",\r\n                \"patientShare\": null,\r\n                \"maxLimit\": null,\r\n                \"coverageClassList\": [\r\n                    {\r\n                        \"type\": \"plan\",\r\n                        \"value\": \"a\",\r\n                        \"name\": \"\"\r\n                    }\r\n                ],\r\n                \"policyHolder\": \"123456789\",\r\n                \"primary\": true\r\n            },\r\n            {\r\n                \"planId\": \"3792\",\r\n                \"payerId\": \"INS-FHIR\",\r\n                \"payerName\": \"Insurance Company Testing Payer\",\r\n                \"memberCardId\": \"12121212\",\r\n                \"policyNumber\": \"12121212\",\r\n                \"payerNphiesId\": \"INS-FHIR\",\r\n                \"tpaNphiesId\": \"-1\",\r\n                \"expiryDate\": \"2030-03-21\",\r\n                \"relationWithSubscriber\": \"OTHER\",\r\n                \"coverageType\": \"EHCPOL\",\r\n                \"patientShare\": null,\r\n                \"maxLimit\": null,\r\n                \"coverageClassList\": [\r\n                    {\r\n                        \"type\": \"plan\",\r\n                        \"value\": \"a\",\r\n                        \"name\": \"\"\r\n                    }\r\n                ],\r\n                \"policyHolder\": \"12121212\",\r\n                \"primary\": false\r\n            }\r\n        ],\r\n        \"isEligibilityDone\": true\r\n    },\r\n    \"subscriber\": null,\r\n    \"insurancePlan\": {\r\n        \"planId\": \"3793\",\r\n        \"payerId\": \"INS-FHIR\",\r\n        \"payerName\": \"Insurance Company Testing Payer\",\r\n        \"memberCardId\": \"12121212\",\r\n        \"policyNumber\": \"357159456\",\r\n        \"payerNphiesId\": \"INS-FHIR\",\r\n        \"tpaNphiesId\": \"-1\",\r\n        \"expiryDate\": \"2028-09-28\",\r\n        \"relationWithSubscriber\": \"other\",\r\n        \"coverageType\": \"EHCPOL\",\r\n        \"patientShare\": null,\r\n        \"maxLimit\": null,\r\n        \"coverageClassList\": [\r\n            {\r\n                \"type\": \"plan\",\r\n                \"value\": \"a\",\r\n                \"name\": \"\"\r\n            }\r\n        ],\r\n        \"policyHolder\": \"123456789\",\r\n        \"primary\": true\r\n    },\r\n    \"serviceDate\": \"{{currentDate}}\",\r\n    \"toDate\": null,\r\n    \"benefits\": false,\r\n    \"discovery\": false,\r\n    \"validation\": true,\r\n    \"transfer\": false,\r\n    \"isEmergency\": false,\r\n    \"referral\": false,\r\n    \"referredClinic\": {},\r\n    \"destinationId\": \"-1\"\r\n}\r\n ",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "https://api.{{baseUrl}}/eligibilities/providers/{{providerID}}/request",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "eligibilities",
+                    "providers",
+                    "{{providerID}}",
+                    "request"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Date",
+                  "value": "Wed, 25 Feb 2026 08:30:32 GMT"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "description": "",
+                  "type": "text"
+                },
+                {
+                  "key": "Transfer-Encoding",
+                  "value": "chunked"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "X-Content-Type-Options",
+                  "value": "nosniff"
+                },
+                {
+                  "key": "X-XSS-Protection",
+                  "value": "1; mode=block"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-cache, no-store, max-age=0, must-revalidate"
+                },
+                {
+                  "key": "Pragma",
+                  "value": "no-cache"
+                },
+                {
+                  "key": "Expires",
+                  "value": "0"
+                },
+                {
+                  "key": "Strict-Transport-Security",
+                  "value": "max-age=31536000 ; includeSubDomains"
+                },
+                {
+                  "key": "X-Frame-Options",
+                  "value": "DENY"
+                },
+                {
+                  "key": "Server",
+                  "value": "elb"
+                },
+                {
+                  "key": "Content-Encoding",
+                  "value": "br"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"transactionId\": 11196,\n    \"responseId\": 5256,\n    \"outgoingTransactionId\": \"11366\",\n    \"eligibilityRequestId\": \"5637\",\n    \"beneficiaryName\": \"Akhil Nair\",\n    \"subscriberName\": null,\n    \"status\": \"Active\",\n    \"outcome\": \"Processing Complete\",\n    \"disposition\": \"Coverage is in-force\",\n    \"noCoverageFoundReason\": null,\n    \"serviceDate\": \"2026-02-24T21:00:00.000+0000\",\n    \"transactionDate\": \"2026-02-25T08:30:31.552+0000\",\n    \"nphiesResponseId\": \"1e7ffeae-a5f9-4bd8-aa0c-e24995e0c1dc\",\n    \"transfer\": false,\n    \"siteEligibility\": \"eligible\",\n    \"isNewBorn\": false,\n    \"purpose\": [\n        \"Validation\"\n    ],\n    \"coverages\": [\n        {\n            \"memberId\": \"12121212\",\n            \"policyNumber\": \"357159456\",\n            \"policyHolder\": \"123456789\",\n            \"inforce\": \"true\",\n            \"notInforceReason\": null,\n            \"benefitStartDate\": \"2021-09-27T21:00:00.000+0000\",\n            \"benefitEndDate\": \"2028-09-27T21:00:00.000+0000\",\n            \"type\": \"Extended Healthcare\",\n            \"relationship\": \"Other\",\n            \"subscriberMemberId\": null,\n            \"status\": \"Active\",\n            \"siteEligibility\": \"eligible\",\n            \"items\": null,\n            \"network\": \"IQVIA/DHC\",\n            \"subrogation\": \"true\",\n            \"classList\": [\n                {\n                    \"classType\": \"group\",\n                    \"className\": \"Dream Team\",\n                    \"classValue\": \"123456789\"\n                },\n                {\n                    \"classType\": \"plan\",\n                    \"className\": \"Dream Team  #2\",\n                    \"classValue\": \"357159456\"\n                }\n            ],\n            \"costBeneficiaries\": [\n                {\n                    \"costBeneficiaryType\": \"gpvisit\",\n                    \"costBeneficiaryQut\": null,\n                    \"costBeneficiaryMoney\": 10,\n                    \"exceptionList\": []\n                },\n                {\n                    \"costBeneficiaryType\": \"spvisit\",\n                    \"costBeneficiaryQut\": \"9\",\n                    \"costBeneficiaryMoney\": null,\n                    \"exceptionList\": []\n                }\n            ]\n        }\n    ],\n    \"errors\": null,\n    \"eligibilityIdentifierUrl\": \"http://pseudo-payer.com.sa/coverageeligibilityresponse\",\n    \"documentId\": \"11111111\",\n    \"documentType\": \"PPN\",\n    \"payerId\": \"INS-FHIR\",\n    \"isEmergency\": false,\n    \"requestBundleId\": \"00000000-0000-2c66-0000-019c93ebd2a2\",\n    \"responseBundleId\": \"f739af18-9c82-4804-8ee1-f1b9954d13ac\",\n    \"tpa_Id\": null\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 Pre Authorization",
+      "item": [
+        {
+          "name": "3.0 - Pre Authorization Request",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"transfer\": false,\r\n    \"isNewBorn\": false,\r\n    \"beneficiary\": {\r\n        \"firstName\": \"Akhil\",\r\n        \"secondName\": \"\",\r\n        \"thirdName\": \"\",\r\n        \"familyName\": \"\",\r\n        \"fullName\": \"Akhil Nair\",\r\n        \"fileId\": \"\",\r\n        \"dob\": \"2001-11-14\",\r\n        \"gender\": \"MALE\",\r\n        \"documentType\": \"PPN\",\r\n        \"documentId\": \"11111111\",\r\n        \"eHealthId\": \"\",\r\n        \"nationality\": \"\",\r\n        \"residencyType\": \"\",\r\n        \"contactNumber\": \"\",\r\n        \"maritalStatus\": \"U\",\r\n        \"occupation\": \"business\",\r\n        \"bloodGroup\": \"O+\",\r\n        \"preferredLanguage\": \"\",\r\n        \"emergencyPhoneNumber\": \"\",\r\n        \"email\": \"\",\r\n        \"addressLine\": \"home\",\r\n        \"streetLine\": \"home\",\r\n        \"city\": \"mexico\",\r\n        \"state\": \"albama\",\r\n        \"country\": \"\",\r\n        \"postalCode\": \"123123\"\r\n    },\r\n    \"subscriber\": null,\r\n    \"destinationId\": null,\r\n    \"insurancePlan\": {\r\n        \"planId\": true,\r\n        \"payerId\": \"INS-FHIR\",\r\n        \"memberCardId\": \"12121212\",\r\n        \"policyNumber\": \"357159456\",\r\n        \"policyHolder\": \"123456789\",\r\n        \"maxLimit\": null,\r\n        \"patientShare\": null,\r\n        \"coverageType\": \"EHCPOL\",\r\n        \"coverageClass\": [\r\n            {\r\n                \"type\": \"plan\",\r\n                \"value\": \"a\",\r\n                \"name\": \"\"\r\n            }\r\n        ],\r\n        \"relationWithSubscriber\": \"other\",\r\n        \"expiryDate\": \"2028-09-28\",\r\n        \"payerName\": \"Insurance Company Testing Payer\",\r\n        \"payerNphiesId\": \"INS-FHIR\",\r\n        \"primary\": true,\r\n        \"tpaNphiesId\": null\r\n    },\r\n    \"preAuthorizationInfo\": {\r\n        \"dateOrdered\": \"{{currentDate}}\",\r\n        \"payeeId\": 10000000003170,\r\n        \"payeeType\": \"provider\",\r\n        \"type\": \"professional\",\r\n        \"subType\": \"op\",\r\n        \"prescription\": \"\",\r\n        \"eligibilityOfflineDate\": null,\r\n        \"eligibilityOfflineId\": \"\",\r\n        \"eligibilityResponseId\": \"\",\r\n        \"eligibilityResponseUrl\": \"\",\r\n        \"episodeId\": null\r\n    },\r\n    \"supportingInfo\": [\r\n        {\r\n            \"sequence\": 1,\r\n            \"category\": \"pulse\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"\",\r\n            \"reason\": \"998\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 2,\r\n            \"category\": \"chief-complaint\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"1\",\r\n            \"reason\": \"\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 3,\r\n            \"category\": \"investigation-result\",\r\n            \"code\": \"NA\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"\",\r\n            \"reason\": \"\",\r\n            \"attachment\": null,\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 4,\r\n            \"category\": \"treatment-plan\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"1\",\r\n            \"reason\": \"\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 5,\r\n            \"category\": \"patient-history\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"1\",\r\n            \"reason\": \"\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 6,\r\n            \"category\": \"physical-examination\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"1\",\r\n            \"reason\": \"\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 7,\r\n            \"category\": \"history-of-present-illness\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"1\",\r\n            \"reason\": \"\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 8,\r\n            \"category\": \"vital-sign-diastolic\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"\",\r\n            \"reason\": \"999\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 9,\r\n            \"category\": \"vital-sign-height\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"\",\r\n            \"reason\": \"999.9\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 10,\r\n            \"category\": \"vital-sign-systolic\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"\",\r\n            \"reason\": \"999\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 11,\r\n            \"category\": \"vital-sign-weight\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"\",\r\n            \"reason\": \"999.9\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 12,\r\n            \"category\": \"temperature\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"\",\r\n            \"reason\": \"88\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 13,\r\n            \"category\": \"respiratory-rate\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"\",\r\n            \"reason\": \"88\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 14,\r\n            \"category\": \"oxygen-saturation\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"\",\r\n            \"reason\": \"999\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        }\r\n    ],\r\n    \"diagnosis\": [\r\n        {\r\n            \"sequence\": 1,\r\n            \"diagnosisDescription\": \"Cholera dt 01 biovar cholerae\",\r\n            \"type\": \"principal\",\r\n            \"diagnosisCode\": \"A00.0\"\r\n        }\r\n    ],\r\n    \"careTeam\": [\r\n        {\r\n            \"sequence\": 1,\r\n            \"practitionerName\": \"ZAIN ALABEDEEN JAMJOOM\",\r\n            \"physicianCode\": \"1005\",\r\n            \"practitionerRole\": \"pharmacist\",\r\n            \"careTeamRole\": \"primary\",\r\n            \"speciality\": \"Neonatology\",\r\n            \"specialityCode\": \"14.18\",\r\n            \"qualificationCode\": \"14.18\"\r\n        }\r\n    ],\r\n    \"specialtyReferenceDetails\": \"\",\r\n    \"specialtyReferralOfflineId\": \"\",\r\n    \"specialtyReferralOfflineDate\": null,\r\n    \"referredClinicSpecialty\": null,\r\n    \"encounter\": {\r\n        \"status\": \"planned\",\r\n        \"encounterClass\": \"HH\",\r\n        \"serviceType\": \"acute-care\",\r\n        \"startDate\": \"{{currentDate}}\",\r\n        \"serviceEventType\": \"ICSE\",\r\n        \"serviceProvider\": 10000000003170,\r\n        \"periodEnd\": null,\r\n        \"causeOfDeath\": \"\"\r\n    },\r\n    \"items\": [\r\n        {\r\n            \"sequence\": 1,\r\n            \"type\": \"services\",\r\n            \"itemCode\": \"83600-00-71\",\r\n            \"itemDescription\": \"Repeat consult Specialist -2\",\r\n            \"nonStandardCode\": \"\",\r\n            \"nonStandardDesc\": \"\",\r\n            \"isPackage\": false,\r\n            \"isMaternity\": false,\r\n            \"bodySite\": \"\",\r\n            \"subSite\": \"\",\r\n            \"quantity\": 1,\r\n            \"quantityCode\": \"\",\r\n            \"unitPrice\": 120,\r\n            \"discount\": 0,\r\n            \"factor\": 1,\r\n            \"taxPercent\": 0,\r\n            \"patientSharePercent\": 0,\r\n            \"tax\": 0,\r\n            \"net\": 120,\r\n            \"patientShare\": 0,\r\n            \"payerShare\": 0,\r\n            \"startDate\": \"{{currentDate}}\",\r\n            \"endDate\": \"{{currentDate}}\",\r\n            \"supportingInfoSequence\": [],\r\n            \"careTeamSequence\": [\r\n                1\r\n            ],\r\n            \"diagnosisSequence\": [],\r\n            \"invoiceNo\": null,\r\n            \"itemDetails\": []\r\n        },\r\n        {\r\n            \"sequence\": 2,\r\n            \"type\": \"services\",\r\n            \"itemCode\": \"83600-02-50\",\r\n            \"itemDescription\": \"Surgery assistance fee gp\",\r\n            \"nonStandardCode\": \"\",\r\n            \"nonStandardDesc\": \"\",\r\n            \"isPackage\": false,\r\n            \"isMaternity\": false,\r\n            \"bodySite\": \"\",\r\n            \"subSite\": \"\",\r\n            \"quantity\": 1,\r\n            \"quantityCode\": \"\",\r\n            \"unitPrice\": 150,\r\n            \"discount\": 0,\r\n            \"factor\": 1,\r\n            \"taxPercent\": 0,\r\n            \"patientSharePercent\": 0,\r\n            \"tax\": 0,\r\n            \"net\": 150,\r\n            \"patientShare\": 0,\r\n            \"payerShare\": 0,\r\n            \"startDate\": \"{{currentDate}}\",\r\n            \"endDate\": \"{{currentDate}}\",\r\n            \"supportingInfoSequence\": [],\r\n            \"careTeamSequence\": [\r\n                1\r\n            ],\r\n            \"diagnosisSequence\": [],\r\n            \"invoiceNo\": null,\r\n            \"itemDetails\": []\r\n        }\r\n    ],\r\n    \"totalNet\": 270\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://{{baseUrl}}/api/approvals/providers/{{providerID}}/approval/request",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "approvals",
+                "providers",
+                "{{providerID}}",
+                "approval",
+                "request"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "3.0 - Pre Authorization Request Example",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"transfer\": false,\r\n    \"isNewBorn\": false,\r\n    \"beneficiary\": {\r\n        \"firstName\": \"Akhil\",\r\n        \"secondName\": \"\",\r\n        \"thirdName\": \"\",\r\n        \"familyName\": \"\",\r\n        \"fullName\": \"Akhil Nair\",\r\n        \"fileId\": \"\",\r\n        \"dob\": \"2001-11-14\",\r\n        \"gender\": \"MALE\",\r\n        \"documentType\": \"PPN\",\r\n        \"documentId\": \"11111111\",\r\n        \"eHealthId\": \"\",\r\n        \"nationality\": \"\",\r\n        \"residencyType\": \"\",\r\n        \"contactNumber\": \"\",\r\n        \"maritalStatus\": \"U\",\r\n        \"occupation\": \"business\",\r\n        \"bloodGroup\": \"O+\",\r\n        \"preferredLanguage\": \"\",\r\n        \"emergencyPhoneNumber\": \"\",\r\n        \"email\": \"\",\r\n        \"addressLine\": \"home\",\r\n        \"streetLine\": \"home\",\r\n        \"city\": \"mexico\",\r\n        \"state\": \"albama\",\r\n        \"country\": \"\",\r\n        \"postalCode\": \"123123\"\r\n    },\r\n    \"subscriber\": null,\r\n    \"destinationId\": null,\r\n    \"insurancePlan\": {\r\n        \"planId\": true,\r\n        \"payerId\": \"INS-FHIR\",\r\n        \"memberCardId\": \"12121212\",\r\n        \"policyNumber\": \"357159456\",\r\n        \"policyHolder\": \"123456789\",\r\n        \"maxLimit\": null,\r\n        \"patientShare\": null,\r\n        \"coverageType\": \"EHCPOL\",\r\n        \"coverageClass\": [\r\n            {\r\n                \"type\": \"plan\",\r\n                \"value\": \"a\",\r\n                \"name\": \"\"\r\n            }\r\n        ],\r\n        \"relationWithSubscriber\": \"other\",\r\n        \"expiryDate\": \"2028-09-28\",\r\n        \"payerName\": \"Insurance Company Testing Payer\",\r\n        \"payerNphiesId\": \"INS-FHIR\",\r\n        \"primary\": true,\r\n        \"tpaNphiesId\": null\r\n    },\r\n    \"preAuthorizationInfo\": {\r\n        \"dateOrdered\": \"{{currentDate}}\",\r\n        \"payeeId\": 10000000003170,\r\n        \"payeeType\": \"provider\",\r\n        \"type\": \"professional\",\r\n        \"subType\": \"op\",\r\n        \"prescription\": \"\",\r\n        \"eligibilityOfflineDate\": null,\r\n        \"eligibilityOfflineId\": \"\",\r\n        \"eligibilityResponseId\": \"\",\r\n        \"eligibilityResponseUrl\": \"\",\r\n        \"episodeId\": null\r\n    },\r\n    \"supportingInfo\": [\r\n        {\r\n            \"sequence\": 1,\r\n            \"category\": \"pulse\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"\",\r\n            \"reason\": \"998\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 2,\r\n            \"category\": \"chief-complaint\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"1\",\r\n            \"reason\": \"\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 3,\r\n            \"category\": \"investigation-result\",\r\n            \"code\": \"NA\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"\",\r\n            \"reason\": \"\",\r\n            \"attachment\": null,\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 4,\r\n            \"category\": \"treatment-plan\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"1\",\r\n            \"reason\": \"\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 5,\r\n            \"category\": \"patient-history\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"1\",\r\n            \"reason\": \"\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 6,\r\n            \"category\": \"physical-examination\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"1\",\r\n            \"reason\": \"\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 7,\r\n            \"category\": \"history-of-present-illness\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"1\",\r\n            \"reason\": \"\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 8,\r\n            \"category\": \"vital-sign-diastolic\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"\",\r\n            \"reason\": \"999\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 9,\r\n            \"category\": \"vital-sign-height\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"\",\r\n            \"reason\": \"999.9\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 10,\r\n            \"category\": \"vital-sign-systolic\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"\",\r\n            \"reason\": \"999\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 11,\r\n            \"category\": \"vital-sign-weight\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"\",\r\n            \"reason\": \"999.9\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 12,\r\n            \"category\": \"temperature\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"\",\r\n            \"reason\": \"88\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 13,\r\n            \"category\": \"respiratory-rate\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"\",\r\n            \"reason\": \"88\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        },\r\n        {\r\n            \"sequence\": 14,\r\n            \"category\": \"oxygen-saturation\",\r\n            \"code\": \"\",\r\n            \"fromDate\": \"\",\r\n            \"toDate\": \"\",\r\n            \"value\": \"\",\r\n            \"reason\": \"999\",\r\n            \"attachment\": \"\",\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"unit\": \"\",\r\n            \"attachmentDate\": \"\"\r\n        }\r\n    ],\r\n    \"diagnosis\": [\r\n        {\r\n            \"sequence\": 1,\r\n            \"diagnosisDescription\": \"Cholera dt 01 biovar cholerae\",\r\n            \"type\": \"principal\",\r\n            \"diagnosisCode\": \"A00.0\"\r\n        }\r\n    ],\r\n    \"careTeam\": [\r\n        {\r\n            \"sequence\": 1,\r\n            \"practitionerName\": \"ZAIN ALABEDEEN JAMJOOM\",\r\n            \"physicianCode\": \"1005\",\r\n            \"practitionerRole\": \"pharmacist\",\r\n            \"careTeamRole\": \"primary\",\r\n            \"speciality\": \"Neonatology\",\r\n            \"specialityCode\": \"14.18\",\r\n            \"qualificationCode\": \"14.18\"\r\n        }\r\n    ],\r\n    \"specialtyReferenceDetails\": \"\",\r\n    \"specialtyReferralOfflineId\": \"\",\r\n    \"specialtyReferralOfflineDate\": null,\r\n    \"referredClinicSpecialty\": null,\r\n    \"encounter\": {\r\n        \"status\": \"planned\",\r\n        \"encounterClass\": \"HH\",\r\n        \"serviceType\": \"acute-care\",\r\n        \"startDate\": \"{{currentDate}}\",\r\n        \"serviceEventType\": \"ICSE\",\r\n        \"serviceProvider\": 10000000003170,\r\n        \"periodEnd\": null,\r\n        \"causeOfDeath\": \"\"\r\n    },\r\n    \"items\": [\r\n        {\r\n            \"sequence\": 1,\r\n            \"type\": \"services\",\r\n            \"itemCode\": \"83600-00-71\",\r\n            \"itemDescription\": \"Repeat consult Specialist -2\",\r\n            \"nonStandardCode\": \"\",\r\n            \"nonStandardDesc\": \"\",\r\n            \"isPackage\": false,\r\n            \"isMaternity\": false,\r\n            \"bodySite\": \"\",\r\n            \"subSite\": \"\",\r\n            \"quantity\": 1,\r\n            \"quantityCode\": \"\",\r\n            \"unitPrice\": 120,\r\n            \"discount\": 0,\r\n            \"factor\": 1,\r\n            \"taxPercent\": 0,\r\n            \"patientSharePercent\": 0,\r\n            \"tax\": 0,\r\n            \"net\": 120,\r\n            \"patientShare\": 0,\r\n            \"payerShare\": 0,\r\n            \"startDate\": \"{{currentDate}}\",\r\n            \"endDate\": \"{{currentDate}}\",\r\n            \"supportingInfoSequence\": [],\r\n            \"careTeamSequence\": [\r\n                1\r\n            ],\r\n            \"diagnosisSequence\": [],\r\n            \"invoiceNo\": null,\r\n            \"itemDetails\": []\r\n        },\r\n        {\r\n            \"sequence\": 2,\r\n            \"type\": \"services\",\r\n            \"itemCode\": \"83600-02-50\",\r\n            \"itemDescription\": \"Surgery assistance fee gp\",\r\n            \"nonStandardCode\": \"\",\r\n            \"nonStandardDesc\": \"\",\r\n            \"isPackage\": false,\r\n            \"isMaternity\": false,\r\n            \"bodySite\": \"\",\r\n            \"subSite\": \"\",\r\n            \"quantity\": 1,\r\n            \"quantityCode\": \"\",\r\n            \"unitPrice\": 150,\r\n            \"discount\": 0,\r\n            \"factor\": 1,\r\n            \"taxPercent\": 0,\r\n            \"patientSharePercent\": 0,\r\n            \"tax\": 0,\r\n            \"net\": 150,\r\n            \"patientShare\": 0,\r\n            \"payerShare\": 0,\r\n            \"startDate\": \"{{currentDate}}\",\r\n            \"endDate\": \"{{currentDate}}\",\r\n            \"supportingInfoSequence\": [],\r\n            \"careTeamSequence\": [\r\n                1\r\n            ],\r\n            \"diagnosisSequence\": [],\r\n            \"invoiceNo\": null,\r\n            \"itemDetails\": []\r\n        }\r\n    ],\r\n    \"totalNet\": 270\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "https://{{baseUrl}}/api/approvals/providers/{{providerID}}/approval/request",
+                  "protocol": "https",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "approvals",
+                    "providers",
+                    "{{providerID}}",
+                    "approval",
+                    "request"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Date",
+                  "value": "Wed, 25 Feb 2026 08:30:52 GMT"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "description": "",
+                  "type": "text"
+                },
+                {
+                  "key": "Transfer-Encoding",
+                  "value": "chunked"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Set-Cookie",
+                  "value": "HWWAFSESTIME=1772008251582; path=/"
+                },
+                {
+                  "key": "Set-Cookie",
+                  "value": "HWWAFSESID=d26287341b787f7afe; path=/"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "X-Content-Type-Options",
+                  "value": "nosniff"
+                },
+                {
+                  "key": "X-XSS-Protection",
+                  "value": "1; mode=block"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-cache, no-store, max-age=0, must-revalidate"
+                },
+                {
+                  "key": "Pragma",
+                  "value": "no-cache"
+                },
+                {
+                  "key": "Expires",
+                  "value": "0"
+                },
+                {
+                  "key": "Strict-Transport-Security",
+                  "value": "max-age=31536000 ; includeSubDomains"
+                },
+                {
+                  "key": "X-Frame-Options",
+                  "value": "DENY"
+                },
+                {
+                  "key": "Server",
+                  "value": "elb"
+                },
+                {
+                  "key": "Content-Encoding",
+                  "value": "br"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"transactionId\": 11197,\n    \"status\": \"OK\",\n    \"message\": \"Processing Outcome: Queued\",\n    \"errors\": null,\n    \"outgoingTransactionId\": \"11367\",\n    \"preAuthRefNo\": null,\n    \"outcome\": \"Queued\",\n    \"disposition\": null,\n    \"transactionLogDate\": \"2026-02-25T11:30:52.100+03:00\",\n    \"claimProvidervNo\": null,\n    \"providerId\": null,\n    \"approvalRequestId\": 2306,\n    \"patientFileNumber\": null,\n    \"approvalResponseId\": 2141,\n    \"statusReason\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "3.1 - Pre Authorization Search",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://api.{{baseUrl}}/nphies-rest-external/providers/{{providerID}}/external/approval?requestId={{requestID}}",
+              "protocol": "https",
+              "host": [
+                "api",
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nphies-rest-external",
+                "providers",
+                "{{providerID}}",
+                "external",
+                "approval"
+              ],
+              "query": [
+                {
+                  "key": "requestId",
+                  "value": "{{requestID}}",
+                  "description": "approvalRequestId"
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "3.1 - Pre Authorization Search Example",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "https://api.{{baseUrl}}/nphies-rest-external/providers/{{providerID}}/external/approval?requestId={{RequestID}}",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "nphies-rest-external",
+                    "providers",
+                    "{{providerID}}",
+                    "external",
+                    "approval"
+                  ],
+                  "query": [
+                    {
+                      "key": "requestId",
+                      "value": "{{RequestID}}",
+                      "description": "approvalRequestId"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Date",
+                  "value": "Wed, 25 Feb 2026 08:31:59 GMT"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "description": "",
+                  "type": "text"
+                },
+                {
+                  "key": "Transfer-Encoding",
+                  "value": "chunked"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "X-Content-Type-Options",
+                  "value": "nosniff"
+                },
+                {
+                  "key": "X-XSS-Protection",
+                  "value": "1; mode=block"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-cache, no-store, max-age=0, must-revalidate"
+                },
+                {
+                  "key": "Pragma",
+                  "value": "no-cache"
+                },
+                {
+                  "key": "Expires",
+                  "value": "0"
+                },
+                {
+                  "key": "Strict-Transport-Security",
+                  "value": "max-age=31536000 ; includeSubDomains"
+                },
+                {
+                  "key": "X-Frame-Options",
+                  "value": "DENY"
+                },
+                {
+                  "key": "Server",
+                  "value": "elb"
+                },
+                {
+                  "key": "Content-Encoding",
+                  "value": "br"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"approvalRequestId\": 2306,\n    \"approvalResponseId\": 2141,\n    \"payerNphiesId\": null,\n    \"memberCardId\": null,\n    \"coverageType\": null,\n    \"relationWithSubscriber\": null,\n    \"paymentAmount\": 270,\n    \"referenceNumber\": null,\n    \"insurer\": \"Insurance Company Testing Payer\",\n    \"claimResourceId\": \"260225-2306\",\n    \"outcome\": \"Queued\",\n    \"status\": \"pended\",\n    \"disposition\": null,\n    \"period\": null,\n    \"preAuthStartDate\": null,\n    \"preAuthEndDate\": null,\n    \"preAuthorizationInfo\": {\n        \"dateOrdered\": \"2026-02-25T00:00:00.000+0300\",\n        \"type\": \"professional\",\n        \"subType\": \"op\",\n        \"payeeId\": 10000000003170,\n        \"payeeType\": \"provider\",\n        \"eligibilityOfflineDate\": null,\n        \"eligibilityOfflineId\": null,\n        \"billableStart\": null,\n        \"billabelEnd\": null,\n        \"eligibilityResponseId\": null,\n        \"eligibilityResponseUrl\": null\n    },\n    \"errors\": null,\n    \"beneficiary\": {\n        \"beneficiaryId\": 2438,\n        \"beneficiaryName\": \"Akhil Nair\",\n        \"documentType\": \"PPN\",\n        \"documentId\": \"11111111\",\n        \"gender\": \"MALE\",\n        \"dob\": \"2001-11-14\",\n        \"contactNumber\": null,\n        \"email\": null,\n        \"firstName\": \"Akhil\",\n        \"secondName\": null,\n        \"thirdName\": null,\n        \"familyName\": null,\n        \"fullName\": \"Akhil Nair\",\n        \"nationality\": null,\n        \"emergencyPhoneNumber\": null,\n        \"bloodGroup\": \"O+\",\n        \"fileId\": null,\n        \"eHealthId\": null,\n        \"residencyType\": null,\n        \"maritalStatus\": \"U\",\n        \"preferredLanguage\": null,\n        \"addressLine\": \"home\",\n        \"streetLine\": \"home\",\n        \"city\": \"mexico\",\n        \"state\": \"albama\",\n        \"country\": null,\n        \"postalCode\": \"123123\",\n        \"providerNphiesId\": null,\n        \"memberCardId\": null,\n        \"expiryDate\": null,\n        \"relationWithSubscriber\": null,\n        \"coverageType\": null,\n        \"payerNphiesId\": null,\n        \"insurancePlan\": {\n            \"payerId\": \"INS-FHIR\",\n            \"expiryDate\": \"2028-09-28\",\n            \"memberCardId\": \"12121212\",\n            \"policyNumber\": \"357159456\",\n            \"isPrimary\": false,\n            \"relationWithSubscriber\": \"other\",\n            \"coverageType\": \"EHCPOL\",\n            \"tpaNphiesId\": null,\n            \"primary\": false\n        }\n    },\n    \"subscriber\": null,\n    \"supportingInfo\": [\n        {\n            \"sequence\": 1,\n            \"reason\": \"998\",\n            \"category\": \"pulse\",\n            \"value\": null,\n            \"attachment\": null,\n            \"code\": null,\n            \"fromDate\": null,\n            \"toDate\": null,\n            \"attachmentName\": null,\n            \"attachmentType\": null,\n            \"attachmentDate\": null,\n            \"supportingInfoId\": null\n        },\n        {\n            \"sequence\": 2,\n            \"reason\": null,\n            \"category\": \"chief-complaint\",\n            \"value\": \"1\",\n            \"attachment\": null,\n            \"code\": null,\n            \"fromDate\": null,\n            \"toDate\": null,\n            \"attachmentName\": null,\n            \"attachmentType\": null,\n            \"attachmentDate\": null,\n            \"supportingInfoId\": null\n        },\n        {\n            \"sequence\": 3,\n            \"reason\": null,\n            \"category\": \"investigation-result\",\n            \"value\": null,\n            \"attachment\": null,\n            \"code\": \"NA\",\n            \"fromDate\": null,\n            \"toDate\": null,\n            \"attachmentName\": null,\n            \"attachmentType\": null,\n            \"attachmentDate\": \"2026-02-25T00:00:00.000+0300\",\n            \"supportingInfoId\": null\n        },\n        {\n            \"sequence\": 4,\n            \"reason\": null,\n            \"category\": \"treatment-plan\",\n            \"value\": \"1\",\n            \"attachment\": null,\n            \"code\": null,\n            \"fromDate\": null,\n            \"toDate\": null,\n            \"attachmentName\": null,\n            \"attachmentType\": null,\n            \"attachmentDate\": null,\n            \"supportingInfoId\": null\n        },\n        {\n            \"sequence\": 5,\n            \"reason\": null,\n            \"category\": \"patient-history\",\n            \"value\": \"1\",\n            \"attachment\": null,\n            \"code\": null,\n            \"fromDate\": null,\n            \"toDate\": null,\n            \"attachmentName\": null,\n            \"attachmentType\": null,\n            \"attachmentDate\": null,\n            \"supportingInfoId\": null\n        },\n        {\n            \"sequence\": 6,\n            \"reason\": null,\n            \"category\": \"physical-examination\",\n            \"value\": \"1\",\n            \"attachment\": null,\n            \"code\": null,\n            \"fromDate\": null,\n            \"toDate\": null,\n            \"attachmentName\": null,\n            \"attachmentType\": null,\n            \"attachmentDate\": null,\n            \"supportingInfoId\": null\n        },\n        {\n            \"sequence\": 7,\n            \"reason\": null,\n            \"category\": \"history-of-present-illness\",\n            \"value\": \"1\",\n            \"attachment\": null,\n            \"code\": null,\n            \"fromDate\": null,\n            \"toDate\": null,\n            \"attachmentName\": null,\n            \"attachmentType\": null,\n            \"attachmentDate\": null,\n            \"supportingInfoId\": null\n        },\n        {\n            \"sequence\": 8,\n            \"reason\": \"999\",\n            \"category\": \"vital-sign-diastolic\",\n            \"value\": null,\n            \"attachment\": null,\n            \"code\": null,\n            \"fromDate\": null,\n            \"toDate\": null,\n            \"attachmentName\": null,\n            \"attachmentType\": null,\n            \"attachmentDate\": null,\n            \"supportingInfoId\": null\n        },\n        {\n            \"sequence\": 9,\n            \"reason\": \"999.9\",\n            \"category\": \"vital-sign-height\",\n            \"value\": null,\n            \"attachment\": null,\n            \"code\": null,\n            \"fromDate\": null,\n            \"toDate\": null,\n            \"attachmentName\": null,\n            \"attachmentType\": null,\n            \"attachmentDate\": null,\n            \"supportingInfoId\": null\n        },\n        {\n            \"sequence\": 10,\n            \"reason\": \"999\",\n            \"category\": \"vital-sign-systolic\",\n            \"value\": null,\n            \"attachment\": null,\n            \"code\": null,\n            \"fromDate\": null,\n            \"toDate\": null,\n            \"attachmentName\": null,\n            \"attachmentType\": null,\n            \"attachmentDate\": null,\n            \"supportingInfoId\": null\n        },\n        {\n            \"sequence\": 11,\n            \"reason\": \"999.9\",\n            \"category\": \"vital-sign-weight\",\n            \"value\": null,\n            \"attachment\": null,\n            \"code\": null,\n            \"fromDate\": null,\n            \"toDate\": null,\n            \"attachmentName\": null,\n            \"attachmentType\": null,\n            \"attachmentDate\": null,\n            \"supportingInfoId\": null\n        },\n        {\n            \"sequence\": 12,\n            \"reason\": \"88\",\n            \"category\": \"temperature\",\n            \"value\": null,\n            \"attachment\": null,\n            \"code\": null,\n            \"fromDate\": null,\n            \"toDate\": null,\n            \"attachmentName\": null,\n            \"attachmentType\": null,\n            \"attachmentDate\": null,\n            \"supportingInfoId\": null\n        },\n        {\n            \"sequence\": 13,\n            \"reason\": \"88\",\n            \"category\": \"respiratory-rate\",\n            \"value\": null,\n            \"attachment\": null,\n            \"code\": null,\n            \"fromDate\": null,\n            \"toDate\": null,\n            \"attachmentName\": null,\n            \"attachmentType\": null,\n            \"attachmentDate\": null,\n            \"supportingInfoId\": null\n        },\n        {\n            \"sequence\": 14,\n            \"reason\": \"999\",\n            \"category\": \"oxygen-saturation\",\n            \"value\": null,\n            \"attachment\": null,\n            \"code\": null,\n            \"fromDate\": null,\n            \"toDate\": null,\n            \"attachmentName\": null,\n            \"attachmentType\": null,\n            \"attachmentDate\": null,\n            \"supportingInfoId\": null\n        }\n    ],\n    \"diagnosis\": [\n        {\n            \"sequence\": 1,\n            \"diagnosisCode\": \"A00.0\",\n            \"diagnosisDescription\": \"Cholera dt 01 biovar cholerae\",\n            \"type\": \"principal\",\n            \"onAdmission\": null,\n            \"diagnosisId\": null\n        }\n    ],\n    \"careTeam\": [\n        {\n            \"sequence\": 1,\n            \"practitionerName\": \"ZAIN ALABEDEEN JAMJOOM\",\n            \"physicianCode\": \"1005\",\n            \"practitionerRole\": \"pharmacist\",\n            \"careTeamRole\": \"primary\",\n            \"speciality\": \"Neonatology\",\n            \"specialityCode\": \"14.18\",\n            \"qualificationCode\": \"14.18\",\n            \"careTeamId\": null\n        }\n    ],\n    \"items\": [\n        {\n            \"sequence\": 1,\n            \"type\": \"services\",\n            \"itemCode\": \"83600-00-71\",\n            \"itemDescription\": \"Repeat consult Specialist -2\",\n            \"nonStandardCode\": null,\n            \"isPackage\": false,\n            \"quantity\": 1,\n            \"quantityCode\": null,\n            \"unitPrice\": 120,\n            \"discount\": 0,\n            \"factor\": 1,\n            \"tax\": 0,\n            \"taxPercent\": 0,\n            \"patientShare\": 0,\n            \"patientSharePercent\": 0,\n            \"payerShare\": 0,\n            \"net\": 120,\n            \"startDate\": \"2026-02-25T00:00:00.000+0300\",\n            \"endDate\": \"2026-02-25T00:00:00.000+0300\",\n            \"supportingInfoSequence\": [],\n            \"diagnosisSequence\": [],\n            \"careTeamSequence\": [\n                1\n            ],\n            \"itemDecision\": null,\n            \"bodySite\": null,\n            \"subSite\": null,\n            \"itemDetails\": [],\n            \"nonStandardDesc\": null,\n            \"itemId\": 2735,\n            \"invoiceNo\": null,\n            \"reasonCodes\": \"\"\n        },\n        {\n            \"sequence\": 2,\n            \"type\": \"services\",\n            \"itemCode\": \"83600-02-50\",\n            \"itemDescription\": \"Surgery assistance fee gp\",\n            \"nonStandardCode\": null,\n            \"isPackage\": false,\n            \"quantity\": 1,\n            \"quantityCode\": null,\n            \"unitPrice\": 150,\n            \"discount\": 0,\n            \"factor\": 1,\n            \"tax\": 0,\n            \"taxPercent\": 0,\n            \"patientShare\": 0,\n            \"patientSharePercent\": 0,\n            \"payerShare\": 0,\n            \"net\": 150,\n            \"startDate\": \"2026-02-25T00:00:00.000+0300\",\n            \"endDate\": \"2026-02-25T00:00:00.000+0300\",\n            \"supportingInfoSequence\": [],\n            \"diagnosisSequence\": [],\n            \"careTeamSequence\": [\n                1\n            ],\n            \"itemDecision\": null,\n            \"bodySite\": null,\n            \"subSite\": null,\n            \"itemDetails\": [],\n            \"nonStandardDesc\": null,\n            \"itemId\": 2736,\n            \"invoiceNo\": null,\n            \"reasonCodes\": \"\"\n        }\n    ],\n    \"accident\": null,\n    \"visionPrescription\": null,\n    \"processNotes\": null,\n    \"responseDecision\": {\n        \"responseDecisionId\": 2000,\n        \"status\": \"pended\",\n        \"claimResDecisionCategories\": []\n    },\n    \"claimEncounter\": null,\n    \"preAuthRefNo\": null,\n    \"preAuthDetails\": null,\n    \"providertransactionlogId\": 11197,\n    \"transactionLogDate\": \"2026-02-25T11:30:52.100+0300\",\n    \"claimRefNo\": \"12158378-9fd0-41df-8587-adfc9a488222\",\n    \"claimReuseId\": null,\n    \"claimReuseRelation\": null,\n    \"transfer\": false,\n    \"isNewBorn\": false,\n    \"requestBundleId\": \"00000000-0000-0902-0000-019c93ec226a\",\n    \"responseBundleId\": \"05c965b0-891a-4c51-90da-6b3d5e94f4b4\",\n    \"cancelStatus\": null,\n    \"cancelResponseReason\": null,\n    \"cancelErrors\": null,\n    \"inquiryStatus\": null,\n    \"inquiryError\": null,\n    \"transferAuthNumber\": null,\n    \"transferAuthStartDate\": null,\n    \"transferAuthEndDate\": null,\n    \"transferAuthProvider\": null,\n    \"reIssueReason\": null,\n    \"tpaName\": null,\n    \"communicationResponseModel\": {\n        \"communicationList\": []\n    }\n}"
+            }
+          ]
+        },
+        {
+          "name": "3.2 - Pre Authorization Communication",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"claimResponseId\": 2141,\r\n    \"payloads\": [\r\n        {\r\n            \"attachmentName\": \"\",\r\n            \"attachmentType\": \"\",\r\n            \"claimItemId\": 1,\r\n            \"createdDate\": \"\",\r\n            \"payloadAttachment\": \"\",\r\n            \"payloadValue\": \"test\"\r\n        }\r\n    ]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://api.{{baseUrl}}/poll-management/providers/{{providerID}}/communication",
+              "protocol": "https",
+              "host": [
+                "api",
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "poll-management",
+                "providers",
+                "{{providerID}}",
+                "communication"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "3.3 - Pre Authorization Cancel",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n\t\"approvalRequestId\": \"2623\",\r\n\t\"cancelReason\": \"NP\"\r\n}\r\n\r\n\r\n/*\r\nCandel Reasons \r\nNP : Service Not Performed\r\nWI : Wrong Information\r\nTAS : Trasaction Already Submitted\r\n*/",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://api.{{baseUrl}}/approvals/providers/{{providerID}}/approval/cancel/request",
+              "protocol": "https",
+              "host": [
+                "api",
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "approvals",
+                "providers",
+                "{{providerID}}",
+                "approval",
+                "cancel",
+                "request"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "3.3 - Pre Authorization Cancel Example",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n\t\"approvalRequestId\": \"2623\",\r\n\t\"cancelReason\": \"NP\"\r\n}\r\n\r\n\r\n/*\r\nCandel Reasons \r\nNP : Service Not Performed\r\nWI : Wrong Information\r\nTAS : Trasaction Already Submitted\r\n*/",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "https://api.{{baseUrl}}/approvals/providers/{{providerID}}/approval/cancel/request",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "approvals",
+                    "providers",
+                    "{{providerID}}",
+                    "approval",
+                    "cancel",
+                    "request"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "Date",
+                  "value": "Sun, 01 Mar 2026 10:56:11 GMT"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "Transfer-Encoding",
+                  "value": "chunked"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "X-Content-Type-Options",
+                  "value": "nosniff"
+                },
+                {
+                  "key": "X-XSS-Protection",
+                  "value": "1; mode=block"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-cache, no-store, max-age=0, must-revalidate"
+                },
+                {
+                  "key": "Pragma",
+                  "value": "no-cache"
+                },
+                {
+                  "key": "Expires",
+                  "value": "0"
+                },
+                {
+                  "key": "Strict-Transport-Security",
+                  "value": "max-age=31536000 ; includeSubDomains"
+                },
+                {
+                  "key": "X-Frame-Options",
+                  "value": "DENY"
+                },
+                {
+                  "key": "Server",
+                  "value": "elb"
+                },
+                {
+                  "key": "Content-Encoding",
+                  "value": "br"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"transactionId\": 11548,\n    \"status\": \"OK\",\n    \"message\": \"Outcome for cancel request : cancelled.\",\n    \"errors\": [],\n    \"outgoingTransactionId\": \"11881\",\n    \"preAuthRefNo\": null,\n    \"outcome\": \"cancelled\",\n    \"disposition\": null,\n    \"transactionLogDate\": \"2026-03-01T13:56:11.424+03:00\",\n    \"claimProvidervNo\": null,\n    \"providerId\": null,\n    \"approvalRequestId\": null,\n    \"patientFileNumber\": null,\n    \"approvalResponseId\": null,\n    \"statusReason\": \"\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 Claims",
+      "item": [
+        {
+          "name": "4.0 - Check Name",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://{{baseUrl}}/api/upload-v2/providers/{{providerID}}/claims/check/extractionName?extractionName={{name}}",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "upload-v2",
+                "providers",
+                "{{providerID}}",
+                "claims",
+                "check",
+                "extractionName"
+              ],
+              "query": [
+                {
+                  "key": "extractionName",
+                  "value": "{{name}}"
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "4.0 - Check Name Example",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "https://{{baseUrl}}/api/upload-v2/providers/{{providerID}}/claims/check/extractionName?extractionName={{name}}",
+                  "protocol": "https",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "upload-v2",
+                    "providers",
+                    "{{providerID}}",
+                    "claims",
+                    "check",
+                    "extractionName"
+                  ],
+                  "query": [
+                    {
+                      "key": "extractionName",
+                      "value": "{{name}}"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Date",
+                  "value": "Thu, 26 Feb 2026 11:25:14 GMT"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "description": "",
+                  "type": "text"
+                },
+                {
+                  "key": "Transfer-Encoding",
+                  "value": "chunked"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "Expires",
+                  "value": "0"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-cache, no-store, max-age=0, must-revalidate"
+                },
+                {
+                  "key": "X-XSS-Protection",
+                  "value": "1; mode=block"
+                },
+                {
+                  "key": "Pragma",
+                  "value": "no-cache"
+                },
+                {
+                  "key": "X-Frame-Options",
+                  "value": "DENY"
+                },
+                {
+                  "key": "X-Content-Type-Options",
+                  "value": "nosniff"
+                },
+                {
+                  "key": "Strict-Transport-Security",
+                  "value": "max-age=31536000 ; includeSubDomains"
+                },
+                {
+                  "key": "Server",
+                  "value": "elb"
+                },
+                {
+                  "key": "Content-Encoding",
+                  "value": "br"
+                }
+              ],
+              "cookie": [],
+              "body": "[\n    563\n]"
+            }
+          ]
+        },
+        {
+          "name": "4.1 - Claims Upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"uploadName\": \"ClaimTest27\",\n    \"uploadId\": 563,\n    \"claimRequestModels\": [\n        {\n            \"preAuthorizationInfo\": {\n                \"dateOrdered\": \"2026-01-10T00:00:00.000Z\",\n                \"type\": \"professional\",\n                \"subType\": \"op\",\n                \"payeeId\": \"{{nphiesID}}\",\n                \"payeeType\": \"provider\",\n                \"eligibilityOfflineId\": \" \",\n                \"eligibilityOfflineDate\": \"null\",\n                \"eligibilityResponseId\": \" \",\n                \"billableStart\": \"\",\n                \"billableEnd\": \"\",\n                \"preAuthResponseId\": \"84165422\",\n                \"preAuthIdentifierUrl\": \"http://nphies.sa/fhir/ksa/nphies-fs/StructureDefinition/extension-priorauth-response\",\n                \"eligibilityResponseUrl\": \" \",\n                \"preAuthOfflineDate\": \"2023-08-05\",\n                \"episodeId\": \"0010341762\",\n                \"accountingPeriod\": \"2026-01-10T00:00:00.000Z\"\n            },\n            \"diagnosis\": [\n                {\n                    \"sequence\": 1,\n                    \"diagnosisCode\": \"E26.1\",\n                    \"diagnosisDescription\": \"E26.1\",\n                    \"type\": \"principal\",\n                    \"onAdmission\": \" \"\n                },\n                {\n                    \"sequence\": 2,\n                    \"diagnosisCode\": \"I10\",\n                    \"diagnosisDescription\": \"I10\",\n                    \"type\": \"secondary\",\n                    \"onAdmission\": \" \"\n                },\n                {\n                    \"sequence\": 3,\n                    \"diagnosisCode\": \"R06.0\",\n                    \"diagnosisDescription\": \"R06.0\",\n                    \"type\": \"secondary\",\n                    \"onAdmission\": \" \"\n                },\n                {\n                    \"sequence\": 4,\n                    \"diagnosisCode\": \"R07.4\",\n                    \"diagnosisDescription\": \"R07.4\",\n                    \"type\": \"secondary\",\n                    \"onAdmission\": \" \"\n                }\n            ],\n            \"supportingInfo\": [\n                {\n                    \"sequence\": 1,\n                    \"category\": \"pulse\",\n                    \"code\": \"\",\n                    \"fromDate\": \"\",\n                    \"toDate\": \"\",\n                    \"value\": \"\",\n                    \"reason\": \"998\",\n                    \"attachment\": \"\",\n                    \"attachmentName\": \"\",\n                    \"attachmentType\": \"\",\n                    \"unit\": \"\",\n                    \"attachmentDate\": \"\"\n                },\n                {\n                    \"sequence\": 2,\n                    \"category\": \"chief-complaint\",\n                    \"code\": \"\",\n                    \"fromDate\": \"\",\n                    \"toDate\": \"\",\n                    \"value\": \"1\",\n                    \"reason\": \"\",\n                    \"attachment\": \"\",\n                    \"attachmentName\": \"\",\n                    \"attachmentType\": \"\",\n                    \"unit\": \"\",\n                    \"attachmentDate\": \"\"\n                },\n                {\n                    \"sequence\": 3,\n                    \"category\": \"investigation-result\",\n                    \"code\": \"NA\",\n                    \"fromDate\": \"\",\n                    \"toDate\": \"\",\n                    \"value\": \"\",\n                    \"reason\": \"\",\n                    \"attachment\": null,\n                    \"attachmentName\": \"\",\n                    \"attachmentType\": \"\",\n                    \"unit\": \"\",\n                    \"attachmentDate\": \"\"\n                },\n                {\n                    \"sequence\": 4,\n                    \"category\": \"treatment-plan\",\n                    \"code\": \"\",\n                    \"fromDate\": \"\",\n                    \"toDate\": \"\",\n                    \"value\": \"1\",\n                    \"reason\": \"\",\n                    \"attachment\": \"\",\n                    \"attachmentName\": \"\",\n                    \"attachmentType\": \"\",\n                    \"unit\": \"\",\n                    \"attachmentDate\": \"\"\n                },\n                {\n                    \"sequence\": 5,\n                    \"category\": \"patient-history\",\n                    \"code\": \"\",\n                    \"fromDate\": \"\",\n                    \"toDate\": \"\",\n                    \"value\": \"1\",\n                    \"reason\": \"\",\n                    \"attachment\": \"\",\n                    \"attachmentName\": \"\",\n                    \"attachmentType\": \"\",\n                    \"unit\": \"\",\n                    \"attachmentDate\": \"\"\n                },\n                {\n                    \"sequence\": 6,\n                    \"category\": \"physical-examination\",\n                    \"code\": \"\",\n                    \"fromDate\": \"\",\n                    \"toDate\": \"\",\n                    \"value\": \"1\",\n                    \"reason\": \"\",\n                    \"attachment\": \"\",\n                    \"attachmentName\": \"\",\n                    \"attachmentType\": \"\",\n                    \"unit\": \"\",\n                    \"attachmentDate\": \"\"\n                },\n                {\n                    \"sequence\": 7,\n                    \"category\": \"history-of-present-illness\",\n                    \"code\": \"\",\n                    \"fromDate\": \"\",\n                    \"toDate\": \"\",\n                    \"value\": \"1\",\n                    \"reason\": \"\",\n                    \"attachment\": \"\",\n                    \"attachmentName\": \"\",\n                    \"attachmentType\": \"\",\n                    \"unit\": \"\",\n                    \"attachmentDate\": \"\"\n                },\n                {\n                    \"sequence\": 8,\n                    \"category\": \"vital-sign-diastolic\",\n                    \"code\": \"\",\n                    \"fromDate\": \"\",\n                    \"toDate\": \"\",\n                    \"value\": \"\",\n                    \"reason\": \"999\",\n                    \"attachment\": \"\",\n                    \"attachmentName\": \"\",\n                    \"attachmentType\": \"\",\n                    \"unit\": \"\",\n                    \"attachmentDate\": \"\"\n                },\n                {\n                    \"sequence\": 9,\n                    \"category\": \"vital-sign-height\",\n                    \"code\": \"\",\n                    \"fromDate\": \"\",\n                    \"toDate\": \"\",\n                    \"value\": \"\",\n                    \"reason\": \"999.9\",\n                    \"attachment\": \"\",\n                    \"attachmentName\": \"\",\n                    \"attachmentType\": \"\",\n                    \"unit\": \"\",\n                    \"attachmentDate\": \"\"\n                },\n                {\n                    \"sequence\": 10,\n                    \"category\": \"vital-sign-systolic\",\n                    \"code\": \"\",\n                    \"fromDate\": \"\",\n                    \"toDate\": \"\",\n                    \"value\": \"\",\n                    \"reason\": \"999\",\n                    \"attachment\": \"\",\n                    \"attachmentName\": \"\",\n                    \"attachmentType\": \"\",\n                    \"unit\": \"\",\n                    \"attachmentDate\": \"\"\n                },\n                {\n                    \"sequence\": 11,\n                    \"category\": \"vital-sign-weight\",\n                    \"code\": \"\",\n                    \"fromDate\": \"\",\n                    \"toDate\": \"\",\n                    \"value\": \"\",\n                    \"reason\": \"999.9\",\n                    \"attachment\": \"\",\n                    \"attachmentName\": \"\",\n                    \"attachmentType\": \"\",\n                    \"unit\": \"\",\n                    \"attachmentDate\": \"\"\n                },\n                {\n                    \"sequence\": 12,\n                    \"category\": \"temperature\",\n                    \"code\": \"\",\n                    \"fromDate\": \"\",\n                    \"toDate\": \"\",\n                    \"value\": \"\",\n                    \"reason\": \"88\",\n                    \"attachment\": \"\",\n                    \"attachmentName\": \"\",\n                    \"attachmentType\": \"\",\n                    \"unit\": \"\",\n                    \"attachmentDate\": \"\"\n                },\n                {\n                    \"sequence\": 13,\n                    \"category\": \"respiratory-rate\",\n                    \"code\": \"\",\n                    \"fromDate\": \"\",\n                    \"toDate\": \"\",\n                    \"value\": \"\",\n                    \"reason\": \"88\",\n                    \"attachment\": \"\",\n                    \"attachmentName\": \"\",\n                    \"attachmentType\": \"\",\n                    \"unit\": \"\",\n                    \"attachmentDate\": \"\"\n                },\n                {\n                    \"sequence\": 14,\n                    \"category\": \"oxygen-saturation\",\n                    \"code\": \"\",\n                    \"fromDate\": \"\",\n                    \"toDate\": \"\",\n                    \"value\": \"\",\n                    \"reason\": \"999\",\n                    \"attachment\": \"\",\n                    \"attachmentName\": \"\",\n                    \"attachmentType\": \"\",\n                    \"unit\": \"\",\n                    \"attachmentDate\": \"\"\n                }\n            ],\n            \"accident\": null,\n            \"careTeam\": [\n                {\n                    \"sequence\": 1,\n                    \"practitionerName\": \"ALI DR.MOHAMMAD\",\n                    \"physicianCode\": \"01RM879\",\n                    \"practitionerRole\": \"doctor\",\n                    \"careTeamRole\": \"primary\",\n                    \"specialityCode\": \"08.02\"\n                }\n            ],\n            \"items\": [\n                {\n                    \"sequence\": 1,\n                    \"type\": \"imaging\",\n                    \"itemCode\": \"56407-00-00\",\n                    \"itemDescription\": \"C.T.SCAN OF ABDOMEN,2-RUN W/CONTRAST\",\n                    \"nonStandardCode\": \"412760\",\n                    \"nonStandardDesc\": \"C.T.SCAN OF ABDOMEN,2-RUN W/CONTRAST\",\n                    \"isPackage\": \"false\",\n                    \"quantity\": 1,\n                    \"unitPrice\": 350,\n                    \"discount\": 0,\n                    \"factor\": 1,\n                    \"tax\": 52.5,\n                    \"taxPercent\": null,\n                    \"patientShare\": 0,\n                    \"patientSharePercent\": null,\n                    \"payerShare\": 402.5,\n                    \"net\": 402.5,\n                    \"startDate\": \"2026-01-10T00:00:00.000Z\",\n                    \"supportingInfoSequence\": [\n                        1,\n                        2,\n                        3,\n                        4,\n                        5,\n                        6,\n                        7,\n                        8\n                    ],\n                    \"diagnosisSequence\": [\n                        1,\n                        2,\n                        3,\n                        4\n                    ],\n                    \"careTeamSequence\": [\n                        1\n                    ],\n                    \"bodySite\": \" \",\n                    \"subSite\": \" \",\n                    \"itemDetails\": [],\n                    \"invoiceNo\": \"0091120022\",\n                    \"quantityCode\": \" \",\n                    \"endDate\": \"2026-01-10T00:00:00.000Z\",\n                    \"prescribedDrugCode\": \" \",\n                    \"drugSelectionReason\": \" \"\n                },\n                {\n                    \"sequence\": 2,\n                    \"type\": \"imaging\",\n                    \"itemCode\": \"90908-00-00\",\n                    \"itemDescription\": \"ECHO DOPPLER CARDIOGRAPHY / ADULT\",\n                    \"nonStandardCode\": \"140040\",\n                    \"nonStandardDesc\": \"ECHO DOPPLER CARDIOGRAPHY / ADULT\",\n                    \"isPackage\": \"false\",\n                    \"quantity\": 1,\n                    \"unitPrice\": 800,\n                    \"discount\": 320,\n                    \"factor\": 0.6,\n                    \"tax\": 72,\n                    \"taxPercent\": null,\n                    \"patientShare\": 0,\n                    \"patientSharePercent\": null,\n                    \"payerShare\": 552,\n                    \"net\": 552,\n                    \"startDate\": \"2026-01-10T00:00:00.000Z\",\n                    \"supportingInfoSequence\": [\n                        1,\n                        2,\n                        3,\n                        4,\n                        5,\n                        6,\n                        7,\n                        8\n                    ],\n                    \"diagnosisSequence\": [\n                        1,\n                        2,\n                        3,\n                        4\n                    ],\n                    \"careTeamSequence\": [\n                        1\n                    ],\n                    \"bodySite\": \" \",\n                    \"subSite\": \" \",\n                    \"itemDetails\": [],\n                    \"invoiceNo\": \"0091120023\",\n                    \"quantityCode\": \" \",\n                    \"endDate\": \"2026-01-10T00:00:00.000Z\",\n                    \"prescribedDrugCode\": \" \",\n                    \"drugSelectionReason\": \" \"\n                }\n            ],\n            \"visionPrescription\": null,\n            \"totalNet\": 954.5,\n            \"uploadId\": 563,\n            \"patientFileNumber\": \"0000779104\",\n            \"claimId\": null,\n            \"beneficiary\": {\n                \"firstName\": \"RAHMAOTHMANMOHMEED\",\n                \"secondName\": \" \",\n                \"thirdName\": null,\n                \"familyName\": \"HOSAWI\",\n                \"fullName\": \"HOSAWI RAHMAOTHMANMOHMEED\",\n                \"dob\": \"1959-01-11T00:00:00.000Z\",\n                \"gender\": \"female\",\n                \"nationality\": \" \",\n                \"contactNumber\": \" \",\n                \"email\": \" \",\n                \"emergencyPhoneNumber\": null,\n                \"bloodGroup\": \" \",\n                \"documentType\": \"NI\",\n                \"documentId\": \"1041998269\",\n                \"fileId\": \"0000779104\",\n                \"eHealthId\": \" \",\n                \"residencyType\": \" \",\n                \"maritalStatus\": \"UNK\",\n                \"preferredLanguage\": \" \",\n                \"addressLine\": \" \",\n                \"streetLine\": \" \",\n                \"city\": \" \",\n                \"state\": \" \",\n                \"country\": \" \",\n                \"postalCode\": \" \",\n                \"occupation\": \"Unknown\"\n            },\n            \"provClaimNo\": \"0010341762_20230902_160456\",\n            \"claimEncounter\": {\n                \"status\": \"Finished\",\n                \"encounterClass\": \"AMB\",\n                \"serviceType\": \"\",\n                \"startDate\": \"2026-01-10T00:00:00.000Z\",\n                \"endDate\": \"2026-01-10T00:00:00.000Z\",\n                \"serviceEventType\": \"ICSE\",\n                \"serviceProvider\": {{nphiesID}},\n                \"periodEnd\": null,\n                \"causeOfDeath\": \"\"\n            },\n            \"insurancePlan\": {\n                \"payerId\": \"7001571327\",\n                \"expiryDate\": null,\n                \"memberCardId\": \"33620258\",\n                \"isPrimary\": null,\n                \"relationWithSubscriber\": \"other\",\n                \"coverageType\": \"EHCPOL\",\n                \"policyNumber\": \"501488001\",\n                \"policyHolder\": \"test ASP\"\n            },\n            \"isNewBorn\": \"false\",\n            \"destinationId\": \"7001571327\",\n            \"subscriber\": {\n                \"firstName\": \"RAHMAOTHMANMOHMEED\",\n                \"secondName\": \" \",\n                \"thirdName\": null,\n                \"familyName\": \"HOSAWI\",\n                \"fullName\": \"HOSAWI RAHMAOTHMANMOHMEED\",\n                \"dob\": \"1959-01-11T00:00:00.000Z\",\n                \"gender\": \"female\",\n                \"nationality\": \" \",\n                \"contactNumber\": \" \",\n                \"email\": \" \",\n                \"emergencyPhoneNumber\": null,\n                \"bloodGroup\": \" \",\n                \"documentType\": \"NI\",\n                \"documentId\": \"1041998269\",\n                \"fileId\": \"0000779104\",\n                \"eHealthId\": \" \",\n                \"residencyType\": \" \",\n                \"maritalStatus\": \" \",\n                \"preferredLanguage\": \" \",\n                \"addressLine\": \" \",\n                \"streetLine\": \" \",\n                \"city\": \" \",\n                \"state\": \" \",\n                \"country\": \" \",\n                \"postalCode\": \" \"\n            },\n            \"preAuthRefNo\": [\n                \"84165422\",\n                \"84206924\"\n            ],\n            \"referralName\": null,\n            \"transfer\": null\n        }\n    ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://{{baseUrl}}/api/upload-v2/providers/{{providerID}}/claim/multi-upload-compressed",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "upload-v2",
+                "providers",
+                "{{providerID}}",
+                "claim",
+                "multi-upload-compressed"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "4.1 - Claims Upload Example",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"uploadName\": \"ClaimTest27\",\n    \"uploadId\": 563,\n    \"claimRequestModels\": [\n        {\n            \"preAuthorizationInfo\": {\n                \"dateOrdered\": \"2023-08-05T00:00:00.000Z\",\n                \"type\": \"professional\",\n                \"subType\": \"op\",\n                \"payeeId\": \"{{nphiesID}}\",\n                \"payeeType\": \"provider\",\n                \"eligibilityOfflineId\": \" \",\n                \"eligibilityOfflineDate\": \"null\",\n                \"eligibilityResponseId\": \" \",\n                \"billableStart\": \"1900-01-01T00:00:00.000Z\",\n                \"billableEnd\": \"1900-01-01T00:00:00.000Z\",\n                \"preAuthResponseId\": \"84165422\",\n                \"preAuthIdentifierUrl\": \"http://nphies.sa/fhir/ksa/nphies-fs/StructureDefinition/extension-priorauth-response\",\n                \"eligibilityResponseUrl\": \" \",\n                \"preAuthOfflineDate\": \"2023-08-05\",\n                \"episodeId\": \"0010341762\",\n                \"accountingPeriod\": \"2023-08-05T00:00:00.000Z\"\n            },\n            \"diagnosis\": [\n                {\n                    \"sequence\": 1,\n                    \"diagnosisCode\": \"E26.1\",\n                    \"diagnosisDescription\": \"E26.1\",\n                    \"type\": \"principal\",\n                    \"onAdmission\": \" \"\n                },\n                {\n                    \"sequence\": 2,\n                    \"diagnosisCode\": \"I10\",\n                    \"diagnosisDescription\": \"I10\",\n                    \"type\": \"secondary\",\n                    \"onAdmission\": \" \"\n                },\n                {\n                    \"sequence\": 3,\n                    \"diagnosisCode\": \"R06.0\",\n                    \"diagnosisDescription\": \"R06.0\",\n                    \"type\": \"secondary\",\n                    \"onAdmission\": \" \"\n                },\n                {\n                    \"sequence\": 4,\n                    \"diagnosisCode\": \"R07.4\",\n                    \"diagnosisDescription\": \"R07.4\",\n                    \"type\": \"secondary\",\n                    \"onAdmission\": \" \"\n                }\n            ],\n            \"supportingInfo\": [\n                {\n                    \"sequence\": 1,\n                    \"reason\": \" \",\n                    \"category\": \"vital-sign-systolic\",\n                    \"value\": \"137\",\n                    \"attachment\": \"VABlAHMAdAA=\",\n                    \"code\": \"mm[Hg]\",\n                    \"fromDate\": -2208988800000,\n                    \"toDate\": -2208988800000,\n                    \"attachmentName\": \" \",\n                    \"attachmentType\": \" \"\n                },\n                {\n                    \"sequence\": 2,\n                    \"reason\": \" \",\n                    \"category\": \"vital-sign-weight\",\n                    \"value\": \"68\",\n                    \"attachment\": \"VABlAHMAdAA=\",\n                    \"code\": \"kg\",\n                    \"fromDate\": -2208988800000,\n                    \"toDate\": -2208988800000,\n                    \"attachmentName\": \" \",\n                    \"attachmentType\": \" \"\n                },\n                {\n                    \"sequence\": 3,\n                    \"reason\": \" \",\n                    \"category\": \"vital-sign-height\",\n                    \"value\": \"155\",\n                    \"attachment\": \"VABlAHMAdAA=\",\n                    \"code\": \"cm\",\n                    \"fromDate\": -2208988800000,\n                    \"toDate\": -2208988800000,\n                    \"attachmentName\": \" \",\n                    \"attachmentType\": \" \"\n                },\n                {\n                    \"sequence\": 4,\n                    \"reason\": \" \",\n                    \"category\": \"vital-sign-diastolic\",\n                    \"value\": \"77\",\n                    \"attachment\": \"VABlAHMAdAA=\",\n                    \"code\": \"mm[Hg]\",\n                    \"fromDate\": -2208988800000,\n                    \"toDate\": -2208988800000,\n                    \"attachmentName\": \" \",\n                    \"attachmentType\": \" \"\n                },\n                {\n                    \"sequence\": 5,\n                    \"reason\": \" \",\n                    \"category\": \"chief-complaint\",\n                    \"value\": \" DYSPNEA ON MILD EXERTION, DEVELOPED IN LAST 6 MONTHS,                   HEADACHE,DIZZINESS. SOMETIMES SUBSTERNAL CHEST ON MILD EXERTION,        PALPITATION.PAST HX.CHOLECYSTEVTOMY, HTN FOR 2 YEARS WITHOUT TREATMENT  pt NEED CT SCAN ABDOMEN WITH CONTRAST TO RULE OUT OR IN TUMOR OF        SUPRARENAL GLAND\",\n                    \"attachment\": \"VABlAHMAdAA=\",\n                    \"code\": \"\",\n                    \"fromDate\": -2208988800000,\n                    \"toDate\": -2208988800000,\n                    \"attachmentName\": \" \",\n                    \"attachmentType\": \" \"\n                },\n                {\n                    \"sequence\": 6,\n                    \"reason\": \" \",\n                    \"category\": \"lab-test\",\n                    \"value\": \"TEST_ORDER:1000000247223 TEST_DATE:15.07.2023 TEST_TIME:23:05:02 TEST_NAME:CREATININE ( SERUM ) TEST_NAME: TEST_RESULT:47 TEST_NORMAL:71-133 TEST_UNIT:UMOL/L TEST_NAME:ALANINE AMINO TRANSFERASE ALT TEST_RESULT: TEST_NORMAL: TEST_UNIT: TEST_NAME: TEST_RESULT:25.7 TEST_NORMAL:21-72 TEST_UNIT:U/L TEST_RESULT: TEST_NORMAL: TEST_UNIT: TEST_RESULT:110.8 TEST_NORMAL:70-106 TEST_UNIT:MG/DL TEST_NAME:TRIGLYCERIDES TEST_RESULT: TEST_NORMAL: TEST_UNIT: TEST_NAME: TEST_RESULT:0.82 TEST_NORMAL:1.69-2.25 TEST_UNIT:MMOL/L TEST_NAME:CHOLESTEROL TEST_RESULT: TEST_NORMAL: TEST_UNIT: TEST_NAME: TEST_RESULT:4.48 TEST_NORMAL:0.0-5.2 TEST_UNIT:MMOL/L TEST_NAME:LDL CHOLESTEROL TEST_RESULT: TEST_NORMAL: TEST_UNIT: TEST_NAME: TEST_RESULT:2.07 TEST_NORMAL:0.0-3.38 TEST_UNIT:MMOL/L TEST_NAME:HDL CHOLESTEROL TEST_RESULT: TEST_NORMAL: TEST_UNIT: TEST_NAME: TEST_RESULT:1.90 TEST_NORMAL:0.9-2.6 TEST_UNIT:MMOL/L\",\n                    \"attachment\": \"VABlAHMAdAA=\",\n                    \"code\": \"73050-15-50\",\n                    \"fromDate\": -2208988800000,\n                    \"toDate\": -2208988800000,\n                    \"attachmentName\": \" \",\n                    \"attachmentType\": \" \"\n                },\n                {\n                    \"sequence\": 7,\n                    \"reason\": \" \",\n                    \"category\": \"lab-test\",\n                    \"value\": \"TEST_ORDER:1000000247222 TEST_DATE:15.07.2023 TEST_TIME:23:09:09 TEST_NAME:SERUM ELECTROLYTES (NA,K,CL,HC TEST_NAME:SODIUM TEST_RESULT:137 TEST_NORMAL:137-145 TEST_UNIT:UMOL/L TEST_NAME:POTASSIUM TEST_RESULT:2.76 TEST_NORMAL:3.7-5.2 TEST_UNIT:UMOL/L TEST_NAME:CLORIDE TEST_RESULT:96.4 TEST_NORMAL:98-107 TEST_UNIT:UMOL/L TEST_NAME:URINE CHEML ANALYSIS ( COMPU TEST_RESULT: TEST_NORMAL: TEST_UNIT: TEST_NAME:GLUCOSE TEST_RESULT: TEST_NORMAL:15 mg/dl TEST_UNIT:NO UNIT TEST_NAME:BILIRUBIN TEST_RESULT: TEST_NORMAL:0.2 mg/dl TEST_UNIT:MG/DL TEST_NAME:KETONES TEST_RESULT: TEST_NORMAL:NON TEST_UNIT:MG/DL TEST_NAME:SPECIFIC GRAVITY TEST_RESULT: TEST_NORMAL:1.015-1.025 TEST_UNIT:NO UNITS TEST_NAME:BLOOD TEST_RESULT: TEST_NORMAL:5/ml TEST_UNIT:/UL TEST_NAME:pH TEST_RESULT: TEST_NORMAL:4.8-7.4 TEST_UNIT:NO UNITS TEST_NAME:PROTEIN TEST_RESULT: TEST_NORMAL:10 mg/dl TEST_UNIT:MG/DL TEST_NAME:UROBILINOGEN TEST_RESULT: TEST_NORMAL:1 mg/dl TEST_UNIT:NO UNIT TEST_NAME:NITRITE TEST_RESULT: TEST_NORMAL:Not de\",\n                    \"attachment\": \"VABlAHMAdAA=\",\n                    \"code\": \"73050-29-00\",\n                    \"fromDate\": -2208988800000,\n                    \"toDate\": -2208988800000,\n                    \"attachmentName\": \" \",\n                    \"attachmentType\": \" \"\n                }\n            ],\n            \"accident\": null,\n            \"careTeam\": [\n                {\n                    \"sequence\": 1,\n                    \"practitionerName\": \"ALI DR.MOHAMMAD\",\n                    \"physicianCode\": \"01RM879\",\n                    \"practitionerRole\": \"doctor\",\n                    \"careTeamRole\": \"primary\",\n                    \"specialityCode\": \"08.02\"\n                }\n            ],\n            \"items\": [\n                {\n                    \"sequence\": 1,\n                    \"type\": \"imaging\",\n                    \"itemCode\": \"56407-00-00\",\n                    \"itemDescription\": \"C.T.SCAN OF ABDOMEN,2-RUN W/CONTRAST\",\n                    \"nonStandardCode\": \"412760\",\n                    \"nonStandardDesc\": \"C.T.SCAN OF ABDOMEN,2-RUN W/CONTRAST\",\n                    \"isPackage\": \"false\",\n                    \"quantity\": 1,\n                    \"unitPrice\": 350,\n                    \"discount\": 0,\n                    \"factor\": 1,\n                    \"tax\": 52.5,\n                    \"taxPercent\": null,\n                    \"patientShare\": 0,\n                    \"patientSharePercent\": null,\n                    \"payerShare\": 350,\n                    \"net\": 402.5,\n                    \"startDate\": \"2023-08-05T00:00:00.000Z\",\n                    \"supportingInfoSequence\": [\n                        1,\n                        2,\n                        3,\n                        4,\n                        5,\n                        6,\n                        7,\n                        8\n                    ],\n                    \"diagnosisSequence\": [\n                        1,\n                        2,\n                        3,\n                        4\n                    ],\n                    \"careTeamSequence\": [\n                        1\n                    ],\n                    \"bodySite\": \" \",\n                    \"subSite\": \" \",\n                    \"itemDetails\": [],\n                    \"invoiceNo\": \"0091120022\",\n                    \"quantityCode\": \" \",\n                    \"endDate\": \"2023-08-05T00:00:00.000Z\",\n                    \"prescribedDrugCode\": \" \",\n                    \"drugSelectionReason\": \" \"\n                },\n                {\n                    \"sequence\": 2,\n                    \"type\": \"imaging\",\n                    \"itemCode\": \"90908-00-00\",\n                    \"itemDescription\": \"ECHO DOPPLER CARDIOGRAPHY / ADULT\",\n                    \"nonStandardCode\": \"140040\",\n                    \"nonStandardDesc\": \"ECHO DOPPLER CARDIOGRAPHY / ADULT\",\n                    \"isPackage\": \"false\",\n                    \"quantity\": 1,\n                    \"unitPrice\": 800,\n                    \"discount\": 320,\n                    \"factor\": 0.6,\n                    \"tax\": 72,\n                    \"taxPercent\": null,\n                    \"patientShare\": 0,\n                    \"patientSharePercent\": null,\n                    \"payerShare\": 480,\n                    \"net\": 552,\n                    \"startDate\": \"2023-08-05T00:00:00.000Z\",\n                    \"supportingInfoSequence\": [\n                        1,\n                        2,\n                        3,\n                        4,\n                        5,\n                        6,\n                        7,\n                        8\n                    ],\n                    \"diagnosisSequence\": [\n                        1,\n                        2,\n                        3,\n                        4\n                    ],\n                    \"careTeamSequence\": [\n                        1\n                    ],\n                    \"bodySite\": \" \",\n                    \"subSite\": \" \",\n                    \"itemDetails\": [],\n                    \"invoiceNo\": \"0091120023\",\n                    \"quantityCode\": \" \",\n                    \"endDate\": \"2023-08-05T00:00:00.000Z\",\n                    \"prescribedDrugCode\": \" \",\n                    \"drugSelectionReason\": \" \"\n                }\n            ],\n            \"visionPrescription\": null,\n            \"totalNet\": 954.5,\n            \"uploadId\": 563,\n            \"patientFileNumber\": \"0000779104\",\n            \"claimId\": null,\n            \"beneficiary\": {\n                \"firstName\": \"RAHMAOTHMANMOHMEED\",\n                \"secondName\": \" \",\n                \"thirdName\": null,\n                \"familyName\": \"HOSAWI\",\n                \"fullName\": \"HOSAWI RAHMAOTHMANMOHMEED\",\n                \"dob\": \"1959-01-11T00:00:00.000Z\",\n                \"gender\": \"female\",\n                \"nationality\": \" \",\n                \"contactNumber\": \" \",\n                \"email\": \" \",\n                \"emergencyPhoneNumber\": null,\n                \"bloodGroup\": \" \",\n                \"documentType\": \"NI\",\n                \"documentId\": \"1041998269\",\n                \"fileId\": \"0000779104\",\n                \"eHealthId\": \" \",\n                \"residencyType\": \" \",\n                \"maritalStatus\": \"UNK\",\n                \"preferredLanguage\": \" \",\n                \"addressLine\": \" \",\n                \"streetLine\": \" \",\n                \"city\": \" \",\n                \"state\": \" \",\n                \"country\": \" \",\n                \"postalCode\": \" \",\n                \"occupation\": \"Unknown\"\n            },\n            \"provClaimNo\": \"0010341762_20230902_160456\",\n            \"claimEncounter\": null,\n            \"insurancePlan\": {\n                \"payerId\": \"7001571327\",\n                \"expiryDate\": null,\n                \"memberCardId\": \"33620258\",\n                \"isPrimary\": null,\n                \"relationWithSubscriber\": \"other\",\n                \"coverageType\": \"EHCPOL\",\n                \"policyNumber\": \"501488001\",\n                \"policyHolder\":\"test ASP\"\n            },\n            \"isNewBorn\": \"false\",\n            \"destinationId\": \"7001571327\",\n            \"subscriber\": {\n                \"firstName\": \"RAHMAOTHMANMOHMEED\",\n                \"secondName\": \" \",\n                \"thirdName\": null,\n                \"familyName\": \"HOSAWI\",\n                \"fullName\": \"HOSAWI RAHMAOTHMANMOHMEED\",\n                \"dob\": \"1959-01-11T00:00:00.000Z\",\n                \"gender\": \"female\",\n                \"nationality\": \" \",\n                \"contactNumber\": \" \",\n                \"email\": \" \",\n                \"emergencyPhoneNumber\": null,\n                \"bloodGroup\": \" \",\n                \"documentType\": \"NI\",\n                \"documentId\": \"1041998269\",\n                \"fileId\": \"0000779104\",\n                \"eHealthId\": \" \",\n                \"residencyType\": \" \",\n                \"maritalStatus\": \" \",\n                \"preferredLanguage\": \" \",\n                \"addressLine\": \" \",\n                \"streetLine\": \" \",\n                \"city\": \" \",\n                \"state\": \" \",\n                \"country\": \" \",\n                \"postalCode\": \" \"\n            },\n            \"preAuthRefNo\": [\n                \"84165422\",\n                \"84206924\"\n            ],\n            \"referralName\": null,\n            \"transfer\": null\n        }\n    ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "https://{{baseUrl}}/api/upload-v2/providers/{{providerID}}/claim/multi-upload-compressed",
+                  "protocol": "https",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "upload-v2",
+                    "providers",
+                    "{{providerID}}",
+                    "claim",
+                    "multi-upload-compressed"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Date",
+                  "value": "Thu, 26 Feb 2026 11:33:37 GMT"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "description": "",
+                  "type": "text"
+                },
+                {
+                  "key": "Transfer-Encoding",
+                  "value": "chunked"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "Expires",
+                  "value": "0"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-cache, no-store, max-age=0, must-revalidate"
+                },
+                {
+                  "key": "X-XSS-Protection",
+                  "value": "1; mode=block"
+                },
+                {
+                  "key": "Pragma",
+                  "value": "no-cache"
+                },
+                {
+                  "key": "X-Frame-Options",
+                  "value": "DENY"
+                },
+                {
+                  "key": "X-Content-Type-Options",
+                  "value": "nosniff"
+                },
+                {
+                  "key": "Strict-Transport-Security",
+                  "value": "max-age=31536000 ; includeSubDomains"
+                },
+                {
+                  "key": "Server",
+                  "value": "elb"
+                },
+                {
+                  "key": "Content-Encoding",
+                  "value": "br"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"transcationLogId\": null,\n    \"message\": null,\n    \"uploadId\": 563,\n    \"providerId\": 706,\n    \"uploadName\": \"ClaimTest27\",\n    \"uploadDate\": \"2026-02-26T14:25:14.215+03:00\",\n    \"noOfNotUploadedClaims\": 0,\n    \"noOfUploadedClaims\": 5,\n    \"totalAmtOfUploadedClaims\": 3818,\n    \"noOfAcceptedClaims\": 0,\n    \"totalAmtOfAcceptedClaims\": 0,\n    \"noOfNotAcceptedClaims\": 5,\n    \"totalAmtOfNotAcceptedClaims\": 3818,\n    \"lastModifiedDate\": \"2026-02-26T14:33:37.172+03:00\",\n    \"ratioOfAccepted\": 0,\n    \"ratioOfNotAccepted\": 100\n}"
+            }
+          ]
+        },
+        {
+          "name": "4.2 - Upload Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://{{baseUrl}}/api/upload-v2/providers/{{providerID}}/claim/{{uploadID}}",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "upload-v2",
+                "providers",
+                "{{providerID}}",
+                "claim",
+                "{{uploadID}}"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "4.2 - Upload Summary Example",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "https://{{baseUrl}}/api/upload-v2/providers/{{providerID}}/claim/{{uploadID}}",
+                  "protocol": "https",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "upload-v2",
+                    "providers",
+                    "{{providerID}}",
+                    "claim",
+                    "{{uploadID}}"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Date",
+                  "value": "Thu, 26 Feb 2026 11:35:04 GMT"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json",
+                  "description": "",
+                  "type": "text"
+                },
+                {
+                  "key": "Transfer-Encoding",
+                  "value": "chunked"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Origin"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Method"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Access-Control-Request-Headers"
+                },
+                {
+                  "key": "Expires",
+                  "value": "0"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-cache, no-store, max-age=0, must-revalidate"
+                },
+                {
+                  "key": "X-XSS-Protection",
+                  "value": "1; mode=block"
+                },
+                {
+                  "key": "Pragma",
+                  "value": "no-cache"
+                },
+                {
+                  "key": "X-Frame-Options",
+                  "value": "DENY"
+                },
+                {
+                  "key": "X-Content-Type-Options",
+                  "value": "nosniff"
+                },
+                {
+                  "key": "Strict-Transport-Security",
+                  "value": "max-age=31536000 ; includeSubDomains"
+                },
+                {
+                  "key": "Server",
+                  "value": "elb"
+                },
+                {
+                  "key": "Content-Encoding",
+                  "value": "br"
+                }
+              ],
+              "cookie": [
+                {
+                  "expires": "Invalid Date",
+                  "domain": "",
+                  "path": ""
+                }
+              ],
+              "body": "{\n    \"transcationLogId\": null,\n    \"message\": null,\n    \"uploadId\": 563,\n    \"providerId\": 706,\n    \"uploadName\": \"ClaimTest27\",\n    \"uploadDate\": \"2026-02-26T14:25:14.215+03:00\",\n    \"noOfNotUploadedClaims\": 0,\n    \"noOfUploadedClaims\": 5,\n    \"totalAmtOfUploadedClaims\": 3818,\n    \"noOfAcceptedClaims\": 0,\n    \"totalAmtOfAcceptedClaims\": 0,\n    \"noOfNotAcceptedClaims\": 5,\n    \"totalAmtOfNotAcceptedClaims\": 3818,\n    \"lastModifiedDate\": \"2026-02-26T00:00:00.000+03:00\",\n    \"ratioOfAccepted\": 0,\n    \"ratioOfNotAccepted\": 100\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          "pm.globals.set(\"currentDate\", new Date().toISOString().slice(0, 10));"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ]
+}
