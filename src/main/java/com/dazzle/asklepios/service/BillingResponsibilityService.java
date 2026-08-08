@@ -163,6 +163,17 @@ public class BillingResponsibilityService {
             return;
         }
 
+        if (item.getPreAuthorizationStatus() == PreAuthorizationStatus.REJECTED) {
+            applyCashResponsibility(
+                    context,
+                    item,
+                    chargeLine,
+                    netAmount
+            );
+
+            return;
+        }
+
         PatientInsurance insurance =
                 loadAndValidateInsurance(item);
 
