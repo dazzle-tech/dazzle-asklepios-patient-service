@@ -10,6 +10,7 @@ import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiFetchPatientResponse
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiInquiryResponse;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiInsurancePlan;
 import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiMappedPatientResponse;
+import com.dazzle.asklepios.integration.waseel.dto.cchi.CchiPatientDocumentOption;
 import com.dazzle.asklepios.integration.waseel.service.mapper.CchiBeneficiaryAddressMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.CchiBeneficiaryPatientDocumentMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.CchiBeneficiaryPatientInsuranceMapper;
@@ -119,7 +120,13 @@ public class WaseelCchiService {
         );
     }
 
-    public CchiMappedPatientResponse fetchInsuranceForPatient(Long patientId) {
+    public List<CchiPatientDocumentOption> listInsuranceFetchDocumentOptions(
+            Long patientId
+    ) {
+        return cchiPatientLookupService.listInsuranceFetchDocumentOptions(patientId);
+    }
+
+    public CchiMappedPatientResponse fetchInsuranceForPatient(Long patientId, String selectedDocumentId) {
         Patient patient = patientRepository.findById(patientId)
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Patient not found with id " + patientId,
@@ -127,16 +134,10 @@ public class WaseelCchiService {
                         "notfound"
                 ));
 
-        String documentId = cchiPatientLookupService.resolveDocumentIdForPatient(patient);
-        if (documentId == null || documentId.isBlank()) {
-            throw new BadRequestAlertException(
-                    "Patient document ID is required to fetch insurance from CCHI",
-                    "waseelCchi",
-                    "documentId.missing"
-            );
-        }
+        String documentId = cchiPatientLookupService.resolveInsuranceFetchDocumentId(patient, selectedDocumentId);
 
-        cchiPatientLookupService.markAsCchiPatient(patient);
+        cchiPatientLookupService.markAsCchiPatient(patient, documentId);
+        patient = patientRepository.findById(patientId).orElse(patient);
 
         CchiMappedPatientResponse mapped = fetchMappedPatientByDocumentId(documentId);
         if (mapped == null) {
@@ -166,13 +167,14 @@ public class WaseelCchiService {
         String documentId = cchiPatientLookupService.resolveDocumentIdForPatient(patient);
         if (documentId == null || documentId.isBlank()) {
             throw new BadRequestAlertException(
-                    "Patient document ID is required to refresh data from CCHI",
+                    "Please enter the patient document first before refreshing data from CCHI",
                     "waseelCchi",
                     "documentId.missing"
             );
         }
 
         cchiPatientLookupService.markAsCchiPatient(patient);
+        patient = patientRepository.findById(patientId).orElse(patient);
 
         CchiMappedPatientResponse mapped = fetchMappedPatientByDocumentId(documentId);
         if (mapped == null) {
@@ -183,6 +185,7 @@ public class WaseelCchiService {
         if (refreshedPatient != null) {
             refreshedPatient.setId(patient.getId());
             refreshedPatient.setMedicalRecordNumber(patient.getMedicalRecordNumber());
+            refreshedPatient.setDocumentId(patient.getDocumentId());
             refreshedPatient.setIsCchiPatient(true);
             refreshedPatient.setIsVerified(patient.getIsVerified());
             refreshedPatient.setIsCompletedPatient(patient.getIsCompletedPatient());

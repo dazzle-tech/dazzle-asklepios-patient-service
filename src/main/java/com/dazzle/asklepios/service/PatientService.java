@@ -17,6 +17,7 @@ import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientDuplicationLookupDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
+import com.dazzle.asklepios.integration.waseel.service.CchiPatientLookupService;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.InvalidPasswordException;
@@ -71,11 +72,16 @@ public class PatientService {
     );
     private final SystemConfigurationClient systemConfigurationClient;
     private final NotificationHelper notificationHelper;
+    private final CchiPatientLookupService cchiPatientLookupService;
 
     public PatientService(
             PatientRepository patientRepository,
             PatientDocumentRepository patientDocumentRepository,
-            DuplicationCandidateRepository duplicationCandidateRepository, PasswordEncoder passwordEncoder, SystemConfigurationClient systemConfigurationClient, NotificationHelper notificationHelper
+            DuplicationCandidateRepository duplicationCandidateRepository,
+            PasswordEncoder passwordEncoder,
+            SystemConfigurationClient systemConfigurationClient,
+            NotificationHelper notificationHelper,
+            CchiPatientLookupService cchiPatientLookupService
     ) {
         this.patientRepository = patientRepository;
         this.patientDocumentRepository = patientDocumentRepository;
@@ -83,6 +89,7 @@ public class PatientService {
         this.passwordEncoder = passwordEncoder;
         this.systemConfigurationClient = systemConfigurationClient;
         this.notificationHelper = notificationHelper;
+        this.cchiPatientLookupService = cchiPatientLookupService;
     }
     @Value("${application.asklepios-application-url}")
     private String asklepiosApplicationlUrl;
@@ -93,6 +100,16 @@ public class PatientService {
 
         boolean verified = Boolean.TRUE.equals(dto.isVerified());
         boolean completed = Boolean.TRUE.equals(dto.isCompletedPatient());
+        boolean cchiPatient = Boolean.TRUE.equals(dto.isCchiPatient());
+        String documentId = normalizeDocumentId(dto.documentId());
+
+        if (cchiPatient && documentId == null) {
+            throw new BadRequestAlertException(
+                    "CCHI patients must have a document ID on the patient record",
+                    "patient",
+                    "cchi.documentId.required"
+            );
+        }
 
         Patient entity = Patient.builder()
                 .firstName(dto.firstName())
@@ -127,8 +144,8 @@ public class PatientService {
                 .occupation(dto.occupation())
                 .responsibleParty(dto.responsibleParty())
                 .educationalLevel(dto.educationalLevel())
-                .isCchiPatient(Boolean.TRUE.equals(dto.isCchiPatient()))
-                .documentId(normalizeDocumentId(dto.documentId()))
+                .isCchiPatient(cchiPatient)
+                .documentId(documentId)
                 .previousId(dto.previousId())
                 .archivingNumber(dto.archivingNumber())
                 .details(dto.details())
@@ -236,7 +253,21 @@ public class PatientService {
             existing.setIsCchiPatient(Boolean.TRUE.equals(dto.isCchiPatient()));
         }
         if (dto.documentId() != null) {
-            existing.setDocumentId(normalizeDocumentId(dto.documentId()));
+            String normalizedDocumentId = normalizeDocumentId(dto.documentId());
+            if (normalizedDocumentId != null) {
+                cchiPatientLookupService.assertDocumentIdAvailableForPatient(existing, normalizedDocumentId);
+                existing.setDocumentId(normalizedDocumentId);
+            }
+        }
+        if (Boolean.TRUE.equals(existing.getIsCchiPatient())) {
+            cchiPatientLookupService.ensureDocumentIdOnPatient(existing, existing.getDocumentId());
+            if (existing.getDocumentId() == null || existing.getDocumentId().isBlank()) {
+                throw new BadRequestAlertException(
+                        "CCHI patients must have a document ID on the patient record",
+                        "patient",
+                        "cchi.documentId.required"
+                );
+            }
         }
         existing.setSecurityAccessLevel(dto.securityAccessLevel());
 
@@ -657,6 +688,14 @@ public class PatientService {
                     "A patient with the same document ID already exists.",
                     "patient",
                     "unique.document_id"
+            );
+        }
+
+        if (lower.contains("chk_patients_cchi_document")) {
+            throw new BadRequestAlertException(
+                    "CCHI patients must have a document ID saved on the patient record.",
+                    "patient",
+                    "cchi.documentId.required"
             );
         }
 
