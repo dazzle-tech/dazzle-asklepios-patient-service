@@ -44,6 +44,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -77,7 +78,72 @@ public class DiagnosticOrderTestResultService {
     private final UserClient userClient;
     private final NotificationHelper notificationHelper;
 
+    private void validateResultValue(
+            Long profileTestId,
+            BigDecimal resultValueNumber,
+            String resultValueText
+    ) {
 
+        TestResultType resultType;
+
+        try {
+            resultType =
+                    diagnosticTestProfileClient
+                            .getResultTypeByProfileTestIdInternal(
+                                    profileTestId
+                            );
+
+        } catch (Exception e) {
+
+            throw new BadRequestAlertException(
+                    "setup_service_error",
+                    "diagnostic_order_tests_result",
+                    "Failed to fetch result type for profileTestId "
+                            + profileTestId
+            );
+        }
+
+        switch (resultType) {
+
+            case NUMBER -> {
+
+                if (resultValueNumber == null) {
+
+                    throw new BadRequestAlertException(
+                            "number_result_required",
+                            "diagnostic_order_tests_result",
+                            "Result value number is required"
+                    );
+                }
+            }
+
+            case LOV -> {
+
+                if (resultValueText == null
+                        || resultValueText.isBlank()) {
+
+                    throw new BadRequestAlertException(
+                            "lov_result_required",
+                            "diagnostic_order_tests_result",
+                            "Result LOV value is required"
+                    );
+                }
+            }
+
+            case TEXT -> {
+
+                if (resultValueText == null
+                        || resultValueText.isBlank()) {
+
+                    throw new BadRequestAlertException(
+                            "text_result_required",
+                            "diagnostic_order_tests_result",
+                            "Result text value is required"
+                    );
+                }
+            }
+        }
+    }
     /**
      * Creates and persists a new {@link DiagnosticOrderTestResult}.
      *
@@ -92,9 +158,14 @@ public class DiagnosticOrderTestResultService {
      * @param testResultCreateDTO create payload
      * @return persisted {@link DiagnosticOrderTestResult}
      */
+
     public DiagnosticOrderTestResult create(DiagnosticOrderTestResultCreateDTO testResultCreateDTO) {
         LOG.debug("[DiagnosticOrderTestResultService] CREATE - start. payload={}", testResultCreateDTO);
-
+        validateResultValue(
+                testResultCreateDTO.profileTestId(),
+                testResultCreateDTO.resultValueNumber(),
+                testResultCreateDTO.resultValueText()
+        );
         DiagnosticOrderTestResult result = new DiagnosticOrderTestResult();
         result.setOrderTestId(testResultCreateDTO.orderTestId());
         result.setProfileTestId(testResultCreateDTO.profileTestId());
@@ -125,7 +196,11 @@ public class DiagnosticOrderTestResultService {
                         "diagnostic_order_tests_result",
                         "DiagnosticOrderTestResult not found with id " + id
                 ));
-
+        validateResultValue(
+                testResultUpdateDTO.profileTestId(),
+                testResultUpdateDTO.resultValueNumber(),
+                testResultUpdateDTO.resultValueText()
+        );
         testResult.setOrderTestId(testResultUpdateDTO.orderTestId());
         testResult.setProfileTestId(testResultUpdateDTO.profileTestId());
         testResult.setResultValueNumber(testResultUpdateDTO.resultValueNumber());
