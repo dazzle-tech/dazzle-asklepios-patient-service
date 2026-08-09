@@ -1,8 +1,12 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
+import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
+import com.dazzle.asklepios.domain.enumeration.Gender;
+import com.dazzle.asklepios.service.helper.PayorHelper;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.CoverageClassDTO;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityBeneficiaryDTO;
@@ -14,24 +18,31 @@ import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.Eligibil
 import com.dazzle.asklepios.integration.waseel.event.EligibilityCheckSucceededEvent;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApLovMapperService;
 import com.dazzle.asklepios.integration.waseel.service.mapper.AsklepiosLovCodes;
-import com.dazzle.asklepios.integration.waseel.service.mapper.WaseelLanguageSetupMapperService;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class WaseelEligibilityCheckService {
+
+    private static final String ENTITY_NAME = "waseelEligibility";
+    private static final Set<String> INVALID_PAYER_OR_DESTINATION_IDS = Set.of("-1", "INS-FHIR");
 
     private final PatientRepository patientRepository;
     private final PatientInsuranceRepository patientInsuranceRepository;
@@ -40,9 +51,9 @@ public class WaseelEligibilityCheckService {
     private final WaseelApiProperties properties;
     private final ObjectMapper objectMapper;
     private final ApLovMapperService apLovMapperService;
-    private final WaseelLanguageSetupMapperService waseelLanguageSetupMapperService;
     private final EligibilityPatientInsuranceSyncService eligibilityPatientInsuranceSyncService;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final PayorHelper payorHelper;
 
     @Transactional
     public EligibilityCheckResponse checkEligibility(EligibilityCheckRequest request) {
@@ -59,6 +70,8 @@ public class WaseelEligibilityCheckService {
         if (insurance.getPatient() == null || !insurance.getPatient().getId().equals(patient.getId())) {
             throw new IllegalArgumentException("Patient insurance does not belong to selected patient");
         }
+
+        validateBeforeWaseelCall(patient, insurance, request);
 
         LocalDate serviceDate = resolveServiceDate(request.serviceDate());
 
@@ -115,13 +128,85 @@ public class WaseelEligibilityCheckService {
 
             return toResult(saved);
 
+        } catch (HttpClientErrorException ex) {
+            markFailed(log, ex.getMessage());
+            throw mapWaseelClientError(ex);
+        } catch (ResourceAccessException ex) {
+            markFailed(log, ex.getMessage());
+            throw new BadRequestAlertException(
+                    "Unable to connect to Waseel eligibility service",
+                    ENTITY_NAME,
+                    "waseel.eligibility.connectionFailed"
+            );
+        } catch (BadRequestAlertException ex) {
+            markFailed(log, ex.getBody() == null ? ex.getMessage() : ex.getBody().getDetail());
+            throw ex;
         } catch (Exception e) {
-            log.setRequestStatus("FAILED");
-            log.setRespondedAt(Instant.now());
-            log.setMessage(e.getMessage());
-            eligibilityLogRepository.save(log);
-            throw e;
+            markFailed(log, e.getMessage());
+            throw new BadRequestAlertException(
+                    "Eligibility check failed",
+                    ENTITY_NAME,
+                    "waseel.eligibility.failed"
+            );
         }
+    }
+
+    private void markFailed(WaseelEligibilityRequest log, String message) {
+        log.setRequestStatus("FAILED");
+        log.setRespondedAt(Instant.now());
+        log.setMessage(message);
+        eligibilityLogRepository.save(log);
+    }
+
+    private BadRequestAlertException mapWaseelClientError(HttpClientErrorException ex) {
+        String waseelMessage = extractWaseelErrorMessage(ex.getResponseBodyAsString());
+
+        if (waseelMessage != null && waseelMessage.toLowerCase().contains("failed to read request")) {
+            return new BadRequestAlertException(
+                    "Waseel rejected the eligibility request because the payload was invalid. "
+                            + "Verify patient and insurance details, then try again.",
+                    ENTITY_NAME,
+                    "waseel.eligibility.invalidRequest"
+            );
+        }
+
+        if (ex instanceof HttpClientErrorException.BadRequest) {
+            return new BadRequestAlertException(
+                    waseelMessage != null ? waseelMessage : "Waseel rejected the eligibility request",
+                    ENTITY_NAME,
+                    "waseel.eligibility.badRequest"
+            );
+        }
+
+        return new BadRequestAlertException(
+                waseelMessage != null ? waseelMessage : "Waseel eligibility request failed",
+                ENTITY_NAME,
+                "waseel.eligibility.failed"
+        );
+    }
+
+    private String extractWaseelErrorMessage(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) {
+            return null;
+        }
+
+        try {
+            JsonNode node = objectMapper.readTree(responseBody);
+
+            if (node.hasNonNull("detail")) {
+                return node.get("detail").asText();
+            }
+            if (node.hasNonNull("message")) {
+                return node.get("message").asText();
+            }
+            if (node.hasNonNull("error")) {
+                return node.get("error").asText();
+            }
+        } catch (Exception ignored) {
+            // ignore parsing error
+        }
+
+        return responseBody.trim();
     }
 
     private void triggerBackendPreAuthorizationSubmission(EligibilityCheckRequest request) {
@@ -153,7 +238,7 @@ public class WaseelEligibilityCheckService {
                 clean(patient.getLastName()),
                 buildFullName(patient),
                 patient.getDateOfBirth() == null ? null : patient.getDateOfBirth().toString(),
-                patient.getSexAtBirth() == null ? null : patient.getSexAtBirth().name(),
+                resolveGenderForWaseel(patient.getSexAtBirth()),
                 apLovMapperService.getCleanValueCodeByLovCodeAndKey(
                         AsklepiosLovCodes.NATIONALITY,
                         patient.getNationality()
@@ -171,7 +256,7 @@ public class WaseelEligibilityCheckService {
                         patient.getReligion()
                 ),
                 resolveOccupationForWaseel(patient),
-                waseelLanguageSetupMapperService.mapStoredLangKeyToWaseelCode(patient.getPreferredLanguage()),
+                null,
                 null,
                 null,
                 null,
@@ -196,23 +281,107 @@ public class WaseelEligibilityCheckService {
                 Boolean.TRUE.equals(request.transfer()),
                 Boolean.TRUE.equals(request.emergency()),
                 false,
-                java.util.Map.of(),
+                null,
                 resolveDestinationId(request.destinationId(), insurance)
         );
     }
 
+    private void validateBeforeWaseelCall(
+            Patient patient,
+            PatientInsurance insurance,
+            EligibilityCheckRequest request
+    ) {
+        if (insurance.getExpirationDate() == null
+                || insurance.getExpirationDate().isBefore(LocalDate.now())) {
+            throw new BadRequestAlertException(
+                    "Insurance plan is expired.",
+                    ENTITY_NAME,
+                    "insurance.expired"
+            );
+        }
+
+        if (isBlank(insurance.getMemberCardId())) {
+            throw new BadRequestAlertException(
+                    "Member card ID is required before checking eligibility.",
+                    ENTITY_NAME,
+                    "memberCardId.required"
+            );
+        }
+
+        if (isBlank(insurance.getPolicyNumber())) {
+            throw new BadRequestAlertException(
+                    "Policy number is required before checking eligibility.",
+                    ENTITY_NAME,
+                    "policyNumber.required"
+            );
+        }
+
+        String payerNphiesId = resolvePayerNphiesId(insurance);
+        if (isBlank(payerNphiesId) || isInvalidPayerOrDestinationId(payerNphiesId)) {
+            throw new BadRequestAlertException(
+                    "Payer NPHIES ID is missing or invalid. Configure the payor with a valid NPHIES ID in setup, then save the insurance again.",
+                    ENTITY_NAME,
+                    "payerNphiesId.required"
+            );
+        }
+
+        String destinationId = resolveDestinationId(request.destinationId(), insurance);
+        if (isBlank(destinationId) || isInvalidPayerOrDestinationId(destinationId)) {
+            throw new BadRequestAlertException(
+                    "Destination ID is invalid for eligibility. Configure the payor/TPA NPHIES ID in setup, then save the insurance again.",
+                    ENTITY_NAME,
+                    "destinationId.invalid"
+            );
+        }
+
+        if (isBlank(patient.getDocumentId())) {
+            throw new BadRequestAlertException(
+                    "Patient document ID is required before checking eligibility.",
+                    ENTITY_NAME,
+                    "patient.documentId.required"
+            );
+        }
+
+        if (patient.getDateOfBirth() == null) {
+            throw new BadRequestAlertException(
+                    "Patient date of birth is required before checking eligibility.",
+                    ENTITY_NAME,
+                    "patient.dateOfBirth.required"
+            );
+        }
+
+        if (patient.getSexAtBirth() == null) {
+            throw new BadRequestAlertException(
+                    "Patient gender is required before checking eligibility.",
+                    ENTITY_NAME,
+                    "patient.gender.required"
+            );
+        }
+
+        if (isBlank(patient.getFirstName()) || isBlank(patient.getLastName())) {
+            throw new BadRequestAlertException(
+                    "Patient first name and last name are required before checking eligibility.",
+                    ENTITY_NAME,
+                    "patient.name.required"
+            );
+        }
+    }
+
     private EligibilityInsurancePlanDTO buildInsurancePlan(PatientInsurance insurance) {
+        String payerNphiesId = resolvePayerNphiesId(insurance);
+        String tpaNphiesId = resolveTpaNphiesId(insurance);
+
         return new EligibilityInsurancePlanDTO(
                 null,
-                clean(insurance.getPayerNphiesId()),
+                payerNphiesId,
                 clean(insurance.getPayerName()),
                 clean(insurance.getMemberCardId()),
                 clean(insurance.getPolicyNumber()),
-                clean(insurance.getPayerNphiesId()),
-                clean(insurance.getTpaNphiesId()),
+                payerNphiesId,
+                tpaNphiesId,
                 insurance.getExpirationDate() == null ? null : insurance.getExpirationDate().toString(),
-                clean(insurance.getRelationWithSubscriber()),
-                clean(insurance.getCoverageType()),
+                normalizeRelationWithSubscriber(insurance.getRelationWithSubscriber()),
+                firstNonBlank(clean(insurance.getCoverageType()), "EHCPOL"),
                 null,
                 null,
                 buildCoverageClassList(insurance),
@@ -221,23 +390,55 @@ public class WaseelEligibilityCheckService {
         );
     }
 
+    private String resolvePayerNphiesId(PatientInsurance insurance) {
+        String stored = clean(insurance.getPayerNphiesId());
+        if (!isBlank(stored) && !isInvalidPayerOrDestinationId(stored)) {
+            return stored;
+        }
+
+        PayorDTO payor = payorHelper.findPayor(insurance.getPayorId(), stored);
+        if (payor == null) {
+            return stored;
+        }
+
+        return firstNonBlank(
+                clean(payor.nphiesId()),
+                clean(payor.waseelPayerId()),
+                stored
+        );
+    }
+
+    private String resolveTpaNphiesId(PatientInsurance insurance) {
+        String stored = clean(insurance.getTpaNphiesId());
+        if (!isBlank(stored) && !isInvalidPayerOrDestinationId(stored)) {
+            return stored;
+        }
+
+        PayorDTO payor = payorHelper.findPayor(insurance.getPayorId(), insurance.getPayerNphiesId());
+        if (payor == null) {
+            return stored;
+        }
+
+        return clean(payor.tpaNphiesId());
+    }
+
     private String resolveDestinationId(String requestDestinationId, PatientInsurance insurance) {
         String destinationId = clean(requestDestinationId);
-        if (destinationId != null) {
+        if (destinationId != null && !isInvalidPayerOrDestinationId(destinationId)) {
             return destinationId;
         }
 
-        String tpaNphiesId = clean(insurance.getTpaNphiesId());
-        if (tpaNphiesId != null) {
+        String tpaNphiesId = resolveTpaNphiesId(insurance);
+        if (tpaNphiesId != null && !isInvalidPayerOrDestinationId(tpaNphiesId)) {
             return tpaNphiesId;
         }
 
-        String payerNphiesId = clean(insurance.getPayerNphiesId());
-        if (payerNphiesId != null) {
+        String payerNphiesId = resolvePayerNphiesId(insurance);
+        if (payerNphiesId != null && !isInvalidPayerOrDestinationId(payerNphiesId)) {
             return payerNphiesId;
         }
 
-        return "-1";
+        return null;
     }
 
     private String resolvePolicyHolder(PatientInsurance insurance) {
@@ -393,5 +594,48 @@ public class WaseelEligibilityCheckService {
                  "unknown" -> normalized;
             default -> "unknown";
         };
+    }
+
+    private String resolveGenderForWaseel(Gender gender) {
+        if (gender == null) {
+            return null;
+        }
+
+        return gender.name().toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizeRelationWithSubscriber(String value) {
+        String cleaned = clean(value);
+        if (cleaned == null) {
+            return "self";
+        }
+
+        return cleaned.toLowerCase(Locale.ROOT);
+    }
+
+    private boolean isInvalidPayerOrDestinationId(String value) {
+        if (value == null) {
+            return true;
+        }
+
+        return INVALID_PAYER_OR_DESTINATION_IDS.contains(value.trim().toUpperCase(Locale.ROOT));
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+
+        for (String value : values) {
+            if (!isBlank(value)) {
+                return value.trim();
+            }
+        }
+
+        return null;
     }
 }

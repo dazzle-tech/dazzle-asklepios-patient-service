@@ -73,7 +73,13 @@ public class PatientInsuranceService {
         );
 
         PayorDTO payor = payorHelper.findPayor(payorId, dto.payerNphiesId());
-        String payerName = nphiesPayerHelper.resolvePayerDisplayName(dto.payerNphiesId(), null);
+        String payerNphiesId = firstNonBlank(
+                dto.payerNphiesId(),
+                payor == null ? null : payor.nphiesId(),
+                payor == null ? null : payor.waseelPayerId()
+        );
+        String tpaNphiesId = payor == null ? null : clean(payor.tpaNphiesId());
+        String payerName = nphiesPayerHelper.resolvePayerDisplayName(payerNphiesId, null);
         if (payerName == null && payor != null) {
             payerName = payor.name();
         }
@@ -100,7 +106,8 @@ public class PatientInsuranceService {
                 .remainingDeductibles(dto.remainingDeductibles())
 
                 .memberCardId(dto.memberCardId())
-                .payerNphiesId(dto.payerNphiesId())
+                .payerNphiesId(payerNphiesId)
+                .tpaNphiesId(tpaNphiesId)
                 .payerName(payerName)
                 .networkId(dto.networkId())
                 .sponsorNumber(dto.sponsorNumber())
@@ -158,7 +165,17 @@ public class PatientInsuranceService {
         existing.setRemainingBenefits(dto.remainingBenefits());
         existing.setRemainingDeductibles(dto.remainingDeductibles());
         existing.setMemberCardId(dto.memberCardId());
-        existing.setPayerNphiesId(dto.payerNphiesId());
+
+        PayorDTO payor = payorHelper.findPayor(dto.payorId(), dto.payerNphiesId());
+        existing.setPayerNphiesId(firstNonBlank(
+                dto.payerNphiesId(),
+                payor == null ? null : payor.nphiesId(),
+                payor == null ? null : payor.waseelPayerId()
+        ));
+        existing.setTpaNphiesId(payor == null ? null : clean(payor.tpaNphiesId()));
+        existing.setPayerName(
+                nphiesPayerHelper.resolvePayerDisplayName(existing.getPayerNphiesId(), existing.getPayerName())
+        );
         existing.setNetworkId(dto.networkId());
         existing.setSponsorNumber(dto.sponsorNumber());
         existing.setCoverageType(dto.coverageType());
@@ -280,6 +297,29 @@ public class PatientInsuranceService {
 
     private String nullToEmpty(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+
+        for (String value : values) {
+            if (value != null && !value.trim().isEmpty()) {
+                return value.trim();
+            }
+        }
+
+        return null;
+    }
+
+    private String clean(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        String text = value.trim();
+        return text.isEmpty() ? null : text;
     }
 
     private RuntimeException handleConstraintViolation(Exception exception) {
