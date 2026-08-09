@@ -1,19 +1,30 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
+import com.dazzle.asklepios.client.setup.PayorPlanItemClient;
+import com.dazzle.asklepios.client.setup.PriceListSetupClient;
+import com.dazzle.asklepios.client.setup.dto.BillingPricingResolutionRequest;
+import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
-import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
+import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
-import com.dazzle.asklepios.client.setup.PayorPlanItemClient;
 import com.dazzle.asklepios.integration.waseel.client.WaseelItemMappingClient;
 import com.dazzle.asklepios.integration.waseel.client.dto.WaseelItemMappingSetupDTO;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientInsuranceRepository;
+import com.dazzle.asklepios.service.helper.NphiesPayerHelper;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDate;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -26,7 +37,15 @@ public class PreAuthorizationResolutionService {
 
     private final WaseelItemMappingClient waseelItemMappingClient;
 
+    private final PriceListSetupClient priceListSetupClient;
+
     private final PayorPlanItemClient payorPlanItemClient;
+
+    private final PatientEncounterRepository patientEncounterRepository;
+
+    private final PatientInsuranceRepository patientInsuranceRepository;
+
+    private final NphiesPayerHelper nphiesPayerHelper;
 
     public record Resolution(
             PreAuthorizationStatus status,
@@ -69,6 +88,28 @@ public class PreAuthorizationResolutionService {
             Long brandMedicationId,
             boolean insuranceVisitContext
     ) {
+        return resolve(
+                encounterId,
+                billingItemType,
+                procedureId,
+                serviceId,
+                diagnosticTestId,
+                brandMedicationId,
+                insuranceVisitContext,
+                null
+        );
+    }
+
+    public Resolution resolve(
+            Long encounterId,
+            BillingItemTypes billingItemType,
+            Long procedureId,
+            Long serviceId,
+            Long diagnosticTestId,
+            Long brandMedicationId,
+            boolean insuranceVisitContext,
+            Currency currency
+    ) {
         if (encounterId == null) {
             return Resolution.notRequired();
         }
@@ -85,19 +126,29 @@ public class PreAuthorizationResolutionService {
         }
 
         LOG.info(
-                "[PREAUTH] Insurance visit detected for encounterId={}. Checking Waseel mapping for billingItemType={}",
+                "[PREAUTH] Insurance visit detected for encounterId={}. Checking price list item for billingItemType={}",
                 encounterId,
                 billingItemType
         );
 
         if (billingItemType == BillingItemTypes.PROCEDURE && procedureId != null) {
-            return requiresPreAuthorization(billingItemType, procedureId)
+            return requiresPreAuthorization(
+                    encounterId,
+                    billingItemType,
+                    procedureId,
+                    currency
+            )
                     ? Resolution.pendingApproval()
                     : Resolution.notRequired();
         }
 
         if (billingItemType == BillingItemTypes.SERVICE && serviceId != null) {
-            return requiresPreAuthorization(billingItemType, serviceId)
+            return requiresPreAuthorization(
+                    encounterId,
+                    billingItemType,
+                    serviceId,
+                    currency
+            )
                     ? Resolution.pendingApproval()
                     : Resolution.notRequired();
         }
@@ -106,13 +157,23 @@ public class PreAuthorizationResolutionService {
                 || billingItemType == BillingItemTypes.RADIOLOGY
                 || billingItemType == BillingItemTypes.PATHOLOGY)
                 && diagnosticTestId != null) {
-            return requiresPreAuthorization(billingItemType, diagnosticTestId)
+            return requiresPreAuthorization(
+                    encounterId,
+                    billingItemType,
+                    diagnosticTestId,
+                    currency
+            )
                     ? Resolution.pendingApproval()
                     : Resolution.notRequired();
         }
 
         if (billingItemType == BillingItemTypes.MEDICATION && brandMedicationId != null) {
-            return requiresPreAuthorization(billingItemType, brandMedicationId)
+            return requiresPreAuthorization(
+                    encounterId,
+                    billingItemType,
+                    brandMedicationId,
+                    currency
+            )
                     ? Resolution.pendingApproval()
                     : Resolution.notRequired();
         }
@@ -208,7 +269,7 @@ public class PreAuthorizationResolutionService {
     }
 
     /**
-     * Re-evaluates Waseel mapping and applies pre-authorization fields
+     * Re-evaluates price list setup item and applies pre-authorization fields
      * on the billing item before responsibility / payment calculations.
      */
     public void refreshForBillingItem(PatientServiceAndProduct item) {
@@ -223,7 +284,9 @@ public class PreAuthorizationResolutionService {
                         item.getProcedureId(),
                         item.getServiceId(),
                         item.getDiagnosticTestId(),
-                        item.getBrandMedicationId()
+                        item.getBrandMedicationId(),
+                        false,
+                        item.getCurrency()
                 );
 
         apply(item, resolution);
@@ -232,7 +295,7 @@ public class PreAuthorizationResolutionService {
     /**
      * Standard entry point when adding a billing item to an encounter:
      * 1. Link insurance context when the visit is insurance
-     * 2. Query Setup/Waseel item mapping
+     * 2. Query Setup price list item (type + payor)
      * 3. Apply pre-authorization + payment status on the builder
      */
     public Resolution resolveAndPrepareNewItem(
@@ -266,6 +329,30 @@ public class PreAuthorizationResolutionService {
             Long brandMedicationId,
             boolean insuranceVisitContext
     ) {
+        return resolveAndPrepareNewItem(
+                builder,
+                encounterId,
+                billingItemType,
+                procedureId,
+                serviceId,
+                diagnosticTestId,
+                brandMedicationId,
+                insuranceVisitContext,
+                null
+        );
+    }
+
+    public Resolution resolveAndPrepareNewItem(
+            PatientServiceAndProduct.PatientServiceAndProductBuilder builder,
+            Long encounterId,
+            BillingItemTypes billingItemType,
+            Long procedureId,
+            Long serviceId,
+            Long diagnosticTestId,
+            Long brandMedicationId,
+            boolean insuranceVisitContext,
+            Currency currency
+    ) {
         applyInsuranceVisitContext(builder, encounterId, insuranceVisitContext);
 
         Resolution resolution =
@@ -276,7 +363,8 @@ public class PreAuthorizationResolutionService {
                         serviceId,
                         diagnosticTestId,
                         brandMedicationId,
-                        insuranceVisitContext
+                        insuranceVisitContext,
+                        currency
                 );
 
         apply(builder, resolution);
@@ -284,13 +372,14 @@ public class PreAuthorizationResolutionService {
         LOG.info(
                 "[PREAUTH] Prepared new billing item. encounterId={} billingItemType={} "
                         + "procedureId={} serviceId={} diagnosticTestId={} brandMedicationId={} "
-                        + "required={} status={}",
+                        + "currency={} required={} status={}",
                 encounterId,
                 billingItemType,
                 procedureId,
                 serviceId,
                 diagnosticTestId,
                 brandMedicationId,
+                currency,
                 resolution.required(),
                 resolution.status()
         );
@@ -299,7 +388,7 @@ public class PreAuthorizationResolutionService {
     }
 
     /**
-     * Stores Waseel/SBS mapping metadata on the billing item when the visit is insurance.
+     * Attaches Waseel SBS mapping metadata when the visit is insurance.
      */
     public void enrichWaseelSbsMapping(
             PatientServiceAndProduct.PatientServiceAndProductBuilder builder,
@@ -326,11 +415,10 @@ public class PreAuthorizationResolutionService {
                     .waseelSbsCode(mapping.sbsCode());
 
             LOG.info(
-                    "[PREAUTH] Applied SBS mapping. billingItemType={} sourceId={} sbsCode={} requiresPreauth={}",
+                    "[PREAUTH] Applied SBS mapping. billingItemType={} sourceId={} sbsCode={}",
                     billingItemType,
                     sourceId,
-                    mapping.sbsCode(),
-                    mapping.requiresPreauth()
+                    mapping.sbsCode()
             );
         } catch (FeignException ex) {
             LOG.warn(
@@ -341,6 +429,37 @@ public class PreAuthorizationResolutionService {
                     ex
             );
         }
+    }
+
+    /**
+     * Resolves and attaches Waseel SBS mapping for any supported billing item type.
+     */
+    public void enrichWaseelSbsMappingForBillingItem(
+            PatientServiceAndProduct.PatientServiceAndProductBuilder builder,
+            BillingItemTypes billingItemType,
+            Long procedureId,
+            Long serviceId,
+            Long diagnosticTestId,
+            Long brandMedicationId
+    ) {
+        Long sourceId =
+                resolveCatalogSourceId(
+                        billingItemType,
+                        procedureId,
+                        serviceId,
+                        diagnosticTestId,
+                        brandMedicationId
+                );
+
+        if (sourceId == null) {
+            return;
+        }
+
+        enrichWaseelSbsMapping(
+                builder,
+                billingItemType,
+                sourceId
+        );
     }
 
     public void applyInsuranceVisitContext(
@@ -424,39 +543,76 @@ public class PreAuthorizationResolutionService {
     }
 
     private boolean requiresPreAuthorization(
+            Long encounterId,
             BillingItemTypes billingItemType,
-            Long itemId
+            Long itemId,
+            Currency currency
     ) {
-        if (billingItemType == null || itemId == null) {
+        if (encounterId == null
+                || billingItemType == null
+                || itemId == null) {
             return false;
         }
 
-        if (requiresPreAuthorizationFromWaseel(billingItemType, itemId)) {
+        if (requiresPreAuthorizationFromPriceList(
+                encounterId,
+                billingItemType,
+                itemId,
+                currency
+        )) {
             return true;
         }
 
-        return requiresPreAuthorizationFromPayorPlan(billingItemType, itemId);
-    }
-
-    private boolean requiresPreAuthorizationFromWaseel(
-            BillingItemTypes billingItemType,
-            Long itemId
-    ) {
-        LOG.info(
-                "[PREAUTH] Checking Waseel item mapping. billingItemType={}, itemId={}",
+        return requiresPreAuthorizationFromPayorPlan(
                 billingItemType,
                 itemId
+        );
+    }
+
+    private boolean requiresPreAuthorizationFromPriceList(
+            Long encounterId,
+            BillingItemTypes billingItemType,
+            Long itemId,
+            Currency currency
+    ) {
+        Optional<BillingPricingResolutionRequest> requestOptional =
+                buildPriceListPreauthRequest(
+                        encounterId,
+                        billingItemType,
+                        itemId,
+                        currency
+                );
+
+        if (requestOptional.isEmpty()) {
+            LOG.info(
+                    "[PREAUTH] Unable to build price list pre-auth request. encounterId={} billingItemType={} itemId={}",
+                    encounterId,
+                    billingItemType,
+                    itemId
+            );
+            return false;
+        }
+
+        BillingPricingResolutionRequest request =
+                requestOptional.get();
+
+        LOG.info(
+                "[PREAUTH] Checking insurance price list item. encounterId={} billingItemType={} itemId={} payerId={}",
+                encounterId,
+                billingItemType,
+                itemId,
+                request.payerId()
         );
 
         try {
             Boolean requiresPreAuth =
-                    waseelItemMappingClient.requiresPreauth(
-                            billingItemType,
-                            itemId
+                    priceListSetupClient.requiresPreAuthorization(
+                            request
                     );
 
             LOG.info(
-                    "[PREAUTH] Waseel mapping result. billingItemType={}, itemId={}, requiresPreAuth={}",
+                    "[PREAUTH] Price list result. encounterId={} billingItemType={} itemId={} requiresPreAuth={}",
+                    encounterId,
                     billingItemType,
                     itemId,
                     requiresPreAuth
@@ -465,7 +621,8 @@ public class PreAuthorizationResolutionService {
             return Boolean.TRUE.equals(requiresPreAuth);
         } catch (FeignException ex) {
             LOG.error(
-                    "[PREAUTH] Failed to check Waseel mapping. billingItemType={}, itemId={}, status={}, body={}",
+                    "[PREAUTH] Failed to check price list pre-authorization. encounterId={} billingItemType={} itemId={} status={} body={}",
+                    encounterId,
                     billingItemType,
                     itemId,
                     ex.status(),
@@ -475,6 +632,88 @@ public class PreAuthorizationResolutionService {
 
             return false;
         }
+    }
+
+    private Optional<BillingPricingResolutionRequest> buildPriceListPreauthRequest(
+            Long encounterId,
+            BillingItemTypes billingItemType,
+            Long itemId,
+            Currency currency
+    ) {
+        Optional<PatientEncounter> encounterOptional =
+                patientEncounterRepository.findById(encounterId);
+
+        if (encounterOptional.isEmpty()) {
+            return Optional.empty();
+        }
+
+        PatientEncounter encounter =
+                encounterOptional.get();
+
+        Long patientInsuranceId =
+                encounterInsuranceEligibilityService
+                        .resolveEncounterPatientInsuranceId(
+                                encounterId
+                        );
+
+        Long payerId =
+                resolvePriceListPayerId(
+                        patientInsuranceId
+                );
+
+        return Optional.of(
+                new BillingPricingResolutionRequest(
+                        encounter.getFacilityId(),
+                        encounter.getPatient().getId(),
+                        encounterId,
+                        billingItemType,
+                        itemId,
+                        patientInsuranceId,
+                        payerId,
+                        BillingCoverageType.INSURANCE,
+                        currency != null
+                                ? currency
+                                : Currency.SAR,
+                        LocalDate.now()
+                )
+        );
+    }
+
+    private Long resolveCatalogSourceId(
+            BillingItemTypes billingItemType,
+            Long procedureId,
+            Long serviceId,
+            Long diagnosticTestId,
+            Long brandMedicationId
+    ) {
+        return switch (billingItemType) {
+            case PROCEDURE -> procedureId;
+            case SERVICE -> serviceId;
+            case LABORATORY, RADIOLOGY, PATHOLOGY -> diagnosticTestId;
+            case MEDICATION -> brandMedicationId;
+        };
+    }
+
+    private Long resolvePriceListPayerId(
+            Long patientInsuranceId
+    ) {
+        if (patientInsuranceId == null) {
+            return null;
+        }
+
+        return patientInsuranceRepository
+                .findById(patientInsuranceId)
+                .map(this::resolvePriceListPayerId)
+                .orElse(null);
+    }
+
+    private Long resolvePriceListPayerId(
+            PatientInsurance insurance
+    ) {
+        return nphiesPayerHelper.resolvePriceListPayerId(
+                insurance.getPayorId(),
+                insurance.getPayerNphiesId()
+        );
     }
 
     private boolean requiresPreAuthorizationFromPayorPlan(

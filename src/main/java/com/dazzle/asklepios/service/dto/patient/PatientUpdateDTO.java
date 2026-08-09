@@ -84,6 +84,8 @@ public record PatientUpdateDTO(
 
         @NotNull
         Boolean isCompletedPatient,
+        Boolean isCchiPatient,
+        String documentId,
         SecurityLevel securityAccessLevel,
         BloodGroup bloodGroup,
         String patientConditions

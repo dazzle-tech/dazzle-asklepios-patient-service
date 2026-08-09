@@ -17,6 +17,7 @@ import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentStatus;
@@ -331,6 +332,18 @@ public class InvoiceGenerationService {
                     "Encounter has pending services that must be resolved before financial closure.",
                     ENTITY_NAME,
                     "encounter.pendingServices"
+            );
+        }
+
+        if (patientServiceAndProductRepository.existsByEncounterIdAndPreAuthorizationStatus(
+                encounterId,
+                PreAuthorizationStatus.PENDING_APPROVAL
+        )) {
+            throw new BadRequestAlertException(
+                    "Encounter has pre-authorization items still pending payer approval. "
+                            + "Refresh status from Waseel and wait for the final response before closing.",
+                    ENTITY_NAME,
+                    "encounter.preAuthorization.pending"
             );
         }
 

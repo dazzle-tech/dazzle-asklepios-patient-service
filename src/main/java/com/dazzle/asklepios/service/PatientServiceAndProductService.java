@@ -220,7 +220,9 @@ public class PatientServiceAndProductService {
                         dto.procedureId(),
                         dto.serviceId(),
                         dto.diagnosticTestId(),
-                        dto.brandMedicationId()
+                        dto.brandMedicationId(),
+                        false,
+                        entity.getCurrency()
                 )
         );
 
@@ -330,7 +332,7 @@ public class PatientServiceAndProductService {
 
     /**
      * When a prescription is submitted on an insurance visit, create billing rows for each
-     * medication and run the same Waseel pre-authorization flow used for services/procedures.
+     * medication and run the same price-list pre-authorization flow used for services/procedures.
      */
     @Transactional
     public void syncPrescriptionMedicationsForPreAuthorization(PatientPrescription prescription) {
@@ -554,17 +556,21 @@ public class PatientServiceAndProductService {
                 dto.procedureId(),
                 dto.serviceId(),
                 dto.diagnosticTestId(),
-                dto.brandMedicationId()
+                dto.brandMedicationId(),
+                encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(
+                        encounter.getId()
+                ),
+                dto.currency()
         );
 
-        if (dto.billingItemType() == BillingItemTypes.MEDICATION
-                && dto.brandMedicationId() != null) {
-            preAuthorizationResolutionService.enrichWaseelSbsMapping(
-                    builder,
-                    BillingItemTypes.MEDICATION,
-                    dto.brandMedicationId()
-            );
-        }
+        preAuthorizationResolutionService.enrichWaseelSbsMappingForBillingItem(
+                builder,
+                dto.billingItemType(),
+                dto.procedureId(),
+                dto.serviceId(),
+                dto.diagnosticTestId(),
+                dto.brandMedicationId()
+        );
 
         PatientServiceAndProduct entity = builder.build();
 
@@ -624,12 +630,17 @@ public class PatientServiceAndProductService {
                 null,
                 null,
                 null,
-                medication.getMedicationsId()
+                medication.getMedicationsId(),
+                true,
+                Currency.SAR
         );
 
-        preAuthorizationResolutionService.enrichWaseelSbsMapping(
+        preAuthorizationResolutionService.enrichWaseelSbsMappingForBillingItem(
                 builder,
                 BillingItemTypes.MEDICATION,
+                null,
+                null,
+                null,
                 medication.getMedicationsId()
         );
 

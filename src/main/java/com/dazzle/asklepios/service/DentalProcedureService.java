@@ -459,6 +459,17 @@ public class DentalProcedureService {
                 setupProcedure.id(),
                 null,
                 null,
+                null,
+                true,
+                setupProcedure.currency()
+        );
+
+        preAuthorizationResolutionService.enrichWaseelSbsMappingForBillingItem(
+                builder,
+                BillingItemTypes.PROCEDURE,
+                setupProcedure.id(),
+                null,
+                null,
                 null
         );
 
@@ -499,6 +510,17 @@ public class DentalProcedureService {
         preAuthorizationResolutionService.resolveAndPrepareNewItem(
                 builder,
                 dentalProcedure.getEncounter().getId(),
+                BillingItemTypes.SERVICE,
+                null,
+                setupService.id(),
+                null,
+                null,
+                true,
+                setupService.currency()
+        );
+
+        preAuthorizationResolutionService.enrichWaseelSbsMappingForBillingItem(
+                builder,
                 BillingItemTypes.SERVICE,
                 null,
                 setupService.id(),

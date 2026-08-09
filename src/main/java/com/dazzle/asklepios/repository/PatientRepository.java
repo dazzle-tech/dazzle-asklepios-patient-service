@@ -30,4 +30,6 @@ public interface PatientRepository extends JpaRepository<Patient, Long>, JpaSpec
 
     Optional<Patient> findByMedicalRecordNumber(String medicalRecordNumber);
 
+    Optional<Patient> findByDocumentIdIgnoreCase(String documentId);
+
 }

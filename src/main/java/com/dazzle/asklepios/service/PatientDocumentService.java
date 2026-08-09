@@ -9,6 +9,7 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.patientDocuments.PatientDocumentCreateDTO;
 import com.dazzle.asklepios.service.dto.patientDocuments.PatientDocumentUpdateDTO;
 import com.dazzle.asklepios.service.dto.patientDocuments.PatientNoDocumentCreateDTO;
+import com.dazzle.asklepios.integration.waseel.service.CchiPatientLookupService;
 import com.dazzle.asklepios.service.helper.CountryHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
@@ -36,6 +37,7 @@ public class PatientDocumentService {
     private final PatientDocumentRepository patientDocumentRepository;
     private final PatientRepository patientRepository;
     private final CountryHelper countryHelper;
+    private final CchiPatientLookupService cchiPatientLookupService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -43,10 +45,12 @@ public class PatientDocumentService {
     public PatientDocumentService(
             PatientDocumentRepository patientDocumentRepository,
             PatientRepository patientRepository,
-            CountryHelper countryHelper) {
+            CountryHelper countryHelper,
+            CchiPatientLookupService cchiPatientLookupService) {
         this.patientDocumentRepository = patientDocumentRepository;
         this.patientRepository = patientRepository;
         this.countryHelper = countryHelper;
+        this.cchiPatientLookupService = cchiPatientLookupService;
     }
 
     public PatientDocument create(PatientDocumentCreateDTO dto) {
@@ -67,6 +71,7 @@ public class PatientDocumentService {
 
         try {
             PatientDocument saved = patientDocumentRepository.saveAndFlush(entity);
+            syncPatientDocumentId(saved);
             LOG.info(
                     "Successfully created PatientDocument id={} for patientId={}",
                     saved.getId(),
@@ -126,6 +131,7 @@ public class PatientDocumentService {
 
         try {
             PatientDocument updated = patientDocumentRepository.saveAndFlush(existing);
+            syncPatientDocumentId(updated);
             LOG.info("Successfully updated PatientDocument id={}", updated.getId());
             return updated;
 
@@ -253,6 +259,33 @@ public class PatientDocumentService {
                 "Database constraint violated while saving patient document.",
                 "patientDocument",
                 "db.constraint"
+        );
+    }
+
+    private void syncPatientDocumentId(PatientDocument document) {
+        if (document == null || document.getPatient() == null) {
+            return;
+        }
+
+        String number = document.getNumber();
+        if (number == null || number.isBlank()) {
+            return;
+        }
+
+        Patient patient = document.getPatient();
+        if (patient.getDocumentId() != null && !patient.getDocumentId().isBlank()) {
+            return;
+        }
+
+        String normalizedDocumentId = number.trim();
+        cchiPatientLookupService.assertDocumentIdAvailableForPatient(patient, normalizedDocumentId);
+        patient.setDocumentId(normalizedDocumentId);
+        patientRepository.saveAndFlush(patient);
+        LOG.info(
+                "[PATIENT_DOCUMENT] Backfilled patient.documentId={} for patientId={} from documentId={}",
+                patient.getDocumentId(),
+                patient.getId(),
+                document.getId()
         );
     }
 }

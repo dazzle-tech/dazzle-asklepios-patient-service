@@ -512,7 +512,7 @@ public class InvoiceBalancePaymentService {
 
             case "DEDUCT_FROM_FREE_BALANCE" -> PaymentCategory.WALLET;
 
-            case "CREDIT_DEBIT_CARD" -> PaymentCategory.CARD;
+            case "CREDIT_CARD", "CREDIT_DEBIT_CARD" -> PaymentCategory.CASH;
 
             case "BANK_TRANSFER" -> PaymentCategory.BANK_TRANSFER;
 
