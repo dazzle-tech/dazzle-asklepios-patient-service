@@ -14,6 +14,7 @@ import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.Eligibil
 import com.dazzle.asklepios.integration.waseel.event.EligibilityCheckSucceededEvent;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApLovMapperService;
 import com.dazzle.asklepios.integration.waseel.service.mapper.AsklepiosLovCodes;
+import com.dazzle.asklepios.integration.waseel.service.mapper.WaseelLanguageSetupMapperService;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
@@ -39,6 +40,7 @@ public class WaseelEligibilityCheckService {
     private final WaseelApiProperties properties;
     private final ObjectMapper objectMapper;
     private final ApLovMapperService apLovMapperService;
+    private final WaseelLanguageSetupMapperService waseelLanguageSetupMapperService;
     private final EligibilityPatientInsuranceSyncService eligibilityPatientInsuranceSyncService;
     private final ApplicationEventPublisher applicationEventPublisher;
 
@@ -169,10 +171,7 @@ public class WaseelEligibilityCheckService {
                         patient.getReligion()
                 ),
                 resolveOccupationForWaseel(patient),
-                apLovMapperService.getCleanValueCodeByLovCodeAndKey(
-                        AsklepiosLovCodes.LANG,
-                        patient.getPreferredLanguage()
-                ),
+                waseelLanguageSetupMapperService.mapStoredLangKeyToWaseelCode(patient.getPreferredLanguage()),
                 null,
                 null,
                 null,
