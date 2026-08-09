@@ -147,6 +147,18 @@ public class PatientInsurance extends AbstractAuditingEntity<Long> {
     @Column(name = "last_eligibility_synced_at")
     private Instant lastEligibilitySyncedAt;
 
+    @Column(name = "default_copayment_percent", precision = 19, scale = 4)
+    private BigDecimal defaultCopaymentPercent;
+
+    @Column(name = "default_maximum_copayment", precision = 19, scale = 4)
+    private BigDecimal defaultMaximumCopayment;
+
+    @Column(name = "benefit_start_date")
+    private LocalDate benefitStartDate;
+
+    @Column(name = "benefit_end_date")
+    private LocalDate benefitEndDate;
+
     @Transient
     public Long getPatientId() {
         return patient != null ? patient.getId() : null;

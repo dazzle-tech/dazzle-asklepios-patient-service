@@ -410,15 +410,18 @@ public class BillingResponsibilityService {
 
                             patientAmount,
 
-                            BigDecimal.ZERO,
-
-                            BigDecimal.ZERO,
-
-                            BigDecimal.ZERO,
+                            calculatePercentage(
+                                    patientAmount,
+                                    netAmount
+                            ),
 
                             BigDecimal.ZERO,
 
                             patientAmount,
+
+                            BigDecimal.ZERO,
+
+                            BigDecimal.ZERO,
 
                             BigDecimal.ZERO,
 
@@ -754,8 +757,7 @@ public class BillingResponsibilityService {
         InsuranceSplit split =
                 insurancePatientShareCalculator.calculateSplit(
                         insurance,
-                        resolveServiceCategory(item),
-                        item.getServiceSource(),
+                        item,
                         netAmount
                 );
 

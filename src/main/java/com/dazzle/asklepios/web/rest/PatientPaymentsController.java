@@ -1,10 +1,12 @@
 package com.dazzle.asklepios.web.rest;
 
-import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
-import com.dazzle.asklepios.integration.waseel.dto.InsuranceCoverage;
-import com.dazzle.asklepios.integration.waseel.service.WaseelCoverageExtractionService;
-import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
+import com.dazzle.asklepios.client.setup.ServiceClient;
+import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
+import com.dazzle.asklepios.domain.PatientInsurance;
+import com.dazzle.asklepios.repository.PatientInsuranceRepository;
+import com.dazzle.asklepios.service.InsurancePatientShareCalculator;
 import com.dazzle.asklepios.service.PatientPaymentsService;
+import com.dazzle.asklepios.service.dto.InsuranceSplit;
 import com.dazzle.asklepios.service.dto.patientPayments.InsuranceAmountDTO;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientLedgerSummaryDTO;
 import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentCreateDTO;
@@ -37,13 +39,20 @@ public class PatientPaymentsController {
     private static final Logger LOG = LoggerFactory.getLogger(PatientPaymentsController.class);
 
     private final PatientPaymentsService patientPaymentsService;
-    private final WaseelEligibilityRequestRepository waseelEligibilityRequestRepository;
-    private final WaseelCoverageExtractionService coverageExtractionService;
+    private final PatientInsuranceRepository patientInsuranceRepository;
+    private final InsurancePatientShareCalculator insurancePatientShareCalculator;
+    private final ServiceClient serviceClient;
 
-    public PatientPaymentsController(PatientPaymentsService patientPaymentsService, WaseelEligibilityRequestRepository waseelEligibilityRequestRepository, WaseelCoverageExtractionService coverageExtractionService) {
+    public PatientPaymentsController(
+            PatientPaymentsService patientPaymentsService,
+            PatientInsuranceRepository patientInsuranceRepository,
+            InsurancePatientShareCalculator insurancePatientShareCalculator,
+            ServiceClient serviceClient
+    ) {
         this.patientPaymentsService = patientPaymentsService;
-        this.waseelEligibilityRequestRepository = waseelEligibilityRequestRepository;
-        this.coverageExtractionService = coverageExtractionService;
+        this.patientInsuranceRepository = patientInsuranceRepository;
+        this.insurancePatientShareCalculator = insurancePatientShareCalculator;
+        this.serviceClient = serviceClient;
     }
 
     @PostMapping("/payment")
@@ -131,29 +140,37 @@ public class PatientPaymentsController {
                 .map(this::resolveServiceAmountFromDTO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        WaseelEligibilityRequest eligibility =
-                waseelEligibilityRequestRepository
-                        .findFirstByPatientIdAndRequestStatusAndEligibilityResponseIdIsNotNullOrderByCreatedDateDesc(
-                                dto.patientId(),
-                                "SUCCESS"
-                        )
-                        .orElseThrow(() -> new IllegalStateException("No valid eligibility"));
-
-        InsuranceCoverage coverage =
-                coverageExtractionService.extractCoverage(eligibility.getResponseJson());
+        PatientInsurance insurance = null;
+        if (dto.planId() != null) {
+            insurance =
+                    patientInsuranceRepository
+                            .findByIdAndPatient_Id(dto.planId(), dto.patientId())
+                            .orElse(null);
+        }
 
         BigDecimal totalPatientShare = BigDecimal.ZERO;
 
         for (PatientPaymentServiceItemDTO service : services) {
+            if (Boolean.TRUE.equals(service.isExempted())) {
+                continue;
+            }
 
             BigDecimal net = resolveServiceAmountFromDTO(service);
 
-            BigDecimal copay =
-                    net.multiply(coverage.getCopaymentPercent())
-                            .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP)
-                            .min(coverage.getCopaymentCap());
+            if (insurance == null) {
+                totalPatientShare = totalPatientShare.add(net);
+                continue;
+            }
 
-            totalPatientShare = totalPatientShare.add(copay);
+            InsuranceSplit split =
+                    insurancePatientShareCalculator.calculateSplit(
+                            insurance,
+                            resolveServiceCategory(service.serviceId()),
+                            null,
+                            net
+                    );
+
+            totalPatientShare = totalPatientShare.add(split.patientShare());
         }
 
         return new InsuranceAmountDTO(
@@ -161,6 +178,24 @@ public class PatientPaymentsController {
                 totalPatientShare,
                 totalDue.subtract(totalPatientShare)
         );
+    }
+
+    private String resolveServiceCategory(Long serviceId) {
+        if (serviceId == null) {
+            return null;
+        }
+
+        try {
+            ServiceSetupDTO service = serviceClient.getServiceDetails(serviceId);
+            return service == null ? null : service.category();
+        } catch (RuntimeException exception) {
+            LOG.warn(
+                    "[INSURANCE] Unable to resolve service category serviceId={}",
+                    serviceId,
+                    exception
+            );
+            return null;
+        }
     }
     private BigDecimal resolveServiceAmountFromDTO(PatientPaymentServiceItemDTO item) {
 

@@ -35,14 +35,12 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class WaseelEligibilityCheckService {
 
     private static final String ENTITY_NAME = "waseelEligibility";
-    private static final Set<String> INVALID_PAYER_OR_DESTINATION_IDS = Set.of("-1", "INS-FHIR");
 
     private final PatientRepository patientRepository;
     private final PatientInsuranceRepository patientInsuranceRepository;
@@ -316,24 +314,6 @@ public class WaseelEligibilityCheckService {
             );
         }
 
-        String payerNphiesId = resolvePayerNphiesId(insurance);
-        if (isBlank(payerNphiesId) || isInvalidPayerOrDestinationId(payerNphiesId)) {
-            throw new BadRequestAlertException(
-                    "Payer NPHIES ID is missing or invalid. Configure the payor with a valid NPHIES ID in setup, then save the insurance again.",
-                    ENTITY_NAME,
-                    "payerNphiesId.required"
-            );
-        }
-
-        String destinationId = resolveDestinationId(request.destinationId(), insurance);
-        if (isBlank(destinationId) || isInvalidPayerOrDestinationId(destinationId)) {
-            throw new BadRequestAlertException(
-                    "Destination ID is invalid for eligibility. Configure the payor/TPA NPHIES ID in setup, then save the insurance again.",
-                    ENTITY_NAME,
-                    "destinationId.invalid"
-            );
-        }
-
         if (isBlank(patient.getDocumentId())) {
             throw new BadRequestAlertException(
                     "Patient document ID is required before checking eligibility.",
@@ -392,31 +372,30 @@ public class WaseelEligibilityCheckService {
 
     private String resolvePayerNphiesId(PatientInsurance insurance) {
         String stored = clean(insurance.getPayerNphiesId());
-        if (!isBlank(stored) && !isInvalidPayerOrDestinationId(stored)) {
+        if (!isBlank(stored)) {
             return stored;
         }
 
-        PayorDTO payor = payorHelper.findPayor(insurance.getPayorId(), stored);
+        PayorDTO payor = payorHelper.findPayor(insurance.getPayorId(), null);
         if (payor == null) {
-            return stored;
+            return null;
         }
 
         return firstNonBlank(
                 clean(payor.nphiesId()),
-                clean(payor.waseelPayerId()),
-                stored
+                clean(payor.waseelPayerId())
         );
     }
 
     private String resolveTpaNphiesId(PatientInsurance insurance) {
         String stored = clean(insurance.getTpaNphiesId());
-        if (!isBlank(stored) && !isInvalidPayerOrDestinationId(stored)) {
+        if (!isBlank(stored)) {
             return stored;
         }
 
         PayorDTO payor = payorHelper.findPayor(insurance.getPayorId(), insurance.getPayerNphiesId());
         if (payor == null) {
-            return stored;
+            return null;
         }
 
         return clean(payor.tpaNphiesId());
@@ -424,21 +403,16 @@ public class WaseelEligibilityCheckService {
 
     private String resolveDestinationId(String requestDestinationId, PatientInsurance insurance) {
         String destinationId = clean(requestDestinationId);
-        if (destinationId != null && !isInvalidPayerOrDestinationId(destinationId)) {
+        if (destinationId != null) {
             return destinationId;
         }
 
         String tpaNphiesId = resolveTpaNphiesId(insurance);
-        if (tpaNphiesId != null && !isInvalidPayerOrDestinationId(tpaNphiesId)) {
+        if (tpaNphiesId != null) {
             return tpaNphiesId;
         }
 
-        String payerNphiesId = resolvePayerNphiesId(insurance);
-        if (payerNphiesId != null && !isInvalidPayerOrDestinationId(payerNphiesId)) {
-            return payerNphiesId;
-        }
-
-        return null;
+        return resolvePayerNphiesId(insurance);
     }
 
     private String resolvePolicyHolder(PatientInsurance insurance) {
@@ -611,14 +585,6 @@ public class WaseelEligibilityCheckService {
         }
 
         return cleaned.toLowerCase(Locale.ROOT);
-    }
-
-    private boolean isInvalidPayerOrDestinationId(String value) {
-        if (value == null) {
-            return true;
-        }
-
-        return INVALID_PAYER_OR_DESTINATION_IDS.contains(value.trim().toUpperCase(Locale.ROOT));
     }
 
     private boolean isBlank(String value) {

@@ -3,6 +3,8 @@ package com.dazzle.asklepios.integration.waseel.service;
 import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
 import com.dazzle.asklepios.integration.waseel.dto.WaseelCoverageDetails;
 import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
+import com.dazzle.asklepios.service.InsuranceBenefitRuleService;
+import com.dazzle.asklepios.service.dto.InsuranceBenefitRule;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,8 @@ public class WaseelCoverageQueryService {
 
     private final WaseelCoverageExtractionService
             coverageExtractionService;
+
+    private final InsuranceBenefitRuleService insuranceBenefitRuleService;
 
     public WaseelCoverageDetails getLatestForPatient(
             Long patientId,
@@ -61,6 +65,18 @@ public class WaseelCoverageQueryService {
                                 eligibility.getResponseJson()
                         );
 
+        java.util.List<InsuranceBenefitRule> storedRules =
+                eligibility.getPatientInsuranceId() == null
+                        ? java.util.List.of()
+                        : insuranceBenefitRuleService.getStoredRules(
+                                eligibility.getPatientInsuranceId()
+                        );
+
+        java.util.List<InsuranceBenefitRule> benefitRules =
+                storedRules.isEmpty()
+                        ? details.benefitRules()
+                        : storedRules;
+
         return new WaseelCoverageDetails(
                 eligibility.getId(),
                 eligibility.getEligibilityResponseId(),
@@ -74,7 +90,8 @@ public class WaseelCoverageQueryService {
                 details.copaymentPercent(),
                 details.copaymentCap(),
                 eligibility.getRespondedAt(),
-                details.benefits()
+                details.benefits(),
+                benefitRules
         );
     }
 
