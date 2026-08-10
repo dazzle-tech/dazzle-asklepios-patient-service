@@ -32,4 +32,6 @@ public interface PatientDocumentRepository extends JpaRepository<PatientDocument
 
     List<PatientDocument> findByPatient_IdOrderByIsPrimaryDescIdAsc(Long patientId);
 
+    boolean existsByPatientId(Long patientId);
+
 }
