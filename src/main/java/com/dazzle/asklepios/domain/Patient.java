@@ -3,6 +3,7 @@ package com.dazzle.asklepios.domain;
 import com.dazzle.asklepios.domain.AbstractAuditingEntity;
 import com.dazzle.asklepios.domain.PatientDocument;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
 
@@ -226,6 +227,10 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
 
     @Column(name = "patient_conditions", columnDefinition = "text")
     private String patientConditions;
+
+    @Pattern(regexp = "^\\d{4}$", message = "PIN must be exactly 4 digits")
+    @Column(length = 4)
+    private String pin;
 
     @AssertTrue(message = "When patient is not unknown, firstName, lastName, sexAtBirth, dateOfBirth and primaryMobileNumber are required")
     public boolean isValidWhenNotUnknown() {
