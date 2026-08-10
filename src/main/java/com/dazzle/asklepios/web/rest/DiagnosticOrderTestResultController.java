@@ -338,7 +338,7 @@ public class DiagnosticOrderTestResultController {
             List<Long> patientIdIn,
 
             @RequestParam(name = "orderNumber", required = false)
-            Long orderNumber,
+            String orderNumber,
 
             @ParameterObject Pageable pageable
     ) {
@@ -396,11 +396,13 @@ public class DiagnosticOrderTestResultController {
                             subPredicates.add(orderRoot.get("fromDepartmentId").in(fromDepartmentIn));
                         }
 
-                        if (needOrderNumberFilter) {
-                            subPredicates.add(criteriaBuilder.equal(
-                                    orderRoot.get("orderNumber"),
-                                    orderNumber
-                            ));
+                        if (needOrderNumberFilter && orderNumber != null && !orderNumber.isBlank()) {
+                            subPredicates.add(
+                                    criteriaBuilder.like(
+                                            criteriaBuilder.lower(orderRoot.get("orderNumber")),
+                                            "%" + orderNumber.trim().toLowerCase() + "%"
+                                    )
+                            );
                         }
 
                         if (needPatientIdFilter) {

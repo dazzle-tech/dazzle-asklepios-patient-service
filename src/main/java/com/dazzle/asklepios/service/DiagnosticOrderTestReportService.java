@@ -554,7 +554,7 @@ public class DiagnosticOrderTestReportService {
             String patientName,
             String mrn,
             List<Long> patientIdIn,
-            Long orderNumber,
+            String orderNumber,
             Pageable pageable
     ) {
         LOG.debug("[DiagnosticOrderTestReportService] FILTER_REPORTS - start. id={} orderIdIn={} orderTestId={} severity={} approvedBy={} rejectedBy={} reviewBy={} reviewed={} patientIdIn={} orderNumber={} pageable={}",
@@ -700,11 +700,13 @@ public class DiagnosticOrderTestReportService {
                     subPredicates.add(orderRoot.get("fromDepartmentId").in(fromDepartmentIn));
                 }
 
-                if (needOrderNumberFilter) {
-                    subPredicates.add(criteriaBuilder.equal(
-                            orderRoot.get("orderNumber"),
-                            orderNumber
-                    ));
+                if (needOrderNumberFilter && orderNumber != null && !orderNumber.isBlank()) {
+                    subPredicates.add(
+                            criteriaBuilder.like(
+                                    criteriaBuilder.lower(orderRoot.get("orderNumber")),
+                                    "%" + orderNumber.trim().toLowerCase() + "%"
+                            )
+                    );
                 }
 
                 if (needPatientIdFilter) {
