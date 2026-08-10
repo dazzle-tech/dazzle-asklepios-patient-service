@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service.dto.patietnSatisfactionSurveyResponse;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -10,6 +11,7 @@ import java.util.List;
 
 @Getter
 @Setter
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class PatientSatisfactionSurveySubmitDTO {
 
     @NotBlank
