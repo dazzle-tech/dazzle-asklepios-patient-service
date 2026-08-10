@@ -5,6 +5,11 @@ import java.math.BigDecimal;
 
 /**
  * Structured benefit rule extracted from Waseel eligibility or stored on patient insurance.
+ *
+ * Financial semantics:
+ * - {@link #patientCopaymentPercentage()} / {@link #patientMaximumCopayment()} — patient copay per service
+ * - {@link #maximumBenefit()} — insurance coverage cap (e.g. Maximum benefit allowable)
+ * - {@link #approvalLimit()} — pre-authorization limit on insurance share
  */
 public record InsuranceBenefitRule(
 

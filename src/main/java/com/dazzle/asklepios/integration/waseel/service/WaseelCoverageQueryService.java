@@ -3,6 +3,7 @@ package com.dazzle.asklepios.integration.waseel.service;
 import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
 import com.dazzle.asklepios.integration.waseel.dto.WaseelCoverageDetails;
 import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
+import com.dazzle.asklepios.service.InsuranceBenefitRuleMatcher;
 import com.dazzle.asklepios.service.InsuranceBenefitRuleService;
 import com.dazzle.asklepios.service.dto.InsuranceBenefitRule;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -29,6 +30,8 @@ public class WaseelCoverageQueryService {
             coverageExtractionService;
 
     private final InsuranceBenefitRuleService insuranceBenefitRuleService;
+
+    private final InsuranceBenefitRuleMatcher benefitRuleMatcher;
 
     public WaseelCoverageDetails getLatestForPatient(
             Long patientId,
@@ -77,6 +80,24 @@ public class WaseelCoverageQueryService {
                         ? details.benefitRules()
                         : storedRules;
 
+        InsuranceBenefitRule preferredRule =
+                benefitRuleMatcher.selectPreferredDefaultRule(
+                        benefitRules,
+                        true
+                );
+
+        java.math.BigDecimal copaymentPercent = details.copaymentPercent();
+        java.math.BigDecimal copaymentCap = details.copaymentCap();
+
+        if (preferredRule != null) {
+            if (preferredRule.patientCopaymentPercentage() != null) {
+                copaymentPercent = preferredRule.patientCopaymentPercentage();
+            }
+            if (preferredRule.patientMaximumCopayment() != null) {
+                copaymentCap = preferredRule.patientMaximumCopayment();
+            }
+        }
+
         return new WaseelCoverageDetails(
                 eligibility.getId(),
                 eligibility.getEligibilityResponseId(),
@@ -87,8 +108,8 @@ public class WaseelCoverageQueryService {
                 details.network(),
                 details.inforce(),
                 details.coverageStatus(),
-                details.copaymentPercent(),
-                details.copaymentCap(),
+                copaymentPercent,
+                copaymentCap,
                 eligibility.getRespondedAt(),
                 details.benefits(),
                 benefitRules

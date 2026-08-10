@@ -49,7 +49,10 @@ public class InsuranceBenefitRuleService {
         }
 
         List<InsuranceBenefitRule> extractedRules =
-                coverageExtractionService.extractBenefitRules(coverage);
+                coverageExtractionService.extractBenefitRules(coverage)
+                        .stream()
+                        .map(InsuranceBenefitRuleNormalizer::normalize)
+                        .toList();
 
         benefitRuleRepository.deleteByPatientInsuranceId(insurance.getId());
 
@@ -78,9 +81,11 @@ public class InsuranceBenefitRuleService {
         }
 
         LOG.info(
-                "[ELIGIBILITY] Synced {} benefit rules patientInsuranceId={}",
+                "[ELIGIBILITY] Synced {} benefit rules patientInsuranceId={} defaultCopayPercent={} defaultMaxCopay={}",
                 entities.size(),
-                insurance.getId()
+                insurance.getId(),
+                insurance.getDefaultCopaymentPercent(),
+                insurance.getDefaultMaximumCopayment()
         );
     }
 
@@ -93,6 +98,7 @@ public class InsuranceBenefitRuleService {
                 .findByPatientInsuranceIdOrderByBenefitCategoryAsc(patientInsuranceId)
                 .stream()
                 .map(this::toDto)
+                .map(InsuranceBenefitRuleNormalizer::normalize)
                 .toList();
     }
 
@@ -114,12 +120,13 @@ public class InsuranceBenefitRuleService {
         InsuranceBenefitRule matched =
                 benefitRuleMatcher.resolveRule(
                         rules,
+                        insurance,
                         serviceCategory,
                         serviceSource
                 );
 
         if (matched != null) {
-            return matched;
+            return InsuranceBenefitRuleNormalizer.normalize(matched);
         }
 
         return buildFallbackFromInsuranceDefaults(insurance);

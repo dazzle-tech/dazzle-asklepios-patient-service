@@ -7,6 +7,7 @@ import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityClassD
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityCostBeneficiaryDTO;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityCoverageDTO;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityResponse;
+import com.dazzle.asklepios.service.InsuranceBenefitRuleMatcher;
 import com.dazzle.asklepios.service.dto.InsuranceBenefitRule;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ import java.util.Map;
 public class WaseelCoverageExtractionService {
 
     private final ObjectMapper objectMapper;
+    private final InsuranceBenefitRuleMatcher benefitRuleMatcher;
 
     public InsuranceCoverage extractCoverage(
             String responseJson
@@ -132,18 +134,17 @@ public class WaseelCoverageExtractionService {
             }
         }
 
-        InsuranceBenefitRule globalRule = null;
         for (CategoryRuleBuilder builder : builders.values()) {
             InsuranceBenefitRule rule = builder.build(null);
-            if (rule.patientCopaymentPercentage() != null
-                    || rule.patientMaximumCopayment() != null
-                    || rule.maximumBenefit() != null) {
+            if (hasCopayment(rule)
+                    || rule.maximumBenefit() != null
+                    || rule.approvalLimit() != null) {
                 rules.add(rule);
-                if (globalRule == null && hasCopayment(rule)) {
-                    globalRule = rule;
-                }
             }
         }
+
+        InsuranceBenefitRule globalRule =
+                benefitRuleMatcher.selectPreferredDefaultRule(rules, true);
 
         if (globalRule != null) {
             rules.add(
@@ -152,13 +153,13 @@ public class WaseelCoverageExtractionService {
                             InsuranceBenefitRule.GLOBAL_CATEGORY,
                             globalRule.itemName(),
                             globalRule.itemCode(),
+                            globalRule.networkType(),
+                            globalRule.providerType(),
                             null,
                             null,
                             null,
                             null,
                             null,
-                            globalRule.maximumBenefit(),
-                            globalRule.approvalLimit(),
                             globalRule.patientCopaymentPercentage(),
                             globalRule.patientMaximumCopayment(),
                             true,
@@ -222,48 +223,35 @@ public class WaseelCoverageExtractionService {
             return;
         }
 
-        if (isCopaymentPercent(typeDisplay)) {
-            builder.patientCopaymentPercentage = new BigDecimal(value);
-            builder.unit = unit;
-            return;
-        }
+        WaseelBenefitEntryClassifier.EntryType entryType =
+                WaseelBenefitEntryClassifier.classify(typeDisplay, typeCode);
 
-        if (isCopaymentCap(typeDisplay)) {
-            builder.patientMaximumCopayment = new BigDecimal(value);
-            builder.currency = unit != null ? unit : "SAR";
-            return;
-        }
-
-        if (isMaximumBenefit(typeDisplay, typeCode)) {
-            builder.maximumBenefit = new BigDecimal(value);
-            builder.currency = unit != null ? unit : "SAR";
-            return;
-        }
-
-        if (isApprovalLimit(typeDisplay, typeCode)) {
-            builder.approvalLimit = new BigDecimal(value);
-            builder.currency = unit != null ? unit : "SAR";
+        switch (entryType) {
+            case PATIENT_COPAYMENT_PERCENT -> {
+                builder.patientCopaymentPercentage = new BigDecimal(value);
+                builder.unit = unit;
+            }
+            case PATIENT_COPAYMENT_MAXIMUM -> {
+                builder.patientMaximumCopayment = new BigDecimal(value);
+                builder.currency = unit != null ? unit : "SAR";
+            }
+            case INSURANCE_MAXIMUM_BENEFIT -> {
+                builder.maximumBenefit = new BigDecimal(value);
+                builder.currency = unit != null ? unit : "SAR";
+            }
+            case INSURANCE_APPROVAL_LIMIT -> {
+                builder.approvalLimit = new BigDecimal(value);
+                builder.currency = unit != null ? unit : "SAR";
+            }
+            default -> {
+                // ignore unclassified benefit entries
+            }
         }
     }
 
     private boolean hasCopayment(InsuranceBenefitRule rule) {
         return rule.patientCopaymentPercentage() != null
                 || rule.patientMaximumCopayment() != null;
-    }
-
-    private boolean isMaximumBenefit(String typeDisplay, String typeCode) {
-        String normalizedDisplay = normalize(typeDisplay);
-        String normalizedCode = normalize(typeCode);
-        return normalizedDisplay.contains("benefit")
-                || normalizedDisplay.contains("maximum")
-                || "benefit".equals(normalizedCode);
-    }
-
-    private boolean isApprovalLimit(String typeDisplay, String typeCode) {
-        String normalizedDisplay = normalize(typeDisplay);
-        String normalizedCode = normalize(typeCode);
-        return normalizedDisplay.contains("approval")
-                || normalizedCode.contains("approval");
     }
 
     private String firstNonBlankValue(String... values) {
@@ -284,6 +272,8 @@ public class WaseelCoverageExtractionService {
         private final String benefitCategory;
         private final String itemName;
         private final String itemCode;
+        private String networkType;
+        private String providerType;
         private BigDecimal patientCopaymentPercentage;
         private BigDecimal patientMaximumCopayment;
         private BigDecimal maximumBenefit;
@@ -299,6 +289,27 @@ public class WaseelCoverageExtractionService {
             this.benefitCategory = benefitCategory;
             this.itemName = itemName;
             this.itemCode = itemCode;
+            parseContextFromItemName(itemName);
+        }
+
+        private void parseContextFromItemName(String name) {
+            String normalized = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+
+            if (normalized.contains("out of network")
+                    || normalized.contains("out-of-network")) {
+                networkType = "OUT_OF_NETWORK";
+            } else if (normalized.contains("in network")
+                    || normalized.contains("in-network")) {
+                networkType = "IN_NETWORK";
+            }
+
+            if (normalized.contains("outpatient")) {
+                providerType = "OUTPATIENT";
+            } else if (normalized.contains("inpatient")) {
+                providerType = "INPATIENT";
+            } else if (normalized.contains("other healthcare")) {
+                providerType = "OTHER_HEALTHCARE_PROVIDER";
+            }
         }
 
         private InsuranceBenefitRule build(String exceptionsJson) {
@@ -307,8 +318,8 @@ public class WaseelCoverageExtractionService {
                     benefitCategory,
                     itemName,
                     itemCode,
-                    null,
-                    null,
+                    networkType,
+                    providerType,
                     null,
                     unit,
                     currency,
@@ -396,26 +407,29 @@ public class WaseelCoverageExtractionService {
                             coverage.items()
                     );
 
-            if (
-                    copayValues.containsKey(
-                            "percent"
-                    )
-            ) {
-                copaymentPercent =
-                        copayValues.get(
-                                "percent"
-                        );
-            }
+            List<InsuranceBenefitRule> benefitRules =
+                    extractBenefitRules(coverage);
+            InsuranceBenefitRule preferredRule =
+                    benefitRuleMatcher.selectPreferredDefaultRule(
+                            benefitRules,
+                            true
+                    );
 
-            if (
-                    copayValues.containsKey(
-                            "cap"
-                    )
-            ) {
-                copaymentCap =
-                        copayValues.get(
-                                "cap"
-                        );
+            if (preferredRule != null) {
+                if (preferredRule.patientCopaymentPercentage() != null) {
+                    copaymentPercent = preferredRule.patientCopaymentPercentage();
+                }
+                if (preferredRule.patientMaximumCopayment() != null) {
+                    copaymentCap = preferredRule.patientMaximumCopayment();
+                }
+            } else {
+                if (copayValues.containsKey("percent")) {
+                    copaymentPercent = copayValues.get("percent");
+                }
+
+                if (copayValues.containsKey("cap")) {
+                    copaymentCap = copayValues.get("cap");
+                }
             }
 
             return new WaseelCoverageDetails(
@@ -713,29 +727,25 @@ public class WaseelCoverageExtractionService {
                         continue;
                     }
 
-                    if (
-                            isCopaymentPercent(
-                                    typeDisplay
-                            )
-                    ) {
+                    WaseelBenefitEntryClassifier.EntryType entryType =
+                            WaseelBenefitEntryClassifier.classify(
+                                    typeDisplay,
+                                    typeCode
+                            );
+
+                    if (entryType
+                            == WaseelBenefitEntryClassifier.EntryType.PATIENT_COPAYMENT_PERCENT) {
                         copayValues.put(
                                 "percent",
-                                new BigDecimal(
-                                        value
-                                )
+                                new BigDecimal(value)
                         );
                     }
 
-                    if (
-                            isCopaymentCap(
-                                    typeDisplay
-                            )
-                    ) {
+                    if (entryType
+                            == WaseelBenefitEntryClassifier.EntryType.PATIENT_COPAYMENT_MAXIMUM) {
                         copayValues.put(
                                 "cap",
-                                new BigDecimal(
-                                        value
-                                )
+                                new BigDecimal(value)
                         );
                     }
                 }
@@ -743,52 +753,6 @@ public class WaseelCoverageExtractionService {
         }
 
         return copayValues;
-    }
-
-    private boolean isCopaymentPercent(
-            String typeDisplay
-    ) {
-        if (
-                typeDisplay == null
-                        || typeDisplay.isBlank()
-        ) {
-            return false;
-        }
-
-        String normalized =
-                typeDisplay
-                        .trim()
-                        .toLowerCase();
-
-        return normalized.equals(
-                "copayment percent per service."
-        )
-                || normalized.equals(
-                "copayment percent per service"
-        );
-    }
-
-    private boolean isCopaymentCap(
-            String typeDisplay
-    ) {
-        if (
-                typeDisplay == null
-                        || typeDisplay.isBlank()
-        ) {
-            return false;
-        }
-
-        String normalized =
-                typeDisplay
-                        .trim()
-                        .toLowerCase();
-
-        return normalized.equals(
-                "copayment maximum per service."
-        )
-                || normalized.equals(
-                "copayment maximum per service"
-        );
     }
 
     @SuppressWarnings("unchecked")

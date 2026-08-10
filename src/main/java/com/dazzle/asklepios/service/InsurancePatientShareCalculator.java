@@ -178,23 +178,6 @@ public class InsurancePatientShareCalculator {
             ServiceSource serviceSource,
             BigDecimal normalizedNet
     ) {
-        if (isGpOrConsultationService(serviceCategory, serviceSource)) {
-            BigDecimal gpVisitCopay = insurance.getGpVisitCopay();
-            if (gpVisitCopay != null && gpVisitCopay.signum() >= 0) {
-                LOG.debug(
-                        "[INSURANCE] Using GP visit copay patientInsuranceId={} copay={} net={}",
-                        insurance.getId(),
-                        gpVisitCopay,
-                        normalizedNet
-                );
-                BigDecimal patientShare = gpVisitCopay.min(normalizedNet);
-                return new InsuranceSplit(
-                        patientShare,
-                        money(normalizedNet.subtract(patientShare))
-                );
-            }
-        }
-
         InsuranceBenefitRule rule =
                 insuranceBenefitRuleService.resolveApplicableRule(
                         insurance,
@@ -210,13 +193,25 @@ public class InsurancePatientShareCalculator {
             );
         }
 
+        if (rule.patientCopaymentPercentage() == null
+                && rule.patientMaximumCopayment() == null) {
+            throw new BadRequestAlertException(
+                    "Matched insurance benefit rule has no copayment values.",
+                    ENTITY_NAME,
+                    "insurance.benefit.rule.incomplete"
+            );
+        }
+
         LOG.debug(
-                "[INSURANCE] Applying benefit rule patientInsuranceId={} category={} serviceCategory={} copayPercent={} maxCopay={}",
+                "[INSURANCE] Applying benefit rule patientInsuranceId={} category={} item={} network={} serviceCategory={} copayPercent={} maxCopay={} maxBenefit={}",
                 insurance.getId(),
                 rule.benefitCategory(),
+                rule.itemName(),
+                rule.networkType(),
                 serviceCategory,
                 rule.patientCopaymentPercentage(),
-                rule.patientMaximumCopayment()
+                rule.patientMaximumCopayment(),
+                rule.maximumBenefit()
         );
 
         return insuranceCalculationService.calculateFromBenefitRule(
@@ -245,24 +240,6 @@ public class InsurancePatientShareCalculator {
             );
             return null;
         }
-    }
-
-    private boolean isGpOrConsultationService(
-            String serviceCategory,
-            ServiceSource serviceSource
-    ) {
-        if (serviceSource == ServiceSource.CONSULTATION_PORTAL) {
-            return true;
-        }
-
-        if (serviceCategory == null || serviceCategory.isBlank()) {
-            return false;
-        }
-
-        String normalized = serviceCategory.trim().toLowerCase();
-        return normalized.contains("consult")
-                || normalized.contains("gp")
-                || normalized.contains("general practice");
     }
 
     private BigDecimal money(BigDecimal value) {
