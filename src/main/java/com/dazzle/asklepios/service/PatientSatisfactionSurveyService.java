@@ -6,8 +6,12 @@ import com.dazzle.asklepios.domain.enumeration.PatientSatisfactionSurveyResponse
 import com.dazzle.asklepios.repository.PatientSatisfactionSurveyResponseRepository;
 import com.dazzle.asklepios.service.dto.patietnSatisfactionSurveyResponse.PatientSatisfactionSurveyAnswerDTO;
 import com.dazzle.asklepios.service.dto.patietnSatisfactionSurveyResponse.PatientSatisfactionSurveySubmitDTO;
+import com.dazzle.asklepios.web.rest.vm.PatientSatisfactionSurveyResponseAnswerVM;
+import com.dazzle.asklepios.web.rest.vm.PatientSatisfactionSurveyResponseVM;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -80,6 +84,49 @@ public class PatientSatisfactionSurveyService {
         response.setOverallPercentage(percentage);
 
         return responseRepository.save(response);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<PatientSatisfactionSurveyResponseVM> getSubmittedSurveys(
+            Pageable pageable) {
+
+        return responseRepository
+                .findAll(pageable)
+                .map(this::mapToVM);
+    }
+    private PatientSatisfactionSurveyResponseVM mapToVM(
+            PatientSatisfactionSurveyResponse response) {
+
+        PatientSatisfactionSurveyResponseVM vm =
+                new PatientSatisfactionSurveyResponseVM();
+
+        vm.setId(response.getId());
+        vm.setPatientName(response.getPatientName());
+        vm.setStatus(response.getStatus());
+        vm.setStartedAt(response.getStartedAt());
+        vm.setCompletedAt(response.getCompletedAt());
+        vm.setOverallScore(response.getOverallScore());
+        vm.setOverallPercentage(response.getOverallPercentage());
+        vm.setCreatedDate(response.getCreatedDate());
+
+        vm.setAnswers(
+                response.getAnswers()
+                        .stream()
+                        .map(answer -> {
+                            PatientSatisfactionSurveyResponseAnswerVM answerVM =
+                                    new PatientSatisfactionSurveyResponseAnswerVM();
+
+                            answerVM.setId(answer.getId());
+                            answerVM.setQuestionCode(answer.getQuestionCode());
+                            answerVM.setAnswer(answer.getAnswer());
+                            answerVM.setScore(answer.getScore());
+
+                            return answerVM;
+                        })
+                        .toList()
+        );
+
+        return vm;
     }
 
     private BigDecimal calculateScore(
