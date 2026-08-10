@@ -5,6 +5,7 @@ import com.dazzle.asklepios.client.setup.SystemConfigurationClient;
 import com.dazzle.asklepios.domain.DuplicationCandidate;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
+import com.dazzle.asklepios.domain.enumeration.DocumentType;
 import com.dazzle.asklepios.domain.enumeration.SystemConfigKey;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.DuplicationCandidateRepository;
@@ -1032,4 +1033,33 @@ public Patient updatePatientConditions(Long patientId, PatientConditionsDTO dto)
 
     return patientRepository.save(patient);
 }
+
+    @Transactional(readOnly = true)
+    public Optional<Patient> findPatientByPinAndDocument(
+            String pin,
+            String documentNumber
+    ) {
+
+        List<Patient> patients = patientRepository.getPatientByPin(pin);
+
+        Optional<PatientDocument> documentOpt =
+                patientDocumentRepository.getDocumentByNumber(documentNumber);
+
+        if (patients.isEmpty() || documentOpt.isEmpty()) {
+            return Optional.empty();
+        }
+
+        PatientDocument document = documentOpt.get();
+
+        if (document.getType() != DocumentType.NATIONAL_ID
+                && document.getType() != DocumentType.IQAMA) {
+            return Optional.empty();
+        }
+
+        Long patientId = document.getPatient().getId();
+
+        return patients.stream()
+                .filter(patient -> patient.getId().equals(patientId))
+                .findFirst();
+    }
 }
