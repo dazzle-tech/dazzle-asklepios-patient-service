@@ -12,6 +12,7 @@ import com.dazzle.asklepios.service.dto.patient.PatientLoginDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientPinDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
+import com.dazzle.asklepios.service.dto.patientPortal.PatientPortalLoginDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.InvalidPasswordException;
@@ -522,6 +523,18 @@ public class PatientController {
         return ResponseEntity.ok(
                 patientService.getPin(patientId)
         );
+    }
+
+    @PostMapping("/login-via-document-number")
+    public ResponseEntity<Patient> login(
+            @RequestBody PatientPortalLoginDTO request
+    ) {
+        Patient patient = patientService.loginPatientPortal(
+                request.primaryDocumentNumber(),
+                request.pin()
+        );
+
+        return ResponseEntity.ok(patient);
     }
     private static boolean isPasswordLengthInvalid(String password) {
         return (

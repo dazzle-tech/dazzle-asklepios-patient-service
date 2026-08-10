@@ -671,6 +671,54 @@ public class PatientService {
         return new PatientPinDTO(patient.getPin());
     }
 
+    @Transactional(readOnly = true)
+    public Patient loginPatientPortal(String primaryDocumentNumber, String pin) {
+
+        if (primaryDocumentNumber == null || primaryDocumentNumber.isBlank()) {
+            throw new BadRequestAlertException(
+                    "document.required"   ,
+                    "patient-portal",
+                     "Primary document number is required"
+            );
+        }
+
+        if (pin == null || pin.isBlank()) {
+            throw new BadRequestAlertException(
+                    "PIN is required",
+                    "patient-portal",
+                    "pin.required"
+            );
+        }
+
+        PatientDocument primaryDocument = patientDocumentRepository
+                .findByNumberAndIsPrimaryTrue(primaryDocumentNumber.trim())
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "Invalid document number or PIN",
+                        "patient-portal",
+                        "invalid.credentials"
+                ));
+
+        Patient patient = primaryDocument.getPatient();
+
+        if (patient == null) {
+            throw new BadRequestAlertException(
+                    "Invalid document number or PIN",
+                    "patient-portal",
+                    "invalid.credentials"
+            );
+        }
+
+        if (patient.getPin() == null || !patient.getPin().equals(pin)) {
+            throw new BadRequestAlertException(
+                    "Invalid document number or PIN",
+                    "patient-portal",
+                    "invalid.credentials"
+            );
+        }
+
+        return patient;
+    }
+
     private static boolean isPasswordSecure(String password) {
         return password != null && STRONG_PASSWORD_PATTERN.matcher(password).matches();
     }
