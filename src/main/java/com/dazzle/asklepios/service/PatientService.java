@@ -15,6 +15,7 @@ import com.dazzle.asklepios.service.dto.patient.FacilityPatientFilterDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientConditionsDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientDuplicationLookupDTO;
+import com.dazzle.asklepios.service.dto.patient.PatientPinDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
 import com.dazzle.asklepios.integration.waseel.service.CchiPatientLookupService;
@@ -645,6 +646,29 @@ public class PatientService {
 
                     return patientRepository.save(patient);
                 });
+    }
+
+    public PatientPinDTO setPin(Long patientId, PatientPinDTO request) {
+
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() ->
+                        new EntityNotFoundException("Patient not found: " + patientId));
+
+        patient.setPin(request.pin());
+
+        patientRepository.save(patient);
+
+        return new PatientPinDTO(patient.getPin());
+    }
+
+    @Transactional(readOnly = true)
+    public PatientPinDTO getPin(Long patientId) {
+
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() ->
+                        new EntityNotFoundException("Patient not found: " + patientId));
+
+        return new PatientPinDTO(patient.getPin());
     }
 
     private static boolean isPasswordSecure(String password) {

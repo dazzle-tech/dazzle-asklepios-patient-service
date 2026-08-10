@@ -9,6 +9,7 @@ import com.dazzle.asklepios.service.dto.patient.PatientConditionsDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientDuplicationLookupDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientLoginDTO;
+import com.dazzle.asklepios.service.dto.patient.PatientPinDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
@@ -504,7 +505,24 @@ public class PatientController {
         return new ResponseEntity<>(new JWTToken(jwt), headers, HttpStatus.OK);
 
     }
+    @PutMapping("/{patientId}/pin")
+    public ResponseEntity<PatientPinDTO> setPin(
+            @PathVariable Long patientId,
+            @Valid @RequestBody PatientPinDTO request) {
 
+        return ResponseEntity.ok(
+                patientService.setPin(patientId, request)
+        );
+    }
+
+    @GetMapping("/{patientId}/pin")
+    public ResponseEntity<PatientPinDTO> getPin(
+            @PathVariable Long patientId) {
+
+        return ResponseEntity.ok(
+                patientService.getPin(patientId)
+        );
+    }
     private static boolean isPasswordLengthInvalid(String password) {
         return (
                 StringUtils.isEmpty(password) ||
