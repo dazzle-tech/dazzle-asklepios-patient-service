@@ -34,4 +34,6 @@ public interface PatientDocumentRepository extends JpaRepository<PatientDocument
 
     boolean existsByPatientId(Long patientId);
 
+    Optional<PatientDocument> findByNumberAndIsPrimaryTrue(String number);
+
 }
