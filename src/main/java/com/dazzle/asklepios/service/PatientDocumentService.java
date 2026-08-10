@@ -61,22 +61,27 @@ public class PatientDocumentService {
             validateDocumentNumber(dto.type(), countryName, dto.number());
         }
 
+        boolean isFirstDocument = !patientDocumentRepository.existsByPatientId(dto.patientId());
+
         PatientDocument entity = PatientDocument.builder()
                 .patient(refPatient(dto.patientId()))
                 .countryId(dto.countryId())
                 .type(dto.type())
                 .number(dto.number())
-                .isPrimary(Boolean.TRUE.equals(dto.isPrimary()))
+                .isPrimary(isFirstDocument)
                 .build();
 
         try {
             PatientDocument saved = patientDocumentRepository.saveAndFlush(entity);
             syncPatientDocumentId(saved);
+
             LOG.info(
-                    "Successfully created PatientDocument id={} for patientId={}",
+                    "Successfully created PatientDocument id={} for patientId={} isPrimary={}",
                     saved.getId(),
-                    dto.patientId()
+                    dto.patientId(),
+                    saved.getIsPrimary()
             );
+
             return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -159,10 +164,30 @@ public class PatientDocumentService {
 
     public boolean delete(Long id) {
         LOG.info("[DELETE] Request to delete PatientDocument id={}", id);
+
         try {
-            patientDocumentRepository.deleteById(id);
+            PatientDocument document = patientDocumentRepository.findById(id)
+                    .orElseThrow(() -> new NotFoundAlertException(
+                            "PatientDocument not found with id " + id,
+                            "patientDocument",
+                            "notfound"
+                    ));
+
+            if (Boolean.TRUE.equals(document.getIsPrimary())) {
+                throw new BadRequestAlertException(
+                        "The primary document cannot be deleted.",
+                        "patientDocument",
+                        "primary.cannot.delete"
+                );
+            }
+
+            patientDocumentRepository.delete(document);
+
             LOG.info("Successfully deleted PatientDocument id={}", id);
             return true;
+
+        } catch (BadRequestAlertException | NotFoundAlertException ex) {
+            throw ex;
 
         } catch (Exception ex) {
             LOG.error("Error deleting PatientDocument id={}", id, ex);
