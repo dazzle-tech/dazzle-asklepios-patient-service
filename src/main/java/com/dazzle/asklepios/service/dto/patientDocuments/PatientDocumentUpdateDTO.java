@@ -23,10 +23,7 @@ public record PatientDocumentUpdateDTO(
         DocumentType type,
 
         @NotNull
-        String number,
-
-        @NotNull
-        Boolean isPrimary
+        String number
 
 ) implements Serializable {
 
@@ -36,8 +33,7 @@ public record PatientDocumentUpdateDTO(
                 doc.getPatient() != null ? doc.getPatient().getId() : null,
                 doc.getCountryId(),
                 doc.getType(),
-                doc.getNumber(),
-                doc.getIsPrimary()
+                doc.getNumber()
         );
     }
 }
