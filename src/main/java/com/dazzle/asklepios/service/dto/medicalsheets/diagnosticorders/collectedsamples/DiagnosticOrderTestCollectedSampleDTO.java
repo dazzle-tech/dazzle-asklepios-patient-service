@@ -9,8 +9,8 @@ import java.time.Instant;
 public record DiagnosticOrderTestCollectedSampleDTO(
         @NotNull Long orderId,
         @NotNull Long orderTestId,
-        @NotBlank String unit,
-        @NotNull BigDecimal quantity,
+        String unit,
+         BigDecimal quantity,
         @NotNull Instant collectedAt,
         @NotNull Instant expiryDate,
         @NotBlank String sourceOfSample

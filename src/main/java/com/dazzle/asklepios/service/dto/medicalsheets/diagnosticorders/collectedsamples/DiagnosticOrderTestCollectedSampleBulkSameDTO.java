@@ -12,8 +12,8 @@ import java.util.List;
 public record DiagnosticOrderTestCollectedSampleBulkSameDTO(
         @NotNull Long orderId,
         @NotEmpty List<@NotNull Long> orderTestIds,
-        @NotBlank String unit,
-        @NotNull BigDecimal quantity,
+         String unit,
+         BigDecimal quantity,
         @NotNull Instant collectedAt,
         @NotNull Instant expiryDate,
         @NotBlank String sourceOfSample

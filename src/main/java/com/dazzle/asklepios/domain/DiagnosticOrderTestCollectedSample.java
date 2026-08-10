@@ -43,10 +43,10 @@ public class DiagnosticOrderTestCollectedSample extends AbstractAuditingEntity i
     @Column(name = "order_test_id", nullable = false)
     private Long orderTestId;
 
-    @Column(name = "unit", columnDefinition = "text", nullable = false)
+    @Column(name = "unit", columnDefinition = "text")
     private String unit;
 
-    @Column(name = "quantity", precision = 19, scale = 2, nullable = false)
+    @Column(name = "quantity", precision = 19, scale = 2)
     private BigDecimal quantity;
 
     @PastOrPresent(message = "collected sample at cannot be in the future")
