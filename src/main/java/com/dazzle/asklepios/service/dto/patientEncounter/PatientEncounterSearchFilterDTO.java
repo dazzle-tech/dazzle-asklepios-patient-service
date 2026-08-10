@@ -22,5 +22,7 @@ public record PatientEncounterSearchFilterDTO(
 
         String chiefComplaint,
 
-        List<EncounterPriority> priorities
+        List<EncounterPriority> priorities,
+
+        Long practitionerId
 ) {}

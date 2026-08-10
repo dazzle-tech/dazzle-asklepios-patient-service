@@ -368,6 +368,10 @@ public class PatientEncounterService {
                 predicates.add(root.get("priorityLevel").in(filter.priorities()));
             }
 
+            if (filter.practitionerId() != null) {
+                predicates.add(cb.equal(root.get("practitionerId"), filter.practitionerId()));
+            }
+
             if (hasChief) {
                 predicates.add(
                         cb.like(
