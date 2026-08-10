@@ -14,7 +14,6 @@ import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.PatientWallet;
 import com.dazzle.asklepios.domain.BillingWallet;
 import com.dazzle.asklepios.domain.WalletTransaction;
-import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
@@ -32,10 +31,8 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.domain.enumeration.WalletTransactionType;
-import com.dazzle.asklepios.integration.waseel.dto.InsuranceCoverage;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
-import com.dazzle.asklepios.integration.waseel.service.WaseelCoverageExtractionService;
 import com.dazzle.asklepios.repository.FinancialDocumentItemRepository;
 import com.dazzle.asklepios.repository.FinancialDocumentRepository;
 import com.dazzle.asklepios.repository.PatientChargeRepository;
@@ -48,8 +45,7 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.repository.PatientWalletRepository;
 import com.dazzle.asklepios.repository.WalletTransactionRepository;
-import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
-import com.dazzle.asklepios.repository.BillingChargeRepository;
+import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
 import com.dazzle.asklepios.repository.BillingDebitAccountRepository;
 import com.dazzle.asklepios.service.dto.InsuranceSplit;
 import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
@@ -109,18 +105,16 @@ public class PatientPaymentsService {
 
     private final JdbcTemplate jdbcTemplate;
     private final EntityManager entityManager;
-    private final InsuranceCalculationService insuranceCalculationService;
-    private final WaseelEligibilityRequestRepository waseelEligibilityRequestRepository;
+    private final InsurancePatientShareCalculator insurancePatientShareCalculator;
     private final FinancialDocumentStatusService documentStatusService;
     private final FinancialDocumentRepository documentRepository;
 
-    private final WaseelCoverageExtractionService coverageExtractionService;
     private final PreAuthorizationResolutionService preAuthorizationResolutionService;
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
     private final EncounterCoverageService encounterCoverageService;
     private final BillingWalletService billingWalletService;
     private final FinancialDocumentBalanceService financialDocumentBalanceService;
-    private final BillingChargeRepository billingChargeRepository;
+    private final BillingChargeResponsibilityRepository billingChargeResponsibilityRepository;
     private final BillingDebitAccountRepository billingDebitAccountRepository;
     private final @Lazy BillingEngineService billingEngineService;
 
@@ -1047,57 +1041,91 @@ public class PatientPaymentsService {
         List<FinancialDocumentItem> items =
                 itemRepo.findByDocumentId(payment.getDocumentId());
 
-        InsuranceCoverage coverage;
-
-        if (payment.getPaymentTypes() == PaymentTypes.INSURANCE_PLAN) {
-
-            WaseelEligibilityRequest eligibility =
-                    waseelEligibilityRequestRepository
-                            .findFirstByPatientIdAndRequestStatusAndEligibilityResponseIdIsNotNullOrderByCreatedDateDesc(
-                                    patientId, "SUCCESS"
-                            )
-                            .orElseThrow(() -> new IllegalStateException("No eligibility"));
-
-            coverage = coverageExtractionService.extractCoverage(
-                    eligibility.getResponseJson()
-            );
-
-        } else {
-
-                coverage = new InsuranceCoverage(
-                new BigDecimal("100"),
-                BigDecimal.ZERO
-               );
-
-        }
+        boolean insurancePlanPayment =
+                payment.getPaymentTypes() == PaymentTypes.INSURANCE_PLAN;
 
         for (FinancialDocumentItem item : items) {
 
             BigDecimal net = nonNullAmount(item.getNetAmount());
 
-            BigDecimal patientShare =
-                    net.multiply(coverage.getCopaymentPercent())
-                            .divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP);
+            if (!insurancePlanPayment) {
+                item.setPatientShareAmount(net);
+                item.setInsuranceShareAmount(ZERO_AMOUNT);
+                item.setPaidAmount(ZERO_AMOUNT);
+                item.setRemainingAmount(net);
+                item.setInsurancePaidAmount(ZERO_AMOUNT);
+                item.setInsuranceRemainingAmount(ZERO_AMOUNT);
+                item.setStatus(FinancialDocumentItemStatus.PENDING);
+                continue;
+            }
 
-            patientShare = patientShare.min(coverage.getCopaymentCap());
+            PatientServiceAndProduct serviceProduct =
+                    serviceRepository
+                            .findById(item.getPatientServiceProductId())
+                            .orElse(null);
 
-            BigDecimal insuranceShare =
-                    net.subtract(patientShare);
+            PatientInsurance insurance = resolveInsuranceForSplit(
+                    payment,
+                    serviceProduct,
+                    patientId
+            );
 
-            item.setPatientShareAmount(patientShare);
-            item.setInsuranceShareAmount(insuranceShare);
+            if (insurance == null) {
+                item.setPatientShareAmount(net);
+                item.setInsuranceShareAmount(ZERO_AMOUNT);
+                item.setPaidAmount(ZERO_AMOUNT);
+                item.setRemainingAmount(net);
+                item.setInsurancePaidAmount(ZERO_AMOUNT);
+                item.setInsuranceRemainingAmount(ZERO_AMOUNT);
+                item.setStatus(FinancialDocumentItemStatus.PENDING);
+                continue;
+            }
 
+            InsuranceSplit split =
+                    insurancePatientShareCalculator.calculateSplit(
+                            insurance,
+                            serviceProduct,
+                            net
+                    );
+
+            item.setPatientShareAmount(split.patientShare());
+            item.setInsuranceShareAmount(split.insuranceShare());
             item.setPaidAmount(ZERO_AMOUNT);
-            item.setRemainingAmount(patientShare);
-
+            item.setRemainingAmount(split.patientShare());
             item.setInsurancePaidAmount(ZERO_AMOUNT);
-            item.setInsuranceRemainingAmount(insuranceShare);
-
+            item.setInsuranceRemainingAmount(split.insuranceShare());
             item.setStatus(FinancialDocumentItemStatus.PENDING);
         }
 
         itemRepo.saveAll(items);
     }
+
+    private PatientInsurance resolveInsuranceForSplit(
+            PatientPayments payment,
+            PatientServiceAndProduct serviceProduct,
+            Long patientId
+    ) {
+        if (serviceProduct != null && serviceProduct.getPatientInsuranceId() != null) {
+            return insuranceRepository
+                    .findByIdAndPatient_Id(
+                            serviceProduct.getPatientInsuranceId(),
+                            patientId
+                    )
+                    .orElse(null);
+        }
+
+        if (payment.getPlan() != null && payment.getPlan().getId() != null) {
+            return insuranceRepository
+                    .findByIdAndPatient_Id(
+                            payment.getPlan().getId(),
+                            patientId
+                    )
+                    .orElse(payment.getPlan());
+        }
+
+        return null;
+    }
+
     private PatientPaymentDetailsDTO buildInitialResponse(PatientPayments payment) {
         return new PatientPaymentDetailsDTO(
                 payment.getId(),
@@ -1328,6 +1356,11 @@ public class PatientPaymentsService {
         }
 
         BigDecimal totalDebt = resolvePatientRemainingBalance(patientId);
+        BigDecimal insuranceOutstanding =
+                nonNullAmount(
+                        billingChargeResponsibilityRepository
+                                .sumOpenInsuranceOutstandingByPatient(patientId)
+                );
 
         BillingWallet billingWallet =
                 billingWalletService.findOptionalByPatient(patientId);
@@ -1348,9 +1381,10 @@ public class PatientPaymentsService {
                         : ZERO_AMOUNT;
 
         LOG.info(
-                "[LEDGER_SUMMARY] result patientId={} totalDebt={} walletBalance={} reservedBalance={} consumedAmount={}",
+                "[LEDGER_SUMMARY] result patientId={} totalDebt={} insuranceOutstanding={} walletBalance={} reservedBalance={} consumedAmount={}",
                 patientId,
                 totalDebt,
+                insuranceOutstanding,
                 walletBalance,
                 reservedBalance,
                 consumedAmount
@@ -1359,6 +1393,7 @@ public class PatientPaymentsService {
         return new PatientLedgerSummaryDTO(
                 patientId,
                 totalDebt,
+                insuranceOutstanding,
                 walletBalance,
                 reservedBalance,
                 consumedAmount
@@ -1377,8 +1412,8 @@ public class PatientPaymentsService {
 
         BigDecimal openBillingOutstanding =
                 nonNullAmount(
-                        billingChargeRepository
-                                .sumOpenOutstandingByPatientExcludingEncounters(
+                        billingChargeResponsibilityRepository
+                                .sumOpenPatientOutstandingByPatientExcludingEncounters(
                                         patientId,
                                         invoicedEncounterIds
                                 )

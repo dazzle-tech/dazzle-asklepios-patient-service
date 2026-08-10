@@ -18,10 +18,10 @@ service:
 
 waseel:
   api:
-    base-url: https://api.stg-eclaims.waseel.com
-    username: ${WASEEL_USERNAME:abh706}
-    password: ${WASEEL_PASSWORD:abhclm706}
-    provider-id: ${WASEEL_PROVIDER_ID:706}
+    base-url: https://api.eclaims.waseel.com
+    username: ${WASEEL_USERNAME:oh621.admin}
+    password: ${WASEEL_PASSWORD:Onehealth@2026}
+    provider-id: ${WASEEL_PROVIDER_ID:104834}
     nphies-id: ${WASEEL_NPHIES_ID:10000000003170}
     system-type: ${WASEEL_SYSTEM_TYPE:1}
     timeout-seconds: 90
@@ -45,9 +45,9 @@ spring:
       indent-output: true
   datasource:
     type: com.zaxxer.hikari.HikariDataSource
-    url: jdbc:postgresql://localhost:5433/postgres
+    url: jdbc:postgresql://localhost:5433/test
     username: postgres
-    password: qse123H
+    password: root
 
     hikari:
       poolName: Hikari

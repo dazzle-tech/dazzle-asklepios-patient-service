@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.integration.waseel.dto;
 
+import com.dazzle.asklepios.service.dto.InsuranceBenefitRule;
+
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -34,7 +36,9 @@ public record WaseelCoverageDetails(
 
         Instant eligibilityCheckedAt,
 
-        List<WaseelBenefitDetail> benefits
+        List<WaseelBenefitDetail> benefits,
+
+        List<InsuranceBenefitRule> benefitRules
 
 ) implements Serializable {
 }

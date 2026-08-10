@@ -65,6 +65,22 @@ public class ApprovalRequestBuilderService {
 
     @Transactional(readOnly = true)
     public WaseelApprovalRequest buildRequest(Long eligibilityRequestId, Long encounterId) {
+        List<PatientServiceAndProduct> items =
+                patientServiceAndProductRepository
+                        .findByEncounterIdAndPreAuthorizationStatusAndPreAuthorizationRequestIdIsNull(
+                                encounterId,
+                                PreAuthorizationStatus.PENDING_APPROVAL
+                        );
+
+        return buildRequest(eligibilityRequestId, encounterId, items);
+    }
+
+    @Transactional(readOnly = true)
+    public WaseelApprovalRequest buildRequest(
+            Long eligibilityRequestId,
+            Long encounterId,
+            List<PatientServiceAndProduct> items
+    ) {
         encounterInsuranceEligibilityService.getValidatedInsuranceForPreAuthorization(encounterId);
 
         WaseelApprovalEligibilitySnapshot snapshot =
@@ -105,13 +121,15 @@ public class ApprovalRequestBuilderService {
             );
         }
 
-        List<PatientServiceAndProduct> items =
-                patientServiceAndProductRepository.findByEncounterIdAndPreAuthorizationStatus(
-                        encounterId,
-                        PreAuthorizationStatus.PENDING_APPROVAL
-                );
+        List<PatientServiceAndProduct> pendingItems = items == null
+                ? List.of()
+                : items.stream()
+                        .filter(item -> Boolean.FALSE.equals(item.getIsBilled()))
+                        .filter(item -> item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL)
+                        .filter(item -> item.getPreAuthorizationRequestId() == null)
+                        .toList();
 
-        if (items == null || items.isEmpty()) {
+        if (pendingItems.isEmpty()) {
             throw new BadRequestAlertException(
                     "No pending pre-authorization items found",
                     "preAuthorization",
@@ -119,7 +137,7 @@ public class ApprovalRequestBuilderService {
             );
         }
 
-        validateItems(items);
+        validateItems(pendingItems);
 
         WaseelApprovalEncounter waseelEncounter =
                 encounterMapper.toWaseelEncounter(encounter, nphiesId);
@@ -127,7 +145,7 @@ public class ApprovalRequestBuilderService {
         var supportingInfo = approvalSupportingInfoMapper.toSupportingInfo(encounter);
 
         var waseelItems = approvalItemMapper.toWaseelItems(
-                items,
+                pendingItems,
                 snapshot.insurancePlan() == null ? null : snapshot.insurancePlan().patientShare(),
                 encounter,
                 supportingInfo
@@ -145,7 +163,7 @@ public class ApprovalRequestBuilderService {
                 preAuthorizationInfoMapper.toPreAuthorizationInfo(
                         snapshot,
                         nphiesId,
-                        resolvePrescriptionReference(items)
+                        resolvePrescriptionReference(pendingItems)
                 ),
                 supportingInfo,
                 approvalDiagnosisMapper.toWaseelDiagnosisList(diagnoses),

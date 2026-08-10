@@ -6,6 +6,7 @@ import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityCostBe
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityCoverageDTO;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityResponse;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
+import com.dazzle.asklepios.service.InsuranceBenefitRuleService;
 import com.dazzle.asklepios.service.helper.NphiesPayerHelper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,6 +30,7 @@ public class EligibilityPatientInsuranceSyncService {
     private final PatientInsuranceRepository patientInsuranceRepository;
     private final ObjectMapper objectMapper;
     private final NphiesPayerHelper nphiesPayerHelper;
+    private final InsuranceBenefitRuleService insuranceBenefitRuleService;
 
     @Transactional
     public PatientInsurance syncFromEligibilityResponse(
@@ -110,6 +112,7 @@ public class EligibilityPatientInsuranceSyncService {
 
         LocalDate benefitStartDate = parseDate(coverage.benefitStartDate());
         if (benefitStartDate != null) {
+            insurance.setBenefitStartDate(benefitStartDate);
             if (insurance.getIssueDate() == null) {
                 insurance.setIssueDate(benefitStartDate);
             }
@@ -117,6 +120,7 @@ public class EligibilityPatientInsuranceSyncService {
 
         LocalDate benefitEndDate = parseDate(coverage.benefitEndDate());
         if (benefitEndDate != null) {
+            insurance.setBenefitEndDate(benefitEndDate);
             insurance.setExpirationDate(benefitEndDate);
         }
 
@@ -148,6 +152,12 @@ public class EligibilityPatientInsuranceSyncService {
         insurance.setEligibilityBenefitsJson(buildBenefitsJson(coverage));
         insurance.setLastEligibilityRequestId(eligibilityRequestId);
         insurance.setLastEligibilitySyncedAt(Instant.now());
+
+        insuranceBenefitRuleService.syncFromCoverage(
+                insurance,
+                coverage,
+                eligibilityRequestId
+        );
     }
 
     private void applyPayerNameFromNphiesPayers(

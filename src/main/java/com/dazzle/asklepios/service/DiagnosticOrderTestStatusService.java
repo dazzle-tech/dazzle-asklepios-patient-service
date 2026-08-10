@@ -143,6 +143,16 @@ public class DiagnosticOrderTestStatusService {
         PatientServiceAndProduct savedBillingItem =
                 findOrCreateDiagnosticBillingItem(order, test, setupDiagnostic);
 
+        if (Boolean.TRUE.equals(savedBillingItem.getIsBilled())
+                && savedBillingItem.getPreAuthorizationStatus()
+                        == PreAuthorizationStatus.PENDING_APPROVAL) {
+            throw new BadRequestAlertException(
+                    "Diagnostic item requires pre-authorization but was already billed.",
+                    "diagnostic_order_tests",
+                    "preAuthorization.alreadyBilled"
+            );
+        }
+
         if (savedBillingItem.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL) {
             LOG.info(
                     "[DIAGNOSTIC_ORDER] Pre-auth required — submitting to Waseel. encounterId={} pspId={} testId={}",
@@ -547,6 +557,12 @@ public class DiagnosticOrderTestStatusService {
                         test.getId(),
                         billingItemType
                 )
+                .map(existing ->
+                        refreshExistingDiagnosticBillingItem(
+                                existing,
+                                order.getEncounterId()
+                        )
+                )
                 .orElseGet(() ->
                         patientServiceAndProductRepository.saveAndFlush(
                                 buildDiagnosticBillingItem(
@@ -556,6 +572,23 @@ public class DiagnosticOrderTestStatusService {
                                 )
                         )
                 );
+    }
+
+    private PatientServiceAndProduct refreshExistingDiagnosticBillingItem(
+            PatientServiceAndProduct existing,
+            Long encounterId
+    ) {
+        preAuthorizationResolutionService.applyEncounterInsuranceLink(
+                existing,
+                encounterId,
+                true
+        );
+        preAuthorizationResolutionService.refreshPreAuthorization(
+                existing,
+                true
+        );
+
+        return patientServiceAndProductRepository.saveAndFlush(existing);
     }
 
     private void billDiagnosticItemOnOrder(

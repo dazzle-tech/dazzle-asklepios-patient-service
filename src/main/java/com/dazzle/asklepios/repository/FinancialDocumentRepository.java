@@ -4,11 +4,13 @@ import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.List;
@@ -85,5 +87,30 @@ public interface FinancialDocumentRepository extends JpaRepository<FinancialDocu
             @Param("facilityId") Long facilityId,
             @Param("documentType") String documentType,
             @Param("year") int year
+    );
+
+    @Query("""
+            SELECT fd FROM FinancialDocument fd
+            JOIN PatientEncounter e ON e.id = fd.encounterId
+            JOIN PatientInsurance pi ON pi.id = e.patientInsuranceId
+            WHERE fd.documentType = com.dazzle.asklepios.domain.enumeration.FinancialDocumentType.INVOICE
+              AND fd.documentSubtype = com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype.INSURANCE_CLAIM
+              AND fd.status IN :statuses
+              AND (:payorId IS NULL OR pi.payorId = :payorId)
+              AND (:fromDate IS NULL OR fd.createdDate >= :fromDate)
+              AND (:toDate IS NULL OR fd.createdDate < :toDate)
+              AND NOT EXISTS (
+                  SELECT 1 FROM ClaimRequest cr
+                  WHERE cr.financialDocumentId = fd.id
+                    AND cr.status IN :activeClaimStatuses
+              )
+            ORDER BY fd.createdDate DESC
+            """)
+    List<FinancialDocument> findPendingInsuranceClaimInvoices(
+            @Param("payorId") Long payorId,
+            @Param("fromDate") Instant fromDate,
+            @Param("toDate") Instant toDate,
+            @Param("statuses") Collection<FinancialDocumentStatus> statuses,
+            @Param("activeClaimStatuses") Collection<ClaimStatus> activeClaimStatuses
     );
 }

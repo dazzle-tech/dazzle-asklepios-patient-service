@@ -48,10 +48,11 @@ final class PreAuthorizationWaseelStatusMapper {
     }
 
     static boolean isPendingStatus(PreAuthorizationStatus status) {
-        return status == PreAuthorizationStatus.PENDING_APPROVAL;
+        return status == PreAuthorizationStatus.PENDING_APPROVAL
+                || status == PreAuthorizationStatus.PARTIAL;
     }
 
-    private static PreAuthorizationStatus mapStatusText(String rawStatus) {
+    static PreAuthorizationStatus mapStatusText(String rawStatus) {
         if (rawStatus == null || rawStatus.isBlank()) {
             return PreAuthorizationStatus.PENDING_APPROVAL;
         }
@@ -70,7 +71,7 @@ final class PreAuthorizationWaseelStatusMapper {
         }
 
         if (normalized.contains("partial")) {
-            return PreAuthorizationStatus.PENDING_APPROVAL;
+            return PreAuthorizationStatus.PARTIAL;
         }
 
         if (normalized.contains("pend")

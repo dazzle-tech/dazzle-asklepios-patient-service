@@ -44,9 +44,7 @@ import com.dazzle.asklepios.service.dto.billing.GenerateInvoiceResult;
 import com.dazzle.asklepios.service.dto.billing.PatientFinancialDocumentResponse;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-import com.dazzle.asklepios.integration.waseel.event.InsuranceInvoiceIssuedEvent;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -124,7 +122,6 @@ public class InvoiceGenerationService {
     private final InvoiceChargePaymentSyncService invoiceChargePaymentSyncService;
 
     private final EncounterChargeLineEnsuringService encounterChargeLineEnsuringService;
-    private final ApplicationEventPublisher applicationEventPublisher;
     private final EncounterBillingGuardService encounterBillingGuardService;
 
     @Transactional(readOnly = true)
@@ -499,13 +496,6 @@ public class InvoiceGenerationService {
                 );
 
                 createdInvoices.add(mapFinancialDocument(insuranceInvoice));
-
-                applicationEventPublisher.publishEvent(
-                        new InsuranceInvoiceIssuedEvent(
-                                encounter.getId(),
-                                insuranceInvoice.getId()
-                        )
-                );
             }
         } else {
             if (hasSubtypeFinalInvoice(

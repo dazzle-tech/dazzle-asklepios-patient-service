@@ -4,12 +4,18 @@ import com.dazzle.asklepios.domain.ClaimItem;
 import com.dazzle.asklepios.domain.ClaimRequest;
 import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
+import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PreAuthorizationRequest;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalItem;
+import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimBatchSubmitResponse;
+import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimSubmissionResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimValidationError;
+import com.dazzle.asklepios.integration.waseel.dto.claim.PendingClaimInvoiceResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimRequest;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimUploadRequest;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimUploadResponse;
@@ -17,6 +23,8 @@ import com.dazzle.asklepios.integration.waseel.event.InsuranceInvoiceIssuedEvent
 import com.dazzle.asklepios.repository.ClaimItemRepository;
 import com.dazzle.asklepios.repository.ClaimRequestRepository;
 import com.dazzle.asklepios.repository.FinancialDocumentRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -33,7 +41,10 @@ import org.springframework.web.client.RestClientException;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -45,10 +56,19 @@ public class ClaimSubmissionService {
             ClaimStatus.ACCEPTED
     );
 
+    private static final List<FinancialDocumentStatus> CLAIMABLE_INVOICE_STATUSES = List.of(
+            FinancialDocumentStatus.ISSUED,
+            FinancialDocumentStatus.PARTIALLY_PAID,
+            FinancialDocumentStatus.PAID,
+            FinancialDocumentStatus.POSTED
+    );
+
     private final ClaimRequestBuilderService claimRequestBuilderService;
     private final WaseelClaimService waseelClaimService;
     private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
     private final FinancialDocumentRepository financialDocumentRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
+    private final PatientInsuranceRepository patientInsuranceRepository;
     private final ClaimRequestRepository claimRequestRepository;
     private final ClaimItemRepository claimItemRepository;
     private final ObjectMapper objectMapper;
@@ -61,6 +81,8 @@ public class ClaimSubmissionService {
             WaseelClaimService waseelClaimService,
             EncounterInsuranceEligibilityService encounterInsuranceEligibilityService,
             FinancialDocumentRepository financialDocumentRepository,
+            PatientEncounterRepository patientEncounterRepository,
+            PatientInsuranceRepository patientInsuranceRepository,
             ClaimRequestRepository claimRequestRepository,
             ClaimItemRepository claimItemRepository,
             ObjectMapper objectMapper,
@@ -72,6 +94,8 @@ public class ClaimSubmissionService {
         this.waseelClaimService = waseelClaimService;
         this.encounterInsuranceEligibilityService = encounterInsuranceEligibilityService;
         this.financialDocumentRepository = financialDocumentRepository;
+        this.patientEncounterRepository = patientEncounterRepository;
+        this.patientInsuranceRepository = patientInsuranceRepository;
         this.claimRequestRepository = claimRequestRepository;
         this.claimItemRepository = claimItemRepository;
         this.objectMapper = objectMapper;
@@ -88,16 +112,12 @@ public class ClaimSubmissionService {
             return;
         }
 
-        try {
-            self.submitForInsuranceInvoice(event.financialDocumentId());
-        } catch (Exception ex) {
-            log.error(
-                    "[CLAIM_SUBMIT] Failed after insurance invoice finalize. encounterId={} documentId={}",
-                    event.encounterId(),
-                    event.financialDocumentId(),
-                    ex
-            );
-        }
+        log.info(
+                "[CLAIM_SUBMIT] Insurance invoice issued for encounterId={} documentId={}. "
+                        + "Automatic Waseel claim submission is disabled — submit from Claims screen.",
+                event.encounterId(),
+                event.financialDocumentId()
+        );
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
@@ -191,6 +211,269 @@ public class ClaimSubmissionService {
     @Transactional(readOnly = true)
     public List<ClaimRequest> listByEncounter(Long encounterId) {
         return claimRequestRepository.findByEncounterIdOrderByIdDesc(encounterId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<PendingClaimInvoiceResponse> listPendingInsuranceInvoices(
+            Long payorId,
+            Instant fromDate,
+            Instant toDate
+    ) {
+        return financialDocumentRepository.findPendingInsuranceClaimInvoices(
+                        payorId,
+                        fromDate,
+                        toDate,
+                        CLAIMABLE_INVOICE_STATUSES,
+                        ACTIVE_STATUSES
+                )
+                .stream()
+                .map(this::toPendingClaimInvoiceResponse)
+                .toList();
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    public ClaimBatchSubmitResponse submitBatchForInvoices(List<Long> financialDocumentIds) {
+        if (financialDocumentIds == null || financialDocumentIds.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "Select at least one insurance invoice to submit.",
+                    "claim",
+                    "claim.batch.empty"
+            );
+        }
+
+        List<Long> uniqueIds = financialDocumentIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        Set<Long> payorIds = new LinkedHashSet<>();
+        List<FinancialDocument> invoices = new ArrayList<>();
+        List<ClaimRequestBuilderService.ClaimBuildResult> builds = new ArrayList<>();
+
+        for (Long financialDocumentId : uniqueIds) {
+            FinancialDocument invoice = loadClaimableInsuranceInvoice(financialDocumentId);
+
+            if (claimRequestRepository.existsByFinancialDocumentIdAndStatusIn(
+                    invoice.getId(),
+                    ACTIVE_STATUSES
+            )) {
+                throw new BadRequestAlertException(
+                        "Invoice " + invoice.getDocumentNumber() + " already has an active claim.",
+                        "claim",
+                        "claim.alreadySubmitted"
+                );
+            }
+
+            Long payorId = resolvePayorId(invoice.getEncounterId());
+            if (payorId != null) {
+                payorIds.add(payorId);
+            }
+
+            invoices.add(invoice);
+            builds.add(claimRequestBuilderService.buildForInsuranceInvoice(invoice));
+        }
+
+        if (payorIds.size() > 1) {
+            throw new BadRequestAlertException(
+                    "All selected invoices must belong to the same payor for a monthly claim batch.",
+                    "claim",
+                    "claim.batch.payorMismatch"
+            );
+        }
+
+        String uploadName = ensureUniqueUploadName(
+                "CLM-BATCH-" + Instant.now().toEpochMilli()
+        );
+
+        List<WaseelClaimRequest> claimModels = builds.stream()
+                .map(ClaimRequestBuilderService.ClaimBuildResult::claimRequest)
+                .toList();
+
+        WaseelClaimUploadRequest uploadRequest = new WaseelClaimUploadRequest(
+                uploadName,
+                null,
+                claimModels
+        );
+        String requestJson = toJson(uploadRequest);
+
+        List<ClaimRequest> claimRequests = new ArrayList<>();
+        for (int i = 0; i < invoices.size(); i++) {
+            claimRequests.add(
+                    persistDraft(
+                            invoices.get(i),
+                            builds.get(i),
+                            uploadName,
+                            requestJson,
+                            claimModels.get(i)
+                    )
+            );
+        }
+
+        List<ClaimValidationError> validationErrors = claimModels.stream()
+                .flatMap(model -> claimPayloadValidationService.validate(model).stream())
+                .toList();
+
+        if (!validationErrors.isEmpty()) {
+            String message = buildValidationFailureMessage(validationErrors);
+            for (ClaimRequest claimRequest : claimRequests) {
+                claimRequest.setValidationErrorsJson(toJson(validationErrors));
+                claimRequest.setStatus(ClaimStatus.REJECTED);
+                claimRequest.setOutcome("NOT_ACCEPTED");
+                claimRequest.setMessage(message);
+                claimRequestRepository.save(claimRequest);
+            }
+
+            return toBatchResponse(
+                    uploadName,
+                    null,
+                    "NOT_ACCEPTED",
+                    message,
+                    claimRequests
+            );
+        }
+
+        try {
+            WaseelClaimUploadResponse response = waseelClaimService.uploadClaims(uploadRequest);
+            String responseJson = toJson(response);
+
+            for (ClaimRequest claimRequest : claimRequests) {
+                applyUploadOutcome(claimRequest, response, responseJson);
+                claimRequest.setSubmittedAt(Instant.now());
+                claimRequestRepository.save(claimRequest);
+            }
+
+            List<ClaimRequest> refreshedClaims = new ArrayList<>();
+            for (ClaimRequest claimRequest : claimRequests) {
+                refreshedClaims.add(claimStatusRefreshService.refresh(claimRequest.getId()));
+            }
+
+            ClaimRequest first = refreshedClaims.get(0);
+            return toBatchResponse(
+                    first.getUploadName(),
+                    first.getUploadId(),
+                    first.getOutcome(),
+                    first.getMessage(),
+                    refreshedClaims
+            );
+
+        } catch (HttpStatusCodeException ex) {
+            String details = buildWaseelFailureMessage(
+                    ex.getStatusCode().value(),
+                    ex.getResponseBodyAsString(),
+                    ex.getMessage()
+            );
+            for (ClaimRequest claimRequest : claimRequests) {
+                markFailed(claimRequest, requestJson, details);
+            }
+            return toBatchResponse(uploadName, null, "FAILED", details, claimRequests);
+
+        } catch (RestClientException ex) {
+            String details = "Failed to upload claim batch to Waseel: " + ex.getMessage();
+            for (ClaimRequest claimRequest : claimRequests) {
+                markFailed(claimRequest, requestJson, details);
+            }
+            return toBatchResponse(uploadName, null, "FAILED", details, claimRequests);
+        }
+    }
+
+    private FinancialDocument loadClaimableInsuranceInvoice(Long financialDocumentId) {
+        FinancialDocument invoice = financialDocumentRepository.findById(financialDocumentId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "Insurance invoice not found",
+                        "claim",
+                        "invoice.notFound"
+                ));
+
+        if (invoice.getDocumentType() != FinancialDocumentType.INVOICE
+                || invoice.getDocumentSubtype() != FinancialDocumentSubtype.INSURANCE_CLAIM) {
+            throw new BadRequestAlertException(
+                    "Only insurance claim invoices can be submitted to Waseel.",
+                    "claim",
+                    "invoice.subtype.invalid"
+            );
+        }
+
+        if (!CLAIMABLE_INVOICE_STATUSES.contains(invoice.getStatus())) {
+            throw new BadRequestAlertException(
+                    "Invoice " + invoice.getDocumentNumber() + " is not finalized for claim submission.",
+                    "claim",
+                    "invoice.notFinalized"
+            );
+        }
+
+        if (!encounterInsuranceEligibilityService.isInsuranceEncounter(invoice.getEncounterId())) {
+            throw new BadRequestAlertException(
+                    "Encounter " + invoice.getEncounterId() + " is not an insurance visit.",
+                    "claim",
+                    "encounter.notInsurance"
+            );
+        }
+
+        return invoice;
+    }
+
+    private Long resolvePayorId(Long encounterId) {
+        return patientEncounterRepository.findById(encounterId)
+                .map(PatientEncounter::getPatientInsuranceId)
+                .flatMap(patientInsuranceRepository::findById)
+                .map(PatientInsurance::getPayorId)
+                .orElse(null);
+    }
+
+    private PendingClaimInvoiceResponse toPendingClaimInvoiceResponse(FinancialDocument invoice) {
+        Long payorId = resolvePayorId(invoice.getEncounterId());
+
+        return new PendingClaimInvoiceResponse(
+                invoice.getId(),
+                invoice.getDocumentNumber(),
+                invoice.getEncounterId(),
+                invoice.getPatientId(),
+                payorId,
+                invoice.getClaimReference(),
+                invoice.getTotalAmount(),
+                invoice.getCurrency() == null ? null : invoice.getCurrency().name(),
+                invoice.getCreatedDate()
+        );
+    }
+
+    private ClaimBatchSubmitResponse toBatchResponse(
+            String uploadName,
+            Long uploadId,
+            String outcome,
+            String message,
+            List<ClaimRequest> claimRequests
+    ) {
+        List<ClaimSubmissionResponse> claims = claimRequests.stream()
+                .map(this::toSubmissionResponse)
+                .toList();
+
+        return new ClaimBatchSubmitResponse(
+                uploadName,
+                uploadId,
+                outcome,
+                message,
+                claims.size(),
+                claims
+        );
+    }
+
+    private ClaimSubmissionResponse toSubmissionResponse(ClaimRequest claim) {
+        return new ClaimSubmissionResponse(
+                claim.getId(),
+                claim.getEncounterId(),
+                claim.getFinancialDocumentId(),
+                claim.getPreAuthorizationId(),
+                claim.getUploadName(),
+                claim.getUploadId(),
+                claim.getProvClaimNo(),
+                claim.getClaimReference(),
+                claim.getPreAuthRefNo(),
+                claim.getTotalNet(),
+                claim.getStatus(),
+                claim.getOutcome(),
+                claim.getMessage(),
+                claim.getSubmittedAt()
+        );
     }
 
     private ClaimRequest persistDraft(
