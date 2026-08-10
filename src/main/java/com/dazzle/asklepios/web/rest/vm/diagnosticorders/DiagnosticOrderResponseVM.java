@@ -12,7 +12,7 @@ public record DiagnosticOrderResponseVM(
         Long patientId,
         Long encounterId,
         DiagnosticStatus status,
-        Long orderNumber,
+        String orderNumber,
         Boolean saveDraft,
         String submittedBy,
         Instant submittedDate,

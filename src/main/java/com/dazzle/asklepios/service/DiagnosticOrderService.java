@@ -362,7 +362,12 @@ public class DiagnosticOrderService {
             }
 
             if (orderNumber != null && !orderNumber.isBlank()) {
-                filterPredicates.add(criteriaBuilder.equal(orderRoot.get("orderNumber"), orderNumber));
+                filterPredicates.add(
+                        criteriaBuilder.like(
+                                criteriaBuilder.lower(orderRoot.get("orderNumber")),
+                                "%" + orderNumber.trim().toLowerCase() + "%"
+                        )
+                );
             }
 
             if (departmentId != null) {

@@ -107,7 +107,7 @@ public class DiagnosticOrderTestReportController {
             @RequestParam(name = "patientName", required = false) String patientName,
             @RequestParam(name = "mrn", required = false) String mrn,
             @RequestParam(name = "patientIdIn", required = false) List<Long> patientIdIn,
-            @RequestParam(name = "orderNumber", required = false) Long orderNumber,
+            @RequestParam(name = "orderNumber", required = false) String orderNumber,
 
             @ParameterObject Pageable pageable
     ) {
