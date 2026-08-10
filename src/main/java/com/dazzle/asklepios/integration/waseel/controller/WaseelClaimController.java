@@ -1,8 +1,11 @@
 package com.dazzle.asklepios.integration.waseel.controller;
 
 import com.dazzle.asklepios.domain.ClaimRequest;
+import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimBatchSubmitRequest;
+import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimBatchSubmitResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimSubmissionResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimTrackingResponse;
+import com.dazzle.asklepios.integration.waseel.dto.claim.PendingClaimInvoiceResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimUploadResponse;
 import com.dazzle.asklepios.integration.waseel.service.ClaimStatusRefreshService;
 import com.dazzle.asklepios.integration.waseel.service.ClaimSubmissionService;
@@ -12,12 +15,16 @@ import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Instant;
 import java.util.List;
 
 @RestController
@@ -63,6 +70,22 @@ public class WaseelClaimController {
             );
         }
         return toSubmissionResponse(claim);
+    }
+
+    @GetMapping("/internal/waseel/claims/pending-invoices")
+    public List<PendingClaimInvoiceResponse> listPendingInvoices(
+            @RequestParam(required = false) Long payorId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant fromDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant toDate
+    ) {
+        return claimSubmissionService.listPendingInsuranceInvoices(payorId, fromDate, toDate);
+    }
+
+    @PostMapping("/internal/waseel/claims/submit-batch")
+    public ClaimBatchSubmitResponse submitBatch(@RequestBody ClaimBatchSubmitRequest request) {
+        return claimSubmissionService.submitBatchForInvoices(
+                request == null ? List.of() : request.financialDocumentIds()
+        );
     }
 
     @GetMapping("/internal/waseel/claims/uploads/{uploadId}")

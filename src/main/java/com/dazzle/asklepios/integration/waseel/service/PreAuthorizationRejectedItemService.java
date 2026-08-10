@@ -1,12 +1,16 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
+import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.repository.BillingChargeLineRepository;
+import com.dazzle.asklepios.service.BillingChargeService;
 import com.dazzle.asklepios.service.BillingEngineService;
+import com.dazzle.asklepios.service.BillingResponsibilityService;
 import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import lombok.RequiredArgsConstructor;
@@ -24,7 +28,10 @@ public class PreAuthorizationRejectedItemService {
 
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final BillingChargeService billingChargeService;
+    private final BillingChargeLineRepository billingChargeLineRepository;
     private final BillingEngineService billingEngineService;
+    private final BillingResponsibilityService billingResponsibilityService;
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
 
     /**
@@ -54,11 +61,46 @@ public class PreAuthorizationRejectedItemService {
         Long facilityId = requireFacilityId(encounterId);
 
         BillingOperationResult result =
-                billingEngineService.onItemOrdered(
-                        item.getId(),
-                        facilityId,
-                        "PREAUTH-REJECTED-CASH:" + item.getId()
-                );
+                billingChargeService
+                        .findActiveChargeLine(
+                                item.getId(),
+                                encounterId
+                        )
+                        .map(existingLine -> {
+                            billingResponsibilityService
+                                    .refreshInsuranceResponsibilitiesForEncounter(
+                                            encounterId
+                                    );
+
+                            BillingChargeLine chargeLine =
+                                    billingChargeLineRepository
+                                            .findById(existingLine.getId())
+                                            .orElse(existingLine);
+
+                            return new BillingOperationResult(
+                                    item.getId(),
+                                    chargeLine.getCharge().getId(),
+                                    chargeLine.getId(),
+                                    null,
+                                    chargeLine.getGrossAmount(),
+                                    chargeLine.getDiscountAmount(),
+                                    chargeLine.getExemptionAmount(),
+                                    chargeLine.getTaxAmount(),
+                                    chargeLine.getNetAmount(),
+                                    chargeLine.getPatientResponsibilityAmount(),
+                                    chargeLine.getInsuranceResponsibilityAmount(),
+                                    chargeLine.getReservedAmount(),
+                                    true,
+                                    "Rejected pre-authorization item repriced as patient cash."
+                            );
+                        })
+                        .orElseGet(() ->
+                                billingEngineService.onItemOrdered(
+                                        item.getId(),
+                                        facilityId,
+                                        "PREAUTH-REJECTED-CASH:" + item.getId()
+                                )
+                        );
 
         LOG.info(
                 "[PREAUTH_REJECTED_CASH] encounterId={} pspId={} processed={} chargeLineId={}",

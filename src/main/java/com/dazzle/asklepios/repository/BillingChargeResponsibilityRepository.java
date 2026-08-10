@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -110,4 +111,100 @@ public interface BillingChargeResponsibilityRepository
             Collection<BillingResponsibilityStatus> excludedStatuses,
             @Param("facilityId") Long facilityId
     );
+
+    @Query("""
+            select coalesce(sum(r.outstandingAmount), 0)
+            from BillingChargeResponsibility r
+            join r.charge c
+            where r.patient.id = :patientId
+              and r.responsiblePartyType = :partyType
+              and r.status not in :excludedStatuses
+              and r.outstandingAmount > 0
+              and c.status not in :closedChargeStatuses
+            """)
+    BigDecimal sumOpenOutstandingByPatientAndPartyType(
+            @Param("patientId") Long patientId,
+            @Param("partyType") ResponsiblePartyType partyType,
+            @Param("excludedStatuses")
+            Collection<BillingResponsibilityStatus> excludedStatuses,
+            @Param("closedChargeStatuses")
+            Collection<com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus> closedChargeStatuses
+    );
+
+    default BigDecimal sumOpenPatientOutstandingByPatient(Long patientId) {
+        return sumOpenOutstandingByPatientAndPartyType(
+                patientId,
+                ResponsiblePartyType.PATIENT,
+                List.of(
+                        BillingResponsibilityStatus.CANCELLED,
+                        BillingResponsibilityStatus.SUPERSEDED
+                ),
+                List.of(
+                        com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus.CLOSED,
+                        com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus.CANCELLED,
+                        com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus.REVERSED
+                )
+        );
+    }
+
+    @Query("""
+            select coalesce(sum(r.outstandingAmount), 0)
+            from BillingChargeResponsibility r
+            join r.charge c
+            where r.patient.id = :patientId
+              and r.responsiblePartyType = :partyType
+              and r.status not in :excludedStatuses
+              and r.outstandingAmount > 0
+              and c.status not in :closedChargeStatuses
+              and c.encounter.id not in :excludedEncounterIds
+            """)
+    BigDecimal sumOpenOutstandingByPatientAndPartyTypeExcludingEncounters(
+            @Param("patientId") Long patientId,
+            @Param("partyType") ResponsiblePartyType partyType,
+            @Param("excludedStatuses")
+            Collection<BillingResponsibilityStatus> excludedStatuses,
+            @Param("closedChargeStatuses")
+            Collection<com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus> closedChargeStatuses,
+            @Param("excludedEncounterIds") Collection<Long> excludedEncounterIds
+    );
+
+    default BigDecimal sumOpenPatientOutstandingByPatientExcludingEncounters(
+            Long patientId,
+            Collection<Long> excludedEncounterIds
+    ) {
+        if (excludedEncounterIds == null || excludedEncounterIds.isEmpty()) {
+            return sumOpenPatientOutstandingByPatient(patientId);
+        }
+
+        return sumOpenOutstandingByPatientAndPartyTypeExcludingEncounters(
+                patientId,
+                ResponsiblePartyType.PATIENT,
+                List.of(
+                        BillingResponsibilityStatus.CANCELLED,
+                        BillingResponsibilityStatus.SUPERSEDED
+                ),
+                List.of(
+                        com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus.CLOSED,
+                        com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus.CANCELLED,
+                        com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus.REVERSED
+                ),
+                excludedEncounterIds
+        );
+    }
+
+    default BigDecimal sumOpenInsuranceOutstandingByPatient(Long patientId) {
+        return sumOpenOutstandingByPatientAndPartyType(
+                patientId,
+                ResponsiblePartyType.INSURANCE,
+                List.of(
+                        BillingResponsibilityStatus.CANCELLED,
+                        BillingResponsibilityStatus.SUPERSEDED
+                ),
+                List.of(
+                        com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus.CLOSED,
+                        com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus.CANCELLED,
+                        com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus.REVERSED
+                )
+        );
+    }
 }

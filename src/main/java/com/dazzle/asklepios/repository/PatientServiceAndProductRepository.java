@@ -54,6 +54,14 @@ public interface PatientServiceAndProductRepository
             PreAuthorizationStatus preAuthorizationStatus
     );
 
+    /**
+     * Items awaiting first Waseel submission for this encounter (not yet linked to a request).
+     */
+    List<PatientServiceAndProduct> findByEncounterIdAndPreAuthorizationStatusAndPreAuthorizationRequestIdIsNull(
+            Long encounterId,
+            PreAuthorizationStatus preAuthorizationStatus
+    );
+
     boolean existsByEncounterIdAndPreAuthorizationStatus(
             Long encounterId,
             PreAuthorizationStatus preAuthorizationStatus

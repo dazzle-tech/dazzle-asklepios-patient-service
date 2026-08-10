@@ -226,6 +226,7 @@ public class PreAuthorizationResolutionService {
         }
 
         return status == PreAuthorizationStatus.PENDING_APPROVAL
+                || status == PreAuthorizationStatus.PARTIAL
                 || Boolean.TRUE.equals(item.getPreAuthorizationRequired());
     }
 
@@ -250,6 +251,7 @@ public class PreAuthorizationResolutionService {
         }
 
         return status == PreAuthorizationStatus.PENDING_APPROVAL
+                || status == PreAuthorizationStatus.PARTIAL
                 || Boolean.TRUE.equals(item.getPreAuthorizationRequired());
     }
 
@@ -273,8 +275,37 @@ public class PreAuthorizationResolutionService {
      * on the billing item before responsibility / payment calculations.
      */
     public void refreshForBillingItem(PatientServiceAndProduct item) {
+        refreshPreAuthorization(
+                item,
+                isInsurancePreAuthorizationContext(item)
+        );
+    }
+
+    public void refreshPreAuthorization(
+            PatientServiceAndProduct item,
+            boolean insuranceVisitContext
+    ) {
         if (item == null || item.getEncounterId() == null) {
             return;
+        }
+
+        if (shouldPreserveExistingPreAuthorizationDecision(item)) {
+            LOG.debug(
+                    "[PREAUTH] Preserving existing decision on billing item. encounterId={} pspId={} status={} preAuthRequestId={}",
+                    item.getEncounterId(),
+                    item.getId(),
+                    item.getPreAuthorizationStatus(),
+                    item.getPreAuthorizationRequestId()
+            );
+            return;
+        }
+
+        if (insuranceVisitContext) {
+            applyEncounterInsuranceLink(
+                    item,
+                    item.getEncounterId(),
+                    true
+            );
         }
 
         Resolution resolution =
@@ -285,11 +316,57 @@ public class PreAuthorizationResolutionService {
                         item.getServiceId(),
                         item.getDiagnosticTestId(),
                         item.getBrandMedicationId(),
-                        false,
+                        insuranceVisitContext,
                         item.getCurrency()
                 );
 
         apply(item, resolution);
+
+        LOG.info(
+                "[PREAUTH] Refreshed billing item. encounterId={} pspId={} billingItemType={} "
+                        + "diagnosticTestId={} required={} status={}",
+                item.getEncounterId(),
+                item.getId(),
+                item.getBillingItemType(),
+                item.getDiagnosticTestId(),
+                resolution.required(),
+                resolution.status()
+        );
+    }
+
+    /**
+     * Keeps Waseel decisions (approved / rejected / cancelled) after payer response.
+     * Price-list pre-auth flags must not reset submitted items back to pending.
+     */
+    private boolean shouldPreserveExistingPreAuthorizationDecision(
+            PatientServiceAndProduct item
+    ) {
+        if (item == null || item.getPreAuthorizationRequestId() == null) {
+            return false;
+        }
+
+        PreAuthorizationStatus status = item.getPreAuthorizationStatus();
+
+        return status == PreAuthorizationStatus.APPROVED
+                || status == PreAuthorizationStatus.REJECTED
+                || status == PreAuthorizationStatus.CANCELLED
+                || status == PreAuthorizationStatus.PARTIAL;
+    }
+
+    private boolean isInsurancePreAuthorizationContext(
+            PatientServiceAndProduct item
+    ) {
+        if (item == null) {
+            return false;
+        }
+
+        if (item.getPatientInsuranceId() != null) {
+            return true;
+        }
+
+        return item.getEncounterId() != null
+                && encounterInsuranceEligibilityService
+                        .shouldEvaluatePreAuthorization(item.getEncounterId());
     }
 
     /**
@@ -607,7 +684,16 @@ public class PreAuthorizationResolutionService {
         try {
             Boolean requiresPreAuth =
                     priceListSetupClient.requiresPreAuthorization(
-                            request
+                            request.facilityId(),
+                            request.patientId(),
+                            request.encounterId(),
+                            request.billingItemType(),
+                            request.itemId(),
+                            request.patientInsuranceId(),
+                            request.payerId(),
+                            request.coverageType(),
+                            request.currency(),
+                            request.pricingDate()
                     );
 
             LOG.info(

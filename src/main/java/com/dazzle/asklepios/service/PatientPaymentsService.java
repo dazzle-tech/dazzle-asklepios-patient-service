@@ -45,7 +45,7 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.repository.PatientWalletRepository;
 import com.dazzle.asklepios.repository.WalletTransactionRepository;
-import com.dazzle.asklepios.repository.BillingChargeRepository;
+import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
 import com.dazzle.asklepios.repository.BillingDebitAccountRepository;
 import com.dazzle.asklepios.service.dto.InsuranceSplit;
 import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
@@ -114,7 +114,7 @@ public class PatientPaymentsService {
     private final EncounterCoverageService encounterCoverageService;
     private final BillingWalletService billingWalletService;
     private final FinancialDocumentBalanceService financialDocumentBalanceService;
-    private final BillingChargeRepository billingChargeRepository;
+    private final BillingChargeResponsibilityRepository billingChargeResponsibilityRepository;
     private final BillingDebitAccountRepository billingDebitAccountRepository;
     private final @Lazy BillingEngineService billingEngineService;
 
@@ -1356,6 +1356,11 @@ public class PatientPaymentsService {
         }
 
         BigDecimal totalDebt = resolvePatientRemainingBalance(patientId);
+        BigDecimal insuranceOutstanding =
+                nonNullAmount(
+                        billingChargeResponsibilityRepository
+                                .sumOpenInsuranceOutstandingByPatient(patientId)
+                );
 
         BillingWallet billingWallet =
                 billingWalletService.findOptionalByPatient(patientId);
@@ -1376,9 +1381,10 @@ public class PatientPaymentsService {
                         : ZERO_AMOUNT;
 
         LOG.info(
-                "[LEDGER_SUMMARY] result patientId={} totalDebt={} walletBalance={} reservedBalance={} consumedAmount={}",
+                "[LEDGER_SUMMARY] result patientId={} totalDebt={} insuranceOutstanding={} walletBalance={} reservedBalance={} consumedAmount={}",
                 patientId,
                 totalDebt,
+                insuranceOutstanding,
                 walletBalance,
                 reservedBalance,
                 consumedAmount
@@ -1387,6 +1393,7 @@ public class PatientPaymentsService {
         return new PatientLedgerSummaryDTO(
                 patientId,
                 totalDebt,
+                insuranceOutstanding,
                 walletBalance,
                 reservedBalance,
                 consumedAmount
@@ -1405,8 +1412,8 @@ public class PatientPaymentsService {
 
         BigDecimal openBillingOutstanding =
                 nonNullAmount(
-                        billingChargeRepository
-                                .sumOpenOutstandingByPatientExcludingEncounters(
+                        billingChargeResponsibilityRepository
+                                .sumOpenPatientOutstandingByPatientExcludingEncounters(
                                         patientId,
                                         invoicedEncounterIds
                                 )

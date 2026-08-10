@@ -111,16 +111,24 @@ public class PreAuthorizationSubmissionService {
         return executeSubmitIfRequired(eligibilityRequestId, encounterId);
     }
 
-    private ApprovalResponse executeSubmitIfRequired(Long eligibilityRequestId, Long encounterId) {
-        List<PatientServiceAndProduct> pendingItems =
-                patientServiceAndProductRepository.findByEncounterIdAndPreAuthorizationStatus(
+    private List<PatientServiceAndProduct> loadUnsubmittedPendingItems(Long encounterId) {
+        return patientServiceAndProductRepository
+                .findByEncounterIdAndPreAuthorizationStatusAndPreAuthorizationRequestIdIsNull(
                         encounterId,
                         PreAuthorizationStatus.PENDING_APPROVAL
-                );
+                )
+                .stream()
+                .filter(item -> Boolean.FALSE.equals(item.getIsBilled()))
+                .filter(item -> item.getPaymentStatus() != PaymentStatus.CANCELLED)
+                .toList();
+    }
 
-        if (pendingItems == null || pendingItems.isEmpty()) {
+    private ApprovalResponse executeSubmitIfRequired(Long eligibilityRequestId, Long encounterId) {
+        List<PatientServiceAndProduct> pendingItems = loadUnsubmittedPendingItems(encounterId);
+
+        if (pendingItems.isEmpty()) {
             log.info(
-                    "[PREAUTH_SUBMIT] No PENDING_APPROVAL items for encounterId={} — skipping Waseel submission",
+                    "[PREAUTH_SUBMIT] No unsubmitted PENDING_APPROVAL items for encounterId={} — skipping Waseel submission",
                     encounterId
             );
             return null;
@@ -140,7 +148,11 @@ public class PreAuthorizationSubmissionService {
                 ));
 
         WaseelApprovalRequest request =
-                approvalRequestBuilderService.buildRequest(eligibilityRequestId, encounterId);
+                approvalRequestBuilderService.buildRequest(
+                        eligibilityRequestId,
+                        encounterId,
+                        pendingItems
+                );
 
         WaseelApprovalEligibilitySnapshot snapshot =
                 snapshotService.buildSnapshot(eligibilityRequestId);
@@ -480,11 +492,11 @@ public class PreAuthorizationSubmissionService {
 
         int index = sequence - 1;
 
-        if (index < 0 || index >= sourceItems.size()) {
-            return null;
+        if (index >= 0 && index < sourceItems.size()) {
+            return sourceItems.get(index);
         }
 
-        return sourceItems.get(index);
+        return null;
     }
 
     private void updatePreAuthorizationSuccess(

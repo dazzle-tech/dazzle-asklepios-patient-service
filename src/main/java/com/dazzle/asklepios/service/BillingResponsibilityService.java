@@ -147,6 +147,13 @@ public class BillingResponsibilityService {
             );
         }
 
+        if (chargeLine.getId() != null) {
+            supersedeActiveResponsibilities(
+                    context,
+                    "Responsibility recalculated"
+            );
+        }
+
         if (Boolean.TRUE.equals(item.getIsExempted())
                 || netAmount.signum() == 0) {
 
@@ -573,7 +580,8 @@ public class BillingResponsibilityService {
                         )
                         .orElse(null);
 
-        if (existing != null) {
+        if (existing != null
+                && isActiveResponsibility(existing.getStatus())) {
             LOG.debug(
                     "[CREATE] Existing responsibility returned "
                             + "responsibilityId={} idempotencyKey={}",
@@ -1300,6 +1308,13 @@ public class BillingResponsibilityService {
      * Closes a responsibility row while keeping
      * {@code responsibility_amount = allocated_amount + outstanding_amount}.
      */
+    private boolean isActiveResponsibility(
+            BillingResponsibilityStatus status
+    ) {
+        return status != BillingResponsibilityStatus.CANCELLED
+                && status != BillingResponsibilityStatus.SUPERSEDED;
+    }
+
     private void closeResponsibilityForReplacement(
             BillingChargeResponsibility responsibility,
             BillingResponsibilityStatus status,
