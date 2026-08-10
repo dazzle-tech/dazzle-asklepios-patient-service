@@ -265,22 +265,6 @@ public class EncounterInsuranceEligibilityService {
                     "policyNumber.required"
             );
         }
-
-        if (isBlank(insurance.getPayerNphiesId())) {
-            throw new BadRequestAlertException(
-                    "payerNphiesId is required for eligibility.",
-                    ENTITY_NAME,
-                    "payerNphiesId.required"
-            );
-        }
-
-        if (isBlank(resolveDestinationId(insurance))) {
-            throw new BadRequestAlertException(
-                    "Destination ID is required for eligibility.",
-                    ENTITY_NAME,
-                    "destinationId.required"
-            );
-        }
     }
 
     private String resolveDestinationId(PatientInsurance insurance) {

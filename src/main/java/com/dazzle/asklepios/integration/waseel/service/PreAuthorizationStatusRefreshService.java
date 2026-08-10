@@ -41,6 +41,8 @@ public class PreAuthorizationStatusRefreshService {
     private final PreAuthorizationItemRepository preAuthorizationItemRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final EncounterInsuranceResponsibilityRefreshService
+            encounterInsuranceResponsibilityRefreshService;
 
     @Transactional
     public EncounterPreAuthorizationRefreshResponse refreshEncounter(Long encounterId) {
@@ -108,6 +110,20 @@ public class PreAuthorizationStatusRefreshService {
             );
         }
 
+        if (rejectedItemCount > 0 || approvedItemCount > 0) {
+            int refreshedLines =
+                    encounterInsuranceResponsibilityRefreshService.refreshEncounter(
+                            encounterId
+                    );
+
+            LOG.info(
+                    "[PREAUTH_REFRESH] Refreshed billing responsibilities "
+                            + "encounterId={} refreshedLines={}",
+                    encounterId,
+                    refreshedLines
+            );
+        }
+
         boolean canCloseCalculation = pendingItemCount == 0;
 
         String message = canCloseCalculation
@@ -138,23 +154,268 @@ public class PreAuthorizationStatusRefreshService {
         );
     }
 
-    private PropagationResult propagateSearchResponse(
-            PreAuthorizationRequest request,
-            PreAuthorizationSearchResponse searchResponse
+    /**
+     * Temporary local-only refresh for test environments where Waseel search API is unavailable.
+     * Propagates statuses already stored on pre_authorization_request / pre_authorization_item
+     * into patient_services_and_products without calling Waseel.
+     */
+    @Transactional
+    public EncounterPreAuthorizationRefreshResponse refreshEncounterLocalOnly(Long encounterId) {
+        if (encounterId == null) {
+            throw new BadRequestAlertException(
+                    "encounterId is required",
+                    "preAuthorization",
+                    "encounter.required"
+            );
+        }
+
+        if (!encounterInsuranceEligibilityService.isInsuranceEncounter(encounterId)) {
+            throw new BadRequestAlertException(
+                    "Pre-authorization refresh is only available for insurance encounters.",
+                    "preAuthorization",
+                    "encounter.notInsurance"
+            );
+        }
+
+        List<PreAuthorizationRequest> requests =
+                preAuthorizationRequestRepository.findByEncounterIdOrderByIdDesc(encounterId)
+                        .stream()
+                        .filter(this::isLocallyRefreshableRequest)
+                        .toList();
+
+        if (requests.isEmpty()) {
+            return buildEmptyResponse(
+                    encounterId,
+                    "No local pre-authorization requests found for this encounter."
+            );
+        }
+
+        int refreshedRequestCount = 0;
+        int approvedItemCount = 0;
+        int rejectedItemCount = 0;
+        int pendingItemCount = 0;
+        List<RefreshedPreAuthorizationItem> refreshedItems = new ArrayList<>();
+        List<Long> approvedPatientItemIds = new ArrayList<>();
+
+        for (PreAuthorizationRequest request : requests) {
+            PropagationResult propagationResult = propagateLocalRequest(request);
+
+            refreshedRequestCount++;
+            approvedItemCount += propagationResult.approvedCount();
+            rejectedItemCount += propagationResult.rejectedCount();
+            pendingItemCount += propagationResult.pendingCount();
+            refreshedItems.addAll(propagationResult.items());
+            approvedPatientItemIds.addAll(propagationResult.approvedPatientItemIds());
+        }
+
+        // Local test sync stays lightweight — use refreshEncounter() for Waseel + billing trigger.
+        boolean canCloseCalculation = pendingItemCount == 0;
+
+        String message = canCloseCalculation
+                ? "Pre-authorization statuses synced from local database. No pending payer decisions remain."
+                : "Pre-authorization statuses synced from local database. "
+                        + pendingItemCount
+                        + " item(s) are still pending payer approval.";
+
+        LOG.info(
+                "[PREAUTH_REFRESH_LOCAL] encounterId={} requests={} approved={} rejected={} pending={} canClose={}",
+                encounterId,
+                refreshedRequestCount,
+                approvedItemCount,
+                rejectedItemCount,
+                pendingItemCount,
+                canCloseCalculation
+        );
+
+        return new EncounterPreAuthorizationRefreshResponse(
+                encounterId,
+                refreshedRequestCount,
+                approvedItemCount,
+                rejectedItemCount,
+                pendingItemCount,
+                canCloseCalculation,
+                message,
+                refreshedItems
+        );
+    }
+
+    private boolean isLocallyRefreshableRequest(PreAuthorizationRequest request) {
+        if (request == null) {
+            return false;
+        }
+
+        if (request.getApprovalRequestId() != null) {
+            return true;
+        }
+
+        String status = request.getStatus();
+        return status != null
+                && !status.isBlank()
+                && !"DRAFT".equalsIgnoreCase(status.trim());
+    }
+
+    private PropagationResult propagateLocalRequest(PreAuthorizationRequest request) {
+        List<PatientServiceAndProduct> linkedItems = resolveLinkedPatientItems(request);
+
+        List<PreAuthorizationItem> localItems =
+                preAuthorizationItemRepository.findByPreAuthorizationIdOrderBySequenceAsc(
+                        request.getId()
+                );
+
+        PreAuthorizationStatus headerStatus = PreAuthorizationWaseelStatusMapper.mapStatusText(
+                firstNonBlank(request.getStatus(), request.getOutcome())
+        );
+
+        String headerWaseelStatus = firstNonBlank(request.getStatus(), request.getOutcome());
+
+        boolean useHeaderForAllItems =
+                localItems.isEmpty()
+                        && headerStatus != PreAuthorizationStatus.PENDING_APPROVAL;
+
+        int approvedCount = 0;
+        int rejectedCount = 0;
+        int pendingCount = 0;
+        List<RefreshedPreAuthorizationItem> refreshedItems = new ArrayList<>();
+        List<Long> approvedPatientItemIds = new ArrayList<>();
+
+        if (useHeaderForAllItems) {
+            for (PatientServiceAndProduct item : linkedItems) {
+                ItemRefreshOutcome outcome =
+                        applyResolvedStatus(
+                                item,
+                                request,
+                                headerStatus,
+                                headerWaseelStatus
+                        );
+
+                approvedCount += outcome.approved() ? 1 : 0;
+                rejectedCount += outcome.rejected() ? 1 : 0;
+                pendingCount += outcome.pending() ? 1 : 0;
+                refreshedItems.add(outcome.item());
+                if (outcome.approved()) {
+                    approvedPatientItemIds.add(item.getId());
+                }
+            }
+        } else {
+            Map<Long, PatientServiceAndProduct> assignedItems = new HashMap<>();
+
+            for (PreAuthorizationItem localItem : localItems) {
+                PreAuthorizationStatus itemStatus =
+                        PreAuthorizationWaseelStatusMapper.mapStatusText(
+                                firstNonBlank(localItem.getItemDecision(), request.getStatus(), request.getOutcome())
+                        );
+
+                String waseelStatus = firstNonBlank(
+                        localItem.getItemDecision(),
+                        request.getStatus(),
+                        request.getOutcome()
+                );
+
+                PatientServiceAndProduct patientItem =
+                        findPatientItem(localItem, linkedItems, assignedItems);
+
+                if (patientItem == null) {
+                    LOG.warn(
+                            "[PREAUTH_REFRESH_LOCAL] Unable to map pre-auth item to billing row. preAuthId={} sequence={} itemCode={}",
+                            request.getId(),
+                            localItem.getSequence(),
+                            localItem.getItemCode()
+                    );
+                    continue;
+                }
+
+                assignedItems.put(patientItem.getId(), patientItem);
+
+                ItemRefreshOutcome outcome =
+                        applyResolvedStatus(
+                                patientItem,
+                                request,
+                                itemStatus,
+                                waseelStatus
+                        );
+
+                approvedCount += outcome.approved() ? 1 : 0;
+                rejectedCount += outcome.rejected() ? 1 : 0;
+                pendingCount += outcome.pending() ? 1 : 0;
+                refreshedItems.add(outcome.item());
+                if (outcome.approved()) {
+                    approvedPatientItemIds.add(patientItem.getId());
+                }
+            }
+
+            for (PatientServiceAndProduct item : linkedItems) {
+                if (assignedItems.containsKey(item.getId())) {
+                    continue;
+                }
+
+                ItemRefreshOutcome outcome =
+                        applyResolvedStatus(
+                                item,
+                                request,
+                                headerStatus,
+                                headerWaseelStatus
+                        );
+
+                approvedCount += outcome.approved() ? 1 : 0;
+                rejectedCount += outcome.rejected() ? 1 : 0;
+                pendingCount += outcome.pending() ? 1 : 0;
+                refreshedItems.add(outcome.item());
+                if (outcome.approved()) {
+                    approvedPatientItemIds.add(item.getId());
+                }
+            }
+        }
+
+        patientServiceAndProductRepository.saveAll(linkedItems);
+
+        return new PropagationResult(
+                approvedCount,
+                rejectedCount,
+                pendingCount,
+                refreshedItems,
+                approvedPatientItemIds
+        );
+    }
+
+    private List<PatientServiceAndProduct> resolveLinkedPatientItems(
+            PreAuthorizationRequest request
     ) {
         List<PatientServiceAndProduct> linkedItems =
                 patientServiceAndProductRepository.findByPreAuthorizationRequestId(request.getId());
 
-        if (linkedItems.isEmpty()) {
-            linkedItems = patientServiceAndProductRepository
-                    .findByEncounterId(request.getEncounterId())
-                    .stream()
-                    .filter(item -> Boolean.FALSE.equals(item.getIsBilled()))
-                    .filter(item -> item.getPreAuthorizationRequired()
-                            || item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
-                            || item.getPreAuthorizationStatus() == PreAuthorizationStatus.REJECTED)
-                    .toList();
+        if (!linkedItems.isEmpty()) {
+            return linkedItems;
         }
+
+        List<PreAuthorizationItem> localItems =
+                preAuthorizationItemRepository.findByPreAuthorizationIdOrderBySequenceAsc(
+                        request.getId()
+                );
+
+        if (localItems.isEmpty()) {
+            return List.of();
+        }
+
+        List<PatientServiceAndProduct> encounterItems =
+                patientServiceAndProductRepository.findByEncounterId(request.getEncounterId());
+
+        List<PatientServiceAndProduct> matched = new ArrayList<>();
+
+        for (PreAuthorizationItem localItem : localItems) {
+            encounterItems.stream()
+                    .filter(item -> matchesCatalogIds(localItem, item))
+                    .findFirst()
+                    .ifPresent(matched::add);
+        }
+
+        return matched;
+    }
+
+    private PropagationResult propagateSearchResponse(
+            PreAuthorizationRequest request,
+            PreAuthorizationSearchResponse searchResponse
+    ) {
+        List<PatientServiceAndProduct> linkedItems = resolveLinkedPatientItems(request);
 
         List<PreAuthorizationItem> localItems =
                 preAuthorizationItemRepository.findByPreAuthorizationIdOrderBySequenceAsc(request.getId());
@@ -303,6 +564,10 @@ public class PreAuthorizationStatusRefreshService {
             case REJECTED -> {
                 item.setPreAuthorizationRequired(false);
                 item.setPaymentStatus(PaymentStatus.PENDING);
+            }
+            case PARTIAL -> {
+                item.setPreAuthorizationRequired(true);
+                item.setPaymentStatus(PaymentStatus.SKIPPED_PENDING_PRE_AUTH);
             }
             default -> {
                 item.setPreAuthorizationRequired(true);

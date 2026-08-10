@@ -1,10 +1,13 @@
 package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.PatientInsuranceCoverage;
+import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
 
 @Repository
 public interface PatientInsuranceCoverageRepository extends JpaRepository<PatientInsuranceCoverage, Long> {
@@ -14,5 +17,10 @@ public interface PatientInsuranceCoverageRepository extends JpaRepository<Patien
     long countByInsuranceId(Long insuranceId);
 
     void deleteByInsuranceId(Long insuranceId);
+
+    Optional<PatientInsuranceCoverage> findFirstByInsurance_IdAndItemType(
+            Long insuranceId,
+            BillingItemTypes itemType
+    );
 }
 

@@ -225,8 +225,17 @@ public class NormalRangeMatcherService {
         }
 
         return switch (resultType) {
-            case NUMBER -> calculateNumber(resultValueNumber, normalRange);
-            case LOV -> calculateLov(resultValueText, normalRange);
+            case NUMBER -> calculateNumber(
+                    resultValueNumber,
+                    normalRange
+            );
+
+            case LOV -> calculateLov(
+                    resultValueText,
+                    normalRange
+            );
+
+            case TEXT -> TestResultMarker.UNKNOWN;
         };
     }
 

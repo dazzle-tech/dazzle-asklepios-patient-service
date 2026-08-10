@@ -241,8 +241,7 @@ public class DefaultServicePricingPreviewService {
             InsuranceSplit split =
                     insurancePatientShareCalculator.calculateSplit(
                             insurance,
-                            serviceCategory,
-                            previewItem.getServiceSource(),
+                            previewItem,
                             pricing.netAmount()
                     );
             patientShareAmount = split.patientShare();

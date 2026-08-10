@@ -7,6 +7,8 @@ import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityClassD
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityCostBeneficiaryDTO;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityCoverageDTO;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityResponse;
+import com.dazzle.asklepios.service.InsuranceBenefitRuleMatcher;
+import com.dazzle.asklepios.service.dto.InsuranceBenefitRule;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -15,6 +17,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @Service
@@ -22,6 +25,7 @@ import java.util.Map;
 public class WaseelCoverageExtractionService {
 
     private final ObjectMapper objectMapper;
+    private final InsuranceBenefitRuleMatcher benefitRuleMatcher;
 
     public InsuranceCoverage extractCoverage(
             String responseJson
@@ -35,6 +39,298 @@ public class WaseelCoverageExtractionService {
                 details.copaymentPercent(),
                 details.copaymentCap()
         );
+    }
+
+    public List<InsuranceBenefitRule> extractBenefitRules(String responseJson) {
+        try {
+            EligibilityResponse response =
+                    objectMapper.readValue(
+                            responseJson,
+                            EligibilityResponse.class
+                    );
+
+            if (response.coverages() == null || response.coverages().isEmpty()) {
+                return List.of();
+            }
+
+            return extractBenefitRules(response.coverages().get(0));
+        } catch (Exception exception) {
+            throw new IllegalStateException(
+                    "Failed to extract benefit rules from Waseel response",
+                    exception
+            );
+        }
+    }
+
+    public List<InsuranceBenefitRule> extractBenefitRules(
+            EligibilityCoverageDTO coverage
+    ) {
+        if (coverage == null) {
+            return List.of();
+        }
+
+        List<InsuranceBenefitRule> rules = new ArrayList<>();
+        Map<String, CategoryRuleBuilder> builders = new LinkedHashMap<>();
+
+        appendCostBeneficiaryRules(builders, coverage.costBeneficiaries());
+
+        if (coverage.items() instanceof Map<?, ?> rawItems) {
+            for (Map.Entry<?, ?> categoryEntry : rawItems.entrySet()) {
+                String categoryKey =
+                        categoryEntry.getKey() == null
+                                ? ""
+                                : categoryEntry.getKey().toString().trim();
+
+                if (!(categoryEntry.getValue() instanceof List<?> categoryItems)) {
+                    continue;
+                }
+
+                for (Object categoryItemObject : categoryItems) {
+                    if (!(categoryItemObject instanceof Map<?, ?> itemMap)) {
+                        continue;
+                    }
+
+                    Map<String, Object> item = castToStringObjectMap(itemMap);
+                    String itemName =
+                            firstNonBlank(
+                                    item,
+                                    "name",
+                                    "description",
+                                    "productOrServiceDisplay",
+                                    "display"
+                            );
+                    String itemCode =
+                            firstNonBlank(
+                                    item,
+                                    "code",
+                                    "productOrService",
+                                    "serviceCode",
+                                    "itemCode"
+                            );
+
+                    String ruleKey = categoryKey + "::" + firstNonBlankValue(itemName, itemCode, "default");
+                    CategoryRuleBuilder builder =
+                            builders.computeIfAbsent(
+                                    ruleKey,
+                                    ignored -> new CategoryRuleBuilder(categoryKey, itemName, itemCode)
+                            );
+
+                    Object benefitsObject = item.get("benefits");
+                    if (!(benefitsObject instanceof List<?> benefitList)) {
+                        continue;
+                    }
+
+                    for (Object benefitObject : benefitList) {
+                        if (!(benefitObject instanceof Map<?, ?> benefitMap)) {
+                            continue;
+                        }
+
+                        applyBenefitEntry(
+                                builder,
+                                castToStringObjectMap(benefitMap)
+                        );
+                    }
+                }
+            }
+        }
+
+        for (CategoryRuleBuilder builder : builders.values()) {
+            InsuranceBenefitRule rule = builder.build(null);
+            if (hasCopayment(rule)
+                    || rule.maximumBenefit() != null
+                    || rule.approvalLimit() != null) {
+                rules.add(rule);
+            }
+        }
+
+        InsuranceBenefitRule globalRule =
+                benefitRuleMatcher.selectPreferredDefaultRule(rules, true);
+
+        if (globalRule != null) {
+            rules.add(
+                    new InsuranceBenefitRule(
+                            null,
+                            InsuranceBenefitRule.GLOBAL_CATEGORY,
+                            globalRule.itemName(),
+                            globalRule.itemCode(),
+                            globalRule.networkType(),
+                            globalRule.providerType(),
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            globalRule.patientCopaymentPercentage(),
+                            globalRule.patientMaximumCopayment(),
+                            true,
+                            null
+                    )
+            );
+        }
+
+        return List.copyOf(rules);
+    }
+
+    private void appendCostBeneficiaryRules(
+            Map<String, CategoryRuleBuilder> builders,
+            List<EligibilityCostBeneficiaryDTO> costBeneficiaries
+    ) {
+        if (costBeneficiaries == null || costBeneficiaries.isEmpty()) {
+            return;
+        }
+
+        for (EligibilityCostBeneficiaryDTO costBeneficiary : costBeneficiaries) {
+            String type = clean(costBeneficiary.costBeneficiaryType());
+            if (type == null) {
+                continue;
+            }
+
+            String ruleKey = "cost-beneficiary::" + type.toLowerCase(Locale.ROOT);
+            CategoryRuleBuilder builder =
+                    builders.computeIfAbsent(
+                            ruleKey,
+                            ignored ->
+                                    new CategoryRuleBuilder(
+                                            "Cost Beneficiary",
+                                            formatCostBeneficiaryLabel(type),
+                                            type
+                                    )
+                    );
+
+            if (costBeneficiary.costBeneficiaryMoney() != null) {
+                builder.patientMaximumCopayment =
+                        BigDecimal.valueOf(costBeneficiary.costBeneficiaryMoney());
+            }
+        }
+    }
+
+    private void applyBenefitEntry(
+            CategoryRuleBuilder builder,
+            Map<String, Object> benefit
+    ) {
+        String typeDisplay = stringValue(benefit.get("typeDisplay"));
+        String typeCode =
+                firstNonBlank(
+                        benefit,
+                        "type",
+                        "typeCode",
+                        "code"
+                );
+        String value = stringValue(benefit.get("value"));
+        String unit = stringValue(benefit.get("unit"));
+
+        if (value == null || value.isBlank()) {
+            return;
+        }
+
+        WaseelBenefitEntryClassifier.EntryType entryType =
+                WaseelBenefitEntryClassifier.classify(typeDisplay, typeCode);
+
+        switch (entryType) {
+            case PATIENT_COPAYMENT_PERCENT -> {
+                builder.patientCopaymentPercentage = new BigDecimal(value);
+                builder.unit = unit;
+            }
+            case PATIENT_COPAYMENT_MAXIMUM -> {
+                builder.patientMaximumCopayment = new BigDecimal(value);
+                builder.currency = unit != null ? unit : "SAR";
+            }
+            case INSURANCE_MAXIMUM_BENEFIT -> {
+                builder.maximumBenefit = new BigDecimal(value);
+                builder.currency = unit != null ? unit : "SAR";
+            }
+            case INSURANCE_APPROVAL_LIMIT -> {
+                builder.approvalLimit = new BigDecimal(value);
+                builder.currency = unit != null ? unit : "SAR";
+            }
+            default -> {
+                // ignore unclassified benefit entries
+            }
+        }
+    }
+
+    private boolean hasCopayment(InsuranceBenefitRule rule) {
+        return rule.patientCopaymentPercentage() != null
+                || rule.patientMaximumCopayment() != null;
+    }
+
+    private String firstNonBlankValue(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return "default";
+    }
+
+    private String normalize(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static final class CategoryRuleBuilder {
+
+        private final String benefitCategory;
+        private final String itemName;
+        private final String itemCode;
+        private String networkType;
+        private String providerType;
+        private BigDecimal patientCopaymentPercentage;
+        private BigDecimal patientMaximumCopayment;
+        private BigDecimal maximumBenefit;
+        private BigDecimal approvalLimit;
+        private String unit;
+        private String currency;
+
+        private CategoryRuleBuilder(
+                String benefitCategory,
+                String itemName,
+                String itemCode
+        ) {
+            this.benefitCategory = benefitCategory;
+            this.itemName = itemName;
+            this.itemCode = itemCode;
+            parseContextFromItemName(itemName);
+        }
+
+        private void parseContextFromItemName(String name) {
+            String normalized = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+
+            if (normalized.contains("out of network")
+                    || normalized.contains("out-of-network")) {
+                networkType = "OUT_OF_NETWORK";
+            } else if (normalized.contains("in network")
+                    || normalized.contains("in-network")) {
+                networkType = "IN_NETWORK";
+            }
+
+            if (normalized.contains("outpatient")) {
+                providerType = "OUTPATIENT";
+            } else if (normalized.contains("inpatient")) {
+                providerType = "INPATIENT";
+            } else if (normalized.contains("other healthcare")) {
+                providerType = "OTHER_HEALTHCARE_PROVIDER";
+            }
+        }
+
+        private InsuranceBenefitRule build(String exceptionsJson) {
+            return new InsuranceBenefitRule(
+                    null,
+                    benefitCategory,
+                    itemName,
+                    itemCode,
+                    networkType,
+                    providerType,
+                    null,
+                    unit,
+                    currency,
+                    maximumBenefit,
+                    approvalLimit,
+                    patientCopaymentPercentage,
+                    patientMaximumCopayment,
+                    false,
+                    exceptionsJson
+            );
+        }
     }
 
     public WaseelCoverageDetails extractCoverageDetails(
@@ -111,26 +407,29 @@ public class WaseelCoverageExtractionService {
                             coverage.items()
                     );
 
-            if (
-                    copayValues.containsKey(
-                            "percent"
-                    )
-            ) {
-                copaymentPercent =
-                        copayValues.get(
-                                "percent"
-                        );
-            }
+            List<InsuranceBenefitRule> benefitRules =
+                    extractBenefitRules(coverage);
+            InsuranceBenefitRule preferredRule =
+                    benefitRuleMatcher.selectPreferredDefaultRule(
+                            benefitRules,
+                            true
+                    );
 
-            if (
-                    copayValues.containsKey(
-                            "cap"
-                    )
-            ) {
-                copaymentCap =
-                        copayValues.get(
-                                "cap"
-                        );
+            if (preferredRule != null) {
+                if (preferredRule.patientCopaymentPercentage() != null) {
+                    copaymentPercent = preferredRule.patientCopaymentPercentage();
+                }
+                if (preferredRule.patientMaximumCopayment() != null) {
+                    copaymentCap = preferredRule.patientMaximumCopayment();
+                }
+            } else {
+                if (copayValues.containsKey("percent")) {
+                    copaymentPercent = copayValues.get("percent");
+                }
+
+                if (copayValues.containsKey("cap")) {
+                    copaymentCap = copayValues.get("cap");
+                }
             }
 
             return new WaseelCoverageDetails(
@@ -152,7 +451,8 @@ public class WaseelCoverageExtractionService {
                     null,
                     List.copyOf(
                             benefits
-                    )
+                    ),
+                    extractBenefitRules(coverage)
             );
 
         } catch (
@@ -188,7 +488,8 @@ public class WaseelCoverageExtractionService {
                 copaymentPercent,
                 copaymentCap,
                 null,
-                benefits
+                benefits,
+                List.of()
         );
     }
 
@@ -426,29 +727,25 @@ public class WaseelCoverageExtractionService {
                         continue;
                     }
 
-                    if (
-                            isCopaymentPercent(
-                                    typeDisplay
-                            )
-                    ) {
+                    WaseelBenefitEntryClassifier.EntryType entryType =
+                            WaseelBenefitEntryClassifier.classify(
+                                    typeDisplay,
+                                    typeCode
+                            );
+
+                    if (entryType
+                            == WaseelBenefitEntryClassifier.EntryType.PATIENT_COPAYMENT_PERCENT) {
                         copayValues.put(
                                 "percent",
-                                new BigDecimal(
-                                        value
-                                )
+                                new BigDecimal(value)
                         );
                     }
 
-                    if (
-                            isCopaymentCap(
-                                    typeDisplay
-                            )
-                    ) {
+                    if (entryType
+                            == WaseelBenefitEntryClassifier.EntryType.PATIENT_COPAYMENT_MAXIMUM) {
                         copayValues.put(
                                 "cap",
-                                new BigDecimal(
-                                        value
-                                )
+                                new BigDecimal(value)
                         );
                     }
                 }
@@ -456,52 +753,6 @@ public class WaseelCoverageExtractionService {
         }
 
         return copayValues;
-    }
-
-    private boolean isCopaymentPercent(
-            String typeDisplay
-    ) {
-        if (
-                typeDisplay == null
-                        || typeDisplay.isBlank()
-        ) {
-            return false;
-        }
-
-        String normalized =
-                typeDisplay
-                        .trim()
-                        .toLowerCase();
-
-        return normalized.equals(
-                "copayment percent per service."
-        )
-                || normalized.equals(
-                "copayment percent per service"
-        );
-    }
-
-    private boolean isCopaymentCap(
-            String typeDisplay
-    ) {
-        if (
-                typeDisplay == null
-                        || typeDisplay.isBlank()
-        ) {
-            return false;
-        }
-
-        String normalized =
-                typeDisplay
-                        .trim()
-                        .toLowerCase();
-
-        return normalized.equals(
-                "copayment maximum per service."
-        )
-                || normalized.equals(
-                "copayment maximum per service"
-        );
     }
 
     @SuppressWarnings("unchecked")

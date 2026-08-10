@@ -16,6 +16,7 @@ import java.util.Arrays;
 public class CchiBeneficiaryPatientMapper {
 
     private final ApLovMapperService lovMapperService;
+    private final WaseelLanguageSetupMapperService waseelLanguageSetupMapperService;
 
     public Patient toPatient(CchiBeneficiaryData b) {
         if (b == null) {
@@ -125,91 +126,7 @@ public class CchiBeneficiaryPatientMapper {
     }
 
     private String mapPreferredLanguage(String waseelValue) {
-        String valueCode = switchValue(
-                waseelValue,
-
-                "AR", "LANG_AR",
-
-                "EN", "LANG_ENG",
-                "EN-AU", "LANG_ENG",
-                "EN-CA", "LANG_ENG",
-                "EN-GB", "LANG_ENG",
-                "EN-IN", "LANG_ENG",
-                "EN-NZ", "LANG_ENG",
-                "EN-SG", "LANG_ENG",
-                "EN-US", "LANG_ENG",
-
-                "FR", "LANG_FRN",
-                "FR-BE", "LANG_FRN",
-                "FR-CH", "LANG_FRN",
-                "FR-FR", "LANG_FRN",
-
-                "ES", "LANG_SPAN",
-                "ES-AR", "LANG_SPAN",
-                "ES-ES", "LANG_SPAN",
-                "ES-UY", "LANG_SPAN",
-
-                "RU", "LANG_RUSS",
-                "RU-RU", "LANG_RUSS",
-
-                "PT", "LANG_PORT",
-                "PT-BR", "LANG_PORT",
-
-                "TR", "LANG_TURK",
-
-                "BN", "LANG_BN",
-                "CS", "LANG_CS",
-                "DA", "LANG_DA",
-
-                "DE", "LANG_DE",
-                "DE-AT", "LANG_DE",
-                "DE-CH", "LANG_DE",
-                "DE-DE", "LANG_DE",
-
-                "EL", "LANG_EL",
-                "FI", "LANG_FI",
-
-                "FY", "LANG_FY",
-                "FY-NL", "LANG_FY",
-
-                "HI", "LANG_HI",
-                "HR", "LANG_HR",
-
-                "IT", "LANG_IT",
-                "IT-CH", "LANG_IT",
-                "IT-IT", "LANG_IT",
-
-                "JA", "LANG_JA",
-                "KO", "LANG_KO",
-
-                "NL", "LANG_NL",
-                "NL-BE", "LANG_NL",
-                "NL-NL", "LANG_NL",
-
-                "NO", "LANG_NO",
-                "NO-NO", "LANG_NO",
-
-                "PA", "LANG_PA",
-
-                "SR", "LANG_SR",
-                "SR-RS", "LANG_SR",
-
-                "SV", "LANG_SV",
-                "SV-SE", "LANG_SV",
-
-                "TE", "LANG_TE",
-
-                "ZH", "LANG_ZH",
-                "ZH-CN", "LANG_ZH",
-                "ZH-HK", "LANG_ZH",
-                "ZH-SG", "LANG_ZH",
-                "ZH-TW", "LANG_ZH"
-        );
-
-        return lovMapperService.getKeyByLovCodeAndValueCode(
-                AsklepiosLovCodes.LANG,
-                valueCode
-        );
+        return waseelLanguageSetupMapperService.mapWaseelToStoredLangKey(waseelValue);
     }
 
     private Gender mapGender(String value) {

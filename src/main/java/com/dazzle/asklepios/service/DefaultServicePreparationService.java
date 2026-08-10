@@ -71,6 +71,7 @@ public class DefaultServicePreparationService {
     private final BillingPricingSnapshotRepository billingPricingSnapshotRepository;
     private final ServiceClient serviceClient;
     private final BillingEngineService billingEngineService;
+    private final BillingResponsibilityService billingResponsibilityService;
     private final PreAuthorizationResolutionService preAuthorizationResolutionService;
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
     private final EncounterCoverageService encounterCoverageService;
@@ -245,6 +246,21 @@ public class DefaultServicePreparationService {
                         : "preAuthorization.failed";
                 throw new BadRequestAlertException(title, ENTITY_NAME, errorKey);
             }
+        }
+
+        if (request.coverageType() == BillingCoverageType.INSURANCE) {
+            int refreshedLines =
+                    billingResponsibilityService
+                            .refreshInsuranceResponsibilitiesForEncounter(
+                                    encounterId
+                            );
+
+            LOG.info(
+                    "[PREPARE_DEFAULT_SERVICES] Refreshed insurance responsibilities "
+                            + "encounterId={} refreshedLines={}",
+                    encounterId,
+                    refreshedLines
+            );
         }
 
         boolean processed =

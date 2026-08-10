@@ -2,10 +2,14 @@ package com.dazzle.asklepios.integration.waseel.service.mapper;
 
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalSubscriber;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class ApprovalSubscriberMapper {
+
+    private final WaseelLanguageSetupMapperService waseelLanguageSetupMapperService;
 
     public WaseelApprovalSubscriber toSubscriber(Patient patient) {
         if (patient == null) {
@@ -30,7 +34,7 @@ public class ApprovalSubscriberMapper {
                 patient.getMaritalStatus(),
                 null,
                 null,
-                patient.getPreferredLanguage(),
+                waseelLanguageSetupMapperService.mapStoredLangKeyToWaseelCode(patient.getPreferredLanguage()),
                 patient.getEmergencyContactPhone(),
                 patient.getEmail(),
                 null,

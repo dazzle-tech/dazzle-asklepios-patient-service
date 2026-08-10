@@ -88,6 +88,13 @@ public class WaseelPreAuthorizationController {
         return preAuthorizationStatusRefreshService.refreshEncounter(encounterId);
     }
 
+    @PostMapping("/internal/waseel/encounters/{encounterId}/pre-authorization/refresh-local")
+    public EncounterPreAuthorizationRefreshResponse refreshEncounterPreAuthorizationLocal(
+            @PathVariable Long encounterId
+    ) {
+        return preAuthorizationStatusRefreshService.refreshEncounterLocalOnly(encounterId);
+    }
+
     @PostMapping("/internal/waseel/encounters/{encounterId}/pre-authorization/items/{patientServiceProductId}/pay-as-cash")
     public BillingOperationResult payRejectedPreAuthorizationItemAsCash(
             @PathVariable Long encounterId,

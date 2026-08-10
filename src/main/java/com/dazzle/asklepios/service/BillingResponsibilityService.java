@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.ServiceClient;
 import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
+import com.dazzle.asklepios.domain.BillingCharge;
 import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingChargeResponsibility;
 import com.dazzle.asklepios.domain.PatientInsurance;
@@ -9,6 +10,7 @@ import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.ResponsibilityRole;
 import com.dazzle.asklepios.domain.enumeration.billing.ResponsiblePartyType;
@@ -38,7 +40,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -76,6 +81,8 @@ public class BillingResponsibilityService {
     private final PreAuthorizationResolutionService preAuthorizationResolutionService;
 
     private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
+
+    private final BillingChargeService billingChargeService;
 
     /**
      * Calculates and persists responsibility rows.
@@ -137,6 +144,13 @@ public class BillingResponsibilityService {
                     item.getPreAuthorizationRequired(),
                     item.getPreAuthorizationStatus(),
                     item.getPaymentStatus()
+            );
+        }
+
+        if (chargeLine.getId() != null) {
+            supersedeActiveResponsibilities(
+                    context,
+                    "Responsibility recalculated"
             );
         }
 
@@ -410,15 +424,18 @@ public class BillingResponsibilityService {
 
                             patientAmount,
 
-                            BigDecimal.ZERO,
-
-                            BigDecimal.ZERO,
-
-                            BigDecimal.ZERO,
+                            calculatePercentage(
+                                    patientAmount,
+                                    netAmount
+                            ),
 
                             BigDecimal.ZERO,
 
                             patientAmount,
+
+                            BigDecimal.ZERO,
+
+                            BigDecimal.ZERO,
 
                             BigDecimal.ZERO,
 
@@ -563,7 +580,8 @@ public class BillingResponsibilityService {
                         )
                         .orElse(null);
 
-        if (existing != null) {
+        if (existing != null
+                && isActiveResponsibility(existing.getStatus())) {
             LOG.debug(
                     "[CREATE] Existing responsibility returned "
                             + "responsibilityId={} idempotencyKey={}",
@@ -754,8 +772,7 @@ public class BillingResponsibilityService {
         InsuranceSplit split =
                 insurancePatientShareCalculator.calculateSplit(
                         insurance,
-                        resolveServiceCategory(item),
-                        item.getServiceSource(),
+                        item,
                         netAmount
                 );
 
@@ -1151,9 +1168,153 @@ public class BillingResponsibilityService {
     }
 
     /**
+     * Recalculates patient/insurance shares on open charge lines after benefit rules change
+     * (e.g. eligibility re-check). Skips lines that already have allocations.
+     */
+    @Transactional(
+            propagation = Propagation.REQUIRES_NEW,
+            rollbackFor = Exception.class
+    )
+    public int refreshInsuranceResponsibilitiesForEncounter(
+            Long encounterId
+    ) {
+        if (encounterId == null) {
+            return 0;
+        }
+
+        List<BillingChargeLine> chargeLines =
+                billingChargeLineRepository
+                        .findAllByEncounter_IdAndStatusNotInOrderByIdAsc(
+                                encounterId,
+                                List.of(
+                                        BillingChargeLineStatus.CANCELLED,
+                                        BillingChargeLineStatus.REVERSED
+                                )
+                        );
+
+        int refreshedCount = 0;
+        Set<BillingCharge> chargesToRecalculate = new HashSet<>();
+
+        for (BillingChargeLine chargeLine : chargeLines) {
+            if (chargeLine == null
+                    || chargeLine.getId() == null
+                    || chargeLine.getStatus() != BillingChargeLineStatus.OPEN) {
+                continue;
+            }
+
+            if (money(chargeLine.getAllocatedAmount()).signum() > 0
+                    || money(chargeLine.getReservedAmount()).signum() > 0) {
+                continue;
+            }
+
+            PatientServiceAndProduct item =
+                    chargeLine.getPatientServiceProduct();
+
+            if (item == null
+                    || item.getPatientInsuranceId() == null
+                    || Boolean.TRUE.equals(item.getIsExempted())) {
+                continue;
+            }
+
+            BillingProcessingContext context =
+                    buildRefreshContext(chargeLine, item);
+
+            try {
+                supersedeActiveResponsibilities(
+                        context,
+                        "Benefit rules refreshed after eligibility sync"
+                );
+                calculate(context);
+                refreshedCount++;
+
+                if (chargeLine.getCharge() != null) {
+                    chargesToRecalculate.add(chargeLine.getCharge());
+                }
+
+                LOG.info(
+                        "[REFRESH] Recalculated insurance responsibility "
+                                + "encounterId={} pspId={} chargeLineId={} "
+                                + "patient={} insurance={}",
+                        encounterId,
+                        item.getId(),
+                        chargeLine.getId(),
+                        chargeLine.getPatientResponsibilityAmount(),
+                        chargeLine.getInsuranceResponsibilityAmount()
+                );
+            } catch (BadRequestAlertException exception) {
+                LOG.warn(
+                        "[REFRESH] Skipped charge line encounterId={} chargeLineId={} reason={}",
+                        encounterId,
+                        chargeLine.getId(),
+                        exception.getMessage()
+                );
+            }
+        }
+
+        for (BillingCharge charge : chargesToRecalculate) {
+            BillingProcessingContext chargeContext =
+                    BillingProcessingContext.builder()
+                            .charge(charge)
+                            .build();
+
+            billingChargeService.recalculateChargeTotals(chargeContext);
+        }
+
+        LOG.info(
+                "[REFRESH] Encounter insurance responsibility refresh completed "
+                        + "encounterId={} refreshedLines={}",
+                encounterId,
+                refreshedCount
+        );
+
+        return refreshedCount;
+    }
+
+    private BillingProcessingContext buildRefreshContext(
+            BillingChargeLine chargeLine,
+            PatientServiceAndProduct item
+    ) {
+        BigDecimal netAmount = money(chargeLine.getNetAmount());
+
+        PriceCalculationResult pricingResult =
+                new PriceCalculationResult(
+                        money(chargeLine.getQuantity()),
+                        money(chargeLine.getUnitPrice()),
+                        money(chargeLine.getGrossAmount()),
+                        money(chargeLine.getDiscountAmount()),
+                        money(chargeLine.getExemptionAmount()),
+                        BigDecimal.ZERO,
+                        money(chargeLine.getTaxAmount()),
+                        netAmount
+                );
+
+        return BillingProcessingContext.builder()
+                .transactionGroupId(UUID.randomUUID())
+                .idempotencyKey(
+                        "ELIGIBILITY_REFRESH:"
+                                + chargeLine.getId()
+                                + ":"
+                                + UUID.randomUUID()
+                )
+                .eventType(BillingEventType.MANUAL)
+                .patientServiceProduct(item)
+                .charge(chargeLine.getCharge())
+                .chargeLine(chargeLine)
+                .pricingResult(pricingResult)
+                .build();
+    }
+
+    /**
      * Closes a responsibility row while keeping
      * {@code responsibility_amount = allocated_amount + outstanding_amount}.
      */
+    private boolean isActiveResponsibility(
+            BillingResponsibilityStatus status
+    ) {
+        return status != BillingResponsibilityStatus.CANCELLED
+                && status != BillingResponsibilityStatus.SUPERSEDED;
+    }
+
     private void closeResponsibilityForReplacement(
             BillingChargeResponsibility responsibility,
             BillingResponsibilityStatus status,
