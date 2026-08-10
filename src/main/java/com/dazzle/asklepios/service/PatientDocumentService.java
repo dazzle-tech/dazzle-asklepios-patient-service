@@ -132,7 +132,6 @@ public class PatientDocumentService {
         existing.setCountryId(dto.countryId());
         existing.setType(dto.type());
         existing.setNumber(dto.number());
-        existing.setIsPrimary(Boolean.TRUE.equals(dto.isPrimary()));
 
         try {
             PatientDocument updated = patientDocumentRepository.saveAndFlush(existing);
