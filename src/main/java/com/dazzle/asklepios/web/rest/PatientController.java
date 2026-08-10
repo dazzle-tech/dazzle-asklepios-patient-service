@@ -536,6 +536,17 @@ public class PatientController {
 
         return ResponseEntity.ok(patient);
     }
+    @PostMapping("/patient-portal/login")
+    public ResponseEntity<Patient> login(
+            @RequestParam String pin,
+            @RequestParam String documentNumber
+    ) {
+
+        return patientService
+                .findPatientByPinAndDocument(pin, documentNumber)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
     private static boolean isPasswordLengthInvalid(String password) {
         return (
                 StringUtils.isEmpty(password) ||
