@@ -94,29 +94,42 @@ public class WaseelCchiService {
                     patient,
                     null,
                     null,
-                    List.of()
+                    List.of(),
+                    null,
+                    null,
+                    null,
+                    null
             );
         }
 
-        CchiMappedPatientResponse mapped = fetchMappedPatientByDocumentId(documentId);
+        CchiInquiryResponse inquiry = fetchBeneficiaryByDocumentId(documentId);
+        CchiMappedPatientResponse mapped = mapInquiryResponse(inquiry);
         if (mapped == null) {
             return new CchiFetchPatientResponse(
                     false,
+                    inquiry != null ? inquiry.message() : null,
                     null,
                     null,
                     null,
-                    null,
-                    List.of()
+                    List.of(),
+                    inquiry != null ? inquiry.apiStatus() : null,
+                    inquiry != null ? inquiry.statusCode() : null,
+                    inquiry != null ? inquiry.message() : null,
+                    inquiry != null ? inquiry.fromWaseelDB() : null
             );
         }
 
         return new CchiFetchPatientResponse(
                 false,
-                null,
+                inquiry != null ? inquiry.message() : null,
                 mapped.patient(),
                 mapped.address(),
                 mapped.document(),
-                mapped.insurances()
+                mapped.insurances(),
+                inquiry != null ? inquiry.apiStatus() : null,
+                inquiry != null ? inquiry.statusCode() : null,
+                inquiry != null ? inquiry.message() : null,
+                inquiry != null ? inquiry.fromWaseelDB() : null
         );
     }
 
@@ -148,10 +161,12 @@ public class WaseelCchiService {
                 ? List.of()
                 : mapped.insurances();
 
+        Patient enrichedPatient = patientMapper.mergeCchiDemographics(patient, mapped.patient());
+
         return new CchiMappedPatientResponse(
-                patient,
-                null,
-                null,
+                enrichedPatient,
+                mapped.address(),
+                mapped.document(),
                 insurances
         );
     }
@@ -321,7 +336,10 @@ public class WaseelCchiService {
 
     public CchiMappedPatientResponse fetchMappedPatientByDocumentId(String documentId) {
         CchiInquiryResponse response = fetchBeneficiaryByDocumentId(documentId);
+        return mapInquiryResponse(response);
+    }
 
+    private CchiMappedPatientResponse mapInquiryResponse(CchiInquiryResponse response) {
         if (response == null || response.data() == null) {
             return null;
         }

@@ -69,6 +69,61 @@ public class CchiBeneficiaryPatientMapper {
         return patient;
     }
 
+    /**
+     * Applies CCHI demographic fields onto an existing patient for API responses
+     * (e.g. insurance fetch / refresh) without persisting.
+     */
+    public Patient mergeCchiDemographics(Patient existing, Patient fromCchi) {
+        if (fromCchi == null) {
+            return existing;
+        }
+        if (existing == null) {
+            return fromCchi;
+        }
+
+        if (fromCchi.getDateOfBirth() != null) {
+            existing.setDateOfBirth(fromCchi.getDateOfBirth());
+        }
+        if (!isBlank(fromCchi.getPrimaryMobileNumber())) {
+            existing.setPrimaryMobileNumber(fromCchi.getPrimaryMobileNumber());
+        }
+        if (!isBlank(fromCchi.getSecondName())) {
+            existing.setSecondName(fromCchi.getSecondName());
+        }
+        if (!isBlank(fromCchi.getFirstName())) {
+            existing.setFirstName(fromCchi.getFirstName());
+        }
+        if (!isBlank(fromCchi.getLastName())) {
+            existing.setLastName(fromCchi.getLastName());
+        }
+        if (!isBlank(fromCchi.getThirdName())) {
+            existing.setThirdName(fromCchi.getThirdName());
+        }
+        if (fromCchi.getSexAtBirth() != null) {
+            existing.setSexAtBirth(fromCchi.getSexAtBirth());
+        }
+        if (!isBlank(fromCchi.getEmail())) {
+            existing.setEmail(fromCchi.getEmail());
+        }
+        if (!isBlank(fromCchi.getMaritalStatus())) {
+            existing.setMaritalStatus(fromCchi.getMaritalStatus());
+        }
+        if (!isBlank(fromCchi.getNationality())) {
+            existing.setNationality(fromCchi.getNationality());
+        }
+        if (!isBlank(fromCchi.getReligion())) {
+            existing.setReligion(fromCchi.getReligion());
+        }
+        if (!isBlank(fromCchi.getPreferredLanguage())) {
+            existing.setPreferredLanguage(fromCchi.getPreferredLanguage());
+        }
+        if (!isBlank(fromCchi.getEmergencyContactPhone())) {
+            existing.setEmergencyContactPhone(fromCchi.getEmergencyContactPhone());
+        }
+
+        return existing;
+    }
+
     private String mapMaritalStatus(String waseelValue) {
         String valueCode = switchValue(
                 waseelValue,
@@ -162,6 +217,26 @@ public class CchiBeneficiaryPatientMapper {
         patient.setSecondName(middleName);
         patient.setThirdName("");
         patient.setLastName(!isBlank(familyName) ? familyName : lastName);
+
+        if (isBlank(patient.getSecondName()) && !isBlank(fullName)) {
+            String derivedSecondName = deriveSecondNameFromFullName(fullName, firstName);
+            if (!isBlank(derivedSecondName)) {
+                patient.setSecondName(derivedSecondName);
+            }
+        }
+    }
+
+    private String deriveSecondNameFromFullName(String fullName, String knownFirstName) {
+        String[] parts = fullName.trim().split("\\s+");
+        if (parts.length < 2) {
+            return "";
+        }
+
+        if (!isBlank(knownFirstName) && parts[0].equalsIgnoreCase(knownFirstName)) {
+            return parts[1];
+        }
+
+        return parts[1];
     }
 
     private void mapFullName(Patient patient, String fullName) {

@@ -13,5 +13,9 @@ public record CchiFetchPatientResponse(
         Patient patient,
         Address address,
         PatientDocument document,
-        List<PatientInsurance> insurances
+        List<PatientInsurance> insurances,
+        String apiStatus,
+        String statusCode,
+        String waseelMessage,
+        Boolean fromWaseelDB
 ) {}

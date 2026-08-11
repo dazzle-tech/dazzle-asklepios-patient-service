@@ -12,6 +12,8 @@ public record CchiBeneficiaryData(
 
         String fullName,
         String firstName,
+        @JsonProperty("middleName")
+        @JsonAlias({"middle_name", "secondName", "second_name"})
         String middleName,
         String lastName,
         String familyName,
@@ -25,11 +27,15 @@ public record CchiBeneficiaryData(
         String visitTitle,
         String visaExpiryDate,
 
+        @JsonProperty("dob")
+        @JsonAlias({"dateOfBirth", "date_of_birth"})
         String dob,
         String eHealthId,
         String nationality,
         String residencyType,
 
+        @JsonProperty("contactNumber")
+        @JsonAlias({"contact_number", "mobileNumber", "mobile_number", "primaryMobileNumber", "primary_mobile_number"})
         String contactNumber,
         String email,
         String emergencyNumber,
