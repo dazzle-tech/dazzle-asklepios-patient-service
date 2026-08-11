@@ -175,7 +175,7 @@ public class PatientPrescriptionService {
             Long encounterId,
             PrescriptionStatus status,
             PrescriptionUrgencyLevel urgencyLevel,
-            Long prescriptionNum,
+            String prescriptionNum,
             boolean includeCanceled,
             Pageable pageable
     ) {
