@@ -2,6 +2,7 @@ package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import org.springframework.data.domain.Page;
@@ -18,7 +19,19 @@ public interface PatientServiceAndProductRepository
 
     Page<PatientServiceAndProduct> findAllByEncounterId(Long encounterId, Pageable pageable);
 
+    Page<PatientServiceAndProduct> findAllByEncounterIdAndPaymentStatusNot(
+            Long encounterId,
+            PaymentStatus paymentStatus,
+            Pageable pageable
+    );
+
     Page<PatientServiceAndProduct> findAllByPatientId(Long patientId, Pageable pageable);
+
+    Page<PatientServiceAndProduct> findAllByPatientIdAndPaymentStatusNot(
+            Long patientId,
+            PaymentStatus paymentStatus,
+            Pageable pageable
+    );
 
     boolean existsByPatientIdAndEncounterIdAndDiagnosticTestIdAndIsBilledTrue(
             Long patientId,
@@ -36,6 +49,14 @@ public interface PatientServiceAndProductRepository
             Long encounterId,
             ServiceSource serviceSource,
             Long sourceId,
+            Pageable pageable
+    );
+
+    Page<PatientServiceAndProduct> findAllByEncounterIdAndServiceSourceAndSourceIdAndPaymentStatusNot(
+            Long encounterId,
+            ServiceSource serviceSource,
+            Long sourceId,
+            PaymentStatus paymentStatus,
             Pageable pageable
     );
 

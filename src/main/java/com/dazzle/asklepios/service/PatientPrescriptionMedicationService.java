@@ -3,7 +3,9 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.client.setup.ActiveIngredientClient;
 import com.dazzle.asklepios.domain.PatientPrescription;
 import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
+import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
+import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.repository.PatientPrescriptionMedicationRepository;
 import com.dazzle.asklepios.repository.PatientPrescriptionRepository;
 import com.dazzle.asklepios.service.dto.patientPrescription.PrescriptionMedicationCreateDTO;
@@ -31,6 +33,7 @@ public class PatientPrescriptionMedicationService {
     private final ActiveIngredientClient activeIngredientClient;
     private final BrandMedicationHelper brandMedicationHelper;
     private final ICDTreeHelper icdTreeHelper;
+    private final PatientServiceAndProductService patientServiceAndProductService;
 
     public PatientPrescriptionMedication create(PrescriptionMedicationCreateDTO prescriptionMedicationCreateDTO) {
         LOG.debug("create a PrescriptionMedicationCreateDTO={}", prescriptionMedicationCreateDTO);
@@ -178,6 +181,13 @@ public class PatientPrescriptionMedicationService {
 
         PatientPrescriptionMedication entity = patientPrescriptionMedicationRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescriptionMedication not found: " + id));
+
+        patientServiceAndProductService.cancelBySource(
+                ServiceSource.PRESCRIPTION,
+                entity.getId(),
+                BillingItemTypes.MEDICATION,
+                "Prescription medication cancelled"
+        );
 
         entity.setStatus(PrescriptionStatus.CANCELLED);
         return patientPrescriptionMedicationRepository.saveAndFlush(entity);

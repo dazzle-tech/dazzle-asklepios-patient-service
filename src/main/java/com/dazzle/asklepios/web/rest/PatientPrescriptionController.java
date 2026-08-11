@@ -51,7 +51,7 @@ public class PatientPrescriptionController {
             @RequestParam(required = false) Long encounterId,
             @RequestParam(required = false) PrescriptionStatus status,
             @RequestParam(required = false) PrescriptionUrgencyLevel urgencyLevel,
-            @RequestParam(required = false) Long prescriptionNum,
+            @RequestParam(required = false) String prescriptionNum,
             @RequestParam(required = false, defaultValue = "false") boolean includeCanceled,
             Pageable pageable
     ) {

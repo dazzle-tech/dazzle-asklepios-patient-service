@@ -110,7 +110,7 @@ public class PreAuthorizationTrackingService {
 
                 e.getTotalNet(),
 
-                e.getStatus(),
+                resolveDisplayStatus(e),
                 e.getOutcome(),
                 e.getMessage(),
                 e.getDisposition(),
@@ -164,5 +164,36 @@ public class PreAuthorizationTrackingService {
                 item.getItemDecision(),
                 item.getReasonCodes()
         );
+    }
+
+    /**
+     * Waseel may keep the original approval status (e.g. "pended") after cancel while outcome becomes "Cancelled".
+     * When isCancelled is true, prefer cancel-specific fields for the Status column shown in the UI.
+     */
+    private String resolveDisplayStatus(PreAuthorizationRequest request) {
+        if (Boolean.TRUE.equals(request.getIsCancelled())) {
+            return firstNonBlank(
+                    request.getCancelStatus(),
+                    request.getCancelOutcome(),
+                    request.getOutcome(),
+                    "Cancelled"
+            );
+        }
+
+        return request.getStatus();
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+
+        return null;
     }
 }

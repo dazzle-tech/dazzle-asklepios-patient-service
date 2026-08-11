@@ -1,6 +1,9 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
+import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
+import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
 import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.AppointmentRequest;
 import com.dazzle.asklepios.domain.Patient;
@@ -8,6 +11,8 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.AppointmentRequestStatus;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
+import com.dazzle.asklepios.domain.enumeration.TemplateType;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.AppointmentRequestRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
@@ -19,6 +24,8 @@ import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestCre
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestUpdateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
+import com.dazzle.asklepios.service.helper.NotificationHelper;
+import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointmentRequest.AppointmentRequestResponseVM;
@@ -28,8 +35,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -46,6 +57,10 @@ public class AppointmentRequestService {
     private final AppointmentService appointmentService;
     private final FacilityHelper facilityHelper;
     private final DepartmentHelper departmentHelper;
+    private final NotificationHelper notificationHelper;
+    private final PractitionerHelper practitionerHelper;
+
+    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm").withZone(ZoneId.systemDefault());
 
     public AppointmentRequestResponseVM create(AppointmentRequestCreateDTO dto) {
         log.debug("Request to create AppointmentRequest dto={}", dto);
@@ -81,8 +96,14 @@ public class AppointmentRequestService {
         request.setPreferredDate(dto.preferredDate());
 
         AppointmentRequest saved = appointmentRequestRepository.save(request);
-        return toResponseVM(saved);
-    }
+
+        notifyAppointmentRequestEvent(
+                saved,
+                NotificationCode.APPOINTMENT_REQUEST_CREATED,
+                null
+        );
+
+        return toResponseVM(saved);    }
 
     public AppointmentRequestResponseVM approve(AppointmentRequestUpdateDTO dto) {
         log.debug("Request to approve AppointmentRequest dto={}", dto);
@@ -169,8 +190,14 @@ public class AppointmentRequestService {
         request.setStatus(AppointmentRequestStatus.APPROVED);
 
         AppointmentRequest saved = appointmentRequestRepository.save(request);
-        return toResponseVM(saved);
-    }
+
+        notifyAppointmentRequestEvent(
+                saved,
+                NotificationCode.APPOINTMENT_REQUEST_APPROVED,
+                null
+        );
+
+        return toResponseVM(saved);    }
 
     @Transactional(readOnly = true)
     public AppointmentRequestResponseVM getById(Long id) {
@@ -348,5 +375,207 @@ public class AppointmentRequestService {
                 entity.getLastModifiedDate(),
                 entity.getPreferredDate()
         );
+    }
+    private void notifyAppointmentRequestEvent(
+            AppointmentRequest request,
+            NotificationCode notificationCode,
+            Map<String, Object> extraData
+    ) {
+        if (request == null || notificationCode == null) {
+            return;
+        }
+
+        try {
+            DepartmentDTO department = request.getDepartmentId() != null
+                    ? departmentHelper.getDepartment(request.getDepartmentId())
+                    : null;
+            PractitionerDTO practitionerDTO = null;
+
+            if (request.getRequestedResourceType() == TemplateType.PRACTITIONER
+                    && request.getRequestedResourceId() != null) {
+
+                practitionerDTO = practitionerHelper.getPractitioner(
+                        request.getRequestedResourceId()
+                );
+
+            } else if (request.getRequestedResourceType() == TemplateType.DEPARTMENT
+                    && request.getSourceEncounter() != null
+                    && request.getSourceEncounter().getPractitionerId() != null) {
+
+                practitionerDTO = practitionerHelper.getPractitioner(
+                        request.getSourceEncounter().getPractitionerId()
+                );
+            }
+            Map<String, Object> data =
+                    buildAppointmentRequestNotificationData(request, department);
+
+            if (extraData != null && !extraData.isEmpty()) {
+                data.putAll(extraData);
+            }
+
+            String login = SecurityUtils.getCurrentUserLogin().orElse(null);
+
+
+            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
+                    notificationHelper.resolveRecipients(
+                            request.getDepartmentId(),
+                            login,
+                            request.getCreatedBy(),
+                            request.getPatient(),
+                            practitionerDTO,
+                            false
+                    );
+
+            if (recipientsByRule.isEmpty()) {
+                log.warn(
+                        "[APPOINTMENT_REQUEST_NOTIFICATION] No recipients resolved. requestId={}, code={}",
+                        request.getId(),
+                        notificationCode
+                );
+                return;
+            }
+
+            log.debug(
+                    "[APPOINTMENT_REQUEST_NOTIFICATION] Creating notification. requestId={}, code={}, recipientsByRule={}",
+                    request.getId(),
+                    notificationCode,
+                    recipientsByRule
+            );
+
+            notificationHelper.sendNotification(
+                    request.getFacilityId(),
+                    notificationCode,
+                    recipientsByRule,
+                    data,
+                    "APPOINTMENT_REQUEST",
+                    request.getId()
+            );
+
+        } catch (Exception e) {
+
+            log.warn(
+                    "[APPOINTMENT_REQUEST_NOTIFICATION] Failed notification. requestId={}, code={}, error={}",
+                    request.getId(),
+                    notificationCode,
+                    e.getMessage()
+            );
+        }
+    }
+    private Map<String, Object> buildAppointmentRequestNotificationData(
+            AppointmentRequest request,
+            DepartmentDTO department
+    ) {
+        Map<String, Object> data = new LinkedHashMap<>();
+
+        FacilityDTO facilityDTO = null;
+
+        if (request.getFacilityId() != null) {
+            facilityDTO = facilityHelper.getFacility(request.getFacilityId());
+        }
+
+        Patient patient = request.getPatient();
+
+        data.put(
+                "facility_name",
+                facilityDTO != null ? facilityDTO.name() : ""
+        );
+
+        data.put(
+                "appointment_request_id",
+                request.getId()
+        );
+
+        data.put(
+                "request_id",
+                request.getId()
+        );
+
+        data.put(
+                "patient_id",
+                patient != null ? patient.getId() : null
+        );
+
+        data.put(
+                "patient_name",
+                patient != null
+                        ? notificationHelper.getPatientName(patient)
+                        : ""
+        );
+
+        data.put(
+                "patient_mrn",
+                patient != null
+                        ? patient.getMedicalRecordNumber()
+                        : ""
+        );
+
+        data.put(
+                "department_id",
+                request.getDepartmentId()
+        );
+
+        data.put(
+                "department_name",
+                department != null ? department.name() : ""
+        );
+
+        data.put(
+                "requested_resource_type",
+                request.getRequestedResourceType() != null
+                        ? request.getRequestedResourceType().name()
+                        : ""
+        );
+
+        data.put(
+                "requested_resource_id",
+                request.getRequestedResourceId()
+        );
+
+        data.put(
+                "priority",
+                request.getPriority() != null
+                        ? request.getPriority().name()
+                        : ""
+        );
+
+        data.put(
+                "reason",
+                request.getReason() != null
+                        ? request.getReason()
+                        : ""
+        );
+
+        data.put(
+                "note",
+                request.getNote() != null
+                        ? request.getNote()
+                        : ""
+        );
+
+        data.put(
+                "preferred_date",
+                request.getPreferredDate() != null
+                        ? request.getPreferredDate().toString()
+                        : ""
+        );
+
+        data.put(
+                "status",
+                request.getStatus() != null
+                        ? request.getStatus().name()
+                        : ""
+        );
+
+        data.put(
+                "appointment_id",
+                request.getAppointment() != null
+                        ? request.getAppointment().getId()
+                        : null
+        );
+        data.put("appointment_date", request.getAppointment() != null && request.getAppointment().getStartDatetime() != null
+                ? formatter.format(request.getAppointment().getStartDatetime())
+                : "");
+
+        return data;
     }
 }
