@@ -8,6 +8,7 @@ import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.repository.PatientPrescriptionMedicationRepository;
 import com.dazzle.asklepios.repository.PatientPrescriptionRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patientPrescription.PrescriptionMedicationCreateDTO;
 import com.dazzle.asklepios.service.dto.patientPrescription.PrescriptionMedicationUpdateDTO;
 import com.dazzle.asklepios.service.helper.BrandMedicationHelper;
@@ -21,6 +22,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
@@ -176,7 +179,7 @@ public class PatientPrescriptionMedicationService {
     }
 
     @Transactional
-    public PatientPrescriptionMedication cancel(Long id) {
+    public PatientPrescriptionMedication cancel(Long id ,String cancellationReason) {
         LOG.debug("cancel PatientPrescriptionMedication for id={}", id);
 
         PatientPrescriptionMedication entity = patientPrescriptionMedicationRepository.findById(id)
@@ -190,6 +193,9 @@ public class PatientPrescriptionMedicationService {
         );
 
         entity.setStatus(PrescriptionStatus.CANCELLED);
+        entity.setCancellationReason(cancellationReason);
+        entity.setCancelledBy(currentUsername());
+        entity.setCancelledDate(Instant.now());
         return patientPrescriptionMedicationRepository.saveAndFlush(entity);
     }
 
@@ -212,5 +218,8 @@ public class PatientPrescriptionMedicationService {
             );
         return value;
     }
-
+    private String currentUsername() {
+        return SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new BadRequestAlertException("No authenticated user", "Prescription-medication", "unauthenticated"));
+    }
 }
