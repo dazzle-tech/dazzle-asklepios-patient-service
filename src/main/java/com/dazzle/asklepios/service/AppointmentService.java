@@ -267,7 +267,7 @@ public class AppointmentService {
                 })
                 .toList();
     }
-
+    @Transactional
     public Appointment bookPatientAppointment(AppointmentBookPatientDTO dto) {
         LOG.debug("Request to update Appointment dto={}", dto);
 
@@ -312,7 +312,18 @@ public class AppointmentService {
 
             appointment.setFollowUpEncounter(followUpEncounter);
         }
-        return appointmentRepository.save(appointment);
+        Appointment savedAppointment = appointmentRepository.save(appointment);
+
+        if (savedAppointment.getStatus() == AppointmentStatus.BOOKED) {
+
+            notifyAppointmentEvent(
+                    savedAppointment,
+                    NotificationCode.APPOINTMENT_BOOKED,
+                    null
+            );
+        }
+
+        return savedAppointment;
     }
 
     public Page<Appointment> getAppointmentsByStatusBetweenDates(List<AppointmentStatus> status, Instant startDatetime, Instant endDatetime, Pageable pageable) {
@@ -1023,7 +1034,16 @@ public class AppointmentService {
         }
 
 
-        return appointmentRepository.save(appointment);
+        Appointment savedAppointment = appointmentRepository.save(appointment);
+
+        notifyAppointmentEvent(
+                savedAppointment,
+                NotificationCode.APPOINTMENT_BOOKED,
+                null
+        );
+
+
+        return savedAppointment;
     }
 
     private void validateCreateAppointment(AppointmentIntegrationCreateDTO dto) {

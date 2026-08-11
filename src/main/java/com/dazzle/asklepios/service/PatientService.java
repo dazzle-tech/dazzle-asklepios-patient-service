@@ -5,9 +5,10 @@ import com.dazzle.asklepios.client.setup.SystemConfigurationClient;
 import com.dazzle.asklepios.domain.DuplicationCandidate;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
+import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.enumeration.DocumentType;
-import com.dazzle.asklepios.domain.enumeration.SystemConfigKey;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
+import com.dazzle.asklepios.integration.waseel.service.CchiPatientLookupService;
 import com.dazzle.asklepios.repository.DuplicationCandidateRepository;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -19,7 +20,6 @@ import com.dazzle.asklepios.service.dto.patient.PatientDuplicationLookupDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientPinDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
-import com.dazzle.asklepios.integration.waseel.service.CchiPatientLookupService;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.InvalidPasswordException;
@@ -30,7 +30,6 @@ import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
-import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,15 +46,15 @@ import org.springframework.transaction.annotation.Transactional;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;import java.time.temporal.ChronoUnit;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
-import com.dazzle.asklepios.domain.PatientInsurance;
-import com.dazzle.asklepios.service.dto.patient.FacilityPatientFilterDTO;
+
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
@@ -93,6 +92,7 @@ public class PatientService {
         this.notificationHelper = notificationHelper;
         this.cchiPatientLookupService = cchiPatientLookupService;
     }
+
     @Value("${application.asklepios-application-url}")
     private String asklepiosApplicationlUrl;
 
@@ -161,7 +161,12 @@ public class PatientService {
                 .build();
 
         try {
-            return patientRepository.saveAndFlush(entity);
+            Patient createdPatient = patientRepository.saveAndFlush(entity);
+
+            sendPatientWelcomeNotification(createdPatient);
+
+            return createdPatient;
+
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
             throw ex;
@@ -577,7 +582,7 @@ public class PatientService {
         data.put("title", "CMS | Set your password");
 
         String login = SecurityUtils.getCurrentUserLogin().orElse(null);
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(null, login, patient.getCreatedBy(), patient, null,false);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(null, login, patient.getCreatedBy(), patient, null, false);
 
         try {
             notificationHelper.sendNotification(null,
@@ -677,9 +682,9 @@ public class PatientService {
 
         if (primaryDocumentNumber == null || primaryDocumentNumber.isBlank()) {
             throw new BadRequestAlertException(
-                    "document.required"   ,
+                    "document.required",
                     "patient-portal",
-                     "Primary document number is required"
+                    "Primary document number is required"
             );
         }
 
@@ -785,15 +790,15 @@ public class PatientService {
             );
         }
 
-            if (lower.contains("chk_patients_required_fields_when_not_unknown")
-                    || (lower.contains("check constraint")
-                    && (lower.contains("required_fields") || lower.contains("unknown")))) {
-                throw new BadRequestAlertException(
-                        "Required patient fields are missing: first name, last name, gender, date of birth, primary mobile number, and email are required unless the patient is marked as unknown.",
-                        "patient",
-                        "required.fields.when.not.unknown"
-                );
-            }
+        if (lower.contains("chk_patients_required_fields_when_not_unknown")
+                || (lower.contains("check constraint")
+                && (lower.contains("required_fields") || lower.contains("unknown")))) {
+            throw new BadRequestAlertException(
+                    "Required patient fields are missing: first name, last name, gender, date of birth, primary mobile number, and email are required unless the patient is marked as unknown.",
+                    "patient",
+                    "required.fields.when.not.unknown"
+            );
+        }
 
         if ((lower.contains("medical_record_number") || lower.contains("medicalrecordnumber"))
                 && (lower.contains("null value") || lower.contains("not-null") || lower.contains("not null"))) {
@@ -846,7 +851,7 @@ public class PatientService {
                 "db.constraint"
         );
     }
-    
+
     private Specification<Patient> buildDuplicationSpec(Map<String, Boolean> fields, PatientDuplicationLookupDTO duplicationLookupDTO) {
         return (patientRoot, criteriaQuery, criteriaBuilder) -> {
             LOG.debug("=== [DUPLICATION SPEC BUILD START] ===");
@@ -970,6 +975,7 @@ public class PatientService {
             return criteriaBuilder.and(preds.toArray(new Predicate[0]));
         };
     }
+
     public Page<Patient> findDuplicationCandidates(PatientDuplicationLookupDTO duplicationLookupDTO, Pageable pageable) {
         if (duplicationLookupDTO == null || duplicationLookupDTO.ruleId() == null) {
             return Page.empty(pageable);
@@ -988,51 +994,51 @@ public class PatientService {
     }
 
 
-private String getPatientName(Patient patient) {
-    if (patient == null) {
-        return "";
+    private String getPatientName(Patient patient) {
+        if (patient == null) {
+            return "";
+        }
+
+        String firstName = patient.getFirstName() != null ? patient.getFirstName() : "";
+        String secondName = patient.getSecondName() != null ? patient.getSecondName() : "";
+        String thirdName = patient.getThirdName() != null ? patient.getThirdName() : "";
+        String lastName = patient.getLastName() != null ? patient.getLastName() : "";
+
+        String fullName = (firstName + " " + secondName + " " + thirdName + " " + lastName)
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        if (!fullName.isBlank()) {
+            return fullName;
+        }
+
+        if (patient.getEmail() != null && !patient.getEmail().isBlank()) {
+            return patient.getEmail();
+        }
+
+        return patient.getId() != null ? String.valueOf(patient.getId()) : "";
     }
 
-    String firstName = patient.getFirstName() != null ? patient.getFirstName() : "";
-    String secondName = patient.getSecondName() != null ? patient.getSecondName() : "";
-    String thirdName = patient.getThirdName() != null ? patient.getThirdName() : "";
-    String lastName = patient.getLastName() != null ? patient.getLastName() : "";
+    private String normalizeDocumentId(String documentId) {
+        if (documentId == null) {
+            return null;
+        }
 
-    String fullName = (firstName + " " + secondName + " " + thirdName + " " + lastName)
-            .replaceAll("\\s+", " ")
-            .trim();
+        documentId = documentId.trim();
 
-    if (!fullName.isBlank()) {
-        return fullName;
+        return documentId.isEmpty() ? null : documentId;
     }
 
-    if (patient.getEmail() != null && !patient.getEmail().isBlank()) {
-        return patient.getEmail();
+    @Transactional
+    public Patient updatePatientConditions(Long patientId, PatientConditionsDTO dto) {
+
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new EntityNotFoundException("Patient not found"));
+
+        patient.setPatientConditions(dto.patientConditions());
+
+        return patientRepository.save(patient);
     }
-
-    return patient.getId() != null ? String.valueOf(patient.getId()) : "";
-}
-
-private String normalizeDocumentId(String documentId) {
-    if (documentId == null) {
-        return null;
-    }
-
-    documentId = documentId.trim();
-
-    return documentId.isEmpty() ? null : documentId;
-}
-
-@Transactional
-public Patient updatePatientConditions(Long patientId, PatientConditionsDTO dto) {
-
-    Patient patient = patientRepository.findById(patientId)
-            .orElseThrow(() -> new EntityNotFoundException("Patient not found"));
-
-    patient.setPatientConditions(dto.patientConditions());
-
-    return patientRepository.save(patient);
-}
 
     @Transactional(readOnly = true)
     public Optional<Patient> findPatientByPinAndDocument(
@@ -1061,5 +1067,52 @@ public Patient updatePatientConditions(Long patientId, PatientConditionsDTO dto)
         return patients.stream()
                 .filter(patient -> patient.getId().equals(patientId))
                 .findFirst();
+    }
+
+    private void sendPatientWelcomeNotification(Patient patient) {
+        try {
+            String patientName = getPatientName(patient);
+
+            Map<String, Object> data = new LinkedHashMap<>();
+
+            data.put("patient_name", patientName);
+            data.put("medical_record_number", patient.getMedicalRecordNumber());
+            data.put("patient_email", patient.getEmail());
+            data.put("patient_mobile", patient.getPrimaryMobileNumber());
+
+            String login = SecurityUtils.getCurrentUserLogin().orElse(null);
+
+            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
+                    notificationHelper.resolveRecipients(
+                            null,
+                            login,
+                            patient.getCreatedBy(),
+                            patient,
+                            null,
+                            false
+                    );
+
+            notificationHelper.sendNotification(
+                    null,
+                    NotificationCode.PATIENT_WELCOME,
+                    recipientsByRule,
+                    data,
+                    "PATIENT",
+                    patient.getId()
+            );
+
+            LOG.info(
+                    "[NOTIFICATION] Welcome notification sent for patient id={}",
+                    patient.getId()
+            );
+
+        } catch (Exception e) {
+            LOG.warn(
+                    "[NOTIFICATION] Failed to send patient welcome notification. patientId={}, error={}",
+                    patient.getId(),
+                    e.getMessage(),
+                    e
+            );
+        }
     }
 }
