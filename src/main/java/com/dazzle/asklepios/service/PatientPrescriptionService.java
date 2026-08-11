@@ -11,8 +11,10 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientPrescription;
 import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
+import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionUrgencyLevel;
+import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientPrescriptionMedicationRepository;
@@ -265,6 +267,13 @@ public class PatientPrescriptionService {
                 prescriptionMedicationRepository.findByPrescriptionHeader_Id(id);
 
         for (PatientPrescriptionMedication medication : medications) {
+            patientServiceAndProductService.cancelBySource(
+                    ServiceSource.PRESCRIPTION,
+                    medication.getId(),
+                    BillingItemTypes.MEDICATION,
+                    "Prescription cancelled"
+            );
+
             medication.setStatus(PrescriptionStatus.CANCELLED);
             medication.setLastModifiedBy(username);
             medication.setLastModifiedDate(now);

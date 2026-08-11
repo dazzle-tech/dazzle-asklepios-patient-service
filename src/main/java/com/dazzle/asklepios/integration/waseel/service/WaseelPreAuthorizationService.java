@@ -264,23 +264,30 @@ public class WaseelPreAuthorizationService {
 
         preAuth.setOutcome(searchResponse.outcome());
 
-        preAuth.setStatus(
-                firstNonBlank(
-                        searchResponse.status(),
-                        searchResponse.outcome(),
-                        preAuth.getStatus(),
-                        "UNKNOWN"
-                )
-        );
+        if (searchResponse.cancelStatus() != null) {
+            preAuth.setIsCancelled(Boolean.TRUE);
+            preAuth.setStatus(
+                    firstNonBlank(
+                            searchResponse.cancelStatus(),
+                            searchResponse.outcome(),
+                            "Cancelled"
+                    )
+            );
+        } else {
+            preAuth.setStatus(
+                    firstNonBlank(
+                            searchResponse.status(),
+                            searchResponse.outcome(),
+                            preAuth.getStatus(),
+                            "UNKNOWN"
+                    )
+            );
+        }
 
         preAuth.setDisposition(searchResponse.disposition());
 
         preAuth.setCancelStatus(searchResponse.cancelStatus());
         preAuth.setCancelMessage(searchResponse.cancelResponseReason());
-
-        if (searchResponse.cancelStatus() != null) {
-            preAuth.setIsCancelled(Boolean.TRUE);
-        }
 
         if (searchResponse.paymentAmount() != null) {
             preAuth.setTotalNet(searchResponse.paymentAmount());
@@ -1103,10 +1110,11 @@ public class WaseelPreAuthorizationService {
 
             preAuth.setStatus(
                     firstNonBlank(
-                            searchResponse.status(),
+                            searchResponse.cancelStatus(),
                             searchResponse.outcome(),
-                            preAuth.getStatus(),
-                            "UNKNOWN"
+                            cancelResponse != null ? cancelResponse.outcome() : null,
+                            cancelResponse != null ? cancelResponse.status() : null,
+                            "Cancelled"
                     )
             );
 
