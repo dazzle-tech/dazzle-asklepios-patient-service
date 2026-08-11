@@ -37,7 +37,14 @@ public class NotificationHelper {
     private final SystemConfigurationClient systemConfigurationClient;
     private final FacilityHelper facilityHelper;
 
-    public void sendNotification(Long facilityId, NotificationCode code, Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule, Map<String, Object> data, String relatedEntityType, Long relatedEntityId) {
+    public void sendNotification(
+            Long facilityId,
+            NotificationCode code,
+            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule,
+            Map<String, Object> data,
+            String relatedEntityType,
+            Long relatedEntityId) {
+
         try {
             if (code == null) {
                 log.warn("[NOTIFICATION] Skip notification because code is missing");
@@ -53,17 +60,36 @@ public class NotificationHelper {
                 );
                 return;
             }
-            String logoUrl = systemConfigurationClient.getResolvedValue(SystemConfigKey.SYSTEM_LOGO);
-            data.put("logo_url", logoUrl);
+
+            try {
+                String logoUrl = systemConfigurationClient
+                        .getResolvedValue(SystemConfigKey.SYSTEM_LOGO);
+
+                if (logoUrl != null && !logoUrl.isBlank()) {
+                    data.put("logo_url", logoUrl);
+                }
+            } catch (Exception e) {
+                log.warn(
+                        "[NOTIFICATION] Could not resolve SYSTEM_LOGO. Continuing without logo. error={}",
+                        e.getMessage()
+                );
+            }
+
             Long loggedInFacilityId = getLoggedInFacility();
+
             if (loggedInFacilityId != null) {
                 FacilityDTO facilityDTO = facilityHelper.getFacility(loggedInFacilityId);
-                data.put("logged_in_facility_name", facilityDTO.name());
+
+                if (facilityDTO != null && facilityDTO.name() != null) {
+                    data.put("logged_in_facility_name", facilityDTO.name());
+                }
             }
+
             Map<String, Map<String, List<NotificationResolvedRecipientDTO>>> groupedRecipients =
                     groupRecipientsByLanguage(recipientsByRule);
 
-            for (Map.Entry<String, Map<String, List<NotificationResolvedRecipientDTO>>> languageEntry : groupedRecipients.entrySet()) {
+            for (Map.Entry<String, Map<String, List<NotificationResolvedRecipientDTO>>> languageEntry
+                    : groupedRecipients.entrySet()) {
 
                 String language = languageEntry.getKey();
 
@@ -79,7 +105,6 @@ public class NotificationHelper {
                 );
 
                 try {
-
                     log.debug(
                             "[NOTIFICATION] Creating notification. language={}, code={}, recipients={}",
                             language,
@@ -90,7 +115,6 @@ public class NotificationHelper {
                     notificationClient.createNotification(dto);
 
                 } catch (Exception e) {
-
                     log.warn(
                             "[NOTIFICATION] Failed notification. language={}, code={}, error={}",
                             language,
@@ -99,9 +123,10 @@ public class NotificationHelper {
                     );
                 }
             }
+
         } catch (Exception e) {
             log.warn(
-                    "[NOTIFICATION] Failed notification. code={}, error={},recipientsByRule={},data={},relatedEntityType={},relatedEntityId={}",
+                    "[NOTIFICATION] Failed notification. code={}, error={}, recipientsByRule={}, data={}, relatedEntityType={}, relatedEntityId={}",
                     code,
                     e.getMessage(),
                     recipientsByRule,
@@ -111,7 +136,6 @@ public class NotificationHelper {
             );
         }
     }
-
     public Map<String, List<NotificationResolvedRecipientDTO>> resolveRecipients(Long departmentId, String login, String createdByLogin, Patient patient, PractitionerDTO practitionerDTO, Boolean isScheduleNotification) {
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
         List<OrganizationDefinitionDTO> organizationDefinitionList = organizationClient.getOrganization();
