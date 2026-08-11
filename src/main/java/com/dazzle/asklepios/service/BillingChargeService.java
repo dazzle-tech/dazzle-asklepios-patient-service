@@ -544,6 +544,8 @@ public class BillingChargeService {
             line.setReservedAmount(
                     BigDecimal.ZERO
             );
+        } else {
+            reconcileChargeLineResponsibilityAmounts(line);
         }
 
         BillingChargeLine saved =
