@@ -47,6 +47,10 @@ public record AppointmentLogResponseVM(
         Long followUpEncounterId,
         Long bookingGroupId,
         Long waitingListId,
-        String hl7AppointmentNumber
+        String hl7AppointmentNumber,
+        Instant createdDate,
+        Instant lastModifiedDate,
+        String createdBy,
+        String lastModifiedBy
 ) {
 }

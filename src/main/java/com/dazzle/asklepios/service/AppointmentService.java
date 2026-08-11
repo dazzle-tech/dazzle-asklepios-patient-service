@@ -257,7 +257,11 @@ public class AppointmentService {
                             log.getFollowUpEncounterId(),
                             log.getBookingGroup() != null ? log.getBookingGroup().getId() : null,
                             log.getWaitingList() != null ? log.getWaitingList().getId() : null,
-                            log.getHl7AppointmentNumber()
+                            log.getHl7AppointmentNumber(),
+                            log.getCreatedDate() ,
+                            log.getLastModifiedDate(),
+                            log.getCreatedBy(),
+                            log.getLastModifiedBy()
 
                     );
                 })
