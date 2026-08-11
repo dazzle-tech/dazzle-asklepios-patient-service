@@ -738,6 +738,272 @@ public class PatientEncounterService {
     }
 
     @Transactional(readOnly = true)
+    public Page<PatientEncounter> searchEncounters(
+            Long facilityId,
+            PatientEncounterSearchFilterDTO filter,
+            Pageable pageable
+    ) {
+        LOG.debug(
+                "[SEARCH] PatientEncounters facilityId={} departmentId={} filter={} pageable={}",
+                facilityId,
+                filter != null ? filter.departmentId() : null,
+                filter,
+                pageable
+        );
+
+        LocalDate today = LocalDate.now();
+
+        LocalDate effectiveFrom =
+                filter != null && filter.fromDate() != null
+                        ? filter.fromDate()
+                        : today;
+
+        LocalDate effectiveTo =
+                filter != null && filter.toDate() != null
+                        ? filter.toDate()
+                        : today;
+
+        List<TreatmentStatus> effectiveStatuses =
+                filter != null
+                        && filter.statuses() != null
+                        && !filter.statuses().isEmpty()
+                        ? filter.statuses()
+                        : null;
+
+        boolean hasPatientName =
+                filter != null
+                        && filter.patientName() != null
+                        && !filter.patientName().isBlank();
+
+        boolean hasMrn =
+                filter != null
+                        && filter.mrn() != null
+                        && !filter.mrn().isBlank();
+
+        boolean hasChief =
+                filter != null
+                        && filter.chiefComplaint() != null
+                        && !filter.chiefComplaint().isBlank();
+
+        Long departmentId =
+                filter != null
+                        ? filter.departmentId()
+                        : null;
+
+        Long practitionerId =
+                filter != null
+                        ? filter.practitionerId()
+                        : null;
+
+        Specification<PatientEncounter> spec = (root, query, cb) -> {
+
+            applyFetches(root, query);
+
+            List<Predicate> predicates = new ArrayList<>();
+
+            /*
+             * Facility is OPTIONAL
+             *
+             * facilityId != null
+             *     -> filter by facility
+             *
+             * facilityId == null
+             *     -> don't filter facility
+             */
+            if (facilityId != null) {
+                predicates.add(
+                        cb.equal(
+                                root.get("facilityId"),
+                                facilityId
+                        )
+                );
+            }
+
+            if (departmentId != null) {
+                predicates.add(
+                        cb.equal(
+                                root.get("departmentId"),
+                                departmentId
+                        )
+                );
+            }
+
+            if (practitionerId != null) {
+                predicates.add(
+                        cb.equal(
+                                root.get("practitionerId"),
+                                practitionerId
+                        )
+                );
+            }
+
+            predicates.add(
+                    cb.between(
+                            root.get("encounterDate"),
+                            effectiveFrom,
+                            effectiveTo
+                    )
+            );
+
+            if (effectiveStatuses != null && !effectiveStatuses.isEmpty()) {
+                predicates.add(
+                        root.get("status").in(effectiveStatuses)
+                );
+            }
+
+            if (
+                    filter != null
+                            && filter.encounterReasons() != null
+                            && !filter.encounterReasons().isEmpty()
+            ) {
+                predicates.add(
+                        root.get("encounterReason")
+                                .in(filter.encounterReasons())
+                );
+            }
+
+            if (
+                    filter != null
+                            && filter.priorities() != null
+                            && !filter.priorities().isEmpty()
+            ) {
+                predicates.add(
+                        root.get("priorityLevel")
+                                .in(filter.priorities())
+                );
+            }
+
+            if (hasChief) {
+                predicates.add(
+                        cb.like(
+                                cb.lower(
+                                        cb.coalesce(
+                                                root.get("chiefComplaint"),
+                                                ""
+                                        )
+                                ),
+                                "%" +
+                                        filter.chiefComplaint()
+                                                .trim()
+                                                .toLowerCase() +
+                                        "%"
+                        )
+                );
+            }
+
+            if (hasPatientName || hasMrn) {
+
+                Join<PatientEncounter, Patient> patientJoin =
+                        root.join(
+                                "patient",
+                                JoinType.INNER
+                        );
+
+                if (hasMrn) {
+                    predicates.add(
+                            cb.equal(
+                                    patientJoin.get(
+                                            "medicalRecordNumber"
+                                    ),
+                                    filter.mrn().trim()
+                            )
+                    );
+                }
+
+                if (hasPatientName) {
+
+                    String[] tokens =
+                            filter.patientName()
+                                    .trim()
+                                    .toLowerCase()
+                                    .split("\\s+");
+
+                    Expression<String> first =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("firstName"),
+                                            ""
+                                    )
+                            );
+
+                    Expression<String> second =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("secondName"),
+                                            ""
+                                    )
+                            );
+
+                    Expression<String> third =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("thirdName"),
+                                            ""
+                                    )
+                            );
+
+                    Expression<String> last =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("lastName"),
+                                            ""
+                                    )
+                            );
+
+                    Predicate[] tokenPredicates =
+                            Arrays.stream(tokens)
+                                    .filter(
+                                            token ->
+                                                    token != null
+                                                            && !token.isBlank()
+                                    )
+                                    .map(token -> {
+
+                                        String like =
+                                                "%" + token + "%";
+
+                                        return cb.or(
+                                                cb.like(first, like),
+                                                cb.like(second, like),
+                                                cb.like(third, like),
+                                                cb.like(last, like)
+                                        );
+                                    })
+                                    .toArray(Predicate[]::new);
+
+                    if (tokenPredicates.length > 0) {
+                        predicates.add(
+                                cb.and(tokenPredicates)
+                        );
+                    }
+                }
+            }
+
+            return cb.and(
+                    predicates.toArray(
+                            new Predicate[0]
+                    )
+            );
+        };
+
+        Page<PatientEncounter> result =
+                patientEncounterRepository.findAll(
+                        spec,
+                        pageable
+                );
+
+        LOG.debug(
+                "[SEARCH] PatientEncounters result totalElements={} totalPages={} pageNumber={} pageSize={}",
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.getNumber(),
+                result.getSize()
+        );
+
+        return result;
+    }
+
+    @Transactional(readOnly = true)
     public long countTodayDepartmentCancelled(Long departmentId) {
         LocalDate today = LocalDate.now();
 
