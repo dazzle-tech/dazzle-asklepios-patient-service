@@ -1,6 +1,9 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.setup.PractitionerClient;
+import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
+import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
 import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
 import com.dazzle.asklepios.domain.AdditionalMeasurements;
 import com.dazzle.asklepios.domain.Appointment;
@@ -14,6 +17,7 @@ import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.AdditionalMeasurementsRepository;
 import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.BodyMeasurementsRepository;
@@ -29,6 +33,7 @@ import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchF
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
+import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
@@ -59,7 +64,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -87,6 +94,7 @@ public class PatientEncounterService {
     private final PractitionerHelper practitionerHelper;
     private final PractitionerClient practitionerClient;
     private final BillingEngineService billingEngineService;
+    private final NotificationHelper notificationHelper;
 
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
@@ -102,8 +110,8 @@ public class PatientEncounterService {
             DepartmentHelper departmentHelper,
             PractitionerHelper practitionerHelper,
             PractitionerClient practitionerClient,
-            @Lazy BillingEngineService billingEngineService
-    ) {
+            @Lazy BillingEngineService billingEngineService,
+            NotificationHelper notificationHelper) {
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.entityManager = entityManager;
@@ -119,6 +127,7 @@ public class PatientEncounterService {
         this.practitionerHelper = practitionerHelper;
         this.practitionerClient = practitionerClient;
         this.billingEngineService = billingEngineService;
+        this.notificationHelper = notificationHelper;
     }
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
@@ -654,6 +663,8 @@ public class PatientEncounterService {
 
         PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
         updateAppointmentStatusForEncounter(AppointmentStatus.COMPLETED, encounter.getAppointment().getId());
+        notifyEncounterEvent(saved, NotificationCode.ENCOUNTER_CLOSED, null);
+
         LOG.info("[COMPLETE] success id={} status={}", saved.getId(), saved.getStatus());
         return saved;
     }
@@ -1208,8 +1219,8 @@ public class PatientEncounterService {
     ) {
         return EncounterType.EMERGENCY.equals(encounter.getEncounterType())
                 || EncounterReason.URGENT_VISIT.equals(
-                        encounter.getEncounterReason()
-                );
+                encounter.getEncounterReason()
+        );
     }
 
     public List<PatientEncounter> getEncountersByIds(List<Long> encounterIds) {
@@ -1237,5 +1248,61 @@ public class PatientEncounterService {
         LOG.debug("History of Present Illness updated successfully for Encounter : {}", id);
 
         return saved;
+    }
+
+    private void notifyEncounterEvent(PatientEncounter encounter, NotificationCode notificationCode, Map<String, Object> extraData) {
+        if (encounter == null || notificationCode == null) {
+            return;
+        }
+        try {
+            DepartmentDTO department = encounter.getDepartmentId() != null ? departmentHelper.getDepartment(encounter.getDepartmentId()) : null;
+            PractitionerDTO practitionerDTO = null;
+            if (encounter.getPractitionerId() != null) {
+                practitionerDTO = practitionerHelper.getPractitioner(encounter.getPractitionerId());
+            }
+            Map<String, Object> data = buildEncounterNotificationData(encounter, department);
+            if (extraData != null && !extraData.isEmpty()) {
+                data.putAll(extraData);
+            }
+            String login = SecurityUtils.getCurrentUserLogin().orElse(null);
+            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(encounter.getDepartmentId(), login, encounter.getCompletedBy(), encounter.getPatient(), practitionerDTO, false);
+            if (recipientsByRule.isEmpty()) {
+                LOG.warn("[ENCOUNTER_NOTIFICATION] No recipients resolved. encounterId={}, code={}", encounter.getId(), notificationCode);
+                return;
+            }
+            LOG.debug("[ENCOUNTER_NOTIFICATION] Creating notification. encounterId={}, code={}, recipientsByRule={}", encounter.getId(), notificationCode, recipientsByRule);
+            notificationHelper.sendNotification(encounter.getFacilityId(), notificationCode, recipientsByRule, data, "PATIENT_ENCOUNTER", encounter.getId());
+        } catch (Exception e) {
+            LOG.warn("[ENCOUNTER_NOTIFICATION] Failed notification. encounterId={}, code={}, error={}", encounter.getId(), notificationCode, e.getMessage());
+        }
+    }
+
+    private Map<String, Object> buildEncounterNotificationData(PatientEncounter encounter, DepartmentDTO department) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        FacilityDTO facilityDTO = null;
+        if (encounter.getFacilityId() != null) {
+            facilityDTO = facilityHelper.getFacility(encounter.getFacilityId());
+        }
+        Patient patient = encounter.getPatient();
+        data.put("facility_name", facilityDTO != null ? facilityDTO.name() : "");
+        data.put("encounter_id", encounter.getId());
+        data.put("patient_id", patient != null ? patient.getId() : null);
+        data.put("patient_name", patient != null ? notificationHelper.getPatientName(patient) : "");
+        data.put("patient_mrn", patient != null ? patient.getMedicalRecordNumber() : "");
+        data.put("department_id", encounter.getDepartmentId());
+        data.put("department_name", department != null ? department.name() : "");
+        data.put("practitioner_id", encounter.getPractitionerId());
+        data.put("encounter_type", encounter.getEncounterType() != null ? encounter.getEncounterType().name() : "");
+        data.put("encounter_reason", encounter.getEncounterReason() != null ? encounter.getEncounterReason().name() : "");
+        data.put("priority", encounter.getPriorityLevel() != null ? encounter.getPriorityLevel().name() : "");
+        data.put("status", encounter.getStatus() != null ? encounter.getStatus().name() : "");
+        data.put("encounter_number", encounter.getEncounterNumber());
+        data.put("encounter_date", encounter.getEncounterDate() != null ? encounter.getEncounterDate().toString() : "");
+        data.put("encounter_time", encounter.getEncounterTime() != null ? encounter.getEncounterTime().toString() : "");
+        data.put("completed_at", encounter.getCompletedAt() != null ? encounter.getCompletedAt().toString() : "");
+        data.put("completed_by", encounter.getCompletedBy() != null ? encounter.getCompletedBy() : "");
+        data.put("chief_complaint", encounter.getChiefComplaint() != null ? encounter.getChiefComplaint() : "");
+        data.put("notes", encounter.getNotes() != null ? encounter.getNotes() : "");
+        return data;
     }
 }
