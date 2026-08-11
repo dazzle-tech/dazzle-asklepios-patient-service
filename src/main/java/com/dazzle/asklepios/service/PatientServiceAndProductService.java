@@ -77,6 +77,7 @@ public class PatientServiceAndProductService {
     private final PreAuthorizationCancellationService preAuthorizationCancellationService;
     private final BillingRuleEvaluationService billingRuleEvaluationService;
     private final BillingEngineService billingEngineService;
+    private final BillingChargeService billingChargeService;
     private final PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository;
 
     public PatientServiceAndProductService(
@@ -93,6 +94,7 @@ public class PatientServiceAndProductService {
             PreAuthorizationCancellationService preAuthorizationCancellationService,
             BillingRuleEvaluationService billingRuleEvaluationService,
             @Lazy BillingEngineService billingEngineService,
+            @Lazy BillingChargeService billingChargeService,
             PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository
     ) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
@@ -108,6 +110,7 @@ public class PatientServiceAndProductService {
         this.preAuthorizationCancellationService = preAuthorizationCancellationService;
         this.billingRuleEvaluationService = billingRuleEvaluationService;
         this.billingEngineService = billingEngineService;
+        this.billingChargeService = billingChargeService;
         this.patientPrescriptionMedicationRepository = patientPrescriptionMedicationRepository;
     }
 
@@ -157,13 +160,22 @@ public class PatientServiceAndProductService {
     @Transactional(readOnly = true)
     public Page<PatientServiceAndProduct> findAllServicesAndProductsByEncounterId(Pageable pageable, Long encounterId) {
         LOG.debug("Fetch Patient billing items for encounter : {}", encounterId);
-        return patientServiceAndProductRepository.findAllByEncounterId(encounterId, pageable);
+        // Soft-cancelled rows stay in DB for billing integrity, but are hidden from operational lists.
+        return patientServiceAndProductRepository.findAllByEncounterIdAndPaymentStatusNot(
+                encounterId,
+                PaymentStatus.CANCELLED,
+                pageable
+        );
     }
 
     @Transactional(readOnly = true)
     public Page<PatientServiceAndProduct> findAllServicesAndProductsByPatientId(Pageable pageable, Long patientId) {
         LOG.debug("Fetch Patient Services & Products for patient : {}", patientId);
-        return patientServiceAndProductRepository.findAllByPatientId(patientId, pageable);
+        return patientServiceAndProductRepository.findAllByPatientIdAndPaymentStatusNot(
+                patientId,
+                PaymentStatus.CANCELLED,
+                pageable
+        );
     }
 
     @Transactional
@@ -183,6 +195,8 @@ public class PatientServiceAndProductService {
                         "patientServicesAndProducts",
                         "encounter.notfound"
                 ));
+
+        assertItemMutableForServiceAndProductScreen(entity);
 
         entity.setBillingItemType(dto.billingItemType());
 
@@ -247,7 +261,8 @@ public class PatientServiceAndProductService {
         try {
             PatientServiceAndProduct updated = patientServiceAndProductRepository.saveAndFlush(entity);
 
-            completeItemBillingFlow(updated);
+            // Quantity/item edits must reprice an existing charge line — not re-run ITEM_ORDERED create.
+            syncBillingAfterItemUpdate(updated);
 
             LOG.debug("Updated Patient billing item : {}", updated);
             return updated;
@@ -822,6 +837,90 @@ public class PatientServiceAndProductService {
         billItemNow(item);
     }
 
+    /**
+     * After editing quantity/item fields, keep billing math consistent:
+     * - if a charge line already exists → reprice (updates amounts + responsibilities)
+     * - otherwise → create billing as on first order
+     */
+    private void syncBillingAfterItemUpdate(PatientServiceAndProduct item) {
+        if (item == null || item.getId() == null || item.getEncounterId() == null) {
+            return;
+        }
+
+        if (item.getPaymentStatus() == PaymentStatus.CANCELLED) {
+            return;
+        }
+
+        if (item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL) {
+            LOG.info(
+                    "[PSP_UPDATE] Pre-auth required — submitting to Waseel. encounterId={} pspId={} type={}",
+                    item.getEncounterId(),
+                    item.getId(),
+                    item.getBillingItemType()
+            );
+            submitPreAuthorizationOrThrow(item.getEncounterId());
+            return;
+        }
+
+        PatientEncounter encounter = patientEncounterRepository.findById(item.getEncounterId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Encounter not found with id " + item.getEncounterId(),
+                        "patientServicesAndProducts",
+                        "encounter.notfound"
+                ));
+
+        Long facilityId = encounter.getFacilityId();
+        if (facilityId == null) {
+            throw new BadRequestAlertException(
+                    "Encounter facility is required to bill this item.",
+                    "patientServicesAndProducts",
+                    "encounter.facility.required"
+            );
+        }
+
+        boolean hasActiveChargeLine = billingChargeService
+                .findActiveChargeLine(item.getId(), item.getEncounterId())
+                .isPresent();
+
+        if (!hasActiveChargeLine) {
+            billItemNow(item);
+            return;
+        }
+
+        String requestId =
+                "PSP-UPDATE:"
+                        + item.getId()
+                        + ":"
+                        + Instant.now().toEpochMilli()
+                        + ":"
+                        + UUID.randomUUID();
+
+        BillingOperationResult result = billingEngineService.reprice(
+                item.getId(),
+                facilityId,
+                requestId
+        );
+
+        LOG.info(
+                "[PSP_UPDATE] Repriced item. pspId={} type={} processed={} message={} netAmount={}",
+                item.getId(),
+                item.getBillingItemType(),
+                result.processed(),
+                result.message(),
+                result.netAmount()
+        );
+
+        if (!result.processed()) {
+            throw new BadRequestAlertException(
+                    result.message() == null
+                            ? "Unable to reprice this billing item."
+                            : result.message(),
+                    "patientServicesAndProducts",
+                    "billing.reprice.failed"
+            );
+        }
+    }
+
     private void submitPreAuthorizationOrThrow(Long encounterId) {
         try {
             encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(encounterId);
@@ -884,6 +983,47 @@ public class PatientServiceAndProductService {
                     "billing.failed"
             );
         }
+    }
+
+    /**
+     * Blocks Service & Products edits once money movement started
+     * (reserved / allocated / paid) so billing math stays consistent.
+     */
+    private void assertItemMutableForServiceAndProductScreen(PatientServiceAndProduct item) {
+        if (item == null || item.getId() == null) {
+            return;
+        }
+
+        PaymentStatus paymentStatus = item.getPaymentStatus();
+        if (paymentStatus == PaymentStatus.RESERVED
+                || paymentStatus == PaymentStatus.PARTIALLY_RESERVED
+                || paymentStatus == PaymentStatus.PAID
+                || paymentStatus == PaymentStatus.PARTIALLY_PAID
+                || paymentStatus == PaymentStatus.DEBIT
+                || paymentStatus == PaymentStatus.PARTIALLY_DEBIT
+                || paymentStatus == PaymentStatus.EXEMPTED
+                || paymentStatus == PaymentStatus.CANCELLED) {
+            throw new BadRequestAlertException(
+                    "This billing item is locked because payment calculation is already reserved or settled.",
+                    "patientServicesAndProducts",
+                    "item.locked"
+            );
+        }
+
+        billingChargeService
+                .findActiveChargeLine(item.getId(), item.getEncounterId())
+                .ifPresent(chargeLine -> {
+                    BigDecimal reserved = defaultZero(chargeLine.getReservedAmount());
+                    BigDecimal allocated = defaultZero(chargeLine.getAllocatedAmount());
+
+                    if (reserved.signum() > 0 || allocated.signum() > 0) {
+                        throw new BadRequestAlertException(
+                                "This billing item is locked because funds are reserved or allocated.",
+                                "patientServicesAndProducts",
+                                "item.locked"
+                        );
+                    }
+                });
     }
 
     private BillingEventType resolveBillingEvent(
@@ -960,10 +1100,11 @@ public class PatientServiceAndProductService {
             Long sourceId
     ) {
         return patientServiceAndProductRepository
-                .findAllByEncounterIdAndServiceSourceAndSourceId(
+                .findAllByEncounterIdAndServiceSourceAndSourceIdAndPaymentStatusNot(
                         encounterId,
                         serviceSource,
                         sourceId,
+                        PaymentStatus.CANCELLED,
                         pageable
                 );
     }
