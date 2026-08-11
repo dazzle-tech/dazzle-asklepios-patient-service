@@ -1022,6 +1022,7 @@ public class PatientEncounterService {
             PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
 
             encounterAssignToBedService.dischargeActiveAssignmentByEncounterId(saved.getId());
+            notifyEncounterEvent(saved, NotificationCode.ENCOUNTER_CLOSED, null);
 
             LOG.info("[DISCHARGE] success id={} status={} dischargeType={} dischargeAt={}",
                     saved.getId(),
