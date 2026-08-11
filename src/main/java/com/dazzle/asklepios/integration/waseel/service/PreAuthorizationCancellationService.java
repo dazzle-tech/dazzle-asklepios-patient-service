@@ -120,7 +120,8 @@ public class PreAuthorizationCancellationService {
 
     private boolean requiresPreAuthorizationCancel(PreAuthorizationStatus status) {
         return status == PreAuthorizationStatus.PENDING_APPROVAL
-                || status == PreAuthorizationStatus.APPROVED;
+                || status == PreAuthorizationStatus.APPROVED
+                || status == PreAuthorizationStatus.PARTIAL;
     }
 
     private PreAuthorizationRequest resolvePreAuthorization(PatientServiceAndProduct item) {
