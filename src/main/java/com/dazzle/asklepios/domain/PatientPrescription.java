@@ -19,6 +19,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.Generated;
+import org.hibernate.annotations.GenerationTime;
 
 import java.io.Serializable;
 import java.time.Instant;
@@ -45,9 +47,9 @@ public class PatientPrescription extends AbstractAuditingEntity<Long> implements
 
     @Column(name = "encounter_id", nullable = false)
     private Long encounterId;
-
+    @Generated(GenerationTime.INSERT)
     @Column(name = "prescription_num", nullable = false, insertable = false, updatable = false)
-    private Long prescriptionNum;
+    private String prescriptionNum;
 
     @Column(name = "prescription_date", nullable = false)
     private LocalDate prescriptionDate;
