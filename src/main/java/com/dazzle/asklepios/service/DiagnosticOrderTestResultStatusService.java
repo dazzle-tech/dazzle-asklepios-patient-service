@@ -194,7 +194,16 @@ public class DiagnosticOrderTestResultStatusService {
 
         return saved;
     }
+    @Transactional
+    public void bulkToggleReview(
+            List<Long> ids,
+            String username
+    ) {
 
+        ids.forEach(id ->
+                toggleReview(id, username)
+        );
+    }
     /**
      * Recomputes and persists the parent {@link DiagnosticOrderTest} processing status based on its results.
      *

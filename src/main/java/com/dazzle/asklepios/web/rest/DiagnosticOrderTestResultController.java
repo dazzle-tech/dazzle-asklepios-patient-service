@@ -196,7 +196,20 @@ public class DiagnosticOrderTestResultController {
                 DiagnosticOrderTestResultResponseVM.ofEntity(updated)
         );
     }
+    @PostMapping("/diagnostic-order-tests-results/bulk-toggle-review")
+    public ResponseEntity<Void> bulkToggleReview(
+            @RequestBody BulkIdsDTO dto
+    ) {
 
+        String username = currentUsername();
+
+        statusService.bulkToggleReview(
+                dto.ids(),
+                username
+        );
+
+        return ResponseEntity.ok().build();
+    }
     // =========================================================
     // APPROVE (BUSINESS LOGIC INSIDE SERVICE)
     // =========================================================
