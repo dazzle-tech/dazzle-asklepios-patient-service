@@ -813,6 +813,7 @@ public class FinancialDocumentAdjustmentService {
             }
 
             if (outstandingReduction.signum() > 0
+                    && outstanding.compareTo(ZERO) > 0
                     && outstandingReduction.compareTo(outstanding) > 0) {
                 throw new BadRequestAlertException(
                         "Credit amount exceeds outstanding balance",
@@ -950,6 +951,7 @@ public class FinancialDocumentAdjustmentService {
     /**
      * Full line removal credits the entire net (with tax/discount) but only
      * reduces invoice outstanding by the line's remaining balance.
+     * Partial credit applies the same rule: only the unpaid portion hits outstanding.
      */
     private BigDecimal calculateCreditOutstandingReduction(
             List<PreparedAdjustmentLine> preparedLines
@@ -960,8 +962,15 @@ public class FinancialDocumentAdjustmentService {
                         return line.amount();
                     }
 
+                    FinancialDocumentItem original = line.originalItem();
+                    BigDecimal remaining = money(original.getRemainingAmount());
+
                     if (line.action() == FinancialDocumentItemAdjustmentAction.REMOVE) {
-                        return money(line.originalItem().getRemainingAmount());
+                        return remaining;
+                    }
+
+                    if (line.action() == FinancialDocumentItemAdjustmentAction.PARTIAL_CREDIT) {
+                        return line.amount().min(remaining);
                     }
 
                     return line.amount();
@@ -1010,11 +1019,19 @@ public class FinancialDocumentAdjustmentService {
     ) {
         FinancialDocumentItem original = requireInvoiceItem(request.documentItemId(), invoiceItemsById);
         BigDecimal creditAmount = normalizeAmount(request.amount());
-        BigDecimal remaining = money(original.getRemainingAmount());
+        BigDecimal maxLineCredit = resolveLineDiscountBase(original);
 
-        if (creditAmount.compareTo(remaining) > 0) {
+        if (maxLineCredit.signum() <= 0) {
             throw new BadRequestAlertException(
-                    "Partial credit exceeds the line remaining amount",
+                    "Invoice line has no amount to credit",
+                    ENTITY,
+                    "adjustment.line.noRemaining"
+            );
+        }
+
+        if (creditAmount.compareTo(maxLineCredit) > 0) {
+            throw new BadRequestAlertException(
+                    "Partial credit exceeds the creditable line amount",
                     ENTITY,
                     "adjustment.line.creditExceedsRemaining"
             );
