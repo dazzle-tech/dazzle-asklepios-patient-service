@@ -12,6 +12,7 @@ import com.dazzle.asklepios.service.DiagnosticOrderTestResultService;
 import com.dazzle.asklepios.service.DiagnosticOrderTestResultStatusService;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.BulkIdsDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.BulkRejectDTO;
+import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultBulkCreateDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultCreateDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultRejectDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultUpdateDTO;
@@ -125,6 +126,19 @@ public class DiagnosticOrderTestResultController {
                         "/api/patient/diagnostic-order-tests-results/" + saved.getId()
                 ))
                 .body(DiagnosticOrderTestResultResponseVM.ofEntity(saved));
+    }
+    @PostMapping("/diagnostic-order-tests-results/bulk")
+    public ResponseEntity<Void> createBulk(
+            @Valid @RequestBody DiagnosticOrderTestResultBulkCreateDTO dto
+    ) {
+        LOG.debug(
+                "[DiagnosticOrderTestResult] BULK CREATE - count={}",
+                dto.results().size()
+        );
+
+        service.createBulk(dto.results());
+
+        return ResponseEntity.ok().build();
     }
 
     // =========================================================
