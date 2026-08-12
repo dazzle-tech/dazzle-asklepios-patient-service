@@ -6,6 +6,7 @@ import com.dazzle.asklepios.domain.enumeration.RadiologyImageStatus;
 import com.dazzle.asklepios.domain.enumeration.Severity;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportImageStatusLogRepository;
 import com.dazzle.asklepios.service.DiagnosticOrderTestReportService;
+import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.BulkIdsDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportCreateDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportRejectDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportReviewDTO;
@@ -205,7 +206,19 @@ public class DiagnosticOrderTestReportController {
 
         return ResponseEntity.ok(DiagnosticOrderTestReportResponseVM.ofEntity(updated));
     }
+    @PostMapping("/radiology/reports/bulk-toggle-review")
+    public ResponseEntity<Void> bulkToggleReview(
+            @RequestBody BulkIdsDTO dto
+    ) {
 
+
+
+        reportService.bulkToggleReview(
+                dto.ids()
+        );
+
+        return ResponseEntity.ok().build();
+    }
     @PostMapping("/radiology/reports/reject")
     public ResponseEntity<DiagnosticOrderTestReportResponseVM> reject(@Valid @RequestBody DiagnosticOrderTestReportRejectDTO orderTestReportRejectDTO) {
         LOG.debug("[RadiologyReport] REJECT payload={}", orderTestReportRejectDTO);
