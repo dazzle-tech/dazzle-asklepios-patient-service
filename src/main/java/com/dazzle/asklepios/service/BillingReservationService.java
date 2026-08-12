@@ -1264,8 +1264,11 @@ public class BillingReservationService {
                 new BillingLedgerEntryRequest(
                         reservation.getTransactionGroupId(),
                         reservation.getIdempotencyKey(),
-                        reservation.getIdempotencyKey()
-                                + ":LEDGER:CREATED",
+                        buildReservationLedgerIdempotencyKey(
+                                reservation,
+                                "CREATED",
+                                null
+                        ),
 
                         reservation.getPatient(),
                         reservation.getEncounter(),
@@ -1356,11 +1359,13 @@ public class BillingReservationService {
                 new BillingLedgerEntryRequest(
                         reservation.getTransactionGroupId(),
                         reservation.getIdempotencyKey(),
-                        reservation.getIdempotencyKey()
-                                + ":LEDGER:RELEASED:"
-                                + money(
-                                reservation.getReleasedAmount()
-                        ).toPlainString(),
+                        buildReservationLedgerIdempotencyKey(
+                                reservation,
+                                "RELEASED",
+                                money(
+                                        reservation.getReleasedAmount()
+                                )
+                        ),
 
                         reservation.getPatient(),
                         reservation.getEncounter(),
@@ -1451,11 +1456,13 @@ public class BillingReservationService {
                 new BillingLedgerEntryRequest(
                         reservation.getTransactionGroupId(),
                         reservation.getIdempotencyKey(),
-                        reservation.getIdempotencyKey()
-                                + ":LEDGER:CONSUMED:"
-                                + money(
-                                reservation.getConsumedAmount()
-                        ).toPlainString(),
+                        buildReservationLedgerIdempotencyKey(
+                                reservation,
+                                "CONSUMED",
+                                money(
+                                        reservation.getConsumedAmount()
+                                )
+                        ),
 
                         reservation.getPatient(),
                         reservation.getEncounter(),
@@ -1531,6 +1538,47 @@ public class BillingReservationService {
                         BillingLedgerSourceChannel.BILLING_ENGINE
                 )
         );
+    }
+
+    /**
+     * Builds a short ledger idempotency key that stays within the 150-char
+     * column limit. Must not append to reservation.idempotencyKey (already
+     * up to 150). Distinguishing suffix (action + optional cumulative amount)
+     * stays at the front so partial release/consume entries remain unique.
+     */
+    private String buildReservationLedgerIdempotencyKey(
+            BillingReservation reservation,
+            String action,
+            BigDecimal cumulativeAmount
+    ) {
+        StringBuilder key =
+                new StringBuilder("LEDGER:RSV:")
+                        .append(action)
+                        .append(':')
+                        .append(reservation.getId());
+
+        if (cumulativeAmount != null) {
+            key.append(':')
+                    .append(
+                            cumulativeAmount.toPlainString()
+                    );
+        }
+
+        return truncateIdempotencyKey(key.toString());
+    }
+
+    private String truncateIdempotencyKey(
+            String value
+    ) {
+        if (value == null) {
+            return "";
+        }
+
+        if (value.length() <= 150) {
+            return value;
+        }
+
+        return value.substring(0, 150);
     }
 
     private BigDecimal calculatePaymentReservableAmount(
