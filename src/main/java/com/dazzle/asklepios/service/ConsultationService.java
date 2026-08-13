@@ -76,6 +76,7 @@ public class ConsultationService {
     public Consultation create(ConsultationCreateDTO dto) {
         LOG.info("[CREATE] Consultation payload={}", dto);
 
+        validateApprovalNumber(dto.approvalNumber());
         Patient patient = patientRepository.findById(dto.patientId())
                 .orElseThrow(() ->
                         new NotFoundAlertException(
@@ -151,6 +152,8 @@ public class ConsultationService {
     public Consultation update(Long id, ConsultationUpdateDTO dto) {
         LOG.info("[UPDATE] Consultation id={} payload={}", id, dto);
 
+        validateApprovalNumber(dto.approvalNumber());
+
         Consultation existing = consultationRepository.findById(id)
                 .orElseThrow(() ->
                         new NotFoundAlertException(
@@ -159,6 +162,7 @@ public class ConsultationService {
                                 "notfound"
                         )
                 );
+
 
         LOG.debug("[UPDATE] Existing consultation found with status={}", existing.getStatus());
 
@@ -429,6 +433,16 @@ public class ConsultationService {
                     consultation.getId()
             );
         }
+
     }
 
+    private void validateApprovalNumber(Long approvalNumber) {
+        if (approvalNumber != null && approvalNumber.toString().length() > 10) {
+            throw new BadRequestAlertException(
+                    "Approval number must not exceed 10 digits.",
+                    "consultation",
+                    "approvalNumber.maxDigits"
+            );
+        }
+    }
 }
