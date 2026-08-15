@@ -107,15 +107,18 @@ public class InsuranceBenefitRuleService {
             String serviceCategory,
             ServiceSource serviceSource
     ) {
-        List<InsuranceBenefitRule> rules = List.of();
+        List<InsuranceBenefitRule> extractedRules =
+                insurance == null
+                        ? List.of()
+                        : loadRulesFromLatestEligibility(insurance);
 
+        List<InsuranceBenefitRule> storedRules = List.of();
         if (insurance != null && insurance.getId() != null) {
-            rules = getStoredRules(insurance.getId());
+            storedRules = getStoredRules(insurance.getId());
         }
 
-        if (rules.isEmpty() && insurance != null) {
-            rules = loadRulesFromLatestEligibility(insurance);
-        }
+        List<InsuranceBenefitRule> rules =
+                extractedRules.isEmpty() ? storedRules : extractedRules;
 
         InsuranceBenefitRule matched =
                 benefitRuleMatcher.resolveRule(
@@ -145,7 +148,9 @@ public class InsuranceBenefitRuleService {
         }
 
         return coverageExtractionService.extractBenefitRules(
-                eligibility.getResponseJson()
+                eligibility.getResponseJson(),
+                insurance.getMemberCardId(),
+                insurance.getPolicyNumber()
         );
     }
 

@@ -217,8 +217,30 @@ public class InsurancePatientShareCalculator {
         return insuranceCalculationService.calculateFromBenefitRule(
                 normalizedNet,
                 rule,
-                insurance.getMaxLimit()
+                resolvePolicyMaximumLimit(insurance, rule)
         );
+    }
+
+    private BigDecimal resolvePolicyMaximumLimit(
+            PatientInsurance insurance,
+            InsuranceBenefitRule rule
+    ) {
+        if (insurance == null) {
+            return null;
+        }
+
+        BigDecimal maxLimit = insurance.getMaxLimit();
+        BigDecimal copayCap = rule != null && rule.patientMaximumCopayment() != null
+                ? rule.patientMaximumCopayment()
+                : insurance.getDefaultMaximumCopayment();
+
+        if (maxLimit != null
+                && copayCap != null
+                && maxLimit.compareTo(copayCap) == 0) {
+            return null;
+        }
+
+        return maxLimit;
     }
 
     private String resolveServiceCategory(PatientServiceAndProduct item) {

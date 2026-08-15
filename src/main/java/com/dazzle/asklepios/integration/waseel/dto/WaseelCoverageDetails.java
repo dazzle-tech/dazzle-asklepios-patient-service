@@ -5,6 +5,7 @@ import com.dazzle.asklepios.service.dto.InsuranceBenefitRule;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -38,7 +39,23 @@ public record WaseelCoverageDetails(
 
         List<WaseelBenefitDetail> benefits,
 
-        List<InsuranceBenefitRule> benefitRules
+        List<InsuranceBenefitRule> benefitRules,
+
+        String policyClassName,
+
+        LocalDate expiryDate,
+
+        String payerName,
+
+        String coverageType,
+
+        String relationWithSubscriber,
+
+        String planCode,
+
+        String groupName,
+
+        String groupNumber
 
 ) implements Serializable {
 }

@@ -11,6 +11,7 @@ import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibi
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationCommunicationHistoryService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationRejectedItemService;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResubmissionService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationStatusRefreshService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationTrackingService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelPreAuthorizationService;
@@ -40,6 +41,7 @@ public class WaseelPreAuthorizationController {
     private final PreAuthorizationCommunicationHistoryService communicationHistoryService;
     private final PreAuthorizationStatusRefreshService preAuthorizationStatusRefreshService;
     private final PreAuthorizationRejectedItemService preAuthorizationRejectedItemService;
+    private final PreAuthorizationResubmissionService preAuthorizationResubmissionService;
 
     @GetMapping("/internal/waseel/pre-authorizations/tracking")
     public Page<PreAuthorizationTrackingResponse> getAll(Pageable pageable) {
@@ -115,6 +117,13 @@ public class WaseelPreAuthorizationController {
                 encounterId,
                 patientServiceProductId
         );
+    }
+
+    @PostMapping("/internal/waseel/pre-authorizations/{preAuthorizationId}/resubmit")
+    public PreAuthorizationTrackingResponse resubmitPreAuthorization(
+            @PathVariable Long preAuthorizationId
+    ) {
+        return preAuthorizationResubmissionService.resubmit(preAuthorizationId);
     }
 
     /**

@@ -1,7 +1,9 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
 import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
+import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.integration.waseel.dto.WaseelCoverageDetails;
+import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
 import com.dazzle.asklepios.service.InsuranceBenefitRuleMatcher;
 import com.dazzle.asklepios.service.InsuranceBenefitRuleService;
@@ -33,6 +35,10 @@ public class WaseelCoverageQueryService {
 
     private final InsuranceBenefitRuleMatcher benefitRuleMatcher;
 
+    private final PatientInsuranceRepository patientInsuranceRepository;
+
+    private final EligibilityRequestPlanIdentityReader requestPlanIdentityReader;
+
     public WaseelCoverageDetails getLatestForPatient(
             Long patientId,
             Long patientInsuranceId
@@ -62,11 +68,25 @@ public class WaseelCoverageQueryService {
             );
         }
 
+        PatientInsurance insurance =
+                resolvePatientInsurance(
+                        patientId,
+                        patientInsuranceId,
+                        eligibility.getPatientInsuranceId()
+                );
+
         WaseelCoverageDetails details =
                 coverageExtractionService
                         .extractCoverageDetails(
-                                eligibility.getResponseJson()
+                                eligibility.getResponseJson(),
+                                insurance == null ? null : insurance.getMemberCardId(),
+                                insurance == null ? null : insurance.getPolicyNumber()
                         );
+
+        java.util.List<InsuranceBenefitRule> extractedRules =
+                details.benefitRules() == null
+                        ? java.util.List.of()
+                        : details.benefitRules();
 
         java.util.List<InsuranceBenefitRule> storedRules =
                 eligibility.getPatientInsuranceId() == null
@@ -76,9 +96,9 @@ public class WaseelCoverageQueryService {
                         );
 
         java.util.List<InsuranceBenefitRule> benefitRules =
-                storedRules.isEmpty()
-                        ? details.benefitRules()
-                        : storedRules;
+                extractedRules.isEmpty()
+                        ? storedRules
+                        : extractedRules;
 
         InsuranceBenefitRule preferredRule =
                 benefitRuleMatcher.selectPreferredDefaultRule(
@@ -98,22 +118,175 @@ public class WaseelCoverageQueryService {
             }
         }
 
-        return new WaseelCoverageDetails(
-                eligibility.getId(),
-                eligibility.getEligibilityResponseId(),
-                eligibility.getPatientInsuranceId(),
-                details.memberId(),
-                details.policyNumber(),
-                details.policyHolder(),
-                details.network(),
-                details.inforce(),
-                details.coverageStatus(),
-                copaymentPercent,
-                copaymentCap,
-                eligibility.getRespondedAt(),
-                details.benefits(),
-                benefitRules
+        return overlayPlanIdentity(
+                new WaseelCoverageDetails(
+                        eligibility.getId(),
+                        eligibility.getEligibilityResponseId(),
+                        eligibility.getPatientInsuranceId(),
+                        details.memberId(),
+                        details.policyNumber(),
+                        details.policyHolder(),
+                        details.network(),
+                        details.inforce(),
+                        details.coverageStatus(),
+                        copaymentPercent,
+                        copaymentCap,
+                        eligibility.getRespondedAt(),
+                        details.benefits(),
+                        benefitRules,
+                        details.policyClassName(),
+                        details.expiryDate(),
+                        details.payerName(),
+                        details.coverageType(),
+                        details.relationWithSubscriber(),
+                        details.planCode(),
+                        details.groupName(),
+                        details.groupNumber()
+                ),
+                insurance,
+                eligibility
         );
+    }
+
+    private PatientInsurance resolvePatientInsurance(
+            Long patientId,
+            Long requestedInsuranceId,
+            Long eligibilityInsuranceId
+    ) {
+        Long insuranceId = requestedInsuranceId != null
+                ? requestedInsuranceId
+                : eligibilityInsuranceId;
+
+        if (insuranceId != null) {
+            return patientInsuranceRepository.findById(insuranceId).orElse(null);
+        }
+
+        if (patientId == null) {
+            return null;
+        }
+
+        return patientInsuranceRepository
+                .findFirstByPatient_IdAndIsPrimaryTrue(patientId)
+                .or(() -> patientInsuranceRepository.findFirstByPatient_Id(patientId))
+                .orElse(null);
+    }
+
+    private WaseelCoverageDetails overlayPlanIdentity(
+            WaseelCoverageDetails details,
+            PatientInsurance insurance,
+            WaseelEligibilityRequest eligibility
+    ) {
+        if (details == null) {
+            return null;
+        }
+
+        EligibilityRequestPlanIdentityReader.PlanIdentity requestPlan =
+                requestPlanIdentityReader.read(
+                        eligibility == null ? null : eligibility.getRequestJson(),
+                        insurance == null ? null : insurance.getMemberCardId(),
+                        insurance == null ? null : insurance.getPolicyNumber()
+                );
+
+        return new WaseelCoverageDetails(
+                details.eligibilityRequestId(),
+                details.eligibilityResponseId(),
+                insurance == null ? details.patientInsuranceId() : insurance.getId(),
+                firstNonBlank(
+                        requestPlan.memberCardId(),
+                        insurance == null ? null : insurance.getMemberCardId(),
+                        details.memberId()
+                ),
+                firstNonBlank(
+                        requestPlan.policyNumber(),
+                        insurance == null ? null : insurance.getPolicyNumber(),
+                        details.policyNumber()
+                ),
+                firstNonBlank(
+                        requestPlan.policyHolder(),
+                        insurance == null ? null : insurance.getPolicyHolderName(),
+                        details.policyHolder()
+                ),
+                firstNonBlank(details.network(), insurance == null ? null : insurance.getNetworkId()),
+                firstNonBlank(details.inforce(), insurance == null ? null : insurance.getInforce()),
+                firstNonBlank(
+                        details.coverageStatus(),
+                        insurance == null ? null : insurance.getEligibilityStatus()
+                ),
+                details.copaymentPercent() != null
+                        ? details.copaymentPercent()
+                        : (insurance == null ? null : insurance.getDefaultCopaymentPercent()),
+                details.copaymentCap() != null && details.copaymentCap().signum() > 0
+                        ? details.copaymentCap()
+                        : firstDecimal(
+                                insurance == null ? null : insurance.getMaxLimit(),
+                                insurance == null ? null : insurance.getDefaultMaximumCopayment()
+                        ),
+                details.eligibilityCheckedAt(),
+                details.benefits(),
+                details.benefitRules(),
+                firstNonBlank(
+                        requestPlan.policyClassName(),
+                        insurance == null ? null : insurance.getPolicyClassName(),
+                        details.policyClassName()
+                ),
+                firstDate(
+                        requestPlan.expiryDate(),
+                        insurance == null ? null : insurance.getExpirationDate(),
+                        details.expiryDate()
+                ),
+                firstNonBlank(
+                        requestPlan.payerName(),
+                        insurance == null ? null : insurance.getPayerName(),
+                        details.payerName()
+                ),
+                firstNonBlank(
+                        requestPlan.coverageType(),
+                        insurance == null ? null : insurance.getCoverageType(),
+                        details.coverageType()
+                ),
+                firstNonBlank(
+                        requestPlan.relationWithSubscriber(),
+                        insurance == null ? null : insurance.getRelationWithSubscriber(),
+                        details.relationWithSubscriber()
+                ),
+                firstNonBlank(details.planCode(), insurance == null ? null : insurance.getPlanCode()),
+                firstNonBlank(details.groupName(), insurance == null ? null : insurance.getGroupName()),
+                firstNonBlank(details.groupNumber(), insurance == null ? null : insurance.getGroupNumber())
+        );
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return null;
+    }
+
+    private java.time.LocalDate firstDate(java.time.LocalDate... values) {
+        if (values == null) {
+            return null;
+        }
+        for (java.time.LocalDate value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private java.math.BigDecimal firstDecimal(
+            java.math.BigDecimal first,
+            java.math.BigDecimal second
+    ) {
+        if (first != null) {
+            return first;
+        }
+        return second;
     }
 
     private WaseelEligibilityRequest resolveEligibilityRequest(
