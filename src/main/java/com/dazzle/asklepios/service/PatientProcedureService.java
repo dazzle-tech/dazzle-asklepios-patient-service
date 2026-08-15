@@ -8,11 +8,14 @@ import com.dazzle.asklepios.domain.PatientProcedure;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.PriceSource;
 import com.dazzle.asklepios.domain.enumeration.ProcStatus;
 import com.dazzle.asklepios.domain.enumeration.ProcedureLevel;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
@@ -554,7 +557,60 @@ public class PatientProcedureService {
                 setupProcedure.id()
         );
 
-        return builder.build();
+        PatientServiceAndProduct billingItem = builder.build();
+        applyResolvedPricing(billingItem, encounter, quantity);
+        return billingItem;
+    }
+
+    private void applyResolvedPricing(
+            PatientServiceAndProduct item,
+            PatientEncounter encounter,
+            long quantity
+    ) {
+        Long facilityId = encounter.getFacilityId();
+        if (facilityId == null) {
+            throw new BadRequestAlertException(
+                    "Encounter facility is required to resolve procedure pricing.",
+                    "procedure",
+                    "encounter.facility.required"
+            );
+        }
+
+        ResolvedBillingPrice resolvedPrice =
+                billingEngineService.resolvePricing(item, facilityId);
+
+        BigDecimal unitPrice = resolvedPrice.unitPrice();
+        if (unitPrice == null || unitPrice.signum() <= 0) {
+            if (item.getUnitPrice() != null && item.getUnitPrice().signum() > 0) {
+                return;
+            }
+            throw new BadRequestAlertException(
+                    "Procedure price must be a positive number greater than zero.",
+                    "procedure",
+                    "price.mustBePositive"
+            );
+        }
+
+        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
+        item.setUnitPrice(unitPrice);
+        item.setCurrency(resolvedPrice.currency());
+        item.setTotalAmount(totalAmount);
+        item.setGrossAmount(totalAmount);
+        item.setNetAmount(totalAmount);
+        item.setRemainingAmount(totalAmount);
+        item.setPriceSource(
+                resolvedPrice.priceSource() == BillingPriceSource.PRICE_LIST
+                        ? PriceSource.PRICE_LIST
+                        : PriceSource.DEFAULT
+        );
+
+        LOG.info(
+                "[PROCEDURE_CREATE] Resolved unitPrice={} currency={} priceSource={} procedureId={}",
+                unitPrice,
+                resolvedPrice.currency(),
+                resolvedPrice.priceSource(),
+                item.getProcedureId()
+        );
     }
 
     /**

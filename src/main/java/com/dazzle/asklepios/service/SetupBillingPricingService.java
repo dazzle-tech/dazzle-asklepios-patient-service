@@ -755,7 +755,7 @@ public class SetupBillingPricingService {
                 && response.priceListId() != null
                 && response.priceListItemId() != null
                 && response.unitPrice() != null
-                && response.unitPrice().signum() >= 0
+                && response.unitPrice().signum() > 0
                 && response.currency() != null;
     }
 

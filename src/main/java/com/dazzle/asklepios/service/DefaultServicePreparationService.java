@@ -10,7 +10,9 @@ import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
+import com.dazzle.asklepios.domain.enumeration.PriceSource;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
@@ -449,8 +451,43 @@ public class DefaultServicePreparationService {
         );
 
         PatientServiceAndProduct item = itemBuilder.build();
+        applyResolvedPricing(item, encounter, requestedItem.quantity());
 
         return patientServiceAndProductRepository.saveAndFlush(item);
+    }
+
+    private void applyResolvedPricing(
+            PatientServiceAndProduct item,
+            PatientEncounter encounter,
+            Long quantity
+    ) {
+        Long facilityId = encounter.getFacilityId();
+        if (facilityId == null) {
+            return;
+        }
+
+        ResolvedBillingPrice resolvedPrice =
+                billingEngineService.resolvePricing(item, facilityId);
+
+        BigDecimal unitPrice = resolvedPrice.unitPrice();
+        if (unitPrice == null || unitPrice.signum() <= 0) {
+            return;
+        }
+
+        long qty = quantity == null || quantity <= 0 ? 1L : quantity;
+        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(qty));
+
+        item.setUnitPrice(unitPrice);
+        item.setCurrency(resolvedPrice.currency());
+        item.setTotalAmount(totalAmount);
+        item.setGrossAmount(totalAmount);
+        item.setNetAmount(totalAmount);
+        item.setRemainingAmount(totalAmount);
+        item.setPriceSource(
+                resolvedPrice.priceSource() == BillingPriceSource.PRICE_LIST
+                        ? PriceSource.PRICE_LIST
+                        : PriceSource.DEFAULT
+        );
     }
 
     private void validateExistingItem(

@@ -7,8 +7,10 @@ import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.domain.PatientRelation;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.PriceSource;
 import com.dazzle.asklepios.domain.enumeration.RelationType;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalEncounterMapper;
@@ -28,8 +30,10 @@ import com.dazzle.asklepios.repository.PatientPrescriptionMedicationRepository;
 import com.dazzle.asklepios.repository.PatientPrescriptionRepository;
 import com.dazzle.asklepios.repository.PatientRelationRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.service.BillingEngineService;
+import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalEncounter;
@@ -39,7 +43,6 @@ import java.math.RoundingMode;
 import java.util.List;
 
 @Service
-@RequiredArgsConstructor
 @Transactional
 public class ApprovalRequestBuilderService {
 
@@ -62,8 +65,46 @@ public class ApprovalRequestBuilderService {
     private final ApprovalSubscriberMapper approvalSubscriberMapper;
 
     private final WaseelApiProperties waseelApiProperties;
+    private final BillingEngineService billingEngineService;
 
-    @Transactional(readOnly = true)
+    public ApprovalRequestBuilderService(
+            ApprovalEligibilitySnapshotService snapshotService,
+            EncounterInsuranceEligibilityService encounterInsuranceEligibilityService,
+            PatientEncounterRepository encounterRepository,
+            PatientDiagnosisRepository patientDiagnosisRepository,
+            PatientServiceAndProductRepository patientServiceAndProductRepository,
+            PatientRelationRepository patientRelationRepository,
+            PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository,
+            PatientPrescriptionRepository patientPrescriptionRepository,
+            ApprovalPreAuthorizationInfoMapper preAuthorizationInfoMapper,
+            ApprovalEncounterMapper encounterMapper,
+            ApprovalDiagnosisMapper approvalDiagnosisMapper,
+            ApprovalCareTeamMapper approvalCareTeamMapper,
+            ApprovalItemMapper approvalItemMapper,
+            ApprovalSupportingInfoMapper approvalSupportingInfoMapper,
+            ApprovalSubscriberMapper approvalSubscriberMapper,
+            WaseelApiProperties waseelApiProperties,
+            @Lazy BillingEngineService billingEngineService
+    ) {
+        this.snapshotService = snapshotService;
+        this.encounterInsuranceEligibilityService = encounterInsuranceEligibilityService;
+        this.encounterRepository = encounterRepository;
+        this.patientDiagnosisRepository = patientDiagnosisRepository;
+        this.patientServiceAndProductRepository = patientServiceAndProductRepository;
+        this.patientRelationRepository = patientRelationRepository;
+        this.patientPrescriptionMedicationRepository = patientPrescriptionMedicationRepository;
+        this.patientPrescriptionRepository = patientPrescriptionRepository;
+        this.preAuthorizationInfoMapper = preAuthorizationInfoMapper;
+        this.encounterMapper = encounterMapper;
+        this.approvalDiagnosisMapper = approvalDiagnosisMapper;
+        this.approvalCareTeamMapper = approvalCareTeamMapper;
+        this.approvalItemMapper = approvalItemMapper;
+        this.approvalSupportingInfoMapper = approvalSupportingInfoMapper;
+        this.approvalSubscriberMapper = approvalSubscriberMapper;
+        this.waseelApiProperties = waseelApiProperties;
+        this.billingEngineService = billingEngineService;
+    }
+
     public WaseelApprovalRequest buildRequest(Long eligibilityRequestId, Long encounterId) {
         List<PatientServiceAndProduct> items =
                 patientServiceAndProductRepository
@@ -75,7 +116,6 @@ public class ApprovalRequestBuilderService {
         return buildRequest(eligibilityRequestId, encounterId, items);
     }
 
-    @Transactional(readOnly = true)
     public WaseelApprovalRequest buildRequest(
             Long eligibilityRequestId,
             Long encounterId,
@@ -138,6 +178,7 @@ public class ApprovalRequestBuilderService {
         }
 
         validateItems(pendingItems);
+        ensurePositiveItemPricing(pendingItems, encounter);
 
         WaseelApprovalEncounter waseelEncounter =
                 encounterMapper.toWaseelEncounter(encounter, nphiesId);
@@ -152,6 +193,14 @@ public class ApprovalRequestBuilderService {
         );
 
         BigDecimal totalNet = calculateTotalNet(waseelItems);
+        if (totalNet.signum() <= 0) {
+            throw new BadRequestAlertException(
+                    "Pre-authorization total must be a positive number greater than zero "
+                            + "(NPHIES BV-01169). Please set a price on the billed items, then resubmit.",
+                    "preAuthorization",
+                    "total.mustBePositive"
+            );
+        }
 
         return new WaseelApprovalRequest(
                 Boolean.TRUE.equals(snapshot.transfer()),
@@ -275,6 +324,115 @@ public class ApprovalRequestBuilderService {
                 );
             }
         }
+    }
+
+    /**
+     * NPHIES BV-01169 requires Claim/PreAuthorization total &gt; 0.
+     * Re-resolve insurance/setup pricing when the billing row still has a zero price
+     * (common when pre-auth is submitted before charge-line billing).
+     */
+    private void ensurePositiveItemPricing(
+            List<PatientServiceAndProduct> items,
+            PatientEncounter encounter
+    ) {
+        Long facilityId = encounter.getFacilityId();
+        if (facilityId == null) {
+            throw new BadRequestAlertException(
+                    "Encounter facility is required to resolve pre-authorization pricing.",
+                    "preAuthorization",
+                    "encounter.facility.required"
+            );
+        }
+
+        boolean updated = false;
+        for (PatientServiceAndProduct item : items) {
+            if (hasPositivePrice(item)) {
+                continue;
+            }
+
+            applyResolvedPricing(item, facilityId);
+            updated = true;
+
+            if (!hasPositivePrice(item)) {
+                throw new BadRequestAlertException(
+                        "Item '"
+                                + resolveItemLabel(item)
+                                + "' has no positive price. In Claim and PreAuthorization, "
+                                + "total shall be a positive number greater than zero (BV-01169).",
+                        "preAuthorization",
+                        "item.unitPrice.mustBePositive"
+                );
+            }
+        }
+
+        if (updated) {
+            patientServiceAndProductRepository.saveAll(items);
+            patientServiceAndProductRepository.flush();
+        }
+    }
+
+    private void applyResolvedPricing(PatientServiceAndProduct item, Long facilityId) {
+        ResolvedBillingPrice resolvedPrice =
+                billingEngineService.resolvePricing(item, facilityId);
+
+        BigDecimal unitPrice = money(resolvedPrice.unitPrice());
+        if (unitPrice.signum() <= 0) {
+            return;
+        }
+
+        long quantity = item.getQuantity() == null || item.getQuantity() <= 0
+                ? 1L
+                : item.getQuantity();
+        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
+
+        item.setUnitPrice(unitPrice);
+        if (resolvedPrice.currency() != null) {
+            item.setCurrency(resolvedPrice.currency());
+        }
+        item.setTotalAmount(totalAmount);
+        item.setGrossAmount(totalAmount);
+        item.setNetAmount(totalAmount);
+        item.setRemainingAmount(totalAmount);
+        item.setPriceSource(mapPriceSource(resolvedPrice.priceSource()));
+    }
+
+    private boolean hasPositivePrice(PatientServiceAndProduct item) {
+        return money(item.getUnitPrice()).signum() > 0
+                || money(item.getNetAmount()).signum() > 0
+                || money(item.getTotalAmount()).signum() > 0
+                || money(item.getGrossAmount()).signum() > 0;
+    }
+
+    private String resolveItemLabel(PatientServiceAndProduct item) {
+        if (item.getWaseelSbsCode() != null && !item.getWaseelSbsCode().isBlank()) {
+            return item.getWaseelSbsCode();
+        }
+        if (item.getProcedureId() != null) {
+            return "procedure " + item.getProcedureId();
+        }
+        if (item.getServiceId() != null) {
+            return "service " + item.getServiceId();
+        }
+        if (item.getDiagnosticTestId() != null) {
+            return "diagnostic test " + item.getDiagnosticTestId();
+        }
+        if (item.getBrandMedicationId() != null) {
+            return "medication " + item.getBrandMedicationId();
+        }
+        return "item " + item.getId();
+    }
+
+    private PriceSource mapPriceSource(BillingPriceSource source) {
+        if (source == BillingPriceSource.PRICE_LIST) {
+            return PriceSource.PRICE_LIST;
+        }
+        return PriceSource.DEFAULT;
+    }
+
+    private BigDecimal money(BigDecimal value) {
+        return value == null
+                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                : value.setScale(2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal calculateTotalNet(List<WaseelApprovalItem> items) {

@@ -236,7 +236,7 @@ public class ApprovalItemMapper {
                 : item.getQuantity().intValue();
 
         BigDecimal quantityValue = BigDecimal.valueOf(quantity);
-        BigDecimal unitPrice = money(item.getUnitPrice());
+        BigDecimal unitPrice = resolveUnitPrice(item, quantityValue);
         BigDecimal discount = money(item.getDiscountAmount());
         BigDecimal tax = money(item.getTaxAmount());
 
@@ -386,6 +386,39 @@ public class ApprovalItemMapper {
         }
 
         return List.of(1);
+    }
+
+    private BigDecimal resolveUnitPrice(PatientServiceAndProduct item, BigDecimal quantityValue) {
+        BigDecimal unitPrice = money(item.getUnitPrice());
+        if (unitPrice.signum() > 0) {
+            return unitPrice;
+        }
+
+        BigDecimal fallbackTotal = firstPositive(
+                item.getNetAmount(),
+                item.getTotalAmount(),
+                item.getGrossAmount()
+        );
+        if (fallbackTotal.signum() <= 0 || quantityValue.signum() <= 0) {
+            return unitPrice;
+        }
+
+        return fallbackTotal.divide(quantityValue, 2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal firstPositive(BigDecimal... values) {
+        if (values == null) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        for (BigDecimal value : values) {
+            BigDecimal money = money(value);
+            if (money.signum() > 0) {
+                return money;
+            }
+        }
+
+        return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal calculateFactor(BigDecimal gross, BigDecimal discount) {

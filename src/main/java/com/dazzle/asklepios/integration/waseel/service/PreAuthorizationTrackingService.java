@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.PreAuthorizationItem;
 import com.dazzle.asklepios.domain.PreAuthorizationRequest;
 import com.dazzle.asklepios.integration.waseel.dto.PreAuthorizationTrackingItemResponse;
 import com.dazzle.asklepios.integration.waseel.dto.PreAuthorizationTrackingResponse;
+import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.repository.PreAuthorizationItemRepository;
 import com.dazzle.asklepios.repository.PreAuthorizationRequestRepository;
 import com.dazzle.asklepios.repository.PreAuthorizationTrackRepository;
@@ -22,6 +23,7 @@ public class PreAuthorizationTrackingService {
     private final PreAuthorizationRequestRepository repository;
     private final PreAuthorizationItemRepository itemRepository;
     private final PreAuthorizationTrackRepository trackRepository;
+    private final PatientServiceAndProductRepository patientServiceAndProductRepository;
 
     public Page<PreAuthorizationTrackingResponse> findAll(Pageable pageable) {
         return repository.findAll(pageable).map(this::toResponse);
@@ -57,6 +59,8 @@ public class PreAuthorizationTrackingService {
         boolean canCommunicate = !cancelled
                 && (e.getApprovalResponseId() != null || searchCompleted);
         boolean canCancel = !cancelled && e.getApprovalRequestId() != null;
+        boolean canResubmit = PreAuthorizationResubmissionService.canResubmit(e)
+                && hasLinkedUnbilledItems(e.getId());
         long communicationCount = trackRepository.countByPreAuthorization_IdAndTrackType(
                 e.getId(),
                 PreAuthorizationCommunicationHistoryService.TRACK_TYPE_COMMUNICATION
@@ -125,6 +129,7 @@ public class PreAuthorizationTrackingService {
                 searchCompleted,
                 canCommunicate,
                 canCancel,
+                canResubmit,
                 waseelClaimItemIds,
                 itemResponses,
                 communicationCount,
@@ -134,6 +139,11 @@ public class PreAuthorizationTrackingService {
                 e.getLastModifiedDate(),
                 e.getLastModifiedBy()
         );
+    }
+
+    private boolean hasLinkedUnbilledItems(Long preAuthorizationId) {
+        return patientServiceAndProductRepository
+                .existsByPreAuthorizationRequestIdAndIsBilledFalse(preAuthorizationId);
     }
 
     private PreAuthorizationTrackingItemResponse toItemResponse(PreAuthorizationItem item) {

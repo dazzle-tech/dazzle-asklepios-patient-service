@@ -140,4 +140,6 @@ public interface PatientServiceAndProductRepository
     );
 
     List<PatientServiceAndProduct> findByPreAuthorizationRequestId(Long preAuthorizationRequestId);
+
+    boolean existsByPreAuthorizationRequestIdAndIsBilledFalse(Long preAuthorizationRequestId);
 }

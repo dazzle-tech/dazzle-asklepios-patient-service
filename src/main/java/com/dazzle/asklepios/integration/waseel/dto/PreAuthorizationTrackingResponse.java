@@ -70,6 +70,7 @@ public record PreAuthorizationTrackingResponse(
         Boolean searchCompleted,
         Boolean canCommunicate,
         Boolean canCancel,
+        Boolean canResubmit,
         List<Long> waseelClaimItemIds,
         List<PreAuthorizationTrackingItemResponse> items,
         Long communicationCount,
