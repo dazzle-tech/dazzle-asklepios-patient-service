@@ -25,6 +25,7 @@ import com.dazzle.asklepios.service.helper.CDTCodeHelper;
 import com.dazzle.asklepios.service.helper.ProcedureHelper;
 import com.dazzle.asklepios.service.helper.ServiceHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.PreAuthorizationSubmissionFailedException;
 import feign.FeignException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,6 +65,7 @@ public class DentalProcedureService {
     private final PreAuthorizationResolutionService preAuthorizationResolutionService;
     private final BillingEngineService billingEngineService;
     private final PatientServiceAndProductService patientServiceAndProductService;
+    private final PatientItemPricingService patientItemPricingService;
 
     public DentalProcedureService(
             DentalProcedureRepository dentalProcedureRepository,
@@ -78,7 +80,8 @@ public class DentalProcedureService {
             EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService,
             PreAuthorizationResolutionService preAuthorizationResolutionService,
             @Lazy BillingEngineService billingEngineService,
-            @Lazy PatientServiceAndProductService patientServiceAndProductService
+            @Lazy PatientServiceAndProductService patientServiceAndProductService,
+            PatientItemPricingService patientItemPricingService
     ) {
         this.dentalProcedureRepository = dentalProcedureRepository;
         this.patientRepository = patientRepository;
@@ -93,8 +96,10 @@ public class DentalProcedureService {
         this.preAuthorizationResolutionService = preAuthorizationResolutionService;
         this.billingEngineService = billingEngineService;
         this.patientServiceAndProductService = patientServiceAndProductService;
+        this.patientItemPricingService = patientItemPricingService;
     }
 
+    @Transactional(noRollbackFor = PreAuthorizationSubmissionFailedException.class)
     public DentalProcedure create(DentalProcedureCreateDTO dto) {
         LOG.info(
                 "Create DentalProcedure started. patientId={}, encounterId={}, procedureId={}, serviceId={}, cdtCodeId={}",
@@ -427,9 +432,7 @@ public class DentalProcedureService {
             String notes,
             String surface
     ) {
-        BigDecimal unitPrice = setupProcedure.price();
         Long quantity = 1L;
-        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
         String billingNotes = buildBillingNotesValue(notes, surface);
 
         PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
@@ -441,11 +444,11 @@ public class DentalProcedureService {
                 .serviceSource(ServiceSource.DENTAL_PROCEDURE)
                 .sourceId(dentalProcedure.getId())
                 .quantity(quantity)
-                .unitPrice(unitPrice)
+                .unitPrice(BigDecimal.ZERO)
                 .discountAmount(BigDecimal.ZERO)
                 .exemptionAmount(BigDecimal.ZERO)
                 .taxAmount(BigDecimal.ZERO)
-                .totalAmount(totalAmount)
+                .totalAmount(BigDecimal.ZERO)
                 .currency(setupProcedure.currency())
                 .isBilled(Boolean.FALSE)
                 .billingInvoiceId(null)
@@ -473,7 +476,12 @@ public class DentalProcedureService {
                 null
         );
 
-        return builder.build();
+        PatientServiceAndProduct billingItem = builder.build();
+        patientItemPricingService.applyResolvedPricing(
+                billingItem,
+                dentalProcedure.getEncounter().getFacilityId()
+        );
+        return billingItem;
     }
 
     private PatientServiceAndProduct buildServiceBillingItem(
@@ -482,9 +490,7 @@ public class DentalProcedureService {
             String notes,
             String surface
     ) {
-        BigDecimal unitPrice =setupService.price();
         Long quantity = 1L;
-        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
         String billingNotes = buildBillingNotesValue(notes, surface);
 
         PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
@@ -496,11 +502,11 @@ public class DentalProcedureService {
                 .serviceSource(ServiceSource.DENTAL_PROCEDURE)
                 .sourceId(dentalProcedure.getId())
                 .quantity(quantity)
-                .unitPrice(unitPrice)
+                .unitPrice(BigDecimal.ZERO)
                 .discountAmount(BigDecimal.ZERO)
                 .exemptionAmount(BigDecimal.ZERO)
                 .taxAmount(BigDecimal.ZERO)
-                .totalAmount(totalAmount)
+                .totalAmount(BigDecimal.ZERO)
                 .currency(setupService.currency())
                 .isBilled(Boolean.FALSE)
                 .billingInvoiceId(null)
@@ -528,7 +534,12 @@ public class DentalProcedureService {
                 null
         );
 
-        return builder.build();
+        PatientServiceAndProduct billingItem = builder.build();
+        patientItemPricingService.applyResolvedPricing(
+                billingItem,
+                dentalProcedure.getEncounter().getFacilityId()
+        );
+        return billingItem;
     }
 
     private Optional<PatientServiceAndProduct> findBillingItem(
@@ -634,6 +645,8 @@ public class DentalProcedureService {
                 encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(
                         encounter.getId()
                 );
+            } catch (PreAuthorizationSubmissionFailedException ex) {
+                throw ex;
             } catch (BadRequestAlertException ex) {
                 throw mapPreAuthorizationFailure(ex);
             }

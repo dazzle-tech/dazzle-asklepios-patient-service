@@ -10,12 +10,10 @@ import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
-import com.dazzle.asklepios.domain.enumeration.PriceSource;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCancellationReason;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerSourceChannel;
-import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.CancelReason;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
@@ -30,7 +28,6 @@ import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
 import com.dazzle.asklepios.service.dto.billing.BillingRuleEvaluationRequest;
-import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductUpdateDTO;
 import com.dazzle.asklepios.service.helper.BrandMedicationHelper;
@@ -39,6 +36,7 @@ import com.dazzle.asklepios.service.helper.ProcedureHelper;
 import com.dazzle.asklepios.service.helper.ServiceHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import com.dazzle.asklepios.web.rest.errors.PreAuthorizationSubmissionFailedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
@@ -79,6 +77,7 @@ public class PatientServiceAndProductService {
     private final BillingEngineService billingEngineService;
     private final BillingChargeService billingChargeService;
     private final PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository;
+    private final PatientItemPricingService patientItemPricingService;
 
     public PatientServiceAndProductService(
             PatientServiceAndProductRepository patientServiceAndProductRepository,
@@ -95,7 +94,8 @@ public class PatientServiceAndProductService {
             BillingRuleEvaluationService billingRuleEvaluationService,
             @Lazy BillingEngineService billingEngineService,
             @Lazy BillingChargeService billingChargeService,
-            PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository
+            PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository,
+            PatientItemPricingService patientItemPricingService
     ) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.patientRepository = patientRepository;
@@ -112,8 +112,10 @@ public class PatientServiceAndProductService {
         this.billingEngineService = billingEngineService;
         this.billingChargeService = billingChargeService;
         this.patientPrescriptionMedicationRepository = patientPrescriptionMedicationRepository;
+        this.patientItemPricingService = patientItemPricingService;
     }
 
+    @Transactional(noRollbackFor = PreAuthorizationSubmissionFailedException.class)
     public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
         LOG.debug("Request to create Patient billing item : {}", dto);
 
@@ -178,7 +180,7 @@ public class PatientServiceAndProductService {
         );
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = PreAuthorizationSubmissionFailedException.class)
     public PatientServiceAndProduct update(PatientServiceProductUpdateDTO dto) {
         LOG.debug("Request to update Patient billing item : {}", dto);
 
@@ -249,7 +251,7 @@ public class PatientServiceAndProductService {
             entity.setCoverageStatus(CoverageStatus.COVERED);
         }
 
-        applyResolvedPricing(entity, encounter, dto.quantity());
+        patientItemPricingService.applyResolvedPricing(entity, encounter.getFacilityId());
 
         if (dto.isBilled() != null) {
             entity.setIsBilled(dto.isBilled());
@@ -272,7 +274,7 @@ public class PatientServiceAndProductService {
         }
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = PreAuthorizationSubmissionFailedException.class)
     public List<PatientServiceAndProduct> createBulk(List<PatientServiceProductCreateDTO> dtos) {
         LOG.debug("Request to bulk create Patient billing items : count={}", dtos == null ? 0 : dtos.size());
 
@@ -349,7 +351,7 @@ public class PatientServiceAndProductService {
      * When a prescription is submitted on an insurance visit, create billing rows for each
      * medication and run the same price-list pre-authorization flow used for services/procedures.
      */
-    @Transactional
+    @Transactional(noRollbackFor = PreAuthorizationSubmissionFailedException.class)
     public void syncPrescriptionMedicationsForPreAuthorization(PatientPrescription prescription) {
         if (prescription == null
                 || prescription.getId() == null
@@ -598,7 +600,7 @@ public class PatientServiceAndProductService {
             entity.setCoverageStatus(CoverageStatus.COVERED);
         }
 
-        applyResolvedPricing(entity, encounter, quantity);
+        patientItemPricingService.applyResolvedPricing(entity, encounter.getFacilityId());
 
         return entity;
     }
@@ -670,61 +672,8 @@ public class PatientServiceAndProductService {
             entity.setCoverageStatus(CoverageStatus.COVERED);
         }
 
-        applyResolvedPricing(entity, encounter, quantity);
+        patientItemPricingService.applyResolvedPricing(entity, encounter.getFacilityId());
         return entity;
-    }
-
-    private void applyResolvedPricing(
-            PatientServiceAndProduct item,
-            PatientEncounter encounter,
-            long quantity
-    ) {
-        Long facilityId = encounter.getFacilityId();
-        if (facilityId == null) {
-            throw new BadRequestAlertException(
-                    "Encounter facility is required to resolve item pricing.",
-                    "patientServicesAndProducts",
-                    "encounter.facility.required"
-            );
-        }
-
-        if (item.getCurrency() == null) {
-            throw new BadRequestAlertException(
-                    "Currency is required to resolve item pricing.",
-                    "patientServicesAndProducts",
-                    "currency.required"
-            );
-        }
-
-        ResolvedBillingPrice resolvedPrice =
-                billingEngineService.resolvePricing(item, facilityId);
-
-        BigDecimal unitPrice = resolvedPrice.unitPrice();
-        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
-
-        item.setUnitPrice(unitPrice);
-        item.setCurrency(resolvedPrice.currency());
-        item.setTotalAmount(totalAmount);
-        item.setGrossAmount(totalAmount);
-        item.setNetAmount(totalAmount);
-        item.setRemainingAmount(totalAmount);
-        item.setPriceSource(mapPriceSource(resolvedPrice.priceSource()));
-
-        LOG.info(
-                "[PSP_PRICING] Resolved unitPrice={} currency={} priceSource={} billingItemType={}",
-                unitPrice,
-                resolvedPrice.currency(),
-                resolvedPrice.priceSource(),
-                item.getBillingItemType()
-        );
-    }
-
-    private PriceSource mapPriceSource(BillingPriceSource source) {
-        if (source == BillingPriceSource.PRICE_LIST) {
-            return PriceSource.PRICE_LIST;
-        }
-
-        return PriceSource.DEFAULT;
     }
 
     private void validateReferences(PatientServiceProductCreateDTO dto) {
@@ -924,6 +873,8 @@ public class PatientServiceAndProductService {
     private void submitPreAuthorizationOrThrow(Long encounterId) {
         try {
             encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(encounterId);
+        } catch (PreAuthorizationSubmissionFailedException ex) {
+            throw ex;
         } catch (BadRequestAlertException ex) {
             String title = ex.getBody() != null && ex.getBody().getTitle() != null
                     ? ex.getBody().getTitle()

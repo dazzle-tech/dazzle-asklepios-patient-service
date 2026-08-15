@@ -174,7 +174,7 @@ public class EncounterPreAuthorizationSyncService {
 
     /**
      * Submits pending pre-authorization synchronously within the caller transaction.
-     * Propagates failures so the caller can roll back the ordered item.
+     * Gateway/validation failures keep the clinical order so it can be resubmitted.
      */
     public void submitPendingPreAuthorizationOrThrow(Long encounterId) {
         if (encounterId == null) {

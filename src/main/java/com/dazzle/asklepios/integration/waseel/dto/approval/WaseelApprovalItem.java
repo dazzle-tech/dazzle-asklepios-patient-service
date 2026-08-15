@@ -1,6 +1,8 @@
 package com.dazzle.asklepios.integration.waseel.dto.approval;
 
+import com.dazzle.asklepios.integration.waseel.service.mapper.WaseelFactorJsonSerializer;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -22,6 +24,7 @@ public record WaseelApprovalItem(
         String quantityCode,
         BigDecimal unitPrice,
         BigDecimal discount,
+        @JsonSerialize(using = WaseelFactorJsonSerializer.class)
         BigDecimal factor,
         BigDecimal taxPercent,
         BigDecimal patientSharePercent,

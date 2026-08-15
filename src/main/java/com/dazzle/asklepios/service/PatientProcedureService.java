@@ -27,6 +27,7 @@ import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import com.dazzle.asklepios.web.rest.errors.PreAuthorizationSubmissionFailedException;
 import feign.FeignException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,6 +62,7 @@ public class PatientProcedureService {
     private final BillingChargeService billingChargeService;
     private final BillingEngineService billingEngineService;
     private final PatientServiceAndProductService patientServiceAndProductService;
+    private final PatientItemPricingService patientItemPricingService;
 
     public PatientProcedureService(
             PatientProcedureRepository procedureRepository,
@@ -74,7 +76,8 @@ public class PatientProcedureService {
             EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService,
             BillingChargeService billingChargeService,
             @Lazy BillingEngineService billingEngineService,
-            @Lazy PatientServiceAndProductService patientServiceAndProductService
+            @Lazy PatientServiceAndProductService patientServiceAndProductService,
+            PatientItemPricingService patientItemPricingService
     ) {
         this.procedureRepository = procedureRepository;
         this.patientRepository = patientRepository;
@@ -88,6 +91,7 @@ public class PatientProcedureService {
         this.billingChargeService = billingChargeService;
         this.billingEngineService = billingEngineService;
         this.patientServiceAndProductService = patientServiceAndProductService;
+        this.patientItemPricingService = patientItemPricingService;
     }
 
     private String currentUsername() {
@@ -102,6 +106,7 @@ public class PatientProcedureService {
         return username;
     }
 
+    @Transactional(noRollbackFor = PreAuthorizationSubmissionFailedException.class)
     public PatientProcedure create(PatientProcedureCreateDTO procedureCreateDTO) {
         Patient patient = patientRepository.findById(procedureCreateDTO.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -306,8 +311,8 @@ public class PatientProcedureService {
     /**
      * Step 4 — after procedure + billing item are saved:
      * - Self pay, or insurance without pre-auth → run billing engine immediately.
-     * - Insurance with pending pre-auth → submit to Waseel synchronously; on success set
-     *   procedure status to WAITING_PRE_AUTHORIZATION; rollback on failure.
+     * - Insurance with pending pre-auth → submit to Waseel synchronously.
+     *   Waseel payload errors keep the clinical order so it can be resubmitted.
      */
     private void completeProcedureBillingFlow(
             PatientEncounter encounter,
@@ -335,6 +340,8 @@ public class PatientProcedureService {
                 encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(
                         encounter.getId()
                 );
+            } catch (PreAuthorizationSubmissionFailedException ex) {
+                throw ex;
             } catch (BadRequestAlertException ex) {
                 throw mapPreAuthorizationFailure(ex, "procedure");
             }
@@ -488,18 +495,7 @@ public class PatientProcedureService {
             BillingCoverageType encounterCoverage
     ) {
         Long encounterId = encounter.getId();
-        BigDecimal unitPrice = setupProcedure.price();
         Long quantity = 1L;
-
-        BigDecimal discountAmount = BigDecimal.ZERO;
-        BigDecimal exemptionAmount = BigDecimal.ZERO;
-        BigDecimal taxAmount = BigDecimal.ZERO;
-
-        BigDecimal totalAmount = unitPrice
-                .multiply(BigDecimal.valueOf(quantity))
-                .subtract(discountAmount)
-                .subtract(exemptionAmount)
-                .add(taxAmount);
 
         PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
                 .patientId(patientId)
@@ -512,11 +508,11 @@ public class PatientProcedureService {
                 .serviceSource(ServiceSource.PROCEDURE)
                 .sourceId(sourceId)
                 .quantity(quantity)
-                .unitPrice(unitPrice)
-                .discountAmount(discountAmount)
-                .exemptionAmount(exemptionAmount)
-                .taxAmount(taxAmount)
-                .totalAmount(totalAmount)
+                .unitPrice(BigDecimal.ZERO)
+                .discountAmount(BigDecimal.ZERO)
+                .exemptionAmount(BigDecimal.ZERO)
+                .taxAmount(BigDecimal.ZERO)
+                .totalAmount(BigDecimal.ZERO)
                 .currency(setupProcedure.currency())
                 .isBilled(Boolean.FALSE)
                 .billingInvoiceId(null)
@@ -528,33 +524,34 @@ public class PatientProcedureService {
                     .preAuthorizationStatus(PreAuthorizationStatus.NOT_REQUIRED)
                     .preAuthorizationRequired(false)
                     .paymentStatus(PaymentStatus.PENDING);
-            return builder.build();
+        } else {
+            LOG.info(
+                    "[PROCEDURE_CREATE] Insurance encounter — checking price list pre-authorization for procedureId={}",
+                    setupProcedure.id()
+            );
+
+            preAuthorizationResolutionService.resolveAndPrepareNewItem(
+                    builder,
+                    encounterId,
+                    BillingItemTypes.PROCEDURE,
+                    setupProcedure.id(),
+                    null,
+                    null,
+                    null,
+                    true,
+                    setupProcedure.currency()
+            );
+
+            preAuthorizationResolutionService.enrichWaseelSbsMapping(
+                    builder,
+                    BillingItemTypes.PROCEDURE,
+                    setupProcedure.id()
+            );
         }
 
-        LOG.info(
-                "[PROCEDURE_CREATE] Insurance encounter — checking price list pre-authorization for procedureId={}",
-                setupProcedure.id()
-        );
-
-        preAuthorizationResolutionService.resolveAndPrepareNewItem(
-                builder,
-                encounterId,
-                BillingItemTypes.PROCEDURE,
-                setupProcedure.id(),
-                null,
-                null,
-                null,
-                true,
-                setupProcedure.currency()
-        );
-
-        preAuthorizationResolutionService.enrichWaseelSbsMapping(
-                builder,
-                BillingItemTypes.PROCEDURE,
-                setupProcedure.id()
-        );
-
-        return builder.build();
+        PatientServiceAndProduct billingItem = builder.build();
+        patientItemPricingService.applyResolvedPricing(billingItem, encounter.getFacilityId());
+        return billingItem;
     }
 
     /**

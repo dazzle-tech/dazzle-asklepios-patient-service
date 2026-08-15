@@ -55,6 +55,7 @@ public class WaseelPreAuthorizationService {
     private final PreAuthorizationTrackRepository preAuthorizationTrackRepository;
     private final PreAuthorizationItemRepository preAuthorizationItemRepository;
     private final PreAuthorizationAttachmentService preAuthorizationAttachmentService;
+    private final WaseelPreAuthorizationMockService mockService;
 
     @Transactional
     public PreAuthorizationSearchResponse searchAndUpdate(
@@ -108,6 +109,10 @@ public class WaseelPreAuthorizationService {
     }
 
     private PreAuthorizationSearchResponse searchFromWaseel(Long requestId) {
+        if (mockService.isEnabled()) {
+            return mockService.search(requestId);
+        }
+
         String token = tokenService.getToken();
 
         String url = properties.baseUrl()
@@ -525,6 +530,19 @@ public class WaseelPreAuthorizationService {
         ResolvedCommunication resolved = resolveCommunicationClaimItemIds(request);
         PreAuthorizationCommunicationRequest resolvedRequest = resolved.request();
 
+        // Strip internal attachmentId before sending to Waseel.
+        PreAuthorizationCommunicationRequest waseelBody = stripInternalAttachmentIds(resolvedRequest);
+
+        if (mockService.isEnabled()) {
+            PreAuthorizationCommunicationResponse mockResponse =
+                    mockService.communicate(waseelBody);
+            for (Long attachmentId : resolved.attachmentIds()) {
+                preAuthorizationAttachmentService.markSentToWaseel(attachmentId, null);
+            }
+            saveCommunicationTrack(resolved.preAuth(), resolvedRequest, mockResponse, null);
+            return mockResponse;
+        }
+
         String token = tokenService.getToken();
 
         String url = properties.baseUrl()
@@ -532,8 +550,6 @@ public class WaseelPreAuthorizationService {
                 + properties.providerId()
                 + "/approval/communication";
 
-        // Strip internal attachmentId before sending to Waseel.
-        PreAuthorizationCommunicationRequest waseelBody = stripInternalAttachmentIds(resolvedRequest);
         String jsonBody = toJsonWithoutNulls(waseelBody);
 
         HttpEntity<String> entity = new HttpEntity<>(
@@ -1035,6 +1051,10 @@ public class WaseelPreAuthorizationService {
     private PreAuthorizationCancelResponse sendCancelToWaseel(
             PreAuthorizationCancelRequest request
     ) {
+        if (mockService.isEnabled()) {
+            return mockService.cancel(request);
+        }
+
         String token = tokenService.getToken();
 
         String url = properties.baseUrl()

@@ -57,6 +57,7 @@ public class PreAuthorizationTrackingService {
         boolean canCommunicate = !cancelled
                 && (e.getApprovalResponseId() != null || searchCompleted);
         boolean canCancel = !cancelled && e.getApprovalRequestId() != null;
+        boolean canResubmit = PreAuthorizationResubmissionService.canResubmit(e);
         long communicationCount = trackRepository.countByPreAuthorization_IdAndTrackType(
                 e.getId(),
                 PreAuthorizationCommunicationHistoryService.TRACK_TYPE_COMMUNICATION
@@ -125,6 +126,7 @@ public class PreAuthorizationTrackingService {
                 searchCompleted,
                 canCommunicate,
                 canCancel,
+                canResubmit,
                 waseelClaimItemIds,
                 itemResponses,
                 communicationCount,

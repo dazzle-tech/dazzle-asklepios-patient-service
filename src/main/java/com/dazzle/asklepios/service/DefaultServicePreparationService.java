@@ -30,6 +30,7 @@ import com.dazzle.asklepios.service.dto.billing.PrepareDefaultServicesRequest;
 import com.dazzle.asklepios.service.dto.billing.PrepareDefaultServicesResult;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import com.dazzle.asklepios.web.rest.errors.PreAuthorizationSubmissionFailedException;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -76,13 +77,14 @@ public class DefaultServicePreparationService {
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
     private final EncounterCoverageService encounterCoverageService;
     private final EncounterTreatmentAdvanceService encounterTreatmentAdvanceService;
+    private final PatientItemPricingService patientItemPricingService;
 
     /**
      * Creates/reuses selected default-service PSP records and sends each one
      * through the Billing Engine. This operation does not create a payment,
      * allocation, consumption, checkout, or invoice closure.
      */
-    @Transactional
+    @Transactional(noRollbackFor = PreAuthorizationSubmissionFailedException.class)
     public PrepareDefaultServicesResult prepare(
             Long encounterId,
             PrepareDefaultServicesRequest request
@@ -133,6 +135,14 @@ public class DefaultServicePreparationService {
 
             Optional<BillingChargeLine> existingChargeLine =
                     findActiveChargeLine(item.getId());
+
+            if (existingChargeLine.isEmpty()) {
+                patientItemPricingService.applyResolvedPricing(
+                        item,
+                        request.facilityId()
+                );
+                item = patientServiceAndProductRepository.saveAndFlush(item);
+            }
 
             BillingOperationResult billingResult;
 
@@ -237,6 +247,8 @@ public class DefaultServicePreparationService {
                 encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(
                         encounterId
                 );
+            } catch (PreAuthorizationSubmissionFailedException ex) {
+                throw ex;
             } catch (BadRequestAlertException ex) {
                 String title = ex.getBody() != null && ex.getBody().getTitle() != null
                         ? ex.getBody().getTitle()

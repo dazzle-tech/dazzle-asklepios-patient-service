@@ -18,15 +18,19 @@ public final class WaseelItemTypeNormalizer {
 
         return switch (normalized) {
             case "SERVICE", "SERVICES", "CONSULTATION" -> "SERVICES";
-            case "PROCEDURE", "PROCEDURES" -> "PROCEDURES";
-            case "RADIOLOGY" -> "IMAGING";
-            case "MEDICATION", "MEDICATIONS", "MEDICATION-CODE" -> "MEDICATION-CODES";
-            case "MEDICAL-DEVICE" -> "MEDICAL-DEVICES";
-            case "LAB" -> "LABORATORY";
-            case "COSMETIC", "COSMETIC-CODE" -> "COSMETIC-CODES";
-            case "HERBAL", "HERBAL-AND-VITAMIN", "HERBAL-AND-VITAMIN-CODE" -> "HERBAL-AND-VITAMIN-CODES";
-            case "NUTRITION", "NUTRITION-CODE" -> "NUTRITION-CODES";
-            case "TRANSPORTATION" -> "TRANSPORTATION-SRCA";
+            // NPHIES/Waseel has no DENTAL type; dental SBS codes go under PROCEDURES.
+            case "PROCEDURE", "PROCEDURES", "DENTAL", "DENTAL-PROCEDURE", "DENTAL-PROCEDURES" ->
+                    "PROCEDURES";
+            case "RADIOLOGY", "IMAGING" -> "IMAGING";
+            case "MEDICATION", "MEDICATIONS", "MEDICATION-CODE", "MEDICATION-CODES" ->
+                    "MEDICATION-CODES";
+            case "MEDICAL-DEVICE", "MEDICAL-DEVICES" -> "MEDICAL-DEVICES";
+            case "LAB", "LABORATORY" -> "LABORATORY";
+            case "COSMETIC", "COSMETIC-CODE", "COSMETIC-CODES" -> "COSMETIC-CODES";
+            case "HERBAL", "HERBAL-AND-VITAMIN", "HERBAL-AND-VITAMIN-CODE", "HERBAL-AND-VITAMIN-CODES" ->
+                    "HERBAL-AND-VITAMIN-CODES";
+            case "NUTRITION", "NUTRITION-CODE", "NUTRITION-CODES" -> "NUTRITION-CODES";
+            case "TRANSPORTATION", "TRANSPORTATION-SRCA" -> "TRANSPORTATION-SRCA";
             default -> normalized;
         };
     }

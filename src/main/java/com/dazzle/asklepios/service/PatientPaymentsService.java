@@ -57,6 +57,7 @@ import com.dazzle.asklepios.service.dto.patientPayments.PatientPaymentServiceIte
 import com.dazzle.asklepios.service.dto.patientPayments.PaymentAllocationDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import com.dazzle.asklepios.web.rest.errors.PreAuthorizationSubmissionFailedException;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -770,6 +771,7 @@ public class PatientPaymentsService {
     }
 
 
+    @Transactional(noRollbackFor = PreAuthorizationSubmissionFailedException.class)
     public PatientPaymentDetailsDTO create(PatientPaymentCreateDTO dto) {
         LOG.info("[CREATE] PatientPayments payload={}", dto);
 

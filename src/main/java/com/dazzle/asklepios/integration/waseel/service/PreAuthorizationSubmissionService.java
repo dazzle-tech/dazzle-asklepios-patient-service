@@ -28,6 +28,7 @@ import com.dazzle.asklepios.repository.PreAuthorizationRequestRepository;
 import com.dazzle.asklepios.repository.PreAuthorizationSupportingInfoRepository;
 import com.dazzle.asklepios.repository.PreAuthorizationTrackRepository;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.PreAuthorizationSubmissionFailedException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -71,7 +72,8 @@ public class PreAuthorizationSubmissionService {
 
     @Transactional(
             propagation = Propagation.REQUIRES_NEW,
-            rollbackFor = Exception.class
+            rollbackFor = Exception.class,
+            noRollbackFor = PreAuthorizationSubmissionFailedException.class
     )
     public ApprovalResponse submitIfRequired(Long encounterId) {
         return submitIfRequiredInternal(encounterId);
@@ -79,11 +81,11 @@ public class PreAuthorizationSubmissionService {
 
     /**
      * Submits pending pre-authorization items within the caller's transaction.
-     * Used when ordering items that must not persist if Waseel submission fails.
      */
     @Transactional(
             propagation = Propagation.REQUIRED,
-            rollbackFor = Exception.class
+            rollbackFor = Exception.class,
+            noRollbackFor = PreAuthorizationSubmissionFailedException.class
     )
     public ApprovalResponse submitIfRequiredJoiningTransaction(Long encounterId) {
         return submitIfRequiredInternal(encounterId);
@@ -190,10 +192,10 @@ public class PreAuthorizationSubmissionService {
             updatePreAuthorizationFailure(preAuthorization, details);
             saveTrackFailure(preAuthorization, "SUBMIT", requestJson, details);
 
-            throw new BadRequestAlertException(
+            throw new PreAuthorizationSubmissionFailedException(
                     details,
-                    "preAuthorization",
-                    "waseel.submit.failed"
+                    encounterId,
+                    preAuthorization.getId()
             );
         } catch (RestClientException ex) {
             String details = "Failed to submit pre-authorization to Waseel: " + ex.getMessage();
@@ -201,10 +203,10 @@ public class PreAuthorizationSubmissionService {
             updatePreAuthorizationFailure(preAuthorization, details);
             saveTrackFailure(preAuthorization, "SUBMIT", requestJson, details);
 
-            throw new BadRequestAlertException(
+            throw new PreAuthorizationSubmissionFailedException(
                     details,
-                    "preAuthorization",
-                    "waseel.submit.failed"
+                    encounterId,
+                    preAuthorization.getId()
             );
         }
     }

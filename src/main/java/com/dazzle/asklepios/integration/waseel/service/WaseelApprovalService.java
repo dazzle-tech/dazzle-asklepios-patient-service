@@ -28,8 +28,13 @@ public class WaseelApprovalService {
     private final WaseelTokenService tokenService;
     private final WaseelApiProperties properties;
     private final ObjectMapper objectMapper;
+    private final WaseelPreAuthorizationMockService mockService;
 
     public ApprovalResponse requestApproval(WaseelApprovalRequest request) {
+        if (mockService.isEnabled()) {
+            return mockService.requestApproval(request);
+        }
+
         String token = tokenService.getToken();
 
         String url = properties.baseUrl()
@@ -71,6 +76,10 @@ public class WaseelApprovalService {
     }
 
     public ApprovalResponse cancelApproval(ApprovalCancelRequest request) {
+        if (mockService.isEnabled()) {
+            return mockService.cancelApproval(request);
+        }
+
         String token = tokenService.getToken();
 
         String url = properties.baseUrl()

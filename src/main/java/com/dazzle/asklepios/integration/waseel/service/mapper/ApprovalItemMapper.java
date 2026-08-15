@@ -123,14 +123,16 @@ public class ApprovalItemMapper {
                 ? money(grossAmount)
                 : quantityValue.multiply(safeUnitPrice);
 
-        BigDecimal factor = calculateFactor(gross, safeDiscount);
+        BigDecimal factor = WaseelFactorNormalizer.fromGrossAndDiscount(gross, safeDiscount);
         BigDecimal formulaNet = gross.multiply(factor).add(safeTax).setScale(2, RoundingMode.HALF_UP);
 
         if (formulaNet.compareTo(safeNet) != 0 && gross.signum() > 0) {
-            factor = safeNet
-                    .subtract(safeTax)
-                    .divide(gross, 6, RoundingMode.HALF_UP)
-                    .max(BigDecimal.ZERO);
+            factor = WaseelFactorNormalizer.normalize(
+                    safeNet
+                            .subtract(safeTax)
+                            .divide(gross, 6, RoundingMode.HALF_UP)
+                            .max(BigDecimal.ZERO)
+            );
         }
 
         if (safePatientShare.signum() == 0 && safePayerShare.signum() == 0 && safeNet.signum() > 0) {
@@ -241,7 +243,7 @@ public class ApprovalItemMapper {
         BigDecimal tax = money(item.getTaxAmount());
 
         BigDecimal gross = quantityValue.multiply(unitPrice);
-        BigDecimal factor = calculateFactor(gross, discount);
+        BigDecimal factor = WaseelFactorNormalizer.fromGrossAndDiscount(gross, discount);
 
         BigDecimal net = gross
                 .multiply(factor)
@@ -386,22 +388,6 @@ public class ApprovalItemMapper {
         }
 
         return List.of(1);
-    }
-
-    private BigDecimal calculateFactor(BigDecimal gross, BigDecimal discount) {
-        if (gross == null || gross.compareTo(BigDecimal.ZERO) <= 0) {
-            return BigDecimal.ONE.setScale(2, RoundingMode.HALF_UP);
-        }
-
-        if (discount == null || discount.compareTo(BigDecimal.ZERO) <= 0) {
-            return BigDecimal.ONE.setScale(2, RoundingMode.HALF_UP);
-        }
-
-        BigDecimal discountPercent = discount.divide(gross, 6, RoundingMode.HALF_UP);
-
-        return BigDecimal.ONE
-                .subtract(discountPercent)
-                .setScale(6, RoundingMode.HALF_UP);
     }
 
     private boolean isMedicationCode(String waseelItemType) {
