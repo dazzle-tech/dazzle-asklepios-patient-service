@@ -7,6 +7,8 @@ import com.dazzle.asklepios.domain.BillingWallet;
 import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientInsurance;
+import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
 import com.dazzle.asklepios.domain.FinancialDocumentItemStatus;
 import com.dazzle.asklepios.domain.PatientLedgerEntry;
@@ -40,11 +42,12 @@ import com.dazzle.asklepios.repository.FinancialDocumentItemRepository;
 import com.dazzle.asklepios.repository.FinancialDocumentRepository;
 import com.dazzle.asklepios.repository.PatientLedgerRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientPaymentAllocationRepository;
 import com.dazzle.asklepios.repository.ClaimRequestRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.InsuranceSplit;
 import com.dazzle.asklepios.service.dto.billing.CreateFinancialDocumentAdjustmentRequest;
-import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
 import com.dazzle.asklepios.service.dto.billing.BillingLedgerEntryRequest;
 import com.dazzle.asklepios.service.dto.billing.AddableChargeLineResponse;
@@ -144,7 +147,9 @@ public class FinancialDocumentAdjustmentService {
     private final PatientPaymentAllocationRepository allocationRepo;
     private final PatientServiceAndProductService patientServiceAndProductService;
     private final BillingChargeService billingChargeService;
-    private final BillingEngineService billingEngineService;
+    private final PatientItemPricingApplicationService patientItemPricingApplicationService;
+    private final InsurancePatientShareCalculator insurancePatientShareCalculator;
+    private final PatientInsuranceRepository patientInsuranceRepository;
     private final CatalogItemPricingPreviewService catalogItemPricingPreviewService;
     private final FinancialDocumentNumberAssignmentService documentNumberAssignmentService;
     private final BillingWalletService billingWalletService;
@@ -1078,7 +1083,6 @@ public class FinancialDocumentAdjustmentService {
         BigDecimal oldNet = money(original.getNetAmount());
         BigDecimal projectedNet =
                 projectLineNetAfterChange(original, newQuantity, newUnitPrice);
-        BigDecimal remaining = money(original.getRemainingAmount());
 
         if (projectedNet.compareTo(oldNet) >= 0) {
             throw new BadRequestAlertException(
@@ -1089,15 +1093,11 @@ public class FinancialDocumentAdjustmentService {
         }
 
         BigDecimal creditAmount = oldNet.subtract(projectedNet);
-        if (creditAmount.compareTo(remaining) > 0) {
-            creditAmount = remaining;
-        }
-
         if (creditAmount.signum() <= 0) {
             throw new BadRequestAlertException(
-                    "No credit amount remains available for this line update",
+                    "Reduced line amount must be lower than the current line amount",
                     ENTITY,
-                    "adjustment.line.noRemaining"
+                    "adjustment.line.reduceNotLower"
             );
         }
 
@@ -1247,50 +1247,23 @@ public class FinancialDocumentAdjustmentService {
             );
         }
 
-        ResolvedBillingPrice resolvedPrice =
-                billingEngineService.resolvePricing(
-                        createdService,
-                        facilityId
-                );
-        BigDecimal unitPrice = money(resolvedPrice.unitPrice());
-        BigDecimal grossAmount = money(quantity.multiply(unitPrice));
-
-        BigDecimal patientShare =
-                invoice.getDocumentSubtype() == FinancialDocumentSubtype.PATIENT
-                        ? grossAmount
-                        : ZERO;
-        BigDecimal insuranceShare =
-                invoice.getDocumentSubtype() == FinancialDocumentSubtype.INSURANCE_CLAIM
-                        ? grossAmount
-                        : ZERO;
-
         BillingChargeLine chargeLine =
                 billingChargeService
                         .findActiveChargeLine(
                                 createdService.getId(),
                                 invoice.getEncounterId()
                         )
-                        .map(line ->
-                                billingChargeService.normalizeDebitNoteChargeLine(
-                                        line,
-                                        quantity,
-                                        unitPrice,
-                                        patientShare,
-                                        insuranceShare
-                                )
-                        )
                         .orElseGet(() ->
-                                billingChargeService.createDebitNoteAdjustmentChargeLine(
+                                createPricedDebitNoteChargeLine(
                                         createdService,
                                         quantity,
-                                        unitPrice,
-                                        patientShare,
-                                        insuranceShare,
-                                        "debit-note-add-new-" + createdService.getId()
+                                        facilityId
                                 )
                         );
 
-        if (shareForSubtype(chargeLine, invoice.getDocumentSubtype()).signum() <= 0) {
+        BigDecimal debitAmount =
+                shareForSubtype(chargeLine, invoice.getDocumentSubtype());
+        if (debitAmount.signum() <= 0) {
             throw new BadRequestAlertException(
                     "Selected service has no billable amount for this invoice type",
                     ENTITY,
@@ -1302,15 +1275,59 @@ public class FinancialDocumentAdjustmentService {
                 FinancialDocumentItemAdjustmentAction.ADD_NEW,
                 null,
                 chargeLine,
-                grossAmount,
+                debitAmount,
                 chargeLine.getQuantity().setScale(0, RoundingMode.HALF_UP).longValue(),
-                unitPrice,
+                money(chargeLine.getUnitPrice()),
                 chargeLine.getItemCode(),
-                chargeLine.getItemDescription(),
-                grossAmount,
-                ZERO,
-                ZERO
+                chargeLine.getItemDescription()
         );
+    }
+
+    private BillingChargeLine createPricedDebitNoteChargeLine(
+            PatientServiceAndProduct createdService,
+            BigDecimal quantity,
+            Long facilityId
+    ) {
+        patientItemPricingApplicationService.applyToItem(
+                createdService,
+                facilityId
+        );
+
+        PatientInsurance insurance =
+                resolveEncounterInsurance(createdService.getEncounterId());
+        if (insurance != null) {
+            createdService.setPatientInsuranceId(insurance.getId());
+        }
+
+        InsuranceSplit split =
+                insurancePatientShareCalculator.calculateSplit(
+                        insurance,
+                        createdService,
+                        createdService.getNetAmount()
+                );
+        createdService.setPatientShareAmount(split.patientShare());
+        createdService.setInsuranceShareAmount(split.insuranceShare());
+
+        return billingChargeService.createDebitNoteAdjustmentChargeLine(
+                createdService,
+                quantity,
+                money(createdService.getUnitPrice()),
+                split.patientShare(),
+                split.insuranceShare(),
+                "debit-note-add-new-" + createdService.getId()
+        );
+    }
+
+    private PatientInsurance resolveEncounterInsurance(Long encounterId) {
+        if (encounterId == null) {
+            return null;
+        }
+
+        return patientEncounterRepository
+                .findById(encounterId)
+                .map(PatientEncounter::getPatientInsuranceId)
+                .flatMap(patientInsuranceRepository::findById)
+                .orElse(null);
     }
 
     private void validateNewServiceReference(InvoiceLineAdjustmentRequest request) {

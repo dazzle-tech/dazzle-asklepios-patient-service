@@ -217,8 +217,37 @@ public class InsurancePatientShareCalculator {
         return insuranceCalculationService.calculateFromBenefitRule(
                 normalizedNet,
                 rule,
-                insurance.getMaxLimit()
+                resolvePolicyMaximumLimit(insurance, rule)
         );
+    }
+
+    private BigDecimal resolvePolicyMaximumLimit(
+            PatientInsurance insurance,
+            InsuranceBenefitRule rule
+    ) {
+        if (insurance == null) {
+            return null;
+        }
+
+        BigDecimal maxLimit = insurance.getMaxLimit();
+        if (maxLimit == null || maxLimit.signum() <= 0) {
+            return null;
+        }
+
+        BigDecimal copayCap = rule != null && rule.patientMaximumCopayment() != null
+                ? rule.patientMaximumCopayment()
+                : firstPositive(insurance.getDefaultMaximumCopayment());
+
+        /*
+         * CCHI maxLimit is the patient copay cap, not an insurance annual cap.
+         * Keep it as an insurance-side policy limit only when it is strictly
+         * larger than the patient copay maximum.
+         */
+        if (copayCap != null && maxLimit.compareTo(copayCap) <= 0) {
+            return null;
+        }
+
+        return maxLimit;
     }
 
     private String resolveServiceCategory(PatientServiceAndProduct item) {
@@ -240,6 +269,14 @@ public class InsurancePatientShareCalculator {
             );
             return null;
         }
+    }
+
+    private BigDecimal firstPositive(BigDecimal value) {
+        if (value == null || value.signum() <= 0) {
+            return null;
+        }
+
+        return value;
     }
 
     private BigDecimal money(BigDecimal value) {

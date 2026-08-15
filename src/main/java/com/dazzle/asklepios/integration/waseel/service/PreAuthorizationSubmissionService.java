@@ -188,6 +188,7 @@ public class PreAuthorizationSubmissionService {
             String details = buildWaseelFailureMessage(ex.getStatusCode().value(), waseelBody, ex.getMessage());
 
             updatePreAuthorizationFailure(preAuthorization, details);
+            linkItemsToFailedRequest(pendingItems, preAuthorization);
             saveTrackFailure(preAuthorization, "SUBMIT", requestJson, details);
 
             throw new BadRequestAlertException(
@@ -199,6 +200,7 @@ public class PreAuthorizationSubmissionService {
             String details = "Failed to submit pre-authorization to Waseel: " + ex.getMessage();
 
             updatePreAuthorizationFailure(preAuthorization, details);
+            linkItemsToFailedRequest(pendingItems, preAuthorization);
             saveTrackFailure(preAuthorization, "SUBMIT", requestJson, details);
 
             throw new BadRequestAlertException(
@@ -530,6 +532,22 @@ public class PreAuthorizationSubmissionService {
         preAuthorization.setStatus("FAILED");
         preAuthorization.setMessage(message);
         preAuthorizationRequestRepository.saveAndFlush(preAuthorization);
+    }
+
+    private void linkItemsToFailedRequest(
+            List<PatientServiceAndProduct> pendingItems,
+            PreAuthorizationRequest preAuthorization
+    ) {
+        if (pendingItems == null || pendingItems.isEmpty() || preAuthorization == null) {
+            return;
+        }
+
+        for (PatientServiceAndProduct item : pendingItems) {
+            item.setPreAuthorizationRequestId(preAuthorization.getId());
+            item.setPreAuthorizationStatus(PreAuthorizationStatus.PENDING_APPROVAL);
+        }
+
+        patientServiceAndProductRepository.saveAll(pendingItems);
     }
 
     private void saveTrack(

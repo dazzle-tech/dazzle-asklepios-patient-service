@@ -748,10 +748,22 @@ public class BillingChargeService {
             );
         }
 
+        BigDecimal grossAmount =
+                defaultZero(item.getGrossAmount()).signum() > 0
+                        ? defaultZero(item.getGrossAmount())
+                        : normalizedQuantity
+                                .multiply(normalizedUnitPrice)
+                                .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        BigDecimal discountAmount = defaultZero(item.getDiscountAmount());
+        BigDecimal taxAmount = defaultZero(item.getTaxAmount());
         BigDecimal netAmount =
-                normalizedQuantity
-                        .multiply(normalizedUnitPrice)
-                        .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+                defaultZero(item.getNetAmount()).signum() > 0
+                        ? defaultZero(item.getNetAmount())
+                        : grossAmount
+                                .subtract(discountAmount)
+                                .add(taxAmount)
+                                .max(BigDecimal.ZERO)
+                                .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
 
         if (netAmount.signum() <= 0) {
             throw new BadRequestAlertException(
@@ -814,10 +826,10 @@ public class BillingChargeService {
                         .sourceId(resolveSourceId(item))
                         .quantity(normalizedQuantity)
                         .unitPrice(normalizedUnitPrice)
-                        .grossAmount(netAmount)
-                        .discountAmount(BigDecimal.ZERO)
+                        .grossAmount(grossAmount)
+                        .discountAmount(discountAmount)
                         .exemptionAmount(BigDecimal.ZERO)
-                        .taxAmount(BigDecimal.ZERO)
+                        .taxAmount(taxAmount)
                         .netAmount(netAmount)
                         .patientResponsibilityAmount(
                                 defaultZero(patientShareAmount)
@@ -831,6 +843,7 @@ public class BillingChargeService {
                         .reservedAmount(BigDecimal.ZERO)
                         .currency(item.getCurrency())
                         .status(BillingChargeLineStatus.OPEN)
+                        .patientInsurance(resolveDebitNotePatientInsurance(item, encounter))
 
                         .preAuthorizationRequired(
                                 Boolean.TRUE.equals(
@@ -870,7 +883,9 @@ public class BillingChargeService {
         );
 
         item.setUnitPrice(normalizedUnitPrice);
-        item.setGrossAmount(netAmount);
+        item.setGrossAmount(grossAmount);
+        item.setDiscountAmount(discountAmount);
+        item.setTaxAmount(taxAmount);
         item.setNetAmount(netAmount);
         item.setTotalAmount(netAmount);
         item.setPatientShareAmount(defaultZero(patientShareAmount));
@@ -1061,6 +1076,13 @@ public class BillingChargeService {
 
         BillingChargeLine chargeLine = resolveDebitNoteChargeLine(debitNoteItem);
         if (chargeLine == null) {
+            return;
+        }
+
+        if (debitNoteItem.getAdjustmentAction()
+                        == FinancialDocumentItemAdjustmentAction.ADD
+                || debitNoteItem.getAdjustmentAction()
+                        == FinancialDocumentItemAdjustmentAction.ADD_NEW) {
             return;
         }
 
@@ -1270,7 +1292,24 @@ public class BillingChargeService {
                         patientResponsibility
                 );
 
+        BigDecimal allocatedOnLine =
+                defaultZero(chargeLine.getAllocatedAmount());
+        BigDecimal reservedOnLine =
+                defaultZero(chargeLine.getReservedAmount());
+        BigDecimal unpaidPatient =
+                patientResponsibility
+                        .subtract(allocatedOnLine)
+                        .subtract(reservedOnLine)
+                        .max(BigDecimal.ZERO);
+
+        chargeCredit = chargeCredit.min(unpaidPatient);
+
         if (chargeCredit.signum() <= 0) {
+            LOG.info(
+                    "[CREDIT_NOTE] Skipping charge-line amount sync lineId={} "
+                            + "because patient share is already allocated/reserved",
+                    chargeLineId
+            );
             return;
         }
 
@@ -1390,6 +1429,8 @@ public class BillingChargeService {
                         .subtract(currentReserved)
                         .max(BigDecimal.ZERO)
         );
+
+        ensureReservedAllocatedWithinPatientExposure(chargeLine);
 
         if (chargeLine.getNetAmount().signum() == 0) {
             chargeLine.setPatientResponsibilityAmount(BigDecimal.ZERO);
@@ -1670,6 +1711,64 @@ public class BillingChargeService {
                         RoundingMode.HALF_UP
                 )
                 .min(patientResponsibility);
+    }
+
+    /**
+     * Keeps {@code reserved + allocated <= patient_responsibility} without
+     * reducing already-collected cash allocations.
+     */
+    private void ensureReservedAllocatedWithinPatientExposure(
+            BillingChargeLine chargeLine
+    ) {
+        BigDecimal allocated =
+                defaultZero(chargeLine.getAllocatedAmount());
+        BigDecimal reserved =
+                defaultZero(chargeLine.getReservedAmount());
+        BigDecimal patientFloor = allocated.add(reserved);
+        BigDecimal patient =
+                defaultZero(chargeLine.getPatientResponsibilityAmount());
+
+        if (patientFloor.compareTo(patient) <= 0) {
+            return;
+        }
+
+        chargeLine.setPatientResponsibilityAmount(patientFloor);
+
+        BigDecimal insurance =
+                defaultZero(chargeLine.getInsuranceResponsibilityAmount());
+        BigDecimal other =
+                defaultZero(chargeLine.getOtherPayerResponsibilityAmount());
+        BigDecimal requiredNet =
+                patientFloor.add(insurance).add(other);
+        BigDecimal gross = defaultZero(chargeLine.getGrossAmount());
+        BigDecimal tax = defaultZero(chargeLine.getTaxAmount());
+        BigDecimal exemption = defaultZero(chargeLine.getExemptionAmount());
+
+        chargeLine.setDiscountAmount(
+                gross.subtract(exemption)
+                        .add(tax)
+                        .subtract(requiredNet)
+                        .max(BigDecimal.ZERO)
+        );
+        chargeLine.setNetAmount(requiredNet);
+    }
+
+    private PatientInsurance resolveDebitNotePatientInsurance(
+            PatientServiceAndProduct item,
+            PatientEncounter encounter
+    ) {
+        PatientInsurance insurance = loadPatientInsurance(item);
+        if (insurance != null) {
+            return insurance;
+        }
+
+        if (encounter == null || encounter.getPatientInsuranceId() == null) {
+            return null;
+        }
+
+        return patientInsuranceRepository
+                .findById(encounter.getPatientInsuranceId())
+                .orElse(null);
     }
 
     private void createPendingDebitNoteResponsibility(

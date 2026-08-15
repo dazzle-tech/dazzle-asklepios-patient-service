@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,6 +27,7 @@ public class WaseelCoverageExtractionService {
 
     private final ObjectMapper objectMapper;
     private final InsuranceBenefitRuleMatcher benefitRuleMatcher;
+    private final EligibilityCoverageMatcher coverageMatcher;
 
     public InsuranceCoverage extractCoverage(
             String responseJson
@@ -42,6 +44,14 @@ public class WaseelCoverageExtractionService {
     }
 
     public List<InsuranceBenefitRule> extractBenefitRules(String responseJson) {
+        return extractBenefitRules(responseJson, null, null);
+    }
+
+    public List<InsuranceBenefitRule> extractBenefitRules(
+            String responseJson,
+            String memberCardId,
+            String policyNumber
+    ) {
         try {
             EligibilityResponse response =
                     objectMapper.readValue(
@@ -53,7 +63,22 @@ public class WaseelCoverageExtractionService {
                 return List.of();
             }
 
-            return extractBenefitRules(response.coverages().get(0));
+            EligibilityCoverageDTO coverage =
+                    coverageMatcher.findMatchingCoverage(
+                            response.coverages(),
+                            memberCardId,
+                            policyNumber
+                    );
+
+            if (coverage == null && memberCardId == null && policyNumber == null) {
+                coverage = response.coverages().get(0);
+            }
+
+            if (coverage == null) {
+                return List.of();
+            }
+
+            return extractBenefitRules(coverage);
         } catch (Exception exception) {
             throw new IllegalStateException(
                     "Failed to extract benefit rules from Waseel response",
@@ -94,8 +119,8 @@ public class WaseelCoverageExtractionService {
                     String itemName =
                             firstNonBlank(
                                     item,
-                                    "name",
                                     "description",
+                                    "name",
                                     "productOrServiceDisplay",
                                     "display"
                             );
@@ -114,6 +139,7 @@ public class WaseelCoverageExtractionService {
                                     ruleKey,
                                     ignored -> new CategoryRuleBuilder(categoryKey, itemName, itemCode)
                             );
+                    builder.applyItemContext(item);
 
                     Object benefitsObject = item.get("benefits");
                     if (!(benefitsObject instanceof List<?> benefitList)) {
@@ -292,6 +318,37 @@ public class WaseelCoverageExtractionService {
             parseContextFromItemName(itemName);
         }
 
+        private void applyItemContext(Map<String, Object> item) {
+            if (item == null) {
+                return;
+            }
+
+            Object networkObject = item.get("network");
+            String network = networkObject == null ? null : networkObject.toString();
+            applyNetwork(network);
+
+            String description = item.get("description") == null
+                    ? null
+                    : item.get("description").toString();
+            if (description != null && !description.isBlank()) {
+                parseContextFromItemName(description);
+            }
+        }
+
+        private void applyNetwork(String network) {
+            if (network == null || network.isBlank()) {
+                return;
+            }
+
+            String normalized = network.trim().toLowerCase(Locale.ROOT);
+            if (normalized.contains("out of") || normalized.contains("out-of")) {
+                networkType = "OUT_OF_NETWORK";
+            } else if (normalized.contains("in network") || normalized.equals("in")
+                    || normalized.startsWith("in ")) {
+                networkType = "IN_NETWORK";
+            }
+        }
+
         private void parseContextFromItemName(String name) {
             String normalized = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
 
@@ -307,7 +364,8 @@ public class WaseelCoverageExtractionService {
                 providerType = "OUTPATIENT";
             } else if (normalized.contains("inpatient")) {
                 providerType = "INPATIENT";
-            } else if (normalized.contains("other healthcare")) {
+            } else if (normalized.contains("other healthcare")
+                    || normalized.contains("other health care")) {
                 providerType = "OTHER_HEALTHCARE_PROVIDER";
             }
         }
@@ -336,6 +394,14 @@ public class WaseelCoverageExtractionService {
     public WaseelCoverageDetails extractCoverageDetails(
             String responseJson
     ) {
+        return extractCoverageDetails(responseJson, null, null);
+    }
+
+    public WaseelCoverageDetails extractCoverageDetails(
+            String responseJson,
+            String memberCardId,
+            String policyNumber
+    ) {
         try {
             EligibilityResponse response =
                     objectMapper.readValue(
@@ -353,7 +419,7 @@ public class WaseelCoverageExtractionService {
                     new ArrayList<>();
 
             String memberId = null;
-            String policyNumber = null;
+            String resolvedPolicyNumber = null;
             String policyHolder = null;
             String network = null;
             String inforce = null;
@@ -371,12 +437,28 @@ public class WaseelCoverageExtractionService {
             }
 
             EligibilityCoverageDTO coverage =
-                    response.coverages().get(0);
+                    coverageMatcher.findMatchingCoverage(
+                            response.coverages(),
+                            memberCardId,
+                            policyNumber
+                    );
+
+            if (coverage == null && memberCardId == null && policyNumber == null) {
+                coverage = response.coverages().get(0);
+            }
+
+            if (coverage == null) {
+                return emptyDetails(
+                        copaymentPercent,
+                        copaymentCap,
+                        benefits
+                );
+            }
 
             memberId =
                     coverage.memberId();
 
-            policyNumber =
+            resolvedPolicyNumber =
                     coverage.policyNumber();
 
             policyHolder =
@@ -441,7 +523,7 @@ public class WaseelCoverageExtractionService {
                             ),
                     null,
                     memberId,
-                    policyNumber,
+                    resolvedPolicyNumber,
                     policyHolder,
                     network,
                     inforce,
@@ -452,7 +534,15 @@ public class WaseelCoverageExtractionService {
                     List.copyOf(
                             benefits
                     ),
-                    extractBenefitRules(coverage)
+                    extractBenefitRules(coverage),
+                    resolveClassName(coverage, "plan"),
+                    parseCoverageDate(coverage.benefitEndDate()),
+                    null,
+                    coverage.type(),
+                    coverage.relationship(),
+                    resolveClassValue(coverage, "plan"),
+                    resolveClassName(coverage, "group"),
+                    resolveClassValue(coverage, "group")
             );
 
         } catch (
@@ -489,7 +579,15 @@ public class WaseelCoverageExtractionService {
                 copaymentCap,
                 null,
                 benefits,
-                List.of()
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
         );
     }
 
@@ -794,5 +892,51 @@ public class WaseelCoverageExtractionService {
         return value == null
                 ? null
                 : value.toString().trim();
+    }
+
+    private String resolveClassName(EligibilityCoverageDTO coverage, String classType) {
+        if (coverage == null || coverage.classList() == null || classType == null) {
+            return null;
+        }
+
+        for (EligibilityClassDTO classItem : coverage.classList()) {
+            if (classItem != null
+                    && classType.equalsIgnoreCase(clean(classItem.classType()))) {
+                return clean(classItem.className());
+            }
+        }
+
+        return null;
+    }
+
+    private String resolveClassValue(EligibilityCoverageDTO coverage, String classType) {
+        if (coverage == null || coverage.classList() == null || classType == null) {
+            return null;
+        }
+
+        for (EligibilityClassDTO classItem : coverage.classList()) {
+            if (classItem != null
+                    && classType.equalsIgnoreCase(clean(classItem.classType()))) {
+                return clean(classItem.classValue());
+            }
+        }
+
+        return null;
+    }
+
+    private LocalDate parseCoverageDate(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        try {
+            String date = value.trim();
+            if (date.length() >= 10) {
+                return LocalDate.parse(date.substring(0, 10));
+            }
+            return LocalDate.parse(date);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 }

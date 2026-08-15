@@ -76,6 +76,7 @@ public class DefaultServicePreparationService {
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
     private final EncounterCoverageService encounterCoverageService;
     private final EncounterTreatmentAdvanceService encounterTreatmentAdvanceService;
+    private final PatientItemPricingApplicationService patientItemPricingApplicationService;
 
     /**
      * Creates/reuses selected default-service PSP records and sends each one
@@ -449,6 +450,7 @@ public class DefaultServicePreparationService {
         );
 
         PatientServiceAndProduct item = itemBuilder.build();
+        patientItemPricingApplicationService.applyToItem(item, encounter.getFacilityId());
 
         return patientServiceAndProductRepository.saveAndFlush(item);
     }

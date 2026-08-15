@@ -22,9 +22,13 @@ import com.dazzle.asklepios.repository.FinancialDocumentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.service.dto.InsuranceSplit;
+import com.dazzle.asklepios.service.dto.billing.BillingPricingInput;
+import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
 import com.dazzle.asklepios.service.dto.billing.InvoiceItemPricingAdjustmentSnapshot;
 import com.dazzle.asklepios.service.dto.billing.PreviewCatalogItemPricingRequest;
 import com.dazzle.asklepios.service.dto.billing.PreviewCatalogItemPricingResult;
+import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
 import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
@@ -59,6 +63,9 @@ public class CatalogItemPricingPreviewService {
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientInsuranceRepository patientInsuranceRepository;
     private final BillingEngineService billingEngineService;
+    private final BillingPricingInputFactory billingPricingInputFactory;
+    private final BillingPricingService billingPricingService;
+    private final InsurancePatientShareCalculator insurancePatientShareCalculator;
     private final InvoiceApplicableOnAdjustmentService invoiceApplicableOnAdjustmentService;
     private final FinancialDocumentRepository financialDocumentRepository;
     private final FinancialDocumentItemRepository financialDocumentItemRepository;
@@ -77,15 +84,12 @@ public class CatalogItemPricingPreviewService {
                 request,
                 patient
         );
+        PatientInsurance insurance = resolveInsurance(request, encounter);
+
         BillingCoverageType coverageType =
-                request.coverageType() == null
+                insurance == null
                         ? BillingCoverageType.SELF_PAY
-                        : request.coverageType();
-        PatientInsurance insurance =
-                resolveInsurance(
-                        request,
-                        coverageType
-                );
+                        : BillingCoverageType.INSURANCE;
 
         PatientServiceAndProduct previewItem =
                 buildPreviewItem(
@@ -101,16 +105,24 @@ public class CatalogItemPricingPreviewService {
                         request.facilityId()
                 );
 
+        BillingPricingInput pricingInput =
+                billingPricingInputFactory.create(
+                        previewItem,
+                        resolvedPrice
+                );
+        BillingProcessingContext pricingContext =
+                BillingProcessingContext.builder()
+                        .patientServiceProduct(previewItem)
+                        .pricingInput(pricingInput)
+                        .build();
+        billingPricingService.calculate(pricingContext);
+        PriceCalculationResult pricing = pricingContext.getPricingResult();
+
         long quantity = defaultQuantity(request.quantity());
-        BigDecimal unitPrice = money(resolvedPrice.unitPrice());
-        BigDecimal itemGross =
-                unitPrice
-                        .multiply(BigDecimal.valueOf(quantity))
-                        .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-        BigDecimal itemDiscount =
-                BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-        BigDecimal itemTax =
-                BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        BigDecimal unitPrice = money(pricing.unitPrice());
+        BigDecimal itemGross = money(pricing.grossAmount());
+        BigDecimal itemDiscount = money(pricing.discountAmount());
+        BigDecimal itemTax = money(pricing.taxAmount());
 
         FinancialDocumentItem draftItem =
                 buildDraftPreviewItem(
@@ -119,6 +131,11 @@ public class CatalogItemPricingPreviewService {
                         unitPrice,
                         itemGross
                 );
+        draftItem.setDiscountAmount(itemDiscount);
+        draftItem.setTaxAmount(itemTax);
+        draftItem.setNetAmount(money(pricing.netAmount()));
+        draftItem.setPatientShareAmount(draftItem.getNetAmount());
+        draftItem.setRemainingAmount(draftItem.getNetAmount());
 
         applyInvoiceScopeAdjustments(
                 draftItem,
@@ -148,18 +165,31 @@ public class CatalogItemPricingPreviewService {
                         .pricingResponse()
                         .priceListItemCode();
 
+        BigDecimal patientShareAmount = finalNet;
+        BigDecimal insuranceShareAmount = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        if (insurance != null && !Boolean.TRUE.equals(previewItem.getIsExempted())) {
+            InsuranceSplit split =
+                    insurancePatientShareCalculator.calculateSplit(
+                            insurance,
+                            previewItem,
+                            finalNet
+                    );
+            patientShareAmount = money(split.patientShare());
+            insuranceShareAmount = money(split.insuranceShare());
+        }
+
         LOG.info(
                 "[PREVIEW_CATALOG_PRICING] encounterId={} invoiceId={} itemType={} "
-                        + "gross={} itemDisc={} itemTax={} invDisc={} invTax={} net={}",
+                        + "source={} gross={} itemDisc={} net={} patientShare={} insuranceShare={}",
                 request.encounterId(),
                 request.invoiceId(),
                 request.billingItemType(),
+                resolvedPrice.priceSource(),
                 itemGross,
                 itemDiscount,
-                itemTax,
-                invoiceDiscount,
-                invoiceTax,
-                finalNet
+                finalNet,
+                patientShareAmount,
+                insuranceShareAmount
         );
 
         return new PreviewCatalogItemPricingResult(
@@ -180,7 +210,9 @@ public class CatalogItemPricingPreviewService {
                 itemDiscount,
                 itemTax,
                 invoiceDiscount,
-                invoiceTax
+                invoiceTax,
+                patientShareAmount,
+                insuranceShareAmount
         );
     }
 
@@ -806,40 +838,25 @@ public class CatalogItemPricingPreviewService {
 
     private PatientInsurance resolveInsurance(
             PreviewCatalogItemPricingRequest request,
-            BillingCoverageType coverageType
+            PatientEncounter encounter
     ) {
-        if (coverageType == BillingCoverageType.SELF_PAY) {
-            if (request.patientInsuranceId() != null) {
-                throw new BadRequestAlertException(
-                        "Patient insurance must be null for self-pay coverage.",
-                        ENTITY_NAME,
-                        "patientInsurance.mustBeNull"
-                );
-            }
+        Long insuranceId =
+                request.patientInsuranceId() != null
+                        ? request.patientInsuranceId()
+                        : encounter.getPatientInsuranceId();
 
+        if (insuranceId == null) {
             return null;
         }
 
-        if (request.patientInsuranceId() == null) {
-            throw new BadRequestAlertException(
-                    "Patient insurance is required for insurance coverage.",
-                    ENTITY_NAME,
-                    "patientInsurance.required"
-            );
-        }
-
         return patientInsuranceRepository
-                .findByIdAndPatient_IdAndExpirationDateGreaterThanEqual(
-                        request.patientInsuranceId(),
-                        request.patientId(),
-                        LocalDate.now()
+                .findById(insuranceId)
+                .filter(insurance ->
+                        insurance.getPatient() != null
+                                && request.patientId().equals(
+                                        insurance.getPatient().getId()
+                                )
                 )
-                .orElseThrow(() ->
-                        new BadRequestAlertException(
-                                "A valid, non-expired insurance record was not found for this patient.",
-                                ENTITY_NAME,
-                                "patientInsurance.invalid"
-                        )
-                );
+                .orElse(null);
     }
 }

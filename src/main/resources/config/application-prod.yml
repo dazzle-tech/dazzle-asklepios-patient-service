@@ -5,10 +5,10 @@ logging:
 
 waseel:
   api:
-    base-url: ${WASEEL_API_BASE_URL}
-    username: ${WASEEL_USERNAME}
-    password: ${WASEEL_PASSWORD}
-    provider-id: ${WASEEL_PROVIDER_ID}
+    base-url: ${WASEEL_API_BASE_URL:https://api.eclaims.waseel.com}
+    username: ${WASEEL_USERNAME:oh621.admin}
+    password: ${WASEEL_PASSWORD:Onehealth@2026}
+    provider-id: ${WASEEL_PROVIDER_ID:104834}
     nphies-id: ${WASEEL_NPHIES_ID}
     system-type: ${WASEEL_SYSTEM_TYPE:1}
     timeout-seconds: 90

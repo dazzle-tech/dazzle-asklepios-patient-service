@@ -61,6 +61,7 @@ public class PatientProcedureService {
     private final BillingChargeService billingChargeService;
     private final BillingEngineService billingEngineService;
     private final PatientServiceAndProductService patientServiceAndProductService;
+    private final PatientItemPricingApplicationService patientItemPricingApplicationService;
 
     public PatientProcedureService(
             PatientProcedureRepository procedureRepository,
@@ -74,7 +75,8 @@ public class PatientProcedureService {
             EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService,
             BillingChargeService billingChargeService,
             @Lazy BillingEngineService billingEngineService,
-            @Lazy PatientServiceAndProductService patientServiceAndProductService
+            @Lazy PatientServiceAndProductService patientServiceAndProductService,
+            PatientItemPricingApplicationService patientItemPricingApplicationService
     ) {
         this.procedureRepository = procedureRepository;
         this.patientRepository = patientRepository;
@@ -86,6 +88,7 @@ public class PatientProcedureService {
         this.preAuthorizationResolutionService = preAuthorizationResolutionService;
         this.encounterPreAuthorizationSyncService = encounterPreAuthorizationSyncService;
         this.billingChargeService = billingChargeService;
+        this.patientItemPricingApplicationService = patientItemPricingApplicationService;
         this.billingEngineService = billingEngineService;
         this.patientServiceAndProductService = patientServiceAndProductService;
     }
@@ -488,18 +491,7 @@ public class PatientProcedureService {
             BillingCoverageType encounterCoverage
     ) {
         Long encounterId = encounter.getId();
-        BigDecimal unitPrice = setupProcedure.price();
         Long quantity = 1L;
-
-        BigDecimal discountAmount = BigDecimal.ZERO;
-        BigDecimal exemptionAmount = BigDecimal.ZERO;
-        BigDecimal taxAmount = BigDecimal.ZERO;
-
-        BigDecimal totalAmount = unitPrice
-                .multiply(BigDecimal.valueOf(quantity))
-                .subtract(discountAmount)
-                .subtract(exemptionAmount)
-                .add(taxAmount);
 
         PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
                 .patientId(patientId)
@@ -512,11 +504,11 @@ public class PatientProcedureService {
                 .serviceSource(ServiceSource.PROCEDURE)
                 .sourceId(sourceId)
                 .quantity(quantity)
-                .unitPrice(unitPrice)
-                .discountAmount(discountAmount)
-                .exemptionAmount(exemptionAmount)
-                .taxAmount(taxAmount)
-                .totalAmount(totalAmount)
+                .unitPrice(BigDecimal.ZERO)
+                .discountAmount(BigDecimal.ZERO)
+                .exemptionAmount(BigDecimal.ZERO)
+                .taxAmount(BigDecimal.ZERO)
+                .totalAmount(BigDecimal.ZERO)
                 .currency(setupProcedure.currency())
                 .isBilled(Boolean.FALSE)
                 .billingInvoiceId(null)
@@ -528,7 +520,9 @@ public class PatientProcedureService {
                     .preAuthorizationStatus(PreAuthorizationStatus.NOT_REQUIRED)
                     .preAuthorizationRequired(false)
                     .paymentStatus(PaymentStatus.PENDING);
-            return builder.build();
+            PatientServiceAndProduct selfPayItem = builder.build();
+            patientItemPricingApplicationService.applyToItem(selfPayItem, encounter.getFacilityId());
+            return selfPayItem;
         }
 
         LOG.info(
@@ -554,7 +548,9 @@ public class PatientProcedureService {
                 setupProcedure.id()
         );
 
-        return builder.build();
+        PatientServiceAndProduct billingItem = builder.build();
+        patientItemPricingApplicationService.applyToItem(billingItem, encounter.getFacilityId());
+        return billingItem;
     }
 
     /**

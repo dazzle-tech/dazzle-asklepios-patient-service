@@ -10,12 +10,10 @@ import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
-import com.dazzle.asklepios.domain.enumeration.PriceSource;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCancellationReason;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerSourceChannel;
-import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.CancelReason;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
@@ -30,7 +28,6 @@ import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
 import com.dazzle.asklepios.service.dto.billing.BillingRuleEvaluationRequest;
-import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductUpdateDTO;
 import com.dazzle.asklepios.service.helper.BrandMedicationHelper;
@@ -79,6 +76,7 @@ public class PatientServiceAndProductService {
     private final BillingEngineService billingEngineService;
     private final BillingChargeService billingChargeService;
     private final PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository;
+    private final PatientItemPricingApplicationService patientItemPricingApplicationService;
 
     public PatientServiceAndProductService(
             PatientServiceAndProductRepository patientServiceAndProductRepository,
@@ -95,7 +93,8 @@ public class PatientServiceAndProductService {
             BillingRuleEvaluationService billingRuleEvaluationService,
             @Lazy BillingEngineService billingEngineService,
             @Lazy BillingChargeService billingChargeService,
-            PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository
+            PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository,
+            PatientItemPricingApplicationService patientItemPricingApplicationService
     ) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.patientRepository = patientRepository;
@@ -112,6 +111,7 @@ public class PatientServiceAndProductService {
         this.billingEngineService = billingEngineService;
         this.billingChargeService = billingChargeService;
         this.patientPrescriptionMedicationRepository = patientPrescriptionMedicationRepository;
+        this.patientItemPricingApplicationService = patientItemPricingApplicationService;
     }
 
     public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
@@ -679,52 +679,7 @@ public class PatientServiceAndProductService {
             PatientEncounter encounter,
             long quantity
     ) {
-        Long facilityId = encounter.getFacilityId();
-        if (facilityId == null) {
-            throw new BadRequestAlertException(
-                    "Encounter facility is required to resolve item pricing.",
-                    "patientServicesAndProducts",
-                    "encounter.facility.required"
-            );
-        }
-
-        if (item.getCurrency() == null) {
-            throw new BadRequestAlertException(
-                    "Currency is required to resolve item pricing.",
-                    "patientServicesAndProducts",
-                    "currency.required"
-            );
-        }
-
-        ResolvedBillingPrice resolvedPrice =
-                billingEngineService.resolvePricing(item, facilityId);
-
-        BigDecimal unitPrice = resolvedPrice.unitPrice();
-        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
-
-        item.setUnitPrice(unitPrice);
-        item.setCurrency(resolvedPrice.currency());
-        item.setTotalAmount(totalAmount);
-        item.setGrossAmount(totalAmount);
-        item.setNetAmount(totalAmount);
-        item.setRemainingAmount(totalAmount);
-        item.setPriceSource(mapPriceSource(resolvedPrice.priceSource()));
-
-        LOG.info(
-                "[PSP_PRICING] Resolved unitPrice={} currency={} priceSource={} billingItemType={}",
-                unitPrice,
-                resolvedPrice.currency(),
-                resolvedPrice.priceSource(),
-                item.getBillingItemType()
-        );
-    }
-
-    private PriceSource mapPriceSource(BillingPriceSource source) {
-        if (source == BillingPriceSource.PRICE_LIST) {
-            return PriceSource.PRICE_LIST;
-        }
-
-        return PriceSource.DEFAULT;
+        patientItemPricingApplicationService.applyToItem(item, encounter.getFacilityId());
     }
 
     private void validateReferences(PatientServiceProductCreateDTO dto) {
