@@ -27,6 +27,8 @@ public record EncounterInvoiceDetailsResponse(
 
         String coverageType,
 
+        Long patientInsuranceId,
+
         String eligibilityReference,
 
         BillingEligibilitySnapshotResponse eligibilitySnapshot,

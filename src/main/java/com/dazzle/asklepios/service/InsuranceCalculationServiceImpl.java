@@ -125,7 +125,7 @@ public class InsuranceCalculationServiceImpl implements InsuranceCalculationServ
         BigDecimal patientCopayCap = money(patientCopaymentMaximumPerService);
         if (insuranceMaximumBenefit.signum() > 0
                 && (patientCopayCap.signum() <= 0
-                        || insuranceMaximumBenefit.compareTo(patientCopayCap) != 0)) {
+                        || insuranceMaximumBenefit.compareTo(patientCopayCap) > 0)) {
             capped = capped.min(insuranceMaximumBenefit);
         }
 
@@ -135,7 +135,9 @@ public class InsuranceCalculationServiceImpl implements InsuranceCalculationServ
         }
 
         BigDecimal policyLimit = money(policyMaximumLimit);
-        if (policyLimit.signum() > 0) {
+        if (policyLimit.signum() > 0
+                && (patientCopayCap.signum() <= 0
+                        || policyLimit.compareTo(patientCopayCap) > 0)) {
             capped = capped.min(policyLimit);
         }
 

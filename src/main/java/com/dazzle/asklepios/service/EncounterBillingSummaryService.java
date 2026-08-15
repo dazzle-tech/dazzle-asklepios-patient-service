@@ -629,6 +629,13 @@ public class EncounterBillingSummaryService {
                         displayNameCache
                 );
 
+        BigDecimal storedPatientShare = money(item.getPatientShareAmount());
+        BigDecimal storedInsuranceShare = money(item.getInsuranceShareAmount());
+        boolean hasStoredSplit =
+                storedPatientShare.signum() > 0 || storedInsuranceShare.signum() > 0;
+        BigDecimal patientShare = hasStoredSplit ? storedPatientShare : netAmount;
+        BigDecimal insuranceShare = hasStoredSplit ? storedInsuranceShare : zero();
+
         return new EncounterBillingItemSummary(
                 item.getId(),
                 null,
@@ -650,12 +657,12 @@ public class EncounterBillingSummaryService {
                 money(item.getExemptionAmount()),
                 money(item.getTaxAmount()),
                 netAmount,
-                netAmount,
+                patientShare,
+                insuranceShare,
                 zero(),
                 zero(),
                 zero(),
-                zero(),
-                netAmount,
+                patientShare,
                 Boolean.TRUE.equals(
                         item.getIsExempted()
                 ),
