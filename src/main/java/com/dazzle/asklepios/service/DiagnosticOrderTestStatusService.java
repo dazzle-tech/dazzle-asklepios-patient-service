@@ -8,10 +8,8 @@ import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
-import com.dazzle.asklepios.domain.enumeration.PriceSource;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.TestType;
-import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
@@ -20,7 +18,6 @@ import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
-import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.patientarrived.PatientArrivedCreateRequestDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
@@ -58,6 +55,7 @@ public class DiagnosticOrderTestStatusService {
     private final BillingChargeService billingChargeService;
 
     private final PatientServiceAndProductService patientServiceAndProductService;
+    private final PatientItemPricingApplicationService patientItemPricingApplicationService;
 
     public DiagnosticOrderTestStatusService(
             DiagnosticOrderRepository diagnosticOrderRepository,
@@ -70,7 +68,8 @@ public class DiagnosticOrderTestStatusService {
             PatientEncounterRepository patientEncounterRepository,
             @Lazy BillingEngineService billingEngineService,
             @Lazy BillingChargeService billingChargeService,
-            @Lazy PatientServiceAndProductService patientServiceAndProductService
+            @Lazy PatientServiceAndProductService patientServiceAndProductService,
+            PatientItemPricingApplicationService patientItemPricingApplicationService
     ) {
         this.diagnosticOrderRepository = diagnosticOrderRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
@@ -83,6 +82,7 @@ public class DiagnosticOrderTestStatusService {
         this.billingEngineService = billingEngineService;
         this.billingChargeService = billingChargeService;
         this.patientServiceAndProductService = patientServiceAndProductService;
+        this.patientItemPricingApplicationService = patientItemPricingApplicationService;
     }
 
     public DiagnosticOrderTest collectSample(Long testId) {
@@ -497,43 +497,7 @@ public class DiagnosticOrderTestStatusService {
             );
         }
 
-        if (item.getCurrency() == null) {
-            throw new BadRequestAlertException(
-                    "Currency is required to resolve diagnostic item pricing.",
-                    "diagnostic_order_tests",
-                    "currency.required"
-            );
-        }
-
-        ResolvedBillingPrice resolvedPrice =
-                billingEngineService.resolvePricing(item, facilityId);
-
-        BigDecimal unitPrice = resolvedPrice.unitPrice();
-        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
-
-        item.setUnitPrice(unitPrice);
-        item.setCurrency(resolvedPrice.currency());
-        item.setTotalAmount(totalAmount);
-        item.setGrossAmount(totalAmount);
-        item.setNetAmount(totalAmount);
-        item.setRemainingAmount(totalAmount);
-        item.setPriceSource(mapDiagnosticPriceSource(resolvedPrice.priceSource()));
-
-        LOG.info(
-                "[DIAG_PSP_PRICING] Resolved unitPrice={} currency={} priceSource={} diagnosticTestId={}",
-                unitPrice,
-                resolvedPrice.currency(),
-                resolvedPrice.priceSource(),
-                item.getDiagnosticTestId()
-        );
-    }
-
-    private PriceSource mapDiagnosticPriceSource(BillingPriceSource source) {
-        if (source == BillingPriceSource.PRICE_LIST) {
-            return PriceSource.PRICE_LIST;
-        }
-
-        return PriceSource.DEFAULT;
+        patientItemPricingApplicationService.applyResolvedPricing(item, facilityId, quantity);
     }
 
     private PatientServiceAndProduct findOrCreateDiagnosticBillingItem(

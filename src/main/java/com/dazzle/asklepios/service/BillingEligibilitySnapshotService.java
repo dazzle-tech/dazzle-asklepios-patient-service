@@ -2,11 +2,13 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.BillingEligibilitySnapshot;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
 import com.dazzle.asklepios.integration.waseel.dto.WaseelCoverageDetails;
 import com.dazzle.asklepios.integration.waseel.service.WaseelCoverageExtractionService;
 import com.dazzle.asklepios.repository.BillingEligibilitySnapshotRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.BillingEligibilitySnapshotResponse;
@@ -31,6 +33,7 @@ public class BillingEligibilitySnapshotService {
 
     private final BillingEligibilitySnapshotRepository snapshotRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final PatientInsuranceRepository patientInsuranceRepository;
     private final WaseelEligibilityRequestRepository waseelEligibilityRequestRepository;
     private final WaseelCoverageExtractionService coverageExtractionService;
     private final ObjectMapper objectMapper;
@@ -163,10 +166,56 @@ public class BillingEligibilitySnapshotService {
             );
         }
 
+        PatientInsurance patientInsurance = null;
+        if (eligibility.getPatientInsuranceId() != null) {
+            patientInsurance =
+                    patientInsuranceRepository
+                            .findByIdAndPatient_Id(
+                                    eligibility.getPatientInsuranceId(),
+                                    encounter.getPatient().getId()
+                            )
+                            .orElse(null);
+        }
+
         WaseelCoverageDetails coverage =
                 coverageExtractionService.extractCoverageDetails(
-                        eligibility.getResponseJson()
+                        eligibility.getResponseJson(),
+                        patientInsurance == null
+                                ? null
+                                : patientInsurance.getMemberCardId(),
+                        patientInsurance == null
+                                ? null
+                                : patientInsurance.getPolicyNumber()
                 );
+
+        java.math.BigDecimal copaymentPercent = coverage.copaymentPercent();
+        java.math.BigDecimal copaymentCap = coverage.copaymentCap();
+
+        if (patientInsurance != null) {
+            if (patientInsurance.getPatientShare() != null) {
+                copaymentPercent = patientInsurance.getPatientShare();
+            }
+            if (patientInsurance.getMaxLimit() != null) {
+                copaymentCap = patientInsurance.getMaxLimit();
+            }
+        }
+
+        String memberId = firstNonBlank(
+                patientInsurance == null ? null : patientInsurance.getMemberCardId(),
+                coverage.memberId()
+        );
+        String policyNumber = firstNonBlank(
+                patientInsurance == null ? null : patientInsurance.getPolicyNumber(),
+                coverage.policyNumber()
+        );
+        String policyHolder = firstNonBlank(
+                patientInsurance == null ? null : patientInsurance.getPolicyHolderName(),
+                coverage.policyHolder()
+        );
+        String network = firstNonBlank(
+                patientInsurance == null ? null : patientInsurance.getNetworkId(),
+                coverage.network()
+        );
 
         String frozenBy =
                 SecurityUtils.getCurrentUserLogin()
@@ -185,14 +234,14 @@ public class BillingEligibilitySnapshotService {
                                 coverage.eligibilityResponseId()
                         )
                 )
-                .memberId(coverage.memberId())
-                .policyNumber(coverage.policyNumber())
-                .policyHolder(coverage.policyHolder())
-                .network(coverage.network())
+                .memberId(memberId)
+                .policyNumber(policyNumber)
+                .policyHolder(policyHolder)
+                .network(network)
                 .coverageStatus(coverage.coverageStatus())
                 .inforce(coverage.inforce())
-                .copaymentPercent(coverage.copaymentPercent())
-                .copaymentCap(coverage.copaymentCap())
+                .copaymentPercent(copaymentPercent)
+                .copaymentCap(copaymentCap)
                 .coverageJson(writeJson(coverage))
                 .responseJson(eligibility.getResponseJson())
                 .frozenAt(frozenAt)

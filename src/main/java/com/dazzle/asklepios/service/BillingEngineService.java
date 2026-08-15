@@ -9,6 +9,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingTrigger;
 import com.dazzle.asklepios.domain.enumeration.billing.DiscountApplicableOn;
 import com.dazzle.asklepios.domain.enumeration.billing.TaxApplicableOn;
+import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
@@ -77,6 +78,8 @@ public class BillingEngineService {
             billingPricingInputFactory;
 
     private final EncounterCoverageService encounterCoverageService;
+
+    private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
 
     /*
      * All local financial transactions are orchestrated
@@ -216,10 +219,11 @@ public class BillingEngineService {
                 && payerId == null) {
             LOG.warn(
                     "[PROCESS] Insurance item missing payer — "
-                            + "pricing will fall back to default setup. "
-                            + "pspId={} encounterId={}",
+                            + "pricing will fall back to setup catalog price. "
+                            + "pspId={} encounterId={} patientInsuranceId={}",
                     item.getId(),
-                    item.getEncounterId()
+                    item.getEncounterId(),
+                    resolvePatientInsuranceId(item)
             );
         }
 
@@ -1124,10 +1128,17 @@ public class BillingEngineService {
             return null;
         }
 
-        return patientEncounterRepository
+        Long encounterInsuranceId = patientEncounterRepository
                 .findById(item.getEncounterId())
                 .map(PatientEncounter::getPatientInsuranceId)
                 .orElse(null);
+
+        if (encounterInsuranceId != null) {
+            return encounterInsuranceId;
+        }
+
+        return encounterInsuranceEligibilityService
+                .resolveEncounterPatientInsuranceId(item.getEncounterId());
     }
 
     private BillingCoverageType resolveCoverageType(

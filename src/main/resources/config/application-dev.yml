@@ -25,6 +25,10 @@ waseel:
     nphies-id: ${WASEEL_NPHIES_ID:10000000003170}
     system-type: ${WASEEL_SYSTEM_TYPE:1}
     timeout-seconds: 90
+    # Enable in-memory Waseel pre-authorization mock (submit/search/cancel bypass real Waseel HTTP).
+    mock-enabled: ${WASEEL_MOCK_ENABLED:true}
+    # APPROVED | PARTIAL | REJECTED | ROTATE (cycles approved -> partial -> rejected per submit)
+    mock-scenario: ${WASEEL_MOCK_SCENARIO:APPROVED}
 
 application:
   asklepios-application-url: http://localhost:3100//#

@@ -1,7 +1,9 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
+import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
 import com.dazzle.asklepios.integration.waseel.dto.WaseelCoverageDetails;
+import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
 import com.dazzle.asklepios.service.InsuranceBenefitRuleMatcher;
 import com.dazzle.asklepios.service.InsuranceBenefitRuleService;
@@ -11,6 +13,9 @@ import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -25,6 +30,8 @@ public class WaseelCoverageQueryService {
 
     private final WaseelEligibilityRequestRepository
             eligibilityRequestRepository;
+
+    private final PatientInsuranceRepository patientInsuranceRepository;
 
     private final WaseelCoverageExtractionService
             coverageExtractionService;
@@ -62,20 +69,36 @@ public class WaseelCoverageQueryService {
             );
         }
 
+        PatientInsurance patientInsurance =
+                resolvePatientInsurance(
+                        patientId,
+                        eligibility.getPatientInsuranceId(),
+                        patientInsuranceId
+                );
+
+        String memberCardId = patientInsurance == null
+                ? null
+                : patientInsurance.getMemberCardId();
+        String policyNumber = patientInsurance == null
+                ? null
+                : patientInsurance.getPolicyNumber();
+
         WaseelCoverageDetails details =
                 coverageExtractionService
                         .extractCoverageDetails(
-                                eligibility.getResponseJson()
+                                eligibility.getResponseJson(),
+                                memberCardId,
+                                policyNumber
                         );
 
-        java.util.List<InsuranceBenefitRule> storedRules =
+        List<InsuranceBenefitRule> storedRules =
                 eligibility.getPatientInsuranceId() == null
-                        ? java.util.List.of()
+                        ? List.of()
                         : insuranceBenefitRuleService.getStoredRules(
                                 eligibility.getPatientInsuranceId()
                         );
 
-        java.util.List<InsuranceBenefitRule> benefitRules =
+        List<InsuranceBenefitRule> benefitRules =
                 storedRules.isEmpty()
                         ? details.benefitRules()
                         : storedRules;
@@ -86,8 +109,8 @@ public class WaseelCoverageQueryService {
                         true
                 );
 
-        java.math.BigDecimal copaymentPercent = details.copaymentPercent();
-        java.math.BigDecimal copaymentCap = details.copaymentCap();
+        BigDecimal copaymentPercent = details.copaymentPercent();
+        BigDecimal copaymentCap = details.copaymentCap();
 
         if (preferredRule != null) {
             if (preferredRule.patientCopaymentPercentage() != null) {
@@ -98,14 +121,40 @@ public class WaseelCoverageQueryService {
             }
         }
 
+        if (patientInsurance != null) {
+            if (patientInsurance.getPatientShare() != null) {
+                copaymentPercent = patientInsurance.getPatientShare();
+            }
+            if (patientInsurance.getMaxLimit() != null) {
+                copaymentCap = patientInsurance.getMaxLimit();
+            }
+        }
+
+        String memberId = firstNonBlank(
+                patientInsurance == null ? null : patientInsurance.getMemberCardId(),
+                details.memberId()
+        );
+        String resolvedPolicyNumber = firstNonBlank(
+                patientInsurance == null ? null : patientInsurance.getPolicyNumber(),
+                details.policyNumber()
+        );
+        String policyHolder = firstNonBlank(
+                patientInsurance == null ? null : patientInsurance.getPolicyHolderName(),
+                details.policyHolder()
+        );
+        String network = firstNonBlank(
+                patientInsurance == null ? null : patientInsurance.getNetworkId(),
+                details.network()
+        );
+
         return new WaseelCoverageDetails(
                 eligibility.getId(),
                 eligibility.getEligibilityResponseId(),
                 eligibility.getPatientInsuranceId(),
-                details.memberId(),
-                details.policyNumber(),
-                details.policyHolder(),
-                details.network(),
+                memberId,
+                resolvedPolicyNumber,
+                policyHolder,
+                network,
                 details.inforce(),
                 details.coverageStatus(),
                 copaymentPercent,
@@ -114,6 +163,24 @@ public class WaseelCoverageQueryService {
                 details.benefits(),
                 benefitRules
         );
+    }
+
+    private PatientInsurance resolvePatientInsurance(
+            Long patientId,
+            Long eligibilityPatientInsuranceId,
+            Long requestedPatientInsuranceId
+    ) {
+        Long insuranceId = requestedPatientInsuranceId != null
+                ? requestedPatientInsuranceId
+                : eligibilityPatientInsuranceId;
+
+        if (insuranceId == null) {
+            return null;
+        }
+
+        return patientInsuranceRepository
+                .findByIdAndPatient_Id(insuranceId, patientId)
+                .orElse(null);
     }
 
     private WaseelEligibilityRequest resolveEligibilityRequest(
@@ -155,5 +222,15 @@ public class WaseelCoverageQueryService {
                                 "eligibility.notfound"
                         )
                 );
+    }
+
+    private String firstNonBlank(String first, String second) {
+        if (first != null && !first.isBlank()) {
+            return first.trim();
+        }
+        if (second != null && !second.isBlank()) {
+            return second.trim();
+        }
+        return null;
     }
 }

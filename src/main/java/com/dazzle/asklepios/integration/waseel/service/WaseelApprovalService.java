@@ -4,6 +4,7 @@ import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalCancelRequest;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalResponse;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalRequest;
+import com.dazzle.asklepios.integration.waseel.mock.WaseelPreAuthorizationMockService;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -28,8 +29,14 @@ public class WaseelApprovalService {
     private final WaseelTokenService tokenService;
     private final WaseelApiProperties properties;
     private final ObjectMapper objectMapper;
+    private final WaseelPreAuthorizationMockService preAuthorizationMockService;
 
     public ApprovalResponse requestApproval(WaseelApprovalRequest request) {
+        if (preAuthorizationMockService.isEnabled()) {
+            log.info("[WASEEL_MOCK] Bypassing real approval submit HTTP call");
+            return preAuthorizationMockService.submitApproval(request);
+        }
+
         String token = tokenService.getToken();
 
         String url = properties.baseUrl()
@@ -71,6 +78,23 @@ public class WaseelApprovalService {
     }
 
     public ApprovalResponse cancelApproval(ApprovalCancelRequest request) {
+        Long approvalRequestId = request != null && request.approvalRequestId() != null
+                ? Long.valueOf(request.approvalRequestId())
+                : null;
+        if (preAuthorizationMockService.isEnabled()
+                && approvalRequestId != null
+                && preAuthorizationMockService.hasRecord(approvalRequestId)) {
+            log.info("[WASEEL_MOCK] Using mock approval cancel. approvalRequestId={}", approvalRequestId);
+            return preAuthorizationMockService.cancelApproval(approvalRequestId);
+        }
+
+        if (preAuthorizationMockService.isEnabled() && approvalRequestId != null) {
+            log.info(
+                    "[WASEEL_MOCK] No in-memory record for approvalRequestId={}; falling back to real Waseel cancel",
+                    approvalRequestId
+            );
+        }
+
         String token = tokenService.getToken();
 
         String url = properties.baseUrl()

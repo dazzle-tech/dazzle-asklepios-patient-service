@@ -110,7 +110,7 @@ public class PreAuthorizationStatusRefreshService {
             );
         }
 
-        if (rejectedItemCount > 0 || approvedItemCount > 0) {
+        if (rejectedItemCount > 0) {
             int refreshedLines =
                     encounterInsuranceResponsibilityRefreshService.refreshEncounter(
                             encounterId

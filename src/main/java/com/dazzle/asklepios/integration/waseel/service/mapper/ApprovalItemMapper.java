@@ -248,17 +248,36 @@ public class ApprovalItemMapper {
                 .add(tax)
                 .setScale(2, RoundingMode.HALF_UP);
 
-        BigDecimal patientSharePercentValue = patientSharePercent == null
-                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
-                : patientSharePercent.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal patientShare;
+        BigDecimal payerShare;
+        BigDecimal patientSharePercentValue;
 
-        BigDecimal patientShare = net
-                .multiply(patientSharePercentValue)
-                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        BigDecimal resolvedPatientShare = money(item.getPatientShareAmount());
+        BigDecimal resolvedInsuranceShare = money(item.getInsuranceShareAmount());
 
-        BigDecimal payerShare = net
-                .subtract(patientShare)
-                .setScale(2, RoundingMode.HALF_UP);
+        if (resolvedPatientShare.signum() > 0 || resolvedInsuranceShare.signum() > 0) {
+            patientShare = resolvedPatientShare;
+            payerShare = resolvedInsuranceShare.signum() > 0
+                    ? resolvedInsuranceShare
+                    : money(net.subtract(patientShare));
+            patientSharePercentValue = net.signum() > 0
+                    ? patientShare
+                            .multiply(BigDecimal.valueOf(100))
+                            .divide(net, 2, RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        } else {
+            patientSharePercentValue = patientSharePercent == null
+                    ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                    : patientSharePercent.setScale(2, RoundingMode.HALF_UP);
+
+            patientShare = net
+                    .multiply(patientSharePercentValue)
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+            payerShare = net
+                    .subtract(patientShare)
+                    .setScale(2, RoundingMode.HALF_UP);
+        }
 
         List<Integer> safeSupportingInfoSequences =
                 supportingInfoSequences == null || supportingInfoSequences.isEmpty()

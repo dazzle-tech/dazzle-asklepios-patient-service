@@ -85,11 +85,15 @@ public class SetupBillingPricingService {
         )) {
             LOG.info(
                     "[RESOLVE] Price resolved from Price List "
-                            + "itemType={} sourceId={} "
+                            + "itemType={} sourceId={} coverageType={} "
+                            + "patientInsuranceId={} payerId={} "
                             + "priceListId={} priceListItemId={} "
                             + "unitPrice={} setupUnitPrice={} currency={}",
                     request.billingItemType(),
                     request.sourceId(),
+                    request.coverageType(),
+                    request.patientInsuranceId(),
+                    request.payerId(),
                     priceListResponse.priceListId(),
                     priceListResponse.priceListItemId(),
                     priceListResponse.unitPrice(),

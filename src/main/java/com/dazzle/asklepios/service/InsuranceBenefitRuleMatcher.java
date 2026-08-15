@@ -155,7 +155,8 @@ public class InsuranceBenefitRuleMatcher {
 
         return providerType.contains("outpatient")
                 || itemName.contains("outpatient")
-                || category.contains("outpatient");
+                || category.contains("outpatient")
+                || providerType.contains("other_healthcare");
     }
 
     private boolean preferInNetwork(PatientInsurance insurance) {

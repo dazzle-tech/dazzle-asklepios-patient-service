@@ -48,19 +48,21 @@ public class EligibilityPatientInsuranceSyncService {
             return insurance;
         }
 
-        EligibilityCoverageDTO coverage =
-                findMatchingCoverage(
-                        insurance,
-                        response.coverages()
+        EligibilityCoverageMatcher.MatchResult match =
+                EligibilityCoverageMatcher.resolveWithPolicyMatch(
+                        response.coverages(),
+                        insurance.getMemberCardId(),
+                        insurance.getPolicyNumber()
                 );
 
-        if (coverage == null) {
-            coverage = response.coverages().get(0);
+        if (match == null || match.coverage() == null) {
+            return insurance;
         }
 
         applyCoverage(
                 insurance,
-                coverage,
+                match.coverage(),
+                match.policyMatched(),
                 response,
                 eligibilityRequestId
         );
@@ -68,41 +70,14 @@ public class EligibilityPatientInsuranceSyncService {
         return patientInsuranceRepository.save(insurance);
     }
 
-    private EligibilityCoverageDTO findMatchingCoverage(
-            PatientInsurance insurance,
-            List<EligibilityCoverageDTO> coverages
-    ) {
-        String memberCardId = clean(insurance.getMemberCardId());
-
-        if (memberCardId != null) {
-            for (EligibilityCoverageDTO coverage : coverages) {
-                if (memberCardId.equals(clean(coverage.memberId()))) {
-                    return coverage;
-                }
-            }
-        }
-
-        String policyNumber = clean(insurance.getPolicyNumber());
-
-        if (policyNumber != null) {
-            for (EligibilityCoverageDTO coverage : coverages) {
-                if (policyNumber.equals(clean(coverage.policyNumber()))) {
-                    return coverage;
-                }
-            }
-        }
-
-        return null;
-    }
-
     private void applyCoverage(
             PatientInsurance insurance,
             EligibilityCoverageDTO coverage,
+            boolean policyMatched,
             EligibilityResponse response,
             Long eligibilityRequestId
     ) {
         setIfBlank(insurance::setMemberCardId, insurance.getMemberCardId(), coverage.memberId());
-        setIfBlank(insurance::setNetworkId, insurance.getNetworkId(), coverage.network());
         setIfBlank(insurance::setCoverageType, insurance.getCoverageType(), coverage.type());
         setIfBlank(
                 insurance::setRelationWithSubscriber,
@@ -110,18 +85,37 @@ public class EligibilityPatientInsuranceSyncService {
                 coverage.relationship()
         );
 
-        LocalDate benefitStartDate = parseDate(coverage.benefitStartDate());
-        if (benefitStartDate != null) {
-            insurance.setBenefitStartDate(benefitStartDate);
-            if (insurance.getIssueDate() == null) {
-                insurance.setIssueDate(benefitStartDate);
-            }
-        }
+        if (policyMatched) {
+            setIfBlank(insurance::setNetworkId, insurance.getNetworkId(), coverage.network());
 
-        LocalDate benefitEndDate = parseDate(coverage.benefitEndDate());
-        if (benefitEndDate != null) {
-            insurance.setBenefitEndDate(benefitEndDate);
-            insurance.setExpirationDate(benefitEndDate);
+            LocalDate benefitStartDate = parseDate(coverage.benefitStartDate());
+            if (benefitStartDate != null) {
+                insurance.setBenefitStartDate(benefitStartDate);
+                if (insurance.getIssueDate() == null) {
+                    insurance.setIssueDate(benefitStartDate);
+                }
+            }
+
+            LocalDate benefitEndDate = parseDate(coverage.benefitEndDate());
+            if (benefitEndDate != null) {
+                insurance.setBenefitEndDate(benefitEndDate);
+                if (insurance.getExpirationDate() == null) {
+                    insurance.setExpirationDate(benefitEndDate);
+                }
+            }
+
+            applyClassList(insurance, coverage.classList());
+
+            setIfBlank(
+                    insurance::setPolicyHolderName,
+                    insurance.getPolicyHolderName(),
+                    coverage.policyHolder()
+            );
+            setIfBlank(
+                    insurance::setPolicyNumber,
+                    insurance.getPolicyNumber(),
+                    coverage.policyNumber()
+            );
         }
 
         if (isBlank(insurance.getPayerNphiesId()) && !isBlank(response.payerId())) {
@@ -129,17 +123,7 @@ public class EligibilityPatientInsuranceSyncService {
         }
 
         applyPayerNameFromNphiesPayers(insurance, response);
-
-        applyClassList(insurance, coverage.classList());
         applyCostBeneficiaries(insurance, coverage.costBeneficiaries());
-
-        setIfBlank(insurance::setGroupNumber, insurance.getGroupNumber(), coverage.policyHolder());
-        setIfBlank(
-                insurance::setPolicyHolderName,
-                insurance.getPolicyHolderName(),
-                coverage.policyHolder()
-        );
-        setIfBlank(insurance::setPolicyNumber, insurance.getPolicyNumber(), coverage.policyNumber());
 
         insurance.setEligibilityStatus(firstNonBlank(coverage.status(), response.status()));
         insurance.setSiteEligibility(firstNonBlank(coverage.siteEligibility(), response.siteEligibility()));
@@ -190,21 +174,27 @@ public class EligibilityPatientInsuranceSyncService {
             }
 
             if ("group".equalsIgnoreCase(classType)) {
-                setIfPresent(classItem.className(), insurance::setGroupName);
-                setIfPresent(classItem.classValue(), insurance::setGroupNumber);
                 setIfBlank(
-                        insurance::setPolicyHolderName,
-                        insurance.getPolicyHolderName(),
+                        insurance::setGroupName,
+                        insurance.getGroupName(),
                         classItem.className()
+                );
+                setIfBlank(
+                        insurance::setGroupNumber,
+                        insurance.getGroupNumber(),
+                        classItem.classValue()
                 );
             }
 
             if ("plan".equalsIgnoreCase(classType)) {
-                setIfPresent(classItem.className(), insurance::setPolicyClassName);
-                setIfPresent(classItem.classValue(), insurance::setPlanCode);
                 setIfBlank(
-                        insurance::setPolicyNumber,
-                        insurance.getPolicyNumber(),
+                        insurance::setPolicyClassName,
+                        insurance.getPolicyClassName(),
+                        classItem.className()
+                );
+                setIfBlank(
+                        insurance::setPlanCode,
+                        insurance.getPlanCode(),
                         classItem.classValue()
                 );
             }
@@ -300,12 +290,6 @@ public class EligibilityPatientInsuranceSyncService {
     private void setIfBlank(Consumer<String> setter, String currentValue, String newValue) {
         if (isBlank(currentValue) && !isBlank(newValue)) {
             setter.accept(newValue.trim());
-        }
-    }
-
-    private void setIfPresent(String value, Consumer<String> setter) {
-        if (!isBlank(value)) {
-            setter.accept(value.trim());
         }
     }
 

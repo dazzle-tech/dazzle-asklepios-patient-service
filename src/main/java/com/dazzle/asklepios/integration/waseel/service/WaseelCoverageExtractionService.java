@@ -42,6 +42,14 @@ public class WaseelCoverageExtractionService {
     }
 
     public List<InsuranceBenefitRule> extractBenefitRules(String responseJson) {
+        return extractBenefitRules(responseJson, null, null);
+    }
+
+    public List<InsuranceBenefitRule> extractBenefitRules(
+            String responseJson,
+            String memberCardId,
+            String policyNumber
+    ) {
         try {
             EligibilityResponse response =
                     objectMapper.readValue(
@@ -53,7 +61,18 @@ public class WaseelCoverageExtractionService {
                 return List.of();
             }
 
-            return extractBenefitRules(response.coverages().get(0));
+            EligibilityCoverageDTO coverage =
+                    EligibilityCoverageMatcher.resolve(
+                            response.coverages(),
+                            memberCardId,
+                            policyNumber
+                    );
+
+            if (coverage == null) {
+                return List.of();
+            }
+
+            return extractBenefitRules(coverage);
         } catch (Exception exception) {
             throw new IllegalStateException(
                     "Failed to extract benefit rules from Waseel response",
@@ -108,11 +127,29 @@ public class WaseelCoverageExtractionService {
                                     "itemCode"
                             );
 
+                    String itemDescription =
+                            firstNonBlank(
+                                    item,
+                                    "description"
+                            );
+                    String itemNetwork =
+                            firstNonBlank(
+                                    item,
+                                    "network"
+                            );
+
                     String ruleKey = categoryKey + "::" + firstNonBlankValue(itemName, itemCode, "default");
                     CategoryRuleBuilder builder =
                             builders.computeIfAbsent(
                                     ruleKey,
-                                    ignored -> new CategoryRuleBuilder(categoryKey, itemName, itemCode)
+                                    ignored ->
+                                            new CategoryRuleBuilder(
+                                                    categoryKey,
+                                                    itemName,
+                                                    itemCode,
+                                                    itemDescription,
+                                                    itemNetwork
+                                            )
                             );
 
                     Object benefitsObject = item.get("benefits");
@@ -144,7 +181,12 @@ public class WaseelCoverageExtractionService {
         }
 
         InsuranceBenefitRule globalRule =
-                benefitRuleMatcher.selectPreferredDefaultRule(rules, true);
+                benefitRuleMatcher.selectPreferredDefaultRule(
+                        rules.stream()
+                                .filter(rule -> !rule.globalDefault())
+                                .toList(),
+                        true
+                );
 
         if (globalRule != null) {
             rules.add(
@@ -193,7 +235,9 @@ public class WaseelCoverageExtractionService {
                                     new CategoryRuleBuilder(
                                             "Cost Beneficiary",
                                             formatCostBeneficiaryLabel(type),
-                                            type
+                                            type,
+                                            null,
+                                            null
                                     )
                     );
 
@@ -284,16 +328,24 @@ public class WaseelCoverageExtractionService {
         private CategoryRuleBuilder(
                 String benefitCategory,
                 String itemName,
-                String itemCode
+                String itemCode,
+                String itemDescription,
+                String itemNetwork
         ) {
             this.benefitCategory = benefitCategory;
             this.itemName = itemName;
             this.itemCode = itemCode;
-            parseContextFromItemName(itemName);
+            parseContextFromText(itemName);
+            parseContextFromText(itemDescription);
+            applyNetworkField(itemNetwork);
         }
 
-        private void parseContextFromItemName(String name) {
-            String normalized = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+        private void parseContextFromText(String text) {
+            if (text == null || text.isBlank()) {
+                return;
+            }
+
+            String normalized = text.trim().toLowerCase(Locale.ROOT);
 
             if (normalized.contains("out of network")
                     || normalized.contains("out-of-network")) {
@@ -309,6 +361,20 @@ public class WaseelCoverageExtractionService {
                 providerType = "INPATIENT";
             } else if (normalized.contains("other healthcare")) {
                 providerType = "OTHER_HEALTHCARE_PROVIDER";
+            }
+        }
+
+        private void applyNetworkField(String network) {
+            if (network == null || network.isBlank()) {
+                return;
+            }
+
+            String normalized = network.trim().toLowerCase(Locale.ROOT);
+
+            if (normalized.contains("out")) {
+                networkType = "OUT_OF_NETWORK";
+            } else if (normalized.contains("in")) {
+                networkType = "IN_NETWORK";
             }
         }
 
@@ -336,6 +402,14 @@ public class WaseelCoverageExtractionService {
     public WaseelCoverageDetails extractCoverageDetails(
             String responseJson
     ) {
+        return extractCoverageDetails(responseJson, null, null);
+    }
+
+    public WaseelCoverageDetails extractCoverageDetails(
+            String responseJson,
+            String memberCardId,
+            String policyNumber
+    ) {
         try {
             EligibilityResponse response =
                     objectMapper.readValue(
@@ -353,7 +427,7 @@ public class WaseelCoverageExtractionService {
                     new ArrayList<>();
 
             String memberId = null;
-            String policyNumber = null;
+            String policyNumberValue = null;
             String policyHolder = null;
             String network = null;
             String inforce = null;
@@ -371,12 +445,24 @@ public class WaseelCoverageExtractionService {
             }
 
             EligibilityCoverageDTO coverage =
-                    response.coverages().get(0);
+                    EligibilityCoverageMatcher.resolve(
+                            response.coverages(),
+                            memberCardId,
+                            policyNumber
+                    );
+
+            if (coverage == null) {
+                return emptyDetails(
+                        copaymentPercent,
+                        copaymentCap,
+                        benefits
+                );
+            }
 
             memberId =
                     coverage.memberId();
 
-            policyNumber =
+            policyNumberValue =
                     coverage.policyNumber();
 
             policyHolder =
@@ -441,7 +527,7 @@ public class WaseelCoverageExtractionService {
                             ),
                     null,
                     memberId,
-                    policyNumber,
+                    policyNumberValue,
                     policyHolder,
                     network,
                     inforce,

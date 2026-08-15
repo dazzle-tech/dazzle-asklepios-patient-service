@@ -111,6 +111,9 @@ public class InsuranceCalculationServiceImpl implements InsuranceCalculationServ
 
     /**
      * Caps insurance share only. Maximum benefit and approval limits never replace copayment maximum.
+     *
+     * @param policyMaximumLimit remaining annual policy benefit from the plan (not CCHI {@code max_limit},
+     *                           which is the patient copayment cap per service and is applied earlier)
      */
     private BigDecimal applyInsuranceSideLimits(
             BigDecimal insuranceShare,

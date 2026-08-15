@@ -7,10 +7,8 @@ import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.domain.PatientRelation;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
-import com.dazzle.asklepios.domain.enumeration.PriceSource;
 import com.dazzle.asklepios.domain.enumeration.RelationType;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
-import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalEncounterMapper;
@@ -30,10 +28,8 @@ import com.dazzle.asklepios.repository.PatientPrescriptionMedicationRepository;
 import com.dazzle.asklepios.repository.PatientPrescriptionRepository;
 import com.dazzle.asklepios.repository.PatientRelationRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
-import com.dazzle.asklepios.service.BillingEngineService;
-import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
+import com.dazzle.asklepios.service.PatientItemPricingApplicationService;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalEncounter;
@@ -65,7 +61,7 @@ public class ApprovalRequestBuilderService {
     private final ApprovalSubscriberMapper approvalSubscriberMapper;
 
     private final WaseelApiProperties waseelApiProperties;
-    private final BillingEngineService billingEngineService;
+    private final PatientItemPricingApplicationService patientItemPricingApplicationService;
 
     public ApprovalRequestBuilderService(
             ApprovalEligibilitySnapshotService snapshotService,
@@ -84,7 +80,7 @@ public class ApprovalRequestBuilderService {
             ApprovalSupportingInfoMapper approvalSupportingInfoMapper,
             ApprovalSubscriberMapper approvalSubscriberMapper,
             WaseelApiProperties waseelApiProperties,
-            @Lazy BillingEngineService billingEngineService
+            PatientItemPricingApplicationService patientItemPricingApplicationService
     ) {
         this.snapshotService = snapshotService;
         this.encounterInsuranceEligibilityService = encounterInsuranceEligibilityService;
@@ -102,7 +98,7 @@ public class ApprovalRequestBuilderService {
         this.approvalSupportingInfoMapper = approvalSupportingInfoMapper;
         this.approvalSubscriberMapper = approvalSubscriberMapper;
         this.waseelApiProperties = waseelApiProperties;
-        this.billingEngineService = billingEngineService;
+        this.patientItemPricingApplicationService = patientItemPricingApplicationService;
     }
 
     public WaseelApprovalRequest buildRequest(Long eligibilityRequestId, Long encounterId) {
@@ -346,10 +342,6 @@ public class ApprovalRequestBuilderService {
 
         boolean updated = false;
         for (PatientServiceAndProduct item : items) {
-            if (hasPositivePrice(item)) {
-                continue;
-            }
-
             applyResolvedPricing(item, facilityId);
             updated = true;
 
@@ -372,28 +364,11 @@ public class ApprovalRequestBuilderService {
     }
 
     private void applyResolvedPricing(PatientServiceAndProduct item, Long facilityId) {
-        ResolvedBillingPrice resolvedPrice =
-                billingEngineService.resolvePricing(item, facilityId);
-
-        BigDecimal unitPrice = money(resolvedPrice.unitPrice());
-        if (unitPrice.signum() <= 0) {
-            return;
-        }
-
         long quantity = item.getQuantity() == null || item.getQuantity() <= 0
                 ? 1L
                 : item.getQuantity();
-        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
 
-        item.setUnitPrice(unitPrice);
-        if (resolvedPrice.currency() != null) {
-            item.setCurrency(resolvedPrice.currency());
-        }
-        item.setTotalAmount(totalAmount);
-        item.setGrossAmount(totalAmount);
-        item.setNetAmount(totalAmount);
-        item.setRemainingAmount(totalAmount);
-        item.setPriceSource(mapPriceSource(resolvedPrice.priceSource()));
+        patientItemPricingApplicationService.applyResolvedPricing(item, facilityId, quantity);
     }
 
     private boolean hasPositivePrice(PatientServiceAndProduct item) {
@@ -420,13 +395,6 @@ public class ApprovalRequestBuilderService {
             return "medication " + item.getBrandMedicationId();
         }
         return "item " + item.getId();
-    }
-
-    private PriceSource mapPriceSource(BillingPriceSource source) {
-        if (source == BillingPriceSource.PRICE_LIST) {
-            return PriceSource.PRICE_LIST;
-        }
-        return PriceSource.DEFAULT;
     }
 
     private BigDecimal money(BigDecimal value) {

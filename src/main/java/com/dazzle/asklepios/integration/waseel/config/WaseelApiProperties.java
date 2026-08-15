@@ -10,5 +10,11 @@ public record WaseelApiProperties(
         String providerId,
         String nphiesId,
         String systemType,
-        Integer timeoutSeconds
-) {}
+        Integer timeoutSeconds,
+        Boolean mockEnabled,
+        String mockScenario
+) {
+    public boolean isMockEnabled() {
+        return Boolean.TRUE.equals(mockEnabled);
+    }
+}

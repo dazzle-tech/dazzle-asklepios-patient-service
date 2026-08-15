@@ -217,7 +217,7 @@ public class InsurancePatientShareCalculator {
         return insuranceCalculationService.calculateFromBenefitRule(
                 normalizedNet,
                 rule,
-                insurance.getMaxLimit()
+                insurance.getRemainingBenefits()
         );
     }
 

@@ -14,6 +14,7 @@ import com.dazzle.asklepios.repository.PatientProcedureRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.BillingChargeService;
 import com.dazzle.asklepios.service.BillingEngineService;
+import com.dazzle.asklepios.service.PatientItemPricingApplicationService;
 import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import org.slf4j.Logger;
@@ -48,6 +49,9 @@ public class PreAuthorizationCompletionService {
     private final PatientProcedureRepository patientProcedureRepository;
     private final BillingChargeService billingChargeService;
     private final BillingEngineService billingEngineService;
+    private final EncounterInsuranceResponsibilityRefreshService
+            encounterInsuranceResponsibilityRefreshService;
+    private final PatientItemPricingApplicationService patientItemPricingApplicationService;
     private final PreAuthorizationCompletionService self;
 
     public PreAuthorizationCompletionService(
@@ -56,6 +60,9 @@ public class PreAuthorizationCompletionService {
             PatientProcedureRepository patientProcedureRepository,
             BillingChargeService billingChargeService,
             BillingEngineService billingEngineService,
+            EncounterInsuranceResponsibilityRefreshService
+                    encounterInsuranceResponsibilityRefreshService,
+            PatientItemPricingApplicationService patientItemPricingApplicationService,
             @Lazy PreAuthorizationCompletionService self
     ) {
         this.patientEncounterRepository = patientEncounterRepository;
@@ -63,6 +70,9 @@ public class PreAuthorizationCompletionService {
         this.patientProcedureRepository = patientProcedureRepository;
         this.billingChargeService = billingChargeService;
         this.billingEngineService = billingEngineService;
+        this.encounterInsuranceResponsibilityRefreshService =
+                encounterInsuranceResponsibilityRefreshService;
+        this.patientItemPricingApplicationService = patientItemPricingApplicationService;
         this.self = self;
     }
 
@@ -140,6 +150,23 @@ public class PreAuthorizationCompletionService {
                 );
             }
         }
+
+        int repricedItems =
+                patientItemPricingApplicationService.reapplyInsurancePlanForEncounter(
+                        encounterId,
+                        facilityId
+                );
+
+        int refreshedLines =
+                encounterInsuranceResponsibilityRefreshService.refreshEncounter(encounterId);
+
+        LOG.info(
+                "[PREAUTH_COMPLETE] Refreshed billing responsibilities after approval billing "
+                        + "encounterId={} repricedItems={} refreshedLines={}",
+                encounterId,
+                repricedItems,
+                refreshedLines
+        );
     }
 
     private void releaseProcedureAfterPreAuthorization(PatientServiceAndProduct item) {

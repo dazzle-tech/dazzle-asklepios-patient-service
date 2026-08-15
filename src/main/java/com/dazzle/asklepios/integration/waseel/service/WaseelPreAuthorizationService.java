@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.PreAuthorizationItem;
 import com.dazzle.asklepios.domain.PreAuthorizationRequest;
 import com.dazzle.asklepios.domain.PreAuthorizationTrack;
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
+import com.dazzle.asklepios.integration.waseel.mock.WaseelPreAuthorizationMockService;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.PreAuthorizationCancelRequest;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.PreAuthorizationCommunicationRequest;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.WaseelPreAuthorizationCancelRequest;
@@ -55,6 +56,7 @@ public class WaseelPreAuthorizationService {
     private final PreAuthorizationTrackRepository preAuthorizationTrackRepository;
     private final PreAuthorizationItemRepository preAuthorizationItemRepository;
     private final PreAuthorizationAttachmentService preAuthorizationAttachmentService;
+    private final WaseelPreAuthorizationMockService preAuthorizationMockService;
 
     @Transactional
     public PreAuthorizationSearchResponse searchAndUpdate(
@@ -108,6 +110,18 @@ public class WaseelPreAuthorizationService {
     }
 
     private PreAuthorizationSearchResponse searchFromWaseel(Long requestId) {
+        if (preAuthorizationMockService.isEnabled() && preAuthorizationMockService.hasRecord(requestId)) {
+            log.info("[WASEEL_MOCK] Using mock pre-auth search. requestId={}", requestId);
+            return preAuthorizationMockService.searchApproval(requestId);
+        }
+
+        if (preAuthorizationMockService.isEnabled()) {
+            log.info(
+                    "[WASEEL_MOCK] No in-memory record for requestId={}; falling back to real Waseel search",
+                    requestId
+            );
+        }
+
         String token = tokenService.getToken();
 
         String url = properties.baseUrl()

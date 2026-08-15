@@ -16,14 +16,13 @@ import com.dazzle.asklepios.service.dto.billing.EncounterCoverageDTO;
 import com.dazzle.asklepios.service.dto.billing.UpdateEncounterCoverageRequest;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@RequiredArgsConstructor
 public class EncounterCoverageService {
 
     private static final Logger LOG =
@@ -37,6 +36,22 @@ public class EncounterCoverageService {
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
+
+    public EncounterCoverageService(
+            PatientEncounterRepository patientEncounterRepository,
+            PatientPaymentsRepository patientPaymentsRepository,
+            PatientInsuranceRepository patientInsuranceRepository,
+            PatientServiceAndProductRepository patientServiceAndProductRepository,
+            EncounterInsuranceEligibilityService encounterInsuranceEligibilityService,
+            @Lazy EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService
+    ) {
+        this.patientEncounterRepository = patientEncounterRepository;
+        this.patientPaymentsRepository = patientPaymentsRepository;
+        this.patientInsuranceRepository = patientInsuranceRepository;
+        this.patientServiceAndProductRepository = patientServiceAndProductRepository;
+        this.encounterInsuranceEligibilityService = encounterInsuranceEligibilityService;
+        this.encounterPreAuthorizationSyncService = encounterPreAuthorizationSyncService;
+    }
 
     @Transactional(readOnly = true)
     public EncounterCoverageDTO getEncounterCoverage(Long encounterId) {

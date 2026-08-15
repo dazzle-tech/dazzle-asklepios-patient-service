@@ -8,14 +8,11 @@ import com.dazzle.asklepios.domain.PatientProcedure;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
-import com.dazzle.asklepios.domain.enumeration.PriceSource;
 import com.dazzle.asklepios.domain.enumeration.ProcStatus;
 import com.dazzle.asklepios.domain.enumeration.ProcedureLevel;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
-import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
-import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
@@ -64,6 +61,8 @@ public class PatientProcedureService {
     private final BillingChargeService billingChargeService;
     private final BillingEngineService billingEngineService;
     private final PatientServiceAndProductService patientServiceAndProductService;
+    private final EncounterCoverageService encounterCoverageService;
+    private final PatientItemPricingApplicationService patientItemPricingApplicationService;
 
     public PatientProcedureService(
             PatientProcedureRepository procedureRepository,
@@ -77,7 +76,9 @@ public class PatientProcedureService {
             EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService,
             BillingChargeService billingChargeService,
             @Lazy BillingEngineService billingEngineService,
-            @Lazy PatientServiceAndProductService patientServiceAndProductService
+            @Lazy PatientServiceAndProductService patientServiceAndProductService,
+            EncounterCoverageService encounterCoverageService,
+            PatientItemPricingApplicationService patientItemPricingApplicationService
     ) {
         this.procedureRepository = procedureRepository;
         this.patientRepository = patientRepository;
@@ -91,6 +92,8 @@ public class PatientProcedureService {
         this.billingChargeService = billingChargeService;
         this.billingEngineService = billingEngineService;
         this.patientServiceAndProductService = patientServiceAndProductService;
+        this.encounterCoverageService = encounterCoverageService;
+        this.patientItemPricingApplicationService = patientItemPricingApplicationService;
     }
 
     private String currentUsername() {
@@ -416,10 +419,12 @@ public class PatientProcedureService {
     }
 
     private BillingCoverageType resolveEncounterCoverageType(PatientEncounter encounter) {
-        if (encounter == null || encounter.getCoverageType() == null) {
+        if (encounter == null || encounter.getId() == null) {
             return BillingCoverageType.SELF_PAY;
         }
-        return encounter.getCoverageType();
+        return encounterCoverageService
+                .getEncounterCoverage(encounter.getId())
+                .coverageType();
     }
 
     private ProcedureSetupDTO fetchProcedureSetup(Long procedureId) {
@@ -531,7 +536,14 @@ public class PatientProcedureService {
                     .preAuthorizationStatus(PreAuthorizationStatus.NOT_REQUIRED)
                     .preAuthorizationRequired(false)
                     .paymentStatus(PaymentStatus.PENDING);
-            return builder.build();
+            PatientServiceAndProduct billingItem = builder.build();
+            applyResolvedPricing(
+                    billingItem,
+                    encounter,
+                    quantity,
+                    BillingCoverageType.SELF_PAY
+            );
+            return billingItem;
         }
 
         LOG.info(
@@ -558,14 +570,15 @@ public class PatientProcedureService {
         );
 
         PatientServiceAndProduct billingItem = builder.build();
-        applyResolvedPricing(billingItem, encounter, quantity);
+        applyResolvedPricing(billingItem, encounter, quantity, BillingCoverageType.INSURANCE);
         return billingItem;
     }
 
     private void applyResolvedPricing(
             PatientServiceAndProduct item,
             PatientEncounter encounter,
-            long quantity
+            long quantity,
+            BillingCoverageType coverageOverride
     ) {
         Long facilityId = encounter.getFacilityId();
         if (facilityId == null) {
@@ -576,40 +589,11 @@ public class PatientProcedureService {
             );
         }
 
-        ResolvedBillingPrice resolvedPrice =
-                billingEngineService.resolvePricing(item, facilityId);
-
-        BigDecimal unitPrice = resolvedPrice.unitPrice();
-        if (unitPrice == null || unitPrice.signum() <= 0) {
-            if (item.getUnitPrice() != null && item.getUnitPrice().signum() > 0) {
-                return;
-            }
-            throw new BadRequestAlertException(
-                    "Procedure price must be a positive number greater than zero.",
-                    "procedure",
-                    "price.mustBePositive"
-            );
-        }
-
-        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
-        item.setUnitPrice(unitPrice);
-        item.setCurrency(resolvedPrice.currency());
-        item.setTotalAmount(totalAmount);
-        item.setGrossAmount(totalAmount);
-        item.setNetAmount(totalAmount);
-        item.setRemainingAmount(totalAmount);
-        item.setPriceSource(
-                resolvedPrice.priceSource() == BillingPriceSource.PRICE_LIST
-                        ? PriceSource.PRICE_LIST
-                        : PriceSource.DEFAULT
-        );
-
-        LOG.info(
-                "[PROCEDURE_CREATE] Resolved unitPrice={} currency={} priceSource={} procedureId={}",
-                unitPrice,
-                resolvedPrice.currency(),
-                resolvedPrice.priceSource(),
-                item.getProcedureId()
+        patientItemPricingApplicationService.applyResolvedPricing(
+                item,
+                facilityId,
+                quantity,
+                coverageOverride
         );
     }
 

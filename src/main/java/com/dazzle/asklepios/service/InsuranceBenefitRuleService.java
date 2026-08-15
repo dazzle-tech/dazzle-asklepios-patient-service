@@ -71,13 +71,26 @@ public class InsuranceBenefitRuleService {
                         .findFirst()
                         .orElse(null);
 
-        if (globalRule != null) {
-            insurance.setDefaultCopaymentPercent(
-                    globalRule.patientCopaymentPercentage()
-            );
-            insurance.setDefaultMaximumCopayment(
-                    globalRule.patientMaximumCopayment()
-            );
+        BigDecimal defaultCopaymentPercent =
+                firstNonNull(
+                        insurance.getPatientShare(),
+                        globalRule != null
+                                ? globalRule.patientCopaymentPercentage()
+                                : null
+                );
+        BigDecimal defaultMaximumCopayment =
+                firstNonNull(
+                        insurance.getMaxLimit(),
+                        globalRule != null
+                                ? globalRule.patientMaximumCopayment()
+                                : null
+                );
+
+        if (defaultCopaymentPercent != null) {
+            insurance.setDefaultCopaymentPercent(defaultCopaymentPercent);
+        }
+        if (defaultMaximumCopayment != null) {
+            insurance.setDefaultMaximumCopayment(defaultMaximumCopayment);
         }
 
         LOG.info(
@@ -129,7 +142,9 @@ public class InsuranceBenefitRuleService {
             return InsuranceBenefitRuleNormalizer.normalize(matched);
         }
 
-        return buildFallbackFromInsuranceDefaults(insurance);
+        return InsuranceBenefitRuleNormalizer.normalize(
+                buildFallbackFromInsuranceDefaults(insurance)
+        );
     }
 
     private List<InsuranceBenefitRule> loadRulesFromLatestEligibility(
@@ -145,7 +160,9 @@ public class InsuranceBenefitRuleService {
         }
 
         return coverageExtractionService.extractBenefitRules(
-                eligibility.getResponseJson()
+                eligibility.getResponseJson(),
+                insurance.getMemberCardId(),
+                insurance.getPolicyNumber()
         );
     }
 
@@ -195,6 +212,18 @@ public class InsuranceBenefitRuleService {
             return null;
         }
 
+        BigDecimal copaymentPercent =
+                firstNonNull(
+                        insurance.getDefaultCopaymentPercent(),
+                        insurance.getPatientShare()
+                );
+
+        BigDecimal copaymentCap =
+                firstNonNull(
+                        insurance.getDefaultMaximumCopayment(),
+                        copaymentPercent != null ? insurance.getMaxLimit() : null
+                );
+
         return new InsuranceBenefitRule(
                 null,
                 InsuranceBenefitRule.GLOBAL_CATEGORY,
@@ -205,13 +234,10 @@ public class InsuranceBenefitRuleService {
                 null,
                 null,
                 null,
-                insurance.getMaxLimit(),
                 null,
-                firstNonNull(
-                        insurance.getDefaultCopaymentPercent(),
-                        insurance.getPatientShare()
-                ),
-                insurance.getDefaultMaximumCopayment(),
+                null,
+                copaymentPercent,
+                copaymentCap,
                 true,
                 null
         );
