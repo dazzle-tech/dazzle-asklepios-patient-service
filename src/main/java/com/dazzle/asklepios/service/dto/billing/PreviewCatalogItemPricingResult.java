@@ -33,7 +33,11 @@ public record PreviewCatalogItemPricingResult(
 
         BigDecimal invoiceDiscountAmount,
 
-        BigDecimal invoiceTaxAmount
+        BigDecimal invoiceTaxAmount,
+
+        BigDecimal patientShareAmount,
+
+        BigDecimal insuranceShareAmount
 
 ) implements Serializable {
 }
