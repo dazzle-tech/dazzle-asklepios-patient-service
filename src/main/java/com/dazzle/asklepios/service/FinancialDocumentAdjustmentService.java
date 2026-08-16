@@ -1228,7 +1228,8 @@ public class FinancialDocumentAdjustmentService {
                         ? request.serviceSource()
                         : ServiceSource.SERVICE_AND_PRODUCT,
                 request.sourceId(),
-                request.notes()
+                request.notes(),
+                request.acceptUncoveredAsCash()
         );
 
         var createdService = patientServiceAndProductService.create(createDto);

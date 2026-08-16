@@ -131,9 +131,10 @@ public class BillingResponsibilityService {
                 item.getIsExempted()
         );
 
-        if (item.getPatientInsuranceId() != null
+        if (!item.isUncoveredCashItem()
+                && (item.getPatientInsuranceId() != null
                 || encounterInsuranceEligibilityService
-                        .shouldEvaluatePreAuthorization(item.getEncounterId())) {
+                        .shouldEvaluatePreAuthorization(item.getEncounterId()))) {
             preAuthorizationResolutionService.refreshForBillingItem(item);
             patientServiceAndProductRepository.saveAndFlush(item);
 
@@ -166,7 +167,7 @@ public class BillingResponsibilityService {
             return;
         }
 
-        if (item.getPatientInsuranceId() == null) {
+        if (item.getPatientInsuranceId() == null || item.isUncoveredCashItem()) {
             applyCashResponsibility(
                     context,
                     item,

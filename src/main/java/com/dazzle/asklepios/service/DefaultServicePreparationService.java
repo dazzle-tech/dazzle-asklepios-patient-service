@@ -25,6 +25,7 @@ import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
+import com.dazzle.asklepios.service.dto.billing.InsurancePriceListCoverageCheckResult;
 import com.dazzle.asklepios.service.dto.billing.PrepareDefaultServiceItem;
 import com.dazzle.asklepios.service.dto.billing.PrepareDefaultServicesRequest;
 import com.dazzle.asklepios.service.dto.billing.PrepareDefaultServicesResult;
@@ -77,6 +78,7 @@ public class DefaultServicePreparationService {
     private final EncounterCoverageService encounterCoverageService;
     private final EncounterTreatmentAdvanceService encounterTreatmentAdvanceService;
     private final PatientItemPricingApplicationService patientItemPricingApplicationService;
+    private final InsurancePriceListCoverageService insurancePriceListCoverageService;
 
     /**
      * Creates/reuses selected default-service PSP records and sends each one
@@ -112,6 +114,28 @@ public class DefaultServicePreparationService {
                                 PrepareDefaultServiceItem::sequence
                         ))
                         .toList();
+
+        if (request.coverageType() == BillingCoverageType.INSURANCE) {
+            List<InsurancePriceListCoverageCheckResult> coverageChecks =
+                    new ArrayList<>();
+            for (PrepareDefaultServiceItem requestedItem : orderedItems) {
+                coverageChecks.add(
+                        insurancePriceListCoverageService.check(
+                                encounterId,
+                                BillingItemTypes.SERVICE,
+                                requestedItem.serviceId(),
+                                null,
+                                null,
+                                null,
+                                request.currency()
+                        )
+                );
+            }
+            insurancePriceListCoverageService.requireAllCoveredOrAcknowledged(
+                    coverageChecks,
+                    request.acceptUncoveredAsCash()
+            );
+        }
 
         List<PrepareDefaultServicesResult.PreparedDefaultServiceResult> results =
                 new ArrayList<>();
@@ -382,7 +406,19 @@ public class DefaultServicePreparationService {
         if (existing != null) {
             validateExistingItem(existing, request, requestedItem, insurance);
 
-            if (request.coverageType() == BillingCoverageType.INSURANCE) {
+            var coverageCheck = insurancePriceListCoverageService.check(
+                    encounter.getId(),
+                    BillingItemTypes.SERVICE,
+                    requestedItem.serviceId(),
+                    null,
+                    null,
+                    null,
+                    request.currency()
+            );
+            if (coverageCheck.requiresCashConfirmation()) {
+                insurancePriceListCoverageService.applyUncoveredCash(existing, coverageCheck);
+                existing = patientServiceAndProductRepository.saveAndFlush(existing);
+            } else if (request.coverageType() == BillingCoverageType.INSURANCE) {
                 PreAuthorizationResolutionService.Resolution preAuthorizationResolution =
                         preAuthorizationResolutionService.resolve(
                                 encounter.getId(),
@@ -437,17 +473,31 @@ public class DefaultServicePreparationService {
                         .isExempted(requestedItem.exempted())
                         .notes("Encounter default service: " + service.name());
 
-        preAuthorizationResolutionService.resolveAndPrepareNewItem(
-                itemBuilder,
+        var coverageCheck = insurancePriceListCoverageService.check(
                 encounter.getId(),
                 BillingItemTypes.SERVICE,
-                null,
                 requestedItem.serviceId(),
                 null,
                 null,
-                request.coverageType() == BillingCoverageType.INSURANCE,
+                null,
                 request.currency()
         );
+
+        if (coverageCheck.requiresCashConfirmation()) {
+            insurancePriceListCoverageService.applyUncoveredCash(itemBuilder, coverageCheck);
+        } else {
+            preAuthorizationResolutionService.resolveAndPrepareNewItem(
+                    itemBuilder,
+                    encounter.getId(),
+                    BillingItemTypes.SERVICE,
+                    null,
+                    requestedItem.serviceId(),
+                    null,
+                    null,
+                    request.coverageType() == BillingCoverageType.INSURANCE,
+                    request.currency()
+            );
+        }
 
         PatientServiceAndProduct item = itemBuilder.build();
         patientItemPricingApplicationService.applyToItem(item, encounter.getFacilityId());

@@ -62,6 +62,7 @@ public class PatientProcedureService {
     private final BillingEngineService billingEngineService;
     private final PatientServiceAndProductService patientServiceAndProductService;
     private final PatientItemPricingApplicationService patientItemPricingApplicationService;
+    private final InsurancePriceListCoverageService insurancePriceListCoverageService;
 
     public PatientProcedureService(
             PatientProcedureRepository procedureRepository,
@@ -76,7 +77,8 @@ public class PatientProcedureService {
             BillingChargeService billingChargeService,
             @Lazy BillingEngineService billingEngineService,
             @Lazy PatientServiceAndProductService patientServiceAndProductService,
-            PatientItemPricingApplicationService patientItemPricingApplicationService
+            PatientItemPricingApplicationService patientItemPricingApplicationService,
+            InsurancePriceListCoverageService insurancePriceListCoverageService
     ) {
         this.procedureRepository = procedureRepository;
         this.patientRepository = patientRepository;
@@ -91,6 +93,7 @@ public class PatientProcedureService {
         this.patientItemPricingApplicationService = patientItemPricingApplicationService;
         this.billingEngineService = billingEngineService;
         this.patientServiceAndProductService = patientServiceAndProductService;
+        this.insurancePriceListCoverageService = insurancePriceListCoverageService;
     }
 
     private String currentUsername() {
@@ -172,7 +175,8 @@ public class PatientProcedureService {
                     savedProcedure.getId(),
                     setupProcedure,
                     procedureCreateDTO.notes(),
-                    encounterCoverage
+                    encounterCoverage,
+                    procedureCreateDTO.acceptUncoveredAsCash()
             );
 
             PatientServiceAndProduct savedBillingItem =
@@ -488,7 +492,8 @@ public class PatientProcedureService {
             Long sourceId,
             ProcedureSetupDTO setupProcedure,
             String notes,
-            BillingCoverageType encounterCoverage
+            BillingCoverageType encounterCoverage,
+            Boolean acceptUncoveredAsCash
     ) {
         Long encounterId = encounter.getId();
         Long quantity = 1L;
@@ -523,6 +528,31 @@ public class PatientProcedureService {
             PatientServiceAndProduct selfPayItem = builder.build();
             patientItemPricingApplicationService.applyToItem(selfPayItem, encounter.getFacilityId());
             return selfPayItem;
+        }
+
+        var coverageCheck = insurancePriceListCoverageService.check(
+                encounterId,
+                BillingItemTypes.PROCEDURE,
+                null,
+                setupProcedure.id(),
+                null,
+                null,
+                setupProcedure.currency()
+        );
+        insurancePriceListCoverageService.requireCoveredOrAcknowledged(
+                coverageCheck,
+                acceptUncoveredAsCash
+        );
+
+        if (coverageCheck.requiresCashConfirmation()) {
+            LOG.info(
+                    "[PROCEDURE_CREATE] Procedure not on insurance price list — billing as cash. procedureId={}",
+                    setupProcedure.id()
+            );
+            insurancePriceListCoverageService.applyUncoveredCash(builder, coverageCheck);
+            PatientServiceAndProduct cashItem = builder.build();
+            patientItemPricingApplicationService.applyToItem(cashItem, encounter.getFacilityId());
+            return cashItem;
         }
 
         LOG.info(

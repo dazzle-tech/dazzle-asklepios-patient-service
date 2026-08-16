@@ -102,8 +102,22 @@ public class CatalogItemPricingPreviewService {
         ResolvedBillingPrice resolvedPrice =
                 billingEngineService.resolvePricing(
                         previewItem,
-                        request.facilityId()
+                        request.facilityId(),
+                        coverageType
                 );
+
+        boolean insuranceVisit = insurance != null;
+        boolean coveredByInsurance =
+                !insuranceVisit || resolvedPrice.resolvedFromPriceList();
+        boolean requiresCashConfirmation = insuranceVisit && !coveredByInsurance;
+
+        if (requiresCashConfirmation) {
+            resolvedPrice = billingEngineService.resolvePricing(
+                    previewItem,
+                    request.facilityId(),
+                    BillingCoverageType.SELF_PAY
+            );
+        }
 
         BillingPricingInput pricingInput =
                 billingPricingInputFactory.create(
@@ -167,7 +181,9 @@ public class CatalogItemPricingPreviewService {
 
         BigDecimal patientShareAmount = finalNet;
         BigDecimal insuranceShareAmount = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-        if (insurance != null && !Boolean.TRUE.equals(previewItem.getIsExempted())) {
+        if (insurance != null
+                && !requiresCashConfirmation
+                && !Boolean.TRUE.equals(previewItem.getIsExempted())) {
             InsuranceSplit split =
                     insurancePatientShareCalculator.calculateSplit(
                             insurance,
@@ -212,7 +228,14 @@ public class CatalogItemPricingPreviewService {
                 invoiceDiscount,
                 invoiceTax,
                 patientShareAmount,
-                insuranceShareAmount
+                insuranceShareAmount,
+                insuranceVisit,
+                coveredByInsurance,
+                requiresCashConfirmation,
+                requiresCashConfirmation
+                        ? InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST
+                        : null,
+                requiresCashConfirmation ? resolvedPrice.unitPrice() : null
         );
     }
 

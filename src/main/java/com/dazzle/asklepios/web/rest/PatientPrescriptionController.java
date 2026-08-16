@@ -89,12 +89,14 @@ public class PatientPrescriptionController {
 
     @PostMapping("/patient-prescriptions/{id}/submit")
     public ResponseEntity<PatientPrescription> submit(
-            @PathVariable Long id
-
+            @PathVariable Long id,
+            @RequestParam(required = false) Boolean acceptUncoveredAsCash
     ) {
         LOG.debug("submit prescription for id ={}",id);
 
-        return ResponseEntity.ok(patientPrescriptionService.submit(id));
+        return ResponseEntity.ok(
+                patientPrescriptionService.submit(id, acceptUncoveredAsCash)
+        );
     }
 
     @PostMapping("/patient-prescriptions/{id}/cancel")

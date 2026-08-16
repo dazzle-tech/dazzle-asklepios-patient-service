@@ -190,6 +190,19 @@ public class DefaultServicePricingPreviewService {
                         facilityId
                 );
 
+        boolean insuranceVisit = insurance != null;
+        boolean coveredByInsurance =
+                !insuranceVisit || resolvedPrice.resolvedFromPriceList();
+        boolean requiresCashConfirmation = insuranceVisit && !coveredByInsurance;
+
+        if (requiresCashConfirmation) {
+            resolvedPrice = billingEngineService.resolvePricing(
+                    previewItem,
+                    facilityId,
+                    BillingCoverageType.SELF_PAY
+            );
+        }
+
         BillingPricingInput pricingInput =
                 billingPricingInputFactory.create(
                         previewItem,
@@ -237,7 +250,9 @@ public class DefaultServicePricingPreviewService {
         BigDecimal patientShareAmount = BigDecimal.ZERO;
         BigDecimal insuranceShareAmount = BigDecimal.ZERO;
 
-        if (insurance != null && !Boolean.TRUE.equals(previewItem.getIsExempted())) {
+        if (insurance != null
+                && !requiresCashConfirmation
+                && !Boolean.TRUE.equals(previewItem.getIsExempted())) {
             InsuranceSplit split =
                     insurancePatientShareCalculator.calculateSplit(
                             insurance,
@@ -262,7 +277,14 @@ public class DefaultServicePricingPreviewService {
                 priceSource,
                 pricingInput.priceListItemCode(),
                 patientShareAmount,
-                insuranceShareAmount
+                insuranceShareAmount,
+                insuranceVisit,
+                coveredByInsurance,
+                requiresCashConfirmation,
+                requiresCashConfirmation
+                        ? InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST
+                        : null,
+                requiresCashConfirmation ? resolvedPrice.unitPrice() : null
         );
     }
 

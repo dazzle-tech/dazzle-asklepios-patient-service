@@ -26,5 +26,7 @@ public record PatientServiceProductCreateDTO(
         @NotNull ServiceSource serviceSource,
         Long sourceId,
 
-        String notes
+        String notes,
+
+        Boolean acceptUncoveredAsCash
 ) implements Serializable {}

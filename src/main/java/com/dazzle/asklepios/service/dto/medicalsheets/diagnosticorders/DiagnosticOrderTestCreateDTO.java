@@ -18,5 +18,6 @@ public record DiagnosticOrderTestCreateDTO(
         String reason,
         String notes,
         @NotNull TestType orderType,
-        Long icdDiagnosisId
+        Long icdDiagnosisId,
+        Boolean acceptUncoveredAsCash
 ) implements Serializable { }

@@ -45,7 +45,9 @@ public record InvoiceLineAdjustmentRequest(
 
         Long sourceId,
 
-        String notes
+        String notes,
+
+        Boolean acceptUncoveredAsCash
 
 ) implements Serializable {
 }

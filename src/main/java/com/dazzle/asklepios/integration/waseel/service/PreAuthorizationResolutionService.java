@@ -214,7 +214,7 @@ public class PreAuthorizationResolutionService {
     }
 
     public boolean isPendingPreAuthorization(PatientServiceAndProduct item) {
-        if (item == null) {
+        if (item == null || item.isUncoveredCashItem()) {
             return false;
         }
 
@@ -235,7 +235,7 @@ public class PreAuthorizationResolutionService {
      * not post ledger debt until the authorization decision is financially valid.
      */
     public boolean shouldDeferLedgerPosting(PatientServiceAndProduct item) {
-        if (item == null) {
+        if (item == null || item.isUncoveredCashItem()) {
             return false;
         }
 
@@ -286,6 +286,10 @@ public class PreAuthorizationResolutionService {
             boolean insuranceVisitContext
     ) {
         if (item == null || item.getEncounterId() == null) {
+            return;
+        }
+
+        if (item.isUncoveredCashItem()) {
             return;
         }
 
@@ -580,6 +584,10 @@ public class PreAuthorizationResolutionService {
             boolean insuranceVisitContext
     ) {
         if (item == null || encounterId == null) {
+            return;
+        }
+
+        if (item.isUncoveredCashItem()) {
             return;
         }
 

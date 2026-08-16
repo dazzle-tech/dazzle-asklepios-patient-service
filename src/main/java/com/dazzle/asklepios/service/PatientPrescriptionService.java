@@ -218,6 +218,10 @@ public class PatientPrescriptionService {
     }
 
     public PatientPrescription submit(Long id) {
+        return submit(id, null);
+    }
+
+    public PatientPrescription submit(Long id, Boolean acceptUncoveredAsCash) {
         LOG.debug("submit prescription for id ={}", id);
 
         PatientPrescription entity = prescriptionRepository.findById(id)
@@ -246,7 +250,10 @@ public class PatientPrescriptionService {
 
         notificationForHighAlertMedication(saved);
 
-        patientServiceAndProductService.syncPrescriptionMedicationsForPreAuthorization(saved);
+        patientServiceAndProductService.syncPrescriptionMedicationsForPreAuthorization(
+                saved,
+                acceptUncoveredAsCash
+        );
 
         return toDto(saved);
     }

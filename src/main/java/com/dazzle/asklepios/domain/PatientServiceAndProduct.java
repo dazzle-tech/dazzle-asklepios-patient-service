@@ -202,4 +202,12 @@ public class PatientServiceAndProduct extends AbstractAuditingEntity<Long> imple
 
     @Column(name = "pre_authorization_reference_no", length = 100)
     private String preAuthorizationReferenceNo;
+
+    /**
+     * Insurance visit item that is not on the insurance price list and was
+     * confirmed to bill as cash. Must not go to claims or insurance share.
+     */
+    public boolean isUncoveredCashItem() {
+        return coverageStatus == CoverageStatus.NOT_COVERED;
+    }
 }
