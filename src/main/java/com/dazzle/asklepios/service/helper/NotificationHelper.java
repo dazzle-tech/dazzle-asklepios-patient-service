@@ -214,6 +214,12 @@ public class NotificationHelper {
             if (patientPhoneRecipient != null) {
                 recipientsByRule.put("PATIENT_PHONE", List.of(patientPhoneRecipient));
             }
+            NotificationResolvedRecipientDTO patientPushRecipient =
+                    buildPatientPushRecipient(patient, organizationDefinitionDTO);
+
+            if (patientPushRecipient != null) {
+                recipientsByRule.put("PATIENT_USER", List.of(patientPushRecipient));
+            }
         }
 
         // Practitioner
@@ -309,6 +315,12 @@ public class NotificationHelper {
 
             if (patientPhoneRecipient != null) {
                 recipientsByRule.put("PATIENT_PHONE", List.of(patientPhoneRecipient));
+            }
+            NotificationResolvedRecipientDTO patientPushRecipient =
+                    buildPatientPushRecipient(patient, organizationDefinitionDTO);
+
+            if (patientPushRecipient != null) {
+                recipientsByRule.put("PATIENT_USER", List.of(patientPushRecipient));
             }
         }
 
@@ -498,6 +510,19 @@ public class NotificationHelper {
 
         if (patientPhoneRecipient != null) {
             recipientsByRule.put("PATIENT_PHONE", List.of(patientPhoneRecipient));
+        }
+
+        NotificationResolvedRecipientDTO patientPushRecipient =
+                buildPatientPushRecipient(
+                        patient,
+                        organizationDefinitionDTO
+                );
+
+        if (patientPushRecipient != null) {
+            recipientsByRule.put(
+                    "PATIENT_USER",
+                    List.of(patientPushRecipient)
+            );
         }
     }
 
@@ -838,6 +863,58 @@ public class NotificationHelper {
                 .build();
     }
 
+    private NotificationResolvedRecipientDTO buildPatientPushRecipient(
+            Patient patient,
+            OrganizationDefinitionDTO finalOrganizationDefinitionDTO
+    ) {
+        if (patient == null || patient.getId() == null) {
+            return null;
+        }
+
+        List<String> deviceTokens;
+
+        try {
+            deviceTokens = notificationClient.getActiveDeviceTokens(
+                    "PATIENT",
+                    patient.getId()
+            );
+        } catch (Exception e) {
+            log.warn(
+                    "[NOTIFICATION] Failed to resolve patient push devices. patientId={}, error={}",
+                    patient.getId(),
+                    e.getMessage()
+            );
+            return null;
+        }
+
+        if (deviceTokens == null || deviceTokens.isEmpty()) {
+            log.debug(
+                    "[NOTIFICATION] No active push devices found for patientId={}",
+                    patient.getId()
+            );
+            return null;
+        }
+
+        return NotificationResolvedRecipientDTO.builder()
+                .recipientType("PATIENT")
+                .recipientId(patient.getId())
+                .recipientName(getPatientName(patient))
+                .deviceTokens(
+                        deviceTokens.stream()
+                                .filter(token -> token != null && !token.isBlank())
+                                .distinct()
+                                .toList()
+                )
+                .language(
+                        patient.getPreferredLanguage() != null
+                                && !patient.getPreferredLanguage().isBlank()
+                                ? patient.getPreferredLanguage()
+                                : finalOrganizationDefinitionDTO != null
+                                ? finalOrganizationDefinitionDTO.defaultLanguageName()
+                                : "en"
+                )
+                .build();
+    }
     private NotificationResolvedRecipientDTO buildPatientEmailRecipient(Patient patient, OrganizationDefinitionDTO finalOrganizationDefinitionDTO) {
         if (patient == null) {
             return null;
