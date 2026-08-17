@@ -1291,8 +1291,8 @@ public class BillingChargeService {
                     );
             chargeLine.setQuantity(normalizedQuantity);
             chargeLine.setGrossAmount(
-                    defaultZero(chargeLine.getGrossAmount())
-                            .multiply(ratio)
+                    normalizedQuantity
+                            .multiply(defaultZero(chargeLine.getUnitPrice()))
                             .setScale(MONEY_SCALE, RoundingMode.HALF_UP)
             );
             chargeLine.setDiscountAmount(
@@ -1312,47 +1312,49 @@ public class BillingChargeService {
             );
         }
 
-        chargeLine.setNetAmount(
-                remainingChargeNet.setScale(MONEY_SCALE, RoundingMode.HALF_UP)
-        );
-        chargeLine.setPatientResponsibilityAmount(
-                defaultZero(remainingPatientShare)
-                        .setScale(MONEY_SCALE, RoundingMode.HALF_UP)
-        );
-        chargeLine.setInsuranceResponsibilityAmount(
-                defaultZero(remainingInsuranceShare)
-                        .setScale(MONEY_SCALE, RoundingMode.HALF_UP)
-        );
-        chargeLine.setOtherPayerResponsibilityAmount(BigDecimal.ZERO);
-
-        BigDecimal allocated = defaultZero(chargeLine.getAllocatedAmount());
-        BigDecimal reserved = defaultZero(chargeLine.getReservedAmount());
-        if (allocated.compareTo(chargeLine.getNetAmount()) > 0) {
-            allocated = chargeLine.getNetAmount();
-            chargeLine.setAllocatedAmount(allocated);
-        }
-
-        chargeLine.setOutstandingAmount(
-                defaultZero(chargeLine.getNetAmount())
-                        .subtract(allocated)
-                        .subtract(reserved)
+        BigDecimal newNet =
+                remainingChargeNet
                         .max(BigDecimal.ZERO)
+                        .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        BigDecimal newPatientShare =
+                defaultZero(remainingPatientShare)
+                        .max(BigDecimal.ZERO)
+                        .setScale(MONEY_SCALE, RoundingMode.HALF_UP)
+                        .min(newNet);
+
+        chargeLine.setNetAmount(newNet);
+        chargeLine.setOtherPayerResponsibilityAmount(BigDecimal.ZERO);
+        chargeLine.setPatientResponsibilityAmount(newPatientShare);
+        chargeLine.setInsuranceResponsibilityAmount(
+                newNet.subtract(newPatientShare)
         );
 
-        reconcileChargeLineResponsibilityAmounts(chargeLine);
-        ensureReservedAllocatedWithinPatientExposure(chargeLine);
+        alignChargeLineDiscountToNet(chargeLine);
+        releaseAllocationsBeyondPatientShare(chargeLine);
+
+        if (chargeLine.getOutstandingAmount().signum() == 0
+                && defaultZero(chargeLine.getReservedAmount()).signum() == 0
+                && defaultZero(chargeLine.getAllocatedAmount()).signum() > 0) {
+            chargeLine.setStatus(BillingChargeLineStatus.ALLOCATED);
+        }
 
         PatientServiceAndProduct item = chargeLine.getPatientServiceProduct();
         if (item != null) {
+            BigDecimal patientShare =
+                    defaultZero(chargeLine.getPatientResponsibilityAmount());
+            BigDecimal patientPaid =
+                    defaultZero(item.getPaidAmount()).min(patientShare);
+
             item.setQuantity(normalizedQuantity.longValue());
             item.setGrossAmount(chargeLine.getGrossAmount());
             item.setDiscountAmount(chargeLine.getDiscountAmount());
             item.setTaxAmount(chargeLine.getTaxAmount());
             item.setNetAmount(chargeLine.getNetAmount());
             item.setTotalAmount(chargeLine.getNetAmount());
-            item.setPatientShareAmount(chargeLine.getPatientResponsibilityAmount());
+            item.setPatientShareAmount(patientShare);
             item.setInsuranceShareAmount(chargeLine.getInsuranceResponsibilityAmount());
-            item.setRemainingAmount(chargeLine.getPatientResponsibilityAmount());
+            item.setPaidAmount(patientPaid);
+            item.setRemainingAmount(patientShare.subtract(patientPaid));
             patientServiceAndProductRepository.save(item);
         }
 
@@ -1581,6 +1583,13 @@ public class BillingChargeService {
 
         ensureReservedAllocatedWithinPatientExposure(chargeLine);
 
+        chargeLine.setOutstandingAmount(
+                defaultZero(chargeLine.getNetAmount())
+                        .subtract(defaultZero(chargeLine.getAllocatedAmount()))
+                        .subtract(defaultZero(chargeLine.getReservedAmount()))
+                        .max(BigDecimal.ZERO)
+        );
+
         if (chargeLine.getNetAmount().signum() == 0) {
             chargeLine.setPatientResponsibilityAmount(BigDecimal.ZERO);
             chargeLine.setOutstandingAmount(BigDecimal.ZERO);
@@ -1673,6 +1682,75 @@ public class BillingChargeService {
                         .subtract(exemption)
                         .add(tax)
                         .max(BigDecimal.ZERO)
+        );
+    }
+
+    /**
+     * Keeps {@code net = gross - discount - exemption + tax} when the remaining
+     * net comes from a fresh insurance split instead of a scaled gross, so the
+     * catalog unit price stays untouched and the difference lands on discount.
+     */
+    private void alignChargeLineDiscountToNet(
+            BillingChargeLine chargeLine
+    ) {
+        BigDecimal net = defaultZero(chargeLine.getNetAmount());
+        BigDecimal gross = defaultZero(chargeLine.getGrossAmount());
+        BigDecimal exemption = defaultZero(chargeLine.getExemptionAmount());
+        BigDecimal tax = defaultZero(chargeLine.getTaxAmount());
+        BigDecimal discount =
+                gross.subtract(exemption).add(tax).subtract(net);
+
+        if (discount.signum() >= 0) {
+            chargeLine.setDiscountAmount(
+                    discount.setScale(MONEY_SCALE, RoundingMode.HALF_UP)
+            );
+            return;
+        }
+
+        chargeLine.setDiscountAmount(BigDecimal.ZERO);
+        chargeLine.setGrossAmount(
+                net.add(exemption)
+                        .subtract(tax)
+                        .max(BigDecimal.ZERO)
+                        .setScale(MONEY_SCALE, RoundingMode.HALF_UP)
+        );
+
+        BigDecimal quantity = defaultZero(chargeLine.getQuantity());
+        if (quantity.signum() > 0) {
+            chargeLine.setUnitPrice(
+                    defaultZero(chargeLine.getGrossAmount())
+                            .divide(quantity, MONEY_SCALE, RoundingMode.HALF_UP)
+            );
+        }
+    }
+
+    /**
+     * On a quantity reduce the recalculated patient share is authoritative, so
+     * money collected above it is released here (the credit note refunds it)
+     * instead of inflating responsibility, then
+     * {@code allocated + reserved + outstanding = net} is restored
+     * (ck_billing_charge_line_allocation_balance).
+     */
+    private void releaseAllocationsBeyondPatientShare(
+            BillingChargeLine chargeLine
+    ) {
+        BigDecimal net = defaultZero(chargeLine.getNetAmount());
+        BigDecimal patientShare =
+                defaultZero(chargeLine.getPatientResponsibilityAmount())
+                        .min(net);
+        BigDecimal allocated =
+                defaultZero(chargeLine.getAllocatedAmount())
+                        .max(BigDecimal.ZERO)
+                        .min(patientShare);
+        BigDecimal reserved =
+                defaultZero(chargeLine.getReservedAmount())
+                        .max(BigDecimal.ZERO)
+                        .min(patientShare.subtract(allocated).max(BigDecimal.ZERO));
+
+        chargeLine.setAllocatedAmount(allocated);
+        chargeLine.setReservedAmount(reserved);
+        chargeLine.setOutstandingAmount(
+                net.subtract(allocated).subtract(reserved).max(BigDecimal.ZERO)
         );
     }
 
