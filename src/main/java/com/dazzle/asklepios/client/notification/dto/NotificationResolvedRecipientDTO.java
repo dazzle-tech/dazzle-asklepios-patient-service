@@ -36,4 +36,6 @@ public class NotificationResolvedRecipientDTO {
 
     private String language;
 
+    private List<String> deviceTokens;
+
 }
