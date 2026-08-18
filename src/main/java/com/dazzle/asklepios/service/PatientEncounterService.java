@@ -567,9 +567,9 @@ public class PatientEncounterService {
 
         PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
                 .orElseThrow(() -> new NotFoundAlertException(
-                        "PatientEncounter not found with id " + encounterId,
+                        "id.notfound" ,
                         "patientEncounter",
-                        "id.notfound"
+                        "PatientEncounter not found with id " + encounterId
                 ));
 
         if (!Set.of(
@@ -578,18 +578,18 @@ public class PatientEncounterService {
                 TreatmentStatus.PENDING_PAYMENT
         ).contains(encounter.getStatus())) {
             throw new BadRequestAlertException(
-                    "Cancel is allowed only when status is NEW, WAITING_TRIAGE, or PENDING_PAYMENT.",
+                    "cancel.notAllowed.rule"  ,
                     "patientEncounter",
-                    "cancel.notAllowed.rule"
+                    "Cancel is allowed only when status is NEW, WAITING_TRIAGE, or PENDING_PAYMENT."
             );
         }
         boolean hasObservation = !findEncounterIdsWithObservation(List.of(encounterId)).isEmpty();
 
         if (hasObservation) {
             throw new BadRequestAlertException(
-                    "Cannot cancel encounter with observations.",
+                    "cancel.notAllowed.hasObservation"  ,
                     "patientEncounter",
-                    "cancel.notAllowed.hasObservation"
+                    "Cannot cancel encounter with observations."
             );
         }
 
@@ -1317,6 +1317,7 @@ public class PatientEncounterService {
             PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
 
             encounterAssignToBedService.dischargeActiveAssignmentByEncounterId(saved.getId());
+            notifyEncounterEvent(saved, NotificationCode.ENCOUNTER_CLOSED, null);
 
             LOG.info("[DISCHARGE] success id={} status={} dischargeType={} dischargeAt={}",
                     saved.getId(),

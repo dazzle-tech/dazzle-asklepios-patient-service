@@ -28,6 +28,7 @@ import com.dazzle.asklepios.repository.PatientPrescriptionMedicationRepository;
 import com.dazzle.asklepios.repository.PatientPrescriptionRepository;
 import com.dazzle.asklepios.repository.PatientRelationRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.service.PatientItemPricingApplicationService;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -62,6 +63,7 @@ public class ApprovalRequestBuilderService {
     private final ApprovalSubscriberMapper approvalSubscriberMapper;
 
     private final WaseelApiProperties waseelApiProperties;
+    private final PatientItemPricingApplicationService patientItemPricingApplicationService;
 
     @Transactional(readOnly = true)
     public WaseelApprovalRequest buildRequest(Long eligibilityRequestId, Long encounterId) {
@@ -138,6 +140,8 @@ public class ApprovalRequestBuilderService {
         }
 
         validateItems(pendingItems);
+
+        applyPriceListPricing(pendingItems, encounter);
 
         WaseelApprovalEncounter waseelEncounter =
                 encounterMapper.toWaseelEncounter(encounter, nphiesId);
@@ -247,6 +251,22 @@ public class ApprovalRequestBuilderService {
                 "preAuthorization",
                 "waseel.nphiesId.required"
         );
+    }
+
+    private void applyPriceListPricing(
+            List<PatientServiceAndProduct> items,
+            PatientEncounter encounter
+    ) {
+        if (items == null || items.isEmpty() || encounter == null) {
+            return;
+        }
+
+        Long facilityId = encounter.getFacilityId();
+        for (PatientServiceAndProduct item : items) {
+            patientItemPricingApplicationService.applyToItem(item, facilityId);
+        }
+
+        patientServiceAndProductRepository.saveAll(items);
     }
 
     private void validateItems(List<PatientServiceAndProduct> items) {

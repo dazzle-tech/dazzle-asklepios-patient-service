@@ -89,6 +89,17 @@ public class AppointmentController {
         return new ResponseEntity<>(appointment.getContent(), headers, HttpStatus.OK);
     }
 
+    @PostMapping("/appointments/patient-portal/search")
+    public ResponseEntity<List<Appointment>> filterAppointmentsByPatientPortal(@Valid @RequestBody AppointmentSearchFilterMultiDepartmentDTO filter, Pageable pageable) {
+        Page<Appointment> appointment = appointmentService.filterAppointmentByPatientPortal(filter, pageable);
+
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                appointment
+        );
+        return new ResponseEntity<>(appointment.getContent(), headers, HttpStatus.OK);
+    }
+
     @PutMapping("/appointments/cancel")
     public ResponseEntity<Appointment> cancel(@Valid @RequestBody AppointmentCancelDTO dto) {
         Appointment result = appointmentService.cancel(dto);
@@ -191,9 +202,7 @@ public class AppointmentController {
     }
 
     @PostMapping("/appointments/bulk-reschedule")
-    public ResponseEntity<BulkAppointmentRescheduleResponseVM> bulkReschedule(
-            @Valid @RequestBody BulkAppointmentRescheduleDTO dto
-    ) {
+    public ResponseEntity<BulkAppointmentRescheduleResponseVM> bulkReschedule(@Valid @RequestBody BulkAppointmentRescheduleDTO dto) {
         validateBulkRescheduleDto(dto);
 
         BulkAppointmentRescheduleResponseVM result = appointmentService.bulkReschedule(dto);
@@ -205,30 +214,10 @@ public class AppointmentController {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(result);
     }
 
-    private void validateBulkRescheduleDto(BulkAppointmentRescheduleDTO dto) {
-        if (dto.originalAvailabilityGenerationBatchId() == null) {
-            throw new BadRequestAlertException(
-                    "Original generation batch is required",
-                    "Appointment",
-                    "originalbatch.required"
-            );
-        }
-
-        if (dto.replacementAvailabilityGenerationBatchId() == null) {
-            throw new BadRequestAlertException(
-                    "Replacement generation batch is required",
-                    "Appointment",
-                    "replacementbatch.required"
-            );
-        }
-
-        if (dto.originalAvailabilityGenerationBatchId().equals(dto.replacementAvailabilityGenerationBatchId())) {
-            throw new BadRequestAlertException(
-                    "Original and replacement generation batches cannot be the same",
-                    "Appointment",
-                    "samebatch.invalid"
-            );
-        }
+    @PostMapping("/appointments/bulk-reschedule/notify-patient/{batchId}")
+    public ResponseEntity<Void> notifyPatientForAppointmentReschedule(@PathVariable Long batchId) {
+        appointmentService.notifyPatientForAppointmentReschedule(batchId);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/appointments/by-status-and-dates/without-pagination")
@@ -261,9 +250,7 @@ public class AppointmentController {
     }
 
     @PostMapping("/appointments/search/without-pagination")
-    public ResponseEntity<List<Appointment>> filterAppointmentsWithoutPagination(
-            @Valid @RequestBody AppointmentSearchFilterMultiDepartmentDTO filter
-    ) {
+    public ResponseEntity<List<Appointment>> filterAppointmentsWithoutPagination(@Valid @RequestBody AppointmentSearchFilterMultiDepartmentDTO filter) {
         List<Appointment> appointments = appointmentService.filterAppointmentWithoutPagination(filter);
 
         return ResponseEntity.ok(appointments);
@@ -295,4 +282,31 @@ public class AppointmentController {
         Appointment appointment = appointmentService.createIntegrationAppointment(dto);
         return ResponseEntity.ok(appointment);
     }
+
+    private void validateBulkRescheduleDto(BulkAppointmentRescheduleDTO dto) {
+        if (dto.originalAvailabilityGenerationBatchId() == null) {
+            throw new BadRequestAlertException(
+                    "Original generation batch is required",
+                    "Appointment",
+                    "originalbatch.required"
+            );
+        }
+
+        if (dto.replacementAvailabilityGenerationBatchId() == null) {
+            throw new BadRequestAlertException(
+                    "Replacement generation batch is required",
+                    "Appointment",
+                    "replacementbatch.required"
+            );
+        }
+
+        if (dto.originalAvailabilityGenerationBatchId().equals(dto.replacementAvailabilityGenerationBatchId())) {
+            throw new BadRequestAlertException(
+                    "Original and replacement generation batches cannot be the same",
+                    "Appointment",
+                    "samebatch.invalid"
+            );
+        }
+    }
+
 }

@@ -2,6 +2,7 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.service.PatientAuthenticationService;
+import com.dazzle.asklepios.service.PatientOtpAuthenticationService;
 import com.dazzle.asklepios.service.PatientService;
 import com.dazzle.asklepios.service.dto.patient.FacilityPatientFilterDTO;
 import com.dazzle.asklepios.service.dto.patient.KeyAndPasswordDTO;
@@ -12,6 +13,8 @@ import com.dazzle.asklepios.service.dto.patient.PatientLoginDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientPinDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
+import com.dazzle.asklepios.service.dto.patientPortal.PatientOtpRequestDTO;
+import com.dazzle.asklepios.service.dto.patientPortal.PatientOtpVerifyDTO;
 import com.dazzle.asklepios.service.dto.patientPortal.PatientPortalLoginDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -19,6 +22,7 @@ import com.dazzle.asklepios.web.rest.errors.InvalidPasswordException;
 import com.dazzle.asklepios.web.rest.vm.patient.CreatePasswordKeyValidationVM;
 import com.dazzle.asklepios.web.rest.vm.patient.ManagedPatientVM;
 import com.dazzle.asklepios.web.rest.vm.patient.PatientBasicInformationResponseVM;
+import com.dazzle.asklepios.web.rest.vm.patientPortal.PatientPortalLoginVM;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
 import org.apache.commons.lang3.StringUtils;
@@ -70,6 +74,7 @@ public class PatientController {
     private final PatientAuthenticationService patientAuthenticationService;
 
     private final JwtEncoder jwtEncoder;
+    private final PatientOtpAuthenticationService patientOtpAuthenticationService;
 
     @Value("${patient.security.authentication.jwt.token-validity-in-seconds:0}")
     private long tokenValidityInSeconds;
@@ -77,10 +82,11 @@ public class PatientController {
     @Value("${patient.security.authentication.jwt.token-validity-in-seconds-for-remember-me:0}")
     private long tokenValidityInSecondsForRememberMe;
 
-    public PatientController(PatientService patientService, PatientAuthenticationService patientAuthenticationService, JwtEncoder jwtEncoder) {
+    public PatientController(PatientService patientService, PatientAuthenticationService patientAuthenticationService, JwtEncoder jwtEncoder, PatientOtpAuthenticationService patientOtpAuthenticationService) {
         this.patientService = patientService;
         this.patientAuthenticationService = patientAuthenticationService;
         this.jwtEncoder = jwtEncoder;
+        this.patientOtpAuthenticationService = patientOtpAuthenticationService;
     }
 
     @PostMapping
@@ -263,7 +269,7 @@ public class PatientController {
     }
 
 
-  @GetMapping("/by-date-of-birth/{date}")
+    @GetMapping("/by-date-of-birth/{date}")
     public ResponseEntity<List<Patient>> getByDateOfBirth(@PathVariable("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateOfBirth, @ParameterObject Pageable pageable) {
         LOG.debug(
                 "REST list Patients by dateOfBirth='{}' pageable={}",
@@ -478,6 +484,7 @@ public class PatientController {
 
         return ResponseEntity.noContent().build();
     }
+
     @PutMapping("/{id}/conditions")
     public ResponseEntity<Patient> updatePatientConditions(
             @PathVariable Long id,
@@ -486,6 +493,7 @@ public class PatientController {
         Patient updatedPatient = patientService.updatePatientConditions(id, dto);
         return ResponseEntity.ok(updatedPatient);
     }
+
     @GetMapping(value = "/create-patient-password/validate", produces = MediaType.APPLICATION_JSON_VALUE)
     public CreatePasswordKeyValidationVM validate(@RequestParam("key") String key) {
         return patientService.validateCreatePasswordKey(key);
@@ -506,6 +514,7 @@ public class PatientController {
         return new ResponseEntity<>(new JWTToken(jwt), headers, HttpStatus.OK);
 
     }
+
     @PutMapping("/{patientId}/pin")
     public ResponseEntity<PatientPinDTO> setPin(
             @PathVariable Long patientId,
@@ -536,6 +545,7 @@ public class PatientController {
 
         return ResponseEntity.ok(patient);
     }
+
     @PostMapping("/patient-portal/login")
     public ResponseEntity<Patient> login(
             @RequestParam String pin,
@@ -547,6 +557,32 @@ public class PatientController {
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
+
+    @PostMapping("/patient-portal/request-otp")
+    public ResponseEntity<String> requestPatientOtp(
+            @Valid @RequestBody PatientOtpRequestDTO request
+    ) {
+        LOG.debug(
+                "REST request to send patient portal OTP for document number={}",
+                request.primaryDocumentNumber()
+        );
+
+        String otp = patientOtpAuthenticationService.requestOtp(request);
+
+        return ResponseEntity.ok(otp);
+    }
+
+    @PostMapping("/patient-portal/verify-login-otp")
+    public ResponseEntity<PatientPortalLoginVM> verifyLoginOtp(@RequestBody PatientOtpVerifyDTO request) {
+
+        Patient patient = patientOtpAuthenticationService.verifyOtp(request);
+        Authentication authentication = patientAuthenticationService.authenticatePatient(patient);
+
+        String jwt = createToken(authentication, true);
+        PatientPortalLoginVM response = new PatientPortalLoginVM(patient, jwt);
+        return ResponseEntity.ok(response);
+    }
+
     private static boolean isPasswordLengthInvalid(String password) {
         return (
                 StringUtils.isEmpty(password) ||
@@ -582,6 +618,7 @@ public class PatientController {
                 JwtEncoderParameters.from(jwsHeader, claims.build())
         ).getTokenValue();
     }
+
     /**
      * Object to return as body in JWT Authentication.
      */

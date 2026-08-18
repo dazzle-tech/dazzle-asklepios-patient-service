@@ -4,6 +4,7 @@ import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalItem;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimValidationError;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimPreAuthorizationInfo;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimRequest;
+import com.dazzle.asklepios.integration.waseel.service.mapper.WaseelFactorFormatter;
 import com.dazzle.asklepios.integration.waseel.service.mapper.WaseelItemTypeNormalizer;
 import org.springframework.stereotype.Service;
 
@@ -79,9 +80,7 @@ public class ClaimPayloadValidationService {
 
             Integer quantity = item.quantity() == null || item.quantity() <= 0 ? 1 : item.quantity();
             BigDecimal unitPrice = money(item.unitPrice());
-            BigDecimal factor = item.factor() == null
-                    ? BigDecimal.ONE.setScale(6, RoundingMode.HALF_UP)
-                    : item.factor();
+            BigDecimal factor = WaseelFactorFormatter.format(item.factor());
             BigDecimal tax = money(item.tax());
             BigDecimal expectedNet = BigDecimal.valueOf(quantity)
                     .multiply(unitPrice)

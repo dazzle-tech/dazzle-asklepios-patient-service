@@ -237,6 +237,12 @@ public class ClaimRequestBuilderService {
         int sequence = 1;
         for (FinancialDocumentItem invoiceItem : invoiceItems) {
             Long pspId = invoiceItem.getPatientServiceProductId();
+            PatientServiceAndProduct invoiceProduct =
+                    pspId == null ? null : productById.get(pspId);
+            if (invoiceProduct != null && invoiceProduct.isUncoveredCashItem()) {
+                continue;
+            }
+
             WaseelApprovalItem base = pspId == null ? null : mappedByPspId.get(pspId);
 
             if (base == null && pspId != null) {

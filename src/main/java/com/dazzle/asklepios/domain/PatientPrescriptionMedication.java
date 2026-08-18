@@ -14,6 +14,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -117,5 +118,13 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 50, nullable = false)
     private PrescriptionStatus status;
+    @Column(name = "cancellation_reason")
+    private String cancellationReason;
+
+    @Column(name = "cancelled_by", length = 50)
+    private String cancelledBy;
+    @Column(name = "cancelled_date")
+    private Instant cancelledDate;
+
 
 }

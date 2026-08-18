@@ -168,6 +168,7 @@ public class InvoiceGenerationService {
                 encounter.getFinanciallyClosedAt(),
                 encounter.getFinanciallyClosedBy(),
                 resolveCoverageType(encounterId),
+                encounter.getPatientInsuranceId(),
                 eligibilityReference,
                 eligibilitySnapshot,
                 mapPatientHeader(patient),

@@ -127,10 +127,12 @@ public class ApprovalItemMapper {
         BigDecimal formulaNet = gross.multiply(factor).add(safeTax).setScale(2, RoundingMode.HALF_UP);
 
         if (formulaNet.compareTo(safeNet) != 0 && gross.signum() > 0) {
-            factor = safeNet
-                    .subtract(safeTax)
-                    .divide(gross, 6, RoundingMode.HALF_UP)
-                    .max(BigDecimal.ZERO);
+            factor = WaseelFactorFormatter.format(
+                    safeNet
+                            .subtract(safeTax)
+                            .divide(gross, 6, RoundingMode.HALF_UP)
+                            .max(BigDecimal.ZERO)
+            );
         }
 
         if (safePatientShare.signum() == 0 && safePayerShare.signum() == 0 && safeNet.signum() > 0) {
@@ -390,18 +392,16 @@ public class ApprovalItemMapper {
 
     private BigDecimal calculateFactor(BigDecimal gross, BigDecimal discount) {
         if (gross == null || gross.compareTo(BigDecimal.ZERO) <= 0) {
-            return BigDecimal.ONE.setScale(2, RoundingMode.HALF_UP);
+            return WaseelFactorFormatter.format(BigDecimal.ONE);
         }
 
         if (discount == null || discount.compareTo(BigDecimal.ZERO) <= 0) {
-            return BigDecimal.ONE.setScale(2, RoundingMode.HALF_UP);
+            return WaseelFactorFormatter.format(BigDecimal.ONE);
         }
 
         BigDecimal discountPercent = discount.divide(gross, 6, RoundingMode.HALF_UP);
 
-        return BigDecimal.ONE
-                .subtract(discountPercent)
-                .setScale(6, RoundingMode.HALF_UP);
+        return WaseelFactorFormatter.format(BigDecimal.ONE.subtract(discountPercent));
     }
 
     private boolean isMedicationCode(String waseelItemType) {

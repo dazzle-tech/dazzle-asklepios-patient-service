@@ -18,5 +18,6 @@ public record DentalProcedureCreateDTO(
         @NotNull Long procedureId,
         Long serviceId,
         Long cdtCodeId,
-        String notes
+        String notes,
+        Boolean acceptUncoveredAsCash
 ) implements Serializable {}

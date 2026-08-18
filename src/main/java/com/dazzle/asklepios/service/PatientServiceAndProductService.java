@@ -10,12 +10,10 @@ import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
-import com.dazzle.asklepios.domain.enumeration.PriceSource;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCancellationReason;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerSourceChannel;
-import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.CancelReason;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
@@ -30,7 +28,7 @@ import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
 import com.dazzle.asklepios.service.dto.billing.BillingRuleEvaluationRequest;
-import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
+import com.dazzle.asklepios.service.dto.billing.InsurancePriceListCoverageCheckResult;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductUpdateDTO;
 import com.dazzle.asklepios.service.helper.BrandMedicationHelper;
@@ -79,6 +77,8 @@ public class PatientServiceAndProductService {
     private final BillingEngineService billingEngineService;
     private final BillingChargeService billingChargeService;
     private final PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository;
+    private final PatientItemPricingApplicationService patientItemPricingApplicationService;
+    private final InsurancePriceListCoverageService insurancePriceListCoverageService;
 
     public PatientServiceAndProductService(
             PatientServiceAndProductRepository patientServiceAndProductRepository,
@@ -95,7 +95,9 @@ public class PatientServiceAndProductService {
             BillingRuleEvaluationService billingRuleEvaluationService,
             @Lazy BillingEngineService billingEngineService,
             @Lazy BillingChargeService billingChargeService,
-            PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository
+            PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository,
+            PatientItemPricingApplicationService patientItemPricingApplicationService,
+            InsurancePriceListCoverageService insurancePriceListCoverageService
     ) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.patientRepository = patientRepository;
@@ -112,6 +114,8 @@ public class PatientServiceAndProductService {
         this.billingEngineService = billingEngineService;
         this.billingChargeService = billingChargeService;
         this.patientPrescriptionMedicationRepository = patientPrescriptionMedicationRepository;
+        this.patientItemPricingApplicationService = patientItemPricingApplicationService;
+        this.insurancePriceListCoverageService = insurancePriceListCoverageService;
     }
 
     public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
@@ -226,27 +230,43 @@ public class PatientServiceAndProductService {
         entity.setExemptionAmount(defaultZero(dto.exemptionAmount()));
         entity.setTaxAmount(defaultZero(dto.taxAmount()));
 
-        preAuthorizationResolutionService.apply(
-                entity,
-                preAuthorizationResolutionService.resolve(
+        InsurancePriceListCoverageCheckResult coverageCheck =
+                insurancePriceListCoverageService.check(
                         entity.getEncounterId(),
                         dto.billingItemType(),
-                        dto.procedureId(),
                         dto.serviceId(),
+                        dto.procedureId(),
                         dto.diagnosticTestId(),
                         dto.brandMedicationId(),
-                        false,
                         entity.getCurrency()
-                )
-        );
+                );
+        insurancePriceListCoverageService.requireCoveredOrAcknowledged(coverageCheck, null);
 
-        if (encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(entity.getEncounterId())) {
-            entity.setPatientInsuranceId(
-                    encounterInsuranceEligibilityService.resolveEncounterPatientInsuranceId(
-                            entity.getEncounterId()
+        if (coverageCheck.requiresCashConfirmation()) {
+            insurancePriceListCoverageService.applyUncoveredCash(entity, coverageCheck);
+        } else {
+            preAuthorizationResolutionService.apply(
+                    entity,
+                    preAuthorizationResolutionService.resolve(
+                            entity.getEncounterId(),
+                            dto.billingItemType(),
+                            dto.procedureId(),
+                            dto.serviceId(),
+                            dto.diagnosticTestId(),
+                            dto.brandMedicationId(),
+                            false,
+                            entity.getCurrency()
                     )
             );
-            entity.setCoverageStatus(CoverageStatus.COVERED);
+
+            if (encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(entity.getEncounterId())) {
+                entity.setPatientInsuranceId(
+                        encounterInsuranceEligibilityService.resolveEncounterPatientInsuranceId(
+                                entity.getEncounterId()
+                        )
+                );
+                entity.setCoverageStatus(CoverageStatus.COVERED);
+            }
         }
 
         applyResolvedPricing(entity, encounter, dto.quantity());
@@ -285,6 +305,30 @@ public class PatientServiceAndProductService {
         }
 
         try {
+            List<InsurancePriceListCoverageCheckResult> coverageChecks =
+                    new ArrayList<>();
+            Boolean acceptedCash = null;
+            for (PatientServiceProductCreateDTO dto : dtos) {
+                coverageChecks.add(
+                        insurancePriceListCoverageService.check(
+                                dto.encounterId(),
+                                dto.billingItemType(),
+                                dto.serviceId(),
+                                dto.procedureId(),
+                                dto.diagnosticTestId(),
+                                dto.brandMedicationId(),
+                                dto.currency()
+                        )
+                );
+                if (Boolean.TRUE.equals(dto.acceptUncoveredAsCash())) {
+                    acceptedCash = Boolean.TRUE;
+                }
+            }
+            insurancePriceListCoverageService.requireAllCoveredOrAcknowledged(
+                    coverageChecks,
+                    acceptedCash
+            );
+
             List<PatientServiceAndProduct> entities = dtos.stream()
                     .map(dto -> {
                         Patient patient = patientRepository.findById(dto.patientId())
@@ -345,12 +389,21 @@ public class PatientServiceAndProductService {
         }
     }
 
+    @Transactional
+    public void syncPrescriptionMedicationsForPreAuthorization(PatientPrescription prescription) {
+        syncPrescriptionMedicationsForPreAuthorization(prescription, null);
+    }
+
     /**
      * When a prescription is submitted on an insurance visit, create billing rows for each
      * medication and run the same price-list pre-authorization flow used for services/procedures.
+     * Medications missing from the insurance price list require cash confirmation.
      */
     @Transactional
-    public void syncPrescriptionMedicationsForPreAuthorization(PatientPrescription prescription) {
+    public void syncPrescriptionMedicationsForPreAuthorization(
+            PatientPrescription prescription,
+            Boolean acceptUncoveredAsCash
+    ) {
         if (prescription == null
                 || prescription.getId() == null
                 || prescription.getEncounterId() == null
@@ -377,6 +430,30 @@ public class PatientServiceAndProductService {
         if (medications == null || medications.isEmpty()) {
             return;
         }
+
+        List<InsurancePriceListCoverageCheckResult> coverageChecks = new ArrayList<>();
+        for (PatientPrescriptionMedication medication : medications) {
+            if (medication == null
+                    || PrescriptionStatus.CANCELLED.equals(medication.getStatus())
+                    || medication.getMedicationsId() == null) {
+                continue;
+            }
+            coverageChecks.add(
+                    insurancePriceListCoverageService.check(
+                            encounter.getId(),
+                            BillingItemTypes.MEDICATION,
+                            null,
+                            null,
+                            null,
+                            medication.getMedicationsId(),
+                            Currency.SAR
+                    )
+            );
+        }
+        insurancePriceListCoverageService.requireAllCoveredOrAcknowledged(
+                coverageChecks,
+                acceptUncoveredAsCash
+        );
 
         List<PatientServiceAndProduct> createdItems = new ArrayList<>();
 
@@ -564,32 +641,52 @@ public class PatientServiceAndProductService {
                 .isDefaultService(Boolean.FALSE)
                 .isExempted(Boolean.FALSE);
 
-        preAuthorizationResolutionService.resolveAndPrepareNewItem(
-                builder,
-                encounter.getId(),
-                dto.billingItemType(),
-                dto.procedureId(),
-                dto.serviceId(),
-                dto.diagnosticTestId(),
-                dto.brandMedicationId(),
-                encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(
-                        encounter.getId()
-                ),
-                dto.currency()
+        InsurancePriceListCoverageCheckResult coverageCheck =
+                insurancePriceListCoverageService.check(
+                        encounter.getId(),
+                        dto.billingItemType(),
+                        dto.serviceId(),
+                        dto.procedureId(),
+                        dto.diagnosticTestId(),
+                        dto.brandMedicationId(),
+                        dto.currency()
+                );
+        insurancePriceListCoverageService.requireCoveredOrAcknowledged(
+                coverageCheck,
+                dto.acceptUncoveredAsCash()
         );
 
-        preAuthorizationResolutionService.enrichWaseelSbsMappingForBillingItem(
-                builder,
-                dto.billingItemType(),
-                dto.procedureId(),
-                dto.serviceId(),
-                dto.diagnosticTestId(),
-                dto.brandMedicationId()
-        );
+        if (coverageCheck.requiresCashConfirmation()) {
+            insurancePriceListCoverageService.applyUncoveredCash(builder, coverageCheck);
+        } else {
+            preAuthorizationResolutionService.resolveAndPrepareNewItem(
+                    builder,
+                    encounter.getId(),
+                    dto.billingItemType(),
+                    dto.procedureId(),
+                    dto.serviceId(),
+                    dto.diagnosticTestId(),
+                    dto.brandMedicationId(),
+                    encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(
+                            encounter.getId()
+                    ),
+                    dto.currency()
+            );
+
+            preAuthorizationResolutionService.enrichWaseelSbsMappingForBillingItem(
+                    builder,
+                    dto.billingItemType(),
+                    dto.procedureId(),
+                    dto.serviceId(),
+                    dto.diagnosticTestId(),
+                    dto.brandMedicationId()
+            );
+        }
 
         PatientServiceAndProduct entity = builder.build();
 
-        if (encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(encounter.getId())) {
+        if (!coverageCheck.requiresCashConfirmation()
+                && encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(encounter.getId())) {
             entity.setPatientInsuranceId(
                     encounterInsuranceEligibilityService.resolveEncounterPatientInsuranceId(
                             encounter.getId()
@@ -638,30 +735,46 @@ public class PatientServiceAndProductService {
                         .isDefaultService(Boolean.FALSE)
                         .isExempted(Boolean.FALSE);
 
-        preAuthorizationResolutionService.resolveAndPrepareNewItem(
-                builder,
-                encounter.getId(),
-                BillingItemTypes.MEDICATION,
-                null,
-                null,
-                null,
-                medication.getMedicationsId(),
-                true,
-                Currency.SAR
-        );
+        InsurancePriceListCoverageCheckResult coverageCheck =
+                insurancePriceListCoverageService.check(
+                        encounter.getId(),
+                        BillingItemTypes.MEDICATION,
+                        null,
+                        null,
+                        null,
+                        medication.getMedicationsId(),
+                        Currency.SAR
+                );
 
-        preAuthorizationResolutionService.enrichWaseelSbsMappingForBillingItem(
-                builder,
-                BillingItemTypes.MEDICATION,
-                null,
-                null,
-                null,
-                medication.getMedicationsId()
-        );
+        if (coverageCheck.requiresCashConfirmation()) {
+            insurancePriceListCoverageService.applyUncoveredCash(builder, coverageCheck);
+        } else {
+            preAuthorizationResolutionService.resolveAndPrepareNewItem(
+                    builder,
+                    encounter.getId(),
+                    BillingItemTypes.MEDICATION,
+                    null,
+                    null,
+                    null,
+                    medication.getMedicationsId(),
+                    true,
+                    Currency.SAR
+            );
+
+            preAuthorizationResolutionService.enrichWaseelSbsMappingForBillingItem(
+                    builder,
+                    BillingItemTypes.MEDICATION,
+                    null,
+                    null,
+                    null,
+                    medication.getMedicationsId()
+            );
+        }
 
         PatientServiceAndProduct entity = builder.build();
 
-        if (encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(encounter.getId())) {
+        if (!coverageCheck.requiresCashConfirmation()
+                && encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(encounter.getId())) {
             entity.setPatientInsuranceId(
                     encounterInsuranceEligibilityService.resolveEncounterPatientInsuranceId(
                             encounter.getId()
@@ -679,52 +792,7 @@ public class PatientServiceAndProductService {
             PatientEncounter encounter,
             long quantity
     ) {
-        Long facilityId = encounter.getFacilityId();
-        if (facilityId == null) {
-            throw new BadRequestAlertException(
-                    "Encounter facility is required to resolve item pricing.",
-                    "patientServicesAndProducts",
-                    "encounter.facility.required"
-            );
-        }
-
-        if (item.getCurrency() == null) {
-            throw new BadRequestAlertException(
-                    "Currency is required to resolve item pricing.",
-                    "patientServicesAndProducts",
-                    "currency.required"
-            );
-        }
-
-        ResolvedBillingPrice resolvedPrice =
-                billingEngineService.resolvePricing(item, facilityId);
-
-        BigDecimal unitPrice = resolvedPrice.unitPrice();
-        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
-
-        item.setUnitPrice(unitPrice);
-        item.setCurrency(resolvedPrice.currency());
-        item.setTotalAmount(totalAmount);
-        item.setGrossAmount(totalAmount);
-        item.setNetAmount(totalAmount);
-        item.setRemainingAmount(totalAmount);
-        item.setPriceSource(mapPriceSource(resolvedPrice.priceSource()));
-
-        LOG.info(
-                "[PSP_PRICING] Resolved unitPrice={} currency={} priceSource={} billingItemType={}",
-                unitPrice,
-                resolvedPrice.currency(),
-                resolvedPrice.priceSource(),
-                item.getBillingItemType()
-        );
-    }
-
-    private PriceSource mapPriceSource(BillingPriceSource source) {
-        if (source == BillingPriceSource.PRICE_LIST) {
-            return PriceSource.PRICE_LIST;
-        }
-
-        return PriceSource.DEFAULT;
+        patientItemPricingApplicationService.applyToItem(item, encounter.getFacilityId());
     }
 
     private void validateReferences(PatientServiceProductCreateDTO dto) {
