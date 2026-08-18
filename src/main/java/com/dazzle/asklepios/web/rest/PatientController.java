@@ -22,6 +22,7 @@ import com.dazzle.asklepios.web.rest.errors.InvalidPasswordException;
 import com.dazzle.asklepios.web.rest.vm.patient.CreatePasswordKeyValidationVM;
 import com.dazzle.asklepios.web.rest.vm.patient.ManagedPatientVM;
 import com.dazzle.asklepios.web.rest.vm.patient.PatientBasicInformationResponseVM;
+import com.dazzle.asklepios.web.rest.vm.patientPortal.PatientPortalLoginVM;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
 import org.apache.commons.lang3.StringUtils;
@@ -268,7 +269,7 @@ public class PatientController {
     }
 
 
-  @GetMapping("/by-date-of-birth/{date}")
+    @GetMapping("/by-date-of-birth/{date}")
     public ResponseEntity<List<Patient>> getByDateOfBirth(@PathVariable("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateOfBirth, @ParameterObject Pageable pageable) {
         LOG.debug(
                 "REST list Patients by dateOfBirth='{}' pageable={}",
@@ -483,6 +484,7 @@ public class PatientController {
 
         return ResponseEntity.noContent().build();
     }
+
     @PutMapping("/{id}/conditions")
     public ResponseEntity<Patient> updatePatientConditions(
             @PathVariable Long id,
@@ -491,6 +493,7 @@ public class PatientController {
         Patient updatedPatient = patientService.updatePatientConditions(id, dto);
         return ResponseEntity.ok(updatedPatient);
     }
+
     @GetMapping(value = "/create-patient-password/validate", produces = MediaType.APPLICATION_JSON_VALUE)
     public CreatePasswordKeyValidationVM validate(@RequestParam("key") String key) {
         return patientService.validateCreatePasswordKey(key);
@@ -564,19 +567,20 @@ public class PatientController {
                 request.primaryDocumentNumber()
         );
 
-       String otp= patientOtpAuthenticationService.requestOtp(request);
+        String otp = patientOtpAuthenticationService.requestOtp(request);
 
         return ResponseEntity.ok(otp);
     }
 
     @PostMapping("/patient-portal/verify-login-otp")
-    public ResponseEntity<Patient> verifyLoginOtp(
-            @RequestBody PatientOtpVerifyDTO request) {
+    public ResponseEntity<PatientPortalLoginVM> verifyLoginOtp(@RequestBody PatientOtpVerifyDTO request) {
 
-        Patient patient =
-                patientOtpAuthenticationService.verifyOtp(request);
+        Patient patient = patientOtpAuthenticationService.verifyOtp(request);
+        Authentication authentication = patientAuthenticationService.authenticatePatient(patient);
 
-        return ResponseEntity.ok(patient);
+        String jwt = createToken(authentication, true);
+        PatientPortalLoginVM response = new PatientPortalLoginVM(patient, jwt);
+        return ResponseEntity.ok(response);
     }
 
     private static boolean isPasswordLengthInvalid(String password) {
@@ -614,6 +618,7 @@ public class PatientController {
                 JwtEncoderParameters.from(jwsHeader, claims.build())
         ).getTokenValue();
     }
+
     /**
      * Object to return as body in JWT Authentication.
      */
