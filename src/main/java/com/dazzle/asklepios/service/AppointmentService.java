@@ -416,6 +416,78 @@ public class AppointmentService {
         return result;
     }
 
+    @Transactional(readOnly = true)
+    public Page<Appointment> filterAppointmentByPatientPortal(AppointmentSearchFilterMultiDepartmentDTO filter, Pageable pageable) {
+
+        LOG.debug("Service filter Appointments by patient portal filter={} pageable={}", filter, pageable);
+
+        if (filter.facility() == null) {
+            throw new BadRequestAlertException("facility", ENTITY_NAME, "Facility is required");
+        }
+
+        List<Long> finalDepartmentIds = filter.departmentIds();
+
+        Specification<Appointment> appointmentFilterSpec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            query.distinct(true);
+
+            predicates.add(cb.equal(root.get("facilityId"), filter.facility()));
+
+            predicates.add(root.get("departmentId").in(finalDepartmentIds));
+
+            if (filter.resourceType() != null) {
+                predicates.add(cb.equal(root.get("resourceType"), filter.resourceType()));
+            }
+
+            if (filter.resourceId() != null) {
+                predicates.add(cb.equal(root.get("resourceId"), filter.resourceId()));
+            }
+
+            if (filter.status() != null && !filter.status().isEmpty()) {
+                predicates.add(root.get("status").in(filter.status()));
+            }
+
+            if (filter.bookingMode() != null && !filter.bookingMode().isEmpty()) {
+                predicates.add(root.get("bookingMode").in(filter.bookingMode()));
+            } else {
+                predicates.add(cb.notEqual(root.get("bookingMode"), BookingMode.BUFFER));
+            }
+
+            if (filter.patientId() != null) {
+                predicates.add(cb.equal(root.join("patient", JoinType.LEFT).get("id"), filter.patientId()));
+            }
+            if (filter.startDate() != null) {
+                predicates.add(cb.greaterThanOrEqualTo(
+                        root.get("startDatetime"),
+                        filter.startDate()
+                ));
+            }
+
+            if (filter.endDate() != null) {
+                predicates.add(cb.lessThanOrEqualTo(
+                        root.get("startDatetime"),
+                        filter.endDate()
+                ));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        Page<Appointment> result = appointmentRepository.findAll(appointmentFilterSpec, pageable);
+
+        LOG.debug(
+                "[FILTER] Appointments result totalElements={} totalPages={} pageNumber={} pageSize={}",
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.getNumber(),
+                result.getSize()
+        );
+
+        return result;
+    }
+
+
     public List<Appointment> getAppointmentsByStatusBetweenDatesWithoutPagination(List<AppointmentStatus> status, Instant startDatetime, Instant endDatetime) {
         LOG.debug(
                 "Request to get appointments by status={} between startDatetime={} and endDatetime={}",

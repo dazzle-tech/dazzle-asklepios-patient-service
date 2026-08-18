@@ -89,6 +89,17 @@ public class AppointmentController {
         return new ResponseEntity<>(appointment.getContent(), headers, HttpStatus.OK);
     }
 
+    @PostMapping("/appointments/patient-portal/search")
+    public ResponseEntity<List<Appointment>> filterAppointmentsByPatientPortal(@Valid @RequestBody AppointmentSearchFilterMultiDepartmentDTO filter, Pageable pageable) {
+        Page<Appointment> appointment = appointmentService.filterAppointmentByPatientPortal(filter, pageable);
+
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                appointment
+        );
+        return new ResponseEntity<>(appointment.getContent(), headers, HttpStatus.OK);
+    }
+
     @PutMapping("/appointments/cancel")
     public ResponseEntity<Appointment> cancel(@Valid @RequestBody AppointmentCancelDTO dto) {
         Appointment result = appointmentService.cancel(dto);
