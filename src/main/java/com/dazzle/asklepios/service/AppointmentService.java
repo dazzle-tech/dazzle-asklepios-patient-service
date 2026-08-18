@@ -258,7 +258,7 @@ public class AppointmentService {
                             log.getBookingGroup() != null ? log.getBookingGroup().getId() : null,
                             log.getWaitingList() != null ? log.getWaitingList().getId() : null,
                             log.getHl7AppointmentNumber(),
-                            log.getCreatedDate() ,
+                            log.getCreatedDate(),
                             log.getLastModifiedDate(),
                             log.getCreatedBy(),
                             log.getLastModifiedBy()
@@ -267,6 +267,7 @@ public class AppointmentService {
                 })
                 .toList();
     }
+
     @Transactional
     public Appointment bookPatientAppointment(AppointmentBookPatientDTO dto) {
         LOG.debug("Request to update Appointment dto={}", dto);
@@ -1046,6 +1047,20 @@ public class AppointmentService {
         return savedAppointment;
     }
 
+    public void notifyPatientForAppointmentReschedule(Long originalBatchId) {
+        LOG.debug("[BULK_RESCHEDULE] Ask patient notification originalBatchId={}", originalBatchId);
+        AvailabilityGenerationBatch originalBatch = getBatch(originalBatchId);
+
+        Instant tomorrowStart = tomorrowStartInstant(resolveZone(originalBatch.getTemplate().getFacilityId()));
+
+        List<Appointment> rescheduledAppointments = appointmentRepository.findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(originalBatchId, List.of(AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED), tomorrowStart);
+
+        for (Appointment appointment : rescheduledAppointments) {
+            //TODO: Add the actual choice_url for the patient to select a new appointment slot
+            notifyAppointmentEvent(appointment, NotificationCode.APPOINTMENT_RESCHEDULED_BY_PATIENT, Map.of("choice_url", ""));
+        }
+    }
+
     private void validateCreateAppointment(AppointmentIntegrationCreateDTO dto) {
 
         if (dto.startDatetime().isAfter(dto.endDatetime())) {
@@ -1124,7 +1139,6 @@ public class AppointmentService {
             );
         }
     }
-
 
     private Instant tomorrowStartInstant(ZoneId zone) {
         return LocalDate.now(zone)
@@ -1678,6 +1692,7 @@ public class AppointmentService {
     }
 
     // Quick appointment helper
+
     private void validateDepartmentWorkingDay(DepartmentDTO department) {
         if (department.workingDays() == null || department.workingDays().isEmpty()) {
             throw new BadRequestAlertException(
@@ -1726,6 +1741,7 @@ public class AppointmentService {
     }
 
     //Notification helper
+
     private void notifyAppointmentEvent(Appointment appointment, NotificationCode notificationCode, Map<String, Object> extraData) {
         if (appointment == null || notificationCode == null) {
             return;
@@ -1761,7 +1777,6 @@ public class AppointmentService {
             LOG.warn("Failed to create appointment notification. appointmentId={}, code={}, error={}", appointment.getId(), notificationCode, e.getMessage());
         }
     }
-
 
     private Map<String, Object> buildAppointmentNotificationData(Appointment appointment, DepartmentDTO department) {
         Map<String, Object> data = new LinkedHashMap<>();
