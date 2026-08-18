@@ -42,4 +42,18 @@ public class PatientAuthenticationService {
                 authorities
         );
     }
+
+    public Authentication authenticatePatient(Patient patient) {
+        Collection<GrantedAuthority> authorities = List.of(
+                new SimpleGrantedAuthority("ROLE_PATIENT")
+        );
+
+        return new UsernamePasswordAuthenticationToken(
+                patient.getMedicalRecordNumber(),
+                null,
+                authorities
+        );
+    }
+
+
 }
