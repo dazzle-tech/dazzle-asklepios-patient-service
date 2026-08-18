@@ -58,6 +58,8 @@ public class DiagnosticOrderTestStatusService {
 
     private final PatientItemPricingApplicationService patientItemPricingApplicationService;
 
+    private final InsurancePriceListCoverageService insurancePriceListCoverageService;
+
     public DiagnosticOrderTestStatusService(
             DiagnosticOrderRepository diagnosticOrderRepository,
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
@@ -70,7 +72,8 @@ public class DiagnosticOrderTestStatusService {
             @Lazy BillingEngineService billingEngineService,
             @Lazy BillingChargeService billingChargeService,
             @Lazy PatientServiceAndProductService patientServiceAndProductService,
-            PatientItemPricingApplicationService patientItemPricingApplicationService
+            PatientItemPricingApplicationService patientItemPricingApplicationService,
+            InsurancePriceListCoverageService insurancePriceListCoverageService
     ) {
         this.diagnosticOrderRepository = diagnosticOrderRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
@@ -84,6 +87,7 @@ public class DiagnosticOrderTestStatusService {
         this.billingChargeService = billingChargeService;
         this.patientServiceAndProductService = patientServiceAndProductService;
         this.patientItemPricingApplicationService = patientItemPricingApplicationService;
+        this.insurancePriceListCoverageService = insurancePriceListCoverageService;
     }
 
     public DiagnosticOrderTest collectSample(Long testId) {
@@ -130,6 +134,13 @@ public class DiagnosticOrderTestStatusService {
      * Pre-authorization is submitted here (not on accept).
      */
     public PatientServiceAndProduct onTestAddedToOrder(DiagnosticOrderTest test) {
+        return onTestAddedToOrder(test, null);
+    }
+
+    public PatientServiceAndProduct onTestAddedToOrder(
+            DiagnosticOrderTest test,
+            Boolean acceptUncoveredAsCash
+    ) {
         if (test == null || test.getId() == null || test.getOrderId() == null) {
             throw new BadRequestAlertException(
                     "Diagnostic order test is required",
@@ -142,7 +153,7 @@ public class DiagnosticOrderTestStatusService {
         DiagnosticTestSetupDTO setupDiagnostic = fetchDiagnosticTestSetup(test.getTestId());
 
         PatientServiceAndProduct savedBillingItem =
-                findOrCreateDiagnosticBillingItem(order, test, setupDiagnostic);
+                findOrCreateDiagnosticBillingItem(order, test, setupDiagnostic, acceptUncoveredAsCash);
 
         if (Boolean.TRUE.equals(savedBillingItem.getIsBilled())
                 && savedBillingItem.getPreAuthorizationStatus()
@@ -414,7 +425,8 @@ public class DiagnosticOrderTestStatusService {
     private PatientServiceAndProduct buildDiagnosticBillingItem(
             DiagnosticOrder order,
             DiagnosticOrderTest test,
-            DiagnosticTestSetupDTO setupDiagnostic
+            DiagnosticTestSetupDTO setupDiagnostic,
+            Boolean acceptUncoveredAsCash
     ) {
         long quantity = 1L;
 
@@ -453,26 +465,44 @@ public class DiagnosticOrderTestStatusService {
                 .notes("Created when diagnostic test was added to order. OrderId="
                         + order.getId() + ", OrderTestId=" + test.getId());
 
-        preAuthorizationResolutionService.resolveAndPrepareNewItem(
-                builder,
+        var coverageCheck = insurancePriceListCoverageService.check(
                 order.getEncounterId(),
                 billingItemType,
                 null,
                 null,
                 setupDiagnostic.id(),
                 null,
-                true,
                 setupDiagnostic.currency()
         );
-
-        preAuthorizationResolutionService.enrichWaseelSbsMappingForBillingItem(
-                builder,
-                billingItemType,
-                null,
-                null,
-                setupDiagnostic.id(),
-                null
+        insurancePriceListCoverageService.requireCoveredOrAcknowledged(
+                coverageCheck,
+                acceptUncoveredAsCash
         );
+
+        if (coverageCheck.requiresCashConfirmation()) {
+            insurancePriceListCoverageService.applyUncoveredCash(builder, coverageCheck);
+        } else {
+            preAuthorizationResolutionService.resolveAndPrepareNewItem(
+                    builder,
+                    order.getEncounterId(),
+                    billingItemType,
+                    null,
+                    null,
+                    setupDiagnostic.id(),
+                    null,
+                    true,
+                    setupDiagnostic.currency()
+            );
+
+            preAuthorizationResolutionService.enrichWaseelSbsMappingForBillingItem(
+                    builder,
+                    billingItemType,
+                    null,
+                    null,
+                    setupDiagnostic.id(),
+                    null
+            );
+        }
 
         PatientServiceAndProduct billingItem = builder.build();
         applyResolvedDiagnosticPricing(billingItem, order.getEncounterId(), quantity);
@@ -496,7 +526,8 @@ public class DiagnosticOrderTestStatusService {
     private PatientServiceAndProduct findOrCreateDiagnosticBillingItem(
             DiagnosticOrder order,
             DiagnosticOrderTest test,
-            DiagnosticTestSetupDTO setupDiagnostic
+            DiagnosticTestSetupDTO setupDiagnostic,
+            Boolean acceptUncoveredAsCash
     ) {
         BillingItemTypes billingItemType =
                 test.getOrderType() == TestType.RADIOLOGY
@@ -525,7 +556,8 @@ public class DiagnosticOrderTestStatusService {
                                 buildDiagnosticBillingItem(
                                         order,
                                         test,
-                                        setupDiagnostic
+                                        setupDiagnostic,
+                                        acceptUncoveredAsCash
                                 )
                         )
                 );
@@ -535,6 +567,10 @@ public class DiagnosticOrderTestStatusService {
             PatientServiceAndProduct existing,
             Long encounterId
     ) {
+        if (existing.isUncoveredCashItem()) {
+            return existing;
+        }
+
         preAuthorizationResolutionService.applyEncounterInsuranceLink(
                 existing,
                 encounterId,

@@ -112,6 +112,21 @@ public class InsurancePatientShareCalculator {
         return new InsuranceSplit(normalizedNet, BigDecimal.ZERO);
     }
 
+    public InsuranceBenefitRule resolveApplicableRule(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item
+    ) {
+        if (insurance == null || insurance.getId() == null) {
+            return null;
+        }
+
+        return insuranceBenefitRuleService.resolveApplicableRule(
+                insurance,
+                resolveServiceCategory(item),
+                item == null ? null : item.getServiceSource()
+        );
+    }
+
     public BigDecimal calculatePatientShare(
             PatientInsurance insurance,
             String serviceCategory,

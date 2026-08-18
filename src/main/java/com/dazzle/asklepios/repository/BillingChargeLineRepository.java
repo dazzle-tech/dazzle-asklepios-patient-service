@@ -21,10 +21,6 @@ public interface BillingChargeLineRepository
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<BillingChargeLine> findById(Long id);
 
-    @Query("SELECT cl FROM BillingChargeLine cl WHERE cl.id = :id")
-    Optional<BillingChargeLine> findByIdWithoutLock(
-            @Param("id") Long id
-    );
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<BillingChargeLine>

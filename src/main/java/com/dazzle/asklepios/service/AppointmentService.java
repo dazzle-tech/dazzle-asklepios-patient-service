@@ -1300,6 +1300,7 @@ public class AppointmentService {
                 appointment.getReason(),
                 appointment.getNote(),
                 diagnosticTest.type(),
+                null,
                 null
         );
 
@@ -1361,6 +1362,7 @@ public class AppointmentService {
                     appointment.getReason(),
                     appointment.getNote(),
                     diagnosticTest.type(),
+                    null,
                     null
             );
 

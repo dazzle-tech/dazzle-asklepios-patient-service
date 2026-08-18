@@ -42,7 +42,9 @@ public record PrepareDefaultServicesRequest(
          * When true, reception confirmed payment with collect-zero / deferred collection.
          * The encounter advances to WAITING_TRIAGE (or NEW) after services are prepared.
          */
-        Boolean payZeroNow
+        Boolean payZeroNow,
+
+        Boolean acceptUncoveredAsCash
 
 ) implements Serializable {
 }

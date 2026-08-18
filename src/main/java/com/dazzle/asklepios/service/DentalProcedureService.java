@@ -9,6 +9,7 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
@@ -19,6 +20,7 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
+import com.dazzle.asklepios.service.dto.billing.InsurancePriceListCoverageCheckResult;
 import com.dazzle.asklepios.service.dto.dentalProcedure.DentalProcedureCreateDTO;
 import com.dazzle.asklepios.service.dto.dentalProcedure.DentalProcedureUpdateDTO;
 import com.dazzle.asklepios.service.helper.CDTCodeHelper;
@@ -64,6 +66,7 @@ public class DentalProcedureService {
     private final PreAuthorizationResolutionService preAuthorizationResolutionService;
     private final BillingEngineService billingEngineService;
     private final PatientServiceAndProductService patientServiceAndProductService;
+    private final InsurancePriceListCoverageService insurancePriceListCoverageService;
 
     public DentalProcedureService(
             DentalProcedureRepository dentalProcedureRepository,
@@ -78,7 +81,8 @@ public class DentalProcedureService {
             EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService,
             PreAuthorizationResolutionService preAuthorizationResolutionService,
             @Lazy BillingEngineService billingEngineService,
-            @Lazy PatientServiceAndProductService patientServiceAndProductService
+            @Lazy PatientServiceAndProductService patientServiceAndProductService,
+            InsurancePriceListCoverageService insurancePriceListCoverageService
     ) {
         this.dentalProcedureRepository = dentalProcedureRepository;
         this.patientRepository = patientRepository;
@@ -93,6 +97,7 @@ public class DentalProcedureService {
         this.preAuthorizationResolutionService = preAuthorizationResolutionService;
         this.billingEngineService = billingEngineService;
         this.patientServiceAndProductService = patientServiceAndProductService;
+        this.insurancePriceListCoverageService = insurancePriceListCoverageService;
     }
 
     public DentalProcedure create(DentalProcedureCreateDTO dto) {
@@ -120,6 +125,37 @@ public class DentalProcedureService {
         DentalProcedure entity = buildDentalProcedure(dto, patient, encounter);
 
         try {
+            List<InsurancePriceListCoverageCheckResult> coverageChecks =
+                    new ArrayList<>();
+            coverageChecks.add(
+                    insurancePriceListCoverageService.check(
+                            encounter.getId(),
+                            BillingItemTypes.PROCEDURE,
+                            null,
+                            setupProcedure.id(),
+                            null,
+                            null,
+                            setupProcedure.currency()
+                    )
+            );
+            if (setupService != null) {
+                coverageChecks.add(
+                        insurancePriceListCoverageService.check(
+                                encounter.getId(),
+                                BillingItemTypes.SERVICE,
+                                setupService.id(),
+                                null,
+                                null,
+                                null,
+                                setupService.currency()
+                        )
+                );
+            }
+            insurancePriceListCoverageService.requireAllCoveredOrAcknowledged(
+                    coverageChecks,
+                    dto.acceptUncoveredAsCash()
+            );
+
             DentalProcedure saved = dentalProcedureRepository.saveAndFlush(entity);
 
             PatientServiceAndProduct procedureBilling =
@@ -452,25 +488,15 @@ public class DentalProcedureService {
                 .billingInvoiceItemId(null)
                 .notes(billingNotes);
 
-        preAuthorizationResolutionService.resolveAndPrepareNewItem(
+        applyDentalInsuranceCoverage(
                 builder,
                 dentalProcedure.getEncounter().getId(),
                 BillingItemTypes.PROCEDURE,
+                null,
                 setupProcedure.id(),
                 null,
                 null,
-                null,
-                true,
                 setupProcedure.currency()
-        );
-
-        preAuthorizationResolutionService.enrichWaseelSbsMappingForBillingItem(
-                builder,
-                BillingItemTypes.PROCEDURE,
-                setupProcedure.id(),
-                null,
-                null,
-                null
         );
 
         return builder.build();
@@ -507,28 +533,64 @@ public class DentalProcedureService {
                 .billingInvoiceItemId(null)
                 .notes(billingNotes);
 
-        preAuthorizationResolutionService.resolveAndPrepareNewItem(
+        applyDentalInsuranceCoverage(
                 builder,
                 dentalProcedure.getEncounter().getId(),
                 BillingItemTypes.SERVICE,
-                null,
                 setupService.id(),
                 null,
                 null,
-                true,
+                null,
                 setupService.currency()
+        );
+
+        return builder.build();
+    }
+
+    private void applyDentalInsuranceCoverage(
+            PatientServiceAndProduct.PatientServiceAndProductBuilder builder,
+            Long encounterId,
+            BillingItemTypes billingItemType,
+            Long serviceId,
+            Long procedureId,
+            Long diagnosticTestId,
+            Long brandMedicationId,
+            Currency currency
+    ) {
+        var coverageCheck = insurancePriceListCoverageService.check(
+                encounterId,
+                billingItemType,
+                serviceId,
+                procedureId,
+                diagnosticTestId,
+                brandMedicationId,
+                currency
+        );
+        if (coverageCheck.requiresCashConfirmation()) {
+            insurancePriceListCoverageService.applyUncoveredCash(builder, coverageCheck);
+            return;
+        }
+
+        preAuthorizationResolutionService.resolveAndPrepareNewItem(
+                builder,
+                encounterId,
+                billingItemType,
+                procedureId,
+                serviceId,
+                diagnosticTestId,
+                brandMedicationId,
+                true,
+                currency
         );
 
         preAuthorizationResolutionService.enrichWaseelSbsMappingForBillingItem(
                 builder,
-                BillingItemTypes.SERVICE,
-                null,
-                setupService.id(),
-                null,
-                null
+                billingItemType,
+                procedureId,
+                serviceId,
+                diagnosticTestId,
+                brandMedicationId
         );
-
-        return builder.build();
     }
 
     private Optional<PatientServiceAndProduct> findBillingItem(

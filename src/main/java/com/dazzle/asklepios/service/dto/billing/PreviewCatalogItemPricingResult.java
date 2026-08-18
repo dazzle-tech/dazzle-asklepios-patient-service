@@ -37,7 +37,17 @@ public record PreviewCatalogItemPricingResult(
 
         BigDecimal patientShareAmount,
 
-        BigDecimal insuranceShareAmount
+        BigDecimal insuranceShareAmount,
+
+        boolean insuranceVisit,
+
+        boolean coveredByInsurance,
+
+        boolean requiresCashConfirmation,
+
+        String notCoveredReason,
+
+        BigDecimal cashUnitPrice
 
 ) implements Serializable {
 }

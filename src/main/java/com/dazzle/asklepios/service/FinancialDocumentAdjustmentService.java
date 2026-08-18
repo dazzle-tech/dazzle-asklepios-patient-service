@@ -46,6 +46,7 @@ import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientPaymentAllocationRepository;
 import com.dazzle.asklepios.repository.ClaimRequestRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.InsuranceBenefitRule;
 import com.dazzle.asklepios.service.dto.InsuranceSplit;
 import com.dazzle.asklepios.service.dto.billing.CreateFinancialDocumentAdjustmentRequest;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
@@ -168,11 +169,18 @@ public class FinancialDocumentAdjustmentService {
         Map<Long, BillingChargeLine> chargeLinesByPsp = loadChargeLinesByPsp(invoice.getEncounterId());
 
         List<InvoiceLineItemResponse> responses = new ArrayList<>();
+        PatientInsurance insurance = resolveEncounterInsurance(invoice.getEncounterId());
+
         itemRepo.findByDocument_Id(invoiceId).stream()
                 .sorted(Comparator.comparing(FinancialDocumentItem::getId))
                 .forEach(item ->
                         responses.add(
-                                toInvoiceLineItemResponse(item, chargeLinesByPsp, "INVOICE")
+                                toInvoiceLineItemResponse(
+                                        item,
+                                        chargeLinesByPsp,
+                                        "INVOICE",
+                                        insurance
+                                )
                         )
                 );
 
@@ -186,7 +194,8 @@ public class FinancialDocumentAdjustmentService {
                                                 toInvoiceLineItemResponse(
                                                         item,
                                                         chargeLinesByPsp,
-                                                        "DEBIT_NOTE"
+                                                        "DEBIT_NOTE",
+                                                        insurance
                                                 )
                                         )
                                 )
@@ -430,11 +439,7 @@ public class FinancialDocumentAdjustmentService {
             savedItems.add(itemRepo.save(item));
 
             if (preparedLine.originalItem() != null) {
-                applyCreditToOriginalItem(
-                        preparedLine.originalItem(),
-                        preparedLine.amount(),
-                        preparedLine.action() == FinancialDocumentItemAdjustmentAction.REMOVE
-                );
+                applyCreditToOriginalItem(preparedLine);
             }
         }
 
@@ -867,11 +872,7 @@ public class FinancialDocumentAdjustmentService {
             savedItems.add(itemRepo.save(item));
 
             if (preparedLine.originalItem() != null && documentType == FinancialDocumentType.CREDIT_NOTE) {
-                applyCreditToOriginalItem(
-                        preparedLine.originalItem(),
-                        preparedLine.amount(),
-                        preparedLine.action() == FinancialDocumentItemAdjustmentAction.REMOVE
-                );
+                applyCreditToOriginalItem(preparedLine);
             }
         }
 
@@ -906,7 +907,7 @@ public class FinancialDocumentAdjustmentService {
             case REMOVE -> prepareRemoveLine(lineRequest, invoiceItemsById);
             case PARTIAL_CREDIT -> preparePartialCreditLine(lineRequest, invoiceItemsById);
             case LINE_DISCOUNT -> prepareLineDiscountFromRequest(lineRequest, invoiceItemsById);
-            case REDUCE -> prepareReduceLine(lineRequest, invoiceItemsById);
+            case REDUCE -> prepareReduceLine(invoice, lineRequest, invoiceItemsById);
             case ADD -> prepareAddLine(invoice, lineRequest);
             case ADD_NEW -> prepareAddNewLine(invoice, lineRequest);
             case INCREASE -> prepareIncreaseLine(lineRequest, invoiceItemsById);
@@ -1074,6 +1075,7 @@ public class FinancialDocumentAdjustmentService {
     }
 
     private PreparedAdjustmentLine prepareReduceLine(
+            FinancialDocument invoice,
             InvoiceLineAdjustmentRequest request,
             Map<Long, FinancialDocumentItem> invoiceItemsById
     ) {
@@ -1081,8 +1083,16 @@ public class FinancialDocumentAdjustmentService {
         BigDecimal newQuantity = requireQuantity(request.quantity());
         BigDecimal newUnitPrice = requireUnitPrice(request.unitPrice());
         BigDecimal oldNet = money(original.getNetAmount());
-        BigDecimal projectedNet =
-                projectLineNetAfterChange(original, newQuantity, newUnitPrice);
+        RemainingInsuranceProjection remainingInsurance =
+                projectRemainingInsuranceAfterReduce(
+                        invoice,
+                        original,
+                        newQuantity,
+                        newUnitPrice
+                );
+        BigDecimal projectedNet = remainingInsurance != null
+                ? remainingInsurance.invoiceShare()
+                : projectLineNetAfterChange(original, newQuantity, newUnitPrice);
 
         if (projectedNet.compareTo(oldNet) >= 0) {
             throw new BadRequestAlertException(
@@ -1101,15 +1111,25 @@ public class FinancialDocumentAdjustmentService {
             );
         }
 
+        BillingChargeLine chargeLine =
+                remainingInsurance != null ? resolveChargeLine(original) : null;
+
         return new PreparedAdjustmentLine(
                 FinancialDocumentItemAdjustmentAction.REDUCE,
                 original,
-                null,
+                chargeLine,
                 creditAmount,
                 newQuantity.setScale(0, RoundingMode.HALF_UP).longValue(),
-                newUnitPrice,
+                remainingInsurance != null && newQuantity.signum() > 0
+                        ? remainingInsurance.invoiceShare()
+                                .divide(newQuantity, 4, RoundingMode.HALF_UP)
+                        : newUnitPrice,
                 resolveItemCode(original),
-                resolveItemDescription(original)
+                resolveItemDescription(original),
+                creditAmount,
+                ZERO,
+                ZERO,
+                remainingInsurance
         );
     }
 
@@ -1228,7 +1248,8 @@ public class FinancialDocumentAdjustmentService {
                         ? request.serviceSource()
                         : ServiceSource.SERVICE_AND_PRODUCT,
                 request.sourceId(),
-                request.notes()
+                request.notes(),
+                request.acceptUncoveredAsCash()
         );
 
         var createdService = patientServiceAndProductService.create(createDto);
@@ -1558,11 +1579,15 @@ public class FinancialDocumentAdjustmentService {
                 .reduce(ZERO, BigDecimal::add);
     }
 
-    private void applyCreditToOriginalItem(
-            FinancialDocumentItem originalItem,
-            BigDecimal creditAmount,
-            boolean fullLineRemoval
-    ) {
+    private void applyCreditToOriginalItem(PreparedAdjustmentLine preparedLine) {
+        FinancialDocumentItem originalItem = preparedLine.originalItem();
+        BigDecimal creditAmount = preparedLine.amount();
+        boolean fullLineRemoval =
+                preparedLine.action() == FinancialDocumentItemAdjustmentAction.REMOVE;
+        boolean insuranceReduce =
+                preparedLine.action() == FinancialDocumentItemAdjustmentAction.REDUCE
+                        && preparedLine.remainingInsurance() != null;
+
         BigDecimal priorRemaining =
                 money(originalItem.getRemainingAmount());
         BigDecimal paid = money(originalItem.getPaidAmount());
@@ -1576,7 +1601,11 @@ public class FinancialDocumentAdjustmentService {
             originalItem.setRemainingAmount(ZERO);
             originalItem.setStatus(FinancialDocumentItemStatus.PAID);
         } else {
-            reduceOriginalItemAmounts(originalItem, creditAmount);
+            if (insuranceReduce) {
+                applyReduceAmountsToOriginalItem(originalItem, preparedLine);
+            } else {
+                reduceOriginalItemAmounts(originalItem, creditAmount);
+            }
 
             BigDecimal creditFromRemaining = creditAmount.min(priorRemaining);
             BigDecimal creditFromPaid =
@@ -1602,7 +1631,57 @@ public class FinancialDocumentAdjustmentService {
 
         itemRepo.save(originalItem);
 
-        syncCreditNoteToChargeLine(originalItem, creditAmount);
+        if (insuranceReduce) {
+            RemainingInsuranceProjection remaining = preparedLine.remainingInsurance();
+            billingChargeService.applyQuantityReduceToChargeLine(
+                    originalItem.getBillingChargeLineId() != null
+                            ? originalItem.getBillingChargeLineId()
+                            : preparedLine.chargeLine() != null
+                                    ? preparedLine.chargeLine().getId()
+                                    : null,
+                    BigDecimal.valueOf(preparedLine.quantity()),
+                    remaining.chargeNet(),
+                    remaining.patientShare(),
+                    remaining.insuranceShare()
+            );
+        } else {
+            syncCreditNoteToChargeLine(originalItem, creditAmount);
+        }
+    }
+
+    /**
+     * Quantity reduce on an insurance line must keep remaining copay + max,
+     * not treat the credit as a line discount on the already-capped share.
+     */
+    private void applyReduceAmountsToOriginalItem(
+            FinancialDocumentItem originalItem,
+            PreparedAdjustmentLine preparedLine
+    ) {
+        RemainingInsuranceProjection remaining = preparedLine.remainingInsurance();
+        BigDecimal oldNet = money(originalItem.getNetAmount());
+        BigDecimal newShare = remaining.invoiceShare();
+        BigDecimal newQuantity = BigDecimal.valueOf(preparedLine.quantity());
+
+        originalItem.setQuantity(preparedLine.quantity());
+        originalItem.setUnitPrice(
+                newQuantity.signum() > 0
+                        ? newShare.divide(newQuantity, 4, RoundingMode.HALF_UP)
+                        : preparedLine.unitPrice()
+        );
+        originalItem.setNetAmount(newShare);
+        originalItem.setGrossAmount(proportional(originalItem.getGrossAmount(), newShare, oldNet));
+        originalItem.setDiscountAmount(
+                proportional(originalItem.getDiscountAmount(), newShare, oldNet)
+        );
+        originalItem.setTaxAmount(proportional(originalItem.getTaxAmount(), newShare, oldNet));
+
+        if (money(originalItem.getPatientShareAmount()).signum() > 0) {
+            originalItem.setPatientShareAmount(remaining.patientShare());
+        }
+        if (money(originalItem.getInsuranceShareAmount()).signum() > 0) {
+            originalItem.setInsuranceShareAmount(remaining.insuranceShare());
+            originalItem.setInsuranceRemainingAmount(remaining.insuranceShare());
+        }
     }
 
     /**
@@ -1799,6 +1878,11 @@ public class FinancialDocumentAdjustmentService {
                             return;
                         }
 
+                        if (creditItem.getAdjustmentAction()
+                                == FinancialDocumentItemAdjustmentAction.REDUCE) {
+                            return;
+                        }
+
                         billingChargeService.applyCreditNoteChargeLineSync(
                                 chargeLineId,
                                 creditApplied,
@@ -1904,11 +1988,31 @@ public class FinancialDocumentAdjustmentService {
     private InvoiceLineItemResponse toInvoiceLineItemResponse(
             FinancialDocumentItem item,
             Map<Long, BillingChargeLine> chargeLinesByPsp,
-            String lineSource
+            String lineSource,
+            PatientInsurance insurance
     ) {
         BillingChargeLine chargeLine = chargeLinesByPsp.get(item.getPatientServiceProductId());
         InvoiceItemPricingAdjustmentSnapshot snapshot =
                 invoiceItemPricingSnapshotService.readSnapshot(item);
+
+        InsuranceBenefitRule benefitRule = null;
+        if (insurance != null
+                && chargeLine != null
+                && money(chargeLine.getInsuranceResponsibilityAmount()).signum() > 0) {
+            try {
+                benefitRule =
+                        insurancePatientShareCalculator.resolveApplicableRule(
+                                insurance,
+                                chargeLine.getPatientServiceProduct()
+                        );
+            } catch (RuntimeException exception) {
+                LOG.debug(
+                        "[ADJUSTMENT] Unable to resolve copay rule for invoice line {}",
+                        item.getId(),
+                        exception
+                );
+            }
+        }
 
         return new InvoiceLineItemResponse(
                 item.getId(),
@@ -1974,7 +2078,18 @@ public class FinancialDocumentAdjustmentService {
                                         )
                                 )
                                 .toList(),
-                lineSource
+                lineSource,
+                chargeLine != null ? money(chargeLine.getNetAmount()) : null,
+                chargeLine != null ? money(chargeLine.getUnitPrice()) : null,
+                chargeLine != null ? money(chargeLine.getQuantity()) : null,
+                chargeLine != null
+                        ? money(chargeLine.getPatientResponsibilityAmount())
+                        : money(item.getPatientShareAmount()),
+                chargeLine != null
+                        ? money(chargeLine.getInsuranceResponsibilityAmount())
+                        : money(item.getInsuranceShareAmount()),
+                benefitRule != null ? benefitRule.patientCopaymentPercentage() : null,
+                benefitRule != null ? benefitRule.patientMaximumCopayment() : null
         );
     }
 
@@ -2148,6 +2263,114 @@ public class FinancialDocumentAdjustmentService {
         }
 
         return proportional(oldNet, newGross, oldGross);
+    }
+
+    /**
+     * Insurance REDUCE must re-run copay % + per-service maximum on the remaining
+     * charge net. Pro-rata of an already-capped patient invoice share is wrong
+     * (qty 2 at 20%/max 75 → 75, qty 1 must become 40.50 not 37.50).
+     */
+    private RemainingInsuranceProjection projectRemainingInsuranceAfterReduce(
+            FinancialDocument invoice,
+            FinancialDocumentItem original,
+            BigDecimal newQuantity,
+            BigDecimal newUnitPrice
+    ) {
+        BillingChargeLine chargeLine = resolveChargeLine(original);
+        if (chargeLine == null
+                || money(chargeLine.getInsuranceResponsibilityAmount()).signum() <= 0) {
+            return null;
+        }
+
+        PatientInsurance insurance =
+                resolveEncounterInsurance(invoice.getEncounterId());
+        if (insurance == null) {
+            return null;
+        }
+
+        BigDecimal remainingChargeNet =
+                projectRemainingChargeNet(chargeLine, original, newQuantity, newUnitPrice);
+        InsuranceSplit split =
+                insurancePatientShareCalculator.calculateSplit(
+                        insurance,
+                        chargeLine.getPatientServiceProduct(),
+                        remainingChargeNet
+                );
+
+        BigDecimal invoiceShare =
+                invoice.getDocumentSubtype() == FinancialDocumentSubtype.INSURANCE_CLAIM
+                        ? split.insuranceShare()
+                        : split.patientShare();
+
+        return new RemainingInsuranceProjection(
+                remainingChargeNet,
+                split.patientShare(),
+                split.insuranceShare(),
+                invoiceShare
+        );
+    }
+
+    private BigDecimal projectRemainingChargeNet(
+            BillingChargeLine chargeLine,
+            FinancialDocumentItem original,
+            BigDecimal newQuantity,
+            BigDecimal newUnitPrice
+    ) {
+        BigDecimal oldChargeQuantity = money(chargeLine.getQuantity());
+        if (oldChargeQuantity.signum() <= 0) {
+            oldChargeQuantity = resolveLineQuantity(original);
+        }
+
+        if (newQuantity.compareTo(oldChargeQuantity) >= 0) {
+            return money(chargeLine.getNetAmount());
+        }
+
+        BigDecimal chargeUnitPrice = money(chargeLine.getUnitPrice());
+        boolean quantityOnly =
+                newUnitPrice.compareTo(money(original.getUnitPrice())) == 0;
+        BigDecimal mappedChargeUnitPrice = chargeUnitPrice;
+        if (!quantityOnly
+                && chargeUnitPrice.signum() > 0
+                && newUnitPrice.compareTo(chargeUnitPrice) == 0) {
+            mappedChargeUnitPrice = newUnitPrice;
+        }
+
+        BigDecimal oldChargeGross = money(chargeLine.getGrossAmount());
+        if (oldChargeGross.signum() <= 0) {
+            oldChargeGross = oldChargeQuantity.multiply(chargeUnitPrice);
+        }
+
+        BigDecimal newChargeGross = money(newQuantity.multiply(mappedChargeUnitPrice));
+        if (oldChargeGross.signum() <= 0) {
+            return newChargeGross;
+        }
+
+        return proportional(chargeLine.getNetAmount(), newChargeGross, oldChargeGross);
+    }
+
+    private BillingChargeLine resolveChargeLine(FinancialDocumentItem item) {
+        if (item == null) {
+            return null;
+        }
+
+        if (item.getBillingChargeLineId() != null) {
+            BillingChargeLine chargeLine =
+                    chargeLineRepo.findById(item.getBillingChargeLineId()).orElse(null);
+            if (chargeLine != null) {
+                return chargeLine;
+            }
+        }
+
+        if (item.getPatientServiceProductId() == null) {
+            return null;
+        }
+
+        return chargeLineRepo
+                .findFirstByPatientServiceProduct_IdAndStatusNotInOrderByIdAsc(
+                        item.getPatientServiceProductId(),
+                        EXCLUDED_LINE_STATUSES
+                )
+                .orElse(null);
     }
 
     private BigDecimal proportional(
@@ -2716,7 +2939,8 @@ public class FinancialDocumentAdjustmentService {
             String itemDescription,
             BigDecimal grossAmount,
             BigDecimal discountAmount,
-            BigDecimal taxAmount
+            BigDecimal taxAmount,
+            RemainingInsuranceProjection remainingInsurance
     ) {
         private PreparedAdjustmentLine(
                 FinancialDocumentItemAdjustmentAction action,
@@ -2739,8 +2963,45 @@ public class FinancialDocumentAdjustmentService {
                     itemDescription,
                     amount,
                     ZERO,
-                    ZERO
+                    ZERO,
+                    null
+            );
+        }
+
+        private PreparedAdjustmentLine(
+                FinancialDocumentItemAdjustmentAction action,
+                FinancialDocumentItem originalItem,
+                BillingChargeLine chargeLine,
+                BigDecimal amount,
+                Long quantity,
+                BigDecimal unitPrice,
+                String itemCode,
+                String itemDescription,
+                BigDecimal grossAmount,
+                BigDecimal discountAmount,
+                BigDecimal taxAmount
+        ) {
+            this(
+                    action,
+                    originalItem,
+                    chargeLine,
+                    amount,
+                    quantity,
+                    unitPrice,
+                    itemCode,
+                    itemDescription,
+                    grossAmount,
+                    discountAmount,
+                    taxAmount,
+                    null
             );
         }
     }
+
+    private record RemainingInsuranceProjection(
+            BigDecimal chargeNet,
+            BigDecimal patientShare,
+            BigDecimal insuranceShare,
+            BigDecimal invoiceShare
+    ) {}
 }
