@@ -21,6 +21,7 @@ import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
@@ -151,7 +153,9 @@ public class WaseelPreAuthorizationService {
 
         } catch (HttpStatusCodeException ex) {
             logWaseelError("PRE-AUTH SEARCH", ex, null);
-            throw ex;
+            throw waseelFailure("search", ex);
+        } catch (RestClientException ex) {
+            throw waseelFailure("search", ex);
         }
     }
 
@@ -518,7 +522,7 @@ public class WaseelPreAuthorizationService {
         preAuthorizationTrackRepository.save(track);
     }
 
-    @Transactional
+    @Transactional(dontRollbackOn = BadRequestAlertException.class)
     public PreAuthorizationCommunicationResponse communicate(
             PreAuthorizationCommunicationRequest request
     ) {
@@ -584,7 +588,15 @@ public class WaseelPreAuthorizationService {
                     null,
                     ex.getResponseBodyAsString()
             );
-            throw ex;
+            throw waseelFailure("communication", ex);
+        } catch (RestClientException ex) {
+            saveCommunicationTrack(
+                    resolved.preAuth(),
+                    resolvedRequest,
+                    null,
+                    ex.getMessage()
+            );
+            throw waseelFailure("communication", ex);
         }
     }
 
@@ -1077,7 +1089,9 @@ public class WaseelPreAuthorizationService {
 
         } catch (HttpStatusCodeException ex) {
             logWaseelError("PRE-AUTH CANCEL", ex, jsonBody);
-            throw ex;
+            throw waseelFailure("cancel", ex);
+        } catch (RestClientException ex) {
+            throw waseelFailure("cancel", ex);
         }
     }
 
@@ -1201,6 +1215,112 @@ public class WaseelPreAuthorizationService {
         }
 
         log.error("====================================", ex);
+    }
+
+    private BadRequestAlertException waseelFailure(String operation, HttpStatusCodeException ex) {
+        String extracted = extractWaseelErrorMessage(ex.getResponseBodyAsString());
+        int status = ex.getStatusCode().value();
+        String message = extracted != null
+                ? extracted
+                : defaultWaseelFailureMessage(operation, status);
+
+        if (status == 503 || message.toLowerCase().contains("unavailable")) {
+            message = extracted != null
+                    ? extracted
+                    : "NPHIES / Waseel is temporarily unavailable. Please try again later.";
+        }
+
+        return new BadRequestAlertException(
+                message,
+                "preAuthorization",
+                "waseel." + operation + ".failed"
+        );
+    }
+
+    private BadRequestAlertException waseelFailure(String operation, RestClientException ex) {
+        log.error("[WASEEL] {} connection failed: {}", operation, ex.getMessage());
+        return new BadRequestAlertException(
+                "Unable to reach Waseel for " + operation + ". Please try again later.",
+                "preAuthorization",
+                "waseel." + operation + ".failed"
+        );
+    }
+
+    private String defaultWaseelFailureMessage(String operation, int status) {
+        return "Waseel " + operation + " failed (HTTP " + status + "). Please try again later.";
+    }
+
+    private String extractWaseelErrorMessage(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) {
+            return null;
+        }
+
+        try {
+            JsonNode node = objectMapper.readTree(responseBody);
+            String message = textOrNull(node.get("message"));
+            String errors = joinErrors(node.get("errors"));
+            if (message != null && errors != null && !errors.equalsIgnoreCase(message)) {
+                return message + ". " + errors;
+            }
+            if (message != null) {
+                return message;
+            }
+            if (errors != null) {
+                return errors;
+            }
+            if (node.hasNonNull("detail")) {
+                return node.get("detail").asText();
+            }
+            if (node.hasNonNull("error")) {
+                return node.get("error").asText();
+            }
+        } catch (Exception ignored) {
+            // fall through
+        }
+
+        String trimmed = responseBody.trim();
+        return trimmed.length() > 400 ? trimmed.substring(0, 400) + "..." : trimmed;
+    }
+
+    private String joinErrors(JsonNode errorsNode) {
+        if (errorsNode == null || errorsNode.isNull()) {
+            return null;
+        }
+        if (errorsNode.isTextual()) {
+            return blankToNull(errorsNode.asText());
+        }
+        if (!errorsNode.isArray() || errorsNode.isEmpty()) {
+            return null;
+        }
+        List<String> parts = new ArrayList<>();
+        for (JsonNode item : errorsNode) {
+            if (item == null || item.isNull()) {
+                continue;
+            }
+            if (item.isTextual()) {
+                String value = blankToNull(item.asText());
+                if (value != null) {
+                    parts.add(value);
+                }
+                continue;
+            }
+            String nested = firstNonBlank(
+                    textOrNull(item.get("message")),
+                    textOrNull(item.get("description")),
+                    textOrNull(item.get("detail"))
+            );
+            if (nested != null) {
+                parts.add(nested);
+            }
+        }
+        return parts.isEmpty() ? null : String.join(" ", parts);
+    }
+
+    private static String textOrNull(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return null;
+        }
+        return blankToNull(node.asText());
     }
 
     private String toJsonWithoutNulls(Object value) {
