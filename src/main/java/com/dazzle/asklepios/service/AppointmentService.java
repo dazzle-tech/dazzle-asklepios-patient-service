@@ -258,7 +258,7 @@ public class AppointmentService {
                             log.getBookingGroup() != null ? log.getBookingGroup().getId() : null,
                             log.getWaitingList() != null ? log.getWaitingList().getId() : null,
                             log.getHl7AppointmentNumber(),
-                            log.getCreatedDate() ,
+                            log.getCreatedDate(),
                             log.getLastModifiedDate(),
                             log.getCreatedBy(),
                             log.getLastModifiedBy()
@@ -267,6 +267,7 @@ public class AppointmentService {
                 })
                 .toList();
     }
+
     @Transactional
     public Appointment bookPatientAppointment(AppointmentBookPatientDTO dto) {
         LOG.debug("Request to update Appointment dto={}", dto);
@@ -414,6 +415,78 @@ public class AppointmentService {
 
         return result;
     }
+
+    @Transactional(readOnly = true)
+    public Page<Appointment> filterAppointmentByPatientPortal(AppointmentSearchFilterMultiDepartmentDTO filter, Pageable pageable) {
+
+        LOG.debug("Service filter Appointments by patient portal filter={} pageable={}", filter, pageable);
+
+        if (filter.facility() == null) {
+            throw new BadRequestAlertException("facility", ENTITY_NAME, "Facility is required");
+        }
+
+        List<Long> finalDepartmentIds = filter.departmentIds();
+
+        Specification<Appointment> appointmentFilterSpec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            query.distinct(true);
+
+            predicates.add(cb.equal(root.get("facilityId"), filter.facility()));
+
+            predicates.add(root.get("departmentId").in(finalDepartmentIds));
+
+            if (filter.resourceType() != null) {
+                predicates.add(cb.equal(root.get("resourceType"), filter.resourceType()));
+            }
+
+            if (filter.resourceId() != null) {
+                predicates.add(cb.equal(root.get("resourceId"), filter.resourceId()));
+            }
+
+            if (filter.status() != null && !filter.status().isEmpty()) {
+                predicates.add(root.get("status").in(filter.status()));
+            }
+
+            if (filter.bookingMode() != null && !filter.bookingMode().isEmpty()) {
+                predicates.add(root.get("bookingMode").in(filter.bookingMode()));
+            } else {
+                predicates.add(cb.notEqual(root.get("bookingMode"), BookingMode.BUFFER));
+            }
+
+            if (filter.patientId() != null) {
+                predicates.add(cb.equal(root.join("patient", JoinType.LEFT).get("id"), filter.patientId()));
+            }
+            if (filter.startDate() != null) {
+                predicates.add(cb.greaterThanOrEqualTo(
+                        root.get("startDatetime"),
+                        filter.startDate()
+                ));
+            }
+
+            if (filter.endDate() != null) {
+                predicates.add(cb.lessThanOrEqualTo(
+                        root.get("startDatetime"),
+                        filter.endDate()
+                ));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        Page<Appointment> result = appointmentRepository.findAll(appointmentFilterSpec, pageable);
+
+        LOG.debug(
+                "[FILTER] Appointments result totalElements={} totalPages={} pageNumber={} pageSize={}",
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.getNumber(),
+                result.getSize()
+        );
+
+        return result;
+    }
+
 
     public List<Appointment> getAppointmentsByStatusBetweenDatesWithoutPagination(List<AppointmentStatus> status, Instant startDatetime, Instant endDatetime) {
         LOG.debug(
@@ -1046,6 +1119,20 @@ public class AppointmentService {
         return savedAppointment;
     }
 
+    public void notifyPatientForAppointmentReschedule(Long originalBatchId) {
+        LOG.debug("[BULK_RESCHEDULE] Ask patient notification originalBatchId={}", originalBatchId);
+        AvailabilityGenerationBatch originalBatch = getBatch(originalBatchId);
+
+        Instant tomorrowStart = tomorrowStartInstant(resolveZone(originalBatch.getTemplate().getFacilityId()));
+
+        List<Appointment> rescheduledAppointments = appointmentRepository.findByAvailabilityGenerationBatch_IdAndStatusInAndStartDatetimeGreaterThanOrderByStartDatetimeAsc(originalBatchId, List.of(AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED), tomorrowStart);
+
+        for (Appointment appointment : rescheduledAppointments) {
+            //TODO: Add the actual choice_url for the patient to select a new appointment slot
+            notifyAppointmentEvent(appointment, NotificationCode.APPOINTMENT_RESCHEDULED_BY_PATIENT, Map.of("choice_url", ""));
+        }
+    }
+
     private void validateCreateAppointment(AppointmentIntegrationCreateDTO dto) {
 
         if (dto.startDatetime().isAfter(dto.endDatetime())) {
@@ -1124,7 +1211,6 @@ public class AppointmentService {
             );
         }
     }
-
 
     private Instant tomorrowStartInstant(ZoneId zone) {
         return LocalDate.now(zone)
@@ -1300,6 +1386,7 @@ public class AppointmentService {
                 appointment.getReason(),
                 appointment.getNote(),
                 diagnosticTest.type(),
+                null,
                 null
         );
 
@@ -1361,6 +1448,7 @@ public class AppointmentService {
                     appointment.getReason(),
                     appointment.getNote(),
                     diagnosticTest.type(),
+                    null,
                     null
             );
 
@@ -1676,6 +1764,7 @@ public class AppointmentService {
     }
 
     // Quick appointment helper
+
     private void validateDepartmentWorkingDay(DepartmentDTO department) {
         if (department.workingDays() == null || department.workingDays().isEmpty()) {
             throw new BadRequestAlertException(
@@ -1724,6 +1813,7 @@ public class AppointmentService {
     }
 
     //Notification helper
+
     private void notifyAppointmentEvent(Appointment appointment, NotificationCode notificationCode, Map<String, Object> extraData) {
         if (appointment == null || notificationCode == null) {
             return;
@@ -1759,7 +1849,6 @@ public class AppointmentService {
             LOG.warn("Failed to create appointment notification. appointmentId={}, code={}, error={}", appointment.getId(), notificationCode, e.getMessage());
         }
     }
-
 
     private Map<String, Object> buildAppointmentNotificationData(Appointment appointment, DepartmentDTO department) {
         Map<String, Object> data = new LinkedHashMap<>();

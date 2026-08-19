@@ -70,9 +70,9 @@ public class PatientPrescriptionMedicationController {
     }
 
     @DeleteMapping("/patient-prescription-medications/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ResponseEntity<Void> delete(@PathVariable Long id ,@RequestBody String cancellationReason) {
         LOG.debug("Received request to delete a prescription medication with id: {}", id);
-        patientPrescriptionMedicationService.cancel(id);
+        patientPrescriptionMedicationService.cancel(id,cancellationReason );
         return ResponseEntity.noContent().build();
     }
 

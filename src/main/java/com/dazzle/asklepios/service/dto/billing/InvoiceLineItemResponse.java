@@ -44,7 +44,21 @@ public record InvoiceLineItemResponse(
         List<InvoiceLineAppliedTax> appliedTaxes,
 
         /** INVOICE or DEBIT_NOTE — debit-note lines can be credited when invoice lines are fully paid. */
-        String lineSource
+        String lineSource,
+
+        BigDecimal chargeNetAmount,
+
+        BigDecimal chargeUnitPrice,
+
+        BigDecimal chargeQuantity,
+
+        BigDecimal patientShareAmount,
+
+        BigDecimal insuranceShareAmount,
+
+        BigDecimal patientCopaymentPercentage,
+
+        BigDecimal patientMaximumCopayment
 
 ) implements Serializable {
 

@@ -165,7 +165,7 @@ public class DiagnosticOrderTestService {
                 saved.getId(), saved.getOrderId(), saved.getTestId(), saved.getStatus(), saved.getProcessingStatus());
 
         // Create billing + submit pre-auth immediately when the test is added (not on accept).
-        diagnosticOrderTestStatusService.onTestAddedToOrder(saved);
+        diagnosticOrderTestStatusService.onTestAddedToOrder(saved, dto.acceptUncoveredAsCash());
 
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
         LOG.debug("[DiagnosticOrderTestService] CREATE - recompute status done. orderId={}", saved.getOrderId());

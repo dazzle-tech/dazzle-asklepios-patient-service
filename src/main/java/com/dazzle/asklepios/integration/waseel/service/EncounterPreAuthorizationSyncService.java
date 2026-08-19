@@ -99,6 +99,10 @@ public class EncounterPreAuthorizationSyncService {
                 continue;
             }
 
+            if (item.isUncoveredCashItem()) {
+                continue;
+            }
+
             if (item.getPreAuthorizationStatus() != null
                     && FINAL_PRE_AUTHORIZATION_STATUSES.contains(item.getPreAuthorizationStatus())) {
                 continue;

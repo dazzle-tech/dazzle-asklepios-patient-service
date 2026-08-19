@@ -38,6 +38,8 @@ public record PatientProcedureCreateDTO(
 
         String notes,
         String extraDocumentation,
-        String result
+        String result,
+
+        Boolean acceptUncoveredAsCash
 
 ) implements Serializable {}

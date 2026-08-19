@@ -1133,6 +1133,10 @@ public class BillingEngineService {
     private BillingCoverageType resolveCoverageType(
             PatientServiceAndProduct item
     ) {
+        if (item != null && item.isUncoveredCashItem()) {
+            return BillingCoverageType.SELF_PAY;
+        }
+
         if (item.getPatientInsuranceId() != null) {
             return BillingCoverageType.INSURANCE;
         }

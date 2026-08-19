@@ -2,11 +2,14 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.BillingEligibilitySnapshot;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
 import com.dazzle.asklepios.integration.waseel.dto.WaseelCoverageDetails;
+import com.dazzle.asklepios.integration.waseel.service.EligibilityRequestPlanIdentityReader;
 import com.dazzle.asklepios.integration.waseel.service.WaseelCoverageExtractionService;
 import com.dazzle.asklepios.repository.BillingEligibilitySnapshotRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.BillingEligibilitySnapshotResponse;
@@ -33,6 +36,8 @@ public class BillingEligibilitySnapshotService {
     private final PatientEncounterRepository patientEncounterRepository;
     private final WaseelEligibilityRequestRepository waseelEligibilityRequestRepository;
     private final WaseelCoverageExtractionService coverageExtractionService;
+    private final PatientInsuranceRepository patientInsuranceRepository;
+    private final EligibilityRequestPlanIdentityReader requestPlanIdentityReader;
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
@@ -163,9 +168,18 @@ public class BillingEligibilitySnapshotService {
             );
         }
 
+        PatientInsurance insurance =
+                eligibility.getPatientInsuranceId() == null
+                        ? null
+                        : patientInsuranceRepository
+                                .findById(eligibility.getPatientInsuranceId())
+                                .orElse(null);
+
         WaseelCoverageDetails coverage =
                 coverageExtractionService.extractCoverageDetails(
-                        eligibility.getResponseJson()
+                        eligibility.getResponseJson(),
+                        insurance == null ? null : insurance.getMemberCardId(),
+                        insurance == null ? null : insurance.getPolicyNumber()
                 );
 
         String frozenBy =
@@ -173,6 +187,13 @@ public class BillingEligibilitySnapshotService {
                         .orElse("system");
 
         Instant frozenAt = Instant.now();
+
+        EligibilityRequestPlanIdentityReader.PlanIdentity requestPlan =
+                requestPlanIdentityReader.read(
+                        eligibility.getRequestJson(),
+                        insurance == null ? null : insurance.getMemberCardId(),
+                        insurance == null ? null : insurance.getPolicyNumber()
+                );
 
         return BillingEligibilitySnapshot.builder()
                 .encounterId(encounter.getId())
@@ -185,9 +206,21 @@ public class BillingEligibilitySnapshotService {
                                 coverage.eligibilityResponseId()
                         )
                 )
-                .memberId(coverage.memberId())
-                .policyNumber(coverage.policyNumber())
-                .policyHolder(coverage.policyHolder())
+                .memberId(firstNonBlank(
+                        requestPlan.memberCardId(),
+                        insurance == null ? null : insurance.getMemberCardId(),
+                        coverage.memberId()
+                ))
+                .policyNumber(firstNonBlank(
+                        requestPlan.policyNumber(),
+                        insurance == null ? null : insurance.getPolicyNumber(),
+                        coverage.policyNumber()
+                ))
+                .policyHolder(firstNonBlank(
+                        requestPlan.policyHolder(),
+                        insurance == null ? null : insurance.getPolicyHolderName(),
+                        coverage.policyHolder()
+                ))
                 .network(coverage.network())
                 .coverageStatus(coverage.coverageStatus())
                 .inforce(coverage.inforce())

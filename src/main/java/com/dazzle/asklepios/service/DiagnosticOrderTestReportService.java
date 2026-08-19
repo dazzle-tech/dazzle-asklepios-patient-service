@@ -812,5 +812,52 @@ public class DiagnosticOrderTestReportService {
                 report.getOrderTestId().toString()
         );
     }
+    @Transactional
+    public void bulkToggleReview(
+            List<Long> ids
+    ) {
 
+        String currentUser = currentUsername();
+        Instant now = Instant.now();
+
+        ids.forEach(id -> {
+
+            DiagnosticOrderTestReport report =
+                    diagnosticOrderTestReportRepository
+                            .findById(id)
+                            .orElseThrow(() -> new BadRequestAlertException(
+                                    "notfound",
+                                    "diagnostic_order_tests_report",
+                                    "Report not found for Id " + id
+                            ));
+
+            if (report.getReviewDate() == null) {
+
+                report.setReviewBy(currentUser);
+                report.setReviewDate(now);
+
+                LOG.debug(
+                        "[DiagnosticOrderTestReportService] REPORT REVIEWED. reportId={} by={}",
+                        report.getId(),
+                        currentUser
+                );
+
+            } else {
+
+                report.setReviewBy(null);
+                report.setReviewDate(null);
+
+                LOG.debug(
+                        "[DiagnosticOrderTestReportService] REPORT UNREVIEWED. reportId={}",
+                        report.getId()
+                );
+            }
+
+            diagnosticOrderTestReportRepository.save(report);
+
+            recomputeOrderStatusesByOrderTestId(
+                    report.getOrderTestId()
+            );
+        });
+    }
 }

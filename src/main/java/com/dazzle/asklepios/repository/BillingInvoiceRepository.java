@@ -12,11 +12,5 @@ public interface BillingInvoiceRepository extends JpaRepository<BillingInvoice, 
 
     Page<BillingInvoice> findByPatientId(Long patientId, Pageable pageable);
 
-    Page<BillingInvoice> findByFacilityId(Long facilityId, Pageable pageable);
 
-    Page<BillingInvoice> findByPatientIdAndStatus(
-            Long patientId,
-            BillingInvoiceStatus status,
-            Pageable pageable
-    );
 }

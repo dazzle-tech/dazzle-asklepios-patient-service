@@ -45,6 +45,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -184,7 +185,49 @@ public class DiagnosticOrderTestResultService {
 
         return saved;
     }
+    @Transactional
+    public void createBulk(
+            List<DiagnosticOrderTestResultCreateDTO> dtos
+    ) {
 
+        LOG.debug(
+                "[DiagnosticOrderTestResultService] BULK CREATE - count={}",
+                dtos.size()
+        );
+
+        List<Long> affectedOrderTests = new ArrayList<>();
+
+        for (DiagnosticOrderTestResultCreateDTO dto : dtos) {
+
+            validateResultValue(
+                    dto.profileTestId(),
+                    dto.resultValueNumber(),
+                    dto.resultValueText()
+            );
+
+            DiagnosticOrderTestResult result =
+                    new DiagnosticOrderTestResult();
+
+            result.setOrderTestId(dto.orderTestId());
+            result.setProfileTestId(dto.profileTestId());
+            result.setResultValueNumber(dto.resultValueNumber());
+            result.setResultValueText(dto.resultValueText());
+            result.setMarker(dto.marker());
+            result.setNormalRangeValue(dto.normalRangeValue());
+            result.setProcessingStatus(DiagnosticStatus.RESULT_READY);
+
+            diagnosticOrderTestResultRepository.save(result);
+
+            affectedOrderTests.add(dto.orderTestId());
+        }
+
+        affectedOrderTests.stream()
+                .distinct()
+                .forEach(
+                        orderTestResultStatusService
+                                ::recomputeTestProcessingStatusFromResults
+                );
+    }
     public DiagnosticOrderTestResult updateWithValidation(
             Long id,
             DiagnosticOrderTestResultUpdateDTO testResultUpdateDTO
