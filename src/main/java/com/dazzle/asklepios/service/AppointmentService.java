@@ -1548,6 +1548,8 @@ public class AppointmentService {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "IN_SERVICE appointment cannot be cancelled");
         } else if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Completed appointment cannot be cancelled");
+        }else if (appointment.getStatus() == AppointmentStatus.NO_SHOW) {
+            throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "no-show appointment cannot be cancelled");
         }
 
     }
@@ -1562,6 +1564,8 @@ public class AppointmentService {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "IN_SERVICE appointment cannot be No-show");
         } else if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Completed appointment cannot be No-show");
+        }else if (appointment.getStatus() == AppointmentStatus.NO_SHOW) {
+            throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "appointment already no-show");
         }
     }
 
