@@ -244,4 +244,16 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
                 && dateOfBirth != null
                 && primaryMobileNumber != null;
     }
+
+    @AssertTrue(message = "When patient is not unknown, maritalStatus and occupation are required")
+    public boolean isValidExtraDetailsWhenNotUnknown() {
+        if (Boolean.TRUE.equals(isUnknown)) {
+            return true;
+        }
+
+        return maritalStatus != null
+                && !maritalStatus.trim().isEmpty()
+                && occupation != null
+                && !occupation.trim().isEmpty();
+    }
 }

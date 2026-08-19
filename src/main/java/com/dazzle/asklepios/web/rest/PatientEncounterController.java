@@ -290,7 +290,6 @@ public class PatientEncounterController {
         );
     }
 
-
     @GetMapping("/encounter/department/{departmentId}/count/today/active")
     public ResponseEntity<Long> countTodayDepartmentActiveCases(
             @PathVariable @NotNull Long departmentId
