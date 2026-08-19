@@ -11,6 +11,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
@@ -43,6 +44,7 @@ public class PatientAuthenticationService {
         );
     }
 
+    @Transactional(readOnly = true)
     public Authentication authenticatePatient(Patient patient) {
         Collection<GrantedAuthority> authorities = List.of(
                 new SimpleGrantedAuthority("ROLE_PATIENT")
