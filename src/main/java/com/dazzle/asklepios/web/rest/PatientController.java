@@ -573,13 +573,27 @@ public class PatientController {
     }
 
     @PostMapping("/patient-portal/verify-login-otp")
-    public ResponseEntity<PatientPortalLoginVM> verifyLoginOtp(@RequestBody PatientOtpVerifyDTO request) {
+    public ResponseEntity<PatientPortalLoginVM> verifyLoginOtp(
+            @RequestBody PatientOtpVerifyDTO request) {
 
-        Patient patient = patientOtpAuthenticationService.verifyOtp(request);
-        Authentication authentication = patientAuthenticationService.authenticatePatient(patient);
+        Long patientId = patientOtpAuthenticationService.verifyOtp(request);
+
+        Authentication authentication =
+                patientAuthenticationService.authenticatePatient(patientId);
 
         String jwt = createToken(authentication, true);
-        PatientPortalLoginVM response = new PatientPortalLoginVM(patient, jwt);
+
+        Patient patient = patientService.findById(patientId);
+
+        PatientPortalLoginVM response =
+                new PatientPortalLoginVM(
+                        patient.getId(),
+                        patient.getMedicalRecordNumber(),
+                        patient.getFirstName(),
+                        patient.getLastName(),
+                        jwt
+                );
+
         return ResponseEntity.ok(response);
     }
 

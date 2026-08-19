@@ -148,8 +148,8 @@ LOG.info(
         );
         return otp;
     }
-    @Transactional
-    public Patient verifyOtp(PatientOtpVerifyDTO request) {
+
+    public Long verifyOtp(PatientOtpVerifyDTO request) {
 
         if (request == null
                 || request.primaryDocumentNumber() == null
@@ -263,7 +263,7 @@ LOG.info(
                 patient.getId()
         );
 
-        return patient;
+        return patient.getId();
     }
 
     private void invalidatePreviousOtp(Long patientId) {
