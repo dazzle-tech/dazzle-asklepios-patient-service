@@ -18,6 +18,7 @@ public record PatientEncounterSearchFilterDTO(
 
         String patientName,
         String mrn,
+        String encounterNumber,
 
         List<EncounterReason> encounterReasons,
 
