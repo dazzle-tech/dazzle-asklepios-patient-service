@@ -775,6 +775,15 @@ public class PatientEncounterService {
                         && filter.patientName() != null
                         && !filter.patientName().isBlank();
 
+
+
+        boolean hasEncounterNumber =
+                filter != null
+                        && filter.encounterNumber() != null
+                        && !filter.encounterNumber().isBlank();
+
+
+
         boolean hasMrn =
                 filter != null
                         && filter.mrn() != null
@@ -833,6 +842,15 @@ public class PatientEncounterService {
                         cb.equal(
                                 root.get("practitionerId"),
                                 practitionerId
+                        )
+                );
+            }
+
+            if (hasEncounterNumber) {
+                predicates.add(
+                        cb.like(
+                                cb.lower(root.get("encounterNumber")),
+                                "%" + filter.encounterNumber().trim().toLowerCase() + "%"
                         )
                 );
             }

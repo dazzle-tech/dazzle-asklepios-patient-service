@@ -232,6 +232,7 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
     @Column(length = 4)
     private String pin;
 
+    
     @AssertTrue(message = "When patient is not unknown, firstName, lastName, sexAtBirth, dateOfBirth and primaryMobileNumber are required")
     public boolean isValidWhenNotUnknown() {
         if (Boolean.TRUE.equals(isUnknown)) {
@@ -243,5 +244,17 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
                 && sexAtBirth != null
                 && dateOfBirth != null
                 && primaryMobileNumber != null;
+    }
+
+    @AssertTrue(message = "When patient is not unknown, maritalStatus and occupation are required")
+    public boolean isValidExtraDetailsWhenNotUnknown() {
+        if (Boolean.TRUE.equals(isUnknown)) {
+            return true;
+        }
+
+        return maritalStatus != null
+                && !maritalStatus.trim().isEmpty()
+                && occupation != null
+                && !occupation.trim().isEmpty();
     }
 }
