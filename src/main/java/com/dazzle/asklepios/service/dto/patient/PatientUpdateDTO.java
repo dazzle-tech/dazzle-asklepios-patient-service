@@ -65,10 +65,12 @@ public record PatientUpdateDTO(
         String emergencyContactPhone,
 
         String role,
+        @NotEmpty
         String maritalStatus,
         String nationality,
         String religion,
         String ethnicity,
+        @NotEmpty
         String occupation,
         String responsibleParty,
         String educationalLevel,
