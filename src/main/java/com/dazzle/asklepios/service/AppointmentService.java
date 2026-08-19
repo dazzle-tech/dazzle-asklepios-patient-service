@@ -743,7 +743,7 @@ public class AppointmentService {
         Appointment quickAppointment = appointmentRepository.save(appointment);
         PatientEncounter encounter = createEncounter(quickAppointment, department);
 
-        notifyAppointmentEvent(quickAppointment, NotificationCode.QUICK_APPOINTMENT_CREATED, Map.of("quickAppointment", true));
+        notifyAppointmentEvent(quickAppointment, NotificationCode.QUICK_APPOINTMENT_CREATED, Map.of("quick_appointment", true));
 
         return new AppointmentQuickAppointmentResponseVM(quickAppointment, encounter);
     }
@@ -1336,13 +1336,13 @@ public class AppointmentService {
 
         notifyAppointmentEvent(savedNewAppointment, NotificationCode.APPOINTMENT_RESCHEDULED,
                 Map.of(
-                        "oldAppointmentId", savedOldAppointment.getId(),
-                        "newAppointmentId", savedNewAppointment.getId(),
-                        "oldAppointmentDate", oldStartDatetime != null ? formatter.format(oldStartDatetime) : "",
-                        "oldAppointmentEndDate", oldEndDatetime != null ? formatter.format(oldEndDatetime) : "",
-                        "newAppointmentDate", savedNewAppointment.getStartDatetime() != null ? formatter.format(savedNewAppointment.getStartDatetime()) : "",
-                        "newAppointmentEndDate", savedNewAppointment.getEndDatetime() != null ? formatter.format(savedNewAppointment.getEndDatetime()) : "",
-                        "rescheduleReason", rescheduleReason != null ? rescheduleReason : ""
+                        "old_appointment_id", savedOldAppointment.getId(),
+                        "new_appointment_id", savedNewAppointment.getId(),
+                        "old_appointment_date", oldStartDatetime != null ? formatter.format(oldStartDatetime) : "",
+                        "old_appointment_end_date", oldEndDatetime != null ? formatter.format(oldEndDatetime) : "",
+                        "new_appointment_Date", savedNewAppointment.getStartDatetime() != null ? formatter.format(savedNewAppointment.getStartDatetime()) : "",
+                        "new_appointment_end_date", savedNewAppointment.getEndDatetime() != null ? formatter.format(savedNewAppointment.getEndDatetime()) : "",
+                        "reschedule_reason", rescheduleReason != null ? rescheduleReason : ""
                 )
         );
         return savedNewAppointment;
@@ -1548,6 +1548,8 @@ public class AppointmentService {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "IN_SERVICE appointment cannot be cancelled");
         } else if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Completed appointment cannot be cancelled");
+        }else if (appointment.getStatus() == AppointmentStatus.NO_SHOW) {
+            throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "no-show appointment cannot be cancelled");
         }
 
     }
@@ -1562,6 +1564,8 @@ public class AppointmentService {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "IN_SERVICE appointment cannot be No-show");
         } else if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Completed appointment cannot be No-show");
+        }else if (appointment.getStatus() == AppointmentStatus.NO_SHOW) {
+            throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "appointment already no-show");
         }
     }
 
