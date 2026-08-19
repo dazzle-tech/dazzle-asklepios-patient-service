@@ -24,10 +24,10 @@ pacs:
 
 waseel:
   api:
-    base-url: https://api.eclaims.waseel.com
-    username: ${WASEEL_USERNAME:oh621.admin}
-    password: ${WASEEL_PASSWORD:Onehealth@2026}
-    provider-id: ${WASEEL_PROVIDER_ID:104834}
+    base-url: ${WASEEL_API_BASE_URL:https://api.stg-eclaims.waseel.com}
+    username: ${WASEEL_USERNAME:abh706}
+    password: ${WASEEL_PASSWORD:abhclm706}
+    provider-id: ${WASEEL_PROVIDER_ID:706}
     nphies-id: ${WASEEL_NPHIES_ID:10000000003170}
     system-type: ${WASEEL_SYSTEM_TYPE:1}
     timeout-seconds: 90
