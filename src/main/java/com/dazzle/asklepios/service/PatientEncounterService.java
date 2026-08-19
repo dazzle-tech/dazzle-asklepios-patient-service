@@ -855,6 +855,7 @@ public class PatientEncounterService {
                 );
             }
 
+
             predicates.add(
                     cb.between(
                             root.get("encounterDate"),
