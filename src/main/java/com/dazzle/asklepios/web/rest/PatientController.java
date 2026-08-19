@@ -586,7 +586,13 @@ public class PatientController {
         Patient patient = patientService.findById(patientId);
 
         PatientPortalLoginVM response =
-                new PatientPortalLoginVM(patient, jwt);
+                new PatientPortalLoginVM(
+                        patient.getId(),
+                        patient.getMedicalRecordNumber(),
+                        patient.getFirstName(),
+                        patient.getLastName(),
+                        jwt
+                );
 
         return ResponseEntity.ok(response);
     }
