@@ -148,7 +148,7 @@ LOG.info(
         );
         return otp;
     }
-
+    @Transactional
     public Patient verifyOtp(PatientOtpVerifyDTO request) {
 
         if (request == null
