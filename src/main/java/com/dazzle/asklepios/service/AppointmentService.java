@@ -743,7 +743,7 @@ public class AppointmentService {
         Appointment quickAppointment = appointmentRepository.save(appointment);
         PatientEncounter encounter = createEncounter(quickAppointment, department);
 
-        notifyAppointmentEvent(quickAppointment, NotificationCode.QUICK_APPOINTMENT_CREATED, Map.of("quickAppointment", true));
+        notifyAppointmentEvent(quickAppointment, NotificationCode.QUICK_APPOINTMENT_CREATED, Map.of("quick_appointment", true));
 
         return new AppointmentQuickAppointmentResponseVM(quickAppointment, encounter);
     }
