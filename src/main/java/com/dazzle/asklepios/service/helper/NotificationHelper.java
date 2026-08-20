@@ -136,6 +136,7 @@ public class NotificationHelper {
             );
         }
     }
+
     public Map<String, List<NotificationResolvedRecipientDTO>> resolveRecipients(Long departmentId, String login, String createdByLogin, Patient patient, PractitionerDTO practitionerDTO, Boolean isScheduleNotification) {
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
         List<OrganizationDefinitionDTO> organizationDefinitionList = organizationClient.getOrganization();
@@ -740,13 +741,34 @@ public class NotificationHelper {
                 .toList();
     }
 
-    public NotificationResolvedRecipientDTO buildCreatedByUserRecipient(String createdByLogin, OrganizationDefinitionDTO finalOrganizationDefinitionDTO) {
+    public NotificationResolvedRecipientDTO buildCreatedByUserRecipient(
+            String createdByLogin,
+            OrganizationDefinitionDTO finalOrganizationDefinitionDTO) {
+
         if (createdByLogin == null || createdByLogin.isBlank()) {
             return null;
         }
 
-        UserDTO user = userClient.getUserByLogin(createdByLogin);
+        UserDTO user;
 
+        try {
+            user = userClient.getUserByLogin(createdByLogin);
+        } catch (Exception e) {
+            log.error(
+                    "[NOTIFICATION] Failed to resolve CREATED_BY_USER. login={}",
+                    createdByLogin,
+                    e
+            );
+            return null;
+        }
+
+        if (user == null) {
+            log.warn(
+                    "[NOTIFICATION] Skip CREATED_BY_USER because user is null. login={}",
+                    createdByLogin
+            );
+            return null;
+        }
 
         if (user.email() == null || user.email().isBlank()) {
             log.warn(
@@ -766,19 +788,44 @@ public class NotificationHelper {
                         "createdByLogin", createdByLogin,
                         "createdByEmail", user.email(),
                         "createdByUserId", user.id()
-
                 ))
-                .language(user.langKey() != null && !user.langKey().isBlank() ? user.langKey() : finalOrganizationDefinitionDTO != null ? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
+                .language(
+                        user.langKey() != null && !user.langKey().isBlank()
+                                ? user.langKey()
+                                : finalOrganizationDefinitionDTO != null
+                                ? finalOrganizationDefinitionDTO.defaultLanguageName()
+                                : "en"
+                )
                 .build();
     }
 
-    public NotificationResolvedRecipientDTO buildCreatedByUserPhoneRecipient(String createdByLogin, OrganizationDefinitionDTO finalOrganizationDefinitionDTO) {
+    public NotificationResolvedRecipientDTO buildCreatedByUserPhoneRecipient(
+            String createdByLogin,
+            OrganizationDefinitionDTO finalOrganizationDefinitionDTO) {
+
         if (createdByLogin == null || createdByLogin.isBlank()) {
             return null;
         }
 
-        UserDTO user = userClient.getUserByLogin(createdByLogin);
+        UserDTO user;
 
+        try {
+            user = userClient.getUserByLogin(createdByLogin);
+        } catch (Exception e) {
+            log.warn(
+                    "[NOTIFICATION] Failed to resolve CREATED_BY_USER_PHONE. login={}",
+                    createdByLogin
+            );
+            return null;
+        }
+
+        if (user == null) {
+            log.warn(
+                    "[NOTIFICATION] Skip CREATED_BY_USER_PHONE because user is null. login={}",
+                    createdByLogin
+            );
+            return null;
+        }
 
         if (user.phoneNumber() == null || user.phoneNumber().isBlank()) {
             log.warn(
@@ -799,16 +846,35 @@ public class NotificationHelper {
                         "createdByPhoneNumber", user.phoneNumber(),
                         "createdByUserId", user.id()
                 ))
-                .language(user.langKey() != null && !user.langKey().isBlank() ? user.langKey() : finalOrganizationDefinitionDTO != null ? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
+                .language(
+                        user.langKey() != null && !user.langKey().isBlank()
+                                ? user.langKey()
+                                : finalOrganizationDefinitionDTO != null
+                                ? finalOrganizationDefinitionDTO.defaultLanguageName()
+                                : "en"
+                )
                 .build();
     }
 
-    public NotificationResolvedRecipientDTO buildCurrentUserRecipient(String login, OrganizationDefinitionDTO finalOrganizationDefinitionDTO) {
+    public NotificationResolvedRecipientDTO buildCurrentUserRecipient(
+            String login,
+            OrganizationDefinitionDTO finalOrganizationDefinitionDTO) {
+
         if (login == null || login.isBlank()) {
             return null;
         }
 
-        UserDTO user = userClient.getUserByLogin(login);
+        UserDTO user;
+
+        try {
+            user = userClient.getUserByLogin(login);
+        } catch (Exception e) {
+            log.warn(
+                    "[NOTIFICATION] Failed to resolve CURRENT_USER. login={}",
+                    login
+            );
+            return null;
+        }
 
         if (user == null || user.id() == null || user.email() == null || user.email().isBlank()) {
             log.warn(
@@ -823,26 +889,49 @@ public class NotificationHelper {
                 .recipientId(user.id())
                 .recipientName(login)
                 .recipientEmail(user.email())
-                .toEmails(user.email() != null && !user.email().isBlank() ? List.of(user.email()) : List.of())
+                .toEmails(List.of(user.email()))
                 .recipientData(Map.of(
                         "login", login,
                         "userId", user.id(),
                         "email", user.email()
                 ))
-                .language(user.langKey() != null && !user.langKey().isBlank() ? user.langKey() : finalOrganizationDefinitionDTO != null ? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
+                .language(
+                        user.langKey() != null && !user.langKey().isBlank()
+                                ? user.langKey()
+                                : finalOrganizationDefinitionDTO != null
+                                ? finalOrganizationDefinitionDTO.defaultLanguageName()
+                                : "en"
+                )
                 .build();
     }
 
-    public NotificationResolvedRecipientDTO buildCurrentUserPhoneRecipient(String login, OrganizationDefinitionDTO finalOrganizationDefinitionDTO) {
+    public NotificationResolvedRecipientDTO buildCurrentUserPhoneRecipient(
+            String login,
+            OrganizationDefinitionDTO finalOrganizationDefinitionDTO) {
+
         if (login == null || login.isBlank()) {
             return null;
         }
 
-        UserDTO user = userClient.getUserByLogin(login);
+        UserDTO user;
 
-        if (user == null || user.id() == null || user.phoneNumber() == null || user.phoneNumber().isBlank()) {
+        try {
+            user = userClient.getUserByLogin(login);
+        } catch (Exception e) {
             log.warn(
-                    "[NOTIFICATION] Skip CURRENT_USER_PHONE because phone number is missing. login={}",
+                    "[NOTIFICATION] Failed to resolve CURRENT_USER_PHONE. login={}",
+                    login
+            );
+            return null;
+        }
+
+        if (user == null
+                || user.id() == null
+                || user.phoneNumber() == null
+                || user.phoneNumber().isBlank()) {
+
+            log.warn(
+                    "[NOTIFICATION] Skip CURRENT_USER_PHONE because user id or phone number is missing. login={}",
                     login
             );
             return null;
@@ -859,10 +948,15 @@ public class NotificationHelper {
                         "userId", user.id(),
                         "phoneNumber", user.phoneNumber()
                 ))
-                .language(user.langKey() != null && !user.langKey().isBlank() ? user.langKey() : finalOrganizationDefinitionDTO != null ? finalOrganizationDefinitionDTO.defaultLanguageName() : "en")
+                .language(
+                        user.langKey() != null && !user.langKey().isBlank()
+                                ? user.langKey()
+                                : finalOrganizationDefinitionDTO != null
+                                ? finalOrganizationDefinitionDTO.defaultLanguageName()
+                                : "en"
+                )
                 .build();
     }
-
     private NotificationResolvedRecipientDTO buildPatientPushRecipient(
             Patient patient,
             OrganizationDefinitionDTO finalOrganizationDefinitionDTO
@@ -915,6 +1009,7 @@ public class NotificationHelper {
                 )
                 .build();
     }
+
     private NotificationResolvedRecipientDTO buildPatientEmailRecipient(Patient patient, OrganizationDefinitionDTO finalOrganizationDefinitionDTO) {
         if (patient == null) {
             return null;
