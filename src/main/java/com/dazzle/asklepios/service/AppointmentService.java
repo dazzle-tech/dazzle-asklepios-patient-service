@@ -434,8 +434,11 @@ public class AppointmentService {
 
             predicates.add(cb.equal(root.get("facilityId"), filter.facility()));
 
-            predicates.add(root.get("departmentId").in(finalDepartmentIds));
-
+            if (filter.departmentIds() != null && !filter.departmentIds().isEmpty()) {
+                predicates.add(
+                        root.get("departmentId").in(filter.departmentIds())
+                );
+            }
             if (filter.resourceType() != null) {
                 predicates.add(cb.equal(root.get("resourceType"), filter.resourceType()));
             }
