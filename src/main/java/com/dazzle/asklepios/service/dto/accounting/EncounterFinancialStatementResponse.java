@@ -15,23 +15,15 @@ public record EncounterFinancialStatementResponse(
 
         CoveragePayer coveragePayer,
 
-        List<ServiceLine> serviceLines,
-
         InvoiceBreakdown invoiceBreakdown,
 
         PatientSettlement patientSettlement,
 
         InsuranceSplit insuranceSplit,
 
-        List<ReceiptRow> receipts,
-
         ClaimFinancial claimFinancial,
 
-        List<TimelineRow> timeline,
-
         FinalSettlement finalSettlement,
-
-        List<AuditRow> auditTrail,
 
         StatementFooter footer
 

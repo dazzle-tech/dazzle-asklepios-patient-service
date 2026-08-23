@@ -24,6 +24,8 @@ public interface FinancialDocumentRepository extends JpaRepository<FinancialDocu
     // ✅ لو بدك أكثر من document لنفس encounter
     List<FinancialDocument> findAllByEncounterId(Long encounterId);
 
+    List<FinancialDocument> findByEncounterIdIn(Collection<Long> encounterIds);
+
     // ✅ find by patient
     List<FinancialDocument> findByPatientId(Long patientId);
 

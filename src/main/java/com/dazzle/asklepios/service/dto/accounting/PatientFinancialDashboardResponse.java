@@ -5,7 +5,6 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.util.List;
 
 public record PatientFinancialDashboardResponse(
 
@@ -21,7 +20,7 @@ public record PatientFinancialDashboardResponse(
 
         DashboardTotals totals,
 
-        List<EncounterFinancialRow> encounters
+        PagedResponse<EncounterFinancialRow> encounters
 
 ) implements Serializable {
 

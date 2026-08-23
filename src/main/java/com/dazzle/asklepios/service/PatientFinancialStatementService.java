@@ -51,6 +51,7 @@ import com.dazzle.asklepios.service.dto.accounting.EncounterFinancialStatementRe
 import com.dazzle.asklepios.service.dto.accounting.EncounterFinancialStatementResponse.StatementFooter;
 import com.dazzle.asklepios.service.dto.accounting.EncounterFinancialStatementResponse.TimelineRow;
 import com.dazzle.asklepios.service.dto.accounting.EncounterFinancialStatementResponse.VisitPatient;
+import com.dazzle.asklepios.service.dto.accounting.PagedResponse;
 import com.dazzle.asklepios.service.dto.accounting.PatientFinancialDashboardResponse;
 import com.dazzle.asklepios.service.dto.accounting.PatientFinancialDashboardResponse.DashboardTotals;
 import com.dazzle.asklepios.service.dto.accounting.PatientFinancialDashboardResponse.EncounterFinancialRow;
@@ -58,6 +59,10 @@ import com.dazzle.asklepios.service.dto.billing.BillingEligibilitySnapshotRespon
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -111,11 +116,12 @@ public class PatientFinancialStatementService {
     private final BillingWalletService billingWalletService;
     private final BillingEligibilitySnapshotService billingEligibilitySnapshotService;
 
-    public PatientFinancialDashboardResponse getPatientDashboard(Long patientId) {
+    public PatientFinancialDashboardResponse getPatientDashboard(
+            Long patientId,
+            Pageable pageable
+    ) {
         Patient patient = requirePatient(patientId);
-
-        List<PatientEncounter> encounters =
-                patientEncounterRepository.findAllByPatientIdOrderByCreatedDateDesc(patientId);
+        Pageable safePageable = sanitizePageable(pageable);
 
         List<BillingCharge> charges =
                 billingChargeRepository.findAllByPatient_IdAndStatusNotInOrderByIdAsc(
@@ -129,81 +135,43 @@ public class PatientFinancialStatementService {
                         EXCLUDED_RESPONSIBILITY_STATUSES
                 );
 
-        List<FinancialDocument> documents =
-                financialDocumentRepository.findAllByPatientIdOrderByCreatedDateDesc(patientId);
-
-        List<ClaimRequest> claims =
-                claimRequestRepository.findByPatientIdOrderByIdDesc(patientId);
-
         Map<Long, BillingCharge> chargeByEncounter = latestChargeByEncounter(charges);
         Map<Long, List<BillingChargeResponsibility>> responsibilitiesByEncounter =
                 groupResponsibilitiesByEncounter(responsibilities);
+
+        DashboardTotals totals = sumDashboardTotals(charges, responsibilitiesByEncounter);
+
+        Page<PatientEncounter> encounterPage =
+                patientEncounterRepository.findByPatientIdOrderByCreatedDateDesc(
+                        patientId,
+                        safePageable
+                );
+
+        List<Long> pageEncounterIds = encounterPage.getContent().stream()
+                .map(PatientEncounter::getId)
+                .toList();
+
         Map<Long, FinancialDocument> patientInvoiceByEncounter =
-                latestPatientInvoiceByEncounter(documents);
-        Map<Long, ClaimRequest> claimByEncounter = latestClaimByEncounter(claims);
+                latestPatientInvoiceByEncounter(
+                        pageEncounterIds.isEmpty()
+                                ? List.of()
+                                : financialDocumentRepository.findByEncounterIdIn(pageEncounterIds)
+                );
+        Map<Long, ClaimRequest> claimByEncounter = latestClaimByEncounter(
+                pageEncounterIds.isEmpty()
+                        ? List.of()
+                        : claimRequestRepository.findByEncounterIdIn(pageEncounterIds)
+        );
 
-        List<EncounterFinancialRow> rows = new ArrayList<>();
-        BigDecimal grossCharges = zero();
-        BigDecimal patientResponsibility = zero();
-        BigDecimal insuranceShare = zero();
-        BigDecimal totalCollected = zero();
-        BigDecimal outstanding = zero();
-
-        for (PatientEncounter encounter : encounters) {
-            Long encounterId = encounter.getId();
-            BillingCharge charge = chargeByEncounter.get(encounterId);
-            PartyTotals patientTotals = partyTotals(
-                    responsibilitiesByEncounter.getOrDefault(encounterId, List.of()),
-                    ResponsiblePartyType.PATIENT
-            );
-            PartyTotals insuranceTotals = partyTotals(
-                    responsibilitiesByEncounter.getOrDefault(encounterId, List.of()),
-                    ResponsiblePartyType.INSURANCE
-            );
-
-            BigDecimal encounterGross = money(charge == null ? null : charge.getGrossAmount());
-            BigDecimal encounterCollected = money(patientTotals.allocated.add(insuranceTotals.allocated));
-            BigDecimal encounterOutstanding = money(
-                    patientTotals.outstanding.add(insuranceTotals.outstanding)
-            );
-
-            FinancialDocument invoice = patientInvoiceByEncounter.get(encounterId);
-            ClaimRequest claim = claimByEncounter.get(encounterId);
-
-            rows.add(
-                    new EncounterFinancialRow(
-                            encounterId,
-                            encounter.getEncounterNumber(),
-                            encounter.getEncounterDate(),
-                            encounter.getEncounterTime(),
-                            resolveEncounterInstant(encounter),
-                            enumName(encounter.getEncounterType()),
-                            encounter.getFacilityId(),
-                            encounter.getDepartmentId(),
-                            encounter.getPractitionerId(),
-                            enumName(encounter.getCoverageType()),
-                            encounterGross,
-                            patientTotals.total,
-                            insuranceTotals.total,
-                            encounterCollected,
-                            encounterOutstanding,
-                            resolveVisitFinancialStatus(
-                                    patientTotals,
-                                    insuranceTotals
-                            ),
-                            invoice == null ? null : invoice.getDocumentNumber(),
-                            invoice == null ? null : invoice.getId(),
-                            claim == null ? null : firstNonBlank(claim.getProvClaimNo(), claim.getClaimReference()),
-                            claim == null ? null : claim.getId()
-                    )
-            );
-
-            grossCharges = grossCharges.add(encounterGross);
-            patientResponsibility = patientResponsibility.add(patientTotals.total);
-            insuranceShare = insuranceShare.add(insuranceTotals.total);
-            totalCollected = totalCollected.add(encounterCollected);
-            outstanding = outstanding.add(encounterOutstanding);
-        }
+        List<EncounterFinancialRow> rows = encounterPage.getContent().stream()
+                .map(encounter -> mapEncounterRow(
+                        encounter,
+                        chargeByEncounter,
+                        responsibilitiesByEncounter,
+                        patientInvoiceByEncounter,
+                        claimByEncounter
+                ))
+                .toList();
 
         return new PatientFinancialDashboardResponse(
                 patient.getId(),
@@ -211,14 +179,14 @@ public class PatientFinancialStatementService {
                 fullName(patient),
                 patient.getDocumentId(),
                 resolveCurrency(charges),
-                new DashboardTotals(
-                        money(grossCharges),
-                        money(patientResponsibility),
-                        money(insuranceShare),
-                        money(totalCollected),
-                        money(outstanding)
-                ),
-                rows
+                totals,
+                PagedResponse.from(
+                        new PageImpl<>(
+                                rows,
+                                encounterPage.getPageable(),
+                                encounterPage.getTotalElements()
+                        )
+                )
         );
     }
 
@@ -287,30 +255,6 @@ public class PatientFinancialStatementService {
         String insurancePaymentStatus = resolveInsurancePaymentStatus(insuranceTotals, claim);
         String overallSettlement = resolveOverallSettlement(patientTotals, insuranceTotals);
         String statementLifecycle = resolveStatementLifecycle(encounter, charge, anyInvoice);
-
-        Map<Long, List<BillingChargeResponsibility>> responsibilitiesByLine =
-                responsibilities.stream()
-                        .filter(item -> item.getChargeLine() != null && item.getChargeLine().getId() != null)
-                        .collect(Collectors.groupingBy(item -> item.getChargeLine().getId()));
-
-        List<ServiceLine> serviceLines = lines.stream()
-                .map(line -> mapServiceLine(
-                        line,
-                        responsibilitiesByLine.getOrDefault(line.getId(), List.of())
-                ))
-                .toList();
-
-        Map<Long, String> paymentMethods = loadPaymentMethods(payments);
-
-        List<ReceiptRow> receipts = payments.stream()
-                .filter(payment -> payment.getStatus() == BillingPaymentStatus.COMPLETED
-                        || payment.getStatus() == BillingPaymentStatus.REFUNDED)
-                .sorted(Comparator.comparing(BillingPayment::getPaymentDate).reversed())
-                .map(payment -> mapReceipt(payment, paymentMethods))
-                .toList();
-
-        List<TimelineRow> timeline = buildTimeline(ledgerEntries);
-        List<AuditRow> auditTrail = buildAuditTrail(documents, payments, ledgerEntries, charge);
 
         BigDecimal eligibleAmount = money(
                 insuranceTotals.total
@@ -435,17 +379,99 @@ public class PatientFinancialStatementService {
                 header,
                 visitPatient,
                 coveragePayer,
-                serviceLines,
                 invoiceBreakdown,
                 patientSettlement,
                 insuranceSplit,
-                receipts,
                 claimFinancial,
-                timeline,
                 finalSettlement,
-                auditTrail,
                 footer
         );
+    }
+
+    public PagedResponse<ServiceLine> getEncounterServiceLines(
+            Long encounterId,
+            Pageable pageable
+    ) {
+        requireEncounter(encounterId);
+        Pageable safePageable = sanitizePageable(pageable);
+
+        Page<BillingChargeLine> linePage =
+                billingChargeLineRepository.findAllByEncounter_IdAndStatusNotInOrderByIdAsc(
+                        encounterId,
+                        EXCLUDED_LINE_STATUSES,
+                        safePageable
+                );
+
+        List<BillingChargeResponsibility> responsibilities =
+                billingChargeResponsibilityRepository.findAllByEncounter_IdAndStatusNotInOrderByIdAsc(
+                        encounterId,
+                        EXCLUDED_RESPONSIBILITY_STATUSES
+                );
+
+        Map<Long, List<BillingChargeResponsibility>> responsibilitiesByLine =
+                responsibilities.stream()
+                        .filter(item -> item.getChargeLine() != null && item.getChargeLine().getId() != null)
+                        .collect(Collectors.groupingBy(item -> item.getChargeLine().getId()));
+
+        List<ServiceLine> rows = linePage.getContent().stream()
+                .map(line -> mapServiceLine(
+                        line,
+                        responsibilitiesByLine.getOrDefault(line.getId(), List.of())
+                ))
+                .toList();
+
+        return PagedResponse.from(
+                new PageImpl<>(rows, linePage.getPageable(), linePage.getTotalElements())
+        );
+    }
+
+    public PagedResponse<ReceiptRow> getEncounterReceipts(
+            Long encounterId,
+            Pageable pageable
+    ) {
+        requireEncounter(encounterId);
+        List<BillingPayment> payments =
+                billingPaymentRepository.findAllByEncounter_IdOrderByIdAsc(encounterId);
+        Map<Long, String> paymentMethods = loadPaymentMethods(payments);
+
+        List<ReceiptRow> receipts = payments.stream()
+                .filter(payment -> payment.getStatus() == BillingPaymentStatus.COMPLETED
+                        || payment.getStatus() == BillingPaymentStatus.REFUNDED)
+                .sorted(Comparator.comparing(BillingPayment::getPaymentDate).reversed())
+                .map(payment -> mapReceipt(payment, paymentMethods))
+                .toList();
+
+        return PagedResponse.from(receipts, sanitizePageable(pageable));
+    }
+
+    public PagedResponse<TimelineRow> getEncounterTimeline(
+            Long encounterId,
+            Pageable pageable
+    ) {
+        requireEncounter(encounterId);
+        List<TimelineRow> timeline = buildTimeline(
+                billingLedgerRepository.findAllByEncounter_IdOrderByTransactionDateAscIdAsc(encounterId)
+        );
+        return PagedResponse.from(timeline, sanitizePageable(pageable));
+    }
+
+    public PagedResponse<AuditRow> getEncounterAuditTrail(
+            Long encounterId,
+            Pageable pageable
+    ) {
+        requireEncounter(encounterId);
+        List<BillingChargeLine> lines =
+                billingChargeLineRepository.findAllByEncounter_IdAndStatusNotInOrderByIdAsc(
+                        encounterId,
+                        EXCLUDED_LINE_STATUSES
+                );
+        List<AuditRow> auditTrail = buildAuditTrail(
+                financialDocumentRepository.findAllByEncounterId(encounterId),
+                billingPaymentRepository.findAllByEncounter_IdOrderByIdAsc(encounterId),
+                billingLedgerRepository.findAllByEncounter_IdOrderByTransactionDateAscIdAsc(encounterId),
+                resolveCharge(lines)
+        );
+        return PagedResponse.from(auditTrail, sanitizePageable(pageable));
     }
 
     private Patient requirePatient(Long patientId) {
@@ -492,6 +518,94 @@ public class PatientFinancialStatementService {
                         ENTITY_NAME,
                         "encounter.notfound"
                 ));
+    }
+
+    private Pageable sanitizePageable(Pageable pageable) {
+        int page = pageable == null ? 0 : Math.max(pageable.getPageNumber(), 0);
+        int size = pageable == null ? 10 : pageable.getPageSize();
+        if (size < 1) {
+            size = 10;
+        }
+        if (size > 100) {
+            size = 100;
+        }
+        return PageRequest.of(page, size);
+    }
+
+    private DashboardTotals sumDashboardTotals(
+            List<BillingCharge> charges,
+            Map<Long, List<BillingChargeResponsibility>> responsibilitiesByEncounter
+    ) {
+        BigDecimal grossCharges = zero();
+        BigDecimal patientResponsibility = zero();
+        BigDecimal insuranceShare = zero();
+        BigDecimal totalCollected = zero();
+        BigDecimal outstanding = zero();
+
+        for (BillingCharge charge : charges) {
+            grossCharges = grossCharges.add(money(charge.getGrossAmount()));
+        }
+
+        for (List<BillingChargeResponsibility> encounterResponsibilities : responsibilitiesByEncounter.values()) {
+            PartyTotals patientTotals = partyTotals(encounterResponsibilities, ResponsiblePartyType.PATIENT);
+            PartyTotals insuranceTotals = partyTotals(encounterResponsibilities, ResponsiblePartyType.INSURANCE);
+            patientResponsibility = patientResponsibility.add(patientTotals.total);
+            insuranceShare = insuranceShare.add(insuranceTotals.total);
+            totalCollected = totalCollected.add(patientTotals.allocated).add(insuranceTotals.allocated);
+            outstanding = outstanding.add(patientTotals.outstanding).add(insuranceTotals.outstanding);
+        }
+
+        return new DashboardTotals(
+                money(grossCharges),
+                money(patientResponsibility),
+                money(insuranceShare),
+                money(totalCollected),
+                money(outstanding)
+        );
+    }
+
+    private EncounterFinancialRow mapEncounterRow(
+            PatientEncounter encounter,
+            Map<Long, BillingCharge> chargeByEncounter,
+            Map<Long, List<BillingChargeResponsibility>> responsibilitiesByEncounter,
+            Map<Long, FinancialDocument> patientInvoiceByEncounter,
+            Map<Long, ClaimRequest> claimByEncounter
+    ) {
+        Long encounterId = encounter.getId();
+        BillingCharge charge = chargeByEncounter.get(encounterId);
+        PartyTotals patientTotals = partyTotals(
+                responsibilitiesByEncounter.getOrDefault(encounterId, List.of()),
+                ResponsiblePartyType.PATIENT
+        );
+        PartyTotals insuranceTotals = partyTotals(
+                responsibilitiesByEncounter.getOrDefault(encounterId, List.of()),
+                ResponsiblePartyType.INSURANCE
+        );
+        FinancialDocument invoice = patientInvoiceByEncounter.get(encounterId);
+        ClaimRequest claim = claimByEncounter.get(encounterId);
+
+        return new EncounterFinancialRow(
+                encounterId,
+                encounter.getEncounterNumber(),
+                encounter.getEncounterDate(),
+                encounter.getEncounterTime(),
+                resolveEncounterInstant(encounter),
+                enumName(encounter.getEncounterType()),
+                encounter.getFacilityId(),
+                encounter.getDepartmentId(),
+                encounter.getPractitionerId(),
+                enumName(encounter.getCoverageType()),
+                money(charge == null ? null : charge.getGrossAmount()),
+                patientTotals.total,
+                insuranceTotals.total,
+                money(patientTotals.allocated.add(insuranceTotals.allocated)),
+                money(patientTotals.outstanding.add(insuranceTotals.outstanding)),
+                resolveVisitFinancialStatus(patientTotals, insuranceTotals),
+                invoice == null ? null : invoice.getDocumentNumber(),
+                invoice == null ? null : invoice.getId(),
+                claim == null ? null : firstNonBlank(claim.getProvClaimNo(), claim.getClaimReference()),
+                claim == null ? null : claim.getId()
+        );
     }
 
     private Map<Long, BillingCharge> latestChargeByEncounter(List<BillingCharge> charges) {
