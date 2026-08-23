@@ -45,6 +45,12 @@ public interface BillingChargeResponsibilityRepository
             Collection<BillingResponsibilityStatus> excludedStatuses
     );
 
+    List<BillingChargeResponsibility>
+    findAllByPatient_IdAndStatusNotInOrderByIdAsc(
+            Long patientId,
+            Collection<BillingResponsibilityStatus> excludedStatuses
+    );
+
     Optional<BillingChargeResponsibility>
     findByIdempotencyKey(String idempotencyKey);
 

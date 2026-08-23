@@ -55,6 +55,12 @@ public interface BillingChargeRepository
             Long encounterId
     );
 
+    List<BillingCharge>
+    findAllByPatient_IdAndStatusNotInOrderByIdAsc(
+            Long patientId,
+            Collection<BillingChargeStatus> excludedStatuses
+    );
+
     @Query("""
         select coalesce(sum(c.outstandingAmount), 0)
         from BillingCharge c

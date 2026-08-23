@@ -50,6 +50,11 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
             Pageable pageable
     );
 
+    @EntityGraph(attributePaths = {"appointment", "patient"})
+    List<PatientEncounter> findAllByPatientIdOrderByCreatedDateDesc(
+            Long patientId
+    );
+
     @EntityGraph(attributePaths = "appointment")
     PatientEncounter findByAppointment_Id(Long appointmentId);
 

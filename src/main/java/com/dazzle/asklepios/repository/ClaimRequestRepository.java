@@ -15,6 +15,8 @@ public interface ClaimRequestRepository extends JpaRepository<ClaimRequest, Long
 
     List<ClaimRequest> findByEncounterIdOrderByIdDesc(Long encounterId);
 
+    List<ClaimRequest> findByPatientIdOrderByIdDesc(Long patientId);
+
     Optional<ClaimRequest> findFirstByFinancialDocumentIdOrderByIdDesc(Long financialDocumentId);
 
     boolean existsByFinancialDocumentIdAndStatusIn(Long financialDocumentId, List<ClaimStatus> statuses);
