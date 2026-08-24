@@ -889,6 +889,7 @@ public class PatientFinancialStatementService {
         for (FinancialDocument document : documents) {
             if (document.getDocumentType() == FinancialDocumentType.CREDIT_NOTE
                     || document.getDocumentType() == FinancialDocumentType.DEBIT_NOTE
+                    || document.getDocumentType() == FinancialDocumentType.REFUND
                     || document.getStatus() == FinancialDocumentStatus.CANCELLED) {
                 rows.add(
                         new AuditRow(

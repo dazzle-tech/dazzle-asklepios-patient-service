@@ -55,6 +55,10 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
             Long patientId
     );
 
+    Optional<PatientEncounter> findFirstByPatientIdOrderByCreatedDateDescIdDesc(
+            Long patientId
+    );
+
     @EntityGraph(attributePaths = "appointment")
     PatientEncounter findByAppointment_Id(Long appointmentId);
 
