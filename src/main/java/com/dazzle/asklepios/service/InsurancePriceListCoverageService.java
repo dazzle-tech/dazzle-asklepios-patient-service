@@ -8,6 +8,7 @@ import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
+import com.dazzle.asklepios.domain.enumeration.billing.PricingSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.service.dto.billing.EncounterCoverageDTO;
@@ -180,7 +181,8 @@ public class InsurancePriceListCoverageService {
                         BillingCoverageType.INSURANCE
                 );
 
-        if (insurancePrice.resolvedFromPriceList()) {
+        if (insurancePrice.resolvedFromPriceList()
+                && isInsurancePriceListResult(insurancePrice)) {
             LOG.info(
                     "[INSURANCE_PL] Item is on insurance price list. encounterId={} type={} sourceId={} priceListItemId={}",
                     encounterId,
@@ -357,6 +359,14 @@ public class InsurancePriceListCoverageService {
                 patientInsuranceId,
                 null
         );
+    }
+
+    private boolean isInsurancePriceListResult(ResolvedBillingPrice price) {
+        if (price == null || price.pricingResponse() == null) {
+            return false;
+        }
+        return price.pricingResponse().pricingSource()
+                == PricingSource.INSURANCE_PRICE_LIST;
     }
 
     private Long resolveSourceId(

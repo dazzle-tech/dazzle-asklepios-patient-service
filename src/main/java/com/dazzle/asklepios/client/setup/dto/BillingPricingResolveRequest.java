@@ -2,6 +2,7 @@ package com.dazzle.asklepios.client.setup.dto;
 
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.Currency;
+import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.billing.DiscountApplicableOn;
 import com.dazzle.asklepios.domain.enumeration.billing.TaxApplicableOn;
@@ -33,7 +34,9 @@ public record BillingPricingResolveRequest(
 
         DiscountApplicableOn discountApplicableOn,
 
-        LocalDate pricingDate
+        LocalDate pricingDate,
+
+        EncounterType visitType
 
 ) implements Serializable {
 }

@@ -4,6 +4,7 @@ import com.dazzle.asklepios.client.setup.dto.BillingPricingResolveRequest;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingTrigger;
@@ -90,6 +91,9 @@ public class BillingEngineService {
 
     private final EncounterPreAuthorizationSyncService
             encounterPreAuthorizationSyncService;
+
+    private final com.dazzle.asklepios.client.setup.PriceListSetupClient
+            priceListSetupClient;
 
     /*
      * ============================================================
@@ -287,6 +291,7 @@ public class BillingEngineService {
         );
 
         submitPreAuthorizationAfterBilling(item.getEncounterId(), result);
+        lockVisitTypeAfterUse(resolvedPrice, result);
 
         return result;
     }
@@ -799,8 +804,31 @@ public class BillingEngineService {
         );
 
         submitPreAuthorizationAfterBilling(item.getEncounterId(), result);
+        lockVisitTypeAfterUse(resolvedPrice, result);
 
         return result;
+    }
+
+    private void lockVisitTypeAfterUse(
+            ResolvedBillingPrice resolvedPrice,
+            BillingOperationResult result
+    ) {
+        if (result == null
+                || !result.processed()
+                || resolvedPrice == null
+                || resolvedPrice.priceListItemId() == null) {
+            return;
+        }
+
+        try {
+            priceListSetupClient.lockVisitType(resolvedPrice.priceListItemId());
+        } catch (RuntimeException exception) {
+            LOG.warn(
+                    "Unable to lock price-list visit type for itemId={}",
+                    resolvedPrice.priceListItemId(),
+                    exception
+            );
+        }
     }
 
     private void submitPreAuthorizationAfterBilling(
@@ -1109,8 +1137,20 @@ public class BillingEngineService {
                 resolveDiscountApplicableOn(
                         item
                 ),
-                LocalDate.now()
+                LocalDate.now(),
+                resolveEncounterType(item)
         );
+    }
+
+    private EncounterType resolveEncounterType(PatientServiceAndProduct item) {
+        if (item == null || item.getEncounterId() == null) {
+            return null;
+        }
+
+        return patientEncounterRepository
+                .findById(item.getEncounterId())
+                .map(PatientEncounter::getEncounterType)
+                .orElse(null);
     }
 
     private Long resolvePatientInsuranceId(
