@@ -13,6 +13,7 @@ import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchF
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
 import com.dazzle.asklepios.service.dto.billing.EncounterCoverageDTO;
 import com.dazzle.asklepios.service.dto.billing.UpdateEncounterCoverageRequest;
+import com.dazzle.asklepios.service.dto.patientEncounter.ReassignPractitionerDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.patientEncounter.PatientEncounterVM;
@@ -571,5 +572,18 @@ public class PatientEncounterController {
                 .updateHistoryOfPresentIllness(id, dto.historyOfPresentIllness());
 
         return ResponseEntity.ok(result);
+    }
+
+    @PutMapping("/encounter/{encounterId}/reassign-practitioner")
+    public ResponseEntity<PatientEncounter> reassignPractitioner(@PathVariable @NotNull Long encounterId, @Valid @RequestBody @NotNull ReassignPractitionerDTO request) {
+        LOG.debug(
+                "REST reassign practitioner encounterId={} newPractitionerId={}",
+                encounterId,
+                request.practitionerId()
+        );
+
+        PatientEncounter updated = patientEncounterService.reassignPractitioner(encounterId, request.practitionerId());
+
+        return ResponseEntity.ok(updated);
     }
 }
