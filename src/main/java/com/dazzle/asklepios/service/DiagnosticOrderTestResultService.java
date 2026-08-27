@@ -35,6 +35,7 @@ import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.service.helper.UserDepartmentHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.laboratory.DiagnosticOrderTestResultResponseVM;
+import com.dazzle.asklepios.web.rest.vm.laboratory.DiagnosticOrderTestResultResultsVM;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -390,6 +391,199 @@ public class DiagnosticOrderTestResultService {
 
             return DiagnosticOrderTestResultResponseVM
                     .ofEntityWithViewNote(result, viewMarker, viewNormalRange, hasNote);
+        });
+    }
+
+
+    @Transactional(readOnly = true)
+    public Page<DiagnosticOrderTestResultResultsVM> resultsPage(
+            Specification<DiagnosticOrderTestResult> spec,
+            Pageable pageable
+    ) {
+
+        Page<DiagnosticOrderTestResult> page =
+                diagnosticOrderTestResultRepository.findAll(spec, pageable);
+
+        return page.map(result -> {
+
+            // =====================================================
+            // ORDER TEST
+            // =====================================================
+
+            DiagnosticOrderTest orderTest =
+                    diagnosticOrderTestRepository
+                            .findById(result.getOrderTestId())
+                            .orElse(null);
+
+            if (orderTest == null) {
+                return new DiagnosticOrderTestResultResultsVM(
+                        result.getId(),
+                        result.getOrderTestId(),
+                        null,
+                        result.getProfileTestId(),
+
+                        result.getResultValueNumber(),
+                        result.getResultValueText(),
+
+                        result.getMarker(),
+                        result.getMarker(),
+                        result.getNormalRangeValue(),
+
+                        result.getCreatedDate(),
+
+                        null,
+                        null,
+
+                        result.getCreatedBy(),
+                        result.getCreatedDate(),
+
+                        null,
+
+                        diagnosticOrderTestResultTechnicianNoteRepository
+                                .existsByResultId(result.getId()),
+
+                        false
+                );
+            }
+
+            // =====================================================
+            // ORDER
+            // =====================================================
+
+            DiagnosticOrder order =
+                    diagnosticOrderRepository
+                            .findById(orderTest.getOrderId())
+                            .orElse(null);
+
+            // =====================================================
+            // PATIENT
+            // =====================================================
+
+            Patient patient = null;
+
+            if (order != null && order.getPatientId() != null) {
+                patient = patientRepository
+                        .findById(order.getPatientId())
+                        .orElse(null);
+            }
+
+            String patientName = null;
+            String mrn = null;
+
+            if (patient != null) {
+
+                patientName = String.join(
+                        " ",
+                        patient.getFirstName() != null
+                                ? patient.getFirstName()
+                                : "",
+                        patient.getSecondName() != null
+                                ? patient.getSecondName()
+                                : "",
+                        patient.getThirdName() != null
+                                ? patient.getThirdName()
+                                : "",
+                        patient.getLastName() != null
+                                ? patient.getLastName()
+                                : ""
+                ).trim();
+
+                mrn = patient.getMedicalRecordNumber();
+            }
+
+            // =====================================================
+            // VIEW MARKER / NORMAL RANGE
+            // =====================================================
+
+            TestResultMarker viewMarker = result.getMarker();
+            String viewNormalRange = result.getNormalRangeValue();
+
+            TestResultType resultType = null;
+
+            try {
+
+                resultType =
+                        diagnosticTestProfileClient
+                                .getResultTypeByProfileTestIdInternal(
+                                        result.getProfileTestId()
+                                );
+
+            } catch (Exception ignored) {
+
+                LOG.warn(
+                        "ResultType fetch failed for Results page. profileTestId={}",
+                        result.getProfileTestId()
+                );
+            }
+
+            if (patient != null && resultType != null) {
+
+                NormalRangeMatchDTO best =
+                        normalRangeMatcherService.findBestNormalRange(
+                                result.getProfileTestId(),
+                                patient.getId()
+                        );
+
+                viewMarker =
+                        NormalRangeMatcherService.calculateMarker(
+                                resultType,
+                                result.getResultValueNumber(),
+                                result.getResultValueText(),
+                                best
+                        );
+
+                viewNormalRange =
+                        buildViewNormalRange(best);
+            }
+
+            // =====================================================
+            // NOTE
+            // =====================================================
+
+            boolean hasNote =
+                    diagnosticOrderTestResultTechnicianNoteRepository
+                            .existsByResultId(result.getId());
+
+            // =====================================================
+            // RESULTS PAGE VM
+            // =====================================================
+
+            return new DiagnosticOrderTestResultResultsVM(
+
+                    result.getId(),
+                    result.getOrderTestId(),
+
+                    orderTest.getTestId(),
+                    result.getProfileTestId(),
+
+                    result.getResultValueNumber(),
+                    result.getResultValueText(),
+
+                    result.getMarker(),
+                    viewMarker,
+                    viewNormalRange,
+
+                    result.getCreatedDate(),
+
+                    patientName,
+                    mrn,
+
+                    order != null
+                            ? order.getCreatedBy()
+                            : result.getCreatedBy(),
+
+                    order != null
+                            ? order.getCreatedDate()
+                            : result.getCreatedDate(),
+
+                    order != null
+                            ? order.getEncounterId()
+                            : null,
+
+                    hasNote,
+
+                    isRadiologyTest(orderTest)
+            );
         });
     }
 
