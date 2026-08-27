@@ -15,6 +15,7 @@ import com.dazzle.asklepios.service.dto.radiology.PacsStudyDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportImageStatusLogResponseVM;
 import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportResponseVM;
+import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportResultsVM;
 import com.dazzle.asklepios.web.rest.vm.radiology.RadiologyImageStatusResponseVM;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -168,6 +169,34 @@ public class DiagnosticOrderTestReportController {
 
         return ResponseEntity.ok(
                 DiagnosticOrderTestReportResponseVM.ofEntity(reportOpt.get())
+        );
+    }
+
+    @GetMapping("/radiology/reports/results")
+    public ResponseEntity<List<DiagnosticOrderTestReportResultsVM>> filterReportResults(
+            @RequestParam(name = "patientId", required = false) Long patientId,
+            @RequestParam(name = "fromDate", required = false) Instant fromDate,
+            @RequestParam(name = "toDate", required = false) Instant toDate,
+            @ParameterObject Pageable pageable
+    ) {
+
+        Page<DiagnosticOrderTestReportResultsVM> page =
+                reportService.filterReportResults(
+                        patientId,
+                        fromDate,
+                        toDate,
+                        pageable
+                );
+
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                page
+        );
+
+        return new ResponseEntity<>(
+                page.getContent(),
+                headers,
+                HttpStatus.OK
         );
     }
 
