@@ -37,7 +37,7 @@ application:
 
   pos:
     nami:
-      base-url: https://api.namipay.com
+      base-url: https://mw-uat.namipay.com.sa
       client-id: ${NAMI_CLIENT_ID}
       client-secret: ${NAMI_CLIENT_SECRET}
       purchase-endpoint: /api/payments/performTransaction

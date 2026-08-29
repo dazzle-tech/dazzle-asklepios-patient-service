@@ -20,7 +20,6 @@ public interface PointOfSaleTransactionRepository
     findByExternalTransactionId(
             String externalTransactionId
     );
-    Optional<PointOfSaleTransaction> findByExternalTransactionCode(String externalTransactionCode);
 
     Optional<PointOfSaleTransaction> findByRrn(String rrn);
 }

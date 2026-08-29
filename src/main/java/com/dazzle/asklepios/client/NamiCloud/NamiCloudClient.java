@@ -1,13 +1,12 @@
 package com.dazzle.asklepios.client.NamiCloud;
 
-import com.dazzle.asklepios.client.NamiCloud.dto.NamiPurchaseRequest;
-import com.dazzle.asklepios.client.NamiCloud.dto.NamiPurchaseResponse;
-import com.dazzle.asklepios.client.NamiCloud.dto.NamiRegisterTerminalRequest;
-import com.dazzle.asklepios.client.NamiCloud.dto.NamiRegisterTerminalResponse;
-import com.dazzle.asklepios.client.NamiCloud.dto.NamiTransactionRequestBody;
+import com.dazzle.asklepios.client.NamiCloud.dto.*;
 import com.dazzle.asklepios.domain.PointOfSaleConfiguration;
+import com.dazzle.asklepios.service.SocialHistoryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -17,15 +16,28 @@ import java.math.BigDecimal;
 @RequiredArgsConstructor
 @Slf4j
 public class NamiCloudClient {
+    private static final Logger LOG = LoggerFactory.getLogger(NamiCloudClient.class);
 
     private final NamiProperties namiProperties;
+    private final NamiAuthenticationService namiAuthenticationService;
+
+    private RestClient restClient() {
+        return RestClient.builder()
+                .baseUrl(namiProperties.baseUrl())
+                .build();
+    }
 
     public NamiPurchaseResponse purchase(
             PointOfSaleConfiguration configuration,
             String orderId,
             BigDecimal amount
     ) {
-
+        LOG.info(
+                "Sending Purchase Request. OrderId={}, TerminalId={}, Amount={}",
+                orderId,
+                configuration.getTerminalId(),
+                amount
+        );
         NamiPurchaseRequest request =
                 new NamiPurchaseRequest(
                         orderId,
@@ -37,15 +49,28 @@ public class NamiCloudClient {
                         )
                 );
 
-        RestClient restClient = RestClient.builder()
-                .baseUrl(namiProperties.baseUrl())
-                .build();
 
-        return restClient.post()
-                .uri(namiProperties.purchaseEndpoint())
+        LOG.debug(
+                "Purchase Payload={}",
+                request
+        );
+        String token =
+                namiAuthenticationService.getToken();
+
+        return restClient()
+                .post()
+                .uri(
+                        namiProperties.purchaseEndpoint()
+                )
+                .header(
+                        "Authorization",
+                        token
+                )
                 .body(request)
                 .retrieve()
-                .body(NamiPurchaseResponse.class);
+                .body(
+                        NamiPurchaseResponse.class
+                );
     }
 
     public NamiRegisterTerminalResponse registerTerminal(
@@ -61,14 +86,45 @@ public class NamiCloudClient {
                         "17"
                 );
 
-        RestClient restClient = RestClient.builder()
-                .baseUrl(namiProperties.baseUrl())
-                .build();
+        String token =
+                namiAuthenticationService.getToken();
 
-        return restClient.post()
-                .uri(namiProperties.registerEndpoint())
+        return restClient()
+                .post()
+                .uri(
+                        namiProperties.registerEndpoint()
+                )
+                .header(
+                        "Authorization",
+                        token
+                )
                 .body(request)
                 .retrieve()
-                .body(NamiRegisterTerminalResponse.class);
+                .body(
+                        NamiRegisterTerminalResponse.class
+                );
+    }
+
+    public NamiTransactionResponse getTransactionResponse(
+            String transactionId
+    ) {
+
+        String token =
+                namiAuthenticationService.getToken();
+
+        return restClient()
+                .get()
+                .uri(
+                        "/api/payments/response/{id}",
+                        transactionId
+                )
+                .header(
+                        "Authorization",
+                        token
+                )
+                .retrieve()
+                .body(
+                        NamiTransactionResponse.class
+                );
     }
 }

@@ -28,6 +28,15 @@ waseel:
 
 application:
   asklepios-application-url: http://localhost:3100//#
+  pos:
+    nami:
+      base-url: https://mw-uat.namipay.com.sa
+      client-id: ${NAMI_CLIENT_ID}
+      client-secret: ${NAMI_CLIENT_SECRET}
+      purchase-endpoint: /api/payments/performTransaction
+      refund-endpoint: /api/payments/performTransaction
+      reversal-endpoint: /api/payments/performTransaction
+      register-endpoint: /api/terminals/register
 pacs:
   base-url: https://him.onehealth.com.sa/api/method/casting.casting.dicom_share.get_dicom_studies_by_accession_number
   token: YmNhYTQ4ZTVjODQ5MWZiOjQ2MzU1ODU5MTM0NDcyMw==

@@ -23,7 +23,7 @@ public record PointOfSaleTransactionDTO(
 
         String orderId,
 
-        String externalTransactionCode,
+        String externalTransactionId,
 
         PointOfSaleTransactionType transactionType,
 
@@ -54,7 +54,18 @@ public record PointOfSaleTransactionDTO(
         Instant transactionDate,
 
         Boolean webhookReceived,
-        String externalTransactionId
+
+        String stanNo,
+
+        String productInfo,
+
+        String merchantName,
+
+        String merchantAddress,
+
+        String ecrTransactionReferenceNumber,
+
+        String applicationVersion
 
 ) implements Serializable {
 }

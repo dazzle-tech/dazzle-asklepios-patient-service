@@ -24,7 +24,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 @Entity
-@Table(name = "point_of_sail_transaction")
+@Table(name = "point_of_sale_transaction")
 @Getter
 @Setter
 public class PointOfSaleTransaction extends AbstractAuditingEntity<Long> implements Serializable {
@@ -62,8 +62,7 @@ public class PointOfSaleTransaction extends AbstractAuditingEntity<Long> impleme
     @Column(name = "order_id", nullable = false, unique = true)
     private String orderId;
 
-    @Column(name = "external_transaction_code")
-    private String externalTransactionCode;
+
 
     @Column(name = "external_transaction_id")
     private String externalTransactionId;
@@ -110,7 +109,23 @@ public class PointOfSaleTransaction extends AbstractAuditingEntity<Long> impleme
 
     @Column(name = "scheme_label")
     private String schemeLabel;
+    @Column(name = "stan_no")
+    private String stanNo;
 
+    @Column(name = "product_info")
+    private String productInfo;
+
+    @Column(name = "merchant_name")
+    private String merchantName;
+
+    @Column(name = "merchant_address")
+    private String merchantAddress;
+
+    @Column(name = "ecr_transaction_reference_number")
+    private String ecrTransactionReferenceNumber;
+
+    @Column(name = "application_version")
+    private String applicationVersion;
     @Column(name = "transaction_date")
     private Instant transactionDate;
 
