@@ -138,7 +138,7 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
     private String role;
 
     @NotNull
-    @Column(name = "marital_status", length = 50, nullable = false)
+    @Column(name = "marital_status", length = 50)
     private String maritalStatus;
 
     @Column(name = "nationality", length = 100)
@@ -151,7 +151,7 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
     private String ethnicity;
 
     @NotNull
-    @Column(name = "occupation", length = 150, nullable = false)
+    @Column(name = "occupation", length = 150)
     private String occupation;
 
     @Column(name = "responsible_party", length = 150)
