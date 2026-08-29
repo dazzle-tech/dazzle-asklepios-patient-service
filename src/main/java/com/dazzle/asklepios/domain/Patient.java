@@ -150,7 +150,6 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
     @Column(name = "ethnicity", length = 100)
     private String ethnicity;
 
-    @NotNull
     @Column(name = "occupation", length = 150)
     private String occupation;
 
