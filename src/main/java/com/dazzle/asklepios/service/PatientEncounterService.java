@@ -67,6 +67,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -567,7 +568,7 @@ public class PatientEncounterService {
 
         PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
                 .orElseThrow(() -> new NotFoundAlertException(
-                        "id.notfound" ,
+                        "id.notfound",
                         "patientEncounter",
                         "PatientEncounter not found with id " + encounterId
                 ));
@@ -578,7 +579,7 @@ public class PatientEncounterService {
                 TreatmentStatus.PENDING_PAYMENT
         ).contains(encounter.getStatus())) {
             throw new BadRequestAlertException(
-                    "cancel.notAllowed.rule"  ,
+                    "cancel.notAllowed.rule",
                     "patientEncounter",
                     "Cancel is allowed only when status is NEW, WAITING_TRIAGE, or PENDING_PAYMENT."
             );
@@ -587,7 +588,7 @@ public class PatientEncounterService {
 
         if (hasObservation) {
             throw new BadRequestAlertException(
-                    "cancel.notAllowed.hasObservation"  ,
+                    "cancel.notAllowed.hasObservation",
                     "patientEncounter",
                     "Cannot cancel encounter with observations."
             );
@@ -776,12 +777,10 @@ public class PatientEncounterService {
                         && !filter.patientName().isBlank();
 
 
-
         boolean hasEncounterNumber =
                 filter != null
                         && filter.encounterNumber() != null
                         && !filter.encounterNumber().isBlank();
-
 
 
         boolean hasMrn =
@@ -1531,6 +1530,112 @@ public class PatientEncounterService {
         PatientEncounter saved = patientEncounterRepository.save(encounter);
 
         LOG.debug("History of Present Illness updated successfully for Encounter : {}", id);
+
+        return saved;
+    }
+
+    @Transactional
+    public PatientEncounter reassignPractitioner(
+            Long encounterId,
+            Long newPractitionerId
+    ) {
+        LOG.info(
+                "[REASSIGN_PRACTITIONER] encounterId={} newPractitionerId={}",
+                encounterId,
+                newPractitionerId
+        );
+
+        PatientEncounter encounter =
+                patientEncounterRepository.findById(encounterId)
+                        .orElseThrow(() -> new NotFoundAlertException(
+                                "PatientEncounter not found with id " + encounterId,
+                                "patientEncounter",
+                                "id.notfound"
+                        ));
+
+        if (newPractitionerId == null) {
+            throw new BadRequestAlertException(
+                    "Practitioner id is required",
+                    "patientEncounter",
+                    "practitioner.required"
+            );
+        }
+        if (encounter.getStatus() != TreatmentStatus.NEW && encounter.getStatus() != TreatmentStatus.PENDING_PAYMENT) {
+            throw new BadRequestAlertException(
+                    "Practitioner can only be reassigned when encounter status is NEW or PENDING_PAYMENT",
+                    "patientEncounter",
+                    "practitioner.reassign.notAllowed.status"
+            );
+        }
+
+        PractitionerDTO oldPractitioner = null;
+        if (encounter.getPractitionerId() != null) {
+            oldPractitioner = practitionerHelper.getPractitioner(encounter.getPractitionerId());
+        }
+
+
+        if (oldPractitioner != null && oldPractitioner.id().equals(newPractitionerId)) {
+            throw new BadRequestAlertException(
+                    "New practitioner must be different from the current practitioner",
+                    "patientEncounter",
+                    "practitioner.same"
+            );
+        }
+
+        PractitionerDTO newPractitioner = practitionerHelper.getPractitioner(newPractitionerId);
+
+        // 1. Practitioner must be active
+        if (!Boolean.TRUE.equals(newPractitioner.isActive())) {
+            throw new BadRequestAlertException(
+                    "Selected practitioner is not active",
+                    "patientEncounter",
+                    "practitioner.inactive"
+            );
+        }
+
+        // 2. New practitioner must have same specialty
+        if (oldPractitioner != null && !Objects.equals(oldPractitioner.specialty(), newPractitioner.specialty())) {
+            throw new BadRequestAlertException(
+                    "Selected practitioner must have the same specialty as the current practitioner",
+                    "patientEncounter",
+                    "practitioner.specialty.mismatch"
+            );
+        }
+
+        // 3. New practitioner must have access to encounter department
+        Long departmentId = encounter.getDepartmentId();
+
+        if (departmentId == null) {
+            throw new BadRequestAlertException(
+                    "Encounter department is required",
+                    "patientEncounter",
+                    "department.required"
+            );
+        }
+
+        boolean hasDepartmentAccess = practitionerClient.hasDepartmentAccess( newPractitionerId,departmentId);
+
+        if (!hasDepartmentAccess) {
+            throw new BadRequestAlertException(
+                    "Selected practitioner does not have access to the encounter department",
+                    "patientEncounter",
+                    "practitioner.department.access.denied"
+            );
+        }
+
+        // 4. Reassign
+        encounter.setPractitionerId(newPractitioner.id());
+
+        PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
+
+        LOG.info(
+                "[REASSIGN_PRACTITIONER] success encounterId={} oldPractitionerId={} newPractitionerId={} departmentId={} specialty={}",
+                encounterId,
+                oldPractitioner!=null?oldPractitioner.id():null,
+                newPractitioner.id(),
+                departmentId,
+                newPractitioner.specialty()
+        );
 
         return saved;
     }

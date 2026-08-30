@@ -19,5 +19,6 @@ public record PractitionerDTO(
         String educationalLevel,
         String jobRole,
         List<WorkingDayJson> workingDays,
-        Long userId
+        Long userId,
+        Boolean isActive
 ) {}

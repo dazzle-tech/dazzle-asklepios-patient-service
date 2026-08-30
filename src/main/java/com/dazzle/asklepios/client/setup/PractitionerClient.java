@@ -30,4 +30,7 @@ public interface PractitionerClient {
             @RequestParam(value = "practitionerId", required = false) Long practitionerId,
             @RequestParam(value = "login", required = false) String login
     );
+
+    @GetMapping("/api/setup/practitioner/{practitionerId}/departments/{departmentId}/access")
+    Boolean hasDepartmentAccess(@PathVariable Long practitionerId, @PathVariable Long departmentId);
 }
