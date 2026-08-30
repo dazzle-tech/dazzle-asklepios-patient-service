@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/point-of-sale-transactions")
+@RequestMapping("/api/patient")
 @RequiredArgsConstructor
 public class PointOfSaleTransactionController {
     private static final Logger LOG = LoggerFactory.getLogger(PointOfSaleTransactionController.class);
@@ -24,7 +24,7 @@ public class PointOfSaleTransactionController {
     private final PointOfSaleTransactionService pointOfSaleTransactionService;
 
 
-    @PostMapping("/purchase")
+    @PostMapping("/point-of-sale-transactions/purchase")
     public ResponseEntity<PointOfSaleTransactionDTO> purchase(
             @Valid @RequestBody CreatePointOfSaleTransactionDTO request
     ) {
@@ -50,7 +50,7 @@ public class PointOfSaleTransactionController {
         return ResponseEntity.ok(result);
     }
 
-    @PostMapping("/webhook")
+    @PostMapping("/point-of-sale-transactions/webhook")
     public ResponseEntity<Void> webhook(
             @RequestBody PointOfSaleWebhookDTO webhook
     ) {
