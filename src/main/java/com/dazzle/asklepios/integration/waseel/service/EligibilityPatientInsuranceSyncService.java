@@ -39,14 +39,13 @@ public class EligibilityPatientInsuranceSyncService {
             EligibilityResponse response,
             Long eligibilityRequestId
     ) {
-        if (
-                insurance == null
-                        || insurance.getId() == null
-                        || response == null
-                        || response.coverages() == null
-                        || response.coverages().isEmpty()
-        ) {
+        if (insurance == null || insurance.getId() == null || response == null) {
             return insurance;
+        }
+
+        if (response.coverages() == null || response.coverages().isEmpty()) {
+            applyNotInForceEligibility(insurance, response, eligibilityRequestId);
+            return patientInsuranceRepository.save(insurance);
         }
 
         EligibilityCoverageDTO coverage =
@@ -126,6 +125,19 @@ public class EligibilityPatientInsuranceSyncService {
                 coverage,
                 eligibilityRequestId
         );
+    }
+
+    private void applyNotInForceEligibility(
+            PatientInsurance insurance,
+            EligibilityResponse response,
+            Long eligibilityRequestId
+    ) {
+        insurance.setEligibilityStatus(clean(response.status()));
+        insurance.setSiteEligibility(clean(response.siteEligibility()));
+        insurance.setInforce("false");
+        insurance.setLastEligibilityRequestId(eligibilityRequestId);
+        insurance.setLastEligibilitySyncedAt(Instant.now());
+        insuranceBenefitRuleService.clearBenefitRules(insurance.getId());
     }
 
     private void applyPayerNameFromNphiesPayers(

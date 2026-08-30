@@ -20,8 +20,10 @@ public class InsuranceItemNotCoveredException extends BadRequestAlertException {
     public InsuranceItemNotCoveredException(InsurancePriceListCoverageCheckResult check) {
         super(
                 ErrorConstants.DEFAULT_TYPE,
-                check == null
-                        ? InsurancePriceListCoverageService.WARNING_MESSAGE
+                check == null || check.warningMessage() == null
+                        ? InsurancePriceListCoverageService.warningMessageFor(
+                                check == null ? null : check.notCoveredReason()
+                        )
                         : check.warningMessage(),
                 ENTITY_NAME,
                 ERROR_KEY,
@@ -50,7 +52,7 @@ public class InsuranceItemNotCoveredException extends BadRequestAlertException {
         getBody().setProperty("billedAsCashIfConfirmed", true);
         getBody().setProperty(
                 "notCoveredReason",
-                InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST
+                resolveNotCoveredReason(items)
         );
         getBody().setProperty("items", items);
 
@@ -70,11 +72,38 @@ public class InsuranceItemNotCoveredException extends BadRequestAlertException {
             return InsurancePriceListCoverageService.WARNING_MESSAGE;
         }
         if (items.size() == 1) {
-            return items.get(0).warningMessage();
+            InsurancePriceListCoverageCheckResult check = items.get(0);
+            return check.warningMessage() != null
+                    ? check.warningMessage()
+                    : InsurancePriceListCoverageService.warningMessageFor(
+                            check.notCoveredReason()
+                    );
         }
-        return InsurancePriceListCoverageService.WARNING_MESSAGE
+        return InsurancePriceListCoverageService.warningMessageFor(
+                items.get(0).notCoveredReason()
+        )
                 + " ("
                 + items.size()
                 + " items)";
+    }
+
+    private static String resolveNotCoveredReason(
+            List<InsurancePriceListCoverageCheckResult> items
+    ) {
+        if (items != null) {
+            for (InsurancePriceListCoverageCheckResult item : items) {
+                if (item != null
+                        && InsurancePriceListCoverageService.ELIGIBILITY_NOT_IN_FORCE
+                        .equals(item.notCoveredReason())) {
+                    return InsurancePriceListCoverageService.ELIGIBILITY_NOT_IN_FORCE;
+                }
+            }
+            if (!items.isEmpty() && items.get(0) != null
+                    && items.get(0).notCoveredReason() != null) {
+                return items.get(0).notCoveredReason();
+            }
+        }
+
+        return InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST;
     }
 }
