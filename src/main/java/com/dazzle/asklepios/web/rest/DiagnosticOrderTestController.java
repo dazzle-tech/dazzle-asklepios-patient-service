@@ -11,6 +11,7 @@ import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.DiagnosticOrderTestService;
 import com.dazzle.asklepios.service.DiagnosticOrderTestStatusService;
+import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertests.BulkCancelDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.BulkIdsDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.BulkRejectDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestCreateDTO;
@@ -653,6 +654,20 @@ public class DiagnosticOrderTestController {
         return ResponseEntity.ok().build();
     }
 
+    /**
+     * Bulk action: cancel multiple tests.
+     * <p>
+     * Applies the same workflow as {@code /diagnostic-order-tests/{id}/cancel} but for a list of ids.
+     *
+     * @param dto list of test ids to cancel
+     * @return 200 OK on success
+     */
+    @PostMapping("/diagnostic-order-tests/bulk-cancel")
+    public ResponseEntity<Void> bulkCancel(@Valid @RequestBody BulkCancelDTO dto) {
+        LOG.debug("REST bulk-accept DiagnosticOrderTest count={} ids={}", dto.ids().size(), dto.ids());
+        diagnosticOrderTestStatusService.bulkCancel(dto.ids(), currentUsername(),dto.cancellationReason());
+        return ResponseEntity.ok().build();
+    }
     /**
      * Bulk action: reject multiple tests.
      * <p>

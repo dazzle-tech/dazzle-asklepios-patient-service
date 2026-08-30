@@ -369,6 +369,11 @@ public class DiagnosticOrderTestStatusService {
             accept(id, acceptedBy);
         }
     }
+    public void bulkCancel(List<Long> testIds,String cancelBy ,String cancellationReason){
+        for (Long id : testIds) {
+            cancel(id, cancelBy,cancellationReason);
+        }
+    }
 
     public void bulkReject(List<Long> testIds, String rejectedBy, String rejectedReason) {
         Set<Long> orderIds = new HashSet<>();
