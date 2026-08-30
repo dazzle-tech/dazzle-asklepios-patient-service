@@ -184,22 +184,52 @@ public class DefaultServicePricingPreviewService {
             PatientInsurance insurance,
             String serviceCategory
     ) {
-        ResolvedBillingPrice resolvedPrice =
-                billingEngineService.resolvePricing(
-                        previewItem,
-                        facilityId
-                );
-
+        ResolvedBillingPrice resolvedPrice;
         boolean insuranceVisit = insurance != null;
+        boolean eligibilityInForce =
+                insuranceVisit
+                        && insurancePatientShareCalculator.isLatestCoverageInForce(
+                                insurance
+                        );
+        BillingCoverageType pricingCoverage =
+                insuranceVisit && eligibilityInForce
+                        ? BillingCoverageType.INSURANCE
+                        : BillingCoverageType.SELF_PAY;
+
+        resolvedPrice = billingEngineService.resolvePricing(
+                previewItem,
+                facilityId,
+                pricingCoverage
+        );
+
         boolean coveredByInsurance =
-                !insuranceVisit || resolvedPrice.resolvedFromPriceList();
+                insuranceVisit
+                        && eligibilityInForce
+                        && resolvedPrice.resolvedFromPriceList();
         boolean requiresCashConfirmation = insuranceVisit && !coveredByInsurance;
+        String notCoveredReason = null;
 
         if (requiresCashConfirmation) {
-            resolvedPrice = billingEngineService.resolvePricing(
-                    previewItem,
-                    facilityId,
-                    BillingCoverageType.SELF_PAY
+            notCoveredReason = eligibilityInForce
+                    ? InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST
+                    : InsurancePriceListCoverageService.ELIGIBILITY_NOT_IN_FORCE;
+
+            if (pricingCoverage != BillingCoverageType.SELF_PAY) {
+                resolvedPrice = billingEngineService.resolvePricing(
+                        previewItem,
+                        facilityId,
+                        BillingCoverageType.SELF_PAY
+                );
+            }
+
+            LOG.info(
+                    "[PREVIEW_PRICING] Insurance did not cover service. "
+                            + "Using self-pay price list then setup. "
+                            + "serviceId={} reason={} priceSource={} unitPrice={}",
+                    requestedItem.serviceId(),
+                    notCoveredReason,
+                    resolvedPrice.priceSource(),
+                    resolvedPrice.unitPrice()
             );
         }
 
@@ -281,9 +311,7 @@ public class DefaultServicePricingPreviewService {
                 insuranceVisit,
                 coveredByInsurance,
                 requiresCashConfirmation,
-                requiresCashConfirmation
-                        ? InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST
-                        : null,
+                notCoveredReason,
                 requiresCashConfirmation ? resolvedPrice.unitPrice() : null
         );
     }

@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
@@ -10,6 +11,7 @@ import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.service.dto.billing.EncounterCoverageDTO;
 import com.dazzle.asklepios.service.dto.billing.InsurancePriceListCoverageCheckRequest;
 import com.dazzle.asklepios.service.dto.billing.InsurancePriceListCoverageCheckResult;
@@ -28,11 +30,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Insurance visits may only bill an item to insurance when it exists on that
- * insurance's price list. Missing items are not covered: they never go to
- * claims, and may only be ordered after the doctor confirms cash billing.
+ * Insurance visits may only bill an item to insurance when eligibility is
+ * in-force and the item exists on that insurance's price list.
  *
- * Cash / self-pay visits are unchanged.
+ * Otherwise the item is billed as cash: Self-Pay Price List first, then
+ * the Setup item price. Cash / self-pay visits are unchanged.
  */
 @Service
 public class InsurancePriceListCoverageService {
@@ -43,24 +45,46 @@ public class InsurancePriceListCoverageService {
     public static final String NOT_IN_INSURANCE_PRICE_LIST =
             "NOT_IN_INSURANCE_PRICE_LIST";
 
+    public static final String ELIGIBILITY_NOT_IN_FORCE =
+            "ELIGIBILITY_NOT_IN_FORCE";
+
     public static final String WARNING_MESSAGE =
             "This item is not covered by the patient's insurance because it is not on the insurance price list. "
                     + "If you continue, it will be charged as cash to the patient.";
+
+    public static final String ELIGIBILITY_WARNING_MESSAGE =
+            "The patient's insurance coverage is not in-force. "
+                    + "This item will be billed from the self-pay price list, "
+                    + "or from setup if no self-pay price exists.";
 
     private static final String ENTITY_NAME = "insuranceCoverage";
 
     private final EncounterCoverageService encounterCoverageService;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final PatientInsuranceRepository patientInsuranceRepository;
+    private final InsurancePatientShareCalculator insurancePatientShareCalculator;
     private final BillingEngineService billingEngineService;
 
     public InsurancePriceListCoverageService(
             EncounterCoverageService encounterCoverageService,
             PatientEncounterRepository patientEncounterRepository,
+            PatientInsuranceRepository patientInsuranceRepository,
+            InsurancePatientShareCalculator insurancePatientShareCalculator,
             @Lazy BillingEngineService billingEngineService
     ) {
         this.encounterCoverageService = encounterCoverageService;
         this.patientEncounterRepository = patientEncounterRepository;
+        this.patientInsuranceRepository = patientInsuranceRepository;
+        this.insurancePatientShareCalculator = insurancePatientShareCalculator;
         this.billingEngineService = billingEngineService;
+    }
+
+    public static String warningMessageFor(String notCoveredReason) {
+        if (ELIGIBILITY_NOT_IN_FORCE.equals(notCoveredReason)) {
+            return ELIGIBILITY_WARNING_MESSAGE;
+        }
+
+        return WARNING_MESSAGE;
     }
 
     @Transactional(readOnly = true)
@@ -173,6 +197,29 @@ public class InsurancePriceListCoverageService {
                 .paymentStatus(PaymentStatus.PENDING)
                 .build();
 
+        PatientInsurance insurance = loadInsurance(coverage.patientInsuranceId());
+        if (!insurancePatientShareCalculator.isLatestCoverageInForce(insurance)) {
+            LOG.warn(
+                    "[INSURANCE_PL] Eligibility is not in-force. "
+                            + "Pricing from self-pay price list then setup. "
+                            + "encounterId={} type={} sourceId={} patientInsuranceId={}",
+                    encounterId,
+                    billingItemType,
+                    sourceId,
+                    coverage.patientInsuranceId()
+            );
+            return cashCoverageResult(
+                    previewItem,
+                    encounter.getFacilityId(),
+                    billingItemType,
+                    sourceId,
+                    effectiveCurrency,
+                    coverage.patientInsuranceId(),
+                    ELIGIBILITY_NOT_IN_FORCE,
+                    null
+            );
+        }
+
         ResolvedBillingPrice insurancePrice =
                 billingEngineService.resolvePricing(
                         previewItem,
@@ -206,43 +253,24 @@ public class InsurancePriceListCoverageService {
             );
         }
 
-        ResolvedBillingPrice cashPrice =
-                billingEngineService.resolvePricing(
-                        previewItem,
-                        encounter.getFacilityId(),
-                        BillingCoverageType.SELF_PAY
-                );
-
-        String itemName = firstNonBlank(
-                cashPrice.setupItemName(),
-                insurancePrice.setupItemName()
-        );
-        String itemCode = firstNonBlank(
-                cashPrice.setupItemCode(),
-                insurancePrice.setupItemCode()
-        );
-
         LOG.warn(
-                "[INSURANCE_PL] Item is not on insurance price list. encounterId={} type={} sourceId={} cashUnitPrice={}",
+                "[INSURANCE_PL] Item is not on insurance price list. "
+                        + "Pricing from self-pay price list then setup. "
+                        + "encounterId={} type={} sourceId={}",
                 encounterId,
                 billingItemType,
-                sourceId,
-                cashPrice.unitPrice()
+                sourceId
         );
 
-        return new InsurancePriceListCoverageCheckResult(
-                true,
-                false,
-                true,
-                NOT_IN_INSURANCE_PRICE_LIST,
+        return cashCoverageResult(
+                previewItem,
+                encounter.getFacilityId(),
                 billingItemType,
                 sourceId,
-                itemName,
-                itemCode,
-                cashPrice.unitPrice(),
-                cashPrice.currency() != null ? cashPrice.currency() : effectiveCurrency,
+                effectiveCurrency,
                 coverage.patientInsuranceId(),
-                WARNING_MESSAGE
+                NOT_IN_INSURANCE_PRICE_LIST,
+                insurancePrice
         );
     }
 
@@ -310,7 +338,7 @@ public class InsurancePriceListCoverageService {
 
         builder
                 .coverageStatus(CoverageStatus.NOT_COVERED)
-                .notCoveredReason(NOT_IN_INSURANCE_PRICE_LIST)
+                .notCoveredReason(resolveNotCoveredReason(check))
                 .patientInsuranceId(check.patientInsuranceId())
                 .preAuthorizationStatus(PreAuthorizationStatus.NOT_REQUIRED)
                 .preAuthorizationRequired(false)
@@ -328,13 +356,71 @@ public class InsurancePriceListCoverageService {
         }
 
         item.setCoverageStatus(CoverageStatus.NOT_COVERED);
-        item.setNotCoveredReason(NOT_IN_INSURANCE_PRICE_LIST);
+        item.setNotCoveredReason(resolveNotCoveredReason(check));
         item.setPatientInsuranceId(check.patientInsuranceId());
         item.setPreAuthorizationStatus(PreAuthorizationStatus.NOT_REQUIRED);
         item.setPreAuthorizationRequired(false);
         item.setPaymentStatus(PaymentStatus.PENDING);
         item.setWaseelSbsMappingId(null);
         item.setWaseelSbsCode(null);
+    }
+
+    private InsurancePriceListCoverageCheckResult cashCoverageResult(
+            PatientServiceAndProduct previewItem,
+            Long facilityId,
+            BillingItemTypes billingItemType,
+            Long sourceId,
+            Currency effectiveCurrency,
+            Long patientInsuranceId,
+            String notCoveredReason,
+            ResolvedBillingPrice insurancePrice
+    ) {
+        ResolvedBillingPrice cashPrice =
+                billingEngineService.resolvePricing(
+                        previewItem,
+                        facilityId,
+                        BillingCoverageType.SELF_PAY
+                );
+
+        String itemName = firstNonBlank(
+                cashPrice.setupItemName(),
+                insurancePrice == null ? null : insurancePrice.setupItemName()
+        );
+        String itemCode = firstNonBlank(
+                cashPrice.setupItemCode(),
+                insurancePrice == null ? null : insurancePrice.setupItemCode()
+        );
+
+        return new InsurancePriceListCoverageCheckResult(
+                true,
+                false,
+                true,
+                notCoveredReason,
+                billingItemType,
+                sourceId,
+                itemName,
+                itemCode,
+                cashPrice.unitPrice(),
+                cashPrice.currency() != null ? cashPrice.currency() : effectiveCurrency,
+                patientInsuranceId,
+                warningMessageFor(notCoveredReason)
+        );
+    }
+
+    private PatientInsurance loadInsurance(Long patientInsuranceId) {
+        if (patientInsuranceId == null) {
+            return null;
+        }
+
+        return patientInsuranceRepository.findById(patientInsuranceId).orElse(null);
+    }
+
+    private String resolveNotCoveredReason(InsurancePriceListCoverageCheckResult check) {
+        if (check == null || check.notCoveredReason() == null || check.notCoveredReason().isBlank()) {
+            return NOT_IN_INSURANCE_PRICE_LIST;
+        }
+
+        return check.notCoveredReason();
     }
 
     private InsurancePriceListCoverageCheckResult coveredResult(
