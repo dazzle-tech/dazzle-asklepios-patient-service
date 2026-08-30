@@ -54,7 +54,8 @@ public class InsuranceCalculationServiceImpl implements InsuranceCalculationServ
             return new InsuranceSplit(BigDecimal.ZERO, normalizedNet);
         }
 
-        // 1) Patient copayment: percent + per-service maximum (Copayment maximum per service).
+        // 1) Patient copayment: percent + optional Waseel per-service cap.
+        //    Visit maxLimit is applied after this, across the whole encounter.
         BigDecimal patientShare =
                 calculatePatientCopayAmount(
                         normalizedNet,
@@ -138,6 +139,10 @@ public class InsuranceCalculationServiceImpl implements InsuranceCalculationServ
         if (policyLimit.signum() > 0
                 && (patientCopayCap.signum() <= 0
                         || policyLimit.compareTo(patientCopayCap) > 0)) {
+            /*
+             * Visit maxLimit is applied at encounter level. This parameter is
+             * retained only for callers that pass a remaining visit budget.
+             */
             capped = capped.min(policyLimit);
         }
 

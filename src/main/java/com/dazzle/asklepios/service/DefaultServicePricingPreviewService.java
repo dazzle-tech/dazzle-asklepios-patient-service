@@ -76,6 +76,11 @@ public class DefaultServicePricingPreviewService {
         );
         PatientInsurance insurance = resolveInsurance(request);
 
+        VisitMaxLimitTracker visitMaxLimitTracker =
+                insurancePatientShareCalculator.createVisitMaxLimitTracker(
+                        insurance
+                );
+
         if (request.coverageType() == BillingCoverageType.INSURANCE
                 && insurance != null) {
             encounterCoverageService.applyCoverage(
@@ -136,7 +141,8 @@ public class DefaultServicePricingPreviewService {
                             request.facilityId(),
                             requestedItem,
                             insurance,
-                            service.category()
+                            service.category(),
+                            visitMaxLimitTracker
                     );
 
             itemResults.add(itemResult);
@@ -182,7 +188,8 @@ public class DefaultServicePricingPreviewService {
             Long facilityId,
             PrepareDefaultServiceItem requestedItem,
             PatientInsurance insurance,
-            String serviceCategory
+            String serviceCategory,
+            VisitMaxLimitTracker visitMaxLimitTracker
     ) {
         ResolvedBillingPrice resolvedPrice;
         boolean insuranceVisit = insurance != null;
@@ -287,7 +294,8 @@ public class DefaultServicePricingPreviewService {
                     insurancePatientShareCalculator.calculateSplit(
                             insurance,
                             previewItem,
-                            pricing.netAmount()
+                            pricing.netAmount(),
+                            visitMaxLimitTracker
                     );
             patientShareAmount = split.patientShare();
             insuranceShareAmount = split.insuranceShare();

@@ -256,10 +256,7 @@ public class InsuranceBenefitRuleService {
                         insurance.getDefaultCopaymentPercent(),
                         insurance.getPatientShare()
                 ),
-                firstNonNull(
-                        insurance.getDefaultMaximumCopayment(),
-                        insurance.getMaxLimit()
-                ),
+                insurance.getDefaultMaximumCopayment(),
                 true,
                 null
         );
