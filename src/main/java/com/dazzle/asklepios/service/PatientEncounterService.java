@@ -196,6 +196,9 @@ public class PatientEncounterService {
         try {
             PatientEncounter createdPatientEncounter = patientEncounterRepository.saveAndFlush(patientEncounterToCreate);
             entityManager.refresh(createdPatientEncounter); // keep ONLY here (create)
+            if (createdPatientEncounter.getFollowUpEncounter() != null) {
+                createdPatientEncounter.getFollowUpEncounter().getCreatedDate();
+            }
             LOG.info("[CREATE] PatientEncounter success id={} patientId={} departmentId={} status={}",
                     createdPatientEncounter.getId(),
                     createDTO.patientId(),

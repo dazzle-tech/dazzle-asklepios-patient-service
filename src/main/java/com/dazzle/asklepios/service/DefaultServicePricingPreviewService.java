@@ -60,6 +60,7 @@ public class DefaultServicePricingPreviewService {
     private final BillingPricingService billingPricingService;
     private final InsurancePatientShareCalculator insurancePatientShareCalculator;
     private final EncounterCoverageService encounterCoverageService;
+    private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
 
     @Transactional
     public PreviewDefaultServicesPricingResult preview(
@@ -101,6 +102,32 @@ public class DefaultServicePricingPreviewService {
                     encounter,
                     BillingCoverageType.SELF_PAY,
                     null
+            );
+        }
+
+        if (followUpReviewDefaultServicePolicy.shouldSkipDefaultServices(encounter)) {
+            LOG.info(
+                    "[PREVIEW_PRICING] Skipping default-service preview for "
+                            + "follow-up review within {} days. encounterId={} previousEncounterId={}",
+                    FollowUpReviewDefaultServicePolicy.REVIEW_WINDOW_DAYS,
+                    encounterId,
+                    encounter.getFollowUpEncounter() == null
+                            ? null
+                            : encounter.getFollowUpEncounter().getId()
+            );
+
+            return new PreviewDefaultServicesPricingResult(
+                    request.patientId(),
+                    encounterId,
+                    request.facilityId(),
+                    request.coverageType(),
+                    insurance == null ? null : insurance.getId(),
+                    request.currency(),
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    List.of()
             );
         }
 
