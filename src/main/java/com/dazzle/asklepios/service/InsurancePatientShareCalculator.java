@@ -86,6 +86,16 @@ public class InsurancePatientShareCalculator {
             return cashSplit(normalizedNet);
         }
 
+        if (!insuranceBenefitRuleService.isLatestCoverageInForce(insurance)) {
+            LOG.warn(
+                    "[INSURANCE] Coverage is not in-force; billing as cash "
+                            + "patientInsuranceId={} net={}",
+                    insurance.getId(),
+                    normalizedNet
+            );
+            return cashSplit(normalizedNet);
+        }
+
         InsuranceSplit manualOverride =
                 resolveManualCoverageOverride(
                         insurance,
@@ -106,6 +116,10 @@ public class InsurancePatientShareCalculator {
                 serviceSource,
                 normalizedNet
         );
+    }
+
+    public boolean isLatestCoverageInForce(PatientInsurance insurance) {
+        return insuranceBenefitRuleService.isLatestCoverageInForce(insurance);
     }
 
     private InsuranceSplit cashSplit(BigDecimal normalizedNet) {

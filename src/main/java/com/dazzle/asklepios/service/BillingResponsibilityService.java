@@ -192,6 +192,25 @@ public class BillingResponsibilityService {
         PatientInsurance insurance =
                 loadAndValidateInsurance(item);
 
+        if (!insurancePatientShareCalculator.isLatestCoverageInForce(insurance)) {
+            LOG.warn(
+                    "[CALCULATE] Eligibility is not in-force; billing as cash "
+                            + "pspId={} patientInsuranceId={} netAmount={}",
+                    item.getId(),
+                    insurance.getId(),
+                    netAmount
+            );
+
+            applyCashResponsibility(
+                    context,
+                    item,
+                    chargeLine,
+                    netAmount
+            );
+
+            return;
+        }
+
         applyInsuranceResponsibility(
                 context,
                 item,

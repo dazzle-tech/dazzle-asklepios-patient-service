@@ -107,6 +107,10 @@ public class InsuranceBenefitRuleService {
             String serviceCategory,
             ServiceSource serviceSource
     ) {
+        if (!isLatestCoverageInForce(insurance)) {
+            return null;
+        }
+
         List<InsuranceBenefitRule> extractedRules =
                 insurance == null
                         ? List.of()
@@ -133,6 +137,42 @@ public class InsuranceBenefitRuleService {
         }
 
         return buildFallbackFromInsuranceDefaults(insurance);
+    }
+
+    public boolean isLatestCoverageInForce(PatientInsurance insurance) {
+        if (insurance == null) {
+            return false;
+        }
+
+        WaseelEligibilityRequest eligibility = resolveEligibilityRequest(insurance);
+        if (eligibility == null
+                || eligibility.getResponseJson() == null
+                || eligibility.getResponseJson().isBlank()) {
+            return false;
+        }
+
+        boolean inForce = coverageExtractionService.isCoverageInForce(
+                eligibility.getResponseJson()
+        );
+
+        if (!inForce) {
+            LOG.info(
+                    "[INSURANCE] Latest eligibility is not in-force "
+                            + "patientInsuranceId={} eligibilityId={}",
+                    insurance.getId(),
+                    eligibility.getId()
+            );
+        }
+
+        return inForce;
+    }
+
+    public void clearBenefitRules(Long patientInsuranceId) {
+        if (patientInsuranceId == null) {
+            return;
+        }
+
+        benefitRuleRepository.deleteByPatientInsuranceId(patientInsuranceId);
     }
 
     private List<InsuranceBenefitRule> loadRulesFromLatestEligibility(
