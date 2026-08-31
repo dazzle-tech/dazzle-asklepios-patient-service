@@ -287,7 +287,27 @@ public class DiagnosticOrderService {
     }
 
     @Transactional(readOnly = true)
-    public Page<DiagnosticOrder> filter(Long patientId, List<Long> patientIdIn, Long encounterId, DiagnosticStatus status, List<DiagnosticStatus> statusIn, List<DiagnosticStatus> statusNotIn, DiagnosticStatus excludeStatus, Boolean saveDraft, Boolean isUrgent, String labStatus, String radStatus, Instant submittedDateFrom, Instant submittedDateTo, Long departmentId, List<Long> fromDepartmentIdIn, TestType testType, String orderNumber, Pageable pageable) {
+    public Page<DiagnosticOrder> filter(
+            Long patientId,
+            List<Long> patientIdIn,
+            Long encounterId,
+            DiagnosticStatus status,
+            List<DiagnosticStatus> statusIn,
+            List<DiagnosticStatus> statusNotIn,
+            DiagnosticStatus excludeStatus,
+            Boolean saveDraft,
+            Boolean isUrgent,
+            String labStatus,
+            List<String> labStatusIn,
+            String radStatus,
+            Instant submittedDateFrom,
+            Instant submittedDateTo,
+            Long departmentId,
+            List<Long> fromDepartmentIdIn,
+            TestType testType,
+            String orderNumber,
+            Pageable pageable
+    ) {
         if (status != null && statusIn != null && !statusIn.isEmpty()) {
             throw new BadRequestAlertException(
                     "invalid_filter",
@@ -337,6 +357,12 @@ public class DiagnosticOrderService {
 
             if (labStatus != null && !labStatus.isBlank()) {
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("labStatus"), labStatus));
+            }
+
+            if (labStatusIn != null && !labStatusIn.isEmpty()) {
+                filterPredicates.add(
+                        orderRoot.get("labStatus").in(labStatusIn)
+                );
             }
 
             if (radStatus != null && !radStatus.isBlank()) {
@@ -518,7 +544,7 @@ public class DiagnosticOrderService {
 
     private Optional<Patient> resolvePatient(Long patientId) {
         if (patientId == null) {
-            return null;
+            return Optional.empty();
         }
 
         return patientRepository.findById(patientId);
