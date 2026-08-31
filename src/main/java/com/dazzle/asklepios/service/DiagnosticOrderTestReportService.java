@@ -1047,4 +1047,73 @@ public class DiagnosticOrderTestReportService {
             );
         });
     }
+    @Transactional(readOnly = true)
+    public List<Long> filterReportIds(
+            Long id,
+            List<Long> orderIdIn,
+            Long orderTestId,
+            Severity severity,
+            String approvedBy,
+            String rejectedBy,
+            String reviewBy,
+            Boolean reviewed,
+            Instant approvedDateFrom,
+            Instant approvedDateTo,
+            Instant rejectedDateFrom,
+            Instant rejectedDateTo,
+            Instant reviewDateFrom,
+            Instant reviewDateTo,
+            List<DiagnosticStatus> processingStatusIn,
+            List<DiagnosticStatus> processingStatusNotIn,
+            List<RadiologyImageStatus> imageStatusIn,
+            List<RadiologyImageStatus> imageStatusNotIn,
+            Instant createdDateFrom,
+            Instant createdDateTo,
+            Instant lastModifiedDateFrom,
+            Instant lastModifiedDateTo,
+            List<Long> fromDepartmentIn,
+            String patientName,
+            String mrn,
+            List<Long> patientIdIn,
+            String orderNumber
+    ) {
+
+        Page<DiagnosticOrderTestReportResponseVM> page =
+                filterReports(
+                        id,
+                        orderIdIn,
+                        orderTestId,
+                        severity,
+                        approvedBy,
+                        rejectedBy,
+                        reviewBy,
+                        reviewed,
+                        approvedDateFrom,
+                        approvedDateTo,
+                        rejectedDateFrom,
+                        rejectedDateTo,
+                        reviewDateFrom,
+                        reviewDateTo,
+                        processingStatusIn,
+                        processingStatusNotIn,
+                        imageStatusIn,
+                        imageStatusNotIn,
+                        createdDateFrom,
+                        createdDateTo,
+                        lastModifiedDateFrom,
+                        lastModifiedDateTo,
+                        fromDepartmentIn,
+                        patientName,
+                        mrn,
+                        patientIdIn,
+                        orderNumber,
+                        Pageable.unpaged()
+                );
+
+        return page.getContent()
+                .stream()
+                .map(DiagnosticOrderTestReportResponseVM::id)
+                .toList();
+    }
+
 }

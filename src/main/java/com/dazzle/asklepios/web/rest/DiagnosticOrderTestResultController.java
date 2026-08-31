@@ -584,6 +584,102 @@ public class DiagnosticOrderTestResultController {
 
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
+
+    @GetMapping("/diagnostic-order-tests-results/ids")
+    public ResponseEntity<List<Long>> filterIds(
+            @RequestParam(name = "orderIdIn", required = false)
+            List<Long> orderIdInFilter,
+
+            @RequestParam(name = "orderTestId", required = false)
+            Long orderTestIdFilter,
+
+            @RequestParam(name = "profileTestId", required = false)
+            Long profileTestIdFilter,
+
+            @RequestParam(name = "markerIn", required = false)
+            List<TestResultMarker> markerInFilter,
+
+            @RequestParam(name = "excludeMarkerIn", required = false)
+            List<TestResultMarker> excludeMarkerInFilter,
+
+            @RequestParam(name = "processingStatus", required = false)
+            DiagnosticStatus processingStatusFilter,
+
+            @RequestParam(name = "approvedBy", required = false)
+            String approvedByFilter,
+
+            @RequestParam(name = "rejectedBy", required = false)
+            String rejectedByFilter,
+
+            @RequestParam(name = "reviewBy", required = false)
+            String reviewByFilter,
+
+            @RequestParam(name = "approvedDateFrom", required = false)
+            Instant approvedDateFromFilter,
+
+            @RequestParam(name = "approvedDateTo", required = false)
+            Instant approvedDateToFilter,
+
+            @RequestParam(name = "rejectedDateFrom", required = false)
+            Instant rejectedDateFromFilter,
+
+            @RequestParam(name = "rejectedDateTo", required = false)
+            Instant rejectedDateToFilter,
+
+            @RequestParam(name = "reviewDateFrom", required = false)
+            Instant reviewDateFromFilter,
+
+            @RequestParam(name = "reviewDateTo", required = false)
+            Instant reviewDateToFilter,
+
+            @RequestParam(name = "reviewed", required = false)
+            Boolean reviewed,
+
+            @RequestParam(name = "fromDepartmentIn", required = false)
+            List<Long> fromDepartmentIn,
+
+            @RequestParam(name = "patientName", required = false)
+            String patientName,
+
+            @RequestParam(name = "mrn", required = false)
+            String mrn,
+
+            @RequestParam(name = "patientIdIn", required = false)
+            List<Long> patientIdIn,
+
+            @RequestParam(name = "orderNumber", required = false)
+            String orderNumber
+    ) {
+
+        Specification<DiagnosticOrderTestResult> specification =
+                service.buildResultSpecification(
+                        orderIdInFilter,
+                        orderTestIdFilter,
+                        profileTestIdFilter,
+                        markerInFilter,
+                        excludeMarkerInFilter,
+                        processingStatusFilter,
+                        approvedByFilter,
+                        rejectedByFilter,
+                        reviewByFilter,
+                        approvedDateFromFilter,
+                        approvedDateToFilter,
+                        rejectedDateFromFilter,
+                        rejectedDateToFilter,
+                        reviewDateFromFilter,
+                        reviewDateToFilter,
+                        reviewed,
+                        fromDepartmentIn,
+                        patientName,
+                        mrn,
+                        patientIdIn,
+                        orderNumber
+                );
+
+        return ResponseEntity.ok(
+                service.resultFilterIds(specification)
+        );
+    }
     // =========================================================
     // INTERNAL ENDPOINTS
     // =========================================================
