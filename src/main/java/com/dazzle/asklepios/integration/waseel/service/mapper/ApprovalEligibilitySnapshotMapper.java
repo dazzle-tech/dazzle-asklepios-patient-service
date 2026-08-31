@@ -198,7 +198,9 @@ public class ApprovalEligibilitySnapshotMapper {
 
         // Try direct match with normalization for standard values
         String normalized = maritalStatusRaw.trim().toUpperCase();
-        if (normalized.startsWith("M") || normalized.equals("MARRIED")) {
+        if (normalized.equals("UNK") || normalized.equals("UNKNOWN")) {
+            return "UNK";
+        } else if (normalized.startsWith("M") || normalized.equals("MARRIED")) {
             return "M";
         } else if (normalized.startsWith("S") || normalized.equals("SINGLE") || normalized.equals("U")) {
             return "U";
@@ -208,9 +210,9 @@ public class ApprovalEligibilitySnapshotMapper {
             return "W";
         }
 
-        // If value is already a valid NPHIES code (M, U, D, W), return it as-is
+        // If value is already a valid NPHIES code (M, U, D, W, L, UNK), return it as-is
         String trimmed = maritalStatusRaw.trim().toUpperCase();
-        if (trimmed.matches("[MUDW]")) {
+        if (trimmed.matches("M|U|D|W|L|UNK")) {
             return trimmed;
         }
 
@@ -224,18 +226,32 @@ public class ApprovalEligibilitySnapshotMapper {
         }
 
         String trimmedValue = occupationRaw.trim().toLowerCase();
-        
-        // Check if it's already a valid NPHIES occupation value
-        String[] validValues = {"medical field", "skilled worker", "education", "agriculture", "business", "administration", "others"};
+
+        if ("other".equals(trimmedValue) || "others".equals(trimmedValue)) {
+            return "others";
+        }
+        if ("unknown".equals(trimmedValue)) {
+            return "unknown";
+        }
+
+        String[] validValues = {
+                "administration",
+                "agriculture",
+                "business",
+                "education",
+                "housewife",
+                "marine",
+                "medical field",
+                "military",
+                "skilled worker",
+                "student",
+                "oil industries",
+                "unemployed"
+        };
         for (String valid : validValues) {
             if (trimmedValue.equals(valid)) {
                 return trimmedValue;
             }
-        }
-
-        // Check if it's "unknown" - map to null instead of "others" to let Waseel handle default
-        if ("unknown".equalsIgnoreCase(trimmedValue)) {
-            return null;
         }
 
         // Try to map assuming it's a key
