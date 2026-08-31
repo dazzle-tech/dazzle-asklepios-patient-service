@@ -19,7 +19,8 @@ public class ApLovMapperService {
             "MARRIED", "M",
             "SINGLE", "U",
             "DIVORCED", "D",
-            "WIDOWED", "W"
+            "WIDOWED", "W",
+            "UNKNOWN", "UNK"
     );
 
     private static final Map<String, String> OCCUPATION_TO_NPHIES = Map.ofEntries(
@@ -47,7 +48,11 @@ public class ApLovMapperService {
             Map.entry("PUBSER", "administration"),
 
             Map.entry("ART", "others"),
-            Map.entry("HOSP", "others")
+            Map.entry("HOSP", "others"),
+            Map.entry("OTHER", "others"),
+            Map.entry("OTHERS", "others"),
+
+            Map.entry("UNKNOWN", "unknown")
     );
 
     public String getKeyByLovCodeAndValueCode(String lovCode, String valueCode) {

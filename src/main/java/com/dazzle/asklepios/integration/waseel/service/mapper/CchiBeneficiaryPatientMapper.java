@@ -135,7 +135,9 @@ public class CchiBeneficiaryPatientMapper {
                 "DIVORCED", "DIVORCED",
                 "D", "DIVORCED",
                 "WIDOWED", "WIDOWED",
-                "W", "WIDOWED"
+                "W", "WIDOWED",
+                "UNKNOWN", "UNKNOWN",
+                "UNK", "UNKNOWN"
         );
 
         return lovMapperService.getKeyByLovCodeAndValueCode(
