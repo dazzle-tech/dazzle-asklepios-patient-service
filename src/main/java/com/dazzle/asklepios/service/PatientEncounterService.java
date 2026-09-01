@@ -778,10 +778,10 @@ public class PatientEncounterService {
        EncounterHasInvoiceResponse invoiceResponse =
                 invoiceGenerationService.hasInvoice(encounterId);
 
-        if (invoiceResponse != null && !invoiceResponse.hasInvoice()) {
+        if (invoiceResponse != null && invoiceResponse.hasInvoice()) {
 
             throw new BadRequestAlertException(
-                    "Cannot reopen encounter because there is no invoice generated..",
+                    "Cannot reopen encounter because an invoice has already been generated.",
                     "patientEncounter",
                     "reopen.invoiceExists"
             );
