@@ -4,7 +4,9 @@ import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.ClaimItem;
 import com.dazzle.asklepios.domain.ClaimRequest;
+import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
+import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
@@ -13,8 +15,10 @@ import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.ClaimItemRepository;
 import com.dazzle.asklepios.repository.ClaimRequestRepository;
 import com.dazzle.asklepios.repository.FinancialDocumentItemRepository;
+import com.dazzle.asklepios.repository.FinancialDocumentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.billing.ClaimSettlementRowResponse;
 import com.dazzle.asklepios.service.helper.NphiesPayerHelper;
 import com.dazzle.asklepios.service.helper.PayorHelper;
@@ -41,6 +45,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -61,7 +66,9 @@ public class ClaimSettlementService {
     private final BillingChargeLineRepository billingChargeLineRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientInsuranceRepository patientInsuranceRepository;
+    private final PatientRepository patientRepository;
     private final FinancialDocumentItemRepository financialDocumentItemRepository;
+    private final FinancialDocumentRepository financialDocumentRepository;
     private final PayorHelper payorHelper;
     private final NphiesPayerHelper nphiesPayerHelper;
 
@@ -295,6 +302,18 @@ public class ClaimSettlementService {
                                 )
                         );
 
+        Map<Long, Patient> patients = loadPatients(claims);
+        Map<Long, FinancialDocument> documents =
+                documentIds.isEmpty()
+                        ? Map.of()
+                        : financialDocumentRepository.findAllById(documentIds).stream()
+                                .collect(
+                                        Collectors.toMap(
+                                                FinancialDocument::getId,
+                                                Function.identity()
+                                        )
+                                );
+
         return new SettlementLookups(
                 itemsByClaim,
                 encounters,
@@ -302,8 +321,25 @@ public class ClaimSettlementService {
                 chargeLines,
                 documentItemsById,
                 documentItemsByDocument,
+                patients,
+                documents,
                 new HashMap<>()
         );
+    }
+
+    private Map<Long, Patient> loadPatients(List<ClaimRequest> claims) {
+        Set<Long> patientIds =
+                claims.stream()
+                        .map(ClaimRequest::getPatientId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+
+        if (patientIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return patientRepository.findAllById(patientIds).stream()
+                .collect(Collectors.toMap(Patient::getId, Function.identity()));
     }
 
     private ClaimSettlementRowResponse toRow(
@@ -316,6 +352,10 @@ public class ClaimSettlementService {
         Amounts amounts = amountsFor(claim, items, lookups);
         PatientInsurance insurance =
                 lookups.insurances.get(insuranceIdFor(claim, lookups.encounters));
+        Patient patient = lookups.patients.get(claim.getPatientId());
+        PatientEncounter encounter = lookups.encounters.get(claim.getEncounterId());
+        FinancialDocument invoice =
+                lookups.documents.get(claim.getFinancialDocumentId());
 
         Instant claimDate = claim.getCreatedDate();
         Instant settlementDate = settlementDate(claim);
@@ -335,8 +375,38 @@ public class ClaimSettlementService {
                 amounts.insuranceAmount,
                 amounts.paidAmount,
                 amounts.outstandingAmount,
-                settlementStatus(claim.getStatus(), amounts)
+                settlementStatus(claim.getStatus(), amounts),
+                claim.getPatientId(),
+                patientName(patient),
+                patient == null ? null : firstNonBlank(patient.getMedicalRecordNumber()),
+                patient == null || patient.getSexAtBirth() == null
+                        ? null
+                        : patient.getSexAtBirth().name(),
+                patient == null ? null : patient.getDateOfBirth(),
+                invoice == null ? null : firstNonBlank(invoice.getDocumentNumber()),
+                encounter == null ? null : firstNonBlank(encounter.getEncounterNumber()),
+                encounter == null || encounter.getEncounterType() == null
+                        ? null
+                        : encounter.getEncounterType().name()
         );
+    }
+
+    private String patientName(Patient patient) {
+        if (patient == null) {
+            return null;
+        }
+
+        String fullName = Stream.of(
+                        patient.getFirstName(),
+                        patient.getSecondName(),
+                        patient.getThirdName(),
+                        patient.getLastName()
+                )
+                .filter(this::hasText)
+                .map(String::trim)
+                .collect(Collectors.joining(" "));
+
+        return firstNonBlank(fullName);
     }
 
     private Amounts amountsFor(
@@ -569,6 +639,8 @@ public class ClaimSettlementService {
             Map<Long, BillingChargeLine> chargeLines,
             Map<Long, FinancialDocumentItem> documentItemsById,
             Map<Long, List<FinancialDocumentItem>> documentItemsByDocument,
+            Map<Long, Patient> patients,
+            Map<Long, FinancialDocument> documents,
             Map<String, String> payerNames
     ) {
     }

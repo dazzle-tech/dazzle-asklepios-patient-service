@@ -3,6 +3,7 @@ package com.dazzle.asklepios.service.dto.billing;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 
 public record ClaimSettlementRowResponse(
 
@@ -34,7 +35,23 @@ public record ClaimSettlementRowResponse(
 
         BigDecimal outstandingAmount,
 
-        String settlementStatus
+        String settlementStatus,
+
+        Long patientId,
+
+        String patientName,
+
+        String medicalRecordNumber,
+
+        String sexAtBirth,
+
+        LocalDate dateOfBirth,
+
+        String invoiceNumber,
+
+        String visitNumber,
+
+        String visitType
 
 ) implements Serializable {
 }
