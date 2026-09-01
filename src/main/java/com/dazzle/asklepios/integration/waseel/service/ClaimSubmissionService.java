@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.ClaimItem;
 import com.dazzle.asklepios.domain.ClaimRequest;
 import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
+import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PreAuthorizationRequest;
@@ -27,6 +28,7 @@ import com.dazzle.asklepios.repository.ClaimRequestRepository;
 import com.dazzle.asklepios.repository.FinancialDocumentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.helper.NphiesPayerHelper;
 import com.dazzle.asklepios.service.helper.PayorHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -81,6 +83,7 @@ public class ClaimSubmissionService {
     private final NphiesPayerHelper nphiesPayerHelper;
     private final PayorHelper payorHelper;
     private final ClaimSubmissionService self;
+    private final PatientRepository patientRepository;
 
     public ClaimSubmissionService(
             ClaimRequestBuilderService claimRequestBuilderService,
@@ -96,7 +99,8 @@ public class ClaimSubmissionService {
             ClaimStatusRefreshService claimStatusRefreshService,
             NphiesPayerHelper nphiesPayerHelper,
             PayorHelper payorHelper,
-            @Lazy ClaimSubmissionService self
+            @Lazy ClaimSubmissionService self,
+            PatientRepository patientRepository
     ) {
         this.claimRequestBuilderService = claimRequestBuilderService;
         this.waseelClaimService = waseelClaimService;
@@ -112,6 +116,7 @@ public class ClaimSubmissionService {
         this.nphiesPayerHelper = nphiesPayerHelper;
         this.payorHelper = payorHelper;
         this.self = self;
+        this.patientRepository = patientRepository;
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -544,12 +549,14 @@ public class ClaimSubmissionService {
 
     private PendingClaimInvoiceResponse toPendingClaimInvoiceResponse(FinancialDocument invoice) {
         Long payorId = resolvePayorId(invoice.getEncounterId());
-
+        Patient patient = patientRepository.findById(invoice.getPatientId())
+                .orElse(null);
         return new PendingClaimInvoiceResponse(
                 invoice.getId(),
                 invoice.getDocumentNumber(),
                 invoice.getEncounterId(),
                 invoice.getPatientId(),
+                patient,
                 payorId,
                 invoice.getClaimReference(),
                 invoice.getTotalAmount(),
