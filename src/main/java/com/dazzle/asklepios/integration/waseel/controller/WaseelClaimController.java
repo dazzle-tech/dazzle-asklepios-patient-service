@@ -75,10 +75,16 @@ public class WaseelClaimController {
     @GetMapping("/internal/waseel/claims/pending-invoices")
     public List<PendingClaimInvoiceResponse> listPendingInvoices(
             @RequestParam(required = false) Long payorId,
+            @RequestParam(required = false) String payerNphiesId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant fromDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant toDate
     ) {
-        return claimSubmissionService.listPendingInsuranceInvoices(payorId, fromDate, toDate);
+        return claimSubmissionService.listPendingInsuranceInvoices(
+                payorId,
+                payerNphiesId,
+                fromDate,
+                toDate
+        );
     }
 
     @PostMapping("/internal/waseel/claims/submit-batch")

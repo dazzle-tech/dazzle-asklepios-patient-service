@@ -19,6 +19,18 @@ public class NphiesPayerHelper {
         this.payorHelper = payorHelper;
     }
 
+    public NphiesPayerDTO findById(Long id) {
+        if (id == null || id <= 0) {
+            return null;
+        }
+
+        try {
+            return nphiesPayerClient.getNphiesPayerById(id);
+        } catch (feign.FeignException.NotFound ex) {
+            return null;
+        }
+    }
+
     public NphiesPayerDTO findByNphiesId(String payerNphiesId) {
         if (payerNphiesId == null || payerNphiesId.isBlank()) {
             return null;
