@@ -551,10 +551,13 @@ public class ClaimSubmissionService {
         Long payorId = resolvePayorId(invoice.getEncounterId());
         Patient patient = patientRepository.findById(invoice.getPatientId())
                 .orElse(null);
+        PatientEncounter encounter = patientEncounterRepository.findById(invoice.getEncounterId())
+                .orElse(null);
         return new PendingClaimInvoiceResponse(
                 invoice.getId(),
                 invoice.getDocumentNumber(),
                 invoice.getEncounterId(),
+                encounter,
                 invoice.getPatientId(),
                 patient,
                 payorId,
