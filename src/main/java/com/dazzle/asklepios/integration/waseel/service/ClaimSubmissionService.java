@@ -20,11 +20,15 @@ import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimRequest;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimUploadRequest;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimUploadResponse;
 import com.dazzle.asklepios.integration.waseel.event.InsuranceInvoiceIssuedEvent;
+import com.dazzle.asklepios.client.setup.dto.NphiesPayerDTO;
+import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.repository.ClaimItemRepository;
 import com.dazzle.asklepios.repository.ClaimRequestRepository;
 import com.dazzle.asklepios.repository.FinancialDocumentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
+import com.dazzle.asklepios.service.helper.NphiesPayerHelper;
+import com.dazzle.asklepios.service.helper.PayorHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -74,6 +78,8 @@ public class ClaimSubmissionService {
     private final ObjectMapper objectMapper;
     private final ClaimPayloadValidationService claimPayloadValidationService;
     private final ClaimStatusRefreshService claimStatusRefreshService;
+    private final NphiesPayerHelper nphiesPayerHelper;
+    private final PayorHelper payorHelper;
     private final ClaimSubmissionService self;
 
     public ClaimSubmissionService(
@@ -88,6 +94,8 @@ public class ClaimSubmissionService {
             ObjectMapper objectMapper,
             ClaimPayloadValidationService claimPayloadValidationService,
             ClaimStatusRefreshService claimStatusRefreshService,
+            NphiesPayerHelper nphiesPayerHelper,
+            PayorHelper payorHelper,
             @Lazy ClaimSubmissionService self
     ) {
         this.claimRequestBuilderService = claimRequestBuilderService;
@@ -101,6 +109,8 @@ public class ClaimSubmissionService {
         this.objectMapper = objectMapper;
         this.claimPayloadValidationService = claimPayloadValidationService;
         this.claimStatusRefreshService = claimStatusRefreshService;
+        this.nphiesPayerHelper = nphiesPayerHelper;
+        this.payorHelper = payorHelper;
         this.self = self;
     }
 
@@ -219,14 +229,42 @@ public class ClaimSubmissionService {
             Instant fromDate,
             Instant toDate
     ) {
+        return listPendingInsuranceInvoices(payorId, null, fromDate, toDate);
+    }
+
+    @Transactional(readOnly = true)
+    public List<PendingClaimInvoiceResponse> listPendingInsuranceInvoices(
+            Long payorId,
+            String payerNphiesId,
+            Instant fromDate,
+            Instant toDate
+    ) {
+        Instant from = fromDate != null ? fromDate : Instant.EPOCH;
+        Instant to = toDate != null ? toDate : Instant.parse("9999-12-31T00:00:00Z");
+        List<String> nphiesIds = resolvePayerNphiesIds(payorId, payerNphiesId);
+        boolean useNphiesFilter = nphiesIds.stream().anyMatch(this::isNphiesCode);
+        Long resolvedPayorId = payorId != null ? payorId : -1L;
+
+        log.info(
+                "[CLAIM_BATCH] Listing pending invoices payorId={} payerNphiesId={} nphiesIds={} from={} to={}",
+                payorId,
+                payerNphiesId,
+                nphiesIds,
+                from,
+                to
+        );
+
         return financialDocumentRepository.findPendingInsuranceClaimInvoices(
-                        payorId,
-                        fromDate,
-                        toDate,
-                        CLAIMABLE_INVOICE_STATUSES,
-                        ACTIVE_STATUSES
+                        useNphiesFilter ? 1 : 0,
+                        resolvedPayorId,
+                        nphiesIds,
+                        from,
+                        to,
+                        CLAIMABLE_INVOICE_STATUSES.stream().map(Enum::name).toList(),
+                        ACTIVE_STATUSES.stream().map(Enum::name).toList()
                 )
                 .stream()
+                .filter(invoice -> belongsToSelectedPayor(invoice, resolvedPayorId, nphiesIds, useNphiesFilter))
                 .map(this::toPendingClaimInvoiceResponse)
                 .toList();
     }
@@ -247,6 +285,7 @@ public class ClaimSubmissionService {
                 .toList();
 
         Set<Long> payorIds = new LinkedHashSet<>();
+        Set<String> nphiesKeys = new LinkedHashSet<>();
         List<FinancialDocument> invoices = new ArrayList<>();
         List<ClaimRequestBuilderService.ClaimBuildResult> builds = new ArrayList<>();
 
@@ -269,11 +308,16 @@ public class ClaimSubmissionService {
                 payorIds.add(payorId);
             }
 
+            String nphiesId = resolveEncounterPayerNphiesId(invoice.getEncounterId());
+            if (nphiesId != null) {
+                nphiesKeys.add(nphiesId);
+            }
+
             invoices.add(invoice);
             builds.add(claimRequestBuilderService.buildForInsuranceInvoice(invoice));
         }
 
-        if (payorIds.size() > 1) {
+        if (payorIds.size() > 1 || nphiesKeys.size() > 1) {
             throw new BadRequestAlertException(
                     "All selected invoices must belong to the same payor for a monthly claim batch.",
                     "claim",
@@ -412,12 +456,90 @@ public class ClaimSubmissionService {
         return invoice;
     }
 
+    private boolean belongsToSelectedPayor(
+            FinancialDocument invoice,
+            Long selectedPayorId,
+            List<String> nphiesIds,
+            boolean useNphiesFilter
+    ) {
+        return patientEncounterRepository.findById(invoice.getEncounterId())
+                .map(PatientEncounter::getPatientInsuranceId)
+                .flatMap(patientInsuranceRepository::findById)
+                .map(insurance -> {
+                    if (useNphiesFilter) {
+                        String insuranceNphiesId = insurance.getPayerNphiesId();
+                        return insuranceNphiesId != null
+                                && nphiesIds.contains(insuranceNphiesId.toLowerCase(java.util.Locale.ROOT));
+                    }
+
+                    return selectedPayorId != null
+                            && selectedPayorId > 0
+                            && selectedPayorId.equals(insurance.getPayorId());
+                })
+                .orElse(false);
+    }
+
+    private boolean isNphiesCode(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        return value.chars().anyMatch(ch -> !Character.isDigit(ch));
+    }
+
+    private String resolveEncounterPayerNphiesId(Long encounterId) {
+        return patientEncounterRepository.findById(encounterId)
+                .map(PatientEncounter::getPatientInsuranceId)
+                .flatMap(patientInsuranceRepository::findById)
+                .map(PatientInsurance::getPayerNphiesId)
+                .filter(value -> value != null && !value.isBlank())
+                .map(value -> value.trim().toLowerCase(java.util.Locale.ROOT))
+                .orElse(null);
+    }
+
     private Long resolvePayorId(Long encounterId) {
         return patientEncounterRepository.findById(encounterId)
                 .map(PatientEncounter::getPatientInsuranceId)
                 .flatMap(patientInsuranceRepository::findById)
-                .map(PatientInsurance::getPayorId)
+                .map(insurance -> {
+                    if (insurance.getPayorId() != null) {
+                        return insurance.getPayorId();
+                    }
+
+                    NphiesPayerDTO nphiesPayer =
+                            nphiesPayerHelper.findByNphiesId(insurance.getPayerNphiesId());
+                    return nphiesPayer == null ? null : nphiesPayer.id();
+                })
                 .orElse(null);
+    }
+
+    private List<String> resolvePayerNphiesIds(Long payorId, String payerNphiesId) {
+        LinkedHashSet<String> nphiesIds = new LinkedHashSet<>();
+        addNphiesId(nphiesIds, payerNphiesId);
+
+        if (payorId != null) {
+            nphiesIds.add(String.valueOf(payorId));
+
+            NphiesPayerDTO nphiesPayer = nphiesPayerHelper.findById(payorId);
+            addNphiesId(nphiesIds, nphiesPayer == null ? null : nphiesPayer.nphiesId());
+
+            PayorDTO payor = payorHelper.findPayor(payorId, null);
+            addNphiesId(nphiesIds, payor == null ? null : payor.nphiesId());
+        }
+
+        if (nphiesIds.isEmpty()) {
+            return List.of("");
+        }
+
+        return nphiesIds.stream()
+                .map(id -> id.toLowerCase(java.util.Locale.ROOT))
+                .distinct()
+                .toList();
+    }
+
+    private void addNphiesId(Set<String> nphiesIds, String nphiesId) {
+        if (nphiesId != null && !nphiesId.isBlank()) {
+            nphiesIds.add(nphiesId.trim());
+        }
     }
 
     private PendingClaimInvoiceResponse toPendingClaimInvoiceResponse(FinancialDocument invoice) {
