@@ -8,10 +8,12 @@ import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
 import com.dazzle.asklepios.domain.AdditionalMeasurements;
 import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.BodyMeasurements;
+import com.dazzle.asklepios.domain.EncounterDischargeLog;
 import com.dazzle.asklepios.domain.PainAssessment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientObservationsComplaints;
+import com.dazzle.asklepios.domain.User;
 import com.dazzle.asklepios.domain.VitalSigns;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
@@ -21,12 +23,15 @@ import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.AdditionalMeasurementsRepository;
 import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.BodyMeasurementsRepository;
+import com.dazzle.asklepios.repository.EncounterDischargeLogRepository;
 import com.dazzle.asklepios.repository.PainAssessmentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientObservationsComplaintsRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.repository.UserRepository;
 import com.dazzle.asklepios.repository.VitalSignsRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.billing.EncounterHasInvoiceResponse;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
@@ -58,6 +63,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -96,6 +102,9 @@ public class PatientEncounterService {
     private final PractitionerClient practitionerClient;
     private final BillingEngineService billingEngineService;
     private final NotificationHelper notificationHelper;
+    private final InvoiceGenerationService invoiceGenerationService;
+    private final UserRepository userRepository;
+    private final EncounterDischargeLogRepository encounterDischargeLogRepository;
 
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
@@ -112,7 +121,7 @@ public class PatientEncounterService {
             PractitionerHelper practitionerHelper,
             PractitionerClient practitionerClient,
             @Lazy BillingEngineService billingEngineService,
-            NotificationHelper notificationHelper) {
+            NotificationHelper notificationHelper, InvoiceGenerationService invoiceGenerationService, UserRepository userRepository, EncounterDischargeLogRepository encounterDischargeLogRepository) {
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.entityManager = entityManager;
@@ -129,6 +138,9 @@ public class PatientEncounterService {
         this.practitionerClient = practitionerClient;
         this.billingEngineService = billingEngineService;
         this.notificationHelper = notificationHelper;
+        this.invoiceGenerationService = invoiceGenerationService;
+        this.userRepository = userRepository;
+        this.encounterDischargeLogRepository = encounterDischargeLogRepository;
     }
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
@@ -639,6 +651,7 @@ public class PatientEncounterService {
         return saved;
     }
 
+    @Transactional
     public PatientEncounter completeEncounter(Long encounterId) {
         LOG.info("[COMPLETE] PatientEncounter id={}", encounterId);
 
@@ -652,6 +665,11 @@ public class PatientEncounterService {
         if (encounter.getStatus() != TreatmentStatus.NEW
                 && encounter.getStatus() != TreatmentStatus.ONGOING
                 && encounter.getStatus() != TreatmentStatus.TRIAGE_STARTED) {
+
+            LOG.warn("[COMPLETE] PatientEncounter rejected: invalid status id={} status={}",
+                    encounterId,
+                    encounter.getStatus());
+
             throw new BadRequestAlertException(
                     "Complete allowed only when status is NEW, ONGOING, or TRIAGE_STARTED.",
                     "patientEncounter",
@@ -659,17 +677,152 @@ public class PatientEncounterService {
             );
         }
 
+        /*
+         * Update encounter completion details
+         */
         encounter.setStatus(TreatmentStatus.COMPLETED);
         encounter.setCompletedAt(Instant.now());
         encounter.setCompletedBy(
                 SecurityUtils.getCurrentUserLogin().orElse("system")
         );
 
-        PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
-        updateAppointmentStatusForEncounter(AppointmentStatus.COMPLETED, encounter.getAppointment().getId());
-        notifyEncounterEvent(saved, NotificationCode.ENCOUNTER_CLOSED, null);
+        try {
+            /*
+             * Save encounter
+             */
+            PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
 
-        LOG.info("[COMPLETE] success id={} status={}", saved.getId(), saved.getStatus());
+            /*
+             * Create completion log
+             */
+            LocalDateTime dischargedAt = saved.getCompletedAt().atZone(ZoneId.systemDefault()).toLocalDateTime();
+            EncounterDischargeLog completionLog = EncounterDischargeLog.builder()
+                    .encounter(saved)
+                    .dischargedAt(dischargedAt)
+                    .dischargedBy(currentUsername())
+                    .build();
+
+            encounterDischargeLogRepository.save(completionLog);
+
+            /*
+             * Update appointment
+             */
+            if (saved.getAppointment() != null) {
+                updateAppointmentStatusForEncounter(
+                        AppointmentStatus.COMPLETED,
+                        saved.getAppointment().getId()
+                );
+            }
+
+            /*
+             * Notify encounter closed
+             */
+            notifyEncounterEvent(
+                    saved,
+                    NotificationCode.ENCOUNTER_CLOSED,
+                    null
+            );
+
+            LOG.info(
+                    "[COMPLETE] success id={} status={} completedAt={} completedBy={}",
+                    saved.getId(),
+                    saved.getStatus(),
+                    saved.getCompletedAt(),
+                    saved.getCompletedBy()
+            );
+
+            return saved;
+
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            LOG.warn("[COMPLETE] failed (constraint) id={}", encounterId, ex);
+            throw handleConstraintViolation(ex);
+
+        } catch (RuntimeException ex) {
+            LOG.error("[COMPLETE] failed (unexpected) id={}", encounterId, ex);
+            throw ex;
+        }
+    }
+    @Transactional
+    public PatientEncounter reopenEncounter(Long encounterId) {
+
+        LOG.info("[REOPEN] PatientEncounter id={}", encounterId);
+
+        PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "PatientEncounter not found with id " + encounterId,
+                        "patientEncounter",
+                        "id.notfound"
+                ));
+
+        User user = userRepository.findByLogin(currentUsername())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "User not found with login " + currentUsername(),
+                        "patientEncounter",
+                        "user.notfound"
+                ));
+
+        TreatmentStatus currentStatus = encounter.getStatus();
+
+        if (currentStatus != TreatmentStatus.COMPLETED
+                && currentStatus != TreatmentStatus.DISCHARGED) {
+
+            throw new BadRequestAlertException(
+                    "Only completed or discharged encounters can be reopened.",
+                    "patientEncounter",
+                    "reopen.notAllowed"
+            );
+        }
+
+       EncounterHasInvoiceResponse invoiceResponse =
+                invoiceGenerationService.hasInvoice(encounterId);
+
+        if (invoiceResponse != null && !invoiceResponse.hasInvoice()) {
+
+            throw new BadRequestAlertException(
+                    "Cannot reopen encounter because invoice already exists.",
+                    "patientEncounter",
+                    "reopen.invoiceExists"
+            );
+        }
+
+        if (encounter.getEncounterType() == EncounterType.CLINIC
+                && !user.isCanUnCompleteEncounter()) {
+
+            throw new BadRequestAlertException(
+                    "You do not have permission to reopen outpatient encounters.",
+                    "patientEncounter",
+                    "reopen.permissionDenied"
+            );
+        }
+
+        if (encounter.getEncounterType() == EncounterType.EMERGENCY
+                && !user.isCanUnDischargeUrgentCare()) {
+
+            throw new BadRequestAlertException(
+                    "You do not have permission to reopen emergency encounters.",
+                    "patientEncounter",
+                    "reopen.permissionDenied"
+            );
+        }
+
+        encounter.setStatus(TreatmentStatus.ONGOING);
+
+        encounter.setCompletedAt(null);
+        encounter.setCompletedBy(null);
+
+        encounter.setDischargeAt(null);
+        encounter.setDischargeType(null);
+
+        PatientEncounter saved =
+                patientEncounterRepository.saveAndFlush(encounter);
+
+        LOG.info(
+                "[REOPEN] success id={} fromStatus={} toStatus={}",
+                saved.getId(),
+                currentStatus,
+                saved.getStatus()
+        );
+
         return saved;
     }
 
@@ -1271,12 +1424,15 @@ public class PatientEncounterService {
         return updated;
     }
 
+    @Transactional
     public PatientEncounter dischargeEncounter(PatientEncounterDischargeDTO dischargeDTO) {
         LOG.info("[DISCHARGE] PatientEncounter payload={}", dischargeDTO);
 
         PatientEncounter encounter = patientEncounterRepository.findById(dischargeDTO.encounterId())
                 .orElseThrow(() -> {
-                    LOG.warn("[DISCHARGE] PatientEncounter rejected: not found id={}", dischargeDTO.encounterId());
+                    LOG.warn("[DISCHARGE] PatientEncounter rejected: not found id={}",
+                            dischargeDTO.encounterId());
+
                     return new NotFoundAlertException(
                             "PatientEncounter not found with id " + dischargeDTO.encounterId(),
                             "patientEncounter",
@@ -1286,7 +1442,9 @@ public class PatientEncounterService {
 
         if (encounter.getStatus() != TreatmentStatus.ONGOING) {
             LOG.warn("[DISCHARGE] PatientEncounter rejected: invalid status id={} status={}",
-                    dischargeDTO.encounterId(), encounter.getStatus());
+                    dischargeDTO.encounterId(),
+                    encounter.getStatus());
+
             throw new BadRequestAlertException(
                     "Discharge allowed only when status is ONGOING.",
                     "patientEncounter",
@@ -1295,7 +1453,9 @@ public class PatientEncounterService {
         }
 
         if (dischargeDTO.dischargeType() == null) {
-            LOG.warn("[DISCHARGE] PatientEncounter rejected: dischargeType is null id={}", dischargeDTO.encounterId());
+            LOG.warn("[DISCHARGE] PatientEncounter rejected: dischargeType is null id={}",
+                    dischargeDTO.encounterId());
+
             throw new BadRequestAlertException(
                     "Discharge type is required.",
                     "patientEncounter",
@@ -1304,7 +1464,9 @@ public class PatientEncounterService {
         }
 
         if (dischargeDTO.dischargeAt() == null) {
-            LOG.warn("[DISCHARGE] PatientEncounter rejected: dischargeAt is null id={}", dischargeDTO.encounterId());
+            LOG.warn("[DISCHARGE] PatientEncounter rejected: dischargeAt is null id={}",
+                    dischargeDTO.encounterId());
+
             throw new BadRequestAlertException(
                     "Discharge date and time are required.",
                     "patientEncounter",
@@ -1312,32 +1474,65 @@ public class PatientEncounterService {
             );
         }
 
+        /*
+         * Update encounter discharge details
+         */
         encounter.setDischargeType(dischargeDTO.dischargeType());
         encounter.setDischargeAt(dischargeDTO.dischargeAt());
         encounter.setStatus(TreatmentStatus.DISCHARGED);
+
         try {
+            /*
+             * Save the encounter first
+             */
             PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
 
-            encounterAssignToBedService.dischargeActiveAssignmentByEncounterId(saved.getId());
-            notifyEncounterEvent(saved, NotificationCode.ENCOUNTER_CLOSED, null);
+            /*
+             * Create discharge log
+             */
+            EncounterDischargeLog dischargeLog = EncounterDischargeLog.builder()
+                    .encounter(saved)
+                    .dischargedAt(dischargeDTO.dischargeAt())
+                    .dischargedBy(currentUsername())
+                    .build();
 
-            LOG.info("[DISCHARGE] success id={} status={} dischargeType={} dischargeAt={}",
+            encounterDischargeLogRepository.save(dischargeLog);
+
+            /*
+             * Discharge active bed assignment
+             */
+            encounterAssignToBedService
+                    .dischargeActiveAssignmentByEncounterId(saved.getId());
+
+            /*
+             * Notify encounter closed
+             */
+            notifyEncounterEvent(
+                    saved,
+                    NotificationCode.ENCOUNTER_CLOSED,
+                    null
+            );
+
+            LOG.info(
+                    "[DISCHARGE] success id={} status={} dischargeType={} dischargeAt={} dischargedBy={}",
                     saved.getId(),
                     saved.getStatus(),
                     saved.getDischargeType(),
-                    saved.getDischargeAt());
+                    saved.getDischargeAt(),
+                    dischargeLog.getDischargedBy()
+            );
 
             return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             LOG.warn("[DISCHARGE] failed (constraint) payload={}", dischargeDTO, ex);
             throw handleConstraintViolation(ex);
+
         } catch (RuntimeException ex) {
             LOG.error("[DISCHARGE] failed (unexpected) payload={}", dischargeDTO, ex);
             throw ex;
         }
     }
-
     public PatientEncounter closeEncounterForBilling(Long encounterId) {
         LOG.info("[CLOSE_BILLING] PatientEncounter id={}", encounterId);
 
