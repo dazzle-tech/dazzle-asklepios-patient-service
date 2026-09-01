@@ -29,6 +29,7 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.UserRepository;
 import com.dazzle.asklepios.repository.VitalSignsRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.billing.EncounterHasInvoiceResponse;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
@@ -708,10 +709,10 @@ public class PatientEncounterService {
             );
         }
 
-        EncounterHasInvoiceResponse invoiceResponse =
+       EncounterHasInvoiceResponse invoiceResponse =
                 invoiceGenerationService.hasInvoice(encounterId);
 
-        if (invoiceResponse != null && invoiceResponse.isHasInvoice()) {
+        if (invoiceResponse != null && !invoiceResponse.hasInvoice()) {
 
             throw new BadRequestAlertException(
                     "Cannot reopen encounter because invoice already exists.",
