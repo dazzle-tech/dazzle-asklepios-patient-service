@@ -110,6 +110,13 @@ public interface FinancialDocumentRepository extends JpaRepository<FinancialDocu
                             FROM claim_request cr
                             WHERE cr.financial_document_id = fd.id
                               AND cr.status IN (:activeClaimStatuses)
+                              AND (
+                                    cr.claim_type = :claimType
+                                    OR (
+                                        :claimType = 'PROFESSIONAL'
+                                        AND cr.claim_type IS NULL
+                                    )
+                                  )
                           )
                     ORDER BY fd.created_date DESC
                     """,
@@ -122,6 +129,7 @@ public interface FinancialDocumentRepository extends JpaRepository<FinancialDocu
             @Param("fromDate") Instant fromDate,
             @Param("toDate") Instant toDate,
             @Param("statuses") Collection<String> statuses,
-            @Param("activeClaimStatuses") Collection<String> activeClaimStatuses
+            @Param("activeClaimStatuses") Collection<String> activeClaimStatuses,
+            @Param("claimType") String claimType
     );
 }

@@ -1,6 +1,8 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimSubType;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -61,6 +63,14 @@ public class ClaimRequest extends AbstractAuditingEntity<Long> implements Serial
 
     @Column(name = "pre_auth_ref_no", length = 500)
     private String preAuthRefNo;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "claim_type", length = 50)
+    private WaseelClaimType claimType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "claim_sub_type", length = 50)
+    private WaseelClaimSubType claimSubType;
 
     @Column(name = "approval_response_id")
     private Long approvalResponseId;

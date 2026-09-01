@@ -1,6 +1,8 @@
 package com.dazzle.asklepios.integration.waseel.controller;
 
 import com.dazzle.asklepios.domain.ClaimRequest;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimSubType;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimType;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimBatchSubmitRequest;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimBatchSubmitResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimSubmissionResponse;
@@ -60,8 +62,16 @@ public class WaseelClaimController {
     }
 
     @PostMapping("/internal/waseel/invoices/{financialDocumentId}/claims/submit")
-    public ClaimSubmissionResponse submit(@PathVariable Long financialDocumentId) {
-        ClaimRequest claim = claimSubmissionService.submitForInsuranceInvoice(financialDocumentId);
+    public ClaimSubmissionResponse submit(
+            @PathVariable Long financialDocumentId,
+            @RequestParam(required = false) WaseelClaimType claimType,
+            @RequestParam(required = false) WaseelClaimSubType claimSubType
+    ) {
+        ClaimRequest claim = claimSubmissionService.submitForInsuranceInvoice(
+                financialDocumentId,
+                claimType,
+                claimSubType
+        );
         if (claim == null) {
             throw new NotFoundAlertException(
                     "No claim was generated for invoice " + financialDocumentId,
@@ -77,20 +87,26 @@ public class WaseelClaimController {
             @RequestParam(required = false) Long payorId,
             @RequestParam(required = false) String payerNphiesId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant fromDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant toDate
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant toDate,
+            @RequestParam WaseelClaimType claimType,
+            @RequestParam WaseelClaimSubType claimSubType
     ) {
         return claimSubmissionService.listPendingInsuranceInvoices(
                 payorId,
                 payerNphiesId,
                 fromDate,
-                toDate
+                toDate,
+                claimType,
+                claimSubType
         );
     }
 
     @PostMapping("/internal/waseel/claims/submit-batch")
     public ClaimBatchSubmitResponse submitBatch(@RequestBody ClaimBatchSubmitRequest request) {
         return claimSubmissionService.submitBatchForInvoices(
-                request == null ? List.of() : request.financialDocumentIds()
+                request == null ? List.of() : request.financialDocumentIds(),
+                request == null ? null : request.claimType(),
+                request == null ? null : request.claimSubType()
         );
     }
 
@@ -111,6 +127,8 @@ public class WaseelClaimController {
                 claim.getEncounterId(),
                 claim.getFinancialDocumentId(),
                 claim.getPreAuthorizationId(),
+                claim.getClaimType(),
+                claim.getClaimSubType(),
                 claim.getUploadName(),
                 claim.getUploadId(),
                 claim.getProvClaimNo(),

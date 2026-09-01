@@ -11,6 +11,8 @@ import com.dazzle.asklepios.domain.PatientRelation;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.PreAuthorizationRequest;
 import com.dazzle.asklepios.domain.enumeration.RelationType;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimSubType;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimType;
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalEncounterMapper;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalEligibilitySnapshot;
@@ -87,6 +89,7 @@ public class ClaimRequestBuilderService {
     private final ApprovalSubscriberMapper approvalSubscriberMapper;
 
     private final WaseelApiProperties waseelApiProperties;
+    private final WaseelClaimClassification waseelClaimClassification;
 
     public record ClaimBuildResult(
             WaseelClaimRequest claimRequest,
@@ -95,10 +98,20 @@ public class ClaimRequestBuilderService {
             List<BillingChargeLine> chargeLines,
             List<BillingPayment> payments,
             String uploadName,
-            String provClaimNo
+            String provClaimNo,
+            WaseelClaimType claimType,
+            WaseelClaimSubType claimSubType
     ) {}
 
     public ClaimBuildResult buildForInsuranceInvoice(FinancialDocument insuranceInvoice) {
+        return buildForInsuranceInvoice(insuranceInvoice, WaseelClaimType.PROFESSIONAL, WaseelClaimSubType.OUTPATIENT);
+    }
+
+    public ClaimBuildResult buildForInsuranceInvoice(
+            FinancialDocument insuranceInvoice,
+            WaseelClaimType claimType,
+            WaseelClaimSubType claimSubType
+    ) {
         if (insuranceInvoice == null || insuranceInvoice.getId() == null) {
             throw new BadRequestAlertException(
                     "Insurance invoice is required for claim generation",
@@ -110,12 +123,20 @@ public class ClaimRequestBuilderService {
         Long encounterId = insuranceInvoice.getEncounterId();
         encounterInsuranceEligibilityService.getValidatedInsuranceForPreAuthorization(encounterId);
 
+        waseelClaimClassification.assertTypeAndSubType(claimType, claimSubType);
+
         PatientEncounter encounter = encounterRepository.findById(encounterId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "Encounter not found",
                         "claim",
                         "encounter.notFound"
                 ));
+
+        waseelClaimClassification.assertEncounterMatches(
+                encounter.getEncounterType(),
+                claimType,
+                claimSubType
+        );
 
         Long eligibilityRequestId =
                 eligibilityRequestResolverService.resolveLatestSuccessfulEligibilityId(encounter);
@@ -131,14 +152,41 @@ public class ClaimRequestBuilderService {
             );
         }
 
-        List<FinancialDocumentItem> invoiceItems =
+        List<FinancialDocumentItem> allInvoiceItems =
                 financialDocumentItemRepository.findByDocument_Id(insuranceInvoice.getId());
 
-        if (invoiceItems == null || invoiceItems.isEmpty()) {
+        if (allInvoiceItems == null || allInvoiceItems.isEmpty()) {
             throw new BadRequestAlertException(
                     "Insurance invoice has no line items for claim generation",
                     "claim",
                     "invoice.items.empty"
+            );
+        }
+
+        List<PatientServiceAndProduct> allProducts = loadInvoiceProducts(allInvoiceItems);
+        Map<Long, PatientServiceAndProduct> productById = allProducts.stream()
+                .filter(p -> p.getId() != null)
+                .collect(Collectors.toMap(
+                        PatientServiceAndProduct::getId,
+                        Function.identity(),
+                        (a, b) -> a,
+                        LinkedHashMap::new
+                ));
+
+        List<FinancialDocumentItem> invoiceItems = allInvoiceItems.stream()
+                .filter(item -> waseelClaimClassification.isClaimableForType(
+                        item.getPatientServiceProductId() == null
+                                ? null
+                                : productById.get(item.getPatientServiceProductId()),
+                        claimType
+                ))
+                .toList();
+
+        if (invoiceItems.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "Invoice has no " + claimType.name() + " items for this claim type",
+                    "claim",
+                    "invoice.items.type.empty"
             );
         }
 
@@ -162,10 +210,7 @@ public class ClaimRequestBuilderService {
                         .filter(this::isUsablePreAuthorization)
                         .toList();
 
-        PreAuthorizationRequest primaryPreAuth = preAuths.stream()
-                .filter(p -> p.getApprovalResponseId() != null)
-                .findFirst()
-                .orElse(preAuths.isEmpty() ? null : preAuths.get(0));
+        PreAuthorizationRequest primaryPreAuth = selectPrimaryPreAuthorization(preAuths, claimType);
 
         String nphiesId = resolveNphiesId();
         String destinationId = resolveDestinationId(snapshot);
@@ -188,7 +233,12 @@ public class ClaimRequestBuilderService {
 
         var supportingInfo = approvalSupportingInfoMapper.toSupportingInfo(encounter);
 
-        List<PatientServiceAndProduct> products = loadInvoiceProducts(invoiceItems);
+        List<PatientServiceAndProduct> products = invoiceItems.stream()
+                .map(FinancialDocumentItem::getPatientServiceProductId)
+                .filter(Objects::nonNull)
+                .map(productById::get)
+                .filter(Objects::nonNull)
+                .toList();
 
         List<WaseelApprovalItem> mappedItems = approvalItemMapper.toWaseelItems(
                 products,
@@ -197,15 +247,6 @@ public class ClaimRequestBuilderService {
                 supportingInfo,
                 true
         );
-
-        Map<Long, PatientServiceAndProduct> productById = products.stream()
-                .filter(p -> p.getId() != null)
-                .collect(Collectors.toMap(
-                        PatientServiceAndProduct::getId,
-                        Function.identity(),
-                        (a, b) -> a,
-                        LinkedHashMap::new
-                ));
 
         Map<Long, WaseelApprovalItem> mappedByPspId = alignMappedItemsByProductOrder(
                 products,
@@ -309,7 +350,9 @@ public class ClaimRequestBuilderService {
                 nphiesId,
                 encounter,
                 claimDate,
-                accountingPeriod
+                accountingPeriod,
+                claimType,
+                claimSubType
         );
 
         WaseelClaimEncounter claimEncounter = buildClaimEncounter(encounter, nphiesId, claimDate);
@@ -357,9 +400,11 @@ public class ClaimRequestBuilderService {
         );
 
         log.info(
-                "[CLAIM_BUILD] Built claim for encounterId={} invoiceId={} items={} preAuthId={} payments={}",
+                "[CLAIM_BUILD] Built claim for encounterId={} invoiceId={} type={} subType={} items={} preAuthId={} payments={}",
                 encounterId,
                 insuranceInvoice.getId(),
+                claimType,
+                claimSubType,
                 claimItems.size(),
                 primaryPreAuth == null ? null : primaryPreAuth.getId(),
                 payments.size()
@@ -372,7 +417,9 @@ public class ClaimRequestBuilderService {
                 chargeLines,
                 payments,
                 uploadName,
-                provClaimNo
+                provClaimNo,
+                claimType,
+                claimSubType
         );
     }
 
@@ -468,19 +515,55 @@ public class ClaimRequestBuilderService {
         );
     }
 
+    private PreAuthorizationRequest selectPrimaryPreAuthorization(
+            List<PreAuthorizationRequest> preAuths,
+            WaseelClaimType claimType
+    ) {
+        if (preAuths == null || preAuths.isEmpty()) {
+            return null;
+        }
+
+        PreAuthorizationRequest matchingType = preAuths.stream()
+                .filter(preAuth -> matchesClaimType(preAuth, claimType))
+                .filter(preAuth -> preAuth.getApprovalResponseId() != null)
+                .findFirst()
+                .orElseGet(() -> preAuths.stream()
+                        .filter(preAuth -> matchesClaimType(preAuth, claimType))
+                        .findFirst()
+                        .orElse(null));
+
+        if (matchingType != null) {
+            return matchingType;
+        }
+
+        return preAuths.stream()
+                .filter(preAuth -> preAuth.getApprovalResponseId() != null)
+                .findFirst()
+                .orElse(preAuths.get(0));
+    }
+
+    private boolean matchesClaimType(PreAuthorizationRequest preAuth, WaseelClaimType claimType) {
+        if (preAuth == null || preAuth.getPreauthType() == null || claimType == null) {
+            return false;
+        }
+        return claimType == WaseelClaimType.fromWaseelCode(preAuth.getPreauthType());
+    }
+
     private WaseelClaimPreAuthorizationInfo buildClaimPreAuthorizationInfo(
             WaseelApprovalEligibilitySnapshot snapshot,
             PreAuthorizationRequest preAuth,
             String nphiesId,
             PatientEncounter encounter,
             LocalDate claimDate,
-            LocalDate accountingPeriod
+            LocalDate accountingPeriod,
+            WaseelClaimType claimType,
+            WaseelClaimSubType claimSubType
     ) {
         String eligibilityResponseId = snapshot.eligibilityResponseId();
         String eligibilityResponseUrl = snapshot.eligibilityResponseUrl();
         String episodeId;
-        String type = "professional";
-        String subType = "op";
+        String type = claimType.waseelCode();
+        String subType = claimSubType.waseelCode();
         String payeeType = "provider";
         Long payeeId = parseLong(nphiesId);
         String preAuthResponseId = null;
@@ -493,12 +576,6 @@ public class ClaimRequestBuilderService {
                 episodeId = preAuth.getEpisodeId();
             } else {
                 episodeId = resolveEpisodeId(encounter);
-            }
-            if (preAuth.getPreauthType() != null) {
-                type = preAuth.getPreauthType();
-            }
-            if (preAuth.getPreauthSubType() != null) {
-                subType = preAuth.getPreauthSubType();
             }
             if (preAuth.getPayeeType() != null) {
                 payeeType = preAuth.getPayeeType();

@@ -2,6 +2,7 @@ package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.ClaimRequest;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -20,6 +21,17 @@ public interface ClaimRequestRepository
     Optional<ClaimRequest> findFirstByFinancialDocumentIdOrderByIdDesc(Long financialDocumentId);
 
     boolean existsByFinancialDocumentIdAndStatusIn(Long financialDocumentId, List<ClaimStatus> statuses);
+
+    boolean existsByFinancialDocumentIdAndClaimTypeAndStatusIn(
+            Long financialDocumentId,
+            WaseelClaimType claimType,
+            List<ClaimStatus> statuses
+    );
+
+    boolean existsByFinancialDocumentIdAndClaimTypeIsNullAndStatusIn(
+            Long financialDocumentId,
+            List<ClaimStatus> statuses
+    );
 
     @Query("""
             SELECT pi.payorId, cr.status, COUNT(cr)
