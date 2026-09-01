@@ -12,6 +12,7 @@ import com.dazzle.asklepios.domain.PainAssessment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientObservationsComplaints;
+import com.dazzle.asklepios.domain.User;
 import com.dazzle.asklepios.domain.VitalSigns;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
@@ -25,6 +26,7 @@ import com.dazzle.asklepios.repository.PainAssessmentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientObservationsComplaintsRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.repository.UserRepository;
 import com.dazzle.asklepios.repository.VitalSignsRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
@@ -96,7 +98,8 @@ public class PatientEncounterService {
     private final PractitionerClient practitionerClient;
     private final BillingEngineService billingEngineService;
     private final NotificationHelper notificationHelper;
-
+    private final InvoiceGenerationService invoiceGenerationService;
+    private final UserRepository userRepository;
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
             PatientRepository patientRepository,
@@ -112,7 +115,7 @@ public class PatientEncounterService {
             PractitionerHelper practitionerHelper,
             PractitionerClient practitionerClient,
             @Lazy BillingEngineService billingEngineService,
-            NotificationHelper notificationHelper) {
+            NotificationHelper notificationHelper, InvoiceGenerationService invoiceGenerationService, UserRepository userRepository) {
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.entityManager = entityManager;
@@ -129,6 +132,8 @@ public class PatientEncounterService {
         this.practitionerClient = practitionerClient;
         this.billingEngineService = billingEngineService;
         this.notificationHelper = notificationHelper;
+        this.invoiceGenerationService = invoiceGenerationService;
+        this.userRepository = userRepository;
     }
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
@@ -672,7 +677,9 @@ public class PatientEncounterService {
         LOG.info("[COMPLETE] success id={} status={}", saved.getId(), saved.getStatus());
         return saved;
     }
+    @Transactional
     public PatientEncounter reopenEncounter(Long encounterId) {
+
         LOG.info("[REOPEN] PatientEncounter id={}", encounterId);
 
         PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
@@ -682,10 +689,18 @@ public class PatientEncounterService {
                         "id.notfound"
                 ));
 
+        User user = userRepository.findByLogin(currentUsername())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "User not found with login " + currentUsername(),
+                        "patientEncounter",
+                        "user.notfound"
+                ));
+
         TreatmentStatus currentStatus = encounter.getStatus();
 
         if (currentStatus != TreatmentStatus.COMPLETED
                 && currentStatus != TreatmentStatus.DISCHARGED) {
+
             throw new BadRequestAlertException(
                     "Only completed or discharged encounters can be reopened.",
                     "patientEncounter",
@@ -693,9 +708,45 @@ public class PatientEncounterService {
             );
         }
 
-        // TODO: Add reopen validations here later
+        EncounterHasInvoiceResponse invoiceResponse =
+                invoiceGenerationService.hasInvoice(encounterId);
+
+        if (invoiceResponse != null && invoiceResponse.isHasInvoice()) {
+
+            throw new BadRequestAlertException(
+                    "Cannot reopen encounter because invoice already exists.",
+                    "patientEncounter",
+                    "reopen.invoiceExists"
+            );
+        }
+
+        if (encounter.getEncounterType() == EncounterType.CLINIC
+                && !user.isCanUnCompleteEncounter()) {
+
+            throw new BadRequestAlertException(
+                    "You do not have permission to reopen outpatient encounters.",
+                    "patientEncounter",
+                    "reopen.permissionDenied"
+            );
+        }
+
+        if (encounter.getEncounterType() == EncounterType.EMERGENCY
+                && !user.isCanUnDischargeUrgentCare()) {
+
+            throw new BadRequestAlertException(
+                    "You do not have permission to reopen emergency encounters.",
+                    "patientEncounter",
+                    "reopen.permissionDenied"
+            );
+        }
 
         encounter.setStatus(TreatmentStatus.ONGOING);
+
+//        encounter.setCompletedAt(null);
+//        encounter.setCompletedBy(null);
+//
+//        encounter.setDischargeAt(null);
+//        encounter.setDischargeType(null);
 
         PatientEncounter saved =
                 patientEncounterRepository.saveAndFlush(encounter);
