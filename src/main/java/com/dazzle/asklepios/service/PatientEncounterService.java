@@ -781,7 +781,7 @@ public class PatientEncounterService {
         if (invoiceResponse != null && !invoiceResponse.hasInvoice()) {
 
             throw new BadRequestAlertException(
-                    "Cannot reopen encounter because invoice already exists.",
+                    "Cannot reopen encounter because there is no invoice generated..",
                     "patientEncounter",
                     "reopen.invoiceExists"
             );
