@@ -2,6 +2,7 @@ package com.dazzle.asklepios.integration.waseel.service;
 
 import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingPayment;
+import com.dazzle.asklepios.domain.EmergencyTriage;
 import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
 import com.dazzle.asklepios.domain.Patient;
@@ -21,6 +22,7 @@ import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalSubscr
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimEncounter;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimPreAuthorizationInfo;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimRequest;
+import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelEmergencyEncounterMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalCareTeamMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalDiagnosisMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalItemMapper;
@@ -28,6 +30,7 @@ import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalSubscriber
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalSupportingInfoMapper;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingPaymentRepository;
+import com.dazzle.asklepios.repository.EmergencyTriageRepository;
 import com.dazzle.asklepios.repository.FinancialDocumentItemRepository;
 import com.dazzle.asklepios.repository.PatientDiagnosisRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
@@ -80,6 +83,7 @@ public class ClaimRequestBuilderService {
     private final BillingChargeLineRepository billingChargeLineRepository;
     private final BillingPaymentRepository billingPaymentRepository;
     private final PreAuthorizationRequestRepository preAuthorizationRequestRepository;
+    private final EmergencyTriageRepository emergencyTriageRepository;
 
     private final ApprovalEncounterMapper encounterMapper;
     private final ApprovalDiagnosisMapper approvalDiagnosisMapper;
@@ -639,6 +643,9 @@ public class ClaimRequestBuilderService {
         // Reuse approval encounter defaults for provider/serviceEventType, then adapt claim status/class.
         var approvalEncounter = encounterMapper.toWaseelEncounter(encounter, nphiesId);
         boolean emergency = claimSubType == WaseelClaimSubType.EMERGENCY;
+        EmergencyTriage triage = emergency && encounter != null && encounter.getId() != null
+                ? emergencyTriageRepository.findTopByEncounter_IdOrderByCreatedDateDesc(encounter.getId()).orElse(null)
+                : null;
 
         return new WaseelClaimEncounter(
                 "Finished",
@@ -650,7 +657,12 @@ public class ClaimRequestBuilderService {
                 approvalEncounter.serviceProvider(),
                 null,
                 "",
-                emergency
+                emergency ? WaseelEmergencyEncounterMapper.arrivalCode(encounter) : null,
+                emergency ? WaseelEmergencyEncounterMapper.arrivalCode(encounter) : null,
+                emergency ? WaseelEmergencyEncounterMapper.triageCategory(triage) : null,
+                emergency ? WaseelEmergencyEncounterMapper.triageDate(encounter, triage, claimDate) : null,
+                emergency ? WaseelEmergencyEncounterMapper.emergencyServiceStart(encounter, claimDate) : null,
+                emergency ? WaseelEmergencyEncounterMapper.departmentDisposition(encounter) : null
         );
     }
 

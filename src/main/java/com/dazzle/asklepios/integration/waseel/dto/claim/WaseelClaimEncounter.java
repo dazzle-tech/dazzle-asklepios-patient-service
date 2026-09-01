@@ -15,5 +15,10 @@ public record WaseelClaimEncounter(
         Long serviceProvider,
         LocalDate periodEnd,
         String causeOfDeath,
-        Boolean emergency
+        String encounterEmergency,
+        String emergencyArrivalCode,
+        String triageCategory,
+        String triageDate,
+        String emergencyServiceStart,
+        String emergencyDepartmentDisposition
 ) {}
