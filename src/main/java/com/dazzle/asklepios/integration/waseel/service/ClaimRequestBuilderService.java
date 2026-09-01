@@ -355,7 +355,7 @@ public class ClaimRequestBuilderService {
                 claimSubType
         );
 
-        WaseelClaimEncounter claimEncounter = buildClaimEncounter(encounter, nphiesId, claimDate);
+        WaseelClaimEncounter claimEncounter = buildClaimEncounter(encounter, nphiesId, claimDate, claimSubType);
 
         List<String> preAuthRefNos = collectPreAuthRefNos(preAuths, primaryPreAuth);
 
@@ -633,21 +633,24 @@ public class ClaimRequestBuilderService {
     private WaseelClaimEncounter buildClaimEncounter(
             PatientEncounter encounter,
             String nphiesId,
-            LocalDate claimDate
+            LocalDate claimDate,
+            WaseelClaimSubType claimSubType
     ) {
         // Reuse approval encounter defaults for provider/serviceEventType, then adapt claim status/class.
         var approvalEncounter = encounterMapper.toWaseelEncounter(encounter, nphiesId);
+        boolean emergency = claimSubType == WaseelClaimSubType.EMERGENCY;
 
         return new WaseelClaimEncounter(
                 "Finished",
-                "AMB",
+                emergency ? "EMER" : "AMB",
                 approvalEncounter.serviceType() == null ? "" : approvalEncounter.serviceType(),
                 claimDate,
                 claimDate,
                 approvalEncounter.serviceEventType(),
                 approvalEncounter.serviceProvider(),
                 null,
-                ""
+                "",
+                emergency
         );
     }
 

@@ -14,5 +14,6 @@ public record WaseelClaimEncounter(
         String serviceEventType,
         Long serviceProvider,
         LocalDate periodEnd,
-        String causeOfDeath
+        String causeOfDeath,
+        Boolean emergency
 ) {}
