@@ -3,6 +3,7 @@ package com.dazzle.asklepios.repository;
 import com.dazzle.asklepios.domain.ClaimRequest;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -11,7 +12,8 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface ClaimRequestRepository extends JpaRepository<ClaimRequest, Long> {
+public interface ClaimRequestRepository
+        extends JpaRepository<ClaimRequest, Long>, JpaSpecificationExecutor<ClaimRequest> {
 
     List<ClaimRequest> findByEncounterIdOrderByIdDesc(Long encounterId);
 
