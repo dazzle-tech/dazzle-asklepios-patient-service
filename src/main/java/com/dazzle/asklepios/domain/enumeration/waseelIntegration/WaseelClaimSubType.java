@@ -1,12 +1,12 @@
 package com.dazzle.asklepios.domain.enumeration.waseelIntegration;
 
 /**
- * Waseel/NPHIES claim {@code subType}. Portal labels map as:
- * OutPatient → {@code op}, Emergency → {@code em}.
+ * Waseel/NPHIES claim {@code subType}. Acceptable values are {@code ip}, {@code op}, {@code emr}.
+ * Portal labels map as: OutPatient → {@code op}, Emergency → {@code emr}.
  */
 public enum WaseelClaimSubType {
     OUTPATIENT("op"),
-    EMERGENCY("em");
+    EMERGENCY("emr");
 
     private final String waseelCode;
 
@@ -32,6 +32,9 @@ public enum WaseelClaimSubType {
 
         if ("outpatient".equals(normalized) || "out-patient".equals(normalized)) {
             return OUTPATIENT;
+        }
+        if ("em".equals(normalized) || "emergency".equals(normalized)) {
+            return EMERGENCY;
         }
 
         return OUTPATIENT;
