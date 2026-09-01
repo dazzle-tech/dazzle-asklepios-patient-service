@@ -82,6 +82,8 @@ public class ClaimTrackingService {
                 e.getFinancialDocumentId(),
                 e.getPreAuthorizationId(),
                 e.getPatientInsuranceId(),
+                e.getClaimType(),
+                e.getClaimSubType(),
                 e.getUploadName(),
                 e.getUploadId(),
                 e.getProvClaimNo(),

@@ -7,11 +7,15 @@ import com.dazzle.asklepios.domain.FinancialDocumentItem;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
+import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.PreAuthorizationRequest;
+import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimSubType;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimType;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalItem;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimBatchSubmitResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimSubmissionResponse;
@@ -25,10 +29,12 @@ import com.dazzle.asklepios.client.setup.dto.NphiesPayerDTO;
 import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.repository.ClaimItemRepository;
 import com.dazzle.asklepios.repository.ClaimRequestRepository;
+import com.dazzle.asklepios.repository.FinancialDocumentItemRepository;
 import com.dazzle.asklepios.repository.FinancialDocumentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.helper.NphiesPayerHelper;
 import com.dazzle.asklepios.service.helper.PayorHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -45,12 +51,17 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -84,6 +95,9 @@ public class ClaimSubmissionService {
     private final PayorHelper payorHelper;
     private final ClaimSubmissionService self;
     private final PatientRepository patientRepository;
+    private final FinancialDocumentItemRepository financialDocumentItemRepository;
+    private final PatientServiceAndProductRepository patientServiceAndProductRepository;
+    private final WaseelClaimClassification waseelClaimClassification;
 
     public ClaimSubmissionService(
             ClaimRequestBuilderService claimRequestBuilderService,
@@ -100,7 +114,10 @@ public class ClaimSubmissionService {
             NphiesPayerHelper nphiesPayerHelper,
             PayorHelper payorHelper,
             @Lazy ClaimSubmissionService self,
-            PatientRepository patientRepository
+            PatientRepository patientRepository,
+            FinancialDocumentItemRepository financialDocumentItemRepository,
+            PatientServiceAndProductRepository patientServiceAndProductRepository,
+            WaseelClaimClassification waseelClaimClassification
     ) {
         this.claimRequestBuilderService = claimRequestBuilderService;
         this.waseelClaimService = waseelClaimService;
@@ -117,6 +134,9 @@ public class ClaimSubmissionService {
         this.payorHelper = payorHelper;
         this.self = self;
         this.patientRepository = patientRepository;
+        this.financialDocumentItemRepository = financialDocumentItemRepository;
+        this.patientServiceAndProductRepository = patientServiceAndProductRepository;
+        this.waseelClaimClassification = waseelClaimClassification;
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -137,6 +157,15 @@ public class ClaimSubmissionService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     public ClaimRequest submitForInsuranceInvoice(Long financialDocumentId) {
+        return submitForInsuranceInvoice(financialDocumentId, null, null);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    public ClaimRequest submitForInsuranceInvoice(
+            Long financialDocumentId,
+            WaseelClaimType claimType,
+            WaseelClaimSubType claimSubType
+    ) {
         FinancialDocument invoice = financialDocumentRepository.findById(financialDocumentId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "Insurance invoice not found",
@@ -161,13 +190,34 @@ public class ClaimSubmissionService {
             return null;
         }
 
-        if (claimRequestRepository.existsByFinancialDocumentIdAndStatusIn(
-                invoice.getId(),
-                ACTIVE_STATUSES
-        )) {
+        WaseelClaimType resolvedType = claimType;
+        WaseelClaimSubType resolvedSubType = claimSubType;
+        ClaimRequest previous = claimRequestRepository
+                .findFirstByFinancialDocumentIdOrderByIdDesc(invoice.getId())
+                .orElse(null);
+        if (resolvedType == null && previous != null) {
+            resolvedType = previous.getClaimType();
+        }
+        if (resolvedSubType == null && previous != null) {
+            resolvedSubType = previous.getClaimSubType();
+        }
+        if (resolvedType == null) {
+            resolvedType = WaseelClaimType.PROFESSIONAL;
+        }
+        if (resolvedSubType == null) {
+            PatientEncounter encounter = patientEncounterRepository.findById(invoice.getEncounterId())
+                    .orElse(null);
+            resolvedSubType = waseelClaimClassification.resolveSubType(
+                    resolvedType,
+                    encounter == null ? null : encounter.getEncounterType()
+            );
+        }
+
+        if (hasActiveClaimForType(invoice.getId(), resolvedType)) {
             log.info(
-                    "[CLAIM_SUBMIT] Claim already submitted for invoiceId={} — skipping",
-                    invoice.getId()
+                    "[CLAIM_SUBMIT] Claim already submitted for invoiceId={} type={} — skipping",
+                    invoice.getId(),
+                    resolvedType
             );
             return claimRequestRepository
                     .findFirstByFinancialDocumentIdOrderByIdDesc(invoice.getId())
@@ -175,7 +225,7 @@ public class ClaimSubmissionService {
         }
 
         ClaimRequestBuilderService.ClaimBuildResult built =
-                claimRequestBuilderService.buildForInsuranceInvoice(invoice);
+                claimRequestBuilderService.buildForInsuranceInvoice(invoice, resolvedType, resolvedSubType);
 
         String uploadName = ensureUniqueUploadName(built.uploadName());
         WaseelClaimRequest claimModel = built.claimRequest();
@@ -234,7 +284,7 @@ public class ClaimSubmissionService {
             Instant fromDate,
             Instant toDate
     ) {
-        return listPendingInsuranceInvoices(payorId, null, fromDate, toDate);
+        return listPendingInsuranceInvoices(payorId, null, fromDate, toDate, null, null);
     }
 
     @Transactional(readOnly = true)
@@ -244,6 +294,20 @@ public class ClaimSubmissionService {
             Instant fromDate,
             Instant toDate
     ) {
+        return listPendingInsuranceInvoices(payorId, payerNphiesId, fromDate, toDate, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<PendingClaimInvoiceResponse> listPendingInsuranceInvoices(
+            Long payorId,
+            String payerNphiesId,
+            Instant fromDate,
+            Instant toDate,
+            WaseelClaimType claimType,
+            WaseelClaimSubType claimSubType
+    ) {
+        waseelClaimClassification.assertTypeAndSubType(claimType, claimSubType);
+
         Instant from = fromDate != null ? fromDate : Instant.EPOCH;
         Instant to = toDate != null ? toDate : Instant.parse("9999-12-31T00:00:00Z");
         List<String> nphiesIds = resolvePayerNphiesIds(payorId, payerNphiesId);
@@ -251,31 +315,41 @@ public class ClaimSubmissionService {
         Long resolvedPayorId = payorId != null ? payorId : -1L;
 
         log.info(
-                "[CLAIM_BATCH] Listing pending invoices payorId={} payerNphiesId={} nphiesIds={} from={} to={}",
+                "[CLAIM_BATCH] Listing pending invoices payorId={} payerNphiesId={} nphiesIds={} from={} to={} type={} subType={}",
                 payorId,
                 payerNphiesId,
                 nphiesIds,
                 from,
-                to
+                to,
+                claimType,
+                claimSubType
         );
 
-        return financialDocumentRepository.findPendingInsuranceClaimInvoices(
+        List<FinancialDocument> invoices = financialDocumentRepository.findPendingInsuranceClaimInvoices(
                         useNphiesFilter ? 1 : 0,
                         resolvedPayorId,
                         nphiesIds,
                         from,
                         to,
                         CLAIMABLE_INVOICE_STATUSES.stream().map(Enum::name).toList(),
-                        ACTIVE_STATUSES.stream().map(Enum::name).toList()
+                        ACTIVE_STATUSES.stream().map(Enum::name).toList(),
+                        claimType.name()
                 )
                 .stream()
                 .filter(invoice -> belongsToSelectedPayor(invoice, resolvedPayorId, nphiesIds, useNphiesFilter))
-                .map(this::toPendingClaimInvoiceResponse)
                 .toList();
+
+        return toPendingClaimInvoiceResponses(invoices, claimType, claimSubType);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
-    public ClaimBatchSubmitResponse submitBatchForInvoices(List<Long> financialDocumentIds) {
+    public ClaimBatchSubmitResponse submitBatchForInvoices(
+            List<Long> financialDocumentIds,
+            WaseelClaimType claimType,
+            WaseelClaimSubType claimSubType
+    ) {
+        waseelClaimClassification.assertTypeAndSubType(claimType, claimSubType);
+
         if (financialDocumentIds == null || financialDocumentIds.isEmpty()) {
             throw new BadRequestAlertException(
                     "Select at least one insurance invoice to submit.",
@@ -297,12 +371,10 @@ public class ClaimSubmissionService {
         for (Long financialDocumentId : uniqueIds) {
             FinancialDocument invoice = loadClaimableInsuranceInvoice(financialDocumentId);
 
-            if (claimRequestRepository.existsByFinancialDocumentIdAndStatusIn(
-                    invoice.getId(),
-                    ACTIVE_STATUSES
-            )) {
+            if (hasActiveClaimForType(invoice.getId(), claimType)) {
                 throw new BadRequestAlertException(
-                        "Invoice " + invoice.getDocumentNumber() + " already has an active claim.",
+                        "Invoice " + invoice.getDocumentNumber()
+                                + " already has an active " + claimType.name() + " claim.",
                         "claim",
                         "claim.alreadySubmitted"
                 );
@@ -319,7 +391,11 @@ public class ClaimSubmissionService {
             }
 
             invoices.add(invoice);
-            builds.add(claimRequestBuilderService.buildForInsuranceInvoice(invoice));
+            builds.add(claimRequestBuilderService.buildForInsuranceInvoice(
+                    invoice,
+                    claimType,
+                    claimSubType
+            ));
         }
 
         if (payorIds.size() > 1 || nphiesKeys.size() > 1) {
@@ -547,24 +623,136 @@ public class ClaimSubmissionService {
         }
     }
 
-    private PendingClaimInvoiceResponse toPendingClaimInvoiceResponse(FinancialDocument invoice) {
-        Long payorId = resolvePayorId(invoice.getEncounterId());
-        Patient patient = patientRepository.findById(invoice.getPatientId())
-                .orElse(null);
-        PatientEncounter encounter = patientEncounterRepository.findById(invoice.getEncounterId())
-                .orElse(null);
-        return new PendingClaimInvoiceResponse(
-                invoice.getId(),
-                invoice.getDocumentNumber(),
-                invoice.getEncounterId(),
-                encounter,
-                invoice.getPatientId(),
-                patient,
-                payorId,
-                invoice.getClaimReference(),
-                invoice.getTotalAmount(),
-                invoice.getCurrency() == null ? null : invoice.getCurrency().name(),
-                invoice.getCreatedDate()
+    private List<PendingClaimInvoiceResponse> toPendingClaimInvoiceResponses(
+            List<FinancialDocument> invoices,
+            WaseelClaimType claimType,
+            WaseelClaimSubType claimSubType
+    ) {
+        if (invoices == null || invoices.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> invoiceIds = invoices.stream()
+                .map(FinancialDocument::getId)
+                .filter(Objects::nonNull)
+                .toList();
+        List<Long> encounterIds = invoices.stream()
+                .map(FinancialDocument::getEncounterId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        List<Long> patientIds = invoices.stream()
+                .map(FinancialDocument::getPatientId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        Map<Long, List<FinancialDocumentItem>> itemsByInvoiceId = financialDocumentItemRepository
+                .findByDocument_IdIn(invoiceIds)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        item -> item.getDocument() == null ? -1L : item.getDocument().getId(),
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+
+        List<Long> pspIds = itemsByInvoiceId.values().stream()
+                .flatMap(List::stream)
+                .map(FinancialDocumentItem::getPatientServiceProductId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        Map<Long, PatientServiceAndProduct> productsById = pspIds.isEmpty()
+                ? Map.of()
+                : patientServiceAndProductRepository.findAllById(pspIds).stream()
+                .filter(product -> product.getId() != null)
+                .collect(Collectors.toMap(PatientServiceAndProduct::getId, Function.identity()));
+
+        Map<Long, PatientEncounter> encountersById = encounterIds.isEmpty()
+                ? Map.of()
+                : patientEncounterRepository.findAllById(encounterIds).stream()
+                .filter(encounter -> encounter.getId() != null)
+                .collect(Collectors.toMap(PatientEncounter::getId, Function.identity()));
+
+        Map<Long, Patient> patientsById = patientIds.isEmpty()
+                ? Map.of()
+                : patientRepository.findAllById(patientIds).stream()
+                .filter(patient -> patient.getId() != null)
+                .collect(Collectors.toMap(Patient::getId, Function.identity()));
+
+        List<PendingClaimInvoiceResponse> results = new ArrayList<>();
+        for (FinancialDocument invoice : invoices) {
+            PatientEncounter encounter = encountersById.get(invoice.getEncounterId());
+            EncounterType encounterType = encounter == null ? null : encounter.getEncounterType();
+            if (!waseelClaimClassification.matchesEncounter(encounterType, claimType, claimSubType)) {
+                continue;
+            }
+
+            List<FinancialDocumentItem> matchingItems = itemsByInvoiceId
+                    .getOrDefault(invoice.getId(), List.of())
+                    .stream()
+                    .filter(item -> waseelClaimClassification.isClaimableForType(
+                            item.getPatientServiceProductId() == null
+                                    ? null
+                                    : productsById.get(item.getPatientServiceProductId()),
+                            claimType
+                    ))
+                    .toList();
+
+            if (matchingItems.isEmpty()) {
+                continue;
+            }
+
+            BigDecimal matchingNet = matchingItems.stream()
+                    .map(FinancialDocumentItem::getInsuranceShareAmount)
+                    .filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (matchingNet.signum() == 0) {
+                matchingNet = matchingItems.stream()
+                        .map(FinancialDocumentItem::getNetAmount)
+                        .filter(Objects::nonNull)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+            }
+
+            results.add(new PendingClaimInvoiceResponse(
+                    invoice.getId(),
+                    invoice.getDocumentNumber(),
+                    invoice.getEncounterId(),
+                    encounter,
+                    encounterType,
+                    invoice.getPatientId(),
+                    patientsById.get(invoice.getPatientId()),
+                    resolvePayorId(invoice.getEncounterId()),
+                    invoice.getClaimReference(),
+                    invoice.getTotalAmount(),
+                    invoice.getCurrency() == null ? null : invoice.getCurrency().name(),
+                    invoice.getCreatedDate(),
+                    claimType,
+                    claimSubType,
+                    matchingItems.size(),
+                    matchingNet.setScale(2, RoundingMode.HALF_UP)
+            ));
+        }
+
+        return results;
+    }
+
+    private boolean hasActiveClaimForType(Long financialDocumentId, WaseelClaimType claimType) {
+        if (financialDocumentId == null || claimType == null) {
+            return false;
+        }
+        if (claimRequestRepository.existsByFinancialDocumentIdAndClaimTypeAndStatusIn(
+                financialDocumentId,
+                claimType,
+                ACTIVE_STATUSES
+        )) {
+            return true;
+        }
+        return claimType == WaseelClaimType.PROFESSIONAL
+                && claimRequestRepository.existsByFinancialDocumentIdAndClaimTypeIsNullAndStatusIn(
+                financialDocumentId,
+                ACTIVE_STATUSES
         );
     }
 
@@ -595,6 +783,8 @@ public class ClaimSubmissionService {
                 claim.getEncounterId(),
                 claim.getFinancialDocumentId(),
                 claim.getPreAuthorizationId(),
+                claim.getClaimType(),
+                claim.getClaimSubType(),
                 claim.getUploadName(),
                 claim.getUploadId(),
                 claim.getProvClaimNo(),
@@ -627,6 +817,8 @@ public class ClaimSubmissionService {
                 .financialDocumentId(invoice.getId())
                 .preAuthorizationId(preAuth == null ? null : preAuth.getId())
                 .patientInsuranceId(preAuth == null ? null : preAuth.getPatientInsuranceId())
+                .claimType(built.claimType())
+                .claimSubType(built.claimSubType())
                 .uploadName(uploadName)
                 .provClaimNo(built.provClaimNo())
                 .claimReference(invoice.getClaimReference())
