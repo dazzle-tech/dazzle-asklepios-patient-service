@@ -36,6 +36,7 @@ import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.BillableVisitResponse;
 import com.dazzle.asklepios.service.dto.billing.BillingEligibilitySnapshotResponse;
 import com.dazzle.asklepios.service.dto.billing.EncounterBillingSummary;
+import com.dazzle.asklepios.service.dto.billing.EncounterHasInvoiceResponse;
 import com.dazzle.asklepios.service.dto.billing.EncounterInvoiceDetailsResponse;
 import com.dazzle.asklepios.service.dto.billing.FinancialCloseRequest;
 import com.dazzle.asklepios.service.dto.billing.FinancialCloseResult;
@@ -138,6 +139,19 @@ public class InvoiceGenerationService {
                 .map(this::mapBillableVisit)
                 .filter(BillableVisitResponse::eligibleForBilling)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public EncounterHasInvoiceResponse hasInvoice(Long encounterId) {
+        requireEncounter(encounterId);
+
+        boolean hasInvoice =
+                financialDocumentRepository.existsByEncounterIdAndDocumentType(
+                        encounterId,
+                        FinancialDocumentType.INVOICE
+                );
+
+        return new EncounterHasInvoiceResponse(encounterId, hasInvoice);
     }
 
     @Transactional(readOnly = true)
