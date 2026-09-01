@@ -701,6 +701,7 @@ public class PatientEncounterService {
                     .dischargedAt(dischargedAt)
                     .dischargedBy(currentUsername())
                     .createdDate(Instant.now())
+
                     .build();
 
             encounterDischargeLogRepository.save(completionLog);
@@ -1496,6 +1497,7 @@ public class PatientEncounterService {
                     .dischargedAt(dischargeDTO.dischargeAt())
                     .dischargedBy(currentUsername())
                     .createdDate(Instant.now())
+
                     .build();
 
             encounterDischargeLogRepository.save(dischargeLog);
