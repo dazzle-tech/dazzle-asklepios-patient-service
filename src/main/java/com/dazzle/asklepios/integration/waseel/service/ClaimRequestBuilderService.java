@@ -11,6 +11,7 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientRelation;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.PreAuthorizationRequest;
+import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.RelationType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimSubType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimType;
@@ -23,6 +24,7 @@ import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimEncounter;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimPreAuthorizationInfo;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimRequest;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelEmergencyEncounterMapper;
+import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelEncounterEmergency;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalCareTeamMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalDiagnosisMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalItemMapper;
@@ -51,7 +53,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -640,12 +641,23 @@ public class ClaimRequestBuilderService {
             LocalDate claimDate,
             WaseelClaimSubType claimSubType
     ) {
-        // Reuse approval encounter defaults for provider/serviceEventType, then adapt claim status/class.
         var approvalEncounter = encounterMapper.toWaseelEncounter(encounter, nphiesId);
-        boolean emergency = claimSubType == WaseelClaimSubType.EMERGENCY;
-        EmergencyTriage triage = emergency && encounter != null && encounter.getId() != null
-                ? emergencyTriageRepository.findTopByEncounter_IdOrderByCreatedDateDesc(encounter.getId()).orElse(null)
-                : null;
+        boolean emergency = claimSubType == WaseelClaimSubType.EMERGENCY
+                || (encounter != null && encounter.getEncounterType() == EncounterType.EMERGENCY);
+
+        WaseelEncounterEmergency encounterEmergency = null;
+        if (emergency) {
+            EmergencyTriage triage = encounter != null && encounter.getId() != null
+                    ? emergencyTriageRepository
+                            .findTopByEncounter_IdOrderByCreatedDateDesc(encounter.getId())
+                            .orElse(null)
+                    : null;
+            encounterEmergency = WaseelEmergencyEncounterMapper.toEncounterEmergency(
+                    encounter,
+                    triage,
+                    claimDate
+            );
+        }
 
         return new WaseelClaimEncounter(
                 "Finished",
@@ -657,12 +669,7 @@ public class ClaimRequestBuilderService {
                 approvalEncounter.serviceProvider(),
                 null,
                 "",
-                emergency ? WaseelEmergencyEncounterMapper.arrivalCode(encounter) : null,
-                emergency ? WaseelEmergencyEncounterMapper.arrivalCode(encounter) : null,
-                emergency ? WaseelEmergencyEncounterMapper.triageCategory(triage) : null,
-                emergency ? WaseelEmergencyEncounterMapper.triageDate(encounter, triage, claimDate) : null,
-                emergency ? WaseelEmergencyEncounterMapper.emergencyServiceStart(encounter, claimDate) : null,
-                emergency ? WaseelEmergencyEncounterMapper.departmentDisposition(encounter) : null
+                encounterEmergency
         );
     }
 

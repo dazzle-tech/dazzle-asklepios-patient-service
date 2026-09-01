@@ -15,26 +15,40 @@ import java.time.format.DateTimeFormatter;
 import java.util.Set;
 
 /**
- * Maps local emergency encounter/triage data to NPHIES/Waseel claim encounter fields.
- * Waseel field "Encounter Emergency" is the Emergency Arrival Code (BV-00732), not a boolean.
+ * Maps local emergency visit data to Waseel {@code claimEncounter.encounterEmergency}.
+ * That nested object is the "Encounter Emergency" form section in the Waseel docs.
  */
 public final class WaseelEmergencyEncounterMapper {
 
     private static final ZoneId RIYADH = ZoneId.of("Asia/Riyadh");
     private static final DateTimeFormatter NPHIES_DATE_TIME =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
-    private static final String UNKNOWN_ARRIVAL = "unknown";
+    private static final String DEFAULT_ARRIVAL = "other";
     private static final Set<String> ARRIVAL_CODES = Set.of(
-            "unknown", "PV", "ACDA", "OGV", "GCDA", "other", "MOHA",
-            "EMSAA", "GMA", "AMA", "GEMSA", "GPA", "POV"
+            "GEMSA", "MOHA", "GCDA", "GMA", "GPA", "EMSAA", "ACDA", "AMA",
+            "PV", "OGV", "other"
     );
 
     private WaseelEmergencyEncounterMapper() {}
 
+    public static WaseelEncounterEmergency toEncounterEmergency(
+            PatientEncounter encounter,
+            EmergencyTriage triage,
+            LocalDate claimDate
+    ) {
+        return new WaseelEncounterEmergency(
+                arrivalCode(encounter),
+                emergencyServiceStart(encounter, claimDate),
+                departmentDisposition(encounter),
+                triageCategory(triage),
+                triageDate(encounter, triage, claimDate)
+        );
+    }
+
     public static String arrivalCode(PatientEncounter encounter) {
         String origin = encounter == null ? null : encounter.getOriginType();
         if (origin == null || origin.isBlank()) {
-            return UNKNOWN_ARRIVAL;
+            return DEFAULT_ARRIVAL;
         }
         String trimmed = origin.trim();
         for (String code : ARRIVAL_CODES) {
@@ -42,7 +56,7 @@ public final class WaseelEmergencyEncounterMapper {
                 return code;
             }
         }
-        return UNKNOWN_ARRIVAL;
+        return DEFAULT_ARRIVAL;
     }
 
     public static String triageCategory(EmergencyTriage triage) {
