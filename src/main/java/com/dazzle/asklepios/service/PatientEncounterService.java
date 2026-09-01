@@ -672,6 +672,43 @@ public class PatientEncounterService {
         LOG.info("[COMPLETE] success id={} status={}", saved.getId(), saved.getStatus());
         return saved;
     }
+    public PatientEncounter reopenEncounter(Long encounterId) {
+        LOG.info("[REOPEN] PatientEncounter id={}", encounterId);
+
+        PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "PatientEncounter not found with id " + encounterId,
+                        "patientEncounter",
+                        "id.notfound"
+                ));
+
+        TreatmentStatus currentStatus = encounter.getStatus();
+
+        if (currentStatus != TreatmentStatus.COMPLETED
+                && currentStatus != TreatmentStatus.DISCHARGED) {
+            throw new BadRequestAlertException(
+                    "Only completed or discharged encounters can be reopened.",
+                    "patientEncounter",
+                    "reopen.notAllowed"
+            );
+        }
+
+        // TODO: Add reopen validations here later
+
+        encounter.setStatus(TreatmentStatus.ONGOING);
+
+        PatientEncounter saved =
+                patientEncounterRepository.saveAndFlush(encounter);
+
+        LOG.info(
+                "[REOPEN] success id={} fromStatus={} toStatus={}",
+                saved.getId(),
+                currentStatus,
+                saved.getStatus()
+        );
+
+        return saved;
+    }
 
     @Transactional(readOnly = true)
     public long countTodayEncountersByFacility(Long facilityId) {

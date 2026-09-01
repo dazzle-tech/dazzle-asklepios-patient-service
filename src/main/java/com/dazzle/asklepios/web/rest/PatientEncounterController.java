@@ -586,4 +586,15 @@ public class PatientEncounterController {
 
         return ResponseEntity.ok(updated);
     }
+    @PostMapping("/encounter/{id}/reopen")
+    public ResponseEntity<PatientEncounter> reopenEncounter(
+            @PathVariable("id") @NotNull Long encounterId
+    ) {
+        LOG.debug("REST reopen PatientEncounter id={}", encounterId);
+
+        PatientEncounter reopened =
+                patientEncounterService.reopenEncounter(encounterId);
+
+        return ResponseEntity.ok(reopened);
+    }
 }
