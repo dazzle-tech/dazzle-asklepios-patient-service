@@ -118,6 +118,12 @@ public class AppointmentController {
         return ResponseEntity.ok(result);
     }
 
+    @PutMapping("/appointments/{id}/undo-confirm")
+    public ResponseEntity<Appointment> undoConfirm(@PathVariable Long id) {
+        Appointment result = appointmentService.undoConfirm(id);
+        return ResponseEntity.ok(result);
+    }
+
     @PutMapping("/appointments/{id}/check-in")
     public ResponseEntity<Appointment> checkIn(@PathVariable Long id) {
         Appointment result = appointmentService.checkIn(id);

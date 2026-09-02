@@ -649,6 +649,22 @@ public class AppointmentService {
     }
 
     @Transactional
+    public Appointment undoConfirm(Long id) {
+        Appointment appointment = getAppointment(id);
+
+        validateUndoConfirmable(appointment);
+
+        if (appointment.getPatient() == null) {
+            throw new BadRequestAlertException("patientrequired", ENTITY_NAME, "Cannot undo confirm appointment without patient");
+        }
+        appointment.setConfirmedAt(null);
+        appointment.setStatus(AppointmentStatus.BOOKED);
+        Appointment savedAppointment = appointmentRepository.save(appointment);
+
+        return savedAppointment;
+    }
+
+    @Transactional
     public Appointment checkIn(Long id) {
         Appointment appointment = getAppointment(id);
 
@@ -1575,6 +1591,11 @@ public class AppointmentService {
     private void validateConfirmable(Appointment appointment) {
         if (appointment.getStatus() != AppointmentStatus.BOOKED) {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Only booked appointments can be confirmed");
+        }
+    }
+    private void validateUndoConfirmable(Appointment appointment) {
+        if (appointment.getStatus() != AppointmentStatus.CONFIRMED) {
+            throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Only confirmed appointments can be booked when undo confirm");
         }
     }
 
