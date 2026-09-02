@@ -21,6 +21,7 @@ import com.dazzle.asklepios.service.dto.radiology.PacsStudyDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportResponseVM;
+import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportResultsVM;
 import com.dazzle.asklepios.web.rest.vm.radiology.RadiologyImageStatusResponseVM;
 import io.micrometer.common.util.StringUtils;
 import jakarta.persistence.criteria.Predicate;
@@ -31,7 +32,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -55,8 +57,9 @@ public class DiagnosticOrderTestReportService {
 
     private final DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
+    private final DiagnosticOrderRepository diagnosticOrderRepository;
+    private final PatientRepository patientRepository;
     private final PacsIntegrationClient pacsIntegrationService;
-
 
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
@@ -64,12 +67,18 @@ public class DiagnosticOrderTestReportService {
 
     public DiagnosticOrderTestReportService(
             DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository,
-            DiagnosticOrderTestRepository diagnosticOrderTestRepository, PacsIntegrationClient pacsIntegrationService,
+            DiagnosticOrderTestRepository diagnosticOrderTestRepository,
+            DiagnosticOrderRepository diagnosticOrderRepository,
+            PatientRepository patientRepository,
+            PacsIntegrationClient pacsIntegrationService,
             DiagnosticOrderStatusService diagnosticOrderStatusService,
-            DiagnosticOrderTestStatusService diagnosticOrderTestStatusService, DiagnosticOrderTestReportCommentsRepository diagnosticOrderTestReportCommentsRepository
+            DiagnosticOrderTestStatusService diagnosticOrderTestStatusService,
+            DiagnosticOrderTestReportCommentsRepository diagnosticOrderTestReportCommentsRepository
     ) {
         this.diagnosticOrderTestReportRepository = diagnosticOrderTestReportRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
+        this.diagnosticOrderRepository = diagnosticOrderRepository;
+        this.patientRepository = patientRepository;
         this.pacsIntegrationService = pacsIntegrationService;
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
@@ -767,6 +776,184 @@ public class DiagnosticOrderTestReportService {
             return DiagnosticOrderTestReportResponseVM.ofEntityWithNote(report, hasNote);
         });
     }
+
+
+    @Transactional(readOnly = true)
+    public Page<DiagnosticOrderTestReportResultsVM> filterReportResults(
+            Long patientId,
+            Instant fromDate,
+            Instant toDate,
+            Pageable pageable
+    ) {
+
+        Specification<DiagnosticOrderTestReport> spec =
+                (reportRoot, criteriaQuery, criteriaBuilder) -> {
+
+                    List<Predicate> predicates = new ArrayList<>();
+
+                    if (fromDate != null) {
+                        predicates.add(
+                                criteriaBuilder.greaterThanOrEqualTo(
+                                        reportRoot.get("createdDate"),
+                                        fromDate
+                                )
+                        );
+                    }
+
+                    if (toDate != null) {
+                        predicates.add(
+                                criteriaBuilder.lessThanOrEqualTo(
+                                        reportRoot.get("createdDate"),
+                                        toDate
+                                )
+                        );
+                    }
+
+                    if (patientId != null) {
+
+                        var subquery = criteriaQuery.subquery(Long.class);
+
+                        var testRoot = subquery.from(DiagnosticOrderTest.class);
+                        var orderRoot = subquery.from(DiagnosticOrder.class);
+
+                        List<Predicate> subPredicates = new ArrayList<>();
+
+                        subPredicates.add(
+                                criteriaBuilder.equal(
+                                        testRoot.get("id"),
+                                        reportRoot.get("orderTestId")
+                                )
+                        );
+
+                        subPredicates.add(
+                                criteriaBuilder.equal(
+                                        orderRoot.get("id"),
+                                        testRoot.get("orderId")
+                                )
+                        );
+
+                        subPredicates.add(
+                                criteriaBuilder.equal(
+                                        orderRoot.get("patientId"),
+                                        patientId
+                                )
+                        );
+
+                        subquery
+                                .select(testRoot.get("id"))
+                                .where(subPredicates.toArray(new Predicate[0]));
+
+                        predicates.add(criteriaBuilder.exists(subquery));
+                    }
+
+                    return criteriaBuilder.and(
+                            predicates.toArray(new Predicate[0])
+                    );
+                };
+
+        Page<DiagnosticOrderTestReport> page =
+                diagnosticOrderTestReportRepository.findAll(
+                        spec,
+                        pageable
+                );
+
+        List<Long> reportIds = page.getContent()
+                .stream()
+                .map(DiagnosticOrderTestReport::getId)
+                .toList();
+
+        Set<Long> reportIdsWithNotes =
+                reportIds.isEmpty()
+                        ? Collections.emptySet()
+                        : new HashSet<>(
+                        diagnosticOrderTestReportCommentsRepository
+                                .findDistinctReportIdByReportIdIn(reportIds)
+                );
+
+        return page.map(report -> {
+
+            boolean hasNote =
+                    reportIdsWithNotes.contains(report.getId());
+
+            DiagnosticOrderTest orderTest =
+                    diagnosticOrderTestRepository
+                            .findById(report.getOrderTestId())
+                            .orElse(null);
+
+            if (orderTest == null) {
+                return DiagnosticOrderTestReportResultsVM.ofEntity(
+                        report,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        hasNote
+                );
+            }
+
+            DiagnosticOrder order =
+                    diagnosticOrderRepository
+                            .findById(orderTest.getOrderId())
+                            .orElse(null);
+
+            Patient patient = null;
+
+            if (order != null && order.getPatientId() != null) {
+                patient = patientRepository
+                        .findById(order.getPatientId())
+                        .orElse(null);
+            }
+
+            String patientName = null;
+            String mrn = null;
+
+            if (patient != null) {
+
+                patientName = String.join(
+                        " ",
+                        patient.getFirstName() != null
+                                ? patient.getFirstName()
+                                : "",
+                        patient.getSecondName() != null
+                                ? patient.getSecondName()
+                                : "",
+                        patient.getThirdName() != null
+                                ? patient.getThirdName()
+                                : "",
+                        patient.getLastName() != null
+                                ? patient.getLastName()
+                                : ""
+                ).trim();
+
+                mrn = patient.getMedicalRecordNumber();
+            }
+
+            return DiagnosticOrderTestReportResultsVM.ofEntity(
+                    report,
+                    orderTest.getTestId(),
+
+                    patientName,
+                    mrn,
+
+                    order != null
+                            ? order.getEncounterId()
+                            : null,
+
+                    order != null
+                            ? order.getCreatedBy()
+                            : null,
+
+                    order != null
+                            ? order.getCreatedDate()
+                            : null,
+
+                    hasNote
+            );
+        });
+    }
+
     public List<PacsStudyDTO> getImageLinks(Long reportId) {
 
         LOG.debug("Getting image links for reportId={}", reportId);
@@ -860,4 +1047,73 @@ public class DiagnosticOrderTestReportService {
             );
         });
     }
+    @Transactional(readOnly = true)
+    public List<Long> filterReportIds(
+            Long id,
+            List<Long> orderIdIn,
+            Long orderTestId,
+            Severity severity,
+            String approvedBy,
+            String rejectedBy,
+            String reviewBy,
+            Boolean reviewed,
+            Instant approvedDateFrom,
+            Instant approvedDateTo,
+            Instant rejectedDateFrom,
+            Instant rejectedDateTo,
+            Instant reviewDateFrom,
+            Instant reviewDateTo,
+            List<DiagnosticStatus> processingStatusIn,
+            List<DiagnosticStatus> processingStatusNotIn,
+            List<RadiologyImageStatus> imageStatusIn,
+            List<RadiologyImageStatus> imageStatusNotIn,
+            Instant createdDateFrom,
+            Instant createdDateTo,
+            Instant lastModifiedDateFrom,
+            Instant lastModifiedDateTo,
+            List<Long> fromDepartmentIn,
+            String patientName,
+            String mrn,
+            List<Long> patientIdIn,
+            String orderNumber
+    ) {
+
+        Page<DiagnosticOrderTestReportResponseVM> page =
+                filterReports(
+                        id,
+                        orderIdIn,
+                        orderTestId,
+                        severity,
+                        approvedBy,
+                        rejectedBy,
+                        reviewBy,
+                        reviewed,
+                        approvedDateFrom,
+                        approvedDateTo,
+                        rejectedDateFrom,
+                        rejectedDateTo,
+                        reviewDateFrom,
+                        reviewDateTo,
+                        processingStatusIn,
+                        processingStatusNotIn,
+                        imageStatusIn,
+                        imageStatusNotIn,
+                        createdDateFrom,
+                        createdDateTo,
+                        lastModifiedDateFrom,
+                        lastModifiedDateTo,
+                        fromDepartmentIn,
+                        patientName,
+                        mrn,
+                        patientIdIn,
+                        orderNumber,
+                        Pageable.unpaged()
+                );
+
+        return page.getContent()
+                .stream()
+                .map(DiagnosticOrderTestReportResponseVM::id)
+                .toList();
+    }
+
 }

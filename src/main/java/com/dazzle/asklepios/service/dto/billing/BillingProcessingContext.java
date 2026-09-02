@@ -7,6 +7,7 @@ import com.dazzle.asklepios.domain.BillingPricingSnapshot;
 import com.dazzle.asklepios.domain.BillingReservation;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
+import com.dazzle.asklepios.service.VisitMaxLimitTracker;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
@@ -45,6 +46,12 @@ public class BillingProcessingContext {
     private BillingPricingInput pricingInput;
 
     private PriceCalculationResult pricingResult;
+
+    /**
+     * Optional running visit max-limit pool. When set, insurance splits consume
+     * the remaining visit cap instead of applying maxLimit per service.
+     */
+    private VisitMaxLimitTracker visitMaxLimitTracker;
 
     @Builder.Default
     private BigDecimal patientResponsibilityAmount =

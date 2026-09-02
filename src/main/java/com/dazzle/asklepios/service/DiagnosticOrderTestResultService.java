@@ -35,6 +35,7 @@ import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.service.helper.UserDepartmentHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.laboratory.DiagnosticOrderTestResultResponseVM;
+import com.dazzle.asklepios.web.rest.vm.laboratory.DiagnosticOrderTestResultResultsVM;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,8 +44,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import jakarta.persistence.criteria.Predicate;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -390,6 +392,209 @@ public class DiagnosticOrderTestResultService {
 
             return DiagnosticOrderTestResultResponseVM
                     .ofEntityWithViewNote(result, viewMarker, viewNormalRange, hasNote);
+        });
+    }
+    @Transactional(readOnly = true)
+    public List<Long> resultFilterIds(
+            Specification<DiagnosticOrderTestResult> specification
+    ) {
+
+        return diagnosticOrderTestResultRepository
+                .findAll(specification)
+                .stream()
+                .map(DiagnosticOrderTestResult::getId)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Page<DiagnosticOrderTestResultResultsVM> resultsPage(
+            Specification<DiagnosticOrderTestResult> spec,
+            Pageable pageable
+    ) {
+
+        Page<DiagnosticOrderTestResult> page =
+                diagnosticOrderTestResultRepository.findAll(spec, pageable);
+
+        return page.map(result -> {
+
+            // =====================================================
+            // ORDER TEST
+            // =====================================================
+
+            DiagnosticOrderTest orderTest =
+                    diagnosticOrderTestRepository
+                            .findById(result.getOrderTestId())
+                            .orElse(null);
+
+            if (orderTest == null) {
+                return new DiagnosticOrderTestResultResultsVM(
+                        result.getId(),
+                        result.getOrderTestId(),
+                        null,
+                        result.getProfileTestId(),
+
+                        result.getResultValueNumber(),
+                        result.getResultValueText(),
+
+                        result.getMarker(),
+                        result.getMarker(),
+                        result.getNormalRangeValue(),
+
+                        result.getCreatedDate(),
+
+                        null,
+                        null,
+
+                        result.getCreatedBy(),
+                        result.getCreatedDate(),
+
+                        null,
+
+                        diagnosticOrderTestResultTechnicianNoteRepository
+                                .existsByResultId(result.getId()),
+
+                        false
+                );
+            }
+
+            // =====================================================
+            // ORDER
+            // =====================================================
+
+            DiagnosticOrder order =
+                    diagnosticOrderRepository
+                            .findById(orderTest.getOrderId())
+                            .orElse(null);
+
+            // =====================================================
+            // PATIENT
+            // =====================================================
+
+            Patient patient = null;
+
+            if (order != null && order.getPatientId() != null) {
+                patient = patientRepository
+                        .findById(order.getPatientId())
+                        .orElse(null);
+            }
+
+            String patientName = null;
+            String mrn = null;
+
+            if (patient != null) {
+
+                patientName = String.join(
+                        " ",
+                        patient.getFirstName() != null
+                                ? patient.getFirstName()
+                                : "",
+                        patient.getSecondName() != null
+                                ? patient.getSecondName()
+                                : "",
+                        patient.getThirdName() != null
+                                ? patient.getThirdName()
+                                : "",
+                        patient.getLastName() != null
+                                ? patient.getLastName()
+                                : ""
+                ).trim();
+
+                mrn = patient.getMedicalRecordNumber();
+            }
+
+            // =====================================================
+            // VIEW MARKER / NORMAL RANGE
+            // =====================================================
+
+            TestResultMarker viewMarker = result.getMarker();
+            String viewNormalRange = result.getNormalRangeValue();
+
+            TestResultType resultType = null;
+
+            try {
+
+                resultType =
+                        diagnosticTestProfileClient
+                                .getResultTypeByProfileTestIdInternal(
+                                        result.getProfileTestId()
+                                );
+
+            } catch (Exception ignored) {
+
+                LOG.warn(
+                        "ResultType fetch failed for Results page. profileTestId={}",
+                        result.getProfileTestId()
+                );
+            }
+
+            if (patient != null && resultType != null) {
+
+                NormalRangeMatchDTO best =
+                        normalRangeMatcherService.findBestNormalRange(
+                                result.getProfileTestId(),
+                                patient.getId()
+                        );
+
+                viewMarker =
+                        NormalRangeMatcherService.calculateMarker(
+                                resultType,
+                                result.getResultValueNumber(),
+                                result.getResultValueText(),
+                                best
+                        );
+
+                viewNormalRange =
+                        buildViewNormalRange(best);
+            }
+
+            // =====================================================
+            // NOTE
+            // =====================================================
+
+            boolean hasNote =
+                    diagnosticOrderTestResultTechnicianNoteRepository
+                            .existsByResultId(result.getId());
+
+            // =====================================================
+            // RESULTS PAGE VM
+            // =====================================================
+
+            return new DiagnosticOrderTestResultResultsVM(
+
+                    result.getId(),
+                    result.getOrderTestId(),
+
+                    orderTest.getTestId(),
+                    result.getProfileTestId(),
+
+                    result.getResultValueNumber(),
+                    result.getResultValueText(),
+
+                    result.getMarker(),
+                    viewMarker,
+                    viewNormalRange,
+
+                    result.getCreatedDate(),
+
+                    patientName,
+                    mrn,
+
+                    order != null
+                            ? order.getCreatedBy()
+                            : result.getCreatedBy(),
+
+                    order != null
+                            ? order.getCreatedDate()
+                            : result.getCreatedDate(),
+
+                    order != null
+                            ? order.getEncounterId()
+                            : null,
+
+                    hasNote,
+
+                    isRadiologyTest(orderTest)
+            );
         });
     }
 
@@ -762,5 +967,317 @@ public class DiagnosticOrderTestResultService {
             return false;
         }
         return Severity.SEVERE == report.getSeverity() || Severity.CRITICAL == report.getSeverity();
+    }
+    public Specification<DiagnosticOrderTestResult> buildResultSpecification(
+            List<Long> orderIdInFilter,
+            Long orderTestIdFilter,
+            Long profileTestIdFilter,
+            List<TestResultMarker> markerInFilter,
+            List<TestResultMarker> excludeMarkerInFilter,
+            DiagnosticStatus processingStatusFilter,
+            String approvedByFilter,
+            String rejectedByFilter,
+            String reviewByFilter,
+            Instant approvedDateFromFilter,
+            Instant approvedDateToFilter,
+            Instant rejectedDateFromFilter,
+            Instant rejectedDateToFilter,
+            Instant reviewDateFromFilter,
+            Instant reviewDateToFilter,
+            Boolean reviewed,
+            List<Long> fromDepartmentIn,
+            String patientName,
+            String mrn,
+            List<Long> patientIdIn,
+            String orderNumber
+    ) {
+
+        return (testResultRoot, criteriaQuery, criteriaBuilder) -> {
+
+            List<Predicate> predicates = new ArrayList<>();
+
+            boolean needOrderIdFilter =
+                    orderIdInFilter != null && !orderIdInFilter.isEmpty();
+
+            boolean needOrderFilter =
+                    fromDepartmentIn != null && !fromDepartmentIn.isEmpty();
+
+            boolean needOrderNumberFilter =
+                    orderNumber != null;
+
+            boolean needPatientIdFilter =
+                    patientIdIn != null && !patientIdIn.isEmpty();
+
+            boolean needPatientFilter =
+                    (patientName != null && !patientName.isBlank()) ||
+                            (mrn != null && !mrn.isBlank());
+
+            boolean needSubquery =
+                    needOrderIdFilter ||
+                            needOrderFilter ||
+                            needOrderNumberFilter ||
+                            needPatientIdFilter ||
+                            needPatientFilter;
+
+            if (needSubquery) {
+
+                var subQuery = criteriaQuery.subquery(Long.class);
+
+                var testRoot = subQuery.from(DiagnosticOrderTest.class);
+                var orderRoot = subQuery.from(DiagnosticOrder.class);
+
+                List<Predicate> subPredicates = new ArrayList<>();
+
+                subPredicates.add(criteriaBuilder.equal(
+                        testRoot.get("id"),
+                        testResultRoot.get("orderTestId")
+                ));
+
+                subPredicates.add(criteriaBuilder.equal(
+                        orderRoot.get("id"),
+                        testRoot.get("orderId")
+                ));
+
+                if (needOrderIdFilter) {
+                    subPredicates.add(orderRoot.get("id").in(orderIdInFilter));
+                }
+
+                if (needOrderFilter) {
+                    subPredicates.add(
+                            orderRoot.get("fromDepartmentId")
+                                    .in(fromDepartmentIn)
+                    );
+                }
+
+                if (needOrderNumberFilter &&
+                        orderNumber != null &&
+                        !orderNumber.isBlank()) {
+
+                    subPredicates.add(
+                            criteriaBuilder.like(
+                                    criteriaBuilder.lower(
+                                            orderRoot.get("orderNumber")
+                                    ),
+                                    "%" + orderNumber
+                                            .trim()
+                                            .toLowerCase() + "%"
+                            )
+                    );
+                }
+
+                if (needPatientIdFilter) {
+                    subPredicates.add(
+                            orderRoot.get("patientId")
+                                    .in(patientIdIn)
+                    );
+                }
+
+                if (needPatientFilter) {
+
+                    var patientRoot = subQuery.from(Patient.class);
+
+                    subPredicates.add(criteriaBuilder.equal(
+                            patientRoot.get("id"),
+                            orderRoot.get("patientId")
+                    ));
+
+                    if (mrn != null && !mrn.isBlank()) {
+
+                        subPredicates.add(
+                                criteriaBuilder.like(
+                                        criteriaBuilder.lower(
+                                                patientRoot.get(
+                                                        "medicalRecordNumber"
+                                                )
+                                        ),
+                                        "%" + mrn.trim().toLowerCase() + "%"
+                                )
+                        );
+                    }
+
+                    if (patientName != null &&
+                            !patientName.isBlank()) {
+
+                        String like =
+                                "%" +
+                                        patientName.trim().toLowerCase() +
+                                        "%";
+
+                        subPredicates.add(
+                                criteriaBuilder.or(
+                                        criteriaBuilder.like(
+                                                criteriaBuilder.lower(
+                                                        patientRoot.get("firstName")
+                                                ),
+                                                like
+                                        ),
+                                        criteriaBuilder.like(
+                                                criteriaBuilder.lower(
+                                                        patientRoot.get("secondName")
+                                                ),
+                                                like
+                                        ),
+                                        criteriaBuilder.like(
+                                                criteriaBuilder.lower(
+                                                        patientRoot.get("thirdName")
+                                                ),
+                                                like
+                                        ),
+                                        criteriaBuilder.like(
+                                                criteriaBuilder.lower(
+                                                        patientRoot.get("lastName")
+                                                ),
+                                                like
+                                        )
+                                )
+                        );
+                    }
+                }
+
+                subQuery.select(testRoot.get("id"))
+                        .where(subPredicates.toArray(new Predicate[0]));
+
+                predicates.add(criteriaBuilder.exists(subQuery));
+            }
+
+            if (orderTestIdFilter != null) {
+                predicates.add(criteriaBuilder.equal(
+                        testResultRoot.get("orderTestId"),
+                        orderTestIdFilter
+                ));
+            }
+
+            if (profileTestIdFilter != null) {
+                predicates.add(criteriaBuilder.equal(
+                        testResultRoot.get("profileTestId"),
+                        profileTestIdFilter
+                ));
+            }
+
+            if (processingStatusFilter != null) {
+                predicates.add(criteriaBuilder.equal(
+                        testResultRoot.get("processingStatus"),
+                        processingStatusFilter
+                ));
+            }
+
+            if (markerInFilter != null &&
+                    !markerInFilter.isEmpty()) {
+
+                predicates.add(
+                        testResultRoot.get("marker")
+                                .in(markerInFilter)
+                );
+            }
+
+            if (excludeMarkerInFilter != null &&
+                    !excludeMarkerInFilter.isEmpty()) {
+
+                predicates.add(
+                        criteriaBuilder.not(
+                                testResultRoot.get("marker")
+                                        .in(excludeMarkerInFilter)
+                        )
+                );
+            }
+
+            if (approvedByFilter != null &&
+                    !approvedByFilter.isBlank()) {
+
+                predicates.add(criteriaBuilder.equal(
+                        testResultRoot.get("approvedBy"),
+                        approvedByFilter
+                ));
+            }
+
+            if (rejectedByFilter != null &&
+                    !rejectedByFilter.isBlank()) {
+
+                predicates.add(criteriaBuilder.equal(
+                        testResultRoot.get("rejectedBy"),
+                        rejectedByFilter
+                ));
+            }
+
+            if (reviewByFilter != null &&
+                    !reviewByFilter.isBlank()) {
+
+                predicates.add(criteriaBuilder.equal(
+                        testResultRoot.get("reviewBy"),
+                        reviewByFilter
+                ));
+            }
+
+            if (approvedDateFromFilter != null) {
+                predicates.add(
+                        criteriaBuilder.greaterThanOrEqualTo(
+                                testResultRoot.get("approvedDate"),
+                                approvedDateFromFilter
+                        )
+                );
+            }
+
+            if (approvedDateToFilter != null) {
+                predicates.add(
+                        criteriaBuilder.lessThanOrEqualTo(
+                                testResultRoot.get("approvedDate"),
+                                approvedDateToFilter
+                        )
+                );
+            }
+
+            if (rejectedDateFromFilter != null) {
+                predicates.add(
+                        criteriaBuilder.greaterThanOrEqualTo(
+                                testResultRoot.get("rejectedDate"),
+                                rejectedDateFromFilter
+                        )
+                );
+            }
+
+            if (rejectedDateToFilter != null) {
+                predicates.add(
+                        criteriaBuilder.lessThanOrEqualTo(
+                                testResultRoot.get("rejectedDate"),
+                                rejectedDateToFilter
+                        )
+                );
+            }
+
+            if (reviewDateFromFilter != null) {
+                predicates.add(
+                        criteriaBuilder.greaterThanOrEqualTo(
+                                testResultRoot.get("reviewDate"),
+                                reviewDateFromFilter
+                        )
+                );
+            }
+
+            if (reviewDateToFilter != null) {
+                predicates.add(
+                        criteriaBuilder.lessThanOrEqualTo(
+                                testResultRoot.get("reviewDate"),
+                                reviewDateToFilter
+                        )
+                );
+            }
+
+            if (reviewed != null) {
+
+                predicates.add(
+                        reviewed
+                                ? criteriaBuilder.isNotNull(
+                                testResultRoot.get("reviewDate")
+                        )
+                                : criteriaBuilder.isNull(
+                                testResultRoot.get("reviewDate")
+                        )
+                );
+            }
+
+            return criteriaBuilder.and(
+                    predicates.toArray(new Predicate[0])
+            );
+        };
     }
 }

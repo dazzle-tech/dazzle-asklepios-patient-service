@@ -79,6 +79,7 @@ public class DefaultServicePreparationService {
     private final EncounterTreatmentAdvanceService encounterTreatmentAdvanceService;
     private final PatientItemPricingApplicationService patientItemPricingApplicationService;
     private final InsurancePriceListCoverageService insurancePriceListCoverageService;
+    private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
 
     /**
      * Creates/reuses selected default-service PSP records and sends each one
@@ -107,13 +108,32 @@ public class DefaultServicePreparationService {
                 insurance == null ? null : insurance.getId()
         );
 
+        boolean skipDefaultServices =
+                followUpReviewDefaultServicePolicy.shouldSkipDefaultServices(
+                        encounter
+                );
+
+        if (skipDefaultServices) {
+            LOG.info(
+                    "[PREPARE_DEFAULT_SERVICES] Skipping default services for "
+                            + "follow-up review within {} days. encounterId={} previousEncounterId={}",
+                    FollowUpReviewDefaultServicePolicy.REVIEW_WINDOW_DAYS,
+                    encounterId,
+                    encounter.getFollowUpEncounter() == null
+                            ? null
+                            : encounter.getFollowUpEncounter().getId()
+            );
+        }
+
         List<PrepareDefaultServiceItem> orderedItems =
-                request.items()
-                        .stream()
-                        .sorted(Comparator.comparing(
-                                PrepareDefaultServiceItem::sequence
-                        ))
-                        .toList();
+                skipDefaultServices
+                        ? List.of()
+                        : request.items()
+                                .stream()
+                                .sorted(Comparator.comparing(
+                                        PrepareDefaultServiceItem::sequence
+                                ))
+                                .toList();
 
         if (request.coverageType() == BillingCoverageType.INSURANCE) {
             List<InsurancePriceListCoverageCheckResult> coverageChecks =
@@ -319,11 +339,13 @@ public class DefaultServicePreparationService {
         );
 
         String message =
-                orderedItems.isEmpty()
-                        ? "Encounter billing completed. No default services to bill."
-                        : processed
-                                ? "Default services prepared successfully."
-                                : "Default services were prepared, but one or more billing rules could not be matched.";
+                skipDefaultServices
+                        ? "Follow-up review within 14 days. Default services were not billed."
+                        : orderedItems.isEmpty()
+                                ? "Encounter billing completed. No default services to bill."
+                                : processed
+                                        ? "Default services prepared successfully."
+                                        : "Default services were prepared, but one or more billing rules could not be matched.";
 
         return new PrepareDefaultServicesResult(
                 request.patientId(),

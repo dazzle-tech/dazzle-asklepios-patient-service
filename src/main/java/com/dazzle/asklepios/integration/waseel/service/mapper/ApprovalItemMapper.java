@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.integration.waseel.service.mapper;
 
+import com.dazzle.asklepios.client.setup.PriceListSetupItemClient;
+import com.dazzle.asklepios.client.setup.dto.PriceListItemWaseelCodesDTO;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
@@ -19,7 +21,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -31,6 +35,7 @@ public class ApprovalItemMapper {
     private static final String OUTPATIENT_QUANTITY_CODE = "package";
 
     private final WaseelItemMappingClient waseelItemMappingClient;
+    private final PriceListSetupItemClient priceListSetupItemClient;
     private final PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository;
     private final PatientDiagnosisRepository patientDiagnosisRepository;
     private final MedicationDaysSupplyResolver medicationDaysSupplyResolver;
@@ -77,6 +82,8 @@ public class ApprovalItemMapper {
 
         AtomicInteger supportingInfoSequence = new AtomicInteger(nextSupportingInfoSequence);
 
+        Map<String, String> nonStandardCodeCache = new HashMap<>();
+
         return items.stream()
                 .filter(item -> includeBilled || Boolean.FALSE.equals(item.getIsBilled()))
                 .map(item -> toWaseelItem(
@@ -86,7 +93,9 @@ public class ApprovalItemMapper {
                         itemDate,
                         supportingInfoSequences,
                         supportingInfo,
-                        supportingInfoSequence
+                        supportingInfoSequence,
+                        encounter,
+                        nonStandardCodeCache
                 ))
                 .toList();
     }
@@ -184,7 +193,9 @@ public class ApprovalItemMapper {
             LocalDate itemDate,
             List<Integer> supportingInfoSequences,
             List<WaseelApprovalSupportingInfo> supportingInfo,
-            AtomicInteger supportingInfoSequence
+            AtomicInteger supportingInfoSequence,
+            PatientEncounter encounter,
+            Map<String, String> nonStandardCodeCache
     ) {
         BillingItemTypes billingType = item.getBillingItemType();
 
@@ -193,7 +204,7 @@ public class ApprovalItemMapper {
 
         WaseelItemMappingSetupDTO mapping = getWaseelMapping(mappingItemType, sourceId);
 
-        String waseelItemType = safe(mapping.waseelItemType());
+        String waseelItemType = resolveWaseelItemType(billingType, mapping.waseelItemType());
 
         List<Integer> itemSupportingInfoSequences = new ArrayList<>(supportingInfoSequences);
 
@@ -215,6 +226,12 @@ public class ApprovalItemMapper {
                 waseelItemType,
                 safe(mapping.sbsCode()),
                 safe(mapping.sbsDescription()),
+                resolveNonStandardCode(
+                        billingType,
+                        sourceId,
+                        encounter,
+                        nonStandardCodeCache
+                ),
                 patientSharePercent,
                 itemDate,
                 itemSupportingInfoSequences,
@@ -228,6 +245,7 @@ public class ApprovalItemMapper {
             String type,
             String itemCode,
             String itemDescription,
+            String nonStandardCode,
             BigDecimal patientSharePercent,
             LocalDate itemDate,
             List<Integer> supportingInfoSequences,
@@ -272,7 +290,7 @@ public class ApprovalItemMapper {
                 WaseelItemTypeNormalizer.normalize(type),
                 emptyToNull(itemCode),
                 emptyToNull(itemDescription),
-                null,
+                emptyToNull(nonStandardCode),
                 null,
                 false,
                 false,
@@ -299,6 +317,44 @@ public class ApprovalItemMapper {
                 null,
                 List.of()
         );
+    }
+
+    private String resolveNonStandardCode(
+            BillingItemTypes billingType,
+            Long sourceId,
+            PatientEncounter encounter,
+            Map<String, String> cache
+    ) {
+        if (billingType == null || sourceId == null) {
+            return null;
+        }
+
+        Long facilityId = encounter == null ? null : encounter.getFacilityId();
+        String cacheKey = billingType.name() + ":" + sourceId + ":" + facilityId;
+
+        if (cache.containsKey(cacheKey)) {
+            return cache.get(cacheKey);
+        }
+
+        String nonStandardCode = null;
+
+        try {
+            PriceListItemWaseelCodesDTO codes =
+                    priceListSetupItemClient.getInsuranceWaseelCodes(
+                            billingType.name(),
+                            sourceId,
+                            facilityId
+                    );
+
+            if (codes != null) {
+                nonStandardCode = emptyToNull(codes.nonStandardCode());
+            }
+        } catch (FeignException ex) {
+            nonStandardCode = null;
+        }
+
+        cache.put(cacheKey, nonStandardCode);
+        return nonStandardCode;
     }
 
     private Integer addDaysSupply(
@@ -404,8 +460,36 @@ public class ApprovalItemMapper {
         return WaseelFactorFormatter.format(BigDecimal.ONE.subtract(discountPercent));
     }
 
+    /**
+     * Waseel item {@code type} must follow the billed item (price-list / PSP),
+     * not the SBS catalog category. Catalog type is only used for medications
+     * where NPHIES distinguishes medication-codes / herbal / nutrition.
+     */
+    private String resolveWaseelItemType(
+            BillingItemTypes billingType,
+            String catalogWaseelItemType
+    ) {
+        if (billingType == BillingItemTypes.MEDICATION) {
+            String fromCatalog = WaseelItemTypeNormalizer.normalize(catalogWaseelItemType);
+            if (fromCatalog != null && !fromCatalog.isBlank()) {
+                return fromCatalog;
+            }
+            return "MEDICATION-CODES";
+        }
+
+        return switch (billingType) {
+            case PROCEDURE -> "PROCEDURES";
+            case SERVICE -> "SERVICES";
+            case RADIOLOGY -> "IMAGING";
+            case LABORATORY, PATHOLOGY -> "LABORATORY";
+            default -> WaseelItemTypeNormalizer.normalize(catalogWaseelItemType);
+        };
+    }
+
     private boolean isMedicationCode(String waseelItemType) {
-        return WASEEL_MEDICATION_CODES.equalsIgnoreCase(waseelItemType);
+        String normalized = WaseelItemTypeNormalizer.normalize(waseelItemType);
+        return WASEEL_MEDICATION_CODES.equalsIgnoreCase(waseelItemType)
+                || "MEDICATION-CODES".equalsIgnoreCase(normalized);
     }
 
     private WaseelItemMappingSetupDTO getWaseelMapping(String itemType, Long sourceId) {

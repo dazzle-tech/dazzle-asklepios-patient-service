@@ -15,6 +15,7 @@ import com.dazzle.asklepios.service.dto.radiology.PacsStudyDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportImageStatusLogResponseVM;
 import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportResponseVM;
+import com.dazzle.asklepios.web.rest.vm.radiology.DiagnosticOrderTestReportResultsVM;
 import com.dazzle.asklepios.web.rest.vm.radiology.RadiologyImageStatusResponseVM;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -171,6 +172,34 @@ public class DiagnosticOrderTestReportController {
         );
     }
 
+    @GetMapping("/radiology/reports/results")
+    public ResponseEntity<List<DiagnosticOrderTestReportResultsVM>> filterReportResults(
+            @RequestParam(name = "patientId", required = false) Long patientId,
+            @RequestParam(name = "fromDate", required = false) Instant fromDate,
+            @RequestParam(name = "toDate", required = false) Instant toDate,
+            @ParameterObject Pageable pageable
+    ) {
+
+        Page<DiagnosticOrderTestReportResultsVM> page =
+                reportService.filterReportResults(
+                        patientId,
+                        fromDate,
+                        toDate,
+                        pageable
+                );
+
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                page
+        );
+
+        return new ResponseEntity<>(
+                page.getContent(),
+                headers,
+                HttpStatus.OK
+        );
+    }
+
     @PostMapping("/radiology/reports")
     public ResponseEntity<DiagnosticOrderTestReportResponseVM> create(@Valid @RequestBody DiagnosticOrderTestReportCreateDTO orderTestReportCreateDTO) {
         LOG.debug("[RadiologyReport] CREATE payload={}", orderTestReportCreateDTO);
@@ -303,6 +332,122 @@ public class DiagnosticOrderTestReportController {
     ) {
         return ResponseEntity.ok(
                 reportService.getImageLinks(id)
+        );
+    }
+    @GetMapping("/radiology/reports/ids")
+    public ResponseEntity<List<Long>> filterReportIds(
+            @RequestParam(name = "id", required = false)
+            Long id,
+
+            @RequestParam(name = "orderIdIn", required = false)
+            List<Long> orderIdIn,
+
+            @RequestParam(name = "orderTestId", required = false)
+            Long orderTestId,
+
+            @RequestParam(name = "severity", required = false)
+            Severity severity,
+
+            @RequestParam(name = "approvedBy", required = false)
+            String approvedBy,
+
+            @RequestParam(name = "rejectedBy", required = false)
+            String rejectedBy,
+
+            @RequestParam(name = "reviewBy", required = false)
+            String reviewBy,
+
+            @RequestParam(name = "reviewed", required = false)
+            Boolean reviewed,
+
+            @RequestParam(name = "approvedDateFrom", required = false)
+            Instant approvedDateFrom,
+
+            @RequestParam(name = "approvedDateTo", required = false)
+            Instant approvedDateTo,
+
+            @RequestParam(name = "rejectedDateFrom", required = false)
+            Instant rejectedDateFrom,
+
+            @RequestParam(name = "rejectedDateTo", required = false)
+            Instant rejectedDateTo,
+
+            @RequestParam(name = "reviewDateFrom", required = false)
+            Instant reviewDateFrom,
+
+            @RequestParam(name = "reviewDateTo", required = false)
+            Instant reviewDateTo,
+
+            @RequestParam(name = "processingStatusIn", required = false)
+            List<DiagnosticStatus> processingStatusIn,
+
+            @RequestParam(name = "processingStatusNotIn", required = false)
+            List<DiagnosticStatus> processingStatusNotIn,
+
+            @RequestParam(name = "imageStatusIn", required = false)
+            List<RadiologyImageStatus> imageStatusIn,
+
+            @RequestParam(name = "imageStatusNotIn", required = false)
+            List<RadiologyImageStatus> imageStatusNotIn,
+
+            @RequestParam(name = "createdDateFrom", required = false)
+            Instant createdDateFrom,
+
+            @RequestParam(name = "createdDateTo", required = false)
+            Instant createdDateTo,
+
+            @RequestParam(name = "lastModifiedDateFrom", required = false)
+            Instant lastModifiedDateFrom,
+
+            @RequestParam(name = "lastModifiedDateTo", required = false)
+            Instant lastModifiedDateTo,
+
+            @RequestParam(name = "fromDepartmentIn", required = false)
+            List<Long> fromDepartmentIn,
+
+            @RequestParam(name = "patientName", required = false)
+            String patientName,
+
+            @RequestParam(name = "mrn", required = false)
+            String mrn,
+
+            @RequestParam(name = "patientIdIn", required = false)
+            List<Long> patientIdIn,
+
+            @RequestParam(name = "orderNumber", required = false)
+            String orderNumber
+    ) {
+
+        return ResponseEntity.ok(
+                reportService.filterReportIds(
+                        id,
+                        orderIdIn,
+                        orderTestId,
+                        severity,
+                        approvedBy,
+                        rejectedBy,
+                        reviewBy,
+                        reviewed,
+                        approvedDateFrom,
+                        approvedDateTo,
+                        rejectedDateFrom,
+                        rejectedDateTo,
+                        reviewDateFrom,
+                        reviewDateTo,
+                        processingStatusIn,
+                        processingStatusNotIn,
+                        imageStatusIn,
+                        imageStatusNotIn,
+                        createdDateFrom,
+                        createdDateTo,
+                        lastModifiedDateFrom,
+                        lastModifiedDateTo,
+                        fromDepartmentIn,
+                        patientName,
+                        mrn,
+                        patientIdIn,
+                        orderNumber
+                )
         );
     }
 }

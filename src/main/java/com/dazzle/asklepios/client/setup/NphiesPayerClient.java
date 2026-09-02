@@ -15,6 +15,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 )
 public interface NphiesPayerClient {
 
+    @GetMapping("/api/setup/nphies-payers/{id}")
+    NphiesPayerDTO getNphiesPayerById(@PathVariable("id") Long id);
+
     @GetMapping("/api/setup/nphies-payers/by-nphies-id/{nphiesId}")
     List<NphiesPayerDTO> getNphiesPayersByNphiesId(
             @PathVariable("nphiesId") String nphiesId,

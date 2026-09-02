@@ -86,10 +86,16 @@ public class CatalogItemPricingPreviewService {
         );
         PatientInsurance insurance = resolveInsurance(request, encounter);
 
+        boolean insuranceVisit = insurance != null;
+        boolean eligibilityInForce =
+                insuranceVisit
+                        && insurancePatientShareCalculator.isLatestCoverageInForce(
+                                insurance
+                        );
         BillingCoverageType coverageType =
-                insurance == null
-                        ? BillingCoverageType.SELF_PAY
-                        : BillingCoverageType.INSURANCE;
+                insuranceVisit && eligibilityInForce
+                        ? BillingCoverageType.INSURANCE
+                        : BillingCoverageType.SELF_PAY;
 
         PatientServiceAndProduct previewItem =
                 buildPreviewItem(
@@ -106,17 +112,25 @@ public class CatalogItemPricingPreviewService {
                         coverageType
                 );
 
-        boolean insuranceVisit = insurance != null;
         boolean coveredByInsurance =
-                !insuranceVisit || resolvedPrice.resolvedFromPriceList();
+                insuranceVisit
+                        && eligibilityInForce
+                        && resolvedPrice.resolvedFromPriceList();
         boolean requiresCashConfirmation = insuranceVisit && !coveredByInsurance;
+        String notCoveredReason = null;
 
         if (requiresCashConfirmation) {
-            resolvedPrice = billingEngineService.resolvePricing(
-                    previewItem,
-                    request.facilityId(),
-                    BillingCoverageType.SELF_PAY
-            );
+            notCoveredReason = eligibilityInForce
+                    ? InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST
+                    : InsurancePriceListCoverageService.ELIGIBILITY_NOT_IN_FORCE;
+
+            if (coverageType != BillingCoverageType.SELF_PAY) {
+                resolvedPrice = billingEngineService.resolvePricing(
+                        previewItem,
+                        request.facilityId(),
+                        BillingCoverageType.SELF_PAY
+                );
+            }
         }
 
         BillingPricingInput pricingInput =
@@ -232,9 +246,7 @@ public class CatalogItemPricingPreviewService {
                 insuranceVisit,
                 coveredByInsurance,
                 requiresCashConfirmation,
-                requiresCashConfirmation
-                        ? InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST
-                        : null,
+                notCoveredReason,
                 requiresCashConfirmation ? resolvedPrice.unitPrice() : null
         );
     }

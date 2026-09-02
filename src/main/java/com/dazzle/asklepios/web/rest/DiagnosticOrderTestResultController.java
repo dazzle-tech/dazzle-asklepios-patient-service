@@ -20,6 +20,7 @@ import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.Re
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.laboratory.DiagnosticOrderTestResultResponseVM;
+import com.dazzle.asklepios.web.rest.vm.laboratory.DiagnosticOrderTestResultResultsVM;
 import com.dazzle.asklepios.web.rest.vm.laboratory.LabResultLogResponseVM;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.validation.Valid;
@@ -583,6 +584,102 @@ public class DiagnosticOrderTestResultController {
 
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
+
+    @GetMapping("/diagnostic-order-tests-results/ids")
+    public ResponseEntity<List<Long>> filterIds(
+            @RequestParam(name = "orderIdIn", required = false)
+            List<Long> orderIdInFilter,
+
+            @RequestParam(name = "orderTestId", required = false)
+            Long orderTestIdFilter,
+
+            @RequestParam(name = "profileTestId", required = false)
+            Long profileTestIdFilter,
+
+            @RequestParam(name = "markerIn", required = false)
+            List<TestResultMarker> markerInFilter,
+
+            @RequestParam(name = "excludeMarkerIn", required = false)
+            List<TestResultMarker> excludeMarkerInFilter,
+
+            @RequestParam(name = "processingStatus", required = false)
+            DiagnosticStatus processingStatusFilter,
+
+            @RequestParam(name = "approvedBy", required = false)
+            String approvedByFilter,
+
+            @RequestParam(name = "rejectedBy", required = false)
+            String rejectedByFilter,
+
+            @RequestParam(name = "reviewBy", required = false)
+            String reviewByFilter,
+
+            @RequestParam(name = "approvedDateFrom", required = false)
+            Instant approvedDateFromFilter,
+
+            @RequestParam(name = "approvedDateTo", required = false)
+            Instant approvedDateToFilter,
+
+            @RequestParam(name = "rejectedDateFrom", required = false)
+            Instant rejectedDateFromFilter,
+
+            @RequestParam(name = "rejectedDateTo", required = false)
+            Instant rejectedDateToFilter,
+
+            @RequestParam(name = "reviewDateFrom", required = false)
+            Instant reviewDateFromFilter,
+
+            @RequestParam(name = "reviewDateTo", required = false)
+            Instant reviewDateToFilter,
+
+            @RequestParam(name = "reviewed", required = false)
+            Boolean reviewed,
+
+            @RequestParam(name = "fromDepartmentIn", required = false)
+            List<Long> fromDepartmentIn,
+
+            @RequestParam(name = "patientName", required = false)
+            String patientName,
+
+            @RequestParam(name = "mrn", required = false)
+            String mrn,
+
+            @RequestParam(name = "patientIdIn", required = false)
+            List<Long> patientIdIn,
+
+            @RequestParam(name = "orderNumber", required = false)
+            String orderNumber
+    ) {
+
+        Specification<DiagnosticOrderTestResult> specification =
+                service.buildResultSpecification(
+                        orderIdInFilter,
+                        orderTestIdFilter,
+                        profileTestIdFilter,
+                        markerInFilter,
+                        excludeMarkerInFilter,
+                        processingStatusFilter,
+                        approvedByFilter,
+                        rejectedByFilter,
+                        reviewByFilter,
+                        approvedDateFromFilter,
+                        approvedDateToFilter,
+                        rejectedDateFromFilter,
+                        rejectedDateToFilter,
+                        reviewDateFromFilter,
+                        reviewDateToFilter,
+                        reviewed,
+                        fromDepartmentIn,
+                        patientName,
+                        mrn,
+                        patientIdIn,
+                        orderNumber
+                );
+
+        return ResponseEntity.ok(
+                service.resultFilterIds(specification)
+        );
+    }
     // =========================================================
     // INTERNAL ENDPOINTS
     // =========================================================
@@ -614,6 +711,181 @@ public class DiagnosticOrderTestResultController {
     ) {
         return ResponseEntity.ok(
                 service.findFilledProfileTestIdsByOrderTest(orderTestIds)
+        );
+    }
+
+    @GetMapping("/diagnostic-order-tests-results/results-page")
+    public ResponseEntity<List<DiagnosticOrderTestResultResultsVM>> getResultsPage(
+
+            @RequestParam(name = "resultDateFrom", required = false)
+            Instant resultDateFrom,
+
+            @RequestParam(name = "resultDateTo", required = false)
+            Instant resultDateTo,
+
+            @RequestParam(name = "showAbnormalOnly", required = false)
+            Boolean showAbnormalOnly,
+
+            @ParameterObject Pageable pageable
+    ) {
+
+        Specification<DiagnosticOrderTestResult> resultSpecification =
+                (testResultRoot, criteriaQuery, criteriaBuilder) -> {
+
+                    List<Predicate> predicates = new ArrayList<>();
+
+                    // =====================================================
+                    // RESULT DATE FROM
+                    // =====================================================
+
+                    if (resultDateFrom != null) {
+
+                        predicates.add(
+                                criteriaBuilder.greaterThanOrEqualTo(
+                                        testResultRoot.get("createdDate"),
+                                        resultDateFrom
+                                )
+                        );
+                    }
+
+                    // =====================================================
+                    // RESULT DATE TO
+                    // =====================================================
+
+                    if (resultDateTo != null) {
+
+                        predicates.add(
+                                criteriaBuilder.lessThanOrEqualTo(
+                                        testResultRoot.get("createdDate"),
+                                        resultDateTo
+                                )
+                        );
+                    }
+
+                    // =====================================================
+                    // SHOW ABNORMAL ONLY
+                    // =====================================================
+
+                    if (Boolean.TRUE.equals(showAbnormalOnly)) {
+
+                        predicates.add(
+                                testResultRoot.get("marker").in(
+                                        TestResultMarker.UPPER_LIMIT,
+                                        TestResultMarker.LOWER_LIMIT,
+                                        TestResultMarker.ABNORMAL_MARKER,
+                                        TestResultMarker.CRITICAL_UPPER,
+                                        TestResultMarker.CRITICAL_LOWER
+                                )
+                        );
+                    }
+
+                    return criteriaBuilder.and(
+                            predicates.toArray(new Predicate[0])
+                    );
+                };
+
+        Page<DiagnosticOrderTestResultResultsVM> page =
+                service.resultsPage(
+                        resultSpecification,
+                        pageable
+                );
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        return new ResponseEntity<>(
+                page.getContent(),
+                headers,
+                HttpStatus.OK
+        );
+    }
+
+    @GetMapping("/diagnostic-order-tests-results/all")
+    public ResponseEntity<List<DiagnosticOrderTestResultResponseVM>> getAllTestResults(
+
+            @RequestParam(name = "resultDateFrom", required = false)
+            Instant resultDateFrom,
+
+            @RequestParam(name = "resultDateTo", required = false)
+            Instant resultDateTo,
+
+            @RequestParam(name = "showAbnormalOnly", required = false)
+            Boolean showAbnormalOnly,
+
+            @ParameterObject Pageable pageable
+    ) {
+
+        Specification<DiagnosticOrderTestResult> resultSpecification =
+                (testResultRoot, criteriaQuery, criteriaBuilder) -> {
+
+                    List<Predicate> predicates = new ArrayList<>();
+
+                    // =====================================================
+                    // RESULT DATE FROM
+                    // =====================================================
+
+                    if (resultDateFrom != null) {
+                        predicates.add(
+                                criteriaBuilder.greaterThanOrEqualTo(
+                                        testResultRoot.get("createdDate"),
+                                        resultDateFrom
+                                )
+                        );
+                    }
+
+                    // =====================================================
+                    // RESULT DATE TO
+                    // =====================================================
+
+                    if (resultDateTo != null) {
+                        predicates.add(
+                                criteriaBuilder.lessThanOrEqualTo(
+                                        testResultRoot.get("createdDate"),
+                                        resultDateTo
+                                )
+                        );
+                    }
+
+                    // =====================================================
+                    // SHOW ABNORMAL ONLY
+                    // =====================================================
+
+                    if (Boolean.TRUE.equals(showAbnormalOnly)) {
+                        predicates.add(
+                                testResultRoot.get("marker").in(
+                                        TestResultMarker.UPPER_LIMIT,
+                                        TestResultMarker.LOWER_LIMIT,
+                                        TestResultMarker.ABNORMAL_MARKER,
+                                        TestResultMarker.CRITICAL_UPPER,
+                                        TestResultMarker.CRITICAL_LOWER
+                                )
+                        );
+                    }
+
+                    return criteriaBuilder.and(
+                            predicates.toArray(new Predicate[0])
+                    );
+                };
+
+        Page<DiagnosticOrderTestResultResponseVM> page =
+                service.resultFilter(
+                        resultSpecification,
+                        pageable
+                );
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        return new ResponseEntity<>(
+                page.getContent(),
+                headers,
+                HttpStatus.OK
         );
     }
 

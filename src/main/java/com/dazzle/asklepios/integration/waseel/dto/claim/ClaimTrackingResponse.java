@@ -1,6 +1,8 @@
 package com.dazzle.asklepios.integration.waseel.dto.claim;
 
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimSubType;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimType;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -13,6 +15,8 @@ public record ClaimTrackingResponse(
         Long financialDocumentId,
         Long preAuthorizationId,
         Long patientInsuranceId,
+        WaseelClaimType claimType,
+        WaseelClaimSubType claimSubType,
         String uploadName,
         Long uploadId,
         String provClaimNo,
