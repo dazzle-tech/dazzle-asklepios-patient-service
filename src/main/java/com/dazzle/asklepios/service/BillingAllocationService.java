@@ -1796,20 +1796,22 @@ public class BillingAllocationService {
                 patientRemaining
         );
 
-        if (patientRemaining.signum() == 0) {
-            item.setPaymentStatus(
-                    PaymentStatus.PAID
-            );
+        if (!isCancelledPaymentStatus(item)) {
+            if (patientRemaining.signum() == 0) {
+                item.setPaymentStatus(
+                        PaymentStatus.PAID
+                );
 
-        } else if (patientPaid.signum() > 0) {
-            item.setPaymentStatus(
-                    PaymentStatus.PARTIALLY_PAID
-            );
+            } else if (patientPaid.signum() > 0) {
+                item.setPaymentStatus(
+                        PaymentStatus.PARTIALLY_PAID
+                );
 
-        } else {
-            item.setPaymentStatus(
-                    PaymentStatus.PENDING
-            );
+            } else {
+                item.setPaymentStatus(
+                        PaymentStatus.PENDING
+                );
+            }
         }
 
         patientServiceAndProductRepository.save(
@@ -1839,25 +1841,34 @@ public class BillingAllocationService {
                 patientRemaining
         );
 
-        if (patientPaid.signum() == 0) {
-            item.setPaymentStatus(
-                    PaymentStatus.PENDING
-            );
+        if (!isCancelledPaymentStatus(item)) {
+            if (patientPaid.signum() == 0) {
+                item.setPaymentStatus(
+                        PaymentStatus.PENDING
+                );
 
-        } else if (patientRemaining.signum() == 0) {
-            item.setPaymentStatus(
-                    PaymentStatus.PAID
-            );
+            } else if (patientRemaining.signum() == 0) {
+                item.setPaymentStatus(
+                        PaymentStatus.PAID
+                );
 
-        } else {
-            item.setPaymentStatus(
-                    PaymentStatus.PARTIALLY_PAID
-            );
+            } else {
+                item.setPaymentStatus(
+                        PaymentStatus.PARTIALLY_PAID
+                );
+            }
         }
 
         patientServiceAndProductRepository.save(
                 item
         );
+    }
+
+    private boolean isCancelledPaymentStatus(
+            PatientServiceAndProduct item
+    ) {
+        return item != null
+                && item.getPaymentStatus() == PaymentStatus.CANCELLED;
     }
 
     /*
