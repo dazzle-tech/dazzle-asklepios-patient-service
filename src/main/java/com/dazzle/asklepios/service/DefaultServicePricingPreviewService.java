@@ -62,7 +62,7 @@ public class DefaultServicePricingPreviewService {
     private final EncounterCoverageService encounterCoverageService;
     private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
 
-    @Transactional
+    @Transactional(readOnly = true)
     public PreviewDefaultServicesPricingResult preview(
             Long encounterId,
             PreviewDefaultServicesPricingRequest request
@@ -75,35 +75,27 @@ public class DefaultServicePricingPreviewService {
                 request,
                 patient
         );
+        BillingCoverageType coverageType = request.coverageType();
         PatientInsurance insurance = resolveInsurance(request);
+        if (coverageType == BillingCoverageType.SELF_PAY) {
+            PatientInsurance linkedInsurance =
+                    encounterCoverageService.findLinkedInsurance(encounter);
+            if (linkedInsurance != null) {
+                LOG.warn(
+                        "[PREVIEW_PRICING] Request sent SELF_PAY but encounter already has insurance. "
+                                + "Using stored coverage. encounterId={} patientInsuranceId={}",
+                        encounterId,
+                        linkedInsurance.getId()
+                );
+                coverageType = BillingCoverageType.INSURANCE;
+                insurance = linkedInsurance;
+            }
+        }
 
         VisitMaxLimitTracker visitMaxLimitTracker =
                 insurancePatientShareCalculator.createVisitMaxLimitTracker(
                         insurance
                 );
-
-        if (request.coverageType() == BillingCoverageType.INSURANCE
-                && insurance != null) {
-            encounterCoverageService.applyCoverage(
-                    encounter,
-                    BillingCoverageType.INSURANCE,
-                    insurance.getId()
-            );
-
-            LOG.info(
-                    "[PREVIEW_PRICING] Applied insurance coverage encounterId={} patientInsuranceId={} payorId={} payerNphiesId={}",
-                    encounterId,
-                    insurance.getId(),
-                    insurance.getPayorId(),
-                    insurance.getPayerNphiesId()
-            );
-        } else if (request.coverageType() == BillingCoverageType.SELF_PAY) {
-            encounterCoverageService.applyCoverage(
-                    encounter,
-                    BillingCoverageType.SELF_PAY,
-                    null
-            );
-        }
 
         if (followUpReviewDefaultServicePolicy.shouldSkipDefaultServices(encounter)) {
             LOG.info(
@@ -120,7 +112,7 @@ public class DefaultServicePricingPreviewService {
                     request.patientId(),
                     encounterId,
                     request.facilityId(),
-                    request.coverageType(),
+                    coverageType,
                     insurance == null ? null : insurance.getId(),
                     request.currency(),
                     BigDecimal.ZERO,
@@ -199,7 +191,7 @@ public class DefaultServicePricingPreviewService {
                 request.patientId(),
                 encounterId,
                 request.facilityId(),
-                request.coverageType(),
+                coverageType,
                 insurance == null ? null : insurance.getId(),
                 request.currency(),
                 totalGross,

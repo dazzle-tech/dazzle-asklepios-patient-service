@@ -317,7 +317,9 @@ public class EncounterBillingSummaryService {
                 invoiceBalance.totalAmount(),
                 invoiceBalance.paidAmount(),
                 invoiceBalance.outstandingAmount(),
-                items
+                items,
+                encounter.getCoverageType(),
+                encounter.getPatientInsuranceId()
         );
     }
 
@@ -723,7 +725,9 @@ public class EncounterBillingSummaryService {
                 resolvedInvoiceBalance.outstandingAmount(),
                 items == null
                         ? List.of()
-                        : items
+                        : items,
+                encounter.getCoverageType(),
+                encounter.getPatientInsuranceId()
         );
     }
 
