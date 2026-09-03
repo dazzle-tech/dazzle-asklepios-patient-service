@@ -11,9 +11,5 @@ public interface PatientEncounterFieldAuditRepository
     List<PatientEncounterFieldAudit> findByPatientEncounterIdOrderByLogDateDesc(
             Long patientEncounterId
     );
-
-    List<PatientEncounterFieldAudit> findByPatientEncounterIdAndFieldNameOrderByLogDateDesc(
-            Long patientEncounterId,
-            String fieldName
-    );
+    
 }
