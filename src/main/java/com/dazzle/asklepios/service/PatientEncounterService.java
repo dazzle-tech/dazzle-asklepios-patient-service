@@ -79,6 +79,9 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
+import com.dazzle.asklepios.domain.FinancialDocument;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
+import jakarta.persistence.criteria.Subquery;
 
 @Service
 @Transactional
@@ -827,6 +830,338 @@ public class PatientEncounterService {
 
         return saved;
     }
+
+    @Transactional(readOnly = true)
+    public Page<PatientEncounter> searchBillingPendingQueue(
+            Long facilityId,
+            PatientEncounterSearchFilterDTO filter,
+            Pageable pageable
+    ) {
+        LOG.debug(
+                "[BILLING_PENDING_QUEUE] facilityId={} filter={} pageable={}",
+                facilityId,
+                filter,
+                pageable
+        );
+
+        LocalDate effectiveFrom =
+                filter != null && filter.fromDate() != null
+                        ? filter.fromDate()
+                        : null;
+
+        LocalDate effectiveTo =
+                filter != null && filter.toDate() != null
+                        ? filter.toDate()
+                        : null;
+
+        boolean hasPatientName =
+                filter != null
+                        && filter.patientName() != null
+                        && !filter.patientName().isBlank();
+
+        boolean hasEncounterNumber =
+                filter != null
+                        && filter.encounterNumber() != null
+                        && !filter.encounterNumber().isBlank();
+
+        boolean hasMrn =
+                filter != null
+                        && filter.mrn() != null
+                        && !filter.mrn().isBlank();
+
+        Long departmentId =
+                filter != null
+                        ? filter.departmentId()
+                        : null;
+
+        Long practitionerId =
+                filter != null
+                        ? filter.practitionerId()
+                        : null;
+
+        Specification<PatientEncounter> spec = (root, query, cb) -> {
+
+            applyFetches(root, query);
+
+            List<Predicate> predicates = new ArrayList<>();
+
+            /*
+             * Facility
+             */
+            if (facilityId != null) {
+                predicates.add(
+                        cb.equal(
+                                root.get("facilityId"),
+                                facilityId
+                        )
+                );
+            }
+
+            /*
+             * Department
+             */
+            if (departmentId != null) {
+                predicates.add(
+                        cb.equal(
+                                root.get("departmentId"),
+                                departmentId
+                        )
+                );
+            }
+
+            /*
+             * Practitioner
+             */
+            if (practitionerId != null) {
+                predicates.add(
+                        cb.equal(
+                                root.get("practitionerId"),
+                                practitionerId
+                        )
+                );
+            }
+
+            /*
+             * Encounter Number - partial search
+             */
+            if (hasEncounterNumber) {
+                predicates.add(
+                        cb.like(
+                                cb.lower(root.get("encounterNumber")),
+                                "%"
+                                        + filter.encounterNumber()
+                                        .trim()
+                                        .toLowerCase()
+                                        + "%"
+                        )
+                );
+            }
+
+            /*
+             * Date range
+             *
+             * No default "today" here.
+             * If no dates are supplied, all dates are included.
+             */
+            if (effectiveFrom != null && effectiveTo != null) {
+
+                predicates.add(
+                        cb.between(
+                                root.get("encounterDate"),
+                                effectiveFrom,
+                                effectiveTo
+                        )
+                );
+
+            } else if (effectiveFrom != null) {
+
+                predicates.add(
+                        cb.greaterThanOrEqualTo(
+                                root.get("encounterDate"),
+                                effectiveFrom
+                        )
+                );
+
+            } else if (effectiveTo != null) {
+
+                predicates.add(
+                        cb.lessThanOrEqualTo(
+                                root.get("encounterDate"),
+                                effectiveTo
+                        )
+                );
+            }
+
+            /*
+             * Treatment Status
+             */
+            if (filter != null
+                    && filter.statuses() != null
+                    && !filter.statuses().isEmpty()) {
+
+                predicates.add(
+                        root.get("status")
+                                .in(filter.statuses())
+                );
+            }
+
+            /*
+             * Encounter Reason
+             */
+            if (filter != null
+                    && filter.encounterReasons() != null
+                    && !filter.encounterReasons().isEmpty()) {
+
+                predicates.add(
+                        root.get("encounterReason")
+                                .in(filter.encounterReasons())
+                );
+            }
+
+            /*
+             * Priority
+             */
+            if (filter != null
+                    && filter.priorities() != null
+                    && !filter.priorities().isEmpty()) {
+
+                predicates.add(
+                        root.get("priorityLevel")
+                                .in(filter.priorities())
+                );
+            }
+
+            /*
+             * Patient Name / MRN
+             */
+            if (hasPatientName || hasMrn) {
+
+                Join<PatientEncounter, Patient> patientJoin =
+                        root.join(
+                                "patient",
+                                JoinType.INNER
+                        );
+
+                /*
+                 * MRN
+                 */
+                if (hasMrn) {
+                    predicates.add(
+                            cb.equal(
+                                    patientJoin.get("medicalRecordNumber"),
+                                    filter.mrn().trim()
+                            )
+                    );
+                }
+
+                /*
+                 * Patient Name
+                 */
+                if (hasPatientName) {
+
+                    String[] tokens =
+                            filter.patientName()
+                                    .trim()
+                                    .toLowerCase()
+                                    .split("\\s+");
+
+                    Expression<String> first =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("firstName"),
+                                            ""
+                                    )
+                            );
+
+                    Expression<String> second =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("secondName"),
+                                            ""
+                                    )
+                            );
+
+                    Expression<String> third =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("thirdName"),
+                                            ""
+                                    )
+                            );
+
+                    Expression<String> last =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("lastName"),
+                                            ""
+                                    )
+                            );
+
+                    Predicate[] tokenPredicates =
+                            Arrays.stream(tokens)
+                                    .filter(
+                                            token ->
+                                                    token != null
+                                                            && !token.isBlank()
+                                    )
+                                    .map(token -> {
+
+                                        String like =
+                                                "%" + token + "%";
+
+                                        return cb.or(
+                                                cb.like(first, like),
+                                                cb.like(second, like),
+                                                cb.like(third, like),
+                                                cb.like(last, like)
+                                        );
+                                    })
+                                    .toArray(Predicate[]::new);
+
+                    if (tokenPredicates.length > 0) {
+                        predicates.add(
+                                cb.and(tokenPredicates)
+                        );
+                    }
+                }
+            }
+
+            /*
+             * =========================================================
+             * ONLY ENCOUNTERS WITHOUT AN INVOICE
+             * =========================================================
+             */
+            Subquery<Long> invoiceSubquery =
+                    query.subquery(Long.class);
+
+            Root<FinancialDocument> invoiceRoot =
+                    invoiceSubquery.from(FinancialDocument.class);
+
+            invoiceSubquery.select(
+                    invoiceRoot.get("id")
+            );
+
+            invoiceSubquery.where(
+                    cb.equal(
+                            invoiceRoot.get("encounterId"),
+                            root.get("id")
+                    ),
+                    cb.equal(
+                            invoiceRoot.get("documentType"),
+                            FinancialDocumentType.INVOICE
+                    )
+            );
+
+            predicates.add(
+                    cb.not(
+                            cb.exists(invoiceSubquery)
+                    )
+            );
+
+            return cb.and(
+                    predicates.toArray(
+                            new Predicate[0]
+                    )
+            );
+        };
+
+        Page<PatientEncounter> result =
+                patientEncounterRepository.findAll(
+                        spec,
+                        pageable
+                );
+
+        LOG.debug(
+                "[BILLING_PENDING_QUEUE] result totalElements={} totalPages={} pageNumber={} pageSize={}",
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.getNumber(),
+                result.getSize()
+        );
+
+        return result;
+    }
+
 
     @Transactional(readOnly = true)
     public long countTodayEncountersByFacility(Long facilityId) {

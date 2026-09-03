@@ -291,6 +291,64 @@ public class PatientEncounterController {
         );
     }
 
+    @GetMapping("/encounter/billing-pending-queue")
+    public ResponseEntity<List<PatientEncounterVM>> searchBillingPendingQueue(
+            @RequestParam(required = false) Long facilityId,
+            @ParameterObject PatientEncounterSearchFilterDTO filter,
+            @ParameterObject Pageable pageable
+    ) {
+        LOG.debug(
+                "REST search Billing Pending Queue facilityId={} filter={} pageable={}",
+                facilityId,
+                filter,
+                pageable
+        );
+
+        Page<PatientEncounter> page =
+                patientEncounterService.searchBillingPendingQueue(
+                        facilityId,
+                        filter,
+                        pageable
+                );
+
+        List<Long> encounterIds = page.getContent().stream()
+                .map(PatientEncounter::getId)
+                .toList();
+
+        Set<Long> orderEncounterIds =
+                diagnosticOrderService.findEncounterIdsWithOrders(encounterIds);
+
+        Set<Long> prescriptionEncounterIds =
+                patientPrescriptionService.findEncounterIdsWithOrders(encounterIds);
+
+        Set<Long> observationEncounterIds =
+                patientEncounterService.findEncounterIdsWithObservation(encounterIds);
+
+        List<PatientEncounterVM> vmList =
+                page.getContent().stream()
+                        .map(encounter ->
+                                PatientEncounterVM.ofEntity(
+                                        encounter,
+                                        orderEncounterIds.contains(encounter.getId()),
+                                        prescriptionEncounterIds.contains(encounter.getId()),
+                                        observationEncounterIds.contains(encounter.getId())
+                                )
+                        )
+                        .toList();
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        return new ResponseEntity<>(
+                vmList,
+                headers,
+                HttpStatus.OK
+        );
+    }
+
     @GetMapping("/encounter/department/{departmentId}/count/today/active")
     public ResponseEntity<Long> countTodayDepartmentActiveCases(
             @PathVariable @NotNull Long departmentId
