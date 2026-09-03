@@ -96,6 +96,9 @@ public class UrgentCareMedicationOrder extends AbstractAuditingEntity implements
     @Column(name = "administered_by", length = 50)
     private String administeredBy;
 
+    @Column(name="actual_administer_time")
+    private Instant actualAdministerTime;
+
     @Column(name = "double_checked_date")
     private Instant doubleCheckedDate;
 
