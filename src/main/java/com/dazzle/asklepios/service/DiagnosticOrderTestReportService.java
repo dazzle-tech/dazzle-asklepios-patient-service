@@ -9,9 +9,11 @@ import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.RadiologyImageStatus;
 import com.dazzle.asklepios.domain.enumeration.Severity;
 import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportCommentsRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportCreateDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportRejectDTO;
@@ -32,8 +34,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
-import com.dazzle.asklepios.repository.PatientRepository;
+
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -60,7 +61,7 @@ public class DiagnosticOrderTestReportService {
     private final DiagnosticOrderRepository diagnosticOrderRepository;
     private final PatientRepository patientRepository;
     private final PacsIntegrationClient pacsIntegrationService;
-
+    private final DiagnosticOrderTestService diagnosticOrderTestService;
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
     private final DiagnosticOrderTestReportCommentsRepository diagnosticOrderTestReportCommentsRepository;
@@ -70,7 +71,7 @@ public class DiagnosticOrderTestReportService {
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
             DiagnosticOrderRepository diagnosticOrderRepository,
             PatientRepository patientRepository,
-            PacsIntegrationClient pacsIntegrationService,
+            PacsIntegrationClient pacsIntegrationService, DiagnosticOrderTestService diagnosticOrderTestService,
             DiagnosticOrderStatusService diagnosticOrderStatusService,
             DiagnosticOrderTestStatusService diagnosticOrderTestStatusService,
             DiagnosticOrderTestReportCommentsRepository diagnosticOrderTestReportCommentsRepository
@@ -80,6 +81,7 @@ public class DiagnosticOrderTestReportService {
         this.diagnosticOrderRepository = diagnosticOrderRepository;
         this.patientRepository = patientRepository;
         this.pacsIntegrationService = pacsIntegrationService;
+        this.diagnosticOrderTestService = diagnosticOrderTestService;
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
         this.diagnosticOrderTestReportCommentsRepository = diagnosticOrderTestReportCommentsRepository;
@@ -145,6 +147,7 @@ public class DiagnosticOrderTestReportService {
 
         return diagnosticOrderTestReportRepository.findByOrderTestId(orderTestId);
     }
+
     public DiagnosticOrderTestReport createRadiologyReport(DiagnosticOrderTestReportCreateDTO reportCreateDTO) {
         LOG.debug("[DiagnosticOrderTestReportService] CREATE_RADIOLOGY_REPORT - start. payload={}", reportCreateDTO);
         DiagnosticOrderTest orderTest = requireRadiologyTest(reportCreateDTO.orderTestId());
@@ -267,6 +270,7 @@ public class DiagnosticOrderTestReportService {
 
         return saved;
     }
+
     public DiagnosticOrderTestReport rejectRadiologyReport(DiagnosticOrderTestReportRejectDTO orderTestReportRejectDTO) {
         LOG.debug("[DiagnosticOrderTestReportService] REJECT_RADIOLOGY_REPORT - start. payload={}", orderTestReportRejectDTO);
         requireRadiologyTest(orderTestReportRejectDTO.orderTestId());
@@ -393,7 +397,9 @@ public class DiagnosticOrderTestReportService {
                 ));
 
         requireRadiologyTest(report.getOrderTestId());
-
+        diagnosticOrderTestService.validateSettlementTestBeforeApprove(
+                report.getOrderTestId()
+        );
         report.setApprovedBy(currentUsername());
         report.setApprovedDate(Instant.now());
         report.setProcessingStatus(DiagnosticStatus.RESULT_APPROVED);
@@ -999,6 +1005,7 @@ public class DiagnosticOrderTestReportService {
                 report.getOrderTestId().toString()
         );
     }
+
     @Transactional
     public void bulkToggleReview(
             List<Long> ids
@@ -1047,6 +1054,7 @@ public class DiagnosticOrderTestReportService {
             );
         });
     }
+
     @Transactional(readOnly = true)
     public List<Long> filterReportIds(
             Long id,

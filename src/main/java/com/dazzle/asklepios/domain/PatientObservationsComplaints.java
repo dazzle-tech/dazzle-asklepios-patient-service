@@ -1,7 +1,7 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.BloodGroup;
-
+import com.dazzle.asklepios.domain.enumeration.ModeOfArrival;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -54,6 +54,16 @@ public class PatientObservationsComplaints extends AbstractAuditingEntity<Long> 
     @NotNull
     @Column(name = "reason_of_visit", columnDefinition = "text")
     private String reasonOfVisit;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mode_of_arrival", length = 30)
+    private ModeOfArrival modeOfArrival;
+
+    @Column(name = "by_patient", nullable = false)
+    private Boolean byPatient = true;
+
+    @Column(name = "source_of_information")
+    private Long sourceOfInformation;
 
     @Column(name = "cognitive_check", columnDefinition = "text")
     private String cognitiveCheck;

@@ -2122,6 +2122,21 @@ public class BillingChargeService {
 
         if (line.getStatus()
                 == BillingChargeLineStatus.CANCELLED) {
+            PatientServiceAndProduct cancelledItem =
+                    line.getPatientServiceProduct();
+            if (cancelledItem != null
+                    && cancelledItem.getPaymentStatus()
+                    != PaymentStatus.CANCELLED) {
+                cancelledItem.setPaymentStatus(
+                        PaymentStatus.CANCELLED
+                );
+                cancelledItem.setRemainingAmount(
+                        BigDecimal.ZERO
+                );
+                patientServiceAndProductRepository.save(
+                        cancelledItem
+                );
+            }
             return;
         }
 

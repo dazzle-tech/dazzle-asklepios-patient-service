@@ -3,6 +3,7 @@ package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.domain.UrgentCareMedicationOrder;
 import com.dazzle.asklepios.domain.enumeration.MedicationOrderStatus;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.AdministerMedicationOrderDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderUpdateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.commands.UrgentCareMedicationOrderCancelDTO;
@@ -10,6 +11,8 @@ import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.commands.UrgentCareMedicationOrderSubmitDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.persistence.criteria.Predicate;
+
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import jakarta.validation.Valid;
@@ -254,11 +257,11 @@ public class UrgentCareMedicationOrderController {
     }
 
     @PostMapping("/urgent-care-medication-orders/{id}/administer")
-    public ResponseEntity<UrgentCareMedicationOrder> administer(@PathVariable("id") Long id) {
+    public ResponseEntity<UrgentCareMedicationOrder> administer(@PathVariable("id") Long id , @RequestBody AdministerMedicationOrderDTO dto) {
         LOG.debug("[ADMINISTER] request -> id={}", id);
 
         UrgentCareMedicationOrder result =
-                UrgentCareMedicationOrderService.administer(id, currentUsername());
+                UrgentCareMedicationOrderService.administer(id, currentUsername(),dto.actualAdministerTime());
 
         LOG.debug("[ADMINISTER] response -> id={} status={}", result.getId(), result.getStatus());
         return ResponseEntity.ok(result);
@@ -306,6 +309,26 @@ public class UrgentCareMedicationOrderController {
         );
 
         LOG.debug("[CANCEL] response -> id={} status={}", result.getId(), result.getStatus());
+        return ResponseEntity.ok(result);
+    }
+    @PutMapping("/urgent-care-medication-orders/{orderId}/actual-administer-time")
+    public ResponseEntity<UrgentCareMedicationOrder> setActualAdministerTime(
+            @PathVariable Long orderId,
+            @RequestBody Instant actualAdministerTime
+            ) {
+
+        LOG.debug(
+                "REST request to set actual administer time. orderId={} actualAdministerTime={}",
+                orderId,
+                actualAdministerTime
+        );
+
+        UrgentCareMedicationOrder result =
+                UrgentCareMedicationOrderService.setActualAdministerTime(
+                        orderId,
+                        actualAdministerTime
+                );
+
         return ResponseEntity.ok(result);
     }
 }

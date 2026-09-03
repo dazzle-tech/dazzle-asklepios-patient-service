@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
 import java.io.Serializable;
+import com.dazzle.asklepios.domain.enumeration.ModeOfArrival;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record PatientObservationsComplaintsCreateDTO(
@@ -22,6 +23,13 @@ public record PatientObservationsComplaintsCreateDTO(
 
         @NotEmpty
         String reasonOfVisit,
+
+        ModeOfArrival modeOfArrival,
+
+        @NotNull
+        Boolean byPatient,
+
+        Long sourceOfInformation,
 
         String cognitiveCheck,
 
