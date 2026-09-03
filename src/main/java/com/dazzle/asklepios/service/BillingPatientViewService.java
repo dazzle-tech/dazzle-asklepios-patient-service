@@ -117,7 +117,7 @@ public class BillingPatientViewService {
 
         if (lines.isEmpty()) {
             return emptySummary(
-                    encounterId,
+                    encounter,
                     patientId,
                     wallet
             );
@@ -231,7 +231,9 @@ public class BillingPatientViewService {
                 invoiceBalance.totalAmount(),
                 invoiceBalance.paidAmount(),
                 invoiceBalance.outstandingAmount(),
-                items
+                items,
+                encounter.getCoverageType(),
+                encounter.getPatientInsuranceId()
         );
     }
 
@@ -518,7 +520,7 @@ public class BillingPatientViewService {
     }
 
     private EncounterBillingSummary emptySummary(
-            Long encounterId,
+            PatientEncounter encounter,
             Long patientId,
             BillingWallet wallet
     ) {
@@ -526,7 +528,7 @@ public class BillingPatientViewService {
                 null,
                 null,
                 patientId,
-                encounterId,
+                encounter.getId(),
                 null,
                 wallet == null
                         ? null
@@ -564,7 +566,9 @@ public class BillingPatientViewService {
                 zero(),
                 zero(),
                 zero(),
-                List.of()
+                List.of(),
+                encounter.getCoverageType(),
+                encounter.getPatientInsuranceId()
         );
     }
 

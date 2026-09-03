@@ -101,10 +101,25 @@ public class DefaultServicePreparationService {
         );
 
         PatientInsurance insurance = resolveInsurance(request);
+        BillingCoverageType coverageType = request.coverageType();
+        if (coverageType == BillingCoverageType.SELF_PAY) {
+            PatientInsurance linkedInsurance =
+                    encounterCoverageService.findLinkedInsurance(encounter);
+            if (linkedInsurance != null) {
+                LOG.warn(
+                        "[PREPARE_DEFAULT_SERVICES] Request sent SELF_PAY but encounter already has insurance. "
+                                + "Keeping stored coverage. encounterId={} patientInsuranceId={}",
+                        encounterId,
+                        linkedInsurance.getId()
+                );
+                coverageType = BillingCoverageType.INSURANCE;
+                insurance = linkedInsurance;
+            }
+        }
 
         encounterCoverageService.applyCoverage(
                 encounter,
-                request.coverageType(),
+                coverageType,
                 insurance == null ? null : insurance.getId()
         );
 
@@ -135,7 +150,7 @@ public class DefaultServicePreparationService {
                                 ))
                                 .toList();
 
-        if (request.coverageType() == BillingCoverageType.INSURANCE) {
+        if (coverageType == BillingCoverageType.INSURANCE) {
             List<InsurancePriceListCoverageCheckResult> coverageChecks =
                     new ArrayList<>();
             for (PrepareDefaultServiceItem requestedItem : orderedItems) {
@@ -293,7 +308,7 @@ public class DefaultServicePreparationService {
             }
         }
 
-        if (request.coverageType() == BillingCoverageType.INSURANCE) {
+        if (coverageType == BillingCoverageType.INSURANCE) {
             int refreshedLines =
                     billingResponsibilityService
                             .refreshInsuranceResponsibilitiesForEncounter(
@@ -332,7 +347,7 @@ public class DefaultServicePreparationService {
                 "[PREPARE_DEFAULT_SERVICES] encounterId={} patientId={} coverageType={} itemCount={} processed={} pendingPreAuth={}",
                 encounterId,
                 request.patientId(),
-                request.coverageType(),
+                coverageType,
                 results.size(),
                 processed,
                 hasPendingPreAuth
@@ -351,7 +366,7 @@ public class DefaultServicePreparationService {
                 request.patientId(),
                 encounterId,
                 request.facilityId(),
-                request.coverageType(),
+                coverageType,
                 insurance == null ? null : insurance.getId(),
                 List.copyOf(results),
                 processed,
@@ -440,7 +455,7 @@ public class DefaultServicePreparationService {
             if (coverageCheck.requiresCashConfirmation()) {
                 insurancePriceListCoverageService.applyUncoveredCash(existing, coverageCheck);
                 existing = patientServiceAndProductRepository.saveAndFlush(existing);
-            } else if (request.coverageType() == BillingCoverageType.INSURANCE) {
+            } else if (insurance != null) {
                 PreAuthorizationResolutionService.Resolution preAuthorizationResolution =
                         preAuthorizationResolutionService.resolve(
                                 encounter.getId(),
@@ -516,7 +531,7 @@ public class DefaultServicePreparationService {
                     requestedItem.serviceId(),
                     null,
                     null,
-                    request.coverageType() == BillingCoverageType.INSURANCE,
+                    insurance != null,
                     request.currency()
             );
         }
