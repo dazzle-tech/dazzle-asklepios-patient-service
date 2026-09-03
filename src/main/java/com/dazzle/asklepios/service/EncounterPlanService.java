@@ -1,8 +1,10 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.EncounterPlan;
+import com.dazzle.asklepios.domain.EncounterPlanFieldAudit;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.repository.EncounterPlanFieldAuditRepository;
 import com.dazzle.asklepios.repository.EncounterPlanRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -20,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -33,14 +36,17 @@ public class EncounterPlanService {
     private final EncounterPlanRepository encounterPlanRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final EncounterPlanFieldAuditRepository encounterPlanFieldAuditRepository;
 
     public EncounterPlanService(
             EncounterPlanRepository encounterPlanRepository,
             PatientRepository patientRepository,
-            PatientEncounterRepository patientEncounterRepository) {
+            PatientEncounterRepository patientEncounterRepository,
+            EncounterPlanFieldAuditRepository encounterPlanFieldAuditRepository) {
         this.encounterPlanRepository = encounterPlanRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
+        this.encounterPlanFieldAuditRepository = encounterPlanFieldAuditRepository;
     }
 
     public EncounterPlan create(EncounterPlanCreateDTO createRequest) {
@@ -172,5 +178,11 @@ public class EncounterPlanService {
                 "encounterPlan",
                 "db.constraint"
         );
+    }
+
+    @Transactional(readOnly = true)
+    public List<EncounterPlanFieldAudit> getPlanHistory(Long planId) {
+        return encounterPlanFieldAuditRepository
+                .findByEncounterPlanIdOrderByLogDateDesc(planId);
     }
 }

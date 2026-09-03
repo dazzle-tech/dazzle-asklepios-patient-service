@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.EncounterAssessment;
+import com.dazzle.asklepios.domain.EncounterAssessmentLog;
 import com.dazzle.asklepios.service.EncounterAssessmentService;
 import com.dazzle.asklepios.service.dto.encounterAssessment.EncounterAssessmentCreateDTO;
 import com.dazzle.asklepios.service.dto.encounterAssessment.EncounterAssessmentUpdateDTO;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/patient")
@@ -98,5 +100,16 @@ public class EncounterAssessmentController {
         return encounterAssessmentService.findLatestByEncounterId(encounterId)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    @GetMapping("/assessment/{assessmentId}/audit")
+    public ResponseEntity<List<EncounterAssessmentLog>> getAssessmentAudit(
+            @PathVariable Long assessmentId
+    ) {
+        LOG.debug("REST get Encounter Assessment audit by id={}", assessmentId);
+
+        return ResponseEntity.ok(
+                encounterAssessmentService.getAssessmentHistory(assessmentId)
+        );
     }
 }
