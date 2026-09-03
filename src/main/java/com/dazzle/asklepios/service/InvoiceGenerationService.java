@@ -330,8 +330,18 @@ public class InvoiceGenerationService {
             );
         }
 
+        List<PatientServiceAndProduct> encounterServices =
+                patientServiceAndProductRepository.findByEncounterId(encounterId);
+
+        for (PatientServiceAndProduct service : encounterServices) {
+            if (isFullyCoveredPendingItem(service)) {
+                service.setPaymentStatus(PaymentStatus.PAID);
+                patientServiceAndProductRepository.save(service);
+            }
+        }
+
         List<PatientServiceAndProduct> pendingServices =
-                patientServiceAndProductRepository.findByEncounterId(encounterId).stream()
+                encounterServices.stream()
                         .filter(service ->
                                 BLOCKING_PAYMENT_STATUSES.contains(
                                         service.getPaymentStatus()
@@ -1018,6 +1028,23 @@ public class InvoiceGenerationService {
                 )
                 .map(WaseelEligibilityRequest::getEligibilityResponseId)
                 .orElse(null);
+    }
+
+    private boolean isFullyCoveredPendingItem(PatientServiceAndProduct service) {
+        if (service == null || service.getPaymentStatus() != PaymentStatus.PENDING) {
+            return false;
+        }
+
+        BigDecimal patientShare =
+                service.getPatientShareAmount() == null
+                        ? BigDecimal.ZERO
+                        : service.getPatientShareAmount();
+        BigDecimal remaining =
+                service.getRemainingAmount() == null
+                        ? BigDecimal.ZERO
+                        : service.getRemainingAmount();
+
+        return patientShare.signum() == 0 && remaining.signum() == 0;
     }
 
     private EncounterBillingStatus resolveBillingStatus(PatientEncounter encounter) {
