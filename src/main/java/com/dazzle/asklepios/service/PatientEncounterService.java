@@ -12,6 +12,7 @@ import com.dazzle.asklepios.domain.EncounterDischargeLog;
 import com.dazzle.asklepios.domain.PainAssessment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientEncounterFieldAudit;
 import com.dazzle.asklepios.domain.PatientObservationsComplaints;
 import com.dazzle.asklepios.domain.User;
 import com.dazzle.asklepios.domain.VitalSigns;
@@ -25,6 +26,7 @@ import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.BodyMeasurementsRepository;
 import com.dazzle.asklepios.repository.EncounterDischargeLogRepository;
 import com.dazzle.asklepios.repository.PainAssessmentRepository;
+import com.dazzle.asklepios.repository.PatientEncounterFieldAuditRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientObservationsComplaintsRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -105,6 +107,7 @@ public class PatientEncounterService {
     private final InvoiceGenerationService invoiceGenerationService;
     private final UserRepository userRepository;
     private final EncounterDischargeLogRepository encounterDischargeLogRepository;
+    private final PatientEncounterFieldAuditRepository auditRepository;
 
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
@@ -121,7 +124,7 @@ public class PatientEncounterService {
             PractitionerHelper practitionerHelper,
             PractitionerClient practitionerClient,
             @Lazy BillingEngineService billingEngineService,
-            NotificationHelper notificationHelper, InvoiceGenerationService invoiceGenerationService, UserRepository userRepository, EncounterDischargeLogRepository encounterDischargeLogRepository) {
+            NotificationHelper notificationHelper, InvoiceGenerationService invoiceGenerationService, UserRepository userRepository, EncounterDischargeLogRepository encounterDischargeLogRepository, PatientEncounterFieldAuditRepository auditRepository) {
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.entityManager = entityManager;
@@ -141,6 +144,7 @@ public class PatientEncounterService {
         this.invoiceGenerationService = invoiceGenerationService;
         this.userRepository = userRepository;
         this.encounterDischargeLogRepository = encounterDischargeLogRepository;
+        this.auditRepository = auditRepository;
     }
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
@@ -1896,5 +1900,11 @@ public class PatientEncounterService {
         data.put("chief_complaint", encounter.getChiefComplaint() != null ? encounter.getChiefComplaint() : "");
         data.put("notes", encounter.getNotes() != null ? encounter.getNotes() : "");
         return data;
+    }
+
+    @Transactional(readOnly = true)
+    public List<PatientEncounterFieldAudit> getAuditHistory(Long encounterId) {
+
+        return auditRepository.findByPatientEncounterIdOrderByLogDateDesc(encounterId);
     }
 }
