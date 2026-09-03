@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientEncounterFieldAudit;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.service.DiagnosticOrderService;
 import com.dazzle.asklepios.service.EncounterCoverageService;
@@ -596,5 +597,16 @@ public class PatientEncounterController {
                 patientEncounterService.reopenEncounter(encounterId);
 
         return ResponseEntity.ok(reopened);
+    }
+
+    @GetMapping("/encounter/{id}/audit")
+    public ResponseEntity<List<PatientEncounterFieldAudit>> getEncounterAudit(
+            @PathVariable("id") @NotNull Long encounterId
+    ) {
+        LOG.debug("REST get PatientEncounter audit by id={}", encounterId);
+
+        return ResponseEntity.ok(
+                patientEncounterService.getAuditHistory(encounterId)
+        );
     }
 }
