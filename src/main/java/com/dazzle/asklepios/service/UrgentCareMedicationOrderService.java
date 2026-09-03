@@ -3,13 +3,9 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
-import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
-import com.dazzle.asklepios.domain.Consultation;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.UrgentCareMedicationOrder;
-import com.dazzle.asklepios.domain.enumeration.ConsultationType;
-import com.dazzle.asklepios.domain.enumeration.DestinationType;
 import com.dazzle.asklepios.domain.enumeration.MedicationOrderStatus;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
@@ -207,13 +203,21 @@ public class UrgentCareMedicationOrderService {
         return saved;
     }
 
-    public UrgentCareMedicationOrder administer(Long orderId, String username) {
-        LOG.debug("[STATUS][ADMINISTER] request -> orderId={} username={}", orderId, username);
+    public UrgentCareMedicationOrder administer(
+            Long orderId,
+            String username,
+            Instant actualAdministerTime
+    ) {
+
+        LOG.debug(
+                "[STATUS][ADMINISTER] request -> orderId={} username={}",
+                orderId,
+                username
+        );
 
         UrgentCareMedicationOrder order = getOrder(orderId);
 
         if (order.getStatus() != MedicationOrderStatus.SUBMITTED) {
-            LOG.error("[STATUS][ADMINISTER] invalid status -> currentStatus={}", order.getStatus());
             throw new BadRequestAlertException(
                     "invalid_transition",
                     "patient_ucc_medication_order",
@@ -223,21 +227,16 @@ public class UrgentCareMedicationOrderService {
 
         if (Boolean.TRUE.equals(order.getIsHighAlert())) {
             order.setStatus(MedicationOrderStatus.WAITING_DOUBLE_CHECK);
-            LOG.debug("[STATUS][ADMINISTER] high alert order -> move to WAITING_DOUBLE_CHECK");
         } else {
             order.setStatus(MedicationOrderStatus.ADMINISTERED);
-            LOG.debug("[STATUS][ADMINISTER] normal order -> move to ADMINISTERED");
         }
+
+        order.setActualAdministerTime(actualAdministerTime);
 
         order.setAdministeredBy(username);
         order.setAdministeredDate(Instant.now());
 
-        UrgentCareMedicationOrder saved = urgentCareMedicationOrderRepository.save(order);
-
-        LOG.debug("[STATUS][ADMINISTER] saved -> id={} status={} administeredBy={}",
-                saved.getId(), saved.getStatus(), saved.getAdministeredBy());
-
-        return saved;
+        return urgentCareMedicationOrderRepository.save(order);
     }
 
     public UrgentCareMedicationOrder doubleCheck(Long orderId, String username) {
@@ -431,4 +430,28 @@ public class UrgentCareMedicationOrderService {
 
     }
 
+    public UrgentCareMedicationOrder setActualAdministerTime(
+            Long orderId,
+            Instant actualAdministerTime
+    ) {
+        LOG.debug(
+                "[SERVICE][SET_ACTUAL_ADMINISTER_TIME] orderId={} actualAdministerTime={}",
+                orderId,
+                actualAdministerTime
+        );
+
+        UrgentCareMedicationOrder order = getOrder(orderId);
+
+        order.setActualAdministerTime(actualAdministerTime);
+
+        UrgentCareMedicationOrder saved =
+                urgentCareMedicationOrderRepository.save(order);
+
+        LOG.debug(
+                "[SERVICE][SET_ACTUAL_ADMINISTER_TIME] saved orderId={}",
+                saved.getId()
+        );
+
+        return saved;
+    }
 }

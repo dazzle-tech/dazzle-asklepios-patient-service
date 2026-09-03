@@ -10,7 +10,8 @@ public record FacilityDTO(
         String defaultLabDepartmentName,
         Long defaultRadDepartmentId,
         String defaultRadDepartmentName,
-        String timeZone
+        String timeZone,
+        Boolean approvingDiagnosticTestSettlePayment
 ) {
 
 }

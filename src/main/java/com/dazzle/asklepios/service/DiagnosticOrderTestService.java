@@ -3,6 +3,7 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
+import com.dazzle.asklepios.domain.Facility;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
@@ -11,6 +12,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestTechnicianNoteRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestUpdateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
@@ -18,6 +20,7 @@ import com.dazzle.asklepios.service.helper.DiagnosticTestHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.service.helper.ICDTreeHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.diagnosticorders.DiagnosticOrderTestResponseVM;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -25,8 +28,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.HashSet;
 import java.util.List;
@@ -335,4 +340,33 @@ public class DiagnosticOrderTestService {
 
         return BillingItemTypes.LABORATORY;
     }
+    void validateSettlementTestBeforeApprove(long orderTestId) {
+
+        Long facilityId = getFacility();
+        FacilityDTO facilityDTO = facilityHelper.getFacility(facilityId);
+
+        if (!Boolean.TRUE.equals(facilityDTO.approvingDiagnosticTestSettlePayment())) {
+            return;
+        }
+
+//        boolean paid = isDiagnosticOrderPaid(report.getOrderTestId()); // to do
+          boolean paid=true;
+        if (!paid) {
+            throw new BadRequestAlertException(
+                    "payment_required",
+                    "diagnostic_order_test",
+                    "Diagnostic test must be fully settled before approval"
+            );
+        }
+    }
+    private Long getFacility() {
+        return SecurityUtils.getCurrentUserFacility()
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.UNAUTHORIZED,
+                                "Missing mandatory claim 'tenant' in JWT."
+                        )
+                );
+    }
+
 }

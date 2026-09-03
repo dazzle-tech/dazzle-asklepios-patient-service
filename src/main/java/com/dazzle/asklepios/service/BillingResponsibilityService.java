@@ -540,7 +540,12 @@ public class BillingResponsibilityService {
         );
 
         item.setPaymentStatus(
-                preAuthorizationResolutionService.resolveBillingPaymentStatus(item)
+                preAuthorizationResolutionService.resolveBillingPaymentStatus(
+                        item,
+                        patientAmount.signum() == 0
+                                ? PaymentStatus.PAID
+                                : PaymentStatus.PENDING
+                )
         );
 
         patientServiceAndProductRepository.save(item);
