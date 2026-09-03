@@ -133,6 +133,8 @@ public class BillingCancellationService {
         if (isChargeLineAlreadyCancelled(
                 chargeLine
         )) {
+            syncCancelledPatientItem(item, request);
+
             BillingWallet wallet =
                     loadWalletIfExists(item);
 
@@ -163,6 +165,13 @@ public class BillingCancellationService {
                                         "charge.notfound"
                                 )
                         );
+
+        /*
+         * Mark cancelled before reversing money so reservation/allocation
+         * status recalculation cannot reopen the operational item as PENDING.
+         */
+        item.setPaymentStatus(PaymentStatus.CANCELLED);
+        patientServiceAndProductRepository.save(item);
 
         LOG.info(
                 "[CANCEL_START] Cancelling billing service "
@@ -389,6 +398,17 @@ public class BillingCancellationService {
         patientServiceAndProductRepository.save(
                 item
         );
+    }
+
+    private void syncCancelledPatientItem(
+            PatientServiceAndProduct item,
+            BillingCancellationRequest request
+    ) {
+        if (item.getPaymentStatus() == PaymentStatus.CANCELLED) {
+            return;
+        }
+
+        cancelPatientItem(item, request);
     }
 
     private void cancelUnchargedPatientItem(
