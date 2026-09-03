@@ -45,6 +45,7 @@ public class PatientObservationsComplaintsService {
                         "patientObservationsComplaints",
                         "patient.notfound"
                 ));
+
         PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Encounter not found with id " + dto.encounterId(),
@@ -57,6 +58,13 @@ public class PatientObservationsComplaintsService {
                 .encounterId(encounter.getId())
                 .functionalStatus(dto.functionalStatus())
                 .reasonOfVisit(dto.reasonOfVisit())
+                .modeOfArrival(dto.modeOfArrival())
+                .byPatient(dto.byPatient())
+                .sourceOfInformation(
+                        Boolean.TRUE.equals(dto.byPatient())
+                                ? null
+                                : dto.sourceOfInformation()
+                )
                 .cognitiveCheck(dto.cognitiveCheck())
                 .patientConditions(dto.patientConditions())
                 .bloodGroup(dto.bloodGroup())
@@ -64,21 +72,34 @@ public class PatientObservationsComplaintsService {
                 .build();
 
         try {
-            PatientObservationsComplaints saved = patientObservationsComplaintsRepository.saveAndFlush(entity);
+            PatientObservationsComplaints saved =
+                    patientObservationsComplaintsRepository.saveAndFlush(entity);
+
             if (dto.bloodGroup() != null) {
                 patient.setBloodGroup(dto.bloodGroup());
             }
+
             patient.setPatientConditions(dto.patientConditions());
             patientRepository.save(patient);
+
             return saved;
+
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
         }
     }
 
-    public Optional<PatientObservationsComplaints> update(Long id, PatientObservationsComplaintsUpdateDTO dto) {
+    public Optional<PatientObservationsComplaints> update(
+            Long id,
+            PatientObservationsComplaintsUpdateDTO dto
+    ) {
         Long targetId = id != null ? id : dto.id();
-        LOG.info("[UPDATE] PatientObservationsComplaints id={} payload={}", targetId, dto);
+
+        LOG.info(
+                "[UPDATE] PatientObservationsComplaints id={} payload={}",
+                targetId,
+                dto
+        );
 
         return patientObservationsComplaintsRepository.findById(targetId).map(entity -> {
 
@@ -93,39 +114,64 @@ public class PatientObservationsComplaintsService {
             entity.setEncounterId(dto.encounterId());
             entity.setFunctionalStatus(dto.functionalStatus());
             entity.setReasonOfVisit(dto.reasonOfVisit());
+            entity.setModeOfArrival(dto.modeOfArrival());
+            entity.setByPatient(dto.byPatient());
+
+            entity.setSourceOfInformation(
+                    Boolean.TRUE.equals(dto.byPatient())
+                            ? null
+                            : dto.sourceOfInformation()
+            );
+
             entity.setCognitiveCheck(dto.cognitiveCheck());
             entity.setPatientConditions(dto.patientConditions());
             entity.setBloodGroup(dto.bloodGroup());
             entity.setIsActive(dto.isActive());
 
             try {
-                PatientObservationsComplaints updated = patientObservationsComplaintsRepository.saveAndFlush(entity);
+                PatientObservationsComplaints updated =
+                        patientObservationsComplaintsRepository.saveAndFlush(entity);
+
                 if (dto.bloodGroup() != null) {
                     patient.setBloodGroup(dto.bloodGroup());
                 }
+
                 patient.setPatientConditions(dto.patientConditions());
                 patientRepository.save(patient);
+
                 return updated;
+
             } catch (DataIntegrityViolationException | JpaSystemException ex) {
                 throw handleConstraintViolation(ex);
             }
         });
     }
 
-
     @Transactional(readOnly = true)
     public Optional<PatientObservationsComplaints> findLatestByEncounterId(Long encounterId) {
         LOG.debug("[FIND_LATEST_BY_ENCOUNTER] encounterId={}", encounterId);
+
         return patientObservationsComplaintsRepository
                 .findFirstByEncounterIdAndIsActiveTrueOrderByCreatedDateDesc(encounterId);
     }
 
+
     private RuntimeException handleConstraintViolation(Exception exception) {
         Throwable root = getRootCause(exception);
-        String message = root != null ? root.getMessage() : exception.getMessage();
-        String messageLower = message != null ? message.toLowerCase() : "";
 
-        LOG.warn("[DB_CONSTRAINT] PatientObservationsComplaints constraint violated rootMessage={}", message, exception);
+        String message = root != null
+                ? root.getMessage()
+                : exception.getMessage();
+
+        String messageLower = message != null
+                ? message.toLowerCase()
+                : "";
+
+        LOG.warn(
+                "[DB_CONSTRAINT] PatientObservationsComplaints constraint violated rootMessage={}",
+                message,
+                exception
+        );
 
         if (messageLower.contains("fk_patient_obs_comp_patient")) {
             return new BadRequestAlertException(
