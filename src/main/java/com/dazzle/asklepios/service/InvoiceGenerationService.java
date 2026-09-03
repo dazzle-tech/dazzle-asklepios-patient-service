@@ -347,6 +347,7 @@ public class InvoiceGenerationService {
                                         service.getPaymentStatus()
                                 )
                         )
+                        .filter(service -> !syncCancelledBillingItem(service))
                         .toList();
 
         if (!pendingServices.isEmpty()) {
@@ -1045,6 +1046,40 @@ public class InvoiceGenerationService {
                         : service.getRemainingAmount();
 
         return patientShare.signum() == 0 && remaining.signum() == 0;
+    }
+
+    /**
+     * Charge-line cancellation is the financial source of truth. If the latest
+     * line is already cancelled/reversed, persist that onto the operational item
+     * so financial close and Service & Product stay in sync.
+     */
+    private boolean syncCancelledBillingItem(PatientServiceAndProduct service) {
+        if (service == null || service.getId() == null) {
+            return false;
+        }
+
+        boolean cancelledLine =
+                billingChargeLineRepository
+                        .findFirstByPatientServiceProduct_IdOrderByIdDesc(
+                                service.getId()
+                        )
+                        .map(line ->
+                                EXCLUDED_LINE_STATUSES.contains(
+                                        line.getStatus()
+                                )
+                        )
+                        .orElse(false);
+
+        if (!cancelledLine) {
+            return false;
+        }
+
+        if (service.getPaymentStatus() != PaymentStatus.CANCELLED) {
+            service.setPaymentStatus(PaymentStatus.CANCELLED);
+            patientServiceAndProductRepository.save(service);
+        }
+
+        return true;
     }
 
     private EncounterBillingStatus resolveBillingStatus(PatientEncounter encounter) {
