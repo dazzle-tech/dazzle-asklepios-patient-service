@@ -1,9 +1,7 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.notification.NotificationClient;
 import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.setup.DiagnosticTestProfileClient;
-import com.dazzle.asklepios.client.setup.UserClient;
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.client.setup.dto.NormalRangeMatchDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
@@ -32,10 +30,10 @@ import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.Di
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultUpdateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
-import com.dazzle.asklepios.service.helper.UserDepartmentHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.laboratory.DiagnosticOrderTestResultResponseVM;
 import com.dazzle.asklepios.web.rest.vm.laboratory.DiagnosticOrderTestResultResultsVM;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,7 +42,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import jakarta.persistence.criteria.Predicate;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -71,15 +69,13 @@ public class DiagnosticOrderTestResultService {
     private final NormalRangeMatcherService normalRangeMatcherService;
     private final DiagnosticOrderTestResultTechnicianNoteRepository diagnosticOrderTestResultTechnicianNoteRepository;
     private final DiagnosticTestProfileClient diagnosticTestProfileClient;
-    private final NotificationClient notificationClient;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
     private final DiagnosticOrderRepository diagnosticOrderRepository;
-    private final UserDepartmentHelper userDepartmentHelper;
     private final PatientRepository patientRepository;
     private final DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository;
     private final DepartmentHelper departmentHelper;
-    private final UserClient userClient;
     private final NotificationHelper notificationHelper;
+    private final DiagnosticOrderTestService diagnosticOrderTestService;
 
     private void validateResultValue(
             Long profileTestId,
@@ -147,6 +143,7 @@ public class DiagnosticOrderTestResultService {
             }
         }
     }
+
     /**
      * Creates and persists a new {@link DiagnosticOrderTestResult}.
      *
@@ -187,6 +184,7 @@ public class DiagnosticOrderTestResultService {
 
         return saved;
     }
+
     @Transactional
     public void createBulk(
             List<DiagnosticOrderTestResultCreateDTO> dtos
@@ -230,6 +228,7 @@ public class DiagnosticOrderTestResultService {
                                 ::recomputeTestProcessingStatusFromResults
                 );
     }
+
     public DiagnosticOrderTestResult updateWithValidation(
             Long id,
             DiagnosticOrderTestResultUpdateDTO testResultUpdateDTO
@@ -268,7 +267,9 @@ public class DiagnosticOrderTestResultService {
                         "diagnostic_order_tests_result",
                         "DiagnosticOrderTestResult not found with id " + resultId
                 ));
-
+        diagnosticOrderTestService.validateSettlementTestBeforeApprove(
+                result.getOrderTestId()
+        );
         Long patientId = resolvePatientId(result.getOrderTestId());
 
         TestResultMarker viewMarker = result.getMarker();
@@ -394,6 +395,7 @@ public class DiagnosticOrderTestResultService {
                     .ofEntityWithViewNote(result, viewMarker, viewNormalRange, hasNote);
         });
     }
+
     @Transactional(readOnly = true)
     public List<Long> resultFilterIds(
             Specification<DiagnosticOrderTestResult> specification
@@ -755,7 +757,7 @@ public class DiagnosticOrderTestResultService {
         }
         String login = SecurityUtils.getCurrentUserLogin().orElse(null);
 
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, result.getCreatedBy(), resolvePatient(order.getPatientId()).orElse(null), null,false);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, result.getCreatedBy(), resolvePatient(order.getPatientId()).orElse(null), null, false);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("result_id", result.getId());
@@ -838,7 +840,7 @@ public class DiagnosticOrderTestResultService {
             );
             return;
         }
-        if(!isCriticalMarker(calculatedMarker)) {
+        if (!isCriticalMarker(calculatedMarker)) {
             LOG.debug(
                     "Skip diagnostic result notification because it is not critical marker. resultId={}, orderId={}, marker={}",
                     result.getId(),
@@ -863,7 +865,7 @@ public class DiagnosticOrderTestResultService {
         }
         String login = SecurityUtils.getCurrentUserLogin().orElse(null);
 
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, result.getCreatedBy(), resolvePatient(order.getPatientId()).orElse(null), null,false);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, result.getCreatedBy(), resolvePatient(order.getPatientId()).orElse(null), null, false);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("result_id", result.getId());
@@ -968,6 +970,7 @@ public class DiagnosticOrderTestResultService {
         }
         return Severity.SEVERE == report.getSeverity() || Severity.CRITICAL == report.getSeverity();
     }
+
     public Specification<DiagnosticOrderTestResult> buildResultSpecification(
             List<Long> orderIdInFilter,
             Long orderTestIdFilter,
