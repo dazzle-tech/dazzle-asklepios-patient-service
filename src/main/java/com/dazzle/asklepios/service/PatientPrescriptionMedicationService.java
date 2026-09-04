@@ -45,18 +45,24 @@ public class PatientPrescriptionMedicationService {
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + prescriptionMedicationCreateDTO.prescriptionHeaderId));
 
         validateChronicVsDuration(prescriptionMedicationCreateDTO.chronicMedication, prescriptionMedicationCreateDTO.duration);
-
-        if (prescriptionMedicationCreateDTO.activeIngredientId != null)
-            activeIngredientClient.existsActiveIngredient(prescriptionMedicationCreateDTO.activeIngredientId);
-        if (prescriptionMedicationCreateDTO.medicationsId != null)
-            brandMedicationHelper.validateBrandMedicationExists(prescriptionMedicationCreateDTO.medicationsId);
-        if (prescriptionMedicationCreateDTO.indicationIcd != null)
-            icdTreeHelper.validateICDDiagnosisExists(prescriptionMedicationCreateDTO.indicationIcd);
-
+        validateMedicationSelection(
+                prescriptionMedicationCreateDTO.activeIngredientId,
+                prescriptionMedicationCreateDTO.medicationsId,
+                prescriptionMedicationCreateDTO.otherMedicationName
+        );
         PatientPrescriptionMedication entity = PatientPrescriptionMedication.builder()
                 .prescriptionHeader(header)
-                .medicationsId(prescriptionMedicationCreateDTO.medicationsId)
-                .activeIngredientId(prescriptionMedicationCreateDTO.activeIngredientId)
+                .medicationsId(
+                        prescriptionMedicationCreateDTO.medicationsId
+                )
+                .otherMedicationName(
+                        prescriptionMedicationCreateDTO.otherMedicationName != null
+                                ? prescriptionMedicationCreateDTO.otherMedicationName.trim()
+                                : null
+                )
+                .activeIngredientId(
+                        prescriptionMedicationCreateDTO.activeIngredientId
+                )
                 .instructionsType(required(prescriptionMedicationCreateDTO.instructionsType, "instructionsType"))
                 .instructions(prescriptionMedicationCreateDTO.instructions)
                 .dose(prescriptionMedicationCreateDTO.dose)
@@ -134,7 +140,9 @@ public class PatientPrescriptionMedicationService {
         if (prescriptionMedicationUpdateDTO.parametersToMonitor != null)
             entity.setParametersToMonitor(prescriptionMedicationUpdateDTO.parametersToMonitor);
         if (prescriptionMedicationUpdateDTO.administrationInstructions != null)
-            entity.setParametersToMonitor(prescriptionMedicationUpdateDTO.administrationInstructions);
+            entity.setAdministrationInstructions(
+                    prescriptionMedicationUpdateDTO.administrationInstructions
+            );
         if (prescriptionMedicationUpdateDTO.numberOfRefills != null)
             entity.setNumberOfRefills(prescriptionMedicationUpdateDTO.numberOfRefills);
         if (prescriptionMedicationUpdateDTO.refillValue != null)
@@ -146,13 +154,38 @@ public class PatientPrescriptionMedicationService {
         if (prescriptionMedicationUpdateDTO.extraDocumentation != null)
             entity.setExtraDocumentation(prescriptionMedicationUpdateDTO.extraDocumentation);
         if (prescriptionMedicationUpdateDTO.medicationsId != null) {
-            brandMedicationHelper.validateBrandMedicationExists(prescriptionMedicationUpdateDTO.medicationsId);
+            brandMedicationHelper.validateBrandMedicationExists(
+                    prescriptionMedicationUpdateDTO.medicationsId
+            );
+            entity.setMedicationsId(
+                    prescriptionMedicationUpdateDTO.medicationsId
+            );
         }
-        entity.setMedicationsId(prescriptionMedicationUpdateDTO.medicationsId);
+
         if (prescriptionMedicationUpdateDTO.activeIngredientId != null) {
-            activeIngredientClient.existsActiveIngredient(prescriptionMedicationUpdateDTO.activeIngredientId);
-            entity.setActiveIngredientId(prescriptionMedicationUpdateDTO.activeIngredientId);
+            activeIngredientClient.existsActiveIngredient(
+                    prescriptionMedicationUpdateDTO.activeIngredientId
+            );
+            entity.setActiveIngredientId(
+                    prescriptionMedicationUpdateDTO.activeIngredientId
+            );
         }
+
+        if (prescriptionMedicationUpdateDTO.otherMedicationName != null) {
+            String otherMedicationName =
+                    prescriptionMedicationUpdateDTO.otherMedicationName.trim();
+
+            if (otherMedicationName.isEmpty()) {
+                throw new BadRequestAlertException(
+                        "Active Ingredient or Other Medication Name is required.",
+                        "patientPrescriptionMedication",
+                        "medicationRequired"
+                );
+            }
+
+            entity.setOtherMedicationName(otherMedicationName);
+        }
+
         return patientPrescriptionMedicationRepository.saveAndFlush(entity);
     }
 
@@ -208,6 +241,35 @@ public class PatientPrescriptionMedicationService {
             );
         }
     }
+
+    private void validateMedicationSelection(
+            Long activeIngredientId,
+            Long medicationsId,
+            String otherMedicationName
+    ) {
+        if (activeIngredientId == null) {
+            throw new BadRequestAlertException(
+                    "Active Ingredient is required.",
+                    "patientPrescriptionMedication",
+                    "activeIngredientRequired"
+            );
+        }
+
+        activeIngredientClient.existsActiveIngredient(activeIngredientId);
+
+        if (medicationsId != null) {
+            brandMedicationHelper.validateBrandMedicationExists(medicationsId);
+        }
+
+        if (otherMedicationName != null && otherMedicationName.trim().isEmpty()) {
+            throw new BadRequestAlertException(
+                    "Other Medication Name cannot be empty.",
+                    "patientPrescriptionMedication",
+                    "otherMedicationInvalid"
+            );
+        }
+    }
+
 
     private <T> T required(T value, String field) {
         if (value == null)
