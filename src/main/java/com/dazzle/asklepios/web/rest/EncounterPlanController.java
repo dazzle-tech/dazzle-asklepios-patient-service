@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.EncounterPlan;
+import com.dazzle.asklepios.domain.EncounterPlanFieldAudit;
 import com.dazzle.asklepios.service.EncounterPlanService;
 import com.dazzle.asklepios.service.dto.encounterPlan.EncounterPlanCreateDTO;
 import com.dazzle.asklepios.service.dto.encounterPlan.EncounterPlanUpdateDTO;
@@ -132,5 +133,16 @@ public class EncounterPlanController {
         List<EncounterPlan> body = page.getContent();
 
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
+    }
+
+    @GetMapping("/encounter-plans/{planId}/audit")
+    public ResponseEntity<List<EncounterPlanFieldAudit>> getPlanAudit(
+            @PathVariable Long planId
+    ) {
+        LOG.debug("REST get Encounter Plan audit by id={}", planId);
+
+        return ResponseEntity.ok(
+                encounterPlanService.getPlanHistory(planId)
+        );
     }
 }
