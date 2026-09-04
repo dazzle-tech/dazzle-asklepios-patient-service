@@ -50,6 +50,6 @@ public class EncounterAssessmentLog implements Serializable {
     @Column(name = "log_date", nullable = false)
     private Instant logDate;
 
-    @Column(name = "log_by", length = 50)
+    @Column(name = "log_by", length = 50, nullable = false)
     private String logBy;
 }
