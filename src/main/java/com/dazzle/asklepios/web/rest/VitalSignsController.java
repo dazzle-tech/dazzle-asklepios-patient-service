@@ -1,6 +1,8 @@
 package com.dazzle.asklepios.web.rest;
 
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.VitalSigns;
+import com.dazzle.asklepios.service.PatientEncounterService;
 import com.dazzle.asklepios.service.VitalSignsService;
 import com.dazzle.asklepios.service.dto.vitalSigns.VitalSignsCreateDTO;
 import com.dazzle.asklepios.service.dto.vitalSigns.VitalSignsUpdateDTO;
@@ -52,6 +54,7 @@ public class VitalSignsController {
     private static final String ENTITY_NAME = "vitalSigns";
 
     private final VitalSignsService vitalSignsService;
+    private final PatientEncounterService patientEncounterService;
 
     @PostMapping("/vital-signs")
     public ResponseEntity<VitalSigns> create(@Valid @RequestBody VitalSignsCreateDTO dto) {
@@ -142,16 +145,30 @@ public ResponseEntity<List<VitalSignsResponseVM>> findByPatientBetweenDates(
     Page<VitalSignsResponseVM> page =
             vitalSignsService
                     .findVitalSignsByPatientIdBetweenDates(patientId, from, to, pageable)
-                    .map(vitalSigns -> VitalSignsResponseVM.builder()
-                            .temperature(vitalSigns.getTemperature())
-                            .pulseRate(vitalSigns.getHeartRate())
-                            .respiratoryRate(vitalSigns.getRespiratoryRate())
-                            .bloodPressureSystolic(vitalSigns.getBloodPressureSystolic())
-                            .bloodPressureDiastolic(vitalSigns.getBloodPressureDiastolic())
-                            .oxygenSaturation(vitalSigns.getOxygenSaturation())
-                            .createdAt(vitalSigns.getCreatedDate())
-                            .build()
-                    );
+                    .map(vitalSigns -> {
+
+                        PatientEncounter encounter = vitalSigns.getEncounterId() != null
+                                ? patientEncounterService.getById(vitalSigns.getEncounterId())
+                                : null;
+
+                        String encounterNumber = encounter != null
+                                ? encounter.getEncounterNumber()
+                                : null;
+
+                        return VitalSignsResponseVM.builder()
+                                .temperature(vitalSigns.getTemperature())
+                                .pulseRate(vitalSigns.getHeartRate())
+                                .respiratoryRate(vitalSigns.getRespiratoryRate())
+                                .bloodPressureSystolic(vitalSigns.getBloodPressureSystolic())
+                                .bloodPressureDiastolic(vitalSigns.getBloodPressureDiastolic())
+                                .oxygenSaturation(vitalSigns.getOxygenSaturation())
+                                .createdAt(vitalSigns.getCreatedDate())
+                                .createdBy(vitalSigns.getCreatedBy())
+                                .encounterId(vitalSigns.getEncounterId())
+                                .encounterNumber(encounterNumber)
+                                .isActive(vitalSigns.getIsActive())
+                                .build();
+                    });
 
     HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
             ServletUriComponentsBuilder.fromCurrentRequest(),

@@ -114,11 +114,11 @@ public class BodyMeasurementsService {
 
         if (from != null && to != null) {
             return bodyMeasurementsRepository
-                    .findByPatientIdAndIsActiveTrueAndCreatedDateBetween(patientId, from, to, pageable);
+                    .findByPatientIdAndCreatedDateBetween(patientId, from, to, pageable);
         }
 
         return bodyMeasurementsRepository
-                .findByPatientIdAndIsActiveTrue(patientId, pageable);
+                .findByPatientId(patientId, pageable);
     }
 
     @Transactional(readOnly = true)

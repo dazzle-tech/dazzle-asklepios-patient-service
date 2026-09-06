@@ -26,6 +26,8 @@ public class PrescriptionMedicationUpdateDTO {
     public Long maximumDose;
     public Boolean allowedSubstitute;
     public Long activeIngredientId;
+    public Long medicationsId;
+    public String otherMedicationName;
     public String indicationManually;
     public String indicationUse;
     public Long indicationIcd;
@@ -37,6 +39,4 @@ public class PrescriptionMedicationUpdateDTO {
 
     public String notes;
     public String extraDocumentation;
-    public Long medicationsId;
-
 }

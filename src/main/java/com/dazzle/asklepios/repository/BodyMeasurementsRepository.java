@@ -49,4 +49,16 @@ public interface BodyMeasurementsRepository extends JpaRepository<BodyMeasuremen
     Set<BodyMeasurements> findDistinctByEncounterIdIn(List<Long> encounterIds);
 
     Optional<BodyMeasurements> findTopByEncounterIdAndIsActiveTrueOrderByIdDesc(Long encounterId);
+
+    Page<BodyMeasurements> findByPatientIdAndCreatedDateBetween(
+            Long patientId,
+            Instant from,
+            Instant to,
+            Pageable pageable
+    );
+    Page<BodyMeasurements> findByPatientId(
+            Long patientId,
+            Pageable pageable
+    );
+
 }

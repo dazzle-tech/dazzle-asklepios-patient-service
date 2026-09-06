@@ -1,8 +1,10 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.EncounterAssessment;
+import com.dazzle.asklepios.domain.EncounterAssessmentLog;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.repository.EncounterAssessmentLogRepository;
 import com.dazzle.asklepios.repository.EncounterAssessmentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -20,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -33,16 +36,18 @@ public class EncounterAssessmentService {
     private final EncounterAssessmentRepository encounterAssessmentRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
-
     private static final String ENTITY_NAME = "EncounterAssessment";
+    private final EncounterAssessmentLogRepository encounterAssessmentLogRepository;
 
     public EncounterAssessmentService(
             EncounterAssessmentRepository encounterAssessmentRepository,
             PatientRepository patientRepository,
-            PatientEncounterRepository patientEncounterRepository) {
+            PatientEncounterRepository patientEncounterRepository,
+            EncounterAssessmentLogRepository encounterAssessmentLogRepository) {
         this.encounterAssessmentRepository = encounterAssessmentRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
+        this.encounterAssessmentLogRepository = encounterAssessmentLogRepository;
     }
 
     public EncounterAssessment create(EncounterAssessmentCreateDTO createRequest) {
@@ -180,6 +185,11 @@ public class EncounterAssessmentService {
                         ENTITY_NAME,
                         "Encounter not found with id " + encounterId
                 ));
+    }
+
+    @Transactional(readOnly = true)
+    public List<EncounterAssessmentLog> getAssessmentHistory(Long assessmentId) {
+        return encounterAssessmentLogRepository.findByEncounterAssessmentIdOrderByLogDateDesc(assessmentId);
     }
 
 }
