@@ -1,13 +1,18 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
+import com.dazzle.asklepios.integration.waseel.dto.claim.FlexibleOffsetDateTimeDeserializer;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimUploadRequest;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimUploadResponse;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.cfg.CoercionAction;
+import com.fasterxml.jackson.databind.cfg.CoercionInputShape;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
@@ -17,9 +22,11 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 
@@ -97,19 +104,19 @@ public class WaseelClaimService {
             log.info("Request Body: {}", jsonBody);
             log.info("=================================================");
 
-            ResponseEntity<WaseelClaimUploadResponse> response = restTemplate.exchange(
+            ResponseEntity<String> response = restTemplate.exchange(
                     url,
                     HttpMethod.POST,
                     entity,
-                    WaseelClaimUploadResponse.class
+                    String.class
             );
 
             log.info("========== WASEEL CLAIM UPLOAD RESPONSE ==========");
             log.info("Status Code: {}", response.getStatusCode());
-            log.info("Response Body: {}", toJsonWithoutNulls(response.getBody()));
+            log.info("Response Body: {}", response.getBody());
             log.info("==================================================");
 
-            return response.getBody();
+            return parseUploadResponse(response.getBody());
 
         } catch (HttpStatusCodeException ex) {
             logWaseelError("CLAIM_UPLOAD", ex, jsonBody);
@@ -129,13 +136,17 @@ public class WaseelClaimService {
         HttpEntity<Void> entity = new HttpEntity<>(buildHeaders(token));
 
         try {
-            ResponseEntity<WaseelClaimUploadResponse> response = restTemplate.exchange(
+            ResponseEntity<String> response = restTemplate.exchange(
                     url,
                     HttpMethod.GET,
                     entity,
-                    WaseelClaimUploadResponse.class
+                    String.class
             );
-            return response.getBody();
+            log.info("========== WASEEL CLAIM SUMMARY RESPONSE ==========");
+            log.info("Status Code: {}", response.getStatusCode());
+            log.info("Response Body: {}", response.getBody());
+            log.info("==================================================");
+            return parseUploadResponse(response.getBody());
 
         } catch (HttpStatusCodeException ex) {
             logWaseelError("CLAIM_SUMMARY", ex, null);
@@ -193,6 +204,143 @@ public class WaseelClaimService {
         log.error("Response Body: {}", ex.getResponseBodyAsString());
         log.error("Request Body: {}", jsonBody);
         log.error("====================================", ex);
+    }
+
+    private WaseelClaimUploadResponse parseUploadResponse(String body) {
+        if (body == null || body.isBlank()) {
+            return null;
+        }
+
+        try {
+            ObjectMapper mapper = waseelResponseMapper();
+            JsonNode root = mapper.readTree(body);
+            if (root == null || root.isNull() || root.isMissingNode()) {
+                return null;
+            }
+            if (root.isArray()) {
+                root = root.isEmpty() ? null : root.get(0);
+            }
+            if (root != null && root.isTextual()) {
+                String nested = root.asText();
+                if (nested != null && !nested.isBlank() && (nested.trim().startsWith("{") || nested.trim().startsWith("["))) {
+                    root = mapper.readTree(nested);
+                    if (root != null && root.isArray()) {
+                        root = root.isEmpty() ? null : root.get(0);
+                    }
+                } else {
+                    return new WaseelClaimUploadResponse(
+                            null, nested, null, null, null, null,
+                            null, null, null, null, null, null, null, null, null, null
+                    );
+                }
+            }
+            if (root == null || !root.isObject()) {
+                throw new IllegalStateException("Unexpected Waseel claim upload payload");
+            }
+
+            try {
+                return mapper.convertValue(root, WaseelClaimUploadResponse.class);
+            } catch (IllegalArgumentException ex) {
+                log.warn("Strict Waseel upload mapping failed, extracting known fields. body={}", body, ex);
+                return extractUploadResponse(root);
+            }
+        } catch (JsonProcessingException | IllegalArgumentException | IllegalStateException ex) {
+            throw new RestClientException(
+                    "Failed to parse Waseel claim upload response: " + body,
+                    ex
+            );
+        }
+    }
+
+    private WaseelClaimUploadResponse extractUploadResponse(JsonNode root) {
+        return new WaseelClaimUploadResponse(
+                asLong(root, "transcationLogId", "transactionLogId"),
+                asText(root, "message"),
+                asLong(root, "uploadId"),
+                asLong(root, "providerId"),
+                asText(root, "uploadName"),
+                FlexibleOffsetDateTimeDeserializer.parse(first(root, "uploadDate")),
+                asInteger(root, "noOfNotUploadedClaims"),
+                asInteger(root, "noOfUploadedClaims"),
+                asDecimal(root, "totalAmtOfUploadedClaims"),
+                asInteger(root, "noOfAcceptedClaims"),
+                asDecimal(root, "totalAmtOfAcceptedClaims"),
+                asInteger(root, "noOfNotAcceptedClaims"),
+                asDecimal(root, "totalAmtOfNotAcceptedClaims"),
+                FlexibleOffsetDateTimeDeserializer.parse(first(root, "lastModifiedDate")),
+                asDecimal(root, "ratioOfAccepted"),
+                asDecimal(root, "ratioOfNotAccepted")
+        );
+    }
+
+    private ObjectMapper waseelResponseMapper() {
+        ObjectMapper mapper = objectMapper.copy();
+        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        mapper.configure(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
+        mapper.configure(DeserializationFeature.ACCEPT_FLOAT_AS_INT, true);
+        mapper.coercionConfigDefaults().setCoercion(CoercionInputShape.EmptyString, CoercionAction.AsNull);
+        return mapper;
+    }
+
+    private static Long asLong(JsonNode root, String... names) {
+        JsonNode node = first(root, names);
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return null;
+        }
+        if (node.isNumber()) {
+            return node.longValue();
+        }
+        String text = node.asText();
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.valueOf(text.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private static Integer asInteger(JsonNode root, String name) {
+        Long value = asLong(root, name);
+        return value == null ? null : value.intValue();
+    }
+
+    private static BigDecimal asDecimal(JsonNode root, String name) {
+        JsonNode node = first(root, name);
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return null;
+        }
+        if (node.isNumber()) {
+            return node.decimalValue();
+        }
+        String text = node.asText();
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        try {
+            return new BigDecimal(text.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private static String asText(JsonNode root, String name) {
+        JsonNode node = first(root, name);
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return null;
+        }
+        String text = node.asText();
+        return text == null || text.isBlank() ? null : text.trim();
+    }
+
+    private static JsonNode first(JsonNode root, String... names) {
+        for (String name : names) {
+            if (root.has(name) && !root.get(name).isNull()) {
+                return root.get(name);
+            }
+        }
+        return null;
     }
 
     private String toJsonWithoutNulls(Object value) {
