@@ -1,0 +1,113 @@
+﻿Pager usage is off.
+   section   
+-------------
+ RAD_MAPPING
+(1 row)
+
+  id  | item_type | source_id |  item_code  |                                   item_name                                    | sbs_catalog_id | is_active |                 notes                 |        created_date        |     created_by     | last_modified_by | last_modified_date 
+------+-----------+-----------+-------------+--------------------------------------------------------------------------------+----------------+-----------+---------------------------------------+----------------------------+--------------------+------------------+--------------------
+ 3087 | PROCEDURE |       183 | 90542-00-11 | Application or revision of immobilisation device or support, wrist, unilateral |           4020 | t         | Exact sbs_code match (service)        | 2026-08-09 01:10:21.272193 | sbs-mapping-import |                  | 
+ 3441 | PROCEDURE |      2323 | 90542-00-11 | Application or revision of immobilisation device or support, wrist, unilateral |           4020 | t         | Exact sbs_code match (service)        | 2026-08-09 01:10:21.272193 | sbs-mapping-import |                  | 
+ 4216 | RADIOLOGY |       948 | 55800-00-00 | Ultrasound of hand or wrist bilateral                                          |           3201 | t         | Tawuniya Ultrasound - HIGH_CONFIDENCE | 2026-08-29 18:27:51.765046 | mapping-import     |                  | 
+ 4243 | RADIOLOGY |       975 | 57506-03-11 | Radiography of wrist 1 or 2 views unilateral                                   |           3232 | t         | Tawuniya Radiology - HIGH_CONFIDENCE  | 2026-08-29 18:27:51.765046 | mapping-import     |                  | 
+ 4244 | RADIOLOGY |       976 | 57506-03-21 | Radiography of wrist 3 or more views unilateral                                |           3233 | t         | Tawuniya Radiology - HIGH_CONFIDENCE  | 2026-08-29 18:27:51.765046 | mapping-import     |                  | 
+ 4247 | RADIOLOGY |       979 | 57512-02-00 | Radiography of hand wrist and forearm unilateral                               |           3236 | t         | Tawuniya Radiology - HIGH_CONFIDENCE  | 2026-08-29 18:27:51.765046 | mapping-import     |                  | 
+ 4248 | RADIOLOGY |       980 | 57512-03-00 | Radiography of hand and wrist bilateral                                        |           3237 | t         | Tawuniya Radiology - HIGH_CONFIDENCE  | 2026-08-29 18:27:51.765046 | mapping-import     |                  | 
+ 4275 | RADIOLOGY |      1007 | 58300-00-00 | Bone age radiographic study of wrist and knee                                  |           3270 | t         | Tawuniya Radiology - HIGH_CONFIDENCE  | 2026-08-29 18:27:51.765046 | mapping-import     |                  | 
+(8 rows)
+
+  section  
+-----------
+ RAD_PRICE
+(1 row)
+
+  id  | item_type | source_id |  item_code  |                                      left                                      | unit_price | discount_percentage | is_active | waseel_item_mapping_id 
+------+-----------+-----------+-------------+--------------------------------------------------------------------------------+------------+---------------------+-----------+------------------------
+  202 | RADIOLOGY |       948 | 55800-00-00 | Ultrasound of hand or wrist bilateral                                          |   475.0000 |             25.0000 | t         |                   4216
+  233 | RADIOLOGY |       975 | 57506-03-11 | Radiography of wrist 1 or 2 views unilateral                                   |    90.0000 |             25.0000 | t         |                   4243
+  234 | RADIOLOGY |       976 | 57506-03-21 | Radiography of wrist 3 or more views unilateral                                |   160.0000 |             25.0000 | t         |                   4244
+  237 | RADIOLOGY |       979 | 57512-02-00 | Radiography of hand wrist and forearm unilateral                               |   105.0000 |             25.0000 | t         |                   4247
+  238 | RADIOLOGY |       980 | 57512-03-00 | Radiography of hand and wrist bilateral                                        |   150.0000 |             25.0000 | t         |                   4248
+  271 | RADIOLOGY |      1007 | 58300-00-00 | Bone age radiographic study of wrist and knee                                  |    90.0000 |             25.0000 | t         |                   4275
+ 2520 | RADIOLOGY |       948 | 55800-00-00 | Ultrasound of hand or wrist bilateral                                          |  1100.0000 |              0.0000 | t         |                       
+ 2521 | RADIOLOGY |      1143 | UHAWL       | US Hand and wrist Lt                                                           |   750.0000 |              0.0000 | t         |                       
+ 2625 | RADIOLOGY |      1246 | XHWBA       | XR Hand and wrist for bone age                                                 |   145.0000 |              0.0000 | t         |                       
+ 1021 | PROCEDURE |       183 | 90542-00-11 | Application or revision of immobilisation device or support wrist unilateral   |   215.0000 |             25.0000 | t         |                   3087
+ 1729 | PROCEDURE |       183 | 90542-00-11 | Application or revision of immobilisation device or support, wrist, unilateral |   312.0000 |              0.0000 | t         |                       
+ 2611 | RADIOLOGY |      1265 | XHAWB       | XR Hand and wrist Both                                                         |   380.0000 |              0.0000 | t         |                       
+ 2612 | RADIOLOGY |      1267 | XHAWL       | XR Hand and wrist                                                              |   280.0000 |              0.0000 | t         |                       
+ 2680 | RADIOLOGY |      1223 | XWRAL       | XR - WRIST AP/LAT                                                              |   185.0000 |              0.0000 | t         |                       
+ 2681 | RADIOLOGY |      1224 | XWRMV       | XR - WRISTE AP / LAT /OBLIQUE                                                  |   320.0000 |              0.0000 | t         |                       
+(15 rows)
+
+  section  
+-----------
+ SBS_57512
+(1 row)
+
+ section  
+----------
+ DIAG_193
+(1 row)
+
+psql.exe : psql:C:/Users/User/Documents/GitHub/dazzle-asklepios-patient-service/_tmp_enc106_diag3.sql:22: ERROR:  
+column "code" does not exist
+At C:\Users\User\AppData\Local\Temp\ps-script-6f620830-8631-40cf-a4e3-7b91ac6b37de.ps1:124 char:1
++ & $psql -h localhost -p 5433 -U postgres -d DBOneHealthLocaly -f "C:\ ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (psql:C:/Users/U... does not exist:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+LINE 1: SELECT id, code, left(name,80) AS name, category
+                   ^
+ id  |       name       
+-----+------------------
+ 193 | Hand/Wrist X-Ray
+(1 row)
+
+    section    
+---------------
+ PAYMENTS_COLS
+(1 row)
+
+ id |    payment_number    | patient_id | encounter_id |  amount  |  status   |        created_date        
+----+----------------------+------------+--------------+----------+-----------+----------------------------
+ 34 | PAY-914020A1467641E1 |         25 |          106 |  18.0000 | COMPLETED | 2026-08-30 14:51:38.330595
+ 75 | PAY-EE16EA79474D411F |         25 |          106 | 100.0000 | COMPLETED | 2026-09-03 16:44:45.208492
+(2 rows)
+
+  section   
+------------
+ CHARGE_HDR
+(1 row)
+
+psql:C:/Users/User/Documents/GitHub/dazzle-asklepios-patient-service/_tmp_enc106_diag3.sql:35: ERROR:  column 
+"patient_insurance_id" does not exist
+LINE 1: SELECT id, charge_number, status, patient_insurance_id,
+                                          ^
+  section  
+-----------
+ FD_TOTALS
+(1 row)
+
+ id | document_subtype | total_amount | status | eligibility_reference 
+----+------------------+--------------+--------+-----------------------
+ 45 | PATIENT          |     119.5000 | ISSUED | 344547472
+ 46 | INSURANCE_CLAIM  |     478.0000 | ISSUED | 344547472
+(2 rows)
+
+     section      
+------------------
+ PSP_MAPPING_GAPS
+(1 row)
+
+ id  | billing_item_type | diagnostic_test_id | service_id | source_id | waseel_sbs_mapping_id | waseel_sbs_code | price_source | mapping_found_id | mapping_code 
+-----+-------------------+--------------------+------------+-----------+-----------------------+-----------------+--------------+------------------+--------------
+ 289 | SERVICE           |                    |      29272 |     29272 |                       |                 | PRICE_LIST   |             4404 | Cons003
+ 294 | LABORATORY        |                138 |            |       257 |                       |                 | PRICE_LIST   |             3496 | 73100-00-80
+ 295 | LABORATORY        |                142 |            |       258 |                  3547 | 73100-08-60     | PRICE_LIST   |             3547 | 73100-08-60
+ 296 | LABORATORY        |                145 |            |       259 |                  3524 | 73050-18-50     | PRICE_LIST   |             3524 | 73050-18-50
+ 297 | LABORATORY        |                143 |            |       260 |                  3549 | 73100-09-50     | PRICE_LIST   |             3549 | 73100-09-50
+ 299 | RADIOLOGY         |                193 |            |       261 |                       |                 | DEFAULT      |                  | 
+(6 rows)
+

@@ -1,0 +1,128 @@
+﻿Pager usage is off.
+    section    
+---------------
+ BENEFIT_RULES
+(1 row)
+
+ id  |                                   benefit_category                                    |                                      item_name                                       | item_code | network_type | patient_copayment_percentage | patient_maximum_copayment | maximum_benefit | approval_limit | is_global_default | eligibility_request_id 
+-----+---------------------------------------------------------------------------------------+--------------------------------------------------------------------------------------+-----------+--------------+------------------------------+---------------------------+-----------------+----------------+-------------------+------------------------
+ 404 | __GLOBAL__                                                                            | OP Prescribed Invented Medicines - with generic alternative                          |           | IN_NETWORK   |                      20.0000 |                 9999.0000 |                 |                | t                 |                    141
+ 398 | Cost Beneficiary                                                                      | maxcopay                                                                             | maxcopay  |              |                              |                   75.0000 |                 |                | f                 |                    141
+ 399 | OP Prescribed Invented Medicines - with generic alternative.                          | OP Prescribed Invented Medicines - with generic alternative                          |           | IN_NETWORK   |                      20.0000 |                 9999.0000 |                 |                | f                 |                    141
+ 400 | Dental Coverage.                                                                      | Dental Coverage.                                                                     |           | IN_NETWORK   |                      20.0000 |                   75.0000 |                 |         1.0000 | f                 |                    141
+ 401 | Health Benefit Plan Coverage.                                                         | Health Benefit Plan Coverage.                                                        |           | IN_NETWORK   |                      20.0000 |                   75.0000 |                 |      5000.0000 | f                 |                    141
+ 402 | OP Prescribed Generic and Invented Medicines - with no generic alternative available. | OP Prescribed Generic and Invented Medicines - with no generic alternative available |           | IN_NETWORK   |                      20.0000 |                   30.0000 |                 |                | f                 |                    141
+ 403 | Vision Coverage.                                                                      | Vision Coverage.                                                                     |           | IN_NETWORK   |                      20.0000 |                   75.0000 |                 |         1.0000 | f                 |                    141
+(7 rows)
+
+ section 
+---------
+ FD
+(1 row)
+
+ id |       document_number       | document_type | document_subtype | status | total_amount | eligibility_reference |     claim_reference      |        created_date        
+----+-----------------------------+---------------+------------------+--------+--------------+-----------------------+--------------------------+----------------------------
+ 43 | INV-2026-120261120261000052 | INVOICE       | PATIENT          | ISSUED |    1203.0000 | 345276567             |                          | 2026-09-03 17:22:45.761852
+ 44 | INV-2026-120261120261000053 | INVOICE       | INSURANCE_CLAIM  | ISSUED |      72.0000 | 345276567             | CLM-E00144-1788456165826 | 2026-09-03 17:22:45.82803
+(2 rows)
+
+ section  
+----------
+ FD_ITEMS
+(1 row)
+
+ id  | document_id | document_subtype | patient_service_product_id | billing_charge_line_id |  item_code  |         item_description          | unit_price | gross_amount | discount_amount | net_amount | patient_share_amount | insurance_share_amount | paid_amount | remaining_amount | insurance_paid_amount | insurance_remaining_amount |     status     
+-----+-------------+------------------+----------------------------+------------------------+-------------+-----------------------------------+------------+--------------+-----------------+------------+----------------------+------------------------+-------------+------------------+-----------------------+----------------------------+----------------
+ 129 |          44 | INSURANCE_CLAIM  |                         43 |                     41 | Cons003     | Specilaist Fees                   |    72.0000 |      72.0000 |          0.0000 |    72.0000 |               0.0000 |                72.0000 |     18.0000 |          54.0000 |                0.0000 |                    72.0000 | PARTIALLY_PAID
+ 116 |          43 | PATIENT          |                         43 |                     41 | Cons003     | Specilaist Fees                   |    18.0000 |      18.0000 |          0.0000 |    18.0000 |              18.0000 |                 0.0000 |     18.0000 |           0.0000 |                0.0000 |                     0.0000 | PAID
+ 117 |          43 | PATIENT          |                         45 |                     43 | 73050-35-50 | TSH (Thyroid Stimulating Hormone) |   160.0000 |     160.0000 |          0.0000 |   160.0000 |             160.0000 |                 0.0000 |    160.0000 |           0.0000 |                0.0000 |                     0.0000 | PAID
+ 118 |          43 | PATIENT          |                         47 |                     44 | 73050-37-30 | Blood Urea Nitrogen (BUN)         |    50.0000 |      50.0000 |          0.0000 |    50.0000 |              50.0000 |                 0.0000 |      0.0000 |          50.0000 |                0.0000 |                     0.0000 | PENDING
+ 119 |          43 | PATIENT          |                         46 |                     45 | 73100-00-10 | White Blood Cell Count (WBC)      |    50.0000 |      50.0000 |          0.0000 |    50.0000 |              50.0000 |                 0.0000 |      0.0000 |          50.0000 |                0.0000 |                     0.0000 | PENDING
+ 120 |          43 | PATIENT          |                         48 |                     46 | 73050-15-50 | Fasting Blood Sugar (FBS)         |    25.0000 |      25.0000 |          0.0000 |    25.0000 |              25.0000 |                 0.0000 |      0.0000 |          25.0000 |                0.0000 |                     0.0000 | PENDING
+ 121 |          43 | PATIENT          |                         50 |                     47 | 73050-23-60 | HDL Cholesterol                   |    60.0000 |      60.0000 |          0.0000 |    60.0000 |              60.0000 |                 0.0000 |      0.0000 |          60.0000 |                0.0000 |                     0.0000 | PENDING
+ 122 |          43 | PATIENT          |                         49 |                     48 | 73050-13-10 | Ferritin                          |   180.0000 |     180.0000 |          0.0000 |   180.0000 |             180.0000 |                 0.0000 |      0.0000 |         180.0000 |                0.0000 |                     0.0000 | PENDING
+ 123 |          43 | PATIENT          |                         51 |                     49 | 73050-05-30 | Vitamin D (25-OH)                 |   240.0000 |     240.0000 |          0.0000 |   240.0000 |             240.0000 |                 0.0000 |      0.0000 |         240.0000 |                0.0000 |                     0.0000 | PENDING
+ 124 |          43 | PATIENT          |                         52 |                     50 | 73000-00-60 | Total Cholesterol                 |   180.0000 |     180.0000 |          0.0000 |   180.0000 |             180.0000 |                 0.0000 |      0.0000 |         180.0000 |                0.0000 |                     0.0000 | PENDING
+ 125 |          43 | PATIENT          |                         53 |                     51 | 73050-36-20 | Triglycerides                     |    50.0000 |      50.0000 |          0.0000 |    50.0000 |              50.0000 |                 0.0000 |      0.0000 |          50.0000 |                0.0000 |                     0.0000 | PENDING
+ 126 |          43 | PATIENT          |                         54 |                     52 | 73100-00-80 | Complete Blood Count (CBC)        |    85.0000 |      85.0000 |          0.0000 |    85.0000 |              85.0000 |                 0.0000 |      0.0000 |          85.0000 |                0.0000 |                     0.0000 | PENDING
+ 127 |          43 | PATIENT          |                         55 |                     53 | 73050-23-80 | LDL Cholesterol                   |    60.0000 |      60.0000 |          0.0000 |    60.0000 |              60.0000 |                 0.0000 |      0.0000 |          60.0000 |                0.0000 |                     0.0000 | PENDING
+ 128 |          43 | PATIENT          |                         56 |                     54 | 73050-09-80 | Serum Creatinine                  |    45.0000 |      45.0000 |          0.0000 |    45.0000 |              45.0000 |                 0.0000 |      0.0000 |          45.0000 |                0.0000 |                     0.0000 | PENDING
+(14 rows)
+
+ section 
+---------
+ CHARGE
+(1 row)
+
+ id |    charge_number     | status | gross_amount | discount_amount | net_amount | allocated_amount | outstanding_amount | line_count 
+----+----------------------+--------+--------------+-----------------+------------+------------------+--------------------+------------
+ 14 | CHG-91FD19DD23D548F8 | CLOSED |    1275.0000 |          0.0000 |  1275.0000 |        1203.0000 |            72.0000 |         13
+(1 row)
+
+ section 
+---------
+ LINES
+(1 row)
+
+ id | patient_service_product_id | billing_item_type |  item_code  |               descr               | unit_price | gross_amount | discount_amount | net_amount | patient_responsibility_amount | insurance_responsibility_amount | allocated_amount | outstanding_amount |       status        | patient_insurance_id | current_pricing_snapshot_id 
+----+----------------------------+-------------------+-------------+-----------------------------------+------------+--------------+-----------------+------------+-------------------------------+---------------------------------+------------------+--------------------+---------------------+----------------------+-----------------------------
+ 41 |                         43 | SERVICE           | Cons003     | Specilaist Fees                   |    90.0000 |      90.0000 |          0.0000 |    90.0000 |                       18.0000 |                         72.0000 |          18.0000 |            72.0000 | PARTIALLY_ALLOCATED |                   16 |                          41
+ 43 |                         45 | LABORATORY        | 73050-35-50 | TSH (Thyroid Stimulating Hormone) |   160.0000 |     160.0000 |          0.0000 |   160.0000 |                      160.0000 |                          0.0000 |         160.0000 |             0.0000 | ALLOCATED           |                   16 |                          43
+ 44 |                         47 | LABORATORY        | 73050-37-30 | Blood Urea Nitrogen (BUN)         |    50.0000 |      50.0000 |          0.0000 |    50.0000 |                       50.0000 |                          0.0000 |          50.0000 |             0.0000 | ALLOCATED           |                   16 |                          44
+ 45 |                         46 | LABORATORY        | 73100-00-10 | White Blood Cell Count (WBC)      |    50.0000 |      50.0000 |          0.0000 |    50.0000 |                       50.0000 |                          0.0000 |          50.0000 |             0.0000 | ALLOCATED           |                   16 |                          45
+ 46 |                         48 | LABORATORY        | 73050-15-50 | Fasting Blood Sugar (FBS)         |    25.0000 |      25.0000 |          0.0000 |    25.0000 |                       25.0000 |                          0.0000 |          25.0000 |             0.0000 | ALLOCATED           |                   16 |                          46
+ 47 |                         50 | LABORATORY        | 73050-23-60 | HDL Cholesterol                   |    60.0000 |      60.0000 |          0.0000 |    60.0000 |                       60.0000 |                          0.0000 |          60.0000 |             0.0000 | ALLOCATED           |                   16 |                          47
+ 48 |                         49 | LABORATORY        | 73050-13-10 | Ferritin                          |   180.0000 |     180.0000 |          0.0000 |   180.0000 |                      180.0000 |                          0.0000 |         180.0000 |             0.0000 | ALLOCATED           |                   16 |                          48
+ 49 |                         51 | LABORATORY        | 73050-05-30 | Vitamin D (25-OH)                 |   240.0000 |     240.0000 |          0.0000 |   240.0000 |                      240.0000 |                          0.0000 |         240.0000 |             0.0000 | ALLOCATED           |                   16 |                          49
+ 50 |                         52 | LABORATORY        | 73000-00-60 | Total Cholesterol                 |   180.0000 |     180.0000 |          0.0000 |   180.0000 |                      180.0000 |                          0.0000 |         180.0000 |             0.0000 | ALLOCATED           |                   16 |                          50
+ 51 |                         53 | LABORATORY        | 73050-36-20 | Triglycerides                     |    50.0000 |      50.0000 |          0.0000 |    50.0000 |                       50.0000 |                          0.0000 |          50.0000 |             0.0000 | ALLOCATED           |                   16 |                          51
+ 52 |                         54 | LABORATORY        | 73100-00-80 | Complete Blood Count (CBC)        |    85.0000 |      85.0000 |          0.0000 |    85.0000 |                       85.0000 |                          0.0000 |          85.0000 |             0.0000 | ALLOCATED           |                   16 |                          52
+ 53 |                         55 | LABORATORY        | 73050-23-80 | LDL Cholesterol                   |    60.0000 |      60.0000 |          0.0000 |    60.0000 |                       60.0000 |                          0.0000 |          60.0000 |             0.0000 | ALLOCATED           |                   16 |                          53
+ 54 |                         56 | LABORATORY        | 73050-09-80 | Serum Creatinine                  |    45.0000 |      45.0000 |          0.0000 |    45.0000 |                       45.0000 |                          0.0000 |          45.0000 |             0.0000 | ALLOCATED           |                   16 |                          54
+(13 rows)
+
+ section 
+---------
+ RESP
+(1 row)
+
+ id | charge_line_id | patient_service_product_id | responsible_party_type | responsibility_amount | allocated_amount | outstanding_amount | coverage_percentage | copay_amount | non_covered_amount |     status      
+----+----------------+----------------------------+------------------------+-----------------------+------------------+--------------------+---------------------+--------------+--------------------+-----------------
+ 47 |             41 |                         43 | INSURANCE              |               72.0000 |           0.0000 |            72.0000 |           80.000000 |       0.0000 |             0.0000 | CALCULATED
+ 46 |             41 |                         43 | PATIENT                |               18.0000 |          18.0000 |             0.0000 |           20.000000 |      18.0000 |             0.0000 | FULLY_ALLOCATED
+ 49 |             43 |                         45 | PATIENT                |              160.0000 |         160.0000 |             0.0000 |            0.000000 |       0.0000 |           160.0000 | FULLY_ALLOCATED
+ 50 |             44 |                         47 | PATIENT                |               50.0000 |          50.0000 |             0.0000 |            0.000000 |       0.0000 |            50.0000 | FULLY_ALLOCATED
+ 51 |             45 |                         46 | PATIENT                |               50.0000 |          50.0000 |             0.0000 |            0.000000 |       0.0000 |            50.0000 | FULLY_ALLOCATED
+ 52 |             46 |                         48 | PATIENT                |               25.0000 |          25.0000 |             0.0000 |            0.000000 |       0.0000 |            25.0000 | FULLY_ALLOCATED
+ 53 |             47 |                         50 | PATIENT                |               60.0000 |          60.0000 |             0.0000 |            0.000000 |       0.0000 |            60.0000 | FULLY_ALLOCATED
+ 54 |             48 |                         49 | PATIENT                |              180.0000 |         180.0000 |             0.0000 |            0.000000 |       0.0000 |           180.0000 | FULLY_ALLOCATED
+ 55 |             49 |                         51 | PATIENT                |              240.0000 |         240.0000 |             0.0000 |            0.000000 |       0.0000 |           240.0000 | FULLY_ALLOCATED
+ 56 |             50 |                         52 | PATIENT                |              180.0000 |         180.0000 |             0.0000 |            0.000000 |       0.0000 |           180.0000 | FULLY_ALLOCATED
+ 57 |             51 |                         53 | PATIENT                |               50.0000 |          50.0000 |             0.0000 |            0.000000 |       0.0000 |            50.0000 | FULLY_ALLOCATED
+ 58 |             52 |                         54 | PATIENT                |               85.0000 |          85.0000 |             0.0000 |            0.000000 |       0.0000 |            85.0000 | FULLY_ALLOCATED
+ 59 |             53 |                         55 | PATIENT                |               60.0000 |          60.0000 |             0.0000 |            0.000000 |       0.0000 |            60.0000 | FULLY_ALLOCATED
+ 60 |             54 |                         56 | PATIENT                |               45.0000 |          45.0000 |             0.0000 |            0.000000 |       0.0000 |            45.0000 | FULLY_ALLOCATED
+(14 rows)
+
+ section 
+---------
+ SNAP
+(1 row)
+
+ id | charge_line_id | patient_service_product_id |    pricing_source    |  price_source  | price_list_id | price_list_item_id |        price_list_name         | price_list_item_code | base_unit_price | discount_amount | net_amount | patient_responsibility_amount | insurance_responsibility_amount | status 
+----+----------------+----------------------------+----------------------+----------------+---------------+--------------------+--------------------------------+----------------------+-----------------+-----------------+------------+-------------------------------+---------------------------------+--------
+ 41 |             41 |                         43 | INSURANCE_PRICE_LIST | PRICE_LIST     |             1 |               2684 | One Health TAWUNIYA Price List | Cons003              |         90.0000 |          0.0000 |    90.0000 |                       18.0000 |                         72.0000 | ACTIVE
+ 43 |             43 |                         45 | DEFAULT_ITEM_PRICE   | SETUP_FALLBACK |               |                    |                                |                      |        160.0000 |          0.0000 |   160.0000 |                      160.0000 |                          0.0000 | ACTIVE
+ 44 |             44 |                         47 | DEFAULT_ITEM_PRICE   | SETUP_FALLBACK |               |                    |                                |                      |         50.0000 |          0.0000 |    50.0000 |                       50.0000 |                          0.0000 | ACTIVE
+ 45 |             45 |                         46 | DEFAULT_ITEM_PRICE   | SETUP_FALLBACK |               |                    |                                |                      |         50.0000 |          0.0000 |    50.0000 |                       50.0000 |                          0.0000 | ACTIVE
+ 46 |             46 |                         48 | DEFAULT_ITEM_PRICE   | SETUP_FALLBACK |               |                    |                                |                      |         25.0000 |          0.0000 |    25.0000 |                       25.0000 |                          0.0000 | ACTIVE
+ 47 |             47 |                         50 | DEFAULT_ITEM_PRICE   | SETUP_FALLBACK |               |                    |                                |                      |         60.0000 |          0.0000 |    60.0000 |                       60.0000 |                          0.0000 | ACTIVE
+ 48 |             48 |                         49 | DEFAULT_ITEM_PRICE   | SETUP_FALLBACK |               |                    |                                |                      |        180.0000 |          0.0000 |   180.0000 |                      180.0000 |                          0.0000 | ACTIVE
+ 49 |             49 |                         51 | DEFAULT_ITEM_PRICE   | SETUP_FALLBACK |               |                    |                                |                      |        240.0000 |          0.0000 |   240.0000 |                      240.0000 |                          0.0000 | ACTIVE
+ 50 |             50 |                         52 | DEFAULT_ITEM_PRICE   | SETUP_FALLBACK |               |                    |                                |                      |        180.0000 |          0.0000 |   180.0000 |                      180.0000 |                          0.0000 | ACTIVE
+ 51 |             51 |                         53 | DEFAULT_ITEM_PRICE   | SETUP_FALLBACK |               |                    |                                |                      |         50.0000 |          0.0000 |    50.0000 |                       50.0000 |                          0.0000 | ACTIVE
+ 52 |             52 |                         54 | DEFAULT_ITEM_PRICE   | SETUP_FALLBACK |               |                    |                                |                      |         85.0000 |          0.0000 |    85.0000 |                       85.0000 |                          0.0000 | ACTIVE
+ 53 |             53 |                         55 | DEFAULT_ITEM_PRICE   | SETUP_FALLBACK |               |                    |                                |                      |         60.0000 |          0.0000 |    60.0000 |                       60.0000 |                          0.0000 | ACTIVE
+ 54 |             54 |                         56 | DEFAULT_ITEM_PRICE   | SETUP_FALLBACK |               |                    |                                |                      |         45.0000 |          0.0000 |    45.0000 |                       45.0000 |                          0.0000 | ACTIVE
+(13 rows)
+

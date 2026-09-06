@@ -32,6 +32,7 @@ public class WaseelClaimService {
     private final WaseelTokenService tokenService;
     private final WaseelApiProperties properties;
     private final ObjectMapper objectMapper;
+    private final WaseelClaimUploadResponseParser uploadResponseParser;
 
     /**
      * Returns existing upload IDs when the extraction/upload name is already taken.
@@ -97,19 +98,20 @@ public class WaseelClaimService {
             log.info("Request Body: {}", jsonBody);
             log.info("=================================================");
 
-            ResponseEntity<WaseelClaimUploadResponse> response = restTemplate.exchange(
+            ResponseEntity<String> response = restTemplate.exchange(
                     url,
                     HttpMethod.POST,
                     entity,
-                    WaseelClaimUploadResponse.class
+                    String.class
             );
 
+            String body = response.getBody();
             log.info("========== WASEEL CLAIM UPLOAD RESPONSE ==========");
             log.info("Status Code: {}", response.getStatusCode());
-            log.info("Response Body: {}", toJsonWithoutNulls(response.getBody()));
+            log.info("Response Body: {}", body);
             log.info("==================================================");
 
-            return response.getBody();
+            return uploadResponseParser.parse(body);
 
         } catch (HttpStatusCodeException ex) {
             logWaseelError("CLAIM_UPLOAD", ex, jsonBody);
@@ -129,13 +131,18 @@ public class WaseelClaimService {
         HttpEntity<Void> entity = new HttpEntity<>(buildHeaders(token));
 
         try {
-            ResponseEntity<WaseelClaimUploadResponse> response = restTemplate.exchange(
+            ResponseEntity<String> response = restTemplate.exchange(
                     url,
                     HttpMethod.GET,
                     entity,
-                    WaseelClaimUploadResponse.class
+                    String.class
             );
-            return response.getBody();
+            String body = response.getBody();
+            log.info("========== WASEEL CLAIM SUMMARY RESPONSE ==========");
+            log.info("Status Code: {}", response.getStatusCode());
+            log.info("Response Body: {}", body);
+            log.info("===================================================");
+            return uploadResponseParser.parse(body);
 
         } catch (HttpStatusCodeException ex) {
             logWaseelError("CLAIM_SUMMARY", ex, null);

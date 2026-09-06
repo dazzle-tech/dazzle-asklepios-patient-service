@@ -268,7 +268,7 @@ public class ClaimSubmissionService {
             return markFailed(claimRequest, requestJson, details);
 
         } catch (RestClientException ex) {
-            String details = "Failed to upload claim to Waseel: " + ex.getMessage();
+            String details = "Failed to upload claim to Waseel: " + rootCauseMessage(ex);
             return markFailed(claimRequest, requestJson, details);
         }
     }
@@ -493,7 +493,7 @@ public class ClaimSubmissionService {
             return toBatchResponse(uploadName, null, "FAILED", details, claimRequests);
 
         } catch (RestClientException ex) {
-            String details = "Failed to upload claim batch to Waseel: " + ex.getMessage();
+            String details = "Failed to upload claim batch to Waseel: " + rootCauseMessage(ex);
             for (ClaimRequest claimRequest : claimRequests) {
                 markFailed(claimRequest, requestJson, details);
             }
@@ -917,6 +917,28 @@ public class ClaimSubmissionService {
     private String buildWaseelFailureMessage(int statusCode, String responseBody, String fallback) {
         String body = responseBody == null || responseBody.isBlank() ? fallback : responseBody;
         return "Waseel claim upload failed (HTTP " + statusCode + "): " + body;
+    }
+
+    private String rootCauseMessage(Throwable ex) {
+        if (ex == null) {
+            return "Unknown error";
+        }
+        StringBuilder message = new StringBuilder(
+                ex.getMessage() == null || ex.getMessage().isBlank()
+                        ? ex.getClass().getSimpleName()
+                        : ex.getMessage().trim()
+        );
+        Throwable cause = ex.getCause();
+        int depth = 0;
+        while (cause != null && cause != ex && depth < 5) {
+            String causeMessage = cause.getMessage();
+            if (causeMessage != null && !causeMessage.isBlank() && !message.toString().contains(causeMessage)) {
+                message.append(" | ").append(causeMessage.trim());
+            }
+            cause = cause.getCause();
+            depth++;
+        }
+        return message.toString();
     }
 
     private void applyUploadOutcome(

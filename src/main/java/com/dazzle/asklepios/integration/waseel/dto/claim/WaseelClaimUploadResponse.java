@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.integration.waseel.dto.claim;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.math.BigDecimal;
@@ -7,8 +8,10 @@ import java.time.OffsetDateTime;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record WaseelClaimUploadResponse(
+        @JsonAlias({"transactionLogId", "transactionlogId"})
         Long transcationLogId,
         String message,
+        @JsonAlias({"uploadSummaryID", "uploadSummaryId"})
         Long uploadId,
         Long providerId,
         String uploadName,

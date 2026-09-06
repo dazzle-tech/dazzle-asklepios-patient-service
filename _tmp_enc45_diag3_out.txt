@@ -1,0 +1,133 @@
+﻿Pager usage is off.
+ section  
+----------
+ MAP_GAPS
+(1 row)
+
+ id | billing_item_type | diagnostic_test_id | service_id | waseel_sbs_mapping_id | waseel_sbs_code | price_source | coverage_status | unit_price | net_amount | patient_share_amount | insurance_share_amount | mapping_id | mapping_code |           mapping_name            | pl_item_id | pl_unit  | pl_disc |  pl_net  
+----+-------------------+--------------------+------------+-----------------------+-----------------+--------------+-----------------+------------+------------+----------------------+------------------------+------------+--------------+-----------------------------------+------------+----------+---------+----------
+ 43 | SERVICE           |                    |      29272 |                       |                 | PRICE_LIST   | COVERED         |      90.00 |    90.0000 |              18.0000 |                72.0000 |       4404 | Cons003      | Specilaist Fees                   |       2684 |  90.0000 |  0.0000 |  90.0000
+ 45 | LABORATORY        |                165 |            |                       |                 | DEFAULT      | NOT_COVERED     |     160.00 |   160.0000 |             160.0000 |                 0.0000 |       3532 | 73050-35-50  | TSH (Thyroid Stimulating Hormone) |        554 | 140.0000 | 25.0000 | 105.0000
+ 46 | LABORATORY        |                139 |            |                       |                 | DEFAULT      | NOT_COVERED     |      50.00 |    50.0000 |              50.0000 |                 0.0000 |       3544 | 73100-00-10  | White Blood Cell Count (WBC)      |        688 |  45.0000 | 25.0000 |  33.7500
+ 47 | LABORATORY        |                147 |            |                       |                 | DEFAULT      | NOT_COVERED     |      50.00 |    50.0000 |              50.0000 |                 0.0000 |       3537 | 73050-37-30  | Blood Urea Nitrogen (BUN)         |        569 |  45.0000 | 25.0000 |  33.7500
+ 48 | LABORATORY        |                144 |            |                       |                 | DEFAULT      | NOT_COVERED     |      25.00 |    25.0000 |              25.0000 |                 0.0000 |       3523 | 73050-15-50  | Fasting Blood Sugar (FBS)         |        423 |  20.0000 | 25.0000 |  15.0000
+ 49 | LABORATORY        |                176 |            |                       |                 | DEFAULT      | NOT_COVERED     |     180.00 |   180.0000 |             180.0000 |                 0.0000 |       3522 | 73050-13-10  | Ferritin                          |        405 | 160.0000 | 25.0000 | 120.0000
+ 50 | LABORATORY        |                152 |            |                       |                 | DEFAULT      | NOT_COVERED     |      60.00 |    60.0000 |              60.0000 |                 0.0000 |       3525 | 73050-23-60  | HDL Cholesterol                   |        476 |  50.0000 | 25.0000 |  37.5000
+ 51 | LABORATORY        |                175 |            |                       |                 | DEFAULT      | NOT_COVERED     |     240.00 |   240.0000 |             240.0000 |                 0.0000 |       3519 | 73050-05-30  | Vitamin D (25-OH)                 |        350 | 205.0000 | 25.0000 | 153.7500
+ 52 | LABORATORY        |                150 |            |                       |                 | DEFAULT      | NOT_COVERED     |     180.00 |   180.0000 |             180.0000 |                 0.0000 |       3514 | 73000-00-60  | Total Cholesterol                 |        308 | 160.0000 | 25.0000 | 120.0000
+ 53 | LABORATORY        |                153 |            |                       |                 | DEFAULT      | NOT_COVERED     |      50.00 |    50.0000 |              50.0000 |                 0.0000 |       3535 | 73050-36-20  | Triglycerides                     |        560 |  45.0000 | 25.0000 |  33.7500
+ 54 | LABORATORY        |                138 |            |                       |                 | DEFAULT      | NOT_COVERED     |      85.00 |    85.0000 |              85.0000 |                 0.0000 |       3496 | 73100-00-80  | Complete Blood Count (CBC)        |        691 |  75.0000 | 25.0000 |  56.2500
+ 55 | LABORATORY        |                151 |            |                       |                 | DEFAULT      | NOT_COVERED     |      60.00 |    60.0000 |              60.0000 |                 0.0000 |       3526 | 73050-23-80  | LDL Cholesterol                   |        478 |  50.0000 | 25.0000 |  37.5000
+ 56 | LABORATORY        |                146 |            |                       |                 | DEFAULT      | NOT_COVERED     |      45.00 |    45.0000 |              45.0000 |                 0.0000 |       3521 | 73050-09-80  | Serum Creatinine                  |        382 |  30.0000 | 25.0000 |  22.5000
+(13 rows)
+
+  section   
+------------
+ DIAG_NAMES
+(1 row)
+
+ id  |               name                
+-----+-----------------------------------
+ 138 | Complete Blood Count (CBC)
+ 139 | White Blood Cell Count (WBC)
+ 144 | Fasting Blood Sugar (FBS)
+ 146 | Serum Creatinine
+ 147 | Blood Urea Nitrogen (BUN)
+ 150 | Total Cholesterol
+ 151 | LDL Cholesterol
+ 152 | HDL Cholesterol
+ 153 | Triglycerides
+ 165 | TSH (Thyroid Stimulating Hormone)
+ 175 | Vitamin D (25-OH)
+ 176 | Ferritin
+(12 rows)
+
+ section  
+----------
+ PAYMENTS
+(1 row)
+
+ id |    payment_number    | patient_id | encounter_id |  amount  |  status   |        created_date        
+----+----------------------+------------+--------------+----------+-----------+----------------------------
+  8 | PAY-370AEABA5BCC4998 |         22 |           45 |  18.0000 | COMPLETED | 2026-08-25 08:16:50.175434
+ 16 | PAY-3FE127D18178443A |         22 |           45 | 160.0000 | COMPLETED | 2026-08-26 09:05:09.212455
+(2 rows)
+
+ section 
+---------
+ ALLOC
+(1 row)
+
+ id  |  allocation_number   | charge_line_id | charge_responsibility_id | patient_service_product_id | allocation_source_type | reservation_id | payment_id | allocated_amount | remaining_allocated_amount | reversed_amount | status 
+-----+----------------------+----------------+--------------------------+----------------------------+------------------------+----------------+------------+------------------+----------------------------+-----------------+--------
+ 153 | ALC-B04307376F8E4B67 |             41 |                       46 |                         43 | RESERVATION            |              8 |          8 |          18.0000 |                    18.0000 |          0.0000 | ACTIVE
+ 154 | ALC-9783E094959849C0 |             43 |                       49 |                         45 | RESERVATION            |             16 |         16 |         160.0000 |                   160.0000 |          0.0000 | ACTIVE
+ 155 | ALC-F476D16A5C7B4C64 |             44 |                       50 |                         47 | DEBIT                  |                |            |          50.0000 |                    50.0000 |          0.0000 | ACTIVE
+ 156 | ALC-CCA337A1157E40D5 |             45 |                       51 |                         46 | DEBIT                  |                |            |          50.0000 |                    50.0000 |          0.0000 | ACTIVE
+ 157 | ALC-2391035D8884422D |             46 |                       52 |                         48 | DEBIT                  |                |            |          25.0000 |                    25.0000 |          0.0000 | ACTIVE
+ 158 | ALC-2BB4128EF99E452E |             47 |                       53 |                         50 | DEBIT                  |                |            |          60.0000 |                    60.0000 |          0.0000 | ACTIVE
+ 159 | ALC-A8420DEE9EE148E3 |             48 |                       54 |                         49 | DEBIT                  |                |            |         180.0000 |                   180.0000 |          0.0000 | ACTIVE
+ 160 | ALC-828D1816FAA4415A |             49 |                       55 |                         51 | DEBIT                  |                |            |         240.0000 |                   240.0000 |          0.0000 | ACTIVE
+ 161 | ALC-CF415CA8372B42C1 |             50 |                       56 |                         52 | DEBIT                  |                |            |         180.0000 |                   180.0000 |          0.0000 | ACTIVE
+ 162 | ALC-D7570FB87C574282 |             51 |                       57 |                         53 | DEBIT                  |                |            |          50.0000 |                    50.0000 |          0.0000 | ACTIVE
+ 163 | ALC-4026132E79D747A0 |             52 |                       58 |                         54 | DEBIT                  |                |            |          85.0000 |                    85.0000 |          0.0000 | ACTIVE
+ 164 | ALC-A217BD77D45F45C8 |             53 |                       59 |                         55 | DEBIT                  |                |            |          60.0000 |                    60.0000 |          0.0000 | ACTIVE
+ 165 | ALC-19C71D3170F647B1 |             54 |                       60 |                         56 | DEBIT                  |                |            |          45.0000 |                    45.0000 |          0.0000 | ACTIVE
+(13 rows)
+
+ section 
+---------
+ RESV
+(1 row)
+
+ id |  reservation_number  | payment_id | charge_line_id | patient_service_product_id | original_reserved_amount | remaining_reserved_amount | consumed_amount | released_amount |  status  
+----+----------------------+------------+----------------+----------------------------+--------------------------+---------------------------+-----------------+-----------------+----------
+  8 | RSV-69CC238A99634D74 |          8 |             41 |                         43 |                  18.0000 |                    0.0000 |         18.0000 |          0.0000 | CONSUMED
+ 16 | RSV-D0C1216B277043CC |         16 |             43 |                         45 |                 160.0000 |                    0.0000 |        160.0000 |          0.0000 | CONSUMED
+(2 rows)
+
+ section 
+---------
+ DEBIT
+(1 row)
+
+ id |    account_number    | patient_id | currency | credit_limit | current_debit_balance | available_credit | total_debit_created | total_debit_settled | status | debit_allowed | approval_required | approved_by | approved_date | blocked_by | blocked_date | block_reason | expiry_date | notes | created_by |        created_date        | last_modified_by |     last_modified_date     
+----+----------------------+------------+----------+--------------+-----------------------+------------------+---------------------+---------------------+--------+---------------+-------------------+-------------+---------------+------------+--------------+--------------+-------------+-------+------------+----------------------------+------------------+----------------------------
+ 14 | DBA-0989F8D8BBAA43C3 |         22 | SAR      |    1203.0000 |             1025.0000 |         178.0000 |           1025.0000 |              0.0000 | ACTIVE | t             | f                 |             |               |            |              |              |             |       | hani.akrim | 2026-09-03 16:43:45.236609 | hani.akrim       | 2026-09-03 16:43:45.411442
+(1 row)
+
+ id  | encounter_id |  amount  |  status   | transaction_type |        created_date        
+-----+--------------+----------+-----------+------------------+----------------------------
+ 109 |           45 |  50.0000 | COMPLETED | DEBIT_CREATED    | 2026-09-03 16:43:45.240887
+ 110 |           45 |  50.0000 | COMPLETED | DEBIT_CREATED    | 2026-09-03 16:43:45.260091
+ 111 |           45 |  25.0000 | COMPLETED | DEBIT_CREATED    | 2026-09-03 16:43:45.277382
+ 112 |           45 |  60.0000 | COMPLETED | DEBIT_CREATED    | 2026-09-03 16:43:45.294252
+ 113 |           45 | 180.0000 | COMPLETED | DEBIT_CREATED    | 2026-09-03 16:43:45.311354
+ 114 |           45 | 240.0000 | COMPLETED | DEBIT_CREATED    | 2026-09-03 16:43:45.328955
+ 115 |           45 | 180.0000 | COMPLETED | DEBIT_CREATED    | 2026-09-03 16:43:45.344832
+ 116 |           45 |  50.0000 | COMPLETED | DEBIT_CREATED    | 2026-09-03 16:43:45.36045
+ 117 |           45 |  85.0000 | COMPLETED | DEBIT_CREATED    | 2026-09-03 16:43:45.376206
+ 118 |           45 |  60.0000 | COMPLETED | DEBIT_CREATED    | 2026-09-03 16:43:45.394591
+ 119 |           45 |  45.0000 | COMPLETED | DEBIT_CREATED    | 2026-09-03 16:43:45.410497
+(11 rows)
+
+ section 
+---------
+ WALLET
+(1 row)
+
+ id | patient_id | currency | credited_amount | available_balance | reserved_balance | consumed_amount | refunded_amount | status |    created_by    |       created_date        | last_modified_by |     last_modified_date     
+----+------------+----------+-----------------+-------------------+------------------+-----------------+-----------------+--------+------------------+---------------------------+------------------+----------------------------
+  7 |         22 | SAR      |        178.0000 |            0.0000 |           0.0000 |        178.0000 |          0.0000 | ACTIVE | fahad.binmuhayne | 2026-08-25 08:16:50.15177 | hani.akrim       | 2026-09-03 16:43:45.223728
+(1 row)
+
+ section 
+---------
+ PSP_SUM
+(1 row)
+
+ sum_patient | sum_insurance |  sum_net  | sum_paid  | sum_remaining 
+-------------+---------------+-----------+-----------+---------------
+   1203.0000 |       72.0000 | 1275.0000 | 1203.0000 |        0.0000
+(1 row)
+

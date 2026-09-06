@@ -1,0 +1,139 @@
+﻿Pager usage is off.
+   section   
+-------------
+ CHARGE_FULL
+(1 row)
+
+psql.exe : psql:C:/Users/User/Documents/GitHub/dazzle-asklepios-patient-service/_tmp_enc106_diag2.sql:7: ERROR:  
+column "coverage_type" does not exist
+At C:\Users\User\AppData\Local\Temp\ps-script-029d40d0-d3e9-483b-a126-fdca744a97ba.ps1:124 char:1
++ & $psql -h localhost -p 5433 -U postgres -d DBOneHealthLocaly -f "C:\ ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (psql:C:/Users/U... does not exist:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+LINE 1: SELECT id, charge_number, status, coverage_type, patient_ins...
+                                          ^
+   section   
+-------------
+ ALLOCATIONS
+(1 row)
+
+ id  |  allocation_number   | charge_line_id | charge_responsibility_id | patient_service_product_id | allocation_source_type | reservation_id | payment_id | allocated_amount | remaining_allocated_amount | reversed_amount | status 
+-----+----------------------+----------------+--------------------------+----------------------------+------------------------+----------------+------------+------------------+----------------------------+-----------------+--------
+ 166 | ALC-D218A90A6C924EE0 |            287 |                      352 |                        289 | RESERVATION            |             34 |         34 |          18.0000 |                    18.0000 |          0.0000 | ACTIVE
+ 167 | ALC-B4D6D544532F4600 |            292 |                      362 |                        294 | RESERVATION            |            105 |         75 |          11.2500 |                    11.2500 |          0.0000 | ACTIVE
+ 168 | ALC-5724E1A048554322 |            293 |                      364 |                        295 | RESERVATION            |            106 |         75 |           7.5000 |                     7.5000 |          0.0000 | ACTIVE
+ 169 | ALC-D44CF8A32AD34092 |            294 |                      366 |                        296 | RESERVATION            |            107 |         75 |          18.0000 |                    18.0000 |          0.0000 | ACTIVE
+ 170 | ALC-C526D149985149A1 |            295 |                      368 |                        297 | RESERVATION            |            108 |         75 |          30.7500 |                    30.7500 |          0.0000 | ACTIVE
+ 171 | ALC-46A8617FF5DD4398 |            297 |                      371 |                        299 | RESERVATION            |            109 |         75 |          32.5000 |                    32.5000 |          0.0000 | ACTIVE
+ 172 | ALC-50C9C002B3CD4C4B |            297 |                      371 |                        299 | DEBIT                  |                |            |           1.5000 |                     1.5000 |          0.0000 | ACTIVE
+(7 rows)
+
+   section    
+--------------
+ RESERVATIONS
+(1 row)
+
+ id  |  reservation_number  | payment_id | charge_line_id | patient_service_product_id | original_reserved_amount | remaining_reserved_amount | consumed_amount | released_amount |  status  
+-----+----------------------+------------+----------------+----------------------------+--------------------------+---------------------------+-----------------+-----------------+----------
+  34 | RSV-EA447F2443BA418E |         34 |            287 |                        289 |                  18.0000 |                    0.0000 |         18.0000 |          0.0000 | CONSUMED
+ 105 | RSV-D4DB42569F4342E0 |         75 |            292 |                        294 |                  11.2500 |                    0.0000 |         11.2500 |          0.0000 | CONSUMED
+ 106 | RSV-834BCAF240DA4212 |         75 |            293 |                        295 |                   7.5000 |                    0.0000 |          7.5000 |          0.0000 | CONSUMED
+ 107 | RSV-4D3B1DAF22534CFD |         75 |            294 |                        296 |                  18.0000 |                    0.0000 |         18.0000 |          0.0000 | CONSUMED
+ 108 | RSV-719406C0D4E44F7B |         75 |            295 |                        297 |                  30.7500 |                    0.0000 |         30.7500 |          0.0000 | CONSUMED
+ 109 | RSV-698E712DEF9645A4 |         75 |            297 |                        299 |                  32.5000 |                    0.0000 |         32.5000 |          0.0000 | CONSUMED
+(6 rows)
+
+ section  
+----------
+ PAYMENTS
+(1 row)
+
+psql:C:/Users/User/Documents/GitHub/dazzle-asklepios-patient-service/_tmp_enc106_diag2.sql:23: ERROR:  column 
+"payment_method" does not exist
+LINE 1: ...number, patient_id, encounter_id, amount, status, payment_me...
+                                                             ^
+ section 
+---------
+ DEBIT
+(1 row)
+
+ id |    account_number    | patient_id | currency | credit_limit | current_debit_balance | available_credit | total_debit_created | total_debit_settled | status | debit_allowed | approval_required | approved_by | approved_date | blocked_by | blocked_date | block_reason | expiry_date | notes | created_by |        created_date        | last_modified_by |     last_modified_date     
+----+----------------------+------------+----------+--------------+-----------------------+------------------+---------------------+---------------------+--------+---------------+-------------------+-------------+---------------+------------+--------------+--------------+-------------+-------+------------+----------------------------+------------------+----------------------------
+ 15 | DBA-77BA7AB385ED4348 |         25 | SAR      |     119.5000 |                1.5000 |         118.0000 |              1.5000 |              0.0000 | ACTIVE | t             | f                 |             |               |            |              |              |             |       | hani.akrim | 2026-09-03 16:44:53.414072 | hani.akrim       | 2026-09-03 16:44:53.416347
+(1 row)
+
+ id  | encounter_id | amount |  status   | transaction_type |        created_date        
+-----+--------------+--------+-----------+------------------+----------------------------
+ 120 |          106 | 1.5000 | COMPLETED | DEBIT_CREATED    | 2026-09-03 16:44:53.415251
+(1 row)
+
+ section 
+---------
+ WALLET
+(1 row)
+
+ id | patient_id | currency | credited_amount | available_balance | reserved_balance | consumed_amount | refunded_amount | status |   created_by   |        created_date        | last_modified_by |     last_modified_date     
+----+------------+----------+-----------------+-------------------+------------------+-----------------+-----------------+--------+----------------+----------------------------+------------------+----------------------------
+ 24 |         25 | SAR      |        118.0000 |            0.0000 |           0.0000 |        118.0000 |          0.0000 | ACTIVE | danah.alwahish | 2026-08-30 14:51:38.319241 | hani.akrim       | 2026-09-03 16:44:53.406045
+(1 row)
+
+ section  
+----------
+ MAPPINGS
+(1 row)
+
+  id  | item_type  | source_id |  item_code  |                  item_name                   | is_active 
+------+------------+-----------+-------------+----------------------------------------------+-----------
+ 3496 | LABORATORY |       138 | 73100-00-80 | Complete Blood Count (CBC)                   | t
+ 3545 | LABORATORY |       138 | 73100-00-80 | Complete Blood Count (CBC)                   | f
+ 3547 | LABORATORY |       142 | 73100-08-60 | Prothrombin Time (PT/INR)                    | t
+ 3549 | LABORATORY |       143 | 73100-09-50 | APTT (Activated Partial Thromboplastin Time) | t
+ 3524 | LABORATORY |       145 | 73050-18-50 | HbA1c (Glycated Haemoglobin)                 | t
+ 4404 | SERVICE    |     29272 | Cons003     | Specilaist Fees                              | t
+(6 rows)
+
+     section      
+------------------
+ PRICE_LIST_ITEMS
+(1 row)
+
+  id  | price_list_setup_id | item_type  | source_id |  item_code  |                          item_name                           | unit_price | discount_percentage | is_active | waseel_item_mapping_id 
+------+---------------------+------------+-----------+-------------+--------------------------------------------------------------+------------+---------------------+-----------+------------------------
+  445 |                   1 | LABORATORY |       145 | 73050-18-50 | Measurement of glycosylated hemoglobin (A1C)                 |   120.0000 |             25.0000 | t         |                   3524
+  691 |                   1 | LABORATORY |       138 | 73100-00-80 | Complete Blood Count (CBC)                                   |    75.0000 |             25.0000 | t         |                   3496
+  730 |                   1 | LABORATORY |       142 | 73100-08-60 | Measurement of clotting time with addition of plasma fractio |    50.0000 |             25.0000 | t         |                   3547
+  735 |                   1 | LABORATORY |       143 | 73100-09-50 | Measurement of partial thromboplastin time (PTT) from plasma |   205.0000 |             25.0000 | t         |                   3549
+ 2684 |                   1 | SERVICE    |     29272 | Cons003     | Specilaist Fees                                              |    90.0000 |              0.0000 | t         |                   4404
+(5 rows)
+
+  section   
+------------
+ DIAG_NAMES
+(1 row)
+
+psql:C:/Users/User/Documents/GitHub/dazzle-asklepios-patient-service/_tmp_enc106_diag2.sql:55: ERROR:  column "code" 
+does not exist
+LINE 1: SELECT id, left(name,80) AS name, code FROM diagnostic_test ...
+                                          ^
+    section    
+---------------
+ PSP_SHARE_SUM
+(1 row)
+
+ sum_patient | sum_insurance | sum_net  
+-------------+---------------+----------
+    119.5000 |      478.0000 | 597.5000
+(1 row)
+
+    section    
+---------------
+ ELIG_JSON_MAX
+(1 row)
+
+ id | max_limit | patient_share | eligibility_status | inforce | site_eligibility |                                                                                                                                                                                                                                                                                                                                                                                                          benefits_head                                                                                                                                                                                                                                                                                                                                                                                                           
+----+-----------+---------------+--------------------+---------+------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 17 |    100.00 |         20.00 | Active             | true    | eligible         | {"items":{"Advanced Dental Coverage.":[{"name":"Advanced Dental Coverage","description":"Advanced Dental Coverage with RCT","network":"In Network","unit":"Individual","term":"For the total term, lifetime, of the policy or coverage","benefits":null}],"OP Prescribed Invented Medicines - with generic alternative.":[{"name":"OP Prescribed Invented Medicines - with generic alternative","description":"OP Prescribed Invented Medicines - with generic alternative","network":"In Network","unit":"Individual","term":"For the total term, lifetime, of the policy or coverage","benefits":[{"type":"Copayment maximum per service","typeDisplay":"Copayment maximum per service.","value":"9999","currency":"SAR"},{"type":"Copayment Percent per service","typeDisplay":"Copayment Percent per service.","value":"20",
+(1 row)
+

@@ -1,0 +1,73 @@
+﻿Pager usage is off.
+ section 
+---------
+ PATIENT
+(1 row)
+
+ id | medical_record_number | first_name | second_name | last_name | date_of_birth 
+----+-----------------------+------------+-------------+-----------+---------------
+ 22 | P121                  | WASSIM     | IBRAHIM     | SALEH     | 1987-06-24
+(1 row)
+
+  section  
+-----------
+ ENCOUNTER
+(1 row)
+
+ id | encounter_number | patient_id |   status   | encounter_status | billing_status | coverage_type | patient_insurance_id | encounter_date |        started_date        | completed_at |   financially_closed_at    
+----+------------------+------------+------------+------------------+----------------+---------------+----------------------+----------------+----------------------------+--------------+----------------------------
+ 45 | E00144           |         22 | DISCHARGED | CLOSED           | INVOICED       | INSURANCE     |                   16 | 2026-08-25     | 2026-08-25 09:46:53.400015 |              | 2026-09-03 17:22:44.864894
+(1 row)
+
+  section  
+-----------
+ INSURANCE
+(1 row)
+
+ id | patient_id | payor_id | policy_number | member_card_id  | payer_nphies_id |                    payer_name                     | tpa_name | network_id | coverage_type | policy_class_name | patient_share | max_limit | eligibility_status | site_eligibility | inforce | gp_visit_copay | default_copayment_percent | last_eligibility_request_id |  last_eligibility_synced_at   | is_primary | waseel_new_plan |     group_number     | group_name | plan_code | issue_date | expiration_date 
+----+------------+----------+---------------+-----------------+-----------------+---------------------------------------------------+----------+------------+---------------+-------------------+---------------+-----------+--------------------+------------------+---------+----------------+---------------------------+-----------------------------+-------------------------------+------------+-----------------+----------------------+------------+-----------+------------+-----------------
+ 16 |         22 |       20 | 52332912      | 002327279291001 | 7000911508      | The Cooperative Company for Cooperative Insurance |          | 11         | EHCPOL        | vip               |         20.00 |    100.00 | Active             | eligible         | true    |                |                   20.0000 |                         141 | 2026-09-02 20:53:04.980818+03 | t          | f               | ASCEND SOLUTIONS LTD |            | 52332912  | 2025-12-31 | 2026-12-30
+(1 row)
+
+   section   
+-------------
+ ELIGIBILITY
+(1 row)
+
+ id  | encounter_id | patient_insurance_id | api_status |     status_code     |                                       message                                        | eligibility_response_id | request_status |        requested_at        |        responded_at        
+-----+--------------+----------------------+------------+---------------------+--------------------------------------------------------------------------------------+-------------------------+----------------+----------------------------+----------------------------
+ 141 |              |                   16 | Active     | Processing Complete | Physician consultation is covered subject to Tawuniya's Policy Terms and Conditions. | 345276567               | SUCCESS        | 2026-09-02 17:53:03.544101 | 2026-09-02 17:53:04.979895
+(1 row)
+
+ section  
+----------
+ SNAPSHOT
+(1 row)
+
+ id | encounter_id | patient_id | patient_insurance_id | waseel_eligibility_request_id | eligibility_response_id |        created_date        
+----+--------------+------------+----------------------+-------------------------------+-------------------------+----------------------------
+ 23 |           45 |         22 |                   16 |                           141 | 345276567               | 2026-09-03 17:22:44.859556
+(1 row)
+
+ section 
+---------
+ PSP
+(1 row)
+
+ id | billing_item_type | service_id | diagnostic_test_id | procedure_id |      service_source       | source_id | quantity | unit_price | discount_amount | gross_amount | net_amount | patient_share_amount | insurance_share_amount | paid_amount | remaining_amount | payment_status | coverage_status |     not_covered_reason      | patient_insurance_id | price_source | is_default_service | waseel_sbs_mapping_id | waseel_sbs_code |        created_date        
+----+-------------------+------------+--------------------+--------------+---------------------------+-----------+----------+------------+-----------------+--------------+------------+----------------------+------------------------+-------------+------------------+----------------+-----------------+-----------------------------+----------------------+--------------+--------------------+-----------------------+-----------------+----------------------------
+ 43 | SERVICE           |      29272 |                    |              | ENCOUNTER_DEFAULT_SERVICE |     29272 |        1 |      90.00 |            0.00 |      90.0000 |    90.0000 |              18.0000 |                72.0000 |     18.0000 |           0.0000 | PAID           | COVERED         |                             |                   16 | PRICE_LIST   | t                  |                       |                 | 2026-08-25 08:16:49.883575
+ 45 | LABORATORY        |            |                165 |              | LABORATORY                |        32 |        1 |     160.00 |            0.00 |     160.0000 |   160.0000 |             160.0000 |                 0.0000 |    160.0000 |           0.0000 | PAID           | NOT_COVERED     | NOT_IN_INSURANCE_PRICE_LIST |                   16 | DEFAULT      | f                  |                       |                 | 2026-08-25 09:50:10.354975
+ 46 | LABORATORY        |            |                139 |              | LABORATORY                |        34 |        1 |      50.00 |            0.00 |      50.0000 |    50.0000 |              50.0000 |                 0.0000 |     50.0000 |           0.0000 | PAID           | NOT_COVERED     | NOT_IN_INSURANCE_PRICE_LIST |                   16 | DEFAULT      | f                  |                       |                 | 2026-08-25 09:50:10.391755
+ 47 | LABORATORY        |            |                147 |              | LABORATORY                |        37 |        1 |      50.00 |            0.00 |      50.0000 |    50.0000 |              50.0000 |                 0.0000 |     50.0000 |           0.0000 | PAID           | NOT_COVERED     | NOT_IN_INSURANCE_PRICE_LIST |                   16 | DEFAULT      | f                  |                       |                 | 2026-08-25 09:50:10.406558
+ 48 | LABORATORY        |            |                144 |              | LABORATORY                |        35 |        1 |      25.00 |            0.00 |      25.0000 |    25.0000 |              25.0000 |                 0.0000 |     25.0000 |           0.0000 | PAID           | NOT_COVERED     | NOT_IN_INSURANCE_PRICE_LIST |                   16 | DEFAULT      | f                  |                       |                 | 2026-08-25 09:50:10.413219
+ 49 | LABORATORY        |            |                176 |              | LABORATORY                |        33 |        1 |     180.00 |            0.00 |     180.0000 |   180.0000 |             180.0000 |                 0.0000 |    180.0000 |           0.0000 | PAID           | NOT_COVERED     | NOT_IN_INSURANCE_PRICE_LIST |                   16 | DEFAULT      | f                  |                       |                 | 2026-08-25 09:50:10.434454
+ 50 | LABORATORY        |            |                152 |              | LABORATORY                |        36 |        1 |      60.00 |            0.00 |      60.0000 |    60.0000 |              60.0000 |                 0.0000 |     60.0000 |           0.0000 | PAID           | NOT_COVERED     | NOT_IN_INSURANCE_PRICE_LIST |                   16 | DEFAULT      | f                  |                       |                 | 2026-08-25 09:50:10.455522
+ 51 | LABORATORY        |            |                175 |              | LABORATORY                |        38 |        1 |     240.00 |            0.00 |     240.0000 |   240.0000 |             240.0000 |                 0.0000 |    240.0000 |           0.0000 | PAID           | NOT_COVERED     | NOT_IN_INSURANCE_PRICE_LIST |                   16 | DEFAULT      | f                  |                       |                 | 2026-08-25 09:51:23.263467
+ 52 | LABORATORY        |            |                150 |              | LABORATORY                |        39 |        1 |     180.00 |            0.00 |     180.0000 |   180.0000 |             180.0000 |                 0.0000 |    180.0000 |           0.0000 | PAID           | NOT_COVERED     | NOT_IN_INSURANCE_PRICE_LIST |                   16 | DEFAULT      | f                  |                       |                 | 2026-08-25 09:51:23.313541
+ 53 | LABORATORY        |            |                153 |              | LABORATORY                |        40 |        1 |      50.00 |            0.00 |      50.0000 |    50.0000 |              50.0000 |                 0.0000 |     50.0000 |           0.0000 | PAID           | NOT_COVERED     | NOT_IN_INSURANCE_PRICE_LIST |                   16 | DEFAULT      | f                  |                       |                 | 2026-08-25 09:51:23.332552
+ 54 | LABORATORY        |            |                138 |              | LABORATORY                |        41 |        1 |      85.00 |            0.00 |      85.0000 |    85.0000 |              85.0000 |                 0.0000 |     85.0000 |           0.0000 | PAID           | NOT_COVERED     | NOT_IN_INSURANCE_PRICE_LIST |                   16 | DEFAULT      | f                  |                       |                 | 2026-08-25 09:51:23.354919
+ 55 | LABORATORY        |            |                151 |              | LABORATORY                |        42 |        1 |      60.00 |            0.00 |      60.0000 |    60.0000 |              60.0000 |                 0.0000 |     60.0000 |           0.0000 | PAID           | NOT_COVERED     | NOT_IN_INSURANCE_PRICE_LIST |                   16 | DEFAULT      | f                  |                       |                 | 2026-08-25 09:51:23.361274
+ 56 | LABORATORY        |            |                146 |              | LABORATORY                |        43 |        1 |      45.00 |            0.00 |      45.0000 |    45.0000 |              45.0000 |                 0.0000 |     45.0000 |           0.0000 | PAID           | NOT_COVERED     | NOT_IN_INSURANCE_PRICE_LIST |                   16 | DEFAULT      | f                  |                       |                 | 2026-08-25 09:51:23.37561
+(13 rows)
+
