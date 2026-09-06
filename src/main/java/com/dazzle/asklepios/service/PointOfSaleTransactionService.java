@@ -23,6 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 
 import java.time.Instant;
 
@@ -147,65 +148,83 @@ public class PointOfSaleTransactionService {
                 transaction.getTransactionStatus()
         );
 
-        NamiPurchaseResponse response =
-                namiCloudClient.purchase(
-                        configuration,
-                        orderId,
-                        request.amount()
+        try {
+
+            NamiPurchaseResponse response =
+                    namiCloudClient.purchase(
+                            configuration,
+                            orderId,
+                            request.amount()
+                    );
+
+            log.info(
+                    "Nami Purchase Response. TransactionId={}, Status={}, StatusCode={}, Message={}",
+                    response.transactionid(),
+                    response.status(),
+                    response.statusCode(),
+                    response.statusMessage()
+            );
+
+            transaction.setExternalTransactionId(
+                    response.transactionid()
+            );
+
+            transaction.setResponseCode(
+                    String.valueOf(
+                            response.statusCode()
+                    )
+            );
+
+            transaction.setResponseMessage(
+                    response.statusMessage()
+            );
+
+            transaction.setRawResponse(
+                    response.toString()
+            );
+
+            boolean transactionCreated =
+                    response.transactionid() != null
+                            && !response.transactionid().isBlank();
+
+            if (transactionCreated) {
+
+                transaction.setTransactionStatus(
+                        PointOfSaleTransactionStatus.PROCESSING
                 );
 
-        log.info(
-                "Nami Purchase Response. TransactionId={}, Status={}, StatusCode={}, Message={}",
-                response.transactionid(),
-                response.status(),
-                response.statusCode(),
-                response.statusMessage()
-        );
+                log.info(
+                        "POS Transaction Processing. InternalId={}, ExternalTransactionId={}",
+                        transaction.getId(),
+                        transaction.getExternalTransactionId()
+                );
 
-        transaction.setExternalTransactionId(
-                response.transactionid()
-        );
+            } else {
 
-        transaction.setResponseCode(
-                String.valueOf(
-                        response.statusCode()
-                )
-        );
+                transaction.setTransactionStatus(
+                        PointOfSaleTransactionStatus.FAILED
+                );
 
-        transaction.setResponseMessage(
-                response.statusMessage()
-        );
+                log.warn(
+                        "POS Transaction Failed. InternalId={}, No External Transaction Id Returned",
+                        transaction.getId()
+                );
+            }
 
-        transaction.setRawResponse(
-                response.toString()
-        );
+        } catch (Exception ex) {
 
-        if (
-                "FAILED".equalsIgnoreCase(
-                        response.status()
-                )
-        ) {
+            log.error(
+                    "POS Purchase Exception. InternalId={}",
+                    transaction.getId(),
+                    ex
+            );
 
             transaction.setTransactionStatus(
                     PointOfSaleTransactionStatus.FAILED
             );
 
-            log.warn(
-                    "POS Purchase Failed. InternalId={}, ExternalTransactionId={}",
-                    transaction.getId(),
-                    transaction.getExternalTransactionId()
-            );
-
-        } else {
-
-            transaction.setTransactionStatus(
-                    PointOfSaleTransactionStatus.PROCESSING
-            );
-
-            log.info(
-                    "POS Purchase Processing. InternalId={}, ExternalTransactionId={}",
-                    transaction.getId(),
-                    transaction.getExternalTransactionId()
+            transaction.setResponseMessage(
+                    ex.getMessage()
             );
         }
 
@@ -322,7 +341,7 @@ public class PointOfSaleTransactionService {
                 Boolean.TRUE
         );
 
-        if ("000".equals(webhook.responseCode())) {
+        if (isApproved(webhook.responseCode())) {
 
             transaction.setTransactionStatus(
                     PointOfSaleTransactionStatus.APPROVED
@@ -359,7 +378,9 @@ public class PointOfSaleTransactionService {
     }
     private String generateOrderId() {
 
-        return "POS-" + Instant.now().toEpochMilli();
+        return "ORDER" +
+                Instant.now()
+                        .toEpochMilli();
     }
 
     public PointOfSaleTransactionDTO refreshTransactionStatus(
@@ -399,10 +420,68 @@ public class PointOfSaleTransactionService {
                 transaction.getExternalTransactionId()
         );
 
-        NamiTransactionResponse response =
-                namiCloudClient.getTransactionResponse(
-                        transaction.getExternalTransactionId()
-                );
+        NamiTransactionResponse response;
+
+        try {
+
+            response =
+                    namiCloudClient.getTransactionResponse(
+                            transaction.getExternalTransactionId()
+                    );
+
+        } catch (
+                HttpClientErrorException.NotFound ex
+        ) {
+
+            log.info(
+                    "Transaction still not available in Nami. InternalId={}, ExternalTransactionId={}",
+                    transaction.getId(),
+                    transaction.getExternalTransactionId()
+            );
+
+            transaction.setTransactionStatus(
+                    PointOfSaleTransactionStatus.PROCESSING
+            );
+
+            transaction =
+                    pointOfSaleTransactionRepository.save(
+                            transaction
+                    );
+
+            return new PointOfSaleTransactionDTO(
+                    transaction.getId(),
+                    transaction.getPatient().getId(),
+                    transaction.getPatientPayment() != null
+                            ? transaction.getPatientPayment().getId()
+                            : null,
+                    transaction.getConfiguration().getId(),
+                    transaction.getSourceType(),
+                    transaction.getSourceReferenceId(),
+                    transaction.getOrderId(),
+                    transaction.getExternalTransactionId(),
+                    transaction.getTransactionType(),
+                    transaction.getTransactionStatus(),
+                    transaction.getAmount(),
+                    transaction.getCurrencyCode(),
+                    transaction.getResponseCode(),
+                    transaction.getResponseMessage(),
+                    transaction.getRrn(),
+                    transaction.getAuthCode(),
+                    transaction.getTerminalId(),
+                    transaction.getMerchantId(),
+                    transaction.getBatchNo(),
+                    transaction.getPaymentMethod(),
+                    transaction.getSchemeLabel(),
+                    transaction.getTransactionDate(),
+                    transaction.getWebhookReceived(),
+                    transaction.getStanNo(),
+                    transaction.getProductInfo(),
+                    transaction.getMerchantName(),
+                    transaction.getMerchantAddress(),
+                    transaction.getEcrTransactionReferenceNumber(),
+                    transaction.getApplicationVersion()
+            );
+        }
 
         log.info(
                 "Transaction Status Response Received. ResponseCode={}, RRN={}, TransactionId={}",
@@ -471,13 +550,16 @@ public class PointOfSaleTransactionService {
                 response.applicationVersion()
         );
 
-        if ("000".equals(response.responseCode())) {
+        if (isApproved(response.responseCode())) {
 
             transaction.setTransactionStatus(
                     PointOfSaleTransactionStatus.APPROVED
             );
 
-        } else {
+        } else if (
+                response.responseCode() != null &&
+                        !response.responseCode().isBlank()
+        ) {
 
             transaction.setTransactionStatus(
                     PointOfSaleTransactionStatus.DECLINED
@@ -529,5 +611,10 @@ public class PointOfSaleTransactionService {
                 transaction.getEcrTransactionReferenceNumber(),
                 transaction.getApplicationVersion()
         );
+    }
+    private boolean isApproved(
+            String responseCode
+    ) {
+        return "000".equals(responseCode);
     }
 }

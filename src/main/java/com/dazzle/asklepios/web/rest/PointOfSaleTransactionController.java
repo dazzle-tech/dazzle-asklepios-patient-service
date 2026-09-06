@@ -75,7 +75,7 @@ public class PointOfSaleTransactionController {
     }
 
     @PostMapping(
-            "/transactions/{id}/refresh-status"
+            "/point-of-sale-transactions/transactions/{id}/refresh-status"
     )
     public ResponseEntity<PointOfSaleTransactionDTO>
     refreshStatus(
