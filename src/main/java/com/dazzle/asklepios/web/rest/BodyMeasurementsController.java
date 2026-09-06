@@ -1,7 +1,9 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.BodyMeasurements;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.service.BodyMeasurementsService;
+import com.dazzle.asklepios.service.PatientEncounterService;
 import com.dazzle.asklepios.service.dto.bodyMeasurements.BodyMeasurementsCreateDTO;
 import com.dazzle.asklepios.service.dto.bodyMeasurements.BodyMeasurementsUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
@@ -47,6 +49,7 @@ public class BodyMeasurementsController {
     private static final String ENTITY_NAME = "bodyMeasurements";
 
     private final BodyMeasurementsService bodyMeasurementsService;
+    private final PatientEncounterService patientEncounterService;
 
     @PostMapping("/body-measurements")
     public ResponseEntity<BodyMeasurements> create(@Valid @RequestBody BodyMeasurementsCreateDTO dto) {
@@ -132,16 +135,29 @@ public ResponseEntity<List<BodyMeasurementsResponseVM>> findBodyMeasurementsVmBe
                 "date.range.invalid"
         );
     }
-
     Page<BodyMeasurementsResponseVM> result =
             bodyMeasurementsService
                     .findBodyMeasurementsByPatientBetweenDates(patientId, from, to, pageable)
-                    .map(bodyMeasurements -> BodyMeasurementsResponseVM.builder()
-                            .weight(bodyMeasurements.getWeight())
-                            .height(bodyMeasurements.getHeight())
-                            .createdAt(bodyMeasurements.getCreatedDate())
-                            .build()
-                    );
+                    .map(bodyMeasurement -> {
+
+                        PatientEncounter encounter = bodyMeasurement.getEncounterId() != null
+                                ? patientEncounterService.getById(bodyMeasurement.getEncounterId())
+                                : null;
+
+                        String encounterNumber = encounter != null
+                                ? encounter.getEncounterNumber()
+                                : null;
+
+                        return BodyMeasurementsResponseVM.builder()
+                                .weight(bodyMeasurement.getWeight())
+                                .height(bodyMeasurement.getHeight())
+                                .createdAt(bodyMeasurement.getCreatedDate())
+                                .createdBy(bodyMeasurement.getCreatedBy())
+                                .encounterId(bodyMeasurement.getEncounterId())
+                                .encounterNumber(encounterNumber)
+                                .isActive(bodyMeasurement.getIsActive())
+                                .build();
+                    });
 
     HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
             ServletUriComponentsBuilder.fromCurrentRequest(),
