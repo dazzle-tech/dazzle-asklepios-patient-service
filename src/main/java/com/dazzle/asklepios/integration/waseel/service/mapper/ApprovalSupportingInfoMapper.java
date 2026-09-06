@@ -2,6 +2,10 @@ package com.dazzle.asklepios.integration.waseel.service.mapper;
 
 import com.dazzle.asklepios.domain.BodyMeasurements;
 import com.dazzle.asklepios.domain.ChiefComplain;
+import com.dazzle.asklepios.domain.DiagnosticOrder;
+import com.dazzle.asklepios.domain.DiagnosticOrderTest;
+import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
+import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.EncounterAssessment;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientObservationsComplaints;
@@ -10,9 +14,15 @@ import com.dazzle.asklepios.domain.ProgressNote;
 import com.dazzle.asklepios.domain.SocialHistory;
 import com.dazzle.asklepios.domain.SurgicalHistory;
 import com.dazzle.asklepios.domain.VitalSigns;
+import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
+import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalSupportingInfo;
 import com.dazzle.asklepios.repository.BodyMeasurementsRepository;
 import com.dazzle.asklepios.repository.ChiefComplainRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
 import com.dazzle.asklepios.repository.EncounterAssessmentRepository;
 import com.dazzle.asklepios.repository.PatientObservationsComplaintsRepository;
 import com.dazzle.asklepios.repository.PatientProblemRepository;
@@ -28,6 +38,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -36,6 +47,9 @@ import java.util.stream.Collectors;
 public class ApprovalSupportingInfoMapper {
 
     private static final String ACTIVE = "ACTIVE";
+    private static final String INVESTIGATION_RESULT = "investigation-result";
+    private static final String INVESTIGATION_NOT_PERFORMED = "INP";
+    private static final String INVESTIGATION_RESULTS_PENDING = "IRP";
 
     private final ChiefComplainRepository chiefComplainRepository;
     private final VitalSignsRepository vitalSignsRepository;
@@ -46,6 +60,10 @@ public class ApprovalSupportingInfoMapper {
     private final PatientProblemRepository patientProblemRepository;
     private final SurgicalHistoryRepository surgicalHistoryRepository;
     private final SocialHistoryRepository socialHistoryRepository;
+    private final DiagnosticOrderRepository diagnosticOrderRepository;
+    private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
+    private final DiagnosticOrderTestResultRepository diagnosticOrderTestResultRepository;
+    private final DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository;
 
     public List<WaseelApprovalSupportingInfo> toSupportingInfo(PatientEncounter encounter) {
         if (encounter == null || encounter.getId() == null) {
@@ -181,7 +199,7 @@ public class ApprovalSupportingInfoMapper {
                 )
         );
 
-        addInvestigationResult(result, sequence);
+        addInvestigationResult(result, sequence, encounterId);
 
         addTextIfExists(
                 result,
@@ -194,27 +212,101 @@ public class ApprovalSupportingInfoMapper {
         );
     }
 
-//    private void addInvestigationResult(
-//            List<WaseelApprovalSupportingInfo> result,
-//            AtomicInteger sequence,
-//            String progressNote,
-//            String assessment
-//    ) {
-//        String investigationResult = firstNonBlank(progressNote, assessment);
-//
-//        if (isNotBlank(investigationResult)) {
-//            result.add(textInfo(sequence, "investigation-result", investigationResult));
-//            return;
-//        }
-//
-//        result.add(codeInfo(sequence, "investigation-result", "NA"));
-//    }
-
     private void addInvestigationResult(
             List<WaseelApprovalSupportingInfo> result,
-            AtomicInteger sequence
+            AtomicInteger sequence,
+            Long encounterId
     ) {
-        result.add(codeInfo(sequence, "investigation-result", "NA"));
+        List<DiagnosticOrderTest> tests = findActiveInvestigationTests(encounterId);
+        if (tests.isEmpty()) {
+            result.add(codeInfo(sequence, INVESTIGATION_RESULT, INVESTIGATION_NOT_PERFORMED));
+            return;
+        }
+
+        String investigationValue = collectInvestigationResultValue(tests);
+        if (isNotBlank(investigationValue)) {
+            result.add(textInfo(sequence, INVESTIGATION_RESULT, investigationValue));
+            return;
+        }
+
+        result.add(codeInfo(sequence, INVESTIGATION_RESULT, INVESTIGATION_RESULTS_PENDING));
+    }
+
+    private List<DiagnosticOrderTest> findActiveInvestigationTests(Long encounterId) {
+        if (encounterId == null) {
+            return List.of();
+        }
+
+        List<Long> orderIds = diagnosticOrderRepository
+                .findByEncounterIdAndStatusNot(encounterId, DiagnosticStatus.CANCELLED)
+                .stream()
+                .map(DiagnosticOrder::getId)
+                .filter(Objects::nonNull)
+                .toList();
+
+        if (orderIds.isEmpty()) {
+            return List.of();
+        }
+
+        return diagnosticOrderTestRepository.findByOrderIdInAndStatusNot(
+                orderIds,
+                DiagnosticOrderTestStatus.CANCELLED
+        );
+    }
+
+    private String collectInvestigationResultValue(List<DiagnosticOrderTest> tests) {
+        List<Long> orderTestIds = tests.stream()
+                .map(DiagnosticOrderTest::getId)
+                .filter(Objects::nonNull)
+                .toList();
+
+        if (orderTestIds.isEmpty()) {
+            return null;
+        }
+
+        List<String> values = new ArrayList<>();
+
+        diagnosticOrderTestResultRepository.findByOrderTestIdIn(orderTestIds).stream()
+                .filter(this::isUsableInvestigationResult)
+                .map(this::formatLabResultValue)
+                .filter(this::isNotBlank)
+                .forEach(values::add);
+
+        diagnosticOrderTestReportRepository.findByOrderTestIdIn(orderTestIds).stream()
+                .filter(this::isUsableInvestigationReport)
+                .map(DiagnosticOrderTestReport::getReport)
+                .filter(this::isNotBlank)
+                .map(String::trim)
+                .forEach(values::add);
+
+        return values.isEmpty() ? null : String.join("; ", values);
+    }
+
+    private boolean isUsableInvestigationResult(DiagnosticOrderTestResult source) {
+        return source != null && !isExcludedInvestigationStatus(source.getProcessingStatus());
+    }
+
+    private boolean isUsableInvestigationReport(DiagnosticOrderTestReport source) {
+        return source != null && !isExcludedInvestigationStatus(source.getProcessingStatus());
+    }
+
+    private boolean isExcludedInvestigationStatus(DiagnosticStatus status) {
+        return status == DiagnosticStatus.CANCELLED || status == DiagnosticStatus.RESULT_REJECTED;
+    }
+
+    private String formatLabResultValue(DiagnosticOrderTestResult source) {
+        if (source == null) {
+            return null;
+        }
+
+        String number = cleanNumber(source.getResultValueNumber());
+        String text = clean(source.getResultValueText());
+
+        if (isNotBlank(number) && isNotBlank(text)) {
+            return number + " " + text;
+        }
+
+        return firstNonBlank(number, text);
     }
 
     private void addVitalSignsIfExists(
