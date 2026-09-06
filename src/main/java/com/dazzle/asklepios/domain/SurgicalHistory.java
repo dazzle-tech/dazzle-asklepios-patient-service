@@ -49,21 +49,18 @@ public class SurgicalHistory extends AbstractAuditingEntity<Long>
     @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
-    @NotNull
-    @NotBlank
-    @Column(name = "surgery", nullable = false)
+
+    @Column(name = "surgery")
     private String surgery;
 
-    @NotNull
-    @Column(name = "date_of_surgery", nullable = false)
+
+    @Column(name = "date_of_surgery")
     private Date dateOfSurgery;
 
-    @NotNull
-    @NotBlank
-    @Column(name = "facility", nullable = false)
+    @Column(name = "facility")
     private String facility;
 
-    @NotNull
+
     @Column(name = "anesthesia_type", length = 100)
     private String anesthesiaType;
 
@@ -78,7 +75,9 @@ public class SurgicalHistory extends AbstractAuditingEntity<Long>
 
     @Column(name = "implants_or_devices_description", length = 1000)
     private String implantsOrDevicesDescription;
-
+    @Column(name = "patient_is_free", nullable = false)
+    @Builder.Default
+    private Boolean patientIsFree = false;
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
 
@@ -92,4 +91,5 @@ public class SurgicalHistory extends AbstractAuditingEntity<Long>
 
     @Column(name = "cancellation_reason", columnDefinition = "text")
     private String cancellationReason;
+
 }

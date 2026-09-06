@@ -63,7 +63,7 @@ public class SurgicalHistoryService {
             SurgicalHistoryCreateDTO surgicalHistoryCreateDTO
     ) {
         LOG.info("[CREATE] SurgicalHistory payload={}", surgicalHistoryCreateDTO);
-
+        validateRequiredFields(surgicalHistoryCreateDTO);
         SurgicalHistory entity = SurgicalHistory.builder()
                 .patient(refPatient(surgicalHistoryCreateDTO.patientId()))
                 .surgery(surgicalHistoryCreateDTO.surgery())
@@ -71,6 +71,7 @@ public class SurgicalHistoryService {
                 .facility(surgicalHistoryCreateDTO.facility())
                 .anesthesiaType(surgicalHistoryCreateDTO.anesthesiaType())
                 .complications(surgicalHistoryCreateDTO.complications())
+                .patientIsFree(surgicalHistoryCreateDTO.patientIsFree())
                 .adverseReactionsToAnesthesia(
                         surgicalHistoryCreateDTO.adverseReactionsToAnesthesia()
                 )
@@ -101,6 +102,7 @@ public class SurgicalHistoryService {
 
     public SurgicalHistory update(SurgicalHistoryUpdateDTO dto) {
         LOG.info("[UPDATE] SurgicalHistory payload={}", dto);
+        validateRequiredFields(dto);
 
         SurgicalHistory entity = repository.findById(dto.id())
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -118,6 +120,7 @@ public class SurgicalHistoryService {
         entity.setAdverseReactionsToAnesthesia(dto.adverseReactionsToAnesthesia());
         entity.setHasImplantsOrDevices(dto.hasImplantsOrDevices());
         entity.setImplantsOrDevicesDescription(dto.implantsOrDevicesDescription());
+        entity.setPatientIsFree(dto.patientIsFree());
 
         try {
             SurgicalHistory updated = repository.saveAndFlush(entity);
@@ -230,13 +233,7 @@ public class SurgicalHistoryService {
             );
         }
 
-        if (lower.contains("anesthesia_type") && lower.contains("not null")) {
-            throw new BadRequestAlertException(
-                    "Anesthesia type is required.",
-                    "surgicalHistory",
-                    "anesthesia.required"
-            );
-        }
+
 
 
         throw new BadRequestAlertException(
@@ -245,5 +242,81 @@ public class SurgicalHistoryService {
                 "db.constraint"
         );
 
+    }
+    private void validateRequiredFields(SurgicalHistoryCreateDTO dto) {
+
+        if (Boolean.TRUE.equals(dto.patientIsFree())) {
+            return;
+        }
+
+        if (dto.surgery() == null || dto.surgery().isBlank()) {
+            throw new BadRequestAlertException(
+                    "Surgery is required.",
+                    "surgicalHistory",
+                    "surgery.required"
+            );
+        }
+
+        if (dto.dateOfSurgery() == null) {
+            throw new BadRequestAlertException(
+                    "Date of surgery is required.",
+                    "surgicalHistory",
+                    "dateOfSurgery.required"
+            );
+        }
+
+        if (dto.facility() == null || dto.facility().isBlank()) {
+            throw new BadRequestAlertException(
+                    "Facility is required.",
+                    "surgicalHistory",
+                    "facility.required"
+            );
+        }
+
+        if (dto.anesthesiaType() == null || dto.anesthesiaType().isBlank()) {
+            throw new BadRequestAlertException(
+                    "Anesthesia type is required.",
+                    "surgicalHistory",
+                    "anesthesia.required"
+            );
+        }
+    }
+    private void validateRequiredFields(SurgicalHistoryUpdateDTO dto) {
+
+        if (Boolean.TRUE.equals(dto.patientIsFree())) {
+            return;
+        }
+
+        if (dto.surgery() == null || dto.surgery().isBlank()) {
+            throw new BadRequestAlertException(
+                    "Surgery is required.",
+                    "surgicalHistory",
+                    "surgery.required"
+            );
+        }
+
+        if (dto.dateOfSurgery() == null) {
+            throw new BadRequestAlertException(
+                    "Date of surgery is required.",
+                    "surgicalHistory",
+                    "dateOfSurgery.required"
+            );
+        }
+
+        if (dto.facility() == null || dto.facility().isBlank()) {
+            throw new BadRequestAlertException(
+                    "Facility is required.",
+                    "surgicalHistory",
+                    "facility.required"
+            );
+        }
+
+        if (dto.anesthesiaType() == null || dto.anesthesiaType().isBlank()) {
+            throw new BadRequestAlertException(
+                    "Anesthesia type is required.",
+                    "surgicalHistory",
+                    "anesthesia.required"
+            );
+        }
     }
 }
