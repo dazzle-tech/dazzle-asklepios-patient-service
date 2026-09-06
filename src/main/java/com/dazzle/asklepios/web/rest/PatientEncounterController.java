@@ -7,14 +7,9 @@ import com.dazzle.asklepios.service.DiagnosticOrderService;
 import com.dazzle.asklepios.service.EncounterCoverageService;
 import com.dazzle.asklepios.service.PatientEncounterService;
 import com.dazzle.asklepios.service.PatientPrescriptionService;
-import com.dazzle.asklepios.service.dto.patientEncounter.EncounterHistoryOfPresentIllnessDTO;
-import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
-import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
-import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
-import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.*;
 import com.dazzle.asklepios.service.dto.billing.EncounterCoverageDTO;
 import com.dazzle.asklepios.service.dto.billing.UpdateEncounterCoverageRequest;
-import com.dazzle.asklepios.service.dto.patientEncounter.ReassignPractitionerDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.patientEncounter.PatientEncounterVM;
@@ -139,6 +134,9 @@ public class PatientEncounterController {
         PatientEncounter updatedPatientEncounter = patientEncounterService.StartTriageEncounter(id);
         return ResponseEntity.ok(updatedPatientEncounter);
     }
+
+
+
 
     @GetMapping("/encounter/{encounterId}/coverage")
     public ResponseEntity<EncounterCoverageDTO> getEncounterCoverage(
@@ -460,6 +458,21 @@ public class PatientEncounterController {
                 patientEncounterService.dischargeEncounter(dischargeDTO);
 
         return ResponseEntity.ok(discharged);
+    }
+
+    @GetMapping("/encounter/{id}/completion-validation")
+    public ResponseEntity<PatientEncounterCompletionValidationDTO> validateEncounterCompletion(
+            @PathVariable("id") @NotNull Long encounterId
+    ) {
+        LOG.debug(
+                "REST validate PatientEncounter completion encounterId={}",
+                encounterId
+        );
+
+        PatientEncounterCompletionValidationDTO validation =
+                patientEncounterService.validateCompletion(encounterId);
+
+        return ResponseEntity.ok(validation);
     }
 
     @PostMapping("/encounter/{id}/complete")
