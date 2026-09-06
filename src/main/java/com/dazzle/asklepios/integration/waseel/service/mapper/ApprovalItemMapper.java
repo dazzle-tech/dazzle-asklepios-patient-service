@@ -13,6 +13,7 @@ import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalItem;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalSupportingInfo;
 import com.dazzle.asklepios.repository.PatientDiagnosisRepository;
 import com.dazzle.asklepios.repository.PatientPrescriptionMedicationRepository;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -82,7 +83,7 @@ public class ApprovalItemMapper {
 
         AtomicInteger supportingInfoSequence = new AtomicInteger(nextSupportingInfoSequence);
 
-        Map<String, String> nonStandardCodeCache = new HashMap<>();
+        Map<String, PriceListItemWaseelCodesDTO> priceListCodesCache = new HashMap<>();
 
         return items.stream()
                 .filter(item -> includeBilled || Boolean.FALSE.equals(item.getIsBilled()))
@@ -95,7 +96,7 @@ public class ApprovalItemMapper {
                         supportingInfo,
                         supportingInfoSequence,
                         encounter,
-                        nonStandardCodeCache
+                        priceListCodesCache
                 ))
                 .toList();
     }
@@ -195,16 +196,53 @@ public class ApprovalItemMapper {
             List<WaseelApprovalSupportingInfo> supportingInfo,
             AtomicInteger supportingInfoSequence,
             PatientEncounter encounter,
-            Map<String, String> nonStandardCodeCache
+            Map<String, PriceListItemWaseelCodesDTO> priceListCodesCache
     ) {
         BillingItemTypes billingType = item.getBillingItemType();
 
         String mappingItemType = getMappingItemType(billingType);
         Long sourceId = getSourceId(item, billingType);
 
-        WaseelItemMappingSetupDTO mapping = getWaseelMapping(mappingItemType, sourceId);
+        WaseelItemMappingSetupDTO mapping = null;
+        if (mappingItemType != null && !mappingItemType.isBlank() && sourceId != null) {
+            try {
+                mapping = waseelItemMappingClient.getMappingByItem(mappingItemType, sourceId);
+            } catch (FeignException ex) {
+                mapping = null;
+            }
+        }
 
-        String waseelItemType = resolveWaseelItemType(billingType, mapping.waseelItemType());
+        PriceListItemWaseelCodesDTO priceListCodes = getPriceListCodes(
+                billingType,
+                sourceId,
+                encounter,
+                priceListCodesCache
+        );
+
+        String sbsCode = firstNonBlank(
+                mapping == null ? null : mapping.sbsCode(),
+                item.getWaseelSbsCode(),
+                priceListCodes == null ? null : priceListCodes.sbsCode(),
+                priceListCodes == null ? null : priceListCodes.itemCode()
+        );
+
+        if (sbsCode == null) {
+            throw new BadRequestAlertException(
+                    "Missing Waseel SBS mapping for item type: " + mappingItemType
+                            + ", source ID: " + sourceId
+                            + ". Configure Waseel Item Mapping or a price-list SBS code.",
+                    "claim",
+                    "waseel.sbsMapping.missing"
+            );
+        }
+
+        String waseelItemType = resolveWaseelItemType(
+                billingType,
+                firstNonBlank(
+                        mapping == null ? null : mapping.waseelItemType(),
+                        priceListCodes == null ? null : priceListCodes.waseelItemType()
+                )
+        );
 
         List<Integer> itemSupportingInfoSequences = new ArrayList<>(supportingInfoSequences);
 
@@ -224,14 +262,12 @@ public class ApprovalItemMapper {
                 item,
                 sequence,
                 waseelItemType,
-                safe(mapping.sbsCode()),
-                safe(mapping.sbsDescription()),
-                resolveNonStandardCode(
-                        billingType,
-                        sourceId,
-                        encounter,
-                        nonStandardCodeCache
+                sbsCode,
+                firstNonBlank(
+                        mapping == null ? null : mapping.sbsDescription(),
+                        priceListCodes == null ? null : priceListCodes.sbsDescription()
                 ),
+                priceListCodes == null ? null : emptyToNull(priceListCodes.nonStandardCode()),
                 patientSharePercent,
                 itemDate,
                 itemSupportingInfoSequences,
@@ -319,11 +355,11 @@ public class ApprovalItemMapper {
         );
     }
 
-    private String resolveNonStandardCode(
+    private PriceListItemWaseelCodesDTO getPriceListCodes(
             BillingItemTypes billingType,
             Long sourceId,
             PatientEncounter encounter,
-            Map<String, String> cache
+            Map<String, PriceListItemWaseelCodesDTO> cache
     ) {
         if (billingType == null || sourceId == null) {
             return null;
@@ -336,25 +372,20 @@ public class ApprovalItemMapper {
             return cache.get(cacheKey);
         }
 
-        String nonStandardCode = null;
+        PriceListItemWaseelCodesDTO codes = null;
 
         try {
-            PriceListItemWaseelCodesDTO codes =
-                    priceListSetupItemClient.getInsuranceWaseelCodes(
-                            billingType.name(),
-                            sourceId,
-                            facilityId
-                    );
-
-            if (codes != null) {
-                nonStandardCode = emptyToNull(codes.nonStandardCode());
-            }
+            codes = priceListSetupItemClient.getInsuranceWaseelCodes(
+                    billingType.name(),
+                    sourceId,
+                    facilityId
+            );
         } catch (FeignException ex) {
-            nonStandardCode = null;
+            codes = null;
         }
 
-        cache.put(cacheKey, nonStandardCode);
-        return nonStandardCode;
+        cache.put(cacheKey, codes);
+        return codes;
     }
 
     private Integer addDaysSupply(
@@ -492,40 +523,6 @@ public class ApprovalItemMapper {
                 || "MEDICATION-CODES".equalsIgnoreCase(normalized);
     }
 
-    private WaseelItemMappingSetupDTO getWaseelMapping(String itemType, Long sourceId) {
-        if (itemType == null || itemType.isBlank() || sourceId == null) {
-            throw new RuntimeException("Cannot map Waseel item. Item type or source ID is missing.");
-        }
-
-        try {
-            WaseelItemMappingSetupDTO mapping = waseelItemMappingClient.getMappingByItem(itemType, sourceId);
-
-            if (mapping == null) {
-                throw new RuntimeException(
-                        "Missing Waseel SBS mapping for item type: " + itemType + ", source ID: " + sourceId
-                );
-            }
-
-            if (mapping.waseelItemType() == null || mapping.waseelItemType().isBlank()) {
-                throw new RuntimeException(
-                        "Missing Waseel item type in mapping for item type: " + itemType + ", source ID: " + sourceId
-                );
-            }
-
-            if (mapping.sbsCode() == null || mapping.sbsCode().isBlank()) {
-                throw new RuntimeException(
-                        "Missing Waseel SBS code in mapping for item type: " + itemType + ", source ID: " + sourceId
-                );
-            }
-
-            return mapping;
-        } catch (FeignException.NotFound ex) {
-            throw new RuntimeException(
-                    "Missing Waseel SBS mapping for item type: " + itemType + ", source ID: " + sourceId
-            );
-        }
-    }
-
     private String getMappingItemType(BillingItemTypes type) {
         if (type == BillingItemTypes.PROCEDURE) return "PROCEDURE";
         if (type == BillingItemTypes.SERVICE) return "SERVICE";
@@ -533,7 +530,11 @@ public class ApprovalItemMapper {
         if (type == BillingItemTypes.RADIOLOGY) return "RADIOLOGY";
         if (type == BillingItemTypes.MEDICATION) return "MEDICATION";
 
-        throw new RuntimeException("Unsupported billing item type for Waseel mapping: " + type);
+        throw new BadRequestAlertException(
+                "Unsupported billing item type for Waseel mapping: " + type,
+                "claim",
+                "waseel.itemType.unsupported"
+        );
     }
 
     private Long getSourceId(PatientServiceAndProduct item, BillingItemTypes type) {
@@ -557,8 +558,18 @@ public class ApprovalItemMapper {
                 : value.setScale(2, RoundingMode.HALF_UP);
     }
 
-    private String safe(String value) {
-        return value == null ? "" : value.trim();
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+
+        return null;
     }
 
     private String emptyToNull(String value) {
