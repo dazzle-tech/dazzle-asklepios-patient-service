@@ -208,11 +208,11 @@ public class VitalSignsService {
 
         if (from != null && to != null) {
             return vitalSignsRepository
-                    .findByPatientIdAndIsActiveTrueAndCreatedDateBetween(patientId, from, to, pageable);
+                    .findByPatientIdAndCreatedDateBetween(patientId, from, to, pageable);
         }
 
         return vitalSignsRepository
-                .findByPatientIdAndIsActiveTrue(patientId, pageable);
+                .findByPatientId(patientId, pageable);
     }
 
     @Transactional(readOnly = true)
