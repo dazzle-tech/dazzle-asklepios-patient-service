@@ -34,8 +34,10 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -49,7 +51,7 @@ public class ApprovalSupportingInfoMapper {
     private static final String INVESTIGATION_RESULT = "investigation-result";
     private static final String INVESTIGATION_NOT_PERFORMED = "INP";
     private static final String INVESTIGATION_RESULTS_PENDING = "IRP";
-    private static final String INVESTIGATION_NOT_APPLICABLE = "NA";
+    private static final String INVESTIGATION_RESULTS_ATTACHED = "IRA";
 
     private final ChiefComplainRepository chiefComplainRepository;
     private final VitalSignsRepository vitalSignsRepository;
@@ -198,7 +200,7 @@ public class ApprovalSupportingInfoMapper {
                 )
         );
 
-        addInvestigationResult(result, sequence, encounterId);
+        addInvestigationResult(result, sequence, encounter);
 
         addTextIfExists(
                 result,
@@ -214,18 +216,14 @@ public class ApprovalSupportingInfoMapper {
     private void addInvestigationResult(
             List<WaseelApprovalSupportingInfo> result,
             AtomicInteger sequence,
-            Long encounterId
+            PatientEncounter encounter
     ) {
+        Long encounterId = encounter == null ? null : encounter.getId();
         List<DiagnosticOrderTest> tests = findActiveInvestigationTests(encounterId);
         String investigationValue = collectLabInvestigationResultValue(tests);
 
         if (isNotBlank(investigationValue)) {
-            result.add(codeAndValueInfo(
-                    sequence,
-                    INVESTIGATION_RESULT,
-                    INVESTIGATION_NOT_APPLICABLE,
-                    investigationValue
-            ));
+            result.add(investigationResultAttached(sequence, investigationValue, resolveDate(encounter)));
             return;
         }
 
@@ -235,6 +233,31 @@ public class ApprovalSupportingInfoMapper {
         }
 
         result.add(codeInfo(sequence, INVESTIGATION_RESULT, INVESTIGATION_RESULTS_PENDING));
+    }
+
+    private WaseelApprovalSupportingInfo investigationResultAttached(
+            AtomicInteger sequence,
+            String investigationValue,
+            LocalDate attachmentDate
+    ) {
+        String attachment = Base64.getEncoder().encodeToString(
+                investigationValue.getBytes(StandardCharsets.UTF_8)
+        );
+
+        return new WaseelApprovalSupportingInfo(
+                sequence.getAndIncrement(),
+                INVESTIGATION_RESULT,
+                INVESTIGATION_RESULTS_ATTACHED,
+                null,
+                null,
+                clean(investigationValue),
+                null,
+                attachment,
+                "lab-investigation-results.txt",
+                "text/plain",
+                null,
+                attachmentDate == null ? LocalDate.now().toString() : attachmentDate.toString()
+        );
     }
 
     private List<DiagnosticOrderTest> findActiveInvestigationTests(Long encounterId) {
@@ -468,28 +491,6 @@ public class ApprovalSupportingInfoMapper {
         if (isNotBlank(value)) {
             result.add(textInfo(sequence, category, value));
         }
-    }
-
-    private WaseelApprovalSupportingInfo codeAndValueInfo(
-            AtomicInteger sequence,
-            String category,
-            String code,
-            String value
-    ) {
-        return new WaseelApprovalSupportingInfo(
-                sequence.getAndIncrement(),
-                category,
-                clean(code),
-                null,
-                null,
-                clean(value),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
     }
 
     private WaseelApprovalSupportingInfo textInfo(
