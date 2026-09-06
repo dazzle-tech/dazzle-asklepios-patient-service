@@ -21,6 +21,8 @@ public interface DiagnosticOrderTestRepository extends JpaRepository<DiagnosticO
 
     Page<DiagnosticOrderTest> findByOrderId(Long orderId, Pageable pageable);
 
+    List<DiagnosticOrderTest> findByOrderIdInAndStatusNot(Collection<Long> orderIds, DiagnosticOrderTestStatus status);
+
     Page<DiagnosticOrderTest> findByOrderIdAndStatus(Long orderId, DiagnosticOrderTestStatus status, Pageable pageable);
 
     Page<DiagnosticOrderTest> findByOrderIdAndStatusNotIn(Long orderId, Collection<DiagnosticOrderTestStatus> statuses, Pageable pageable);

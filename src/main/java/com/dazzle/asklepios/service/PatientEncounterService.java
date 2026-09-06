@@ -34,10 +34,7 @@ import com.dazzle.asklepios.repository.UserRepository;
 import com.dazzle.asklepios.repository.VitalSignsRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.EncounterHasInvoiceResponse;
-import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
-import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
-import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
-import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.*;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
@@ -45,6 +42,9 @@ import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import feign.FeignException;
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
+import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCompletionValidationDTO;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Expression;
@@ -84,6 +84,16 @@ import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import jakarta.persistence.criteria.Subquery;
+import com.dazzle.asklepios.repository.EncounterAssessmentRepository;
+import com.dazzle.asklepios.repository.EncounterPlanRepository;
+import com.dazzle.asklepios.repository.ProgressNoteRepository;
+import com.dazzle.asklepios.repository.PatientDiagnosisRepository;
+import com.dazzle.asklepios.repository.PatientProblemRepository;
+import com.dazzle.asklepios.repository.FamilyHistoryRepository;
+import com.dazzle.asklepios.repository.HospitalizationRepository;
+import com.dazzle.asklepios.repository.CurrentMedicationRepository;
+import com.dazzle.asklepios.repository.SurgicalHistoryRepository;
+import com.dazzle.asklepios.repository.SocialHistoryRepository;
 
 @Service
 @Transactional
@@ -93,6 +103,17 @@ public class PatientEncounterService {
 
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientRepository patientRepository;
+    private final EncounterAssessmentRepository encounterAssessmentRepository;
+    private final EncounterPlanRepository encounterPlanRepository;
+    private final ProgressNoteRepository progressNoteRepository;
+    private final PatientDiagnosisRepository patientDiagnosisRepository;
+
+    private final PatientProblemRepository patientProblemRepository;
+    private final FamilyHistoryRepository familyHistoryRepository;
+    private final HospitalizationRepository hospitalizationRepository;
+    private final CurrentMedicationRepository currentMedicationRepository;
+    private final SurgicalHistoryRepository surgicalHistoryRepository;
+    private final SocialHistoryRepository socialHistoryRepository;
     private final EntityManager entityManager;
     private final EncounterAssignToBedService encounterAssignToBedService;
     private final AdditionalMeasurementsRepository additionalMeasurementsRepository;
@@ -115,6 +136,19 @@ public class PatientEncounterService {
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
             PatientRepository patientRepository,
+
+            EncounterAssessmentRepository encounterAssessmentRepository,
+            EncounterPlanRepository encounterPlanRepository,
+            ProgressNoteRepository progressNoteRepository,
+            PatientDiagnosisRepository patientDiagnosisRepository,
+
+            PatientProblemRepository patientProblemRepository,
+            FamilyHistoryRepository familyHistoryRepository,
+            HospitalizationRepository hospitalizationRepository,
+            CurrentMedicationRepository currentMedicationRepository,
+            SurgicalHistoryRepository surgicalHistoryRepository,
+            SocialHistoryRepository socialHistoryRepository,
+
             EntityManager entityManager,
             EncounterAssignToBedService encounterAssignToBedService,
             AdditionalMeasurementsRepository additionalMeasurementsRepository,
@@ -131,6 +165,8 @@ public class PatientEncounterService {
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.entityManager = entityManager;
+        
+        
         this.encounterAssignToBedService = encounterAssignToBedService;
         this.additionalMeasurementsRepository = additionalMeasurementsRepository;
         this.painAssessmentRepository = painAssessmentRepository;
@@ -146,6 +182,20 @@ public class PatientEncounterService {
         this.notificationHelper = notificationHelper;
         this.invoiceGenerationService = invoiceGenerationService;
         this.userRepository = userRepository;
+
+        this.encounterAssessmentRepository = encounterAssessmentRepository;
+        this.encounterPlanRepository = encounterPlanRepository;
+        this.progressNoteRepository = progressNoteRepository;
+        this.patientDiagnosisRepository = patientDiagnosisRepository;
+
+        this.patientProblemRepository = patientProblemRepository;
+        this.familyHistoryRepository = familyHistoryRepository;
+        this.hospitalizationRepository = hospitalizationRepository;
+        this.currentMedicationRepository = currentMedicationRepository;
+        this.surgicalHistoryRepository = surgicalHistoryRepository;
+        this.socialHistoryRepository = socialHistoryRepository;
+
+
         this.encounterDischargeLogRepository = encounterDischargeLogRepository;
         this.auditRepository = auditRepository;
     }
@@ -751,6 +801,202 @@ public class PatientEncounterService {
             throw ex;
         }
     }
+
+    @Transactional(readOnly = true)
+    public PatientEncounterCompletionValidationDTO validateCompletion(Long encounterId) {
+
+        PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "PatientEncounter not found with id " + encounterId,
+                        "patientEncounter",
+                        "id.notfound"
+                ));
+
+        boolean insuranceVisit =
+                BillingCoverageType.INSURANCE.equals(encounter.getCoverageType());
+
+        // Non-insurance visits do not need the insurance completion validation.
+        if (!insuranceVisit) {
+            return new PatientEncounterCompletionValidationDTO(
+                    encounterId,
+                    encounter.getCoverageType(),
+                    encounter.getPatientInsuranceId(),
+                    false,
+                    true, // chiefComplaint
+                    true, // historyOfPresentIllness
+                    true, // physicalExaminationSummary
+                    true, // primaryDiagnosis
+                    true, // assessment
+                    true, // treatmentPlan
+                    true, // medicalHistory
+                    true, // surgicalHistory
+                    true, // socialHistory
+                    true, // progressNotes
+                    true, // vitalSigns
+                    true, // bodyMeasurements
+                    true, // canComplete
+                    Collections.emptyList()
+            );
+        }
+        Long patientId = encounter.getPatient().getId();
+
+        boolean chiefComplaint =
+                !isBlank(encounter.getChiefComplaint());
+
+        boolean historyOfPresentIllness =
+                !isBlank(encounter.getHistoryOfPresentIllness());
+
+        boolean physicalExaminationSummary =
+                !isBlank(encounter.getPhysicalExaminationSummery());
+
+        boolean primaryDiagnosis =
+                patientDiagnosisRepository.existsByEncounterId(encounterId);
+
+        boolean assessment =
+                encounterAssessmentRepository
+                        .findTopByEncounterIdOrderByCreatedDateDesc(encounterId)
+                        .isPresent();
+
+        boolean treatmentPlan =
+                encounterPlanRepository
+                        .findTopByEncounterIdOrderByCreatedDateDesc(encounterId)
+                        .isPresent();
+
+        boolean medicalHistory =
+                patientProblemRepository
+                        .findAllByPatientIdAndStatus(
+                                patientId,
+                                PatientHistoryStatus.ACTIVE,
+                                Pageable.unpaged()
+                        )
+                        .hasContent()
+                        ||
+                        familyHistoryRepository
+                                .findAllByPatientIdAndStatus(
+                                        patientId,
+                                        PatientHistoryStatus.ACTIVE,
+                                        Pageable.unpaged()
+                                )
+                                .hasContent()
+                        ||
+                        hospitalizationRepository
+                                .findAllByPatientIdAndStatusNot(
+                                        patientId,
+                                        PatientHistoryStatus.CANCELLED,
+                                        Pageable.unpaged()
+                                )
+                                .hasContent()
+                        ||
+                        currentMedicationRepository
+                                .findAllByPatientIdAndStatusNot(
+                                        patientId,
+                                        PatientHistoryStatus.CANCELLED,
+                                        Pageable.unpaged()
+                                )
+                                .hasContent();
+
+        boolean surgicalHistory =
+                !surgicalHistoryRepository
+                        .findAllByPatientIdAndStatusNot(
+                                patientId,
+                                PatientHistoryStatus.CANCELLED,
+                                Pageable.unpaged()
+                        )
+                        .isEmpty();
+
+        boolean socialHistory =
+                socialHistoryRepository
+                        .findTopByPatientIdOrderByCreatedDateDesc(patientId)
+                        .isPresent();
+
+        boolean progressNotes =
+                progressNoteRepository
+                        .findTopByEncounterIdAndCancelledDateIsNullOrderByCreatedDateDesc(encounterId)
+                        .isPresent();
+
+        boolean vitalSigns =
+                !findEncounterIdsWithObservation(List.of(encounterId)).isEmpty();
+
+        boolean bodyMeasurements =
+                bodyMeasurementsRepository
+                        .findFirstByEncounterIdAndIsActiveTrueOrderByCreatedDateDesc(encounterId)
+                        .isPresent();
+
+        List<String> missing = new ArrayList<>();
+
+        if (!chiefComplaint) {
+            missing.add("Chief Complaint");
+        }
+
+        if (!historyOfPresentIllness) {
+            missing.add("History Of Present Illness");
+        }
+
+        if (!physicalExaminationSummary) {
+            missing.add("Physical Examination Summary");
+        }
+
+        if (!primaryDiagnosis) {
+            missing.add("Primary Diagnosis");
+        }
+
+        if (!assessment) {
+            missing.add("Assessment");
+        }
+
+        if (!treatmentPlan) {
+            missing.add("Treatment Plan / Management");
+        }
+
+        if (!medicalHistory) {
+            missing.add("Medical History");
+        }
+
+        if (!surgicalHistory) {
+            missing.add("Surgical History");
+        }
+
+        if (!socialHistory) {
+            missing.add("Social History");
+        }
+
+        if (!progressNotes) {
+            missing.add("Progress Notes");
+        }
+
+        if (!vitalSigns) {
+            missing.add("Vital Signs & Measurements");
+        }
+
+        if (!bodyMeasurements) {
+            missing.add("Body Measurements");
+        }
+
+        boolean canComplete = missing.isEmpty();
+
+        return new PatientEncounterCompletionValidationDTO(
+                encounterId,
+                encounter.getCoverageType(),
+                encounter.getPatientInsuranceId(),
+                true,
+                chiefComplaint,
+                historyOfPresentIllness,
+                physicalExaminationSummary,
+                primaryDiagnosis,
+                assessment,
+                treatmentPlan,
+                medicalHistory,
+                surgicalHistory,
+                socialHistory,
+                progressNotes,
+                bodyMeasurements,
+                vitalSigns,
+                canComplete,
+                missing
+        );
+    }
+
+
     @Transactional
     public PatientEncounter reopenEncounter(Long encounterId) {
 
@@ -782,17 +1028,19 @@ public class PatientEncounterService {
             );
         }
 
-       EncounterHasInvoiceResponse invoiceResponse =
-                invoiceGenerationService.hasInvoice(encounterId);
+    //   EncounterHasInvoiceResponse invoiceResponse =
+          //invoiceGenerationService.hasInvoice(encounterId);
 
-        if (invoiceResponse != null && invoiceResponse.hasInvoice()) {
+// TEMPORARILY DISABLED
+// if (invoiceResponse != null && invoiceResponse.hasInvoice()) {
+//     throw new BadRequestAlertException(
+//             "Cannot reopen encounter because an invoice has already been generated.",
+//             "patientEncounter",
+//             "reopen.invoiceExists"
+//     );
+// }
 
-            throw new BadRequestAlertException(
-                    "Cannot reopen encounter because an invoice has already been generated.",
-                    "patientEncounter",
-                    "reopen.invoiceExists"
-            );
-        }
+
 
         if (encounter.getEncounterType() == EncounterType.CLINIC
                 && !user.isCanUnCompleteEncounter()) {
@@ -834,6 +1082,10 @@ public class PatientEncounterService {
 
         return saved;
     }
+
+
+
+
 
     @Transactional(readOnly = true)
     public Page<PatientEncounter> searchBillingPendingQueue(
