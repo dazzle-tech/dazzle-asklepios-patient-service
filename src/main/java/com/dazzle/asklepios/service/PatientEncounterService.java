@@ -782,17 +782,17 @@ public class PatientEncounterService {
             );
         }
 
-       EncounterHasInvoiceResponse invoiceResponse =
-                invoiceGenerationService.hasInvoice(encounterId);
+    //   EncounterHasInvoiceResponse invoiceResponse =
+          //invoiceGenerationService.hasInvoice(encounterId);
 
-        if (invoiceResponse != null && invoiceResponse.hasInvoice()) {
-
-            throw new BadRequestAlertException(
-                    "Cannot reopen encounter because an invoice has already been generated.",
-                    "patientEncounter",
-                    "reopen.invoiceExists"
-            );
-        }
+// TEMPORARILY DISABLED
+// if (invoiceResponse != null && invoiceResponse.hasInvoice()) {
+//     throw new BadRequestAlertException(
+//             "Cannot reopen encounter because an invoice has already been generated.",
+//             "patientEncounter",
+//             "reopen.invoiceExists"
+//     );
+// }
 
         if (encounter.getEncounterType() == EncounterType.CLINIC
                 && !user.isCanUnCompleteEncounter()) {
