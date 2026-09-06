@@ -4,7 +4,6 @@ import com.dazzle.asklepios.domain.BodyMeasurements;
 import com.dazzle.asklepios.domain.ChiefComplain;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
-import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.EncounterAssessment;
 import com.dazzle.asklepios.domain.PatientEncounter;
@@ -16,11 +15,11 @@ import com.dazzle.asklepios.domain.SurgicalHistory;
 import com.dazzle.asklepios.domain.VitalSigns;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalSupportingInfo;
 import com.dazzle.asklepios.repository.BodyMeasurementsRepository;
 import com.dazzle.asklepios.repository.ChiefComplainRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
-import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
 import com.dazzle.asklepios.repository.EncounterAssessmentRepository;
@@ -50,6 +49,7 @@ public class ApprovalSupportingInfoMapper {
     private static final String INVESTIGATION_RESULT = "investigation-result";
     private static final String INVESTIGATION_NOT_PERFORMED = "INP";
     private static final String INVESTIGATION_RESULTS_PENDING = "IRP";
+    private static final String INVESTIGATION_NOT_APPLICABLE = "NA";
 
     private final ChiefComplainRepository chiefComplainRepository;
     private final VitalSignsRepository vitalSignsRepository;
@@ -63,7 +63,6 @@ public class ApprovalSupportingInfoMapper {
     private final DiagnosticOrderRepository diagnosticOrderRepository;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
     private final DiagnosticOrderTestResultRepository diagnosticOrderTestResultRepository;
-    private final DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository;
 
     public List<WaseelApprovalSupportingInfo> toSupportingInfo(PatientEncounter encounter) {
         if (encounter == null || encounter.getId() == null) {
@@ -218,14 +217,20 @@ public class ApprovalSupportingInfoMapper {
             Long encounterId
     ) {
         List<DiagnosticOrderTest> tests = findActiveInvestigationTests(encounterId);
-        if (tests.isEmpty()) {
-            result.add(codeInfo(sequence, INVESTIGATION_RESULT, INVESTIGATION_NOT_PERFORMED));
+        String investigationValue = collectLabInvestigationResultValue(tests);
+
+        if (isNotBlank(investigationValue)) {
+            result.add(codeAndValueInfo(
+                    sequence,
+                    INVESTIGATION_RESULT,
+                    INVESTIGATION_NOT_APPLICABLE,
+                    investigationValue
+            ));
             return;
         }
 
-        String investigationValue = collectInvestigationResultValue(tests);
-        if (isNotBlank(investigationValue)) {
-            result.add(textInfo(sequence, INVESTIGATION_RESULT, investigationValue));
+        if (tests.isEmpty()) {
+            result.add(codeInfo(sequence, INVESTIGATION_RESULT, INVESTIGATION_NOT_PERFORMED));
             return;
         }
 
@@ -254,39 +259,37 @@ public class ApprovalSupportingInfoMapper {
         );
     }
 
-    private String collectInvestigationResultValue(List<DiagnosticOrderTest> tests) {
-        List<Long> orderTestIds = tests.stream()
+    private String collectLabInvestigationResultValue(List<DiagnosticOrderTest> tests) {
+        List<Long> labOrderTestIds = tests.stream()
+                .filter(this::isLabInvestigationTest)
                 .map(DiagnosticOrderTest::getId)
                 .filter(Objects::nonNull)
                 .toList();
 
-        if (orderTestIds.isEmpty()) {
+        if (labOrderTestIds.isEmpty()) {
             return null;
         }
 
-        List<String> values = new ArrayList<>();
-
-        diagnosticOrderTestResultRepository.findByOrderTestIdIn(orderTestIds).stream()
+        List<String> values = diagnosticOrderTestResultRepository.findByOrderTestIdIn(labOrderTestIds).stream()
                 .filter(this::isUsableInvestigationResult)
                 .map(this::formatLabResultValue)
                 .filter(this::isNotBlank)
-                .forEach(values::add);
-
-        diagnosticOrderTestReportRepository.findByOrderTestIdIn(orderTestIds).stream()
-                .filter(this::isUsableInvestigationReport)
-                .map(DiagnosticOrderTestReport::getReport)
-                .filter(this::isNotBlank)
-                .map(String::trim)
-                .forEach(values::add);
+                .toList();
 
         return values.isEmpty() ? null : String.join("; ", values);
     }
 
-    private boolean isUsableInvestigationResult(DiagnosticOrderTestResult source) {
-        return source != null && !isExcludedInvestigationStatus(source.getProcessingStatus());
+    private boolean isLabInvestigationTest(DiagnosticOrderTest test) {
+        if (test == null || test.getOrderType() == null) {
+            return false;
+        }
+
+        return test.getOrderType() == TestType.LABORATORY
+                || test.getOrderType() == TestType.PATHOLOGY
+                || test.getOrderType() == TestType.MICROBIOLOGY;
     }
 
-    private boolean isUsableInvestigationReport(DiagnosticOrderTestReport source) {
+    private boolean isUsableInvestigationResult(DiagnosticOrderTestResult source) {
         return source != null && !isExcludedInvestigationStatus(source.getProcessingStatus());
     }
 
@@ -465,6 +468,28 @@ public class ApprovalSupportingInfoMapper {
         if (isNotBlank(value)) {
             result.add(textInfo(sequence, category, value));
         }
+    }
+
+    private WaseelApprovalSupportingInfo codeAndValueInfo(
+            AtomicInteger sequence,
+            String category,
+            String code,
+            String value
+    ) {
+        return new WaseelApprovalSupportingInfo(
+                sequence.getAndIncrement(),
+                category,
+                clean(code),
+                null,
+                null,
+                clean(value),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
     }
 
     private WaseelApprovalSupportingInfo textInfo(
