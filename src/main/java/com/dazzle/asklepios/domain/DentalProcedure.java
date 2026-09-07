@@ -21,6 +21,7 @@ import lombok.Setter;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.time.Instant;
 
 @Entity
 @Table(name = "dental_procedure")
@@ -78,4 +79,14 @@ public class DentalProcedure extends AbstractAuditingEntity<Long> implements Ser
 
     @Column(name = "is_cancelled", nullable = false)
     private boolean cancelled = false;
+
+    @Column(name = "cancelled_date")
+    private Instant cancelledDate;
+
+    @Column(name = "cancelled_by")
+    private String cancelledBy;
+
+    @Column(name = "cancellation_reason", columnDefinition = "TEXT")
+    private String cancellationReason;
 }
+
