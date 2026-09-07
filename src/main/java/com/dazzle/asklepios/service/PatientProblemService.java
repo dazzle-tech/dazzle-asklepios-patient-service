@@ -9,6 +9,8 @@ import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemCancelDTO;
 import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemCreateDTO;
 import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemUpdateDTO;
+import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryCreateDTO;
+import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -66,7 +68,7 @@ public class PatientProblemService {
 
     public PatientProblem create(PatientProblemCreateDTO patientProblemCreateDTO) {
         LOG.info("[CREATE] PatientProblem payload={}", patientProblemCreateDTO);
-
+        validateRequiredFields(patientProblemCreateDTO);
         PatientProblem entity = PatientProblem.builder()
                 // Use the existing resolvePatient method (not refPatient)
                 .patient(resolvePatient(patientProblemCreateDTO.patientId()))
@@ -77,7 +79,7 @@ public class PatientProblemService {
                 .dateOfResolution(patientProblemCreateDTO.dateOfResolution())
                 .byPatient(patientProblemCreateDTO.byPatient())
                 .sourceOfInformation(patientProblemCreateDTO.sourceOfInformation())
-
+                .patientIsFree(patientProblemCreateDTO.patientIsFree())
                 // Default status for new records
                 .status(PatientHistoryStatus.ACTIVE)
 
@@ -98,7 +100,7 @@ public class PatientProblemService {
 
     public PatientProblem update(PatientProblemUpdateDTO patientProblemUpdateDTO) {
         LOG.info("[UPDATE] PatientProblem payload={}", patientProblemUpdateDTO);
-
+        validateRequiredFields(patientProblemUpdateDTO);
         PatientProblem entity = patientProblemRepository.findById(patientProblemUpdateDTO.id())
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Patient problem not found with id " + patientProblemUpdateDTO.id(),
@@ -114,6 +116,7 @@ public class PatientProblemService {
         entity.setDateOfResolution(patientProblemUpdateDTO.dateOfResolution());
         entity.setByPatient(patientProblemUpdateDTO.byPatient());
         entity.setSourceOfInformation(patientProblemUpdateDTO.sourceOfInformation());
+        entity.setPatientIsFree(patientProblemUpdateDTO.patientIsFree());
 
         try {
             return patientProblemRepository.saveAndFlush(entity);
@@ -274,5 +277,103 @@ public class PatientProblemService {
                 "patientProblem",
                 "db.constraint"
         );
+    }
+    private void validateRequiredFields(PatientProblemCreateDTO dto) {
+
+        if (Boolean.TRUE.equals(dto.patientIsFree())) {
+            return;
+        }
+
+        if (dto.condition() == null || dto.condition().isBlank()) {
+            throw new BadRequestAlertException(
+                    "Condition is required.",
+                    "patientProblem",
+                    "condition.required"
+            );
+        }
+
+        if (dto.dateOfDiagnosis() == null) {
+            throw new BadRequestAlertException(
+                    "Date of diagnosis is required.",
+                    "patientProblem",
+                    "dateOfDiagnosis.required"
+            );
+        }
+
+        if (dto.conditionStatus() == null || dto.conditionStatus().isBlank()) {
+            throw new BadRequestAlertException(
+                    "Status is required.",
+                    "patientProblem",
+                    "status.required"
+            );
+        }
+
+        if (dto.type() == null || dto.type().isBlank()) {
+            throw new BadRequestAlertException(
+                    "Type is required.",
+                    "patientProblem",
+                    "type.required"
+            );
+        }
+
+        if (Boolean.FALSE.equals(dto.byPatient())
+                && (dto.sourceOfInformation() == null
+                || dto.sourceOfInformation().isBlank())) {
+
+            throw new BadRequestAlertException(
+                    "Source of information is required when problem is not reported by patient.",
+                    "patientProblem",
+                    "source.required"
+            );
+        }
+    }
+    private void validateRequiredFields(PatientProblemUpdateDTO dto) {
+
+        if (Boolean.TRUE.equals(dto.patientIsFree())) {
+            return;
+        }
+
+        if (dto.condition() == null || dto.condition().isBlank()) {
+            throw new BadRequestAlertException(
+                    "Condition is required.",
+                    "patientProblem",
+                    "condition.required"
+            );
+        }
+
+        if (dto.dateOfDiagnosis() == null) {
+            throw new BadRequestAlertException(
+                    "Date of diagnosis is required.",
+                    "patientProblem",
+                    "dateOfDiagnosis.required"
+            );
+        }
+
+        if (dto.conditionStatus() == null || dto.conditionStatus().isBlank()) {
+            throw new BadRequestAlertException(
+                    "Status is required.",
+                    "patientProblem",
+                    "status.required"
+            );
+        }
+
+        if (dto.type() == null || dto.type().isBlank()) {
+            throw new BadRequestAlertException(
+                    "Type is required.",
+                    "patientProblem",
+                    "type.required"
+            );
+        }
+
+        if (Boolean.FALSE.equals(dto.byPatient())
+                && (dto.sourceOfInformation() == null
+                || dto.sourceOfInformation().isBlank())) {
+
+            throw new BadRequestAlertException(
+                    "Source of information is required when problem is not reported by patient.",
+                    "patientProblem",
+                    "source.required"
+            );
+        }
     }
 }

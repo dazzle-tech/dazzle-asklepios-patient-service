@@ -34,7 +34,10 @@ import com.dazzle.asklepios.repository.UserRepository;
 import com.dazzle.asklepios.repository.VitalSignsRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.EncounterHasInvoiceResponse;
-import com.dazzle.asklepios.service.dto.patientEncounter.*;
+import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
@@ -1028,17 +1031,16 @@ public class PatientEncounterService {
             );
         }
 
-    //   EncounterHasInvoiceResponse invoiceResponse =
-          //invoiceGenerationService.hasInvoice(encounterId);
+       EncounterHasInvoiceResponse invoiceResponse =
+          invoiceGenerationService.hasInvoice(encounterId);
 
-// TEMPORARILY DISABLED
-// if (invoiceResponse != null && invoiceResponse.hasInvoice()) {
-//     throw new BadRequestAlertException(
-//             "Cannot reopen encounter because an invoice has already been generated.",
-//             "patientEncounter",
-//             "reopen.invoiceExists"
-//     );
-// }
+         if (invoiceResponse != null && invoiceResponse.hasInvoice()) {
+             throw new BadRequestAlertException(
+                     "Cannot reopen encounter because an invoice has already been generated.",
+                     "patientEncounter",
+                     "reopen.invoiceExists"
+             );
+         }
 
 
 
