@@ -41,6 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -241,7 +242,7 @@ public class DentalProcedureService {
         }
     }
 
-    public DentalProcedure cancel(Long id) {
+    public DentalProcedure cancel(Long id, String cancellationReason) {
         SecurityUtils.getCurrentUserLogin()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated."));
 
@@ -254,23 +255,32 @@ public class DentalProcedureService {
                     "alreadyCancelled"
             );
         }
+        if (cancellationReason == null || cancellationReason.trim().isEmpty()) {
+            throw new BadRequestAlertException(
+                    "Cancellation reason is required",
+                    "dentalProcedure",
+                    "cancellationReasonRequired"
+            );
+        }
 
-        String cancelReason = "Dental procedure cancelled";
 
         patientServiceAndProductService.cancelBySource(
                 ServiceSource.DENTAL_PROCEDURE,
                 entity.getId(),
                 BillingItemTypes.PROCEDURE,
-                cancelReason
+                cancellationReason
         );
         patientServiceAndProductService.cancelBySource(
                 ServiceSource.DENTAL_PROCEDURE,
                 entity.getId(),
                 BillingItemTypes.SERVICE,
-                cancelReason
+                cancellationReason
         );
 
         entity.setCancelled(true);
+        entity.setCancellationReason(cancellationReason);
+        entity.setCancelledBy(SecurityUtils.getCurrentUserLogin().orElse("unknown"));
+        entity.setCancelledDate(Instant.now());
 
         return dentalProcedureRepository.saveAndFlush(entity);
     }
