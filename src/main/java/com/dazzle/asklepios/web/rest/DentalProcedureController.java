@@ -2,6 +2,7 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.DentalProcedure;
 import com.dazzle.asklepios.service.DentalProcedureService;
+import com.dazzle.asklepios.service.dto.dentalProcedure.DentalProcedureCancellationDTO;
 import com.dazzle.asklepios.service.dto.dentalProcedure.DentalProcedureCreateDTO;
 import com.dazzle.asklepios.service.dto.dentalProcedure.DentalProcedureUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
@@ -77,9 +78,16 @@ public class DentalProcedureController {
 
     @PutMapping("/dental-procedures/{id}/cancel")
     public ResponseEntity<DentalProcedure> cancel(
-            @PathVariable Long id, @RequestBody(required = false) String cancellationReason
+            @PathVariable Long id,
+            @Valid @RequestBody DentalProcedureCancellationDTO cancellationDTO
     ) {
         LOG.debug("REST cancel DentalProcedure id={}", id);
-        return ResponseEntity.ok(dentalProcedureService.cancel(id, cancellationReason));
+
+        return ResponseEntity.ok(
+                dentalProcedureService.cancel(
+                        id,
+                        cancellationDTO.getCancellationReason()
+                )
+        );
     }
 }
