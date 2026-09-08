@@ -12,12 +12,15 @@ import com.dazzle.asklepios.service.dto.appointment.AppointmentQuickAppointmentD
 import com.dazzle.asklepios.service.dto.appointment.AppointmentRescheduleDTO;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentSearchFilterMultiDepartmentDTO;
 import com.dazzle.asklepios.service.dto.appointment.BulkAppointmentRescheduleDTO;
+import com.dazzle.asklepios.service.dto.appointment.BulkAppointmentTransferDTO;
 import com.dazzle.asklepios.service.dto.appointment.DiagnosticTestAppointmentRescheduleDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentLogResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentQuickAppointmentResponseVM;
+import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentTransferVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.BulkAppointmentRescheduleResponseVM;
+import com.dazzle.asklepios.web.rest.vm.appointment.BulkAppointmentTransferResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.BulkReschedulePreviewVM;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -38,6 +41,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -287,6 +291,33 @@ public class AppointmentController {
     public ResponseEntity<Appointment> createIntegrationAppointment(@Valid @RequestBody AppointmentIntegrationCreateDTO dto) {
         Appointment appointment = appointmentService.createIntegrationAppointment(dto);
         return ResponseEntity.ok(appointment);
+    }
+
+    @GetMapping("/appointments/transfer/sources")
+    public ResponseEntity<List<AppointmentTransferVM>> getTransferSourceAppointments(@RequestParam LocalDate startDate, @RequestParam LocalDate endDate) {
+        return ResponseEntity.ok(
+                appointmentService.getTransferSourceAppointments(
+                        startDate,
+                        endDate
+                )
+        );
+    }
+
+    @GetMapping("/appointments/transfer/targets")
+    public ResponseEntity<List<AppointmentTransferVM>> getTransferTargetAppointments(@RequestParam Long departmentId, @RequestParam LocalDate startDate, @RequestParam LocalDate endDate) {
+        return ResponseEntity.ok(
+                appointmentService.getTransferTargetAppointments(
+                        departmentId,
+                        startDate,
+                        endDate
+                )
+        );
+    }
+
+    @PostMapping("/appointments/bulk-transfer")
+    public ResponseEntity<BulkAppointmentTransferResponseVM> bulkAppointmentTransfer(@Valid @RequestBody BulkAppointmentTransferDTO dto) {
+
+        return ResponseEntity.ok(appointmentService.bulkAppointmentTransfer(dto));
     }
 
     private void validateBulkRescheduleDto(BulkAppointmentRescheduleDTO dto) {
