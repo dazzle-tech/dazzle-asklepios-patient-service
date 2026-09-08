@@ -99,13 +99,6 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
             List<BookingMode> bookingModes
     );
 
-    boolean existsByResourceTypeAndResourceIdAndStartDatetimeAndStatusNot(
-            TemplateType resourceType,
-            Long resourceId,
-            Instant startDatetime,
-            AppointmentStatus status
-    );
-
     @Override
     @EntityGraph(attributePaths = {"patient"})
     Page<Appointment> findAll(@Nullable Specification<Appointment> spec, Pageable pageable);
@@ -118,6 +111,20 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
             Instant end,
             AppointmentStatus status,
             BookingMode bookingMode
+    );
+
+    List<Appointment> findByStartDatetimeGreaterThanEqualAndStartDatetimeLessThanAndStatusInOrderByStartDatetimeAsc(
+            Instant startDatetime,
+            Instant endDatetime,
+            List<AppointmentStatus> statuses
+    );
+
+    List<Appointment> findByStartDatetimeGreaterThanEqualAndStartDatetimeLessThanAndStatusAndBookingModeAndDepartmentIdAndPatientIsNullOrderByStartDatetimeAsc(
+            Instant startDatetime,
+            Instant endDatetime,
+            AppointmentStatus status,
+            BookingMode bookingMode,
+            Long departmentId
     );
 }
 
