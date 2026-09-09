@@ -26,7 +26,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.dazzle.asklepios.repository.EncounterListSpecification;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import org.springframework.data.jpa.domain.Specification;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -112,7 +114,11 @@ public class EncounterListService {
                         : today;
 
         if (facilityId == null) {
-            throw new IllegalArgumentException("facilityId is required");
+            throw new BadRequestAlertException(
+                    "Facility is required",
+                    "patientEncounter",
+                    "facilityRequired"
+            );
         }
 
         List<EncounterStatus> encounterStatuses =
@@ -137,53 +143,124 @@ public class EncounterListService {
             );
         }
 
+        Specification<PatientEncounter> specification =
+                Specification.where(
+                        EncounterListSpecification.facilityId(facilityId)
+                ).and(
+                        EncounterListSpecification.encounterDateBetween(
+                                fromDate,
+                                toDate
+                        )
+                );
+
+        if (filter != null && filter.patientName() != null
+                && !filter.patientName().isBlank()) {
+            specification = specification.and(
+                    EncounterListSpecification.patientNameContains(
+                            filter.patientName()
+                    )
+            );
+        }
+
+        if (filter != null && filter.mrn() != null
+                && !filter.mrn().isBlank()) {
+            specification = specification.and(
+                    EncounterListSpecification.mrnContains(
+                            filter.mrn()
+                    )
+            );
+        }
+
+        if (filter != null && filter.departmentId() != null) {
+            specification = specification.and(
+                    EncounterListSpecification.departmentIdEquals(
+                            filter.departmentId()
+                    )
+            );
+        }
+
+        if (filter != null && filter.practitionerId() != null) {
+            specification = specification.and(
+                    EncounterListSpecification.practitionerIdEquals(
+                            filter.practitionerId()
+                    )
+            );
+        }
+
+        if (coverageType != null) {
+            specification = specification.and(
+                    EncounterListSpecification.coverageTypeEquals(
+                            coverageType
+                    )
+            );
+        }
+
+        if (filter != null && filter.encounterType() != null) {
+            specification = specification.and(
+                    EncounterListSpecification.encounterTypeEquals(
+                            filter.encounterType()
+                    )
+            );
+        }
+
+        if (filter != null && filter.encounterNumber() != null
+                && !filter.encounterNumber().isBlank()) {
+            specification = specification.and(
+                    EncounterListSpecification.encounterNumberContains(
+                            filter.encounterNumber()
+                    )
+            );
+        }
+
+        if (encounterStatuses != null && !encounterStatuses.isEmpty()) {
+            specification = specification.and(
+                    EncounterListSpecification.encounterStatusIn(
+                            encounterStatuses
+                    )
+            );
+        }
+
+        if (filter != null
+                && filter.treatmentStatusIn() != null
+                && !filter.treatmentStatusIn().isEmpty()) {
+
+            specification = specification.and(
+                    EncounterListSpecification.treatmentStatusIn(
+                            filter.treatmentStatusIn()
+                    )
+            );
+        }
+
+        if (filter != null
+                && filter.encounterReasons() != null
+                && !filter.encounterReasons().isEmpty()) {
+
+            specification = specification.and(
+                    EncounterListSpecification.encounterReasonIn(
+                            filter.encounterReasons()
+                    )
+            );
+        }
+
+        if (filter != null && filter.doctorStartedFrom() != null) {
+            specification = specification.and(
+                    EncounterListSpecification.startedDateFrom(
+                            toInstant(filter.doctorStartedFrom())
+                    )
+            );
+        }
+
+        if (filter != null && filter.doctorStartedTo() != null) {
+            specification = specification.and(
+                    EncounterListSpecification.startedDateTo(
+                            toInstant(filter.doctorStartedTo())
+                    )
+            );
+        }
+
         Page<PatientEncounter> page =
-                encounterListRepository.search(
-                        facilityId,
-                        fromDate,
-                        toDate,
-
-                        filter != null ? filter.patientName() : null,
-                        filter != null ? filter.mrn() : null,
-
-                        filter != null ? filter.departmentId() : null,
-                        filter != null ? filter.practitionerId() : null,
-
-                        coverageType,
-                        paymentStatus,
-                        filter != null
-                                ? filter.insuranceName()
-                                : null,
-
-                        filter != null ? filter.encounterType() : null,
-                        filter != null ? filter.encounterNumber() : null,
-
-                        encounterStatuses,
-
-                        filter != null
-                                && filter.treatmentStatusIn() != null
-                                && !filter.treatmentStatusIn().isEmpty()
-                                ? filter.treatmentStatusIn()
-                                : null,
-
-                        filter != null
-                                && filter.encounterReasons() != null
-                                && !filter.encounterReasons().isEmpty()
-                                ? filter.encounterReasons()
-                                : null,
-
-                        filter != null && filter.doctorStartedFrom() != null,
-
-                        filter != null && filter.doctorStartedTo() != null,
-
-                        filter != null
-                                ? toInstant(filter.doctorStartedFrom())
-                                : null,
-
-                        filter != null
-                                ? toInstant(filter.doctorStartedTo())
-                                : null,
-
+                encounterListRepository.findAll(
+                        specification,
                         pageable
                 );
 
