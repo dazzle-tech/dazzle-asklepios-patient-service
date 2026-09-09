@@ -12,7 +12,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
-
+import java.util.Collection;
 @Repository
 public interface PatientServiceAndProductRepository
         extends JpaRepository<PatientServiceAndProduct, Long> {
