@@ -574,6 +574,8 @@ public class EncounterListService {
                         : null,
 
                 encounter.getEncounterType(),
+                encounter.getEncounterReason(),
+                encounter.getPriorityLevel(),
 
                 departmentId,
                 departmentName,
@@ -657,6 +659,9 @@ public class EncounterListService {
                         : null,
 
                 encounter.getEncounterType(),
+                encounter.getEncounterReason(),
+
+                encounter.getPriorityLevel(),
 
                 encounter.getDepartmentId(),
                 null,

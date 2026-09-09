@@ -1,11 +1,13 @@
 package com.dazzle.asklepios.web.rest.vm;
 
+import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 
 public record EncounterListVM(
         Long id,
@@ -21,6 +23,8 @@ public record EncounterListVM(
         LocalDate encounterDate,
         String encounterTime,
         EncounterType encounterType,
+        EncounterReason encounterReason,
+        EncounterPriority priorityLevel,
         Long departmentId,
         String departmentName,
         Long practitionerId,
