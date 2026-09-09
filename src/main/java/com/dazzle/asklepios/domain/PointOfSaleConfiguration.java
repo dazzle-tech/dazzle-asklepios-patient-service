@@ -31,7 +31,9 @@ public class PointOfSaleConfiguration extends AbstractAuditingEntity<Long> imple
     @NotNull
     @Column(name = "client_id", nullable = false)
     private String clientId;
-
+    @NotNull
+    @Column(name = "client_secret")
+    private String clientSecret;
     @NotNull
     @Column(name = "terminal_id", nullable = false, unique = true)
     private String terminalId;

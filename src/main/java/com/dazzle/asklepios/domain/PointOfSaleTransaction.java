@@ -22,6 +22,7 @@ import lombok.Setter;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "point_of_sale_transaction")
@@ -127,7 +128,7 @@ public class PointOfSaleTransaction extends AbstractAuditingEntity<Long> impleme
     @Column(name = "application_version")
     private String applicationVersion;
     @Column(name = "transaction_date")
-    private Instant transactionDate;
+    private LocalDateTime transactionDate;
 
     @NotNull
     @Column(name = "webhook_received", nullable = false)

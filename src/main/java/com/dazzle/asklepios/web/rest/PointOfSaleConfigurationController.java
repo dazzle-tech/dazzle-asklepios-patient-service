@@ -1,4 +1,5 @@
 package com.dazzle.asklepios.web.rest;
+import com.dazzle.asklepios.client.NamiCloud.dto.NamiRegisterTerminalResponse;
 import com.dazzle.asklepios.domain.PointOfSaleConfiguration;
 import com.dazzle.asklepios.service.PointOfSaleConfigurationService;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleConfigurationDTO;
@@ -74,5 +75,16 @@ public class PointOfSaleConfigurationController {
                 pointOfSaleConfigurationService.toggleActive(id)
         );
     }
+    @PostMapping("/pos-configration/{id}/register")
+    public ResponseEntity<NamiRegisterTerminalResponse> registerTerminal(
+            @PathVariable Long id
+    ) {
+
+        return ResponseEntity.ok(
+                pointOfSaleConfigurationService.registerTerminal(id)
+        );
+    }
+
+
 
 }

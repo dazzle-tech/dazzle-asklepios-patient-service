@@ -27,7 +27,10 @@ public class NamiAuthenticationService {
                 .build();
     }
 
-    public String getToken() {
+    public String getToken(
+            String clientId,
+            String clientSecret
+    ) {
 
         LOG.info(
                 "Requesting Nami token. BaseUrl={}, ClientId={}",
@@ -37,8 +40,8 @@ public class NamiAuthenticationService {
 
         NamiAuthRequest request =
                 new NamiAuthRequest(
-                        namiProperties.clientId(),
-                        namiProperties.clientSecret()
+                        clientId,
+                        clientSecret
                 );
 
         ResponseEntity<String> response =
@@ -57,7 +60,7 @@ public class NamiAuthenticationService {
                 "Nami auth response received. Authorization Header Present={}",
                 authorizationHeader != null
         );
-
+      LOG.debug("TOKEN RESPONSE: {}", authorizationHeader);
         if (
                 authorizationHeader == null ||
                         authorizationHeader.isBlank()

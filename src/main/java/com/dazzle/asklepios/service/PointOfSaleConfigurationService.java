@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.NamiCloud.NamiCloudClient;
+import com.dazzle.asklepios.client.NamiCloud.dto.NamiRegisterTerminalResponse;
 import com.dazzle.asklepios.domain.PointOfSaleConfiguration;
 import com.dazzle.asklepios.repository.PointOfSaleCheckInRepository;
 import com.dazzle.asklepios.repository.PointOfSaleConfigurationRepository;
@@ -26,6 +28,7 @@ public class PointOfSaleConfigurationService {
             "pointOfSaleConfiguration";
     private final PointOfSaleConfigurationRepository pointOfSaleConfigurationRepository;
     private final PointOfSaleCheckInRepository pointOfSaleCheckInRepository;
+    private final NamiCloudClient namiCloudClient;
     public PointOfSaleConfigurationDTO create(
             PointOfSaleConfigurationDTO request
     ) {
@@ -35,6 +38,7 @@ public class PointOfSaleConfigurationService {
 
         entity.setName(request.name());
         entity.setClientId(request.clientId());
+        entity.setClientSecret(request.clientSecret());
         entity.setTerminalId(request.terminalId());
         entity.setTerminalSerialNo(request.terminalSerialNo());
         entity.setTerminalType(request.terminalType());
@@ -64,6 +68,7 @@ public class PointOfSaleConfigurationService {
 
         entity.setName(request.name());
         entity.setClientId(request.clientId());
+        entity.setClientSecret(request.clientSecret());
         entity.setTerminalId(request.terminalId());
         entity.setTerminalSerialNo(request.terminalSerialNo());
         entity.setTerminalType(request.terminalType());
@@ -142,6 +147,7 @@ public class PointOfSaleConfigurationService {
                 entity.getId(),
                 entity.getName(),
                 entity.getClientId(),
+                entity.getClientSecret(),
                 entity.getTerminalId(),
                 entity.getTerminalSerialNo(),
                 entity.getTerminalType(),
@@ -175,6 +181,7 @@ public class PointOfSaleConfigurationService {
                 entity.getId(),
                 entity.getName(),
                 entity.getClientId(),
+                entity.getClientSecret(),
                 entity.getTerminalId(),
                 entity.getTerminalSerialNo(),
                 entity.getTerminalType(),
@@ -183,6 +190,25 @@ public class PointOfSaleConfigurationService {
                 entity.getIsActive(),
                 occupied
 
+        );
+    }
+    public NamiRegisterTerminalResponse registerTerminal(
+            Long configurationId
+    ) {
+
+        PointOfSaleConfiguration configuration =
+                pointOfSaleConfigurationRepository
+                        .findById(configurationId)
+                        .orElseThrow(() ->
+                                new BadRequestAlertException(
+                                        "POS configuration not found",
+                                        "pointOfSaleConfiguration",
+                                        "notFound"
+                                )
+                        );
+
+        return namiCloudClient.registerTerminal(
+                configuration
         );
     }
 }

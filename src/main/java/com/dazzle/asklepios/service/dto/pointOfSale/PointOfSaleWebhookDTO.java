@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service.dto.pointOfSale;
 
 import java.io.Serializable;
+import java.time.LocalDateTime;
 
 public record PointOfSaleWebhookDTO(
 
@@ -28,9 +29,19 @@ public record PointOfSaleWebhookDTO(
 
         String batchNo,
 
-        String dateTime,
+        String stanNo,
+
+        LocalDateTime dateTime,
 
         String cardEntryMode,
+
+        String schemeLabel,
+
+        String productInfo,
+
+        String applicationVersion,
+
+        String ecrTransactionReferenceNumber,
 
         String merchantName,
 

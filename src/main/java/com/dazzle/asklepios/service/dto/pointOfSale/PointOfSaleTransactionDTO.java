@@ -6,6 +6,7 @@ import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleTransactio
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDateTime;
 
 public record PointOfSaleTransactionDTO(
 
@@ -51,7 +52,7 @@ public record PointOfSaleTransactionDTO(
 
         String schemeLabel,
 
-        Instant transactionDate,
+        LocalDateTime transactionDate,
 
         Boolean webhookReceived,
 

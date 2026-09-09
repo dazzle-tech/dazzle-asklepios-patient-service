@@ -55,8 +55,10 @@ public class NamiCloudClient {
                 request
         );
         String token =
-                namiAuthenticationService.getToken();
-
+                namiAuthenticationService.getToken(
+                        configuration.getClientId(),
+                        configuration.getClientSecret()
+                );
         return restClient()
                 .post()
                 .uri(
@@ -87,7 +89,10 @@ public class NamiCloudClient {
                 );
 
         String token =
-                namiAuthenticationService.getToken();
+                namiAuthenticationService.getToken(
+                        configuration.getClientId(),
+                        configuration.getClientSecret()
+                );
 
         return restClient()
                 .post()
@@ -106,11 +111,22 @@ public class NamiCloudClient {
     }
 
     public NamiTransactionResponse getTransactionResponse(
-            String transactionId
+            String transactionId,
+            PointOfSaleConfiguration configuration
     ) {
 
+        log.info(
+                "Fetching Transaction Status. TransactionId={}, TerminalId={}, ClientId={}",
+                transactionId,
+                configuration.getTerminalId(),
+                configuration.getClientId()
+        );
+
         String token =
-                namiAuthenticationService.getToken();
+                namiAuthenticationService.getToken(
+                        configuration.getClientId(),
+                        configuration.getClientSecret()
+                );
 
         return restClient()
                 .get()

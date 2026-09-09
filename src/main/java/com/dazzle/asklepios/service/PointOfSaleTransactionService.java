@@ -23,9 +23,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.HttpClientErrorException;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Service
 @Transactional
@@ -37,14 +39,14 @@ public class PointOfSaleTransactionService {
     private final PointOfSaleTransactionRepository pointOfSaleTransactionRepository;
     private final PointOfSaleCheckInRepository pointOfSaleCheckInRepository;
     private final PatientRepository patientRepository;
-
+    private final PointOfSaleWebhookLogService pointOfSaleWebhookLogService;
     private final NamiCloudClient namiCloudClient;
 
     public PointOfSaleTransactionDTO purchase(
             CreatePointOfSaleTransactionDTO request
     ) {
 
-        log.info(
+        LOG.info(
                 "POS Purchase Started. PatientId={}, Amount={}, SourceType={}, SourceReferenceId={}",
                 request.patientId(),
                 request.amount(),
@@ -52,38 +54,10 @@ public class PointOfSaleTransactionService {
                 request.sourceReferenceId()
         );
 
-        String currentUserLogin =
-                SecurityUtils.getCurrentUserLogin()
-                        .orElseThrow(() ->
-                                new BadRequestAlertException(
-                                        "Current user not found",
-                                        "user",
-                                        "notFound"
-                                )
-                        );
-
-        log.info(
-                "Current User Login={}",
-                currentUserLogin
-        );
-
-        PointOfSaleCheckIn checkIn =
-                pointOfSaleCheckInRepository
-                        .findByUserLoginAndActiveTrue(
-                                currentUserLogin
-                        )
-                        .orElseThrow(() ->
-                                new BadRequestAlertException(
-                                        "User is not checked in to any POS device",
-                                        "pointOfSaleCheckIn",
-                                        "notCheckedIn"
-                                )
-                        );
-
         PointOfSaleConfiguration configuration =
-                checkIn.getConfiguration();
+                getCurrentUserConfiguration();
 
-        log.info(
+        LOG.info(
                 "POS Device Selected. ConfigurationId={}, TerminalId={}, ClientId={}",
                 configuration.getId(),
                 configuration.getTerminalId(),
@@ -105,7 +79,7 @@ public class PointOfSaleTransactionService {
         String orderId =
                 generateOrderId();
 
-        log.info(
+        LOG.info(
                 "Generated OrderId={}",
                 orderId
         );
@@ -128,7 +102,9 @@ public class PointOfSaleTransactionService {
         transaction.setAmount(
                 request.amount()
         );
-
+        transaction.setCurrencyCode(
+                "SAR"
+        );
         transaction.setTransactionType(
                 PointOfSaleTransactionType.PURCHASE
         );
@@ -142,7 +118,7 @@ public class PointOfSaleTransactionService {
                         transaction
                 );
 
-        log.info(
+        LOG.info(
                 "POS Transaction Saved. InternalId={}, Status={}",
                 transaction.getId(),
                 transaction.getTransactionStatus()
@@ -157,18 +133,20 @@ public class PointOfSaleTransactionService {
                             request.amount()
                     );
 
-            log.info(
+            LOG.info(
                     "Nami Purchase Response. TransactionId={}, Status={}, StatusCode={}, Message={}",
                     response.transactionid(),
                     response.status(),
                     response.statusCode(),
                     response.statusMessage()
             );
+            String transactionId = response.transactionid();
 
-            transaction.setExternalTransactionId(
-                    response.transactionid()
-            );
-
+            if (StringUtils.hasText(response.transactionid())) {
+                transaction.setExternalTransactionId(
+                        response.transactionid()
+                );
+            }
             transaction.setResponseCode(
                     String.valueOf(
                             response.statusCode()
@@ -184,16 +162,27 @@ public class PointOfSaleTransactionService {
             );
 
             boolean transactionCreated =
-                    response.transactionid() != null
-                            && !response.transactionid().isBlank();
+                    StringUtils.hasText(transaction.getExternalTransactionId());
 
-            if (transactionCreated) {
+            if (response.statusCode() == 423) {
+
+                transaction.setTransactionStatus(
+                        PointOfSaleTransactionStatus.FAILED
+                );
+
+                LOG.warn(
+                        "POS Terminal Busy. InternalId={}, TerminalId={}",
+                        transaction.getId(),
+                        configuration.getTerminalId()
+                );
+
+            } else if (transactionCreated) {
 
                 transaction.setTransactionStatus(
                         PointOfSaleTransactionStatus.PROCESSING
                 );
 
-                log.info(
+                LOG.info(
                         "POS Transaction Processing. InternalId={}, ExternalTransactionId={}",
                         transaction.getId(),
                         transaction.getExternalTransactionId()
@@ -205,7 +194,7 @@ public class PointOfSaleTransactionService {
                         PointOfSaleTransactionStatus.FAILED
                 );
 
-                log.warn(
+                LOG.warn(
                         "POS Transaction Failed. InternalId={}, No External Transaction Id Returned",
                         transaction.getId()
                 );
@@ -213,7 +202,7 @@ public class PointOfSaleTransactionService {
 
         } catch (Exception ex) {
 
-            log.error(
+            LOG.error(
                     "POS Purchase Exception. InternalId={}",
                     transaction.getId(),
                     ex
@@ -233,7 +222,7 @@ public class PointOfSaleTransactionService {
                         transaction
                 );
 
-        log.info(
+        LOG.info(
                 "POS Transaction Updated. InternalId={}, Status={}, ExternalTransactionId={}",
                 transaction.getId(),
                 transaction.getTransactionStatus(),
@@ -275,11 +264,12 @@ public class PointOfSaleTransactionService {
         );
     }
 
+    @Transactional
     public void processWebhook(
             PointOfSaleWebhookDTO webhook
     ) {
 
-        log.info(
+        LOG.info(
                 "Webhook Received. TransactionId={}, ResponseCode={}, RRN={}",
                 webhook.transactionId(),
                 webhook.responseCode(),
@@ -298,16 +288,30 @@ public class PointOfSaleTransactionService {
                                         "notFound"
                                 )
                         );
-
-        log.info(
-                "Matching POS Transaction Found. InternalId={}, ExternalTransactionId={}",
+        pointOfSaleWebhookLogService.create(
+                transaction,
+                webhook
+        );
+        LOG.info(
+                "Matching POS Transaction Found. InternalId={}, ExternalTransactionId={}, CurrentStatus={}",
                 transaction.getId(),
-                transaction.getExternalTransactionId()
+                transaction.getExternalTransactionId(),
+                transaction.getTransactionStatus()
         );
 
-        transaction.setExternalTransactionId(
-                webhook.transactionId()
-        );
+        boolean alreadyApproved =
+                transaction.getTransactionStatus() ==
+                        PointOfSaleTransactionStatus.APPROVED;
+
+        if (Boolean.TRUE.equals(transaction.getWebhookReceived())) {
+
+            LOG.info(
+                    "Webhook already processed. InternalId={}",
+                    transaction.getId()
+            );
+
+            return;
+        }
 
         transaction.setResponseCode(
                 webhook.responseCode()
@@ -337,21 +341,76 @@ public class PointOfSaleTransactionService {
                 webhook.batchNo()
         );
 
+        transaction.setStanNo(
+                webhook.stanNo()
+        );
+
+        transaction.setSchemeLabel(
+                webhook.schemeLabel()
+        );
+
+        transaction.setProductInfo(
+                webhook.productInfo()
+        );
+
+
+            transaction.setTransactionDate(
+                    webhook.dateTime()
+            );
+
+
+        transaction.setApplicationVersion(
+                webhook.applicationVersion()
+        );
+
+        transaction.setEcrTransactionReferenceNumber(
+                webhook.ecrTransactionReferenceNumber()
+        );
+
+        transaction.setMerchantName(
+                webhook.merchantName()
+        );
+
+        transaction.setMerchantAddress(
+                webhook.merchantAddress()
+        );
+
         transaction.setWebhookReceived(
                 Boolean.TRUE
         );
 
         if (isApproved(webhook.responseCode())) {
 
-            transaction.setTransactionStatus(
-                    PointOfSaleTransactionStatus.APPROVED
-            );
+            if (alreadyApproved) {
 
-            log.info(
-                    "Webhook Approved. InternalId={}, RRN={}",
-                    transaction.getId(),
-                    transaction.getRrn()
-            );
+                LOG.info(
+                        "Webhook received for already approved transaction. InternalId={}",
+                        transaction.getId()
+                );
+
+            } else {
+
+                transaction.setTransactionStatus(
+                        PointOfSaleTransactionStatus.APPROVED
+                );
+
+                LOG.info(
+                        "Transaction approved by webhook. InternalId={}, RRN={}",
+                        transaction.getId(),
+                        transaction.getRrn()
+                );
+
+                /*
+                 * Future enhancement:
+                 *
+                 * If business decides to rely on webhook as fallback
+                 * for payment creation:
+                 *
+                 * if (transaction.getPatientPayment() == null) {
+                 *     createAdvancePayment(...);
+                 * }
+                 */
+            }
 
         } else {
 
@@ -359,8 +418,8 @@ public class PointOfSaleTransactionService {
                     PointOfSaleTransactionStatus.DECLINED
             );
 
-            log.warn(
-                    "Webhook Declined. InternalId={}, ResponseCode={}",
+            LOG.warn(
+                    "Transaction declined by webhook. InternalId={}, ResponseCode={}",
                     transaction.getId(),
                     webhook.responseCode()
             );
@@ -370,12 +429,14 @@ public class PointOfSaleTransactionService {
                 transaction
         );
 
-        log.info(
-                "Webhook Processing Completed. InternalId={}, FinalStatus={}",
+        LOG.info(
+                "Webhook Processing Completed. InternalId={}, FinalStatus={}, WebhookReceived={}",
                 transaction.getId(),
-                transaction.getTransactionStatus()
+                transaction.getTransactionStatus(),
+                transaction.getWebhookReceived()
         );
     }
+
     private String generateOrderId() {
 
         return "ORDER" +
@@ -387,7 +448,7 @@ public class PointOfSaleTransactionService {
             Long pointOfSaleTransactionId
     ) {
 
-        log.info(
+        LOG.info(
                 "Refresh Transaction Status Started. InternalId={}",
                 pointOfSaleTransactionId
         );
@@ -415,25 +476,27 @@ public class PointOfSaleTransactionService {
             );
         }
 
-        log.info(
+        LOG.info(
                 "Calling Nami Transaction Status API. ExternalTransactionId={}",
                 transaction.getExternalTransactionId()
         );
 
         NamiTransactionResponse response;
 
+
         try {
 
             response =
                     namiCloudClient.getTransactionResponse(
-                            transaction.getExternalTransactionId()
+                            transaction.getExternalTransactionId(),
+                            transaction.getConfiguration()
                     );
 
         } catch (
                 HttpClientErrorException.NotFound ex
         ) {
 
-            log.info(
+            LOG.info(
                     "Transaction still not available in Nami. InternalId={}, ExternalTransactionId={}",
                     transaction.getId(),
                     transaction.getExternalTransactionId()
@@ -483,7 +546,7 @@ public class PointOfSaleTransactionService {
             );
         }
 
-        log.info(
+        LOG.info(
                 "Transaction Status Response Received. ResponseCode={}, RRN={}, TransactionId={}",
                 response.responseCode(),
                 response.rrn(),
@@ -529,7 +592,9 @@ public class PointOfSaleTransactionService {
         transaction.setStanNo(
                 response.stanNo()
         );
-
+        transaction.setTransactionDate(
+                response.dateTime()
+        );
         transaction.setProductInfo(
                 response.productInfo()
         );
@@ -571,7 +636,7 @@ public class PointOfSaleTransactionService {
                         transaction
                 );
 
-        log.info(
+        LOG.info(
                 "Transaction Status Updated. InternalId={}, FinalStatus={}, RRN={}",
                 transaction.getId(),
                 transaction.getTransactionStatus(),
@@ -612,9 +677,38 @@ public class PointOfSaleTransactionService {
                 transaction.getApplicationVersion()
         );
     }
+
     private boolean isApproved(
             String responseCode
     ) {
         return "000".equals(responseCode);
+    }
+
+    private PointOfSaleConfiguration getCurrentUserConfiguration() {
+
+        String currentUserLogin =
+                SecurityUtils.getCurrentUserLogin()
+                        .orElseThrow(() ->
+                                new BadRequestAlertException(
+                                        "Current user not found",
+                                        "user",
+                                        "notFound"
+                                )
+                        );
+
+        PointOfSaleCheckIn checkIn =
+                pointOfSaleCheckInRepository
+                        .findByUserLoginAndActiveTrue(
+                                currentUserLogin
+                        )
+                        .orElseThrow(() ->
+                                new BadRequestAlertException(
+                                        "User is not checked in to any POS device",
+                                        "pointOfSaleCheckIn",
+                                        "notCheckedIn"
+                                )
+                        );
+
+        return checkIn.getConfiguration();
     }
 }

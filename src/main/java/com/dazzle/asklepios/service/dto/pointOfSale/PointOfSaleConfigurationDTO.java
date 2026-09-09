@@ -9,6 +9,7 @@ public record PointOfSaleConfigurationDTO(
         String name,
 
         String clientId,
+        String clientSecret,
 
         String terminalId,
 
