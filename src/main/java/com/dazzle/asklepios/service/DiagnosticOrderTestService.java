@@ -3,15 +3,17 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
-import com.dazzle.asklepios.domain.Facility;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestTechnicianNoteRepository;
+import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestUpdateDTO;
@@ -20,9 +22,7 @@ import com.dazzle.asklepios.service.helper.DiagnosticTestHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.service.helper.ICDTreeHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.diagnosticorders.DiagnosticOrderTestResponseVM;
-import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -33,6 +33,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -51,6 +52,8 @@ import java.util.Set;
 @Service
 @Transactional
 public class DiagnosticOrderTestService {
+
+    private static final BigDecimal ZERO_AMOUNT = BigDecimal.ZERO;
 
     /**
      * Logger for debugging and tracing service operations.
@@ -73,6 +76,7 @@ public class DiagnosticOrderTestService {
     private final DepartmentHelper departmentHelper;
     private final ICDTreeHelper icdTreeHelper;
     private final FacilityHelper facilityHelper;
+    private final PatientServiceAndProductRepository patientServiceAndProductRepository;
 
     private final BillingRuleEvaluationService billingRuleEvaluationService;
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
@@ -91,6 +95,7 @@ public class DiagnosticOrderTestService {
             DiagnosticTestHelper diagnosticTestHelper,
             DepartmentHelper departmentHelper,
             ICDTreeHelper icdTreeHelper, FacilityHelper facilityHelper,
+            PatientServiceAndProductRepository patientServiceAndProductRepository,
             BillingRuleEvaluationService billingRuleEvaluationService,
             @org.springframework.context.annotation.Lazy DiagnosticOrderTestStatusService diagnosticOrderTestStatusService
     ) {
@@ -103,6 +108,7 @@ public class DiagnosticOrderTestService {
         this.departmentHelper = departmentHelper;
         this.icdTreeHelper = icdTreeHelper;
         this.facilityHelper = facilityHelper;
+        this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.billingRuleEvaluationService = billingRuleEvaluationService;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
     }
@@ -126,7 +132,7 @@ public class DiagnosticOrderTestService {
         // Build a new entity instance from DTO fields
         DiagnosticOrder order = getDiagnosticOrder(dto.orderId());
         diagnosticTestHelper.getDiagnosticTest(dto.testId());
-        Long finalReceivedDepartmentId = null;
+        Long finalReceivedDepartmentId;
         if (dto.receivedDepartmentId() != null) {
             finalReceivedDepartmentId = dto.receivedDepartmentId();
             departmentHelper.validateDepartmentExists(dto.receivedDepartmentId());
@@ -340,6 +346,56 @@ public class DiagnosticOrderTestService {
 
         return BillingItemTypes.LABORATORY;
     }
+
+    private ServiceSource resolveDiagnosticServiceSource(TestType orderType) {
+        return orderType == TestType.RADIOLOGY
+                ? ServiceSource.RADIOLOGY
+                : ServiceSource.LABORATORY;
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isDiagnosticOrderPaid(Long orderTestId) {
+        if (orderTestId == null) {
+            throw new BadRequestAlertException(
+                    "diagnosticOrderTestId is required",
+                    "diagnostic_order_tests",
+                    "id.required"
+            );
+        }
+
+        DiagnosticOrderTest orderTest = diagnosticOrderTestRepository.findById(orderTestId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_order_tests",
+                        "DiagnosticOrderTest not found with id " + orderTestId
+                ));
+
+        BillingItemTypes billingItemType =
+                orderTest.getOrderType() == TestType.RADIOLOGY
+                        ? BillingItemTypes.RADIOLOGY
+                        : BillingItemTypes.LABORATORY;
+
+        return patientServiceAndProductRepository
+                .findByServiceSourceAndSourceIdAndBillingItemType(
+                        resolveDiagnosticServiceSource(orderTest.getOrderType()),
+                        orderTest.getId(),
+                        billingItemType
+                )
+                .map(item -> {
+                    if (item.getPaymentStatus() == PaymentStatus.CANCELLED) {
+                        return false;
+                    }
+
+                    BigDecimal remainingAmount =
+                            item.getRemainingAmount() == null
+                                    ? ZERO_AMOUNT
+                                    : item.getRemainingAmount();
+
+                    return remainingAmount.compareTo(ZERO_AMOUNT) <= 0;
+                })
+                .orElse(false);
+    }
+
     void validateSettlementTestBeforeApprove(long orderTestId) {
 
         Long facilityId = getFacility();
@@ -349,8 +405,7 @@ public class DiagnosticOrderTestService {
             return;
         }
 
-//        boolean paid = isDiagnosticOrderPaid(report.getOrderTestId()); // to do
-          boolean paid=true;
+        boolean paid = isDiagnosticOrderPaid(orderTestId);
         if (!paid) {
             throw new BadRequestAlertException(
                     "payment_required",

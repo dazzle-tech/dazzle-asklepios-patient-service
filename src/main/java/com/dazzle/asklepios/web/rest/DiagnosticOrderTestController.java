@@ -218,6 +218,12 @@ public class DiagnosticOrderTestController {
         return ResponseEntity.ok(DiagnosticOrderTestResponseVM.ofEntity(existingTest));
     }
 
+    @GetMapping("/diagnostic-order-tests/{id}/is-paid")
+    public ResponseEntity<Boolean> isPaid(@PathVariable("id") Long orderTestId) {
+        LOG.debug("[DiagnosticOrderTest] IS_PAID - request received. id={}", orderTestId);
+        return ResponseEntity.ok(diagnosticOrderTestService.isDiagnosticOrderPaid(orderTestId));
+    }
+
     /**
      * Deletes a DiagnosticOrderTest by its id.
      *
