@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/patient/flacc-pain-scales")
+@RequestMapping("/api/patient")
 public class FLACCPainScaleController {
 
     private static final Logger LOG = LoggerFactory.getLogger(FLACCPainScaleController.class);
@@ -31,7 +31,7 @@ public class FLACCPainScaleController {
         this.flaccPainScaleService = flaccPainScaleService;
     }
 
-    @PostMapping
+    @PostMapping("/flacc-pain-scales")
     public ResponseEntity<FLACCPainScale> create(
             @RequestBody FLACCPainScaleCreateDTO flaccPainScaleCreateDTO
     ) {
@@ -42,7 +42,7 @@ public class FLACCPainScaleController {
         return ResponseEntity.ok(created);
     }
 
-    @PutMapping
+    @PutMapping("/flacc-pain-scales")
     public ResponseEntity<FLACCPainScale> update(
             @RequestBody FLACCPainScaleUpdateDTO flaccPainScaleUpdateDTO
     ) {
@@ -54,7 +54,7 @@ public class FLACCPainScaleController {
         return ResponseEntity.ok(updated);
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/flacc-pain-scales/{id}")
     public ResponseEntity<FLACCPainScale> findById(
             @PathVariable Long id
     ) {
@@ -65,7 +65,7 @@ public class FLACCPainScaleController {
         return ResponseEntity.ok(result);
     }
 
-    @GetMapping("/patient/{patientId}")
+    @GetMapping("/flacc-pain-scales/patient/{patientId}")
     public ResponseEntity<List<FLACCPainScale>> findByPatientId(
             @PathVariable Long patientId
     ) {
@@ -77,7 +77,7 @@ public class FLACCPainScaleController {
         return ResponseEntity.ok(result);
     }
 
-    @GetMapping("/encounter/{encounterId}")
+    @GetMapping("/flacc-pain-scales/encounter/{encounterId}")
     public ResponseEntity<List<FLACCPainScale>> findByEncounterId(
             @PathVariable Long encounterId,
             @RequestParam(defaultValue = "false") boolean showCancelled
@@ -94,7 +94,7 @@ public class FLACCPainScaleController {
         return ResponseEntity.ok(result);
     }
 
-    @PatchMapping("/{id}/cancel")
+    @PatchMapping("/flacc-pain-scales/{id}/cancel")
     public ResponseEntity<FLACCPainScale> cancel(
             @PathVariable Long id,
             @RequestParam String cancellationReason

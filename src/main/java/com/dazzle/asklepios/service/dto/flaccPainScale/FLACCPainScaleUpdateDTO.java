@@ -19,13 +19,13 @@ public class FLACCPainScaleUpdateDTO {
 
     private Long encounterId;
 
-    private String faceLov;
+    private String face;
 
-    private String legsLov;
+    private String legs;
 
-    private String activityLov;
+    private String activity;
 
-    private String cryLov;
+    private String cry;
 
-    private String consolabilityLov;
+    private String consolability;
 }

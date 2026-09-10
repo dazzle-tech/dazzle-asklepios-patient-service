@@ -17,11 +17,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedBy;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedBy;
-import org.springframework.data.annotation.LastModifiedDate;
 
+import java.io.Serializable;
 import java.time.Instant;
 
 @Entity
@@ -31,7 +28,7 @@ import java.time.Instant;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class FLACCPainScale {
+public class FLACCPainScale extends AbstractAuditingEntity<Long> implements Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -44,20 +41,20 @@ public class FLACCPainScale {
     private Long encounterId;
 
 
-    @Column(name = "face_lov", nullable = false, length = 100)
-    private String faceLov;
+    @Column(name = "face", nullable = false, length = 100)
+    private String face;
 
-    @Column(name = "legs_lov", nullable = false, length = 100)
-    private String legsLov;
+    @Column(name = "legs", nullable = false, length = 100)
+    private String legs;
 
-    @Column(name = "activity_lov", nullable = false, length = 100)
-    private String activityLov;
+    @Column(name = "activity", nullable = false, length = 100)
+    private String activity;
 
-    @Column(name = "cry_lov", nullable = false, length = 100)
-    private String cryLov;
+    @Column(name = "cry", nullable = false, length = 100)
+    private String cry;
 
-    @Column(name = "consolability_lov", nullable = false, length = 100)
-    private String consolabilityLov;
+    @Column(name = "consolability", nullable = false, length = 100)
+    private String consolability;
 
     @Column(name = "total_score", nullable = false)
     private Integer totalScore;
@@ -74,22 +71,6 @@ public class FLACCPainScale {
 
     @Column(name = "cancelled_by", length = 50)
     private String cancelledBy;
-
-    @CreatedBy
-    @Column(name = "created_by", nullable = false, length = 50)
-    private String createdBy;
-
-    @CreatedDate
-    @Column(name = "created_date", nullable = false)
-    private Instant createdDate;
-
-    @LastModifiedBy
-    @Column(name = "last_modified_by", length = 50)
-    private String lastModifiedBy;
-
-    @LastModifiedDate
-    @Column(name = "last_modified_date")
-    private Instant lastModifiedDate;
 
     @Transient
     @JsonProperty("painLevel")

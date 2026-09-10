@@ -15,13 +15,6 @@ public interface FLACCPainScaleRepository extends JpaRepository<FLACCPainScale, 
 
     List<FLACCPainScale> findByEncounterId(Long encounterId);
 
-    Optional<FLACCPainScale> findByIdAndPatientId(Long id, Long patientId);
-
-    List<FLACCPainScale> findByPatientIdAndStatus(
-            Long patientId,
-            FLACCPainScaleStatus status
-    );
-
     List<FLACCPainScale> findByEncounterIdAndStatusNot(
             Long encounterId,
             FLACCPainScaleStatus status

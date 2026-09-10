@@ -45,40 +45,34 @@ public class FLACCPainScaleService {
         );
 
         validateLovKeys(
-                dto.getFaceLov(),
-                dto.getLegsLov(),
-                dto.getActivityLov(),
-                dto.getCryLov(),
-                dto.getConsolabilityLov()
+                dto.getFace(),
+                dto.getLegs(),
+                dto.getActivity(),
+                dto.getCry(),
+                dto.getConsolability()
         );
 
         int totalScore = calculateTotalScore(
-                dto.getFaceLov(),
-                dto.getLegsLov(),
-                dto.getActivityLov(),
-                dto.getCryLov(),
-                dto.getConsolabilityLov()
+                dto.getFace(),
+                dto.getLegs(),
+                dto.getActivity(),
+                dto.getCry(),
+                dto.getConsolability()
         );
 
         validateTotalScore(totalScore);
 
-        String currentUsername =
-                SecurityUtils.getCurrentUserLogin().orElse("unknown");
 
         FLACCPainScale flaccPainScale = FLACCPainScale.builder()
                 .patientId(dto.getPatientId())
                 .encounterId(dto.getEncounterId())
-                .faceLov(dto.getFaceLov())
-                .legsLov(dto.getLegsLov())
-                .activityLov(dto.getActivityLov())
-                .cryLov(dto.getCryLov())
-                .consolabilityLov(dto.getConsolabilityLov())
+                .face(dto.getFace())
+                .legs(dto.getLegs())
+                .activity(dto.getActivity())
+                .cry(dto.getCry())
+                .consolability(dto.getConsolability())
                 .totalScore(totalScore)
                 .status(FLACCPainScaleStatus.ACTIVE)
-                .createdBy(currentUsername)
-                .createdDate(Instant.now())
-                .lastModifiedBy(currentUsername)
-                .lastModifiedDate(Instant.now())
                 .build();
 
         flaccPainScale.setPainLevel(
@@ -120,11 +114,11 @@ public class FLACCPainScaleService {
         );
 
         validateLovKeys(
-                dto.getFaceLov(),
-                dto.getLegsLov(),
-                dto.getActivityLov(),
-                dto.getCryLov(),
-                dto.getConsolabilityLov()
+                dto.getFace(),
+                dto.getLegs(),
+                dto.getActivity(),
+                dto.getCry(),
+                dto.getConsolability()
         );
 
         FLACCPainScale existing =
@@ -156,30 +150,26 @@ public class FLACCPainScaleService {
         }
 
         int totalScore = calculateTotalScore(
-                dto.getFaceLov(),
-                dto.getLegsLov(),
-                dto.getActivityLov(),
-                dto.getCryLov(),
-                dto.getConsolabilityLov()
+                dto.getFace(),
+                dto.getLegs(),
+                dto.getActivity(),
+                dto.getCry(),
+                dto.getConsolability()
         );
 
         validateTotalScore(totalScore);
 
         existing.setPatientId(dto.getPatientId());
         existing.setEncounterId(dto.getEncounterId());
-        existing.setFaceLov(dto.getFaceLov());
-        existing.setLegsLov(dto.getLegsLov());
-        existing.setActivityLov(dto.getActivityLov());
-        existing.setCryLov(dto.getCryLov());
-        existing.setConsolabilityLov(dto.getConsolabilityLov());
+        existing.setFace(dto.getFace());
+        existing.setLegs(dto.getLegs());
+        existing.setActivity(dto.getActivity());
+        existing.setCry(dto.getCry());
+        existing.setConsolability(dto.getConsolability());
         existing.setTotalScore(totalScore);
         existing.setPainLevel(
                 calculatePainLevel(totalScore)
         );
-        existing.setLastModifiedBy(
-                SecurityUtils.getCurrentUserLogin().orElse("unknown")
-        );
-        existing.setLastModifiedDate(Instant.now());
 
         FLACCPainScale updated =
                 flaccPainScaleRepository.save(existing);
@@ -551,8 +541,6 @@ public class FLACCPainScaleService {
         );
         existing.setCancelledAt(Instant.now());
         existing.setCancelledBy(currentUsername);
-        existing.setLastModifiedBy(currentUsername);
-        existing.setLastModifiedDate(Instant.now());
 
         FLACCPainScale cancelled =
                 flaccPainScaleRepository.save(existing);
