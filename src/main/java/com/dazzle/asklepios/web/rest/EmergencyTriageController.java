@@ -2,6 +2,7 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.EmergencyTriage;
 import com.dazzle.asklepios.service.EmergencyTriageService;
+import com.dazzle.asklepios.service.dto.emergencyTriage.CTASLevelUpdateDTO;
 import com.dazzle.asklepios.service.dto.emergencyTriage.EmergencyTriageCreateDTO;
 import com.dazzle.asklepios.service.dto.emergencyTriage.EmergencyTriageDestinationUpdateDTO;
 import com.dazzle.asklepios.service.dto.emergencyTriage.EmergencyTriageLevelAssessmentUpdateDTO;
@@ -84,6 +85,17 @@ public class EmergencyTriageController {
             );
         }
         return ResponseEntity.ok(emergencyTriageService.updateLevelAssessment(dto));
+    }
+
+    @PutMapping("/emergency-triage/{id}/ctas-level")
+    public ResponseEntity<EmergencyTriage> updateCTASLevel(@PathVariable Long id, @Valid @RequestBody CTASLevelUpdateDTO dto) {
+        LOG.debug("REST update CTAS level EmergencyTriage id={} payload={}", id, dto);
+        if (dto.id() == null || !id.equals(dto.id())) {
+            throw new BadRequestAlertException(
+                    "Invalid id", ENTITY_NAME, "idinvalid"
+            );
+        }
+        return ResponseEntity.ok(emergencyTriageService.updateCTASLevel(dto));
     }
 
     /**
