@@ -47,7 +47,8 @@ public record PatientEncounterVM(
         Boolean isObserved,
         Instant createdAt,
         LocalDateTime dischargeAt,
-        String historyOfPresentIllness
+        String historyOfPresentIllness,
+        String createdBy
 
 ) {
 
@@ -97,7 +98,8 @@ public record PatientEncounterVM(
 
                 encounter.getCreatedDate(),
                 encounter.getDischargeAt(),
-                encounter.getHistoryOfPresentIllness()
+                encounter.getHistoryOfPresentIllness(),
+                encounter.getCreatedBy()
         );
     }
    }
