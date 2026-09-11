@@ -57,6 +57,7 @@ import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -103,6 +104,9 @@ import com.dazzle.asklepios.repository.SocialHistoryRepository;
 public class PatientEncounterService {
 
     private static final Logger LOG = LoggerFactory.getLogger(PatientEncounterService.class);
+
+    @Value("${patient.appointment.scheduling.zone:UTC}")
+    private String defaultSchedulingZone;
 
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientRepository patientRepository;
@@ -228,18 +232,22 @@ public class PatientEncounterService {
                         "patientEncounter",
                         "appointment.notfound"
                 ));
+        ZoneId encounterZone = resolveFacilityZone(createDTO.facilityId());
+        LocalDate resolvedEncounterDate = createDTO.encounterDate() != null
+                ? createDTO.encounterDate()
+                : LocalDate.now(encounterZone);
+        LocalTime resolvedEncounterTime = createDTO.encounterTime() != null
+                ? createDTO.encounterTime()
+                : (appointment.getStartDatetime() != null
+                    ? appointment.getStartDatetime().atZone(encounterZone).toLocalTime()
+                    : LocalTime.now(encounterZone));
+
         PatientEncounter patientEncounterToCreate = PatientEncounter.builder()
                 .patient(patient)
                 .facilityId(createDTO.facilityId())
                 .departmentId(createDTO.departmentId())
                 .practitionerId(createDTO.practitionerId())
-                .appointment(appointmentRepository.findById(createDTO.appointmentId())
-                        .orElseThrow(() -> new NotFoundAlertException(
-                                "appointment for this encounter not found with id " + createDTO.appointmentId(),
-                                "patientEncounter",
-                                "appointment.notfound"
-                        ))
-                )
+                .appointment(appointment)
                 .encounterType(createDTO.encounterType())
                 .encounterReason(createDTO.encounterReason())
                 .followUpEncounter(createDTO.followUpEncounterId() == null ? null :
@@ -255,15 +263,10 @@ public class PatientEncounterService {
                 .originName(createDTO.originName())
                 .notes(createDTO.notes())
                 .chiefComplaint(createDTO.chiefComplaint())
-                .encounterDate(createDTO.encounterDate())
-                .encounterTime(
-                        appointment.getStartDatetime() != null
-                                ? appointment.getStartDatetime().atZone(ZoneId.systemDefault()).toLocalTime()
-                                : LocalTime.now()
-                )
+                .encounterDate(resolvedEncounterDate)
+                .encounterTime(resolvedEncounterTime)
                 .status(TreatmentStatus.PENDING_PAYMENT)
-                .encounterDate(createDTO.encounterDate())
-                .encounterTime(createDTO.encounterTime()).build();
+                .build();
 
         try {
             PatientEncounter createdPatientEncounter = patientEncounterRepository.saveAndFlush(patientEncounterToCreate);
@@ -417,7 +420,11 @@ public class PatientEncounterService {
     public Page<PatientEncounter> filterEncounters(PatientEncounterSearchFilterDTO filter, Pageable pageable) {
         LOG.debug("Service filter PatientEncounters filter={} pageable={}", filter, pageable);
 
-        LocalDate today = LocalDate.now();
+        Long effectiveFacilityId =
+                filter != null && filter.departmentId() != null
+                        ? resolveDepartmentFacilityId(filter.departmentId())
+                        : null;
+        LocalDate today = todayForFacility(effectiveFacilityId);
 
         LocalDate effectiveFrom = filter.fromDate() != null ? filter.fromDate() : today;
         LocalDate effectiveTo = filter.toDate() != null ? filter.toDate() : today;
@@ -1423,7 +1430,7 @@ public class PatientEncounterService {
 
     @Transactional(readOnly = true)
     public long countTodayEncountersByFacility(Long facilityId) {
-        LocalDate todayDate = LocalDate.now();
+        LocalDate todayDate = todayForFacility(facilityId);
 
         LOG.debug("[COUNT_TODAY_FACILITY_ENCOUNTERS] facilityId={} todayDate={}",
                 facilityId, todayDate);
@@ -1439,7 +1446,7 @@ public class PatientEncounterService {
 
     @Transactional(readOnly = true)
     public long countTodayDepartmentTotalPatients(Long departmentId) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = todayForFacility(resolveDepartmentFacilityId(departmentId));
 
         LOG.debug("[DASHBOARD] COUNT_TOTAL_PATIENTS departmentId={} date={}", departmentId, today);
 
@@ -1454,7 +1461,7 @@ public class PatientEncounterService {
 
     @Transactional(readOnly = true)
     public long countTodayDepartmentActiveCases(Long departmentId) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = todayForFacility(resolveDepartmentFacilityId(departmentId));
 
         LOG.debug("[DASHBOARD] COUNT_ACTIVE_CASES departmentId={} date={}", departmentId, today);
 
@@ -1472,7 +1479,7 @@ public class PatientEncounterService {
 
     @Transactional(readOnly = true)
     public long countTodayDepartmentCompleted(Long departmentId) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = todayForFacility(resolveDepartmentFacilityId(departmentId));
 
         LOG.debug("[DASHBOARD] COUNT_COMPLETED departmentId={} date={}", departmentId, today);
 
@@ -1503,7 +1510,11 @@ public class PatientEncounterService {
                 pageable
         );
 
-        LocalDate today = LocalDate.now();
+        Long effectiveFacilityId =
+                facilityId != null ? facilityId : (filter != null && filter.departmentId() != null
+                        ? resolveDepartmentFacilityId(filter.departmentId())
+                        : null);
+        LocalDate today = todayForFacility(effectiveFacilityId);
 
         LocalDate effectiveFrom =
                 filter != null && filter.fromDate() != null
@@ -1773,7 +1784,7 @@ public class PatientEncounterService {
 
     @Transactional(readOnly = true)
     public long countTodayDepartmentCancelled(Long departmentId) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = todayForFacility(resolveDepartmentFacilityId(departmentId));
 
         LOG.debug("[DASHBOARD] COUNT_CANCELLED departmentId={} date={}", departmentId, today);
 
@@ -2460,7 +2471,7 @@ public class PatientEncounterService {
         } catch (Exception e) {
             LOG.warn("[ENCOUNTER_NOTIFICATION] Failed notification. encounterId={}, code={}, error={}", encounter.getId(), notificationCode, e.getMessage());
         }
-    }
+ }
 
     private Map<String, Object> buildEncounterNotificationData(PatientEncounter encounter, DepartmentDTO department) {
         Map<String, Object> data = new LinkedHashMap<>();
@@ -2495,5 +2506,25 @@ public class PatientEncounterService {
     public List<PatientEncounterFieldAudit> getAuditHistory(Long encounterId) {
 
         return auditRepository.findByPatientEncounterIdOrderByLogDateDesc(encounterId);
+    }
+
+    private ZoneId resolveFacilityZone(Long facilityId) {
+        try {
+            return facilityHelper.getFacilityZoneId(facilityId, defaultSchedulingZone);
+        } catch (RuntimeException ex) {
+            LOG.warn("[TIMEZONE] Falling back to system default for facilityId={} zone={}", facilityId, defaultSchedulingZone, ex);
+            return ZoneId.systemDefault();
+        }
+    }
+
+    private Long resolveDepartmentFacilityId(Long departmentId) {
+        if (departmentId == null) {
+            return null;
+        }
+        return departmentHelper.getDepartment(departmentId).facilityId();
+    }
+
+    private LocalDate todayForFacility(Long facilityId) {
+        return LocalDate.now(resolveFacilityZone(facilityId));
     }
 }
