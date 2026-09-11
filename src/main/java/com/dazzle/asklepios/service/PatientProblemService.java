@@ -9,8 +9,6 @@ import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemCancelDTO;
 import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemCreateDTO;
 import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemUpdateDTO;
-import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryCreateDTO;
-import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -24,7 +22,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.Date;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -278,6 +275,7 @@ public class PatientProblemService {
                 "db.constraint"
         );
     }
+
     private void validateRequiredFields(PatientProblemCreateDTO dto) {
 
         if (Boolean.TRUE.equals(dto.patientIsFree())) {
@@ -327,12 +325,19 @@ public class PatientProblemService {
             );
         }
     }
+
     private void validateRequiredFields(PatientProblemUpdateDTO dto) {
 
         if (Boolean.TRUE.equals(dto.patientIsFree())) {
             return;
         }
-
+        if (dto.patientIsFree() == null) {
+            throw new BadRequestAlertException(
+                    "Patient free flag is required.",
+                    "patientProblem",
+                    "patientIsFree.required"
+            );
+        }
         if (dto.condition() == null || dto.condition().isBlank()) {
             throw new BadRequestAlertException(
                     "Condition is required.",
