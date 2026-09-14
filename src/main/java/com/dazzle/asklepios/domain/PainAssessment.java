@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.PainAssessmentTypes;
 import com.dazzle.asklepios.domain.enumeration.PainLevel;
 import com.dazzle.asklepios.domain.enumeration.Severity;
 import jakarta.persistence.Column;
@@ -58,6 +59,11 @@ public class PainAssessment extends AbstractAuditingEntity<Long> implements Seri
 
     @Column(name = "pain_description", columnDefinition = "text")
     private String painDescription;
+
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pain_assessment_type", columnDefinition = "text")
+    private PainAssessmentTypes painAssessmentType;
 
     @NotNull
     @Column(name = "is_active", nullable = false)

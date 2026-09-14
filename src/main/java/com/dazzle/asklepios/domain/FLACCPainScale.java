@@ -2,7 +2,6 @@ package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.FLACCPainLevel;
 import com.dazzle.asklepios.domain.enumeration.FLACCPainScaleStatus;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -11,7 +10,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import jakarta.persistence.Transient;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -72,7 +70,7 @@ public class FLACCPainScale extends AbstractAuditingEntity<Long> implements Seri
     @Column(name = "cancelled_by", length = 50)
     private String cancelledBy;
 
-    @Transient
-    @JsonProperty("painLevel")
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pain_level", nullable = false, length = 50)
     private FLACCPainLevel painLevel;
 }

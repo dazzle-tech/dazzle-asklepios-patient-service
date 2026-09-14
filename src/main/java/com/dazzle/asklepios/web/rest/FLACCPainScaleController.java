@@ -107,4 +107,21 @@ public class FLACCPainScaleController {
 
         return ResponseEntity.ok(cancelled);
     }
+
+    @GetMapping("/flacc-pain-scales/encounter/{encounterId}/latest")
+    public ResponseEntity<FLACCPainScale> findLatestActiveByEncounterId(
+            @PathVariable Long encounterId
+    ) {
+        LOG.debug(
+                "REST get latest active FLACCPainScale by encounterId={}",
+                encounterId
+        );
+
+        FLACCPainScale result =
+                flaccPainScaleService.findLatestActiveByEncounterId(
+                        encounterId
+                );
+
+        return ResponseEntity.ok(result);
+    }
 }
