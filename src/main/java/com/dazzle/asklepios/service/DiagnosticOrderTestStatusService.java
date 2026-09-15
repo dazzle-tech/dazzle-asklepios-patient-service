@@ -102,6 +102,28 @@ public class DiagnosticOrderTestStatusService {
         return saved;
     }
 
+    public DiagnosticOrderTest returnToNew(Long testId) {
+
+        LOG.debug("[DiagnosticOrderTestStatus] RETURN_TO_NEW - start. testId={}", testId);
+
+        DiagnosticOrderTest test = getTest(testId);
+
+        test.setProcessingStatus(DiagnosticStatus.NEW);
+
+        DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
+
+        diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
+
+        LOG.debug(
+                "[DiagnosticOrderTestStatus] RETURN_TO_NEW - done. testId={} orderId={} status={}",
+                saved.getId(),
+                saved.getOrderId(),
+                saved.getProcessingStatus()
+        );
+
+        return saved;
+    }
+
     public PatientArrivedResponseVM patientArrived(Long testId, PatientArrivedCreateRequestDTO dto) {
         DiagnosticOrderTest test = getTest(testId);
 

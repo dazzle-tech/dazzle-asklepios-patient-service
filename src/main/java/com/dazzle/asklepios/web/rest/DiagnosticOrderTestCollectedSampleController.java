@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -92,6 +93,22 @@ public class DiagnosticOrderTestCollectedSampleController {
         return ResponseEntity.ok(existing);
     }
 
+    @PutMapping("/diagnostic-order-test-collected-samples/{id}/reject")
+    public ResponseEntity<DiagnosticOrderTestCollectedSample> reject(@PathVariable Long id) {
+
+        LOG.debug("[CollectedSample] REJECT - request received. id={}", id);
+
+        DiagnosticOrderTestCollectedSample rejectedSample = service.reject(id);
+
+        LOG.debug(
+                "[CollectedSample] REJECT - sample rejected successfully. id={}",
+                rejectedSample.getId()
+        );
+
+        return ResponseEntity.ok(rejectedSample);
+    }
+
+
     @GetMapping("/diagnostic-order-test-collected-samples/by-diagnostic-order-tests/{orderTestId}")
     public ResponseEntity<List<DiagnosticOrderTestCollectedSample>> listByOrderTestId(
             @PathVariable Long orderTestId,
@@ -140,6 +157,8 @@ public class DiagnosticOrderTestCollectedSampleController {
         LOG.debug("[CollectedSample] DELETE - deleted successfully. id={}", id);
         return ResponseEntity.noContent().build();
     }
+
+
 
     @PostMapping("/diagnostic-order-test-collected-samples/bulk-with-same-details")
     public ResponseEntity<List<DiagnosticOrderTestCollectedSample>> bulkCreateWithSameDetails(

@@ -118,6 +118,40 @@ public class DiagnosticOrderTestCollectedSampleService {
         LOG.debug("[CollectedSampleService] DELETE - done. id={}", id);
     }
 
+    public DiagnosticOrderTestCollectedSample reject(Long id) {
+
+        LOG.debug("[CollectedSampleService] REJECT - start. id={}", id);
+
+        DiagnosticOrderTestCollectedSample sample = repository.findById(id)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_order_test_collected_samples",
+                        "Collected sample not found with id " + id
+                ));
+
+        if (Boolean.TRUE.equals(sample.getRejected())) {
+            LOG.debug(
+                    "[CollectedSampleService] REJECT - sample already rejected. id={}",
+                    id
+            );
+            return sample;
+        }
+
+        sample.setRejected(true);
+
+        DiagnosticOrderTestCollectedSample saved = repository.save(sample);
+
+        diagnosticOrderTestStatusService.returnToNew(sample.getOrderTestId());
+
+        LOG.debug(
+                "[CollectedSampleService] REJECT - done. sampleId={} orderTestId={}",
+                saved.getId(),
+                saved.getOrderTestId()
+        );
+
+        return saved;
+    }
+
     public DiagnosticOrderTestSampleLabelDTO getSampleLabel(Long orderTestId) {
 
         LOG.debug("[SampleLabelService] GET_SAMPLE_LABEL - start. orderTestId={}", orderTestId);
