@@ -3,8 +3,11 @@ package com.dazzle.asklepios.web.rest.vm.uccmedicationorders;
 import com.dazzle.asklepios.domain.UrgentCareMedicationOrder;
 import com.dazzle.asklepios.domain.enumeration.MedicationInstructionType;
 import com.dazzle.asklepios.domain.enumeration.MedicationOrderStatus;
+import com.dazzle.asklepios.domain.enumeration.Unit;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 public record PatientUccMedicationOrderResponseVM(
         Long id,
@@ -14,7 +17,11 @@ public record PatientUccMedicationOrderResponseVM(
         Long dose,
         String doseUnit,
         String route,
-        String frequency,
+        Integer frequencyNumber,
+        Unit frequencyUnit,
+        Integer duration,
+        LocalTime startTime,
+        LocalDateTime doseTime,
         MedicationOrderStatus status,
         Instant administeredDate,
         String administeredBy,
@@ -40,7 +47,11 @@ public record PatientUccMedicationOrderResponseVM(
                 entity.getDose(),
                 entity.getDoseUnit(),
                 entity.getRoute(),
-                entity.getFrequency(),
+                entity.getFrequencyNumber(),
+                entity.getFrequencyUnit(),
+                entity.getDuration(),
+                entity.getStartTime(),
+                entity.getDoseTime(),
                 entity.getStatus(),
                 entity.getAdministeredDate(),
                 entity.getAdministeredBy(),

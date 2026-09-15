@@ -2,6 +2,7 @@ package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.MedicationInstructionType;
 import com.dazzle.asklepios.domain.enumeration.MedicationOrderStatus;
+import com.dazzle.asklepios.domain.enumeration.Unit;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -24,6 +25,8 @@ import lombok.Setter;
 import java.io.Serial;
 import java.io.Serializable;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 @Entity
 @Table(name = "urgent_care_medication_order")
@@ -41,6 +44,9 @@ public class UrgentCareMedicationOrder extends AbstractAuditingEntity implements
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "order_group_id", nullable = false)
+    private Long orderGroupId;
 
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY)
@@ -73,8 +79,21 @@ public class UrgentCareMedicationOrder extends AbstractAuditingEntity implements
     @Column(name = "route", length = 100)
     private String route;
 
-    @Column(name = "frequency", length = 100)
-    private String frequency;
+    @Column(name = "frequency_number")
+    private Integer frequencyNumber;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "frequency_unit", length = 20)
+    private Unit frequencyUnit;
+
+    @Column(name = "duration")
+    private Integer duration;
+
+    @Column(name = "start_time")
+    private LocalTime startTime;
+
+    @Column(name = "dose_time")
+    private LocalDateTime doseTime;
 
     @Column(name = "is_high_alert", nullable = false)
     private Boolean isHighAlert = false;

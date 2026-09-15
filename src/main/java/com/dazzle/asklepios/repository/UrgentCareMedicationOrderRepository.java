@@ -8,9 +8,16 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+
 @Repository
 public interface UrgentCareMedicationOrderRepository extends JpaRepository<UrgentCareMedicationOrder, Long>,
         JpaSpecificationExecutor<UrgentCareMedicationOrder> {
 
-    Page<UrgentCareMedicationOrder> findByStatus(MedicationOrderStatus status, Pageable pageable);
+    Page<UrgentCareMedicationOrder> findByStatus(
+            MedicationOrderStatus status,
+            Pageable pageable
+    );
+
+    List<UrgentCareMedicationOrder> findByOrderGroupId(Long orderGroupId);
 }
