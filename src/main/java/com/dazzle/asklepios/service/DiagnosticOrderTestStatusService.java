@@ -296,6 +296,18 @@ public class DiagnosticOrderTestStatusService {
             );
         }
 
+        DiagnosticStatus processingStatus = normalize(test.getProcessingStatus());
+
+        if (processingStatus != DiagnosticStatus.NEW) {
+            throw new BadRequestAlertException(
+                    "Cannot cancel because this test has already started",
+                    "test_already_started",
+
+                    "diagnostic_order_tests"
+
+            );
+        }
+
         String cancelReason =
                 cancellationReason == null || cancellationReason.isBlank()
                         ? "Diagnostic test cancelled"
@@ -692,6 +704,8 @@ public class DiagnosticOrderTestStatusService {
     private DiagnosticStatus normalize(DiagnosticStatus status) {
         return status == null ? DiagnosticStatus.NEW : status;
     }
+
+
 
     private void ensureTransition(DiagnosticOrderTest test, DiagnosticStatus to) {
         DiagnosticStatus from = normalize(test.getProcessingStatus());
