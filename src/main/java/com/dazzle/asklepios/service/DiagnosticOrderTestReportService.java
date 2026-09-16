@@ -55,6 +55,7 @@ import java.util.Set;
 public class DiagnosticOrderTestReportService {
 
     private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderTestReportService.class);
+    private static final String ACCESSION_PREFIX = "OH";
 
     private final DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
@@ -976,12 +977,15 @@ public class DiagnosticOrderTestReportService {
                         );
 
         LOG.debug(
-                "Report found. id={}, accessionNumber='{}'",
+                "Report found. id={}, accessionNumber='{}', orderTestId={}",
                 report.getId(),
+                report.getAccessionNumber(),
                 report.getOrderTestId()
         );
 
-        if (StringUtils.isBlank(report.getOrderTestId().toString())) {
+        String rawAccessionNumber = resolveRawAccessionNumber(report);
+
+        if (StringUtils.isBlank(rawAccessionNumber)) {
 
             LOG.warn(
                     "Accession Number is missing for reportId={}",
@@ -995,15 +999,36 @@ public class DiagnosticOrderTestReportService {
             );
         }
 
+        String pacsAccessionNumber = ensureAccessionPrefix(rawAccessionNumber);
+
         LOG.debug(
                 "Calling PACS using accessionNumber={}",
-                report.getOrderTestId()
+                pacsAccessionNumber
         );
 
         return pacsIntegrationService.getStudiesByAccessionNumber(
-
-                report.getOrderTestId().toString()
+                pacsAccessionNumber
         );
+    }
+
+    private String resolveRawAccessionNumber(DiagnosticOrderTestReport report) {
+        if (StringUtils.isNotBlank(report.getAccessionNumber())) {
+            return report.getAccessionNumber().trim();
+        }
+
+        if (report.getOrderTestId() == null) {
+            return null;
+        }
+
+        return report.getOrderTestId().toString();
+    }
+
+    private String ensureAccessionPrefix(String accessionNumber) {
+        String trimmed = accessionNumber.trim();
+        if (trimmed.regionMatches(true, 0, ACCESSION_PREFIX, 0, ACCESSION_PREFIX.length())) {
+            return ACCESSION_PREFIX + trimmed.substring(ACCESSION_PREFIX.length());
+        }
+        return ACCESSION_PREFIX + trimmed;
     }
 
     @Transactional

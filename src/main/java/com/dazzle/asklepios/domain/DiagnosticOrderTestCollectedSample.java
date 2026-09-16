@@ -59,4 +59,8 @@ public class DiagnosticOrderTestCollectedSample extends AbstractAuditingEntity i
 
     @Column(name = "source_of_sample", length = 100, nullable = false)
     private String sourceOfSample;
+
+    @Column(name = "rejected", nullable = false)
+    private Boolean rejected = false;
+
 }

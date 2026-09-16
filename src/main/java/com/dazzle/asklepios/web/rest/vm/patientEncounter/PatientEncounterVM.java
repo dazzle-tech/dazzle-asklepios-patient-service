@@ -3,12 +3,11 @@ package com.dazzle.asklepios.web.rest.vm.patientEncounter;
 import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
-import com.dazzle.asklepios.domain.enumeration.EncounterLifecycleStatus;
+import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
-
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -19,6 +18,7 @@ public record PatientEncounterVM(
         Long id,
         String encounterNumber,
         Patient patient,
+        String documentType,
         Long facilityId,
         Long departmentId,
         Long practitionerId,
@@ -29,6 +29,7 @@ public record PatientEncounterVM(
         EncounterReason encounterReason,
         EncounterPriority priorityLevel,
         TreatmentStatus status,
+        EncounterStatus encounterStatus,
         String originType,
         String originName,
         String notes,
@@ -46,7 +47,8 @@ public record PatientEncounterVM(
         Boolean isObserved,
         Instant createdAt,
         LocalDateTime dischargeAt,
-        String historyOfPresentIllness
+        String historyOfPresentIllness,
+        String createdBy
 
 ) {
 
@@ -54,7 +56,8 @@ public record PatientEncounterVM(
             PatientEncounter encounter,
             Boolean hasOrder,
             Boolean hasPrescription,
-            Boolean hasObservation
+            Boolean hasObservation,
+            String documentType
     ) {
         if (encounter == null) {
             return null;
@@ -64,6 +67,7 @@ public record PatientEncounterVM(
                 encounter.getId(),
                 encounter.getEncounterNumber(),
                 encounter.getPatient(),
+                documentType,
 
                 encounter.getFacilityId(),
                 encounter.getDepartmentId(),
@@ -75,7 +79,7 @@ public record PatientEncounterVM(
                 encounter.getEncounterReason(),
                 encounter.getPriorityLevel(),
                 encounter.getStatus(),
-
+                encounter.getEncounterStatus(),
                 encounter.getOriginType(),
                 encounter.getOriginName(),
                 encounter.getNotes(),
@@ -94,7 +98,8 @@ public record PatientEncounterVM(
 
                 encounter.getCreatedDate(),
                 encounter.getDischargeAt(),
-                encounter.getHistoryOfPresentIllness()
+                encounter.getHistoryOfPresentIllness(),
+                encounter.getCreatedBy()
         );
     }
    }

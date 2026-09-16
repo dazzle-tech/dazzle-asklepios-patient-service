@@ -3,6 +3,7 @@ package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientEncounterFieldAudit;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
+import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.service.DiagnosticOrderService;
 import com.dazzle.asklepios.service.EncounterCoverageService;
 import com.dazzle.asklepios.service.PatientEncounterService;
@@ -39,7 +40,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
-
+import com.dazzle.asklepios.service.EncounterListService;
+import com.dazzle.asklepios.service.dto.patientEncounter.EncounterListFilterDTO;
+import com.dazzle.asklepios.web.rest.vm.EncounterListVM;
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.List;
@@ -55,17 +58,23 @@ public class PatientEncounterController {
     private final DiagnosticOrderService diagnosticOrderService;
     private final PatientPrescriptionService patientPrescriptionService;
     private final EncounterCoverageService encounterCoverageService;
+    private final PatientDocumentRepository patientDocumentRepository;
+    private final EncounterListService encounterListService;
 
     public PatientEncounterController(
             PatientEncounterService patientEncounterService,
             DiagnosticOrderService diagnosticOrderService,
             PatientPrescriptionService patientPrescriptionService,
-            EncounterCoverageService encounterCoverageService
+            EncounterCoverageService encounterCoverageService,
+            PatientDocumentRepository patientDocumentRepository,
+            EncounterListService encounterListService
     ) {
         this.patientEncounterService = patientEncounterService;
         this.diagnosticOrderService = diagnosticOrderService;
         this.patientPrescriptionService = patientPrescriptionService;
         this.encounterCoverageService = encounterCoverageService;
+        this.patientDocumentRepository = patientDocumentRepository;
+        this.encounterListService = encounterListService;
     }
 
     @PostMapping("/encounter")
@@ -211,11 +220,12 @@ public class PatientEncounterController {
         Set<Long> observasionEncounterIds = patientEncounterService.findEncounterIdsWithObservation(encounterIds);
         List<PatientEncounterVM> vmList = page.getContent().stream()
                 .map(encounter -> PatientEncounterVM.ofEntity(
-                        encounter,
-                        orderEncounterIds.contains(encounter.getId()),
-                        prescriptionEncounterIds.contains(encounter.getId()),
-                        observasionEncounterIds.contains(encounter.getId())
-                ))
+                                encounter,
+                                orderEncounterIds.contains(encounter.getId()),
+                                prescriptionEncounterIds.contains(encounter.getId()),
+                                observasionEncounterIds.contains(encounter.getId()),
+                                null
+                        ))
                 .toList();
 
         HttpHeaders headers =
@@ -273,14 +283,24 @@ public class PatientEncounterController {
 
         List<PatientEncounterVM> vmList =
                 page.getContent().stream()
-                        .map(encounter ->
-                                PatientEncounterVM.ofEntity(
-                                        encounter,
-                                        orderEncounterIds.contains(encounter.getId()),
-                                        prescriptionEncounterIds.contains(encounter.getId()),
-                                        observationEncounterIds.contains(encounter.getId())
-                                )
-                        )
+                        .map(encounter -> {
+
+                            String documentType =
+                                    patientDocumentRepository
+                                            .findFirstByPatient_IdAndIsPrimaryTrue(
+                                                    encounter.getPatient().getId()
+                                            )
+                                            .map(document -> document.getType().name())
+                                            .orElse(null);
+
+                            return PatientEncounterVM.ofEntity(
+                                    encounter,
+                                    orderEncounterIds.contains(encounter.getId()),
+                                    prescriptionEncounterIds.contains(encounter.getId()),
+                                    observationEncounterIds.contains(encounter.getId()),
+                                    documentType
+                            );
+                        })
                         .toList();
 
         HttpHeaders headers =
@@ -291,6 +311,37 @@ public class PatientEncounterController {
 
         return new ResponseEntity<>(
                 vmList,
+                headers,
+                HttpStatus.OK
+        );
+    }
+
+
+    @GetMapping("/encounter/list")
+    public ResponseEntity<List<EncounterListVM>> getEncounterList(
+            @ParameterObject EncounterListFilterDTO filter,
+            @ParameterObject Pageable pageable
+    ) {
+        LOG.debug(
+                "REST get Encounter List filter={} pageable={}",
+                filter,
+                pageable
+        );
+
+        Page<EncounterListVM> page =
+                encounterListService.search(
+                        filter,
+                        pageable
+                );
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        return new ResponseEntity<>(
+                page.getContent(),
                 headers,
                 HttpStatus.OK
         );
@@ -336,7 +387,8 @@ public class PatientEncounterController {
                                         encounter,
                                         orderEncounterIds.contains(encounter.getId()),
                                         prescriptionEncounterIds.contains(encounter.getId()),
-                                        observationEncounterIds.contains(encounter.getId())
+                                        observationEncounterIds.contains(encounter.getId()),
+                                        null
                                 )
                         )
                         .toList();

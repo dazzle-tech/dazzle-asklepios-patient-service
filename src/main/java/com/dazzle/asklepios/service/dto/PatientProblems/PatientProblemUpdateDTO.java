@@ -30,7 +30,6 @@ public record PatientProblemUpdateDTO(
         Boolean byPatient,
 
         String sourceOfInformation,
-        Boolean patientIsFree
-
+        @NotNull Boolean patientIsFree
 ) implements Serializable {
 }

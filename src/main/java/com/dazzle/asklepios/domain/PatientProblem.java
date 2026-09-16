@@ -87,5 +87,5 @@ public class PatientProblem extends AbstractAuditingEntity<Long>
     private String cancellationReason;
     @Column(name = "patient_is_free", nullable = false)
     @Builder.Default
-    private Boolean patientIsFree = false;
+    private Boolean patientIsFree = Boolean.FALSE;
 }
