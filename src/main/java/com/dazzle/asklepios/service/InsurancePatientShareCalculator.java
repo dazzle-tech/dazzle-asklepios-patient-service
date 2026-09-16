@@ -1,6 +1,8 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.setup.PayorClient;
 import com.dazzle.asklepios.client.setup.ServiceClient;
+import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientInsuranceCoverage;
@@ -12,6 +14,7 @@ import com.dazzle.asklepios.repository.PatientInsuranceCoverageRepository;
 import com.dazzle.asklepios.service.dto.InsuranceBenefitRule;
 import com.dazzle.asklepios.service.dto.InsuranceSplit;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +37,8 @@ public class InsurancePatientShareCalculator {
     private final InsuranceCalculationService insuranceCalculationService;
     private final PatientInsuranceCoverageRepository patientInsuranceCoverageRepository;
     private final ServiceClient serviceClient;
+    private final PayorClient payorClient;
+    private final CoverageContractShareService coverageContractShareService;
 
     public InsuranceSplit calculateSplit(
             PatientInsurance insurance,
@@ -100,11 +105,43 @@ public class InsurancePatientShareCalculator {
             serviceCategory = resolveServiceCategory(item);
         }
 
-        return calculateSplitFromRules(
+        if (isWaseelCoverage(insurance)) {
+            InsuranceSplit waseelSplit = calculateSplitFromRules(
+                    insurance,
+                    serviceCategory,
+                    serviceSource,
+                    normalizedNet
+            );
+            return coverageContractShareService.capWithCoverage(
+                    insurance,
+                    item,
+                    normalizedNet,
+                    waseelSplit
+            );
+        }
+
+        InsuranceSplit contractSplit =
+                coverageContractShareService
+                        .calculateSplit(
+                                insurance,
+                                item,
+                                normalizedNet
+                        )
+                        .orElse(null);
+        if (contractSplit != null) {
+            return contractSplit;
+        }
+
+        return coverageContractShareService.applyLimit(
                 insurance,
-                serviceCategory,
-                serviceSource,
-                normalizedNet
+                item,
+                normalizedNet,
+                calculateSplitFromRules(
+                        insurance,
+                        serviceCategory,
+                        serviceSource,
+                        normalizedNet
+                )
         );
     }
 
@@ -283,6 +320,31 @@ public class InsurancePatientShareCalculator {
                     exception
             );
             return null;
+        }
+    }
+
+    private boolean isWaseelCoverage(PatientInsurance insurance) {
+        if (insurance == null || insurance.getPayorId() == null) {
+            return false;
+        }
+
+        try {
+            PayorDTO payor = payorClient.getPayorById(insurance.getPayorId());
+            return payor != null && Boolean.TRUE.equals(payor.isWaseelEnabled());
+        } catch (FeignException exception) {
+            LOG.warn(
+                    "[INSURANCE] Unable to resolve payor waseel flag payorId={}. Keeping existing share calculation.",
+                    insurance.getPayorId(),
+                    exception
+            );
+            return true;
+        } catch (RuntimeException exception) {
+            LOG.warn(
+                    "[INSURANCE] Payor lookup failed payorId={}. Keeping existing share calculation.",
+                    insurance.getPayorId(),
+                    exception
+            );
+            return true;
         }
     }
 

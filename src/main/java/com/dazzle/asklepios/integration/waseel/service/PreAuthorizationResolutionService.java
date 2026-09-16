@@ -16,6 +16,7 @@ import com.dazzle.asklepios.integration.waseel.client.WaseelItemMappingClient;
 import com.dazzle.asklepios.integration.waseel.client.dto.WaseelItemMappingSetupDTO;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
+import com.dazzle.asklepios.service.CoverageContractShareService;
 import com.dazzle.asklepios.service.helper.NphiesPayerHelper;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +47,8 @@ public class PreAuthorizationResolutionService {
     private final PatientInsuranceRepository patientInsuranceRepository;
 
     private final NphiesPayerHelper nphiesPayerHelper;
+
+    private final CoverageContractShareService coverageContractShareService;
 
     public record Resolution(
             PreAuthorizationStatus status,
@@ -639,6 +642,14 @@ public class PreAuthorizationResolutionService {
             return false;
         }
 
+        if (requiresPreAuthorizationFromCoverageContract(
+                encounterId,
+                billingItemType,
+                itemId
+        )) {
+            return true;
+        }
+
         if (requiresPreAuthorizationFromPriceList(
                 encounterId,
                 billingItemType,
@@ -652,6 +663,68 @@ public class PreAuthorizationResolutionService {
                 billingItemType,
                 itemId
         );
+    }
+
+    private boolean requiresPreAuthorizationFromCoverageContract(
+            Long encounterId,
+            BillingItemTypes billingItemType,
+            Long itemId
+    ) {
+        Long patientInsuranceId =
+                encounterInsuranceEligibilityService.resolveEncounterPatientInsuranceId(encounterId);
+        if (patientInsuranceId == null) {
+            return false;
+        }
+        PatientInsurance insurance = patientInsuranceRepository.findById(patientInsuranceId).orElse(null);
+        if (insurance == null) {
+            return false;
+        }
+        PatientServiceAndProduct item = coverageContractItem(encounterId, billingItemType, itemId);
+        try {
+            boolean required = coverageContractShareService.requiresPreApproval(insurance, item);
+            LOG.info(
+                    "[PREAUTH] Coverage contract result. encounterId={} billingItemType={} itemId={} requiresPreAuth={}",
+                    encounterId,
+                    billingItemType,
+                    itemId,
+                    required
+            );
+            return required;
+        } catch (RuntimeException exception) {
+            LOG.warn(
+                    "[PREAUTH] Coverage contract pre-approval check failed. encounterId={} billingItemType={} itemId={}",
+                    encounterId,
+                    billingItemType,
+                    itemId,
+                    exception
+            );
+            return false;
+        }
+    }
+
+    private PatientServiceAndProduct coverageContractItem(
+            Long encounterId,
+            BillingItemTypes billingItemType,
+            Long itemId
+    ) {
+        PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
+                .encounterId(encounterId)
+                .billingItemType(billingItemType);
+        if (billingItemType == BillingItemTypes.PROCEDURE) {
+            return builder.procedureId(itemId).build();
+        }
+        if (billingItemType == BillingItemTypes.SERVICE) {
+            return builder.serviceId(itemId).build();
+        }
+        if (billingItemType == BillingItemTypes.LABORATORY
+                || billingItemType == BillingItemTypes.RADIOLOGY
+                || billingItemType == BillingItemTypes.PATHOLOGY) {
+            return builder.diagnosticTestId(itemId).build();
+        }
+        if (billingItemType == BillingItemTypes.MEDICATION) {
+            return builder.brandMedicationId(itemId).build();
+        }
+        return builder.build();
     }
 
     private boolean requiresPreAuthorizationFromPriceList(
