@@ -285,7 +285,6 @@ public class DiagnosticOrderTestStatusService {
 
     public DiagnosticOrderTest cancel(Long testId, String cancelledBy, String cancellationReason) {
         DiagnosticOrderTest test = getTest(testId);
-        DiagnosticOrder order = getOrder(test.getOrderId());
 
         DiagnosticOrderTestStatus current = test.getStatus() == null ? DiagnosticOrderTestStatus.NEW : test.getStatus();
 
@@ -297,14 +296,15 @@ public class DiagnosticOrderTestStatusService {
             );
         }
 
-        DiagnosticStatus orderStatus = resolveOrderTestGroupStatus(order, test.getOrderType());
         DiagnosticStatus processingStatus = normalize(test.getProcessingStatus());
 
-        if (orderStatus != DiagnosticStatus.NEW || processingStatus != DiagnosticStatus.NEW) {
+        if (processingStatus != DiagnosticStatus.NEW) {
             throw new BadRequestAlertException(
+                    "Cannot cancel because this test has already started",
                     "test_already_started",
-                    "diagnostic_order_tests",
-                    "Cannot cancel because this test has already started"
+
+                    "diagnostic_order_tests"
+
             );
         }
 
@@ -705,13 +705,7 @@ public class DiagnosticOrderTestStatusService {
         return status == null ? DiagnosticStatus.NEW : status;
     }
 
-    private DiagnosticStatus resolveOrderTestGroupStatus(DiagnosticOrder order, TestType orderType) {
-        if (orderType == TestType.RADIOLOGY) {
-            return normalize(order.getRadStatus());
-        }
 
-        return normalize(order.getLabStatus());
-    }
 
     private void ensureTransition(DiagnosticOrderTest test, DiagnosticStatus to) {
         DiagnosticStatus from = normalize(test.getProcessingStatus());
