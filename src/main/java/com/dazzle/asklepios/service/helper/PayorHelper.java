@@ -45,6 +45,11 @@ public class PayorHelper {
         }
 
         PayorDTO payor = findPayorByNphiesId(payerNphiesId);
+        if (payor != null && payor.id() != null && payor.id() > 0) {
+            return payor.id();
+        }
+
+        payor = ensurePayorFromNphiesId(payerNphiesId);
         return payor != null && payor.id() != null && payor.id() > 0 ? payor.id() : null;
     }
 
@@ -55,13 +60,31 @@ public class PayorHelper {
         }
 
         if (payorId == null || payorId <= 0) {
-            return null;
+            payor = ensurePayorFromNphiesId(payerNphiesId);
+            return payor;
         }
 
         try {
             return payorClient.getPayorById(payorId);
         } catch (feign.FeignException.NotFound ex) {
+            return ensurePayorFromNphiesId(payerNphiesId);
+        }
+    }
+
+    private PayorDTO ensurePayorFromNphiesId(String payerNphiesId) {
+        if (payerNphiesId == null || payerNphiesId.isBlank()) {
             return null;
+        }
+
+        try {
+            return payorClient.ensurePayorFromNphiesId(payerNphiesId.trim());
+        } catch (feign.FeignException.NotFound | feign.FeignException.BadRequest ex) {
+            return null;
+        } catch (feign.FeignException ex) {
+            if (ex.status() == 404 || ex.status() == 400) {
+                return null;
+            }
+            throw ex;
         }
     }
 
