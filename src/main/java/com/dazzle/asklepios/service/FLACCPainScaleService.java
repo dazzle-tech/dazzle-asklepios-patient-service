@@ -72,12 +72,9 @@ public class FLACCPainScaleService {
                 .cry(dto.getCry())
                 .consolability(dto.getConsolability())
                 .totalScore(totalScore)
+                .painLevel(calculatePainLevel(totalScore))
                 .status(FLACCPainScaleStatus.ACTIVE)
                 .build();
-
-        flaccPainScale.setPainLevel(
-                calculatePainLevel(totalScore)
-        );
 
         FLACCPainScale saved =
                 flaccPainScaleRepository.save(flaccPainScale);
@@ -370,8 +367,6 @@ public class FLACCPainScaleService {
                             );
                         });
 
-        setPainLevel(flaccPainScale);
-
         LOG.debug(
                 "[GET] FLACCPainScale found id={} totalScore={} painLevel={} status={}",
                 flaccPainScale.getId(),
@@ -412,9 +407,7 @@ public class FLACCPainScaleService {
         }
 
         List<FLACCPainScale> records =
-                flaccPainScaleRepository.findByPatientId(patientId);
-
-        records.forEach(this::setPainLevel);
+                flaccPainScaleRepository.findByPatientIdOrderByCreatedDateDesc(patientId);
 
         LOG.debug(
                 "[LIST] FLACCPainScales by patientId={} result size={}",
@@ -461,17 +454,15 @@ public class FLACCPainScaleService {
 
         if (showCancelled) {
             records =
-                    flaccPainScaleRepository.findByEncounterId(encounterId);
+                    flaccPainScaleRepository.findByEncounterIdOrderByCreatedDateDesc(encounterId);
         } else {
             records =
                     flaccPainScaleRepository
-                            .findByEncounterIdAndStatusNot(
+                            .findByEncounterIdAndStatusNotOrderByCreatedDateDesc(
                                     encounterId,
                                     FLACCPainScaleStatus.CANCELLED
                             );
         }
-
-        records.forEach(this::setPainLevel);
 
         LOG.debug(
                 "[LIST] FLACCPainScales by encounterId={} showCancelled={} result size={}",
@@ -575,16 +566,7 @@ public class FLACCPainScaleService {
         }
     }
 
-    private void setPainLevel(
-            FLACCPainScale flaccPainScale
-    ) {
-        flaccPainScale.setPainLevel(
-                calculatePainLevel(
-                        flaccPainScale.getTotalScore()
-                )
-        );
-    }
-
+    // IMPORTANT: If you change the scoring here, update the frontend scoring accordingly so the displayed level matches the stored value.
     private FLACCPainLevel calculatePainLevel(
             int totalScore
     ) {
@@ -596,10 +578,64 @@ public class FLACCPainScaleService {
             return FLACCPainLevel.MILD_PAIN;
         }
 
-        if (totalScore <= 6) {
+        if (totalScore <= 7) {
             return FLACCPainLevel.MODERATE_PAIN;
         }
 
         return FLACCPainLevel.SEVERE_PAIN;
+    }
+
+    @Transactional(readOnly = true)
+    public FLACCPainScale findLatestActiveByEncounterId(Long encounterId) {
+        LOG.debug(
+                "[GET] Latest active FLACCPainScale by encounterId={}",
+                encounterId
+        );
+
+        if (encounterId == null || encounterId <= 0) {
+            throw new BadRequestAlertException(
+                    "Encounter id is required.",
+                    "flaccPainScale",
+                    "encounter.id.invalid"
+            );
+        }
+
+        if (!patientEncounterRepository.existsById(encounterId)) {
+            LOG.warn(
+                    "[GET] Encounter not found id={}",
+                    encounterId
+            );
+
+            throw new BadRequestAlertException(
+                    "Encounter not found.",
+                    "flaccPainScale",
+                    "encounter.notFound"
+            );
+        }
+
+        FLACCPainScale result =
+                flaccPainScaleRepository
+                        .findFirstByEncounterIdAndStatusOrderByCreatedDateDesc(
+                                encounterId,
+                                FLACCPainScaleStatus.ACTIVE
+                        )
+                        .orElse(null);
+
+        if (result != null) {
+
+            LOG.debug(
+                    "[GET] Latest active FLACCPainScale found id={} encounterId={} totalScore={}",
+                    result.getId(),
+                    result.getEncounterId(),
+                    result.getTotalScore()
+            );
+        } else {
+            LOG.debug(
+                    "[GET] No active FLACCPainScale found for encounterId={}",
+                    encounterId
+            );
+        }
+
+        return result;
     }
 }

@@ -11,11 +11,16 @@ import java.util.Optional;
 @Repository
 public interface FLACCPainScaleRepository extends JpaRepository<FLACCPainScale, Long> {
 
-    List<FLACCPainScale> findByPatientId(Long patientId);
+    List<FLACCPainScale> findByPatientIdOrderByCreatedDateDesc(Long patientId);
 
-    List<FLACCPainScale> findByEncounterId(Long encounterId);
+    List<FLACCPainScale> findByEncounterIdOrderByCreatedDateDesc(Long encounterId);
 
-    List<FLACCPainScale> findByEncounterIdAndStatusNot(
+    List<FLACCPainScale> findByEncounterIdAndStatusNotOrderByCreatedDateDesc(
+            Long encounterId,
+            FLACCPainScaleStatus status
+    );
+
+    Optional<FLACCPainScale> findFirstByEncounterIdAndStatusOrderByCreatedDateDesc(
             Long encounterId,
             FLACCPainScaleStatus status
     );
