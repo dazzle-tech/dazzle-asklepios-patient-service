@@ -329,6 +329,8 @@ public class DiagnosticOrderController {
             @RequestParam(name = "saveDraft", required = false) Boolean saveDraft,
             @RequestParam(name = "isUrgent", required = false) Boolean isUrgent,
             @RequestParam(name = "labStatus", required = false) String labStatus,
+            @RequestParam(name = "labStatusIn", required = false)
+            List<String> labStatusIn,
             @RequestParam(name = "radStatus", required = false) String radStatus,
 
             @RequestParam(name = "submittedDateFrom", required = false) Instant submittedDateFrom,
@@ -346,10 +348,10 @@ public class DiagnosticOrderController {
             @ParameterObject Pageable pageable
     ) {
         LOG.debug("[DiagnosticOrder] FILTER - request received. patientId={} patientIdIn={} encounterId={} status={} statusIn={} " +
-                        "statusNotIn={} excludeStatus={} saveDraft={} isUrgent={} labStatus={} radStatus={} " +
+                        "statusNotIn={} excludeStatus={} saveDraft={} isUrgent={} labStatus={} labStatusIn={} radStatus={} " +
                         "submittedDateFrom={} submittedDateTo={} departmentId={} fromDepartmentIdIn={} testType={} orderNumber={} pageable={}",
                 patientId, patientIdIn, encounterId, status, statusIn, statusNotIn, excludeStatus, saveDraft, isUrgent,
-                labStatus, radStatus, submittedDateFrom, submittedDateTo, departmentId, fromDepartmentIdIn, testType,
+                labStatus, labStatusIn, radStatus, submittedDateFrom, submittedDateTo, departmentId, fromDepartmentIdIn, testType,
                 orderNumber, pageable);
 
         Page<DiagnosticOrder> ordersPage = diagnosticOrderService.filter(
@@ -363,6 +365,7 @@ public class DiagnosticOrderController {
                 saveDraft,
                 isUrgent,
                 labStatus,
+                labStatusIn,
                 radStatus,
                 submittedDateFrom,
                 submittedDateTo,

@@ -17,6 +17,7 @@ import com.dazzle.asklepios.repository.EmergencyTriageRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.emergencyTriage.CTASLevelUpdateDTO;
 import com.dazzle.asklepios.service.dto.emergencyTriage.EmergencyTriageCreateDTO;
 import com.dazzle.asklepios.service.dto.emergencyTriage.EmergencyTriageDestinationUpdateDTO;
 import com.dazzle.asklepios.service.dto.emergencyTriage.EmergencyTriageLevelAssessmentUpdateDTO;
@@ -144,6 +145,17 @@ public class EmergencyTriageService {
             notificationForResuscitationEmergencyLevel(saved);
         }
         LOG.debug("updateLevelAssessment: saved id={}", saved.getId());
+        return saved;
+    }
+
+    public EmergencyTriage updateCTASLevel(CTASLevelUpdateDTO dto) {
+        LOG.debug("updateCTASLevel EmergencyTriage payload={}", dto);
+        EmergencyTriage entity = getRequired(dto.id());
+
+        entity.setEmergencyLevel(dto.emergencyLevel());
+
+        EmergencyTriage saved = emergencyTriageRepository.saveAndFlush(entity);
+        LOG.debug("updateCTASLevel: saved id={}", saved.getId());
         return saved;
     }
 

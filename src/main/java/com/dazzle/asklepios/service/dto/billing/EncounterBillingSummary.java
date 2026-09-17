@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service.dto.billing;
 
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
@@ -74,7 +75,11 @@ public record EncounterBillingSummary(
 
         BigDecimal invoiceOutstandingAmount,
 
-        List<EncounterBillingItemSummary> items
+        List<EncounterBillingItemSummary> items,
+
+        BillingCoverageType coverageType,
+
+        Long patientInsuranceId
 
 ) implements Serializable {
 }

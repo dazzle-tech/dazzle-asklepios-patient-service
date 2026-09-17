@@ -9,9 +9,11 @@ import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.RadiologyImageStatus;
 import com.dazzle.asklepios.domain.enumeration.Severity;
 import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportCommentsRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportCreateDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportRejectDTO;
@@ -32,8 +34,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
-import com.dazzle.asklepios.repository.PatientRepository;
+
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -54,13 +55,14 @@ import java.util.Set;
 public class DiagnosticOrderTestReportService {
 
     private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderTestReportService.class);
+    private static final String ACCESSION_PREFIX = "OH";
 
     private final DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
     private final DiagnosticOrderRepository diagnosticOrderRepository;
     private final PatientRepository patientRepository;
     private final PacsIntegrationClient pacsIntegrationService;
-
+    private final DiagnosticOrderTestService diagnosticOrderTestService;
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
     private final DiagnosticOrderTestReportCommentsRepository diagnosticOrderTestReportCommentsRepository;
@@ -70,7 +72,7 @@ public class DiagnosticOrderTestReportService {
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
             DiagnosticOrderRepository diagnosticOrderRepository,
             PatientRepository patientRepository,
-            PacsIntegrationClient pacsIntegrationService,
+            PacsIntegrationClient pacsIntegrationService, DiagnosticOrderTestService diagnosticOrderTestService,
             DiagnosticOrderStatusService diagnosticOrderStatusService,
             DiagnosticOrderTestStatusService diagnosticOrderTestStatusService,
             DiagnosticOrderTestReportCommentsRepository diagnosticOrderTestReportCommentsRepository
@@ -80,6 +82,7 @@ public class DiagnosticOrderTestReportService {
         this.diagnosticOrderRepository = diagnosticOrderRepository;
         this.patientRepository = patientRepository;
         this.pacsIntegrationService = pacsIntegrationService;
+        this.diagnosticOrderTestService = diagnosticOrderTestService;
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
         this.diagnosticOrderTestReportCommentsRepository = diagnosticOrderTestReportCommentsRepository;
@@ -145,6 +148,7 @@ public class DiagnosticOrderTestReportService {
 
         return diagnosticOrderTestReportRepository.findByOrderTestId(orderTestId);
     }
+
     public DiagnosticOrderTestReport createRadiologyReport(DiagnosticOrderTestReportCreateDTO reportCreateDTO) {
         LOG.debug("[DiagnosticOrderTestReportService] CREATE_RADIOLOGY_REPORT - start. payload={}", reportCreateDTO);
         DiagnosticOrderTest orderTest = requireRadiologyTest(reportCreateDTO.orderTestId());
@@ -267,6 +271,7 @@ public class DiagnosticOrderTestReportService {
 
         return saved;
     }
+
     public DiagnosticOrderTestReport rejectRadiologyReport(DiagnosticOrderTestReportRejectDTO orderTestReportRejectDTO) {
         LOG.debug("[DiagnosticOrderTestReportService] REJECT_RADIOLOGY_REPORT - start. payload={}", orderTestReportRejectDTO);
         requireRadiologyTest(orderTestReportRejectDTO.orderTestId());
@@ -393,7 +398,9 @@ public class DiagnosticOrderTestReportService {
                 ));
 
         requireRadiologyTest(report.getOrderTestId());
-
+        diagnosticOrderTestService.validateSettlementTestBeforeApprove(
+                report.getOrderTestId()
+        );
         report.setApprovedBy(currentUsername());
         report.setApprovedDate(Instant.now());
         report.setProcessingStatus(DiagnosticStatus.RESULT_APPROVED);
@@ -970,12 +977,15 @@ public class DiagnosticOrderTestReportService {
                         );
 
         LOG.debug(
-                "Report found. id={}, accessionNumber='{}'",
+                "Report found. id={}, accessionNumber='{}', orderTestId={}",
                 report.getId(),
+                report.getAccessionNumber(),
                 report.getOrderTestId()
         );
 
-        if (StringUtils.isBlank(report.getOrderTestId().toString())) {
+        String rawAccessionNumber = resolveRawAccessionNumber(report);
+
+        if (StringUtils.isBlank(rawAccessionNumber)) {
 
             LOG.warn(
                     "Accession Number is missing for reportId={}",
@@ -989,16 +999,38 @@ public class DiagnosticOrderTestReportService {
             );
         }
 
+        String pacsAccessionNumber = ensureAccessionPrefix(rawAccessionNumber);
+
         LOG.debug(
                 "Calling PACS using accessionNumber={}",
-                report.getOrderTestId()
+                pacsAccessionNumber
         );
 
         return pacsIntegrationService.getStudiesByAccessionNumber(
-
-                report.getOrderTestId().toString()
+                pacsAccessionNumber
         );
     }
+
+    private String resolveRawAccessionNumber(DiagnosticOrderTestReport report) {
+        if (StringUtils.isNotBlank(report.getAccessionNumber())) {
+            return report.getAccessionNumber().trim();
+        }
+
+        if (report.getOrderTestId() == null) {
+            return null;
+        }
+
+        return report.getOrderTestId().toString();
+    }
+
+    private String ensureAccessionPrefix(String accessionNumber) {
+        String trimmed = accessionNumber.trim();
+        if (trimmed.regionMatches(true, 0, ACCESSION_PREFIX, 0, ACCESSION_PREFIX.length())) {
+            return ACCESSION_PREFIX + trimmed.substring(ACCESSION_PREFIX.length());
+        }
+        return ACCESSION_PREFIX + trimmed;
+    }
+
     @Transactional
     public void bulkToggleReview(
             List<Long> ids
@@ -1047,4 +1079,74 @@ public class DiagnosticOrderTestReportService {
             );
         });
     }
+
+    @Transactional(readOnly = true)
+    public List<Long> filterReportIds(
+            Long id,
+            List<Long> orderIdIn,
+            Long orderTestId,
+            Severity severity,
+            String approvedBy,
+            String rejectedBy,
+            String reviewBy,
+            Boolean reviewed,
+            Instant approvedDateFrom,
+            Instant approvedDateTo,
+            Instant rejectedDateFrom,
+            Instant rejectedDateTo,
+            Instant reviewDateFrom,
+            Instant reviewDateTo,
+            List<DiagnosticStatus> processingStatusIn,
+            List<DiagnosticStatus> processingStatusNotIn,
+            List<RadiologyImageStatus> imageStatusIn,
+            List<RadiologyImageStatus> imageStatusNotIn,
+            Instant createdDateFrom,
+            Instant createdDateTo,
+            Instant lastModifiedDateFrom,
+            Instant lastModifiedDateTo,
+            List<Long> fromDepartmentIn,
+            String patientName,
+            String mrn,
+            List<Long> patientIdIn,
+            String orderNumber
+    ) {
+
+        Page<DiagnosticOrderTestReportResponseVM> page =
+                filterReports(
+                        id,
+                        orderIdIn,
+                        orderTestId,
+                        severity,
+                        approvedBy,
+                        rejectedBy,
+                        reviewBy,
+                        reviewed,
+                        approvedDateFrom,
+                        approvedDateTo,
+                        rejectedDateFrom,
+                        rejectedDateTo,
+                        reviewDateFrom,
+                        reviewDateTo,
+                        processingStatusIn,
+                        processingStatusNotIn,
+                        imageStatusIn,
+                        imageStatusNotIn,
+                        createdDateFrom,
+                        createdDateTo,
+                        lastModifiedDateFrom,
+                        lastModifiedDateTo,
+                        fromDepartmentIn,
+                        patientName,
+                        mrn,
+                        patientIdIn,
+                        orderNumber,
+                        Pageable.unpaged()
+                );
+
+        return page.getContent()
+                .stream()
+                .map(DiagnosticOrderTestReportResponseVM::id)
+                .toList();
+    }
+
 }

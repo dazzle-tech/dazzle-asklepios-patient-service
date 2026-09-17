@@ -71,6 +71,7 @@ public class PainAssessmentService {
                     .encounterId(encounter.getId())
                     .painDegree(calculatePainDegree(dto.painLevel()))
                     .painLevel(dto.painLevel())
+                    .painAssessmentType(dto.painAssessmentType())
                     .painPattern(dto.painPattern())
                     .painDescription(dto.painDescription())
                     .isActive(true)
@@ -109,6 +110,7 @@ public class PainAssessmentService {
             entity.setEncounterId(encounter.getId());
             entity.setPainDegree(calculatePainDegree(dto.painLevel()));
             entity.setPainLevel(dto.painLevel());
+            entity.setPainAssessmentType(dto.painAssessmentType());
             entity.setPainPattern(dto.painPattern());
             entity.setPainDescription(dto.painDescription());
             entity.setIsActive(dto.isActive());
@@ -186,7 +188,8 @@ public class PainAssessmentService {
         }
 
         return switch (painLevel) {
-            case LEVEL_0, LEVEL_1, LEVEL_2, LEVEL_3 -> Severity.MILD_MINOR;
+            case LEVEL_0 -> Severity.NOTHING;
+            case  LEVEL_1, LEVEL_2, LEVEL_3 -> Severity.MILD_MINOR;
             case LEVEL_4, LEVEL_5, LEVEL_6, LEVEL_7 -> Severity.MODERATE;
             case LEVEL_8, LEVEL_9, LEVEL_10 -> Severity.SEVERE;
         };

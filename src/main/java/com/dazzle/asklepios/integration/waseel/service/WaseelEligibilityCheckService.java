@@ -536,6 +536,7 @@ public class WaseelEligibilityCheckService {
             case "W", "WIDOWED" -> "W";
             case "U", "SINGLE", "UNMARRIED" -> "U";
             case "L", "LEGALY SEPARATED", "LEGALLY SEPARATED" -> "L";
+            case "UNK", "UNKNOWN" -> "UNK";
             default -> "U";
         };
     }
@@ -563,9 +564,9 @@ public class WaseelEligibilityCheckService {
                  "skilled worker",
                  "student",
                  "oil industries",
-                 "unemployed",
-                 "others",
-                 "unknown" -> normalized;
+                 "unemployed" -> normalized;
+            case "others", "other" -> "others";
+            case "unknown" -> "unknown";
             default -> "unknown";
         };
     }

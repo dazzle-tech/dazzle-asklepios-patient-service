@@ -38,6 +38,28 @@ public class EncounterCoverageService {
     private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
 
+    /**
+     * Walk-in preview/prepare often send SELF_PAY as the form default.
+     * If the encounter is already linked to insurance, keep that coverage.
+     */
+    @Transactional(readOnly = true)
+    public PatientInsurance findLinkedInsurance(PatientEncounter encounter) {
+        if (encounter == null
+                || encounter.getCoverageType() != BillingCoverageType.INSURANCE
+                || encounter.getPatientInsuranceId() == null
+                || encounter.getPatient() == null
+                || encounter.getPatient().getId() == null) {
+            return null;
+        }
+
+        return patientInsuranceRepository
+                .findByIdAndPatient_Id(
+                        encounter.getPatientInsuranceId(),
+                        encounter.getPatient().getId()
+                )
+                .orElse(null);
+    }
+
     @Transactional(readOnly = true)
     public EncounterCoverageDTO getEncounterCoverage(Long encounterId) {
         PatientEncounter encounter = getEncounter(encounterId);

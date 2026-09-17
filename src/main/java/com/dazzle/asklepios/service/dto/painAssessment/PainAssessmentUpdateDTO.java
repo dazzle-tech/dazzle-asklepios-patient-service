@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service.dto.painAssessment;
 
+import com.dazzle.asklepios.domain.enumeration.PainAssessmentTypes;
 import com.dazzle.asklepios.domain.enumeration.PainLevel;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.NotNull;
@@ -19,6 +20,9 @@ public record PainAssessmentUpdateDTO(
 
         @NotNull
         PainLevel painLevel,
+
+        @NotNull
+        PainAssessmentTypes painAssessmentType,
 
         String painDescription,
 

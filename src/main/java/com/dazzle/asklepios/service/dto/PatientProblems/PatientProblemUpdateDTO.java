@@ -17,24 +17,19 @@ public record PatientProblemUpdateDTO(
         @NotNull
         Long patientId,
 
-        @NotBlank
         String condition,
 
-        @NotNull
         Date dateOfDiagnosis,
 
-        @NotNull
         String conditionStatus,
 
-        @NotNull
         String type,
 
         Date dateOfResolution,
 
-        @NotNull
         Boolean byPatient,
 
-        String sourceOfInformation
-
+        String sourceOfInformation,
+        @NotNull Boolean patientIsFree
 ) implements Serializable {
 }

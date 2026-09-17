@@ -3,6 +3,7 @@ package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.domain.UrgentCareMedicationOrder;
 import com.dazzle.asklepios.domain.enumeration.MedicationOrderStatus;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.AdministerMedicationOrderDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderUpdateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.commands.UrgentCareMedicationOrderCancelDTO;
@@ -10,6 +11,8 @@ import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.commands.UrgentCareMedicationOrderSubmitDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.persistence.criteria.Predicate;
+import com.dazzle.asklepios.web.rest.vm.uccmedicationorders.PatientUccMedicationOrderGroupVM;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import jakarta.validation.Valid;
@@ -61,12 +64,43 @@ public class UrgentCareMedicationOrderController {
     }
 
     @PostMapping("/urgent-care-medication-orders")
-    public ResponseEntity<UrgentCareMedicationOrder> create(@Valid @RequestBody UrgentCareMedicationOrderCreateDTO dto) {
+    public ResponseEntity<List<UrgentCareMedicationOrder>> create(
+            @Valid @RequestBody UrgentCareMedicationOrderCreateDTO dto
+    ) {
         LOG.debug("[CREATE] request -> {}", dto);
 
-        UrgentCareMedicationOrder result = UrgentCareMedicationOrderService.create(dto);
+        List<UrgentCareMedicationOrder> result =
+                UrgentCareMedicationOrderService.create(dto);
 
-        LOG.debug("[CREATE] response -> id={} status={}", result.getId(), result.getStatus());
+        LOG.debug("[CREATE] response -> created {} medication orders", result.size());
+
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/urgent-care-medication-orders/group/{orderGroupId}/submit")
+    public ResponseEntity<List<UrgentCareMedicationOrder>> submitGroup(
+            @PathVariable("orderGroupId") Long orderGroupId,
+            @Valid @RequestBody UrgentCareMedicationOrderSubmitDTO dto
+    ) {
+        LOG.debug(
+                "[SUBMIT_GROUP] request -> orderGroupId={} isHighAlert={}",
+                orderGroupId,
+                dto.isHighAlert()
+        );
+
+        List<UrgentCareMedicationOrder> result =
+                UrgentCareMedicationOrderService.submitGroup(
+                        orderGroupId,
+                        currentUsername(),
+                        dto.isHighAlert()
+                );
+
+        LOG.debug(
+                "[SUBMIT_GROUP] response -> orderGroupId={} size={}",
+                orderGroupId,
+                result.size()
+        );
+
         return ResponseEntity.ok(result);
     }
 
@@ -103,6 +137,24 @@ public class UrgentCareMedicationOrderController {
         return ResponseEntity.ok(result);
     }
 
+    @GetMapping("/urgent-care-medication-orders/group/{orderGroupId}")
+    public ResponseEntity<List<UrgentCareMedicationOrder>> getByOrderGroupId(
+            @PathVariable("orderGroupId") Long orderGroupId
+    ) {
+        LOG.debug("[GET_BY_GROUP] request -> orderGroupId={}", orderGroupId);
+
+        List<UrgentCareMedicationOrder> result =
+                UrgentCareMedicationOrderService.findByOrderGroupId(orderGroupId);
+
+        LOG.debug(
+                "[GET_BY_GROUP] response -> orderGroupId={} size={}",
+                orderGroupId,
+                result.size()
+        );
+
+        return ResponseEntity.ok(result);
+    }
+
     @GetMapping("/urgent-care-medication-orders")
     public ResponseEntity<Page<UrgentCareMedicationOrder>> getAll(
             @RequestParam(name = "status", required = false) MedicationOrderStatus status,
@@ -134,7 +186,6 @@ public class UrgentCareMedicationOrderController {
             @RequestParam(name = "statusIn", required = false) List<MedicationOrderStatus> statusIn,
             @RequestParam(name = "statusNotIn", required = false) List<MedicationOrderStatus> statusNotIn,
             @RequestParam(name = "route", required = false) String route,
-            @RequestParam(name = "frequency", required = false) String frequency,
             @RequestParam(required = false) LocalDate orderDateFrom,
             @RequestParam(required = false) LocalDate orderDateTo,
             @RequestParam(required = false) List<Long> patientIds,
@@ -142,8 +193,8 @@ public class UrgentCareMedicationOrderController {
             Pageable pageable
     ) {
         LOG.debug(
-                "[FILTER] params -> patientId={} encounterId={} activeIngredientId={} status={} statusIn={} statusNotIn={} route={} frequency={} pageable={}",
-                patientId, encounterId, activeIngredientId, status, statusIn, statusNotIn, route, frequency, pageable
+                "[FILTER] params -> patientId={} encounterId={} activeIngredientId={} status={} statusIn={} statusNotIn={} route={} pageable={}",
+                patientId, encounterId, activeIngredientId, status, statusIn, statusNotIn, route, pageable
         );
 
         if (status != null && statusIn != null && !statusIn.isEmpty()) {
@@ -217,11 +268,6 @@ public class UrgentCareMedicationOrderController {
                 predicates.add(cb.equal(root.get("route"), route));
             }
 
-            if (frequency != null && !frequency.isBlank()) {
-                LOG.debug("[FILTER] apply frequency={}", frequency);
-                predicates.add(cb.equal(root.get("frequency"), frequency));
-            }
-
             LOG.debug("[FILTER] total predicates={}", predicates.size());
             return cb.and(predicates.toArray(new Predicate[0]));
         };
@@ -234,6 +280,100 @@ public class UrgentCareMedicationOrderController {
                 page.getTotalPages());
 
         return ResponseEntity.ok(page);
+    }
+
+    @GetMapping("/urgent-care-medication-orders/filter-grouped")
+    public ResponseEntity<Page<PatientUccMedicationOrderGroupVM>> filterGrouped(
+            @RequestParam(name = "patientId", required = false) Long patientId,
+            @RequestParam(name = "encounterId", required = false) Long encounterId,
+            @RequestParam(name = "activeIngredientId", required = false) Long activeIngredientId,
+            @RequestParam(name = "status", required = false) MedicationOrderStatus status,
+            @RequestParam(name = "statusIn", required = false) List<MedicationOrderStatus> statusIn,
+            @RequestParam(name = "statusNotIn", required = false) List<MedicationOrderStatus> statusNotIn,
+            @RequestParam(name = "route", required = false) String route,
+            @RequestParam(required = false) LocalDate orderDateFrom,
+            @RequestParam(required = false) LocalDate orderDateTo,
+            @RequestParam(required = false) List<Long> patientIds,
+            Pageable pageable
+    ) {
+
+        Specification<UrgentCareMedicationOrder> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            if (patientId != null) {
+                predicates.add(
+                        cb.equal(root.get("patient").get("id"), patientId)
+                );
+            }
+
+            if (patientIds != null && !patientIds.isEmpty()) {
+                predicates.add(
+                        root.get("patient").get("id").in(patientIds)
+                );
+            }
+
+            if (encounterId != null) {
+                predicates.add(
+                        cb.equal(root.get("encounter").get("id"), encounterId)
+                );
+            }
+
+            if (activeIngredientId != null) {
+                predicates.add(
+                        cb.equal(root.get("activeIngredientId"), activeIngredientId)
+                );
+            }
+
+            if (status != null) {
+                predicates.add(
+                        cb.equal(root.get("status"), status)
+                );
+            }
+
+            if (statusIn != null && !statusIn.isEmpty()) {
+                predicates.add(
+                        root.get("status").in(statusIn)
+                );
+            }
+
+            if (statusNotIn != null && !statusNotIn.isEmpty()) {
+                predicates.add(
+                        cb.not(root.get("status").in(statusNotIn))
+                );
+            }
+
+            if (route != null && !route.isBlank()) {
+                predicates.add(
+                        cb.equal(root.get("route"), route)
+                );
+            }
+
+            if (orderDateFrom != null) {
+                predicates.add(
+                        cb.greaterThanOrEqualTo(
+                                root.get("createdDate"),
+                                orderDateFrom.atStartOfDay(ZoneOffset.UTC).toInstant()
+                        )
+                );
+            }
+
+            if (orderDateTo != null) {
+                predicates.add(
+                        cb.lessThan(
+                                root.get("createdDate"),
+                                orderDateTo.plusDays(1)
+                                        .atStartOfDay(ZoneOffset.UTC)
+                                        .toInstant()
+                        )
+                );
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        return ResponseEntity.ok(
+                UrgentCareMedicationOrderService.filterGrouped(spec, pageable)
+        );
     }
 
     @PostMapping("/urgent-care-medication-orders/{id}/submit")
@@ -254,11 +394,11 @@ public class UrgentCareMedicationOrderController {
     }
 
     @PostMapping("/urgent-care-medication-orders/{id}/administer")
-    public ResponseEntity<UrgentCareMedicationOrder> administer(@PathVariable("id") Long id) {
+    public ResponseEntity<UrgentCareMedicationOrder> administer(@PathVariable("id") Long id , @RequestBody AdministerMedicationOrderDTO dto) {
         LOG.debug("[ADMINISTER] request -> id={}", id);
 
         UrgentCareMedicationOrder result =
-                UrgentCareMedicationOrderService.administer(id, currentUsername());
+                UrgentCareMedicationOrderService.administer(id, currentUsername(),dto.actualAdministerTime());
 
         LOG.debug("[ADMINISTER] response -> id={} status={}", result.getId(), result.getStatus());
         return ResponseEntity.ok(result);
@@ -306,6 +446,26 @@ public class UrgentCareMedicationOrderController {
         );
 
         LOG.debug("[CANCEL] response -> id={} status={}", result.getId(), result.getStatus());
+        return ResponseEntity.ok(result);
+    }
+    @PutMapping("/urgent-care-medication-orders/{orderId}/actual-administer-time")
+    public ResponseEntity<UrgentCareMedicationOrder> setActualAdministerTime(
+            @PathVariable Long orderId,
+            @RequestBody Instant actualAdministerTime
+            ) {
+
+        LOG.debug(
+                "REST request to set actual administer time. orderId={} actualAdministerTime={}",
+                orderId,
+                actualAdministerTime
+        );
+
+        UrgentCareMedicationOrder result =
+                UrgentCareMedicationOrderService.setActualAdministerTime(
+                        orderId,
+                        actualAdministerTime
+                );
+
         return ResponseEntity.ok(result);
     }
 }

@@ -60,8 +60,9 @@ public class DefaultServicePricingPreviewService {
     private final BillingPricingService billingPricingService;
     private final InsurancePatientShareCalculator insurancePatientShareCalculator;
     private final EncounterCoverageService encounterCoverageService;
+    private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
 
-    @Transactional
+    @Transactional(readOnly = true)
     public PreviewDefaultServicesPricingResult preview(
             Long encounterId,
             PreviewDefaultServicesPricingRequest request
@@ -74,28 +75,51 @@ public class DefaultServicePricingPreviewService {
                 request,
                 patient
         );
+        BillingCoverageType coverageType = request.coverageType();
         PatientInsurance insurance = resolveInsurance(request);
+        if (coverageType == BillingCoverageType.SELF_PAY) {
+            PatientInsurance linkedInsurance =
+                    encounterCoverageService.findLinkedInsurance(encounter);
+            if (linkedInsurance != null) {
+                LOG.warn(
+                        "[PREVIEW_PRICING] Request sent SELF_PAY but encounter already has insurance. "
+                                + "Using stored coverage. encounterId={} patientInsuranceId={}",
+                        encounterId,
+                        linkedInsurance.getId()
+                );
+                coverageType = BillingCoverageType.INSURANCE;
+                insurance = linkedInsurance;
+            }
+        }
 
-        if (request.coverageType() == BillingCoverageType.INSURANCE
-                && insurance != null) {
-            encounterCoverageService.applyCoverage(
-                    encounter,
-                    BillingCoverageType.INSURANCE,
-                    insurance.getId()
-            );
+        VisitMaxLimitTracker visitMaxLimitTracker =
+                insurancePatientShareCalculator.createVisitMaxLimitTracker(
+                        insurance
+                );
 
+        if (followUpReviewDefaultServicePolicy.shouldSkipDefaultServices(encounter)) {
             LOG.info(
-                    "[PREVIEW_PRICING] Applied insurance coverage encounterId={} patientInsuranceId={} payorId={} payerNphiesId={}",
+                    "[PREVIEW_PRICING] Skipping default-service preview for "
+                            + "follow-up review within {} days. encounterId={} previousEncounterId={}",
+                    FollowUpReviewDefaultServicePolicy.REVIEW_WINDOW_DAYS,
                     encounterId,
-                    insurance.getId(),
-                    insurance.getPayorId(),
-                    insurance.getPayerNphiesId()
+                    encounter.getFollowUpEncounter() == null
+                            ? null
+                            : encounter.getFollowUpEncounter().getId()
             );
-        } else if (request.coverageType() == BillingCoverageType.SELF_PAY) {
-            encounterCoverageService.applyCoverage(
-                    encounter,
-                    BillingCoverageType.SELF_PAY,
-                    null
+
+            return new PreviewDefaultServicesPricingResult(
+                    request.patientId(),
+                    encounterId,
+                    request.facilityId(),
+                    coverageType,
+                    insurance == null ? null : insurance.getId(),
+                    request.currency(),
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    List.of()
             );
         }
 
@@ -136,7 +160,8 @@ public class DefaultServicePricingPreviewService {
                             request.facilityId(),
                             requestedItem,
                             insurance,
-                            service.category()
+                            service.category(),
+                            visitMaxLimitTracker
                     );
 
             itemResults.add(itemResult);
@@ -166,7 +191,7 @@ public class DefaultServicePricingPreviewService {
                 request.patientId(),
                 encounterId,
                 request.facilityId(),
-                request.coverageType(),
+                coverageType,
                 insurance == null ? null : insurance.getId(),
                 request.currency(),
                 totalGross,
@@ -182,24 +207,55 @@ public class DefaultServicePricingPreviewService {
             Long facilityId,
             PrepareDefaultServiceItem requestedItem,
             PatientInsurance insurance,
-            String serviceCategory
+            String serviceCategory,
+            VisitMaxLimitTracker visitMaxLimitTracker
     ) {
-        ResolvedBillingPrice resolvedPrice =
-                billingEngineService.resolvePricing(
-                        previewItem,
-                        facilityId
-                );
-
+        ResolvedBillingPrice resolvedPrice;
         boolean insuranceVisit = insurance != null;
+        boolean eligibilityInForce =
+                insuranceVisit
+                        && insurancePatientShareCalculator.isLatestCoverageInForce(
+                                insurance
+                        );
+        BillingCoverageType pricingCoverage =
+                insuranceVisit && eligibilityInForce
+                        ? BillingCoverageType.INSURANCE
+                        : BillingCoverageType.SELF_PAY;
+
+        resolvedPrice = billingEngineService.resolvePricing(
+                previewItem,
+                facilityId,
+                pricingCoverage
+        );
+
         boolean coveredByInsurance =
-                !insuranceVisit || resolvedPrice.resolvedFromPriceList();
+                insuranceVisit
+                        && eligibilityInForce
+                        && resolvedPrice.resolvedFromPriceList();
         boolean requiresCashConfirmation = insuranceVisit && !coveredByInsurance;
+        String notCoveredReason = null;
 
         if (requiresCashConfirmation) {
-            resolvedPrice = billingEngineService.resolvePricing(
-                    previewItem,
-                    facilityId,
-                    BillingCoverageType.SELF_PAY
+            notCoveredReason = eligibilityInForce
+                    ? InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST
+                    : InsurancePriceListCoverageService.ELIGIBILITY_NOT_IN_FORCE;
+
+            if (pricingCoverage != BillingCoverageType.SELF_PAY) {
+                resolvedPrice = billingEngineService.resolvePricing(
+                        previewItem,
+                        facilityId,
+                        BillingCoverageType.SELF_PAY
+                );
+            }
+
+            LOG.info(
+                    "[PREVIEW_PRICING] Insurance did not cover service. "
+                            + "Using self-pay price list then setup. "
+                            + "serviceId={} reason={} priceSource={} unitPrice={}",
+                    requestedItem.serviceId(),
+                    notCoveredReason,
+                    resolvedPrice.priceSource(),
+                    resolvedPrice.unitPrice()
             );
         }
 
@@ -257,7 +313,8 @@ public class DefaultServicePricingPreviewService {
                     insurancePatientShareCalculator.calculateSplit(
                             insurance,
                             previewItem,
-                            pricing.netAmount()
+                            pricing.netAmount(),
+                            visitMaxLimitTracker
                     );
             patientShareAmount = split.patientShare();
             insuranceShareAmount = split.insuranceShare();
@@ -281,9 +338,7 @@ public class DefaultServicePricingPreviewService {
                 insuranceVisit,
                 coveredByInsurance,
                 requiresCashConfirmation,
-                requiresCashConfirmation
-                        ? InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST
-                        : null,
+                notCoveredReason,
                 requiresCashConfirmation ? resolvedPrice.unitPrice() : null
         );
     }

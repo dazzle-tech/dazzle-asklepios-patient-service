@@ -11,12 +11,13 @@ import java.util.Date;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record PatientProblemCreateDTO(
         @NotNull Long patientId,
-        @NotBlank String condition,
-        @NotNull Date dateOfDiagnosis,
-        @NotNull String conditionStatus,
-        @NotNull String type,
+         String condition,
+        Date dateOfDiagnosis,
+        String conditionStatus,
+         String type,
         Date dateOfResolution,
-        @NotNull Boolean byPatient,
-        String sourceOfInformation
+         Boolean byPatient,
+        String sourceOfInformation,
+        @NotNull Boolean patientIsFree
 ) implements Serializable {
 }

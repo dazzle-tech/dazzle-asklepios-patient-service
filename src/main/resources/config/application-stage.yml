@@ -34,6 +34,16 @@ waseel:
 
 application:
   asklepios-application-url: http://asklepios.nereuscloud.de//#
+
+  pos:
+    nami:
+      base-url: https://mw-uat.namipay.com.sa
+      client-id: ${NAMI_CLIENT_ID:alfuttaim}
+      client-secret: ${NAMI_CLIENT_SECRET:pos__123}
+      purchase-endpoint: /api/payments/performTransaction
+      refund-endpoint: /api/payments/performTransaction
+      reversal-endpoint: /api/payments/performTransaction
+      register-endpoint: /api/terminals/register
 appointment:
   template-interval-ended:
     fixed-delay: 60000

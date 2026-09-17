@@ -1744,6 +1744,10 @@ public class BillingReservationService {
             BigDecimal patientAmount,
             BigDecimal reservedAmount
     ) {
+        if (item.getPaymentStatus() == PaymentStatus.CANCELLED) {
+            return PaymentStatus.CANCELLED;
+        }
+
         PaymentStatus computed;
 
         if (patientAmount.signum() == 0) {

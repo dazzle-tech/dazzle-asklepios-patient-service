@@ -19,6 +19,8 @@ public interface DiagnosticOrderRepository extends JpaRepository<DiagnosticOrder
 
     Page<DiagnosticOrder> findByEncounterId(Long encounterId, Pageable pageable);
 
+    List<DiagnosticOrder> findByEncounterIdAndStatusNot(Long encounterId, DiagnosticStatus status);
+
     Page<DiagnosticOrder> findByPatient_Id(Long patientId, Pageable pageable);
 
     Page<DiagnosticOrder> findByPatient_IdAndEncounterId(Long patientId, Long encounterId, Pageable pageable);

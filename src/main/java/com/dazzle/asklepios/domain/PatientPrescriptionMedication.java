@@ -45,9 +45,11 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
     @Column(name = "medications_id")
     private Long medicationsId;
 
-    @NotNull(message = "Active Ingredient Can not be null")
-    @Column(name ="active_ingredient_id" ,nullable = false)
-    private long activeIngredientId;
+    @Column(name = "other_medication_name", length = 255)
+    private String otherMedicationName;
+
+    @Column(name = "active_ingredient_id", nullable = false)
+    private Long activeIngredientId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "instructions_type", nullable = false, length = 50)

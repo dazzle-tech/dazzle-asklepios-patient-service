@@ -42,7 +42,9 @@ import com.dazzle.asklepios.service.dto.appointment.AppointmentNoShowDTO;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentQuickAppointmentDTO;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentRescheduleDTO;
 import com.dazzle.asklepios.service.dto.appointment.AppointmentSearchFilterMultiDepartmentDTO;
+import com.dazzle.asklepios.service.dto.appointment.AppointmentTransferMappingDTO;
 import com.dazzle.asklepios.service.dto.appointment.BulkAppointmentRescheduleDTO;
+import com.dazzle.asklepios.service.dto.appointment.BulkAppointmentTransferDTO;
 import com.dazzle.asklepios.service.dto.appointment.DiagnosticTestAppointmentRescheduleDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestCreateDTO;
@@ -59,7 +61,9 @@ import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentLogResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentQuickAppointmentResponseVM;
+import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentTransferVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.BulkAppointmentRescheduleResponseVM;
+import com.dazzle.asklepios.web.rest.vm.appointment.BulkAppointmentTransferResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.BulkReschedulePreviewVM;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
@@ -80,9 +84,15 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -649,6 +659,22 @@ public class AppointmentService {
     }
 
     @Transactional
+    public Appointment undoConfirm(Long id) {
+        Appointment appointment = getAppointment(id);
+
+        validateUndoConfirmable(appointment);
+
+        if (appointment.getPatient() == null) {
+            throw new BadRequestAlertException("patientrequired", ENTITY_NAME, "Cannot undo confirm appointment without patient");
+        }
+        appointment.setConfirmedAt(null);
+        appointment.setStatus(AppointmentStatus.BOOKED);
+        Appointment savedAppointment = appointmentRepository.save(appointment);
+
+        return savedAppointment;
+    }
+
+    @Transactional
     public Appointment checkIn(Long id) {
         Appointment appointment = getAppointment(id);
 
@@ -1136,6 +1162,592 @@ public class AppointmentService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public List<AppointmentTransferVM> getTransferSourceAppointments(LocalDate startDate, LocalDate endDate) {
+
+        validateDates(startDate, endDate);
+
+        Instant start = toStartOfDay(startDate);
+        Instant end = toStartOfDay(endDate.plusDays(1));
+
+        List<Appointment> appointments =
+                appointmentRepository
+                        .findByStartDatetimeGreaterThanEqualAndStartDatetimeLessThanAndStatusInOrderByStartDatetimeAsc(
+                                start,
+                                end,
+                                List.of(
+                                        AppointmentStatus.BOOKED,
+                                        AppointmentStatus.CONFIRMED
+                                )
+                        );
+
+        return appointments.stream()
+                .filter(appointment -> appointment.getPatient() != null)
+                .filter(appointment -> appointment.getDepartmentId() != null)
+                .map(this::toAppointmentTransferVM)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AppointmentTransferVM> getTransferTargetAppointments(Long departmentId, LocalDate startDate, LocalDate endDate) {
+        validateDates(startDate, endDate);
+
+        if (departmentId == null) {
+            throw new BadRequestAlertException(
+                    "Department is required",
+                    "appointment",
+                    "department.required"
+            );
+        }
+
+        Instant start = toStartOfDay(startDate);
+        Instant end = toStartOfDay(endDate.plusDays(1));
+
+        List<Appointment> appointments =
+                appointmentRepository
+                        .findByStartDatetimeGreaterThanEqualAndStartDatetimeLessThanAndStatusAndBookingModeAndDepartmentIdAndPatientIsNullOrderByStartDatetimeAsc(
+                                start,
+                                end,
+                                AppointmentStatus.NEW,
+                                BookingMode.SLOT,
+                                departmentId
+                        );
+
+        return appointments.stream()
+                .map(this::toAppointmentTransferVM)
+                .toList();
+    }
+
+    @Transactional
+    public BulkAppointmentTransferResponseVM bulkAppointmentTransfer(BulkAppointmentTransferDTO dto) {
+
+        LOG.info("[BULK_TRANSFER] Starting bulk appointment transfer, count={}", dto.transfers().size());
+
+        if (dto.transfers().isEmpty()) {
+            throw new BadRequestAlertException(
+                    "At least one appointment transfer is required",
+                    ENTITY_NAME,
+                    "emptytransfers"
+            );
+        }
+
+        /*
+         * ============================================================
+         * STEP 1
+         *
+         * Validate duplicate source/target IDs.
+         *
+         * One source appointment cannot be transferred twice.
+         * One target appointment cannot receive two patients.
+         * ============================================================
+         */
+
+        Set<Long> sourceIds = new HashSet<>();
+        Set<Long> targetIds = new HashSet<>();
+
+        for (AppointmentTransferMappingDTO mapping : dto.transfers()) {
+
+            if (!sourceIds.add(mapping.oldAppointmentId())) {
+                throw new BadRequestAlertException(
+                        "Source appointment "
+                                + mapping.oldAppointmentId()
+                                + " appears more than once",
+                        ENTITY_NAME,
+                        "duplicatesource"
+                );
+            }
+
+            if (!targetIds.add(mapping.newAppointmentId())) {
+                throw new BadRequestAlertException(
+                        "Target appointment "
+                                + mapping.newAppointmentId()
+                                + " appears more than once",
+                        ENTITY_NAME,
+                        "duplicatetarget"
+                );
+            }
+
+            if (mapping.oldAppointmentId()
+                    .equals(mapping.newAppointmentId())) {
+
+                throw new BadRequestAlertException(
+                        "Old and new appointment cannot be the same",
+                        ENTITY_NAME,
+                        "sameappointment"
+                );
+            }
+        }
+
+        /*
+         * ============================================================
+         * STEP 2
+         *
+         * Load ALL appointments before modifying anything.
+         *
+         * This gives us all-or-nothing behavior.
+         * ============================================================
+         */
+
+        Map<Long, Appointment> appointments =
+                appointmentRepository
+                        .findAllById(
+                                Stream.concat(
+                                        sourceIds.stream(),
+                                        targetIds.stream()
+                                ).collect(Collectors.toSet())
+                        )
+                        .stream()
+                        .collect(Collectors.toMap(
+                                Appointment::getId,
+                                Function.identity()
+                        ));
+
+        /*
+         * ============================================================
+         * STEP 3
+         *
+         * Make sure all IDs exist.
+         * ============================================================
+         */
+
+        for (AppointmentTransferMappingDTO mapping : dto.transfers()) {
+
+            if (!appointments.containsKey(mapping.oldAppointmentId())) {
+
+                throw new NotFoundAlertException(
+                        "Source appointment not found with id "
+                                + mapping.oldAppointmentId(),
+                        ENTITY_NAME,
+                        "appointmentnotfound"
+                );
+            }
+
+            if (!appointments.containsKey(mapping.newAppointmentId())) {
+
+                throw new NotFoundAlertException(
+                        "Target appointment not found with id "
+                                + mapping.newAppointmentId(),
+                        ENTITY_NAME,
+                        "appointmentnotfound"
+                );
+            }
+        }
+
+        /*
+         * ============================================================
+         * STEP 4
+         *
+         * Validate EVERY mapping BEFORE changing anything.
+         *
+         * This is important.
+         *
+         * If mapping #5 is invalid, mappings #1-#4 must NOT already
+         * have been transferred.
+         * ============================================================
+         */
+
+        for (AppointmentTransferMappingDTO mapping : dto.transfers()) {
+
+            Appointment oldAppointment = appointments.get(mapping.oldAppointmentId());
+
+            Appointment newAppointment = appointments.get(mapping.newAppointmentId());
+
+            validateAppointmentTransfer(oldAppointment, newAppointment);
+        }
+
+        /*
+         * ============================================================
+         * STEP 5
+         *
+         * Everything is valid.
+         *
+         * Now perform the transfers.
+         * ============================================================
+         */
+
+        String username = currentUsername();
+
+        List<Long> transferredOldIds = new ArrayList<>();
+
+        List<Long> transferredNewIds = new ArrayList<>();
+
+        for (AppointmentTransferMappingDTO mapping : dto.transfers()) {
+
+            Appointment oldAppointment = appointments.get(mapping.oldAppointmentId());
+
+            Appointment newAppointment = appointments.get(mapping.newAppointmentId());
+
+            executeAppointmentTransfer(oldAppointment, newAppointment, username);
+
+            transferredOldIds.add(oldAppointment.getId());
+
+            transferredNewIds.add(newAppointment.getId());
+        }
+
+        LOG.info("[BULK_TRANSFER] Successfully transferred {} appointments", transferredOldIds.size());
+
+        return new BulkAppointmentTransferResponseVM(
+                true,
+                "Appointments transferred successfully",
+                transferredOldIds.size(),
+                transferredOldIds,
+                transferredNewIds
+        );
+    }
+
+    private void validateDates(LocalDate startDate, LocalDate endDate) {
+        if (startDate == null || endDate == null) {
+            throw new BadRequestAlertException(
+                    "Start date and end date are required",
+                    "appointment",
+                    "date.required"
+            );
+        }
+
+        if (startDate.isAfter(endDate)) {
+            throw new BadRequestAlertException(
+                    "Start date cannot be after end date",
+                    "appointment",
+                    "date.invalid"
+            );
+        }
+    }
+
+    private Instant toStartOfDay(LocalDate date) {
+        return date
+                .atStartOfDay(ZoneId.systemDefault())
+                .toInstant();
+    }
+
+    private AppointmentTransferVM toAppointmentTransferVM(
+            Appointment appointment
+    ) {
+        String patientName = null;
+        String medicalRecordNumber = null;
+        Long patientId = null;
+
+        if (appointment.getPatient() != null) {
+            patientId = appointment.getPatient().getId();
+
+            medicalRecordNumber =
+                    appointment.getPatient().getMedicalRecordNumber();
+
+            patientName = appointment.getPatient().getFirstName() + " " + appointment.getPatient().getLastName();
+        }
+
+        String practitionerName = null;
+
+        /*
+         * Use your existing practitioner lookup/helper here.
+         *
+         * For example, if practitioner information is already available
+         * through the appointment/entity relationship, use it directly.
+         */
+
+        String departmentName = null;
+
+        /*
+         * Same here: resolve department name using your existing
+         * department helper/repository if needed.
+         */
+
+        return new AppointmentTransferVM(
+                appointment.getId(),
+
+                patientId,
+                patientName,
+                medicalRecordNumber,
+
+                appointment.getDepartmentId(),
+                departmentName,
+
+                appointment.getDefaultPractitionerId(),
+                practitionerName,
+
+                appointment.getResourceType(),
+                appointment.getResourceId(),
+
+                appointment.getStartDatetime(),
+                appointment.getEndDatetime(),
+
+                appointment.getStatus(),
+                appointment.getBookingMode()
+        );
+    }
+
+
+    private void executeAppointmentTransfer(Appointment oldAppointment, Appointment newAppointment, String username) {
+
+        LOG.debug("[APPOINTMENT_TRANSFER] oldAppointmentId={}, newAppointmentId={}", oldAppointment.getId(), newAppointment.getId());
+
+        /*
+         * ============================================================
+         * KEEP TARGET CONFIGURATION
+         *
+         * DO NOT copy these from old appointment:
+         *
+         * - facility
+         * - department
+         * - resourceType
+         * - resourceId
+         * - practitioner
+         * - startDatetime
+         * - endDatetime
+         * - bookingMode
+         *
+         * The user selected this exact target appointment,
+         * therefore its configuration must remain unchanged.
+         * ============================================================
+         */
+
+        /*
+         * Move patient.
+         */
+        newAppointment.setPatient(oldAppointment.getPatient());
+
+        /*
+         * Move patient-related appointment information.
+         */
+        newAppointment.setReason(oldAppointment.getReason());
+
+        newAppointment.setNote(oldAppointment.getNote());
+
+        newAppointment.setPriority(oldAppointment.getPriority());
+
+        newAppointment.setOriginType(oldAppointment.getOriginType());
+
+        newAppointment.setOriginName(oldAppointment.getOriginName());
+
+        newAppointment.setService(oldAppointment.getService());
+
+        newAppointment.setFollowUpEncounter(oldAppointment.getFollowUpEncounter());
+
+        /*
+         * Reset target state.
+         */
+        newAppointment.setCancelReason(null);
+        newAppointment.setCancelledBy(null);
+        newAppointment.setNoShowReason(null);
+        newAppointment.setConfirmedAt(null);
+        newAppointment.setCheckedInAt(null);
+
+        /*
+         * Target is now booked.
+         */
+        newAppointment.setStatus(AppointmentStatus.BOOKED);
+
+        /*
+         * ============================================================
+         * OLD APPOINTMENT
+         * ============================================================
+         */
+
+        oldAppointment.setStatus(AppointmentStatus.RESCHEDULED);
+
+        oldAppointment.setPatient(null);
+        oldAppointment.setReason(null);
+        oldAppointment.setNote(null);
+        oldAppointment.setService(null);
+        oldAppointment.setPriority(EncounterPriority.NORMAL);
+        oldAppointment.setOriginName(null);
+        oldAppointment.setOriginType(null);
+        oldAppointment.setFollowUpEncounter(null);
+
+        /*
+         * Save.
+         */
+        appointmentRepository.save(oldAppointment);
+        appointmentRepository.save(newAppointment);
+
+        /*
+         * ============================================================
+         * RESCHEDULE HISTORY
+         * ============================================================
+         */
+
+        AppointmentReschedule reschedule = new AppointmentReschedule();
+
+        reschedule.setOldAppointmentId(oldAppointment.getId());
+
+        reschedule.setNewAppointmentId(newAppointment.getId());
+
+        reschedule.setRescheduleReason("Appointment transferred by user");
+
+        reschedule.setCreatedBy(username);
+
+        appointmentRescheduleRepository.save(reschedule);
+
+        /*
+         * ============================================================
+         * NOTIFICATION
+         * ============================================================
+         */
+
+        notifyAppointmentEvent(newAppointment, NotificationCode.APPOINTMENT_RESCHEDULED, Map.of(
+                        "old_appointment_id",
+                        oldAppointment.getId(),
+
+                        "new_appointment_id",
+                        newAppointment.getId(),
+
+                        "old_appointment_date",
+                        oldAppointment.getStartDatetime() != null
+                                ? formatter.format(
+                                oldAppointment.getStartDatetime()
+                        )
+                                : "",
+
+                        "old_appointment_end_date",
+                        oldAppointment.getEndDatetime() != null
+                                ? formatter.format(
+                                oldAppointment.getEndDatetime()
+                        )
+                                : "",
+
+                        "new_appointment_Date",
+                        newAppointment.getStartDatetime() != null
+                                ? formatter.format(
+                                newAppointment.getStartDatetime()
+                        )
+                                : "",
+
+                        "new_appointment_end_date",
+                        newAppointment.getEndDatetime() != null
+                                ? formatter.format(
+                                newAppointment.getEndDatetime()
+                        )
+                                : "",
+
+                        "reschedule_reason",
+                        "Appointment transferred by user"
+                )
+        );
+    }
+
+    private void validateAppointmentTransfer(Appointment oldAppointment, Appointment newAppointment) {
+
+        /*
+         * ============================================================
+         * SOURCE
+         * ============================================================
+         */
+
+        if (oldAppointment.getStatus() != AppointmentStatus.BOOKED
+                && oldAppointment.getStatus() != AppointmentStatus.CONFIRMED) {
+
+            throw new BadRequestAlertException(
+                    "Source appointment "
+                            + oldAppointment.getId()
+                            + " must be BOOKED or CONFIRMED",
+                    ENTITY_NAME,
+                    "invalidsourcestatus"
+            );
+        }
+
+        if (oldAppointment.getPatient() == null) {
+
+            throw new BadRequestAlertException(
+                    "Source appointment "
+                            + oldAppointment.getId()
+                            + " does not have a patient",
+                    ENTITY_NAME,
+                    "patientrequired"
+            );
+        }
+
+        if (oldAppointment.getDepartmentId() == null) {
+
+            throw new BadRequestAlertException(
+                    "Source appointment "
+                            + oldAppointment.getId()
+                            + " does not have a department",
+                    ENTITY_NAME,
+                    "departmentrequired"
+            );
+        }
+
+        /*
+         * ============================================================
+         * TARGET
+         * ============================================================
+         */
+
+        if (newAppointment.getStatus() != AppointmentStatus.NEW) {
+
+            throw new BadRequestAlertException(
+                    "Target appointment "
+                            + newAppointment.getId()
+                            + " is not available",
+                    ENTITY_NAME,
+                    "targetnotavailable"
+            );
+        }
+
+        if (newAppointment.getBookingMode() != BookingMode.SLOT) {
+
+            throw new BadRequestAlertException(
+                    "Target appointment "
+                            + newAppointment.getId()
+                            + " must be a SLOT appointment",
+                    ENTITY_NAME,
+                    "invalidtargetbookingmode"
+            );
+        }
+
+        /*
+         * ============================================================
+         * SAME DEPARTMENT
+         *
+         * This is the ONLY configuration matching rule.
+         *
+         * We intentionally DO NOT check:
+         *
+         * practitioner
+         * room
+         * resource
+         * resourceType
+         * time
+         * service
+         *
+         * because those belong to the target appointment selected
+         * by the user.
+         * ============================================================
+         */
+
+        if (!Objects.equals(
+                oldAppointment.getDepartmentId(),
+                newAppointment.getDepartmentId()
+        )) {
+
+            throw new BadRequestAlertException(
+                    "Source appointment "
+                            + oldAppointment.getId()
+                            + " and target appointment "
+                            + newAppointment.getId()
+                            + " must belong to the same department",
+                    ENTITY_NAME,
+                    "departmentmismatch"
+            );
+        }
+
+        /*
+         * ============================================================
+         * TARGET MUST BE EMPTY
+         * ============================================================
+         */
+
+        if (newAppointment.getPatient() != null) {
+
+            throw new BadRequestAlertException(
+                    "Target appointment "
+                            + newAppointment.getId()
+                            + " already has a patient",
+                    ENTITY_NAME,
+                    "targetoccupied"
+            );
+        }
+    }
+
     private void validateCreateAppointment(AppointmentIntegrationCreateDTO dto) {
 
         if (dto.startDatetime().isAfter(dto.endDatetime())) {
@@ -1551,7 +2163,7 @@ public class AppointmentService {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "IN_SERVICE appointment cannot be cancelled");
         } else if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Completed appointment cannot be cancelled");
-        }else if (appointment.getStatus() == AppointmentStatus.NO_SHOW) {
+        } else if (appointment.getStatus() == AppointmentStatus.NO_SHOW) {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "no-show appointment cannot be cancelled");
         }
 
@@ -1567,7 +2179,7 @@ public class AppointmentService {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "IN_SERVICE appointment cannot be No-show");
         } else if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Completed appointment cannot be No-show");
-        }else if (appointment.getStatus() == AppointmentStatus.NO_SHOW) {
+        } else if (appointment.getStatus() == AppointmentStatus.NO_SHOW) {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "appointment already no-show");
         }
     }
@@ -1575,6 +2187,12 @@ public class AppointmentService {
     private void validateConfirmable(Appointment appointment) {
         if (appointment.getStatus() != AppointmentStatus.BOOKED) {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Only booked appointments can be confirmed");
+        }
+    }
+
+    private void validateUndoConfirmable(Appointment appointment) {
+        if (appointment.getStatus() != AppointmentStatus.CONFIRMED) {
+            throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Only confirmed appointments can be booked when undo confirm");
         }
     }
 

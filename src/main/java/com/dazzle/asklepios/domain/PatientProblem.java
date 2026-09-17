@@ -50,19 +50,16 @@ public class PatientProblem extends AbstractAuditingEntity<Long>
     @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
-    @NotBlank
-    @Column(name = "condition", nullable = false)
+    @Column(name = "condition")
     private String condition;
 
-    @NotNull
-    @Column(name = "date_of_diagnosis", nullable = false)
+    @Column(name = "date_of_diagnosis")
     private Date dateOfDiagnosis;
 
-    @Column(name = "condition_status", nullable = false)
+    @Column(name = "condition_status")
     private String conditionStatus;
 
-    @NotNull
-    @Column(name = "type", nullable = false)
+    @Column(name = "type")
     private String type;
 
     @Column(name = "date_of_resolution")
@@ -88,4 +85,7 @@ public class PatientProblem extends AbstractAuditingEntity<Long>
 
     @Column(name = "cancellation_reason", columnDefinition = "text")
     private String cancellationReason;
+    @Column(name = "patient_is_free", nullable = false)
+    @Builder.Default
+    private Boolean patientIsFree = Boolean.FALSE;
 }

@@ -9,8 +9,10 @@ import com.dazzle.asklepios.domain.PatientInsuranceCoverage;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.InsuranceCoverageType;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.repository.PatientInsuranceCoverageRepository;
+import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.InsuranceBenefitRule;
 import com.dazzle.asklepios.service.dto.InsuranceSplit;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -36,6 +38,7 @@ public class InsurancePatientShareCalculator {
     private final InsuranceBenefitRuleService insuranceBenefitRuleService;
     private final InsuranceCalculationService insuranceCalculationService;
     private final PatientInsuranceCoverageRepository patientInsuranceCoverageRepository;
+    private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final ServiceClient serviceClient;
     private final PayorClient payorClient;
     private final CoverageContractShareService coverageContractShareService;
@@ -69,7 +72,28 @@ public class InsurancePatientShareCalculator {
                 item,
                 serviceCategory,
                 serviceSource,
-                netAmount
+                netAmount,
+                null
+        );
+    }
+
+    public InsuranceSplit calculateSplit(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            BigDecimal netAmount,
+            VisitMaxLimitTracker visitMaxLimitTracker
+    ) {
+        String serviceCategory = resolveServiceCategory(item);
+        ServiceSource serviceSource =
+                item == null ? null : item.getServiceSource();
+
+        return calculateSplit(
+                insurance,
+                item,
+                serviceCategory,
+                serviceSource,
+                netAmount,
+                visitMaxLimitTracker
         );
     }
 
@@ -79,6 +103,24 @@ public class InsurancePatientShareCalculator {
             String serviceCategory,
             ServiceSource serviceSource,
             BigDecimal netAmount
+    ) {
+        return calculateSplit(
+                insurance,
+                item,
+                serviceCategory,
+                serviceSource,
+                netAmount,
+                null
+        );
+    }
+
+    public InsuranceSplit calculateSplit(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            String serviceCategory,
+            ServiceSource serviceSource,
+            BigDecimal netAmount,
+            VisitMaxLimitTracker visitMaxLimitTracker
     ) {
         BigDecimal normalizedNet = money(netAmount);
 
@@ -91,6 +133,79 @@ public class InsurancePatientShareCalculator {
             return cashSplit(normalizedNet);
         }
 
+        if (!insuranceBenefitRuleService.isLatestCoverageInForce(insurance)) {
+            LOG.warn(
+                    "[INSURANCE] Coverage is not in-force; billing as cash "
+                            + "patientInsuranceId={} net={}",
+                    insurance.getId(),
+                    normalizedNet
+            );
+            return cashSplit(normalizedNet);
+        }
+
+        InsuranceSplit split = resolveCoverageSplit(
+                insurance,
+                item,
+                serviceCategory,
+                serviceSource,
+                normalizedNet
+        );
+
+        VisitMaxLimitTracker tracker =
+                visitMaxLimitTracker != null
+                        ? visitMaxLimitTracker
+                        : trackerForEncounter(insurance, item);
+
+        BigDecimal billedNet = billedNetOf(split, normalizedNet);
+        InsuranceSplit capped = tracker.consume(split, billedNet);
+        if (tracker.hasLimit()
+                && capped.patientShare().compareTo(split.patientShare()) != 0) {
+            LOG.info(
+                    "[INSURANCE] Visit max-limit applied encounterId={} "
+                            + "patientInsuranceId={} requestedPatient={} "
+                            + "cappedPatient={} remainingVisitMax={}",
+                    item == null ? null : item.getEncounterId(),
+                    insurance.getId(),
+                    split.patientShare(),
+                    capped.patientShare(),
+                    tracker.remaining()
+            );
+        }
+
+        return capped;
+    }
+
+    public VisitMaxLimitTracker createVisitMaxLimitTracker(
+            PatientInsurance insurance
+    ) {
+        return createVisitMaxLimitTracker(insurance, BigDecimal.ZERO);
+    }
+
+    public VisitMaxLimitTracker createVisitMaxLimitTracker(
+            PatientInsurance insurance,
+            BigDecimal alreadyConsumedPatientShare
+    ) {
+        return VisitMaxLimitTracker.withConsumed(
+                resolveVisitMaxLimit(insurance),
+                alreadyConsumedPatientShare
+        );
+    }
+
+    public boolean isLatestCoverageInForce(PatientInsurance insurance) {
+        return insuranceBenefitRuleService.isLatestCoverageInForce(insurance);
+    }
+
+    private InsuranceSplit cashSplit(BigDecimal normalizedNet) {
+        return new InsuranceSplit(normalizedNet, BigDecimal.ZERO);
+    }
+
+    private InsuranceSplit resolveCoverageSplit(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            String serviceCategory,
+            ServiceSource serviceSource,
+            BigDecimal normalizedNet
+    ) {
         InsuranceSplit manualOverride =
                 resolveManualCoverageOverride(
                         insurance,
@@ -145,8 +260,17 @@ public class InsurancePatientShareCalculator {
         );
     }
 
-    private InsuranceSplit cashSplit(BigDecimal normalizedNet) {
-        return new InsuranceSplit(normalizedNet, BigDecimal.ZERO);
+    private BigDecimal billedNetOf(InsuranceSplit split, BigDecimal fallbackNet) {
+        if (split == null) {
+            return fallbackNet;
+        }
+
+        BigDecimal billedNet = money(split.patientShare().add(split.insuranceShare()));
+        if (billedNet.signum() <= 0) {
+            return fallbackNet;
+        }
+
+        return billedNet;
     }
 
     public InsuranceBenefitRule resolveApplicableRule(
@@ -266,40 +390,120 @@ public class InsurancePatientShareCalculator {
                 rule.maximumBenefit()
         );
 
+        InsuranceBenefitRule ruleForService =
+                visitLevelMaxEqualsPerServiceCap(insurance, rule)
+                        ? withoutPerServiceCopayCap(rule)
+                        : rule;
+
         return insuranceCalculationService.calculateFromBenefitRule(
                 normalizedNet,
-                rule,
-                resolvePolicyMaximumLimit(insurance, rule)
+                ruleForService,
+                null
         );
     }
 
-    private BigDecimal resolvePolicyMaximumLimit(
+    private VisitMaxLimitTracker trackerForEncounter(
             PatientInsurance insurance,
-            InsuranceBenefitRule rule
+            PatientServiceAndProduct item
     ) {
+        BigDecimal visitMax = resolveVisitMaxLimit(insurance);
+        if (visitMax == null) {
+            return VisitMaxLimitTracker.unbounded();
+        }
+
+        Long encounterId = item == null ? null : item.getEncounterId();
+        Long excludeItemId = item == null ? null : item.getId();
+        BigDecimal consumed =
+                consumedVisitPatientShare(
+                        insurance,
+                        encounterId,
+                        excludeItemId
+                );
+
+        return VisitMaxLimitTracker.withConsumed(visitMax, consumed);
+    }
+
+    /**
+     * CCHI / insurance maxLimit is a visit pool, not a per-service cap.
+     */
+    private BigDecimal resolveVisitMaxLimit(PatientInsurance insurance) {
         if (insurance == null) {
             return null;
         }
 
-        BigDecimal maxLimit = insurance.getMaxLimit();
-        if (maxLimit == null || maxLimit.signum() <= 0) {
-            return null;
+        return firstPositive(insurance.getMaxLimit());
+    }
+
+    private boolean visitLevelMaxEqualsPerServiceCap(
+            PatientInsurance insurance,
+            InsuranceBenefitRule rule
+    ) {
+        BigDecimal visitMax = resolveVisitMaxLimit(insurance);
+        if (visitMax == null
+                || rule == null
+                || rule.patientMaximumCopayment() == null) {
+            return false;
         }
 
-        BigDecimal copayCap = rule != null && rule.patientMaximumCopayment() != null
-                ? rule.patientMaximumCopayment()
-                : firstPositive(insurance.getDefaultMaximumCopayment());
+        return visitMax.compareTo(rule.patientMaximumCopayment()) == 0;
+    }
 
-        /*
-         * CCHI maxLimit is the patient copay cap, not an insurance annual cap.
-         * Keep it as an insurance-side policy limit only when it is strictly
-         * larger than the patient copay maximum.
-         */
-        if (copayCap != null && maxLimit.compareTo(copayCap) <= 0) {
-            return null;
+    private InsuranceBenefitRule withoutPerServiceCopayCap(
+            InsuranceBenefitRule rule
+    ) {
+        return new InsuranceBenefitRule(
+                rule.id(),
+                rule.benefitCategory(),
+                rule.itemName(),
+                rule.itemCode(),
+                rule.networkType(),
+                rule.providerType(),
+                rule.term(),
+                rule.unit(),
+                rule.currency(),
+                rule.maximumBenefit(),
+                rule.approvalLimit(),
+                rule.patientCopaymentPercentage(),
+                null,
+                rule.globalDefault(),
+                rule.exceptionsJson()
+        );
+    }
+
+    private BigDecimal consumedVisitPatientShare(
+            PatientInsurance insurance,
+            Long encounterId,
+            Long excludeItemId
+    ) {
+        if (insurance == null
+                || insurance.getId() == null
+                || encounterId == null) {
+            return BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
         }
 
-        return maxLimit;
+        BigDecimal consumed = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        for (PatientServiceAndProduct existing :
+                patientServiceAndProductRepository.findByEncounterId(encounterId)) {
+            if (existing == null
+                    || existing.getId() == null
+                    || existing.getId().equals(excludeItemId)) {
+                continue;
+            }
+
+            if (!insurance.getId().equals(existing.getPatientInsuranceId())) {
+                continue;
+            }
+
+            if (Boolean.TRUE.equals(existing.getIsExempted())
+                    || existing.isUncoveredCashItem()
+                    || existing.getPaymentStatus() == PaymentStatus.CANCELLED) {
+                continue;
+            }
+
+            consumed = consumed.add(money(existing.getPatientShareAmount()));
+        }
+
+        return consumed;
     }
 
     private String resolveServiceCategory(PatientServiceAndProduct item) {

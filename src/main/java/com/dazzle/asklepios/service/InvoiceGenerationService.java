@@ -36,6 +36,7 @@ import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.BillableVisitResponse;
 import com.dazzle.asklepios.service.dto.billing.BillingEligibilitySnapshotResponse;
 import com.dazzle.asklepios.service.dto.billing.EncounterBillingSummary;
+import com.dazzle.asklepios.service.dto.billing.EncounterHasInvoiceResponse;
 import com.dazzle.asklepios.service.dto.billing.EncounterInvoiceDetailsResponse;
 import com.dazzle.asklepios.service.dto.billing.FinancialCloseRequest;
 import com.dazzle.asklepios.service.dto.billing.FinancialCloseResult;
@@ -138,6 +139,19 @@ public class InvoiceGenerationService {
                 .map(this::mapBillableVisit)
                 .filter(BillableVisitResponse::eligibleForBilling)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public EncounterHasInvoiceResponse hasInvoice(Long encounterId) {
+        requireEncounter(encounterId);
+
+        boolean hasInvoice =
+                financialDocumentRepository.existsByEncounterIdAndDocumentType(
+                        encounterId,
+                        FinancialDocumentType.INVOICE
+                );
+
+        return new EncounterHasInvoiceResponse(encounterId, hasInvoice);
     }
 
     @Transactional(readOnly = true)
@@ -316,13 +330,24 @@ public class InvoiceGenerationService {
             );
         }
 
+        List<PatientServiceAndProduct> encounterServices =
+                patientServiceAndProductRepository.findByEncounterId(encounterId);
+
+        for (PatientServiceAndProduct service : encounterServices) {
+            if (isFullyCoveredPendingItem(service)) {
+                service.setPaymentStatus(PaymentStatus.PAID);
+                patientServiceAndProductRepository.save(service);
+            }
+        }
+
         List<PatientServiceAndProduct> pendingServices =
-                patientServiceAndProductRepository.findByEncounterId(encounterId).stream()
+                encounterServices.stream()
                         .filter(service ->
                                 BLOCKING_PAYMENT_STATUSES.contains(
                                         service.getPaymentStatus()
                                 )
                         )
+                        .filter(service -> !syncCancelledBillingItem(service))
                         .toList();
 
         if (!pendingServices.isEmpty()) {
@@ -1004,6 +1029,57 @@ public class InvoiceGenerationService {
                 )
                 .map(WaseelEligibilityRequest::getEligibilityResponseId)
                 .orElse(null);
+    }
+
+    private boolean isFullyCoveredPendingItem(PatientServiceAndProduct service) {
+        if (service == null || service.getPaymentStatus() != PaymentStatus.PENDING) {
+            return false;
+        }
+
+        BigDecimal patientShare =
+                service.getPatientShareAmount() == null
+                        ? BigDecimal.ZERO
+                        : service.getPatientShareAmount();
+        BigDecimal remaining =
+                service.getRemainingAmount() == null
+                        ? BigDecimal.ZERO
+                        : service.getRemainingAmount();
+
+        return patientShare.signum() == 0 && remaining.signum() == 0;
+    }
+
+    /**
+     * Charge-line cancellation is the financial source of truth. If the latest
+     * line is already cancelled/reversed, persist that onto the operational item
+     * so financial close and Service & Product stay in sync.
+     */
+    private boolean syncCancelledBillingItem(PatientServiceAndProduct service) {
+        if (service == null || service.getId() == null) {
+            return false;
+        }
+
+        boolean cancelledLine =
+                billingChargeLineRepository
+                        .findFirstByPatientServiceProduct_IdOrderByIdDesc(
+                                service.getId()
+                        )
+                        .map(line ->
+                                EXCLUDED_LINE_STATUSES.contains(
+                                        line.getStatus()
+                                )
+                        )
+                        .orElse(false);
+
+        if (!cancelledLine) {
+            return false;
+        }
+
+        if (service.getPaymentStatus() != PaymentStatus.CANCELLED) {
+            service.setPaymentStatus(PaymentStatus.CANCELLED);
+            patientServiceAndProductRepository.save(service);
+        }
+
+        return true;
     }
 
     private EncounterBillingStatus resolveBillingStatus(PatientEncounter encounter) {

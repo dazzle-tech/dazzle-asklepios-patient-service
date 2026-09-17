@@ -79,6 +79,9 @@ public class BillingEngineService {
 
     private final EncounterCoverageService encounterCoverageService;
 
+    private final InsurancePatientShareCalculator
+            insurancePatientShareCalculator;
+
     /*
      * All local financial transactions are orchestrated
      * through BillingTransactionService.
@@ -109,9 +112,10 @@ public class BillingEngineService {
      *
      * Pricing resolution order:
      *
-     * 1. Applicable active Price List.
-     * 2. Setup item base-price fallback.
-     * 3. Error if no valid price exists.
+     * 1. If insurance eligibility is not in-force, Self-Pay Price List.
+     * 2. Applicable active Price List for the coverage type.
+     * 3. Setup item base-price fallback.
+     * 4. Error if no valid price exists.
      */
     public BillingOperationResult process(
             Long patientServiceProductId,
@@ -1177,17 +1181,43 @@ public class BillingEngineService {
             return BillingCoverageType.SELF_PAY;
         }
 
+        BillingCoverageType coverage;
         if (item.getPatientInsuranceId() != null) {
-            return BillingCoverageType.INSURANCE;
+            coverage = BillingCoverageType.INSURANCE;
+        } else if (item.getEncounterId() == null) {
+            coverage = BillingCoverageType.SELF_PAY;
+        } else {
+            coverage = encounterCoverageService
+                    .getEncounterCoverage(item.getEncounterId())
+                    .coverageType();
         }
 
-        if (item.getEncounterId() == null) {
+        if (coverage == BillingCoverageType.INSURANCE
+                && !isInsuranceCoverageInForce(item)) {
+            LOG.info(
+                    "[PRICING] Eligibility is not in-force. "
+                            + "Using self-pay price list then setup. pspId={} encounterId={}",
+                    item.getId(),
+                    item.getEncounterId()
+            );
             return BillingCoverageType.SELF_PAY;
         }
 
-        return encounterCoverageService
-                .getEncounterCoverage(item.getEncounterId())
-                .coverageType();
+        return coverage;
+    }
+
+    private boolean isInsuranceCoverageInForce(
+            PatientServiceAndProduct item
+    ) {
+        Long patientInsuranceId = resolvePatientInsuranceId(item);
+        if (patientInsuranceId == null) {
+            return false;
+        }
+
+        return patientInsuranceRepository
+                .findById(patientInsuranceId)
+                .map(insurancePatientShareCalculator::isLatestCoverageInForce)
+                .orElse(false);
     }
 
     /*

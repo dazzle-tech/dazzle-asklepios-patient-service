@@ -91,28 +91,47 @@ public interface FinancialDocumentRepository extends JpaRepository<FinancialDocu
             @Param("year") int year
     );
 
-    @Query("""
-            SELECT fd FROM FinancialDocument fd
-            JOIN PatientEncounter e ON e.id = fd.encounterId
-            JOIN PatientInsurance pi ON pi.id = e.patientInsuranceId
-            WHERE fd.documentType = com.dazzle.asklepios.domain.enumeration.FinancialDocumentType.INVOICE
-              AND fd.documentSubtype = com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype.INSURANCE_CLAIM
-              AND fd.status IN :statuses
-              AND (:payorId IS NULL OR pi.payorId = :payorId)
-              AND (:fromDate IS NULL OR fd.createdDate >= :fromDate)
-              AND (:toDate IS NULL OR fd.createdDate < :toDate)
-              AND NOT EXISTS (
-                  SELECT 1 FROM ClaimRequest cr
-                  WHERE cr.financialDocumentId = fd.id
-                    AND cr.status IN :activeClaimStatuses
-              )
-            ORDER BY fd.createdDate DESC
-            """)
+    @Query(
+            value = """
+                    SELECT fd.*
+                    FROM financial_documents fd
+                    INNER JOIN patient_encounters pe ON pe.id = fd.encounter_id
+                    INNER JOIN patient_insurances pi ON pi.id = pe.patient_insurance_id
+                    WHERE fd.document_type = 'INVOICE'
+                      AND fd.document_subtype = 'INSURANCE_CLAIM'
+                      AND fd.status IN (:statuses)
+                      AND (
+                            (:useNphiesFilter = 1 AND LOWER(pi.payer_nphies_id) IN (:payerNphiesIds))
+                            OR
+                            (:useNphiesFilter = 0 AND pi.payor_id = :payorId)
+                          )
+                      AND fd.created_date >= :fromDate
+                      AND fd.created_date < :toDate
+                      AND NOT EXISTS (
+                            SELECT 1
+                            FROM claim_request cr
+                            WHERE cr.financial_document_id = fd.id
+                              AND cr.status IN (:activeClaimStatuses)
+                              AND (
+                                    cr.claim_type = :claimType
+                                    OR (
+                                        :claimType = 'PROFESSIONAL'
+                                        AND cr.claim_type IS NULL
+                                    )
+                                  )
+                          )
+                    ORDER BY fd.created_date DESC
+                    """,
+            nativeQuery = true
+    )
     List<FinancialDocument> findPendingInsuranceClaimInvoices(
+            @Param("useNphiesFilter") int useNphiesFilter,
             @Param("payorId") Long payorId,
+            @Param("payerNphiesIds") Collection<String> payerNphiesIds,
             @Param("fromDate") Instant fromDate,
             @Param("toDate") Instant toDate,
-            @Param("statuses") Collection<FinancialDocumentStatus> statuses,
-            @Param("activeClaimStatuses") Collection<ClaimStatus> activeClaimStatuses
+            @Param("statuses") Collection<String> statuses,
+            @Param("activeClaimStatuses") Collection<String> activeClaimStatuses,
+            @Param("claimType") String claimType
     );
 }

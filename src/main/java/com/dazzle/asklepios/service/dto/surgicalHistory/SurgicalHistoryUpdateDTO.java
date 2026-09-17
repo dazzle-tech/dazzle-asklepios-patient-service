@@ -17,19 +17,13 @@ public record SurgicalHistoryUpdateDTO(
         @NotNull
         Long patientId,
 
-        @NotNull
-        @NotBlank
+
         String surgery,
 
-        @NotNull
-        @PastOrPresent
         Date dateOfSurgery,
 
-        @NotNull
-        @NotBlank
         String facility,
 
-        @NotNull
         String anesthesiaType,
 
         String complications,
@@ -38,7 +32,8 @@ public record SurgicalHistoryUpdateDTO(
 
         Boolean hasImplantsOrDevices,
 
-        String implantsOrDevicesDescription
+        String implantsOrDevicesDescription,
+      Boolean patientIsFree
 
 ) implements Serializable {
 }

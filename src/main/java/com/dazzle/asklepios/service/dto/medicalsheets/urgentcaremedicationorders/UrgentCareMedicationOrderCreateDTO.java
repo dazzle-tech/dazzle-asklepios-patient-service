@@ -1,7 +1,7 @@
 package com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders;
 
-
 import com.dazzle.asklepios.domain.enumeration.MedicationInstructionType;
+import com.dazzle.asklepios.domain.enumeration.Unit;
 import com.dazzle.asklepios.service.validation.ValidMedicationInstruction;
 import jakarta.validation.constraints.NotNull;
 import lombok.Builder;
@@ -10,13 +10,12 @@ import lombok.Builder;
 @ValidMedicationInstruction
 public record UrgentCareMedicationOrderCreateDTO(
 
-
-
         @NotNull
         Long patientId,
 
         @NotNull
         Long encounterId,
+
         @NotNull
         Long activeIngredientId,
 
@@ -28,6 +27,10 @@ public record UrgentCareMedicationOrderCreateDTO(
         Long dose,
         String doseUnit,
         String route,
-        String frequency
+
+        Integer frequencyNumber,
+        Unit frequencyUnit,
+        Integer duration,
+        java.time.LocalTime startTime
 ) {
 }

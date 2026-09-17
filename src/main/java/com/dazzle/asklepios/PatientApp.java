@@ -1,5 +1,6 @@
 package com.dazzle.asklepios;
 
+import com.dazzle.asklepios.client.NamiCloud.NamiProperties;
 import com.dazzle.asklepios.config.CRLFLogConverter;
 import com.dazzle.asklepios.config.Constants;
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
@@ -23,7 +24,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 
-@EnableConfigurationProperties(WaseelApiProperties.class)
+@EnableConfigurationProperties({WaseelApiProperties.class , NamiProperties.class})
 @SpringBootApplication
 @EnableCaching
 @EnableFeignClients

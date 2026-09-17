@@ -192,6 +192,25 @@ public class BillingResponsibilityService {
         PatientInsurance insurance =
                 loadAndValidateInsurance(item);
 
+        if (!insurancePatientShareCalculator.isLatestCoverageInForce(insurance)) {
+            LOG.warn(
+                    "[CALCULATE] Eligibility is not in-force; billing as cash "
+                            + "pspId={} patientInsuranceId={} netAmount={}",
+                    item.getId(),
+                    insurance.getId(),
+                    netAmount
+            );
+
+            applyCashResponsibility(
+                    context,
+                    item,
+                    chargeLine,
+                    netAmount
+            );
+
+            return;
+        }
+
         applyInsuranceResponsibility(
                 context,
                 item,
@@ -387,6 +406,7 @@ public class BillingResponsibilityService {
     ) {
         BigDecimal patientAmount =
                 calculatePatientInsuranceShare(
+                        context,
                         insurance,
                         item,
                         netAmount
@@ -520,7 +540,12 @@ public class BillingResponsibilityService {
         );
 
         item.setPaymentStatus(
-                preAuthorizationResolutionService.resolveBillingPaymentStatus(item)
+                preAuthorizationResolutionService.resolveBillingPaymentStatus(
+                        item,
+                        patientAmount.signum() == 0
+                                ? PaymentStatus.PAID
+                                : PaymentStatus.PENDING
+                )
         );
 
         patientServiceAndProductRepository.save(item);
@@ -766,6 +791,7 @@ public class BillingResponsibilityService {
     }
 
     private BigDecimal calculatePatientInsuranceShare(
+            BillingProcessingContext context,
             PatientInsurance insurance,
             PatientServiceAndProduct item,
             BigDecimal netAmount
@@ -774,7 +800,8 @@ public class BillingResponsibilityService {
                 insurancePatientShareCalculator.calculateSplit(
                         insurance,
                         item,
-                        netAmount
+                        netAmount,
+                        context.getVisitMaxLimitTracker()
                 );
 
         return money(split.patientShare());
@@ -1195,6 +1222,26 @@ public class BillingResponsibilityService {
 
         int refreshedCount = 0;
         Set<BillingCharge> chargesToRecalculate = new HashSet<>();
+        VisitMaxLimitTracker visitMaxLimitTracker = null;
+        Long trackerInsuranceId = null;
+        BigDecimal lockedVisitPatientShare = BigDecimal.ZERO;
+
+        for (BillingChargeLine chargeLine : chargeLines) {
+            PatientServiceAndProduct lockedItem =
+                    chargeLine == null ? null : chargeLine.getPatientServiceProduct();
+            if (lockedItem != null
+                    && lockedItem.getPatientInsuranceId() != null
+                    && !Boolean.TRUE.equals(lockedItem.getIsExempted())
+                    && !lockedItem.isUncoveredCashItem()
+                    && (chargeLine.getStatus() != BillingChargeLineStatus.OPEN
+                    || money(chargeLine.getAllocatedAmount()).signum() > 0
+                    || money(chargeLine.getReservedAmount()).signum() > 0)) {
+                lockedVisitPatientShare =
+                        lockedVisitPatientShare.add(
+                                money(chargeLine.getPatientResponsibilityAmount())
+                        );
+            }
+        }
 
         for (BillingChargeLine chargeLine : chargeLines) {
             if (chargeLine == null
@@ -1219,6 +1266,24 @@ public class BillingResponsibilityService {
 
             BillingProcessingContext context =
                     buildRefreshContext(chargeLine, item);
+
+            PatientInsurance insurance =
+                    patientInsuranceRepository
+                            .findById(item.getPatientInsuranceId())
+                            .orElse(null);
+            if (insurance != null) {
+                if (visitMaxLimitTracker == null
+                        || !insurance.getId().equals(trackerInsuranceId)) {
+                    visitMaxLimitTracker =
+                            insurancePatientShareCalculator
+                                    .createVisitMaxLimitTracker(
+                                            insurance,
+                                            lockedVisitPatientShare
+                                    );
+                    trackerInsuranceId = insurance.getId();
+                }
+                context.setVisitMaxLimitTracker(visitMaxLimitTracker);
+            }
 
             try {
                 supersedeActiveResponsibilities(

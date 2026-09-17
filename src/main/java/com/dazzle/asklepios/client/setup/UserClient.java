@@ -17,4 +17,6 @@ public interface UserClient {
 
     @GetMapping("/api/setup/user-departments/user/by-user-id")
     UserDTO getUserByUserId(@RequestParam("userId") Long userId);
+    
+
 }

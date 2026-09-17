@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service.dto.patientObservationsComplaints;
 
 import com.dazzle.asklepios.domain.enumeration.BloodGroup;
+import com.dazzle.asklepios.domain.enumeration.ModeOfArrival;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -25,6 +26,13 @@ public record PatientObservationsComplaintsUpdateDTO(
 
         @NotEmpty
         String reasonOfVisit,
+
+        ModeOfArrival modeOfArrival,
+
+        @NotNull
+        Boolean byPatient,
+
+        Long sourceOfInformation,
 
         String cognitiveCheck,
 

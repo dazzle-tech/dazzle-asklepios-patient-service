@@ -26,4 +26,11 @@ public class VitalSignsResponseVM {
 
     private Instant createdAt;
 
+    private String createdBy;
+
+    private long encounterId;
+
+    private String encounterNumber;
+
+    private Boolean isActive;
 }

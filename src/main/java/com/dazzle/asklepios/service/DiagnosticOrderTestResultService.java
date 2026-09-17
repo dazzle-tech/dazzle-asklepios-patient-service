@@ -1,9 +1,7 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.notification.NotificationClient;
 import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.setup.DiagnosticTestProfileClient;
-import com.dazzle.asklepios.client.setup.UserClient;
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.client.setup.dto.NormalRangeMatchDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
@@ -32,10 +30,10 @@ import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.Di
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.DiagnosticOrderTestResultUpdateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
-import com.dazzle.asklepios.service.helper.UserDepartmentHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.laboratory.DiagnosticOrderTestResultResponseVM;
 import com.dazzle.asklepios.web.rest.vm.laboratory.DiagnosticOrderTestResultResultsVM;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,6 +44,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -70,15 +69,13 @@ public class DiagnosticOrderTestResultService {
     private final NormalRangeMatcherService normalRangeMatcherService;
     private final DiagnosticOrderTestResultTechnicianNoteRepository diagnosticOrderTestResultTechnicianNoteRepository;
     private final DiagnosticTestProfileClient diagnosticTestProfileClient;
-    private final NotificationClient notificationClient;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
     private final DiagnosticOrderRepository diagnosticOrderRepository;
-    private final UserDepartmentHelper userDepartmentHelper;
     private final PatientRepository patientRepository;
     private final DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository;
     private final DepartmentHelper departmentHelper;
-    private final UserClient userClient;
     private final NotificationHelper notificationHelper;
+    private final DiagnosticOrderTestService diagnosticOrderTestService;
 
     private void validateResultValue(
             Long profileTestId,
@@ -146,6 +143,7 @@ public class DiagnosticOrderTestResultService {
             }
         }
     }
+
     /**
      * Creates and persists a new {@link DiagnosticOrderTestResult}.
      *
@@ -186,6 +184,7 @@ public class DiagnosticOrderTestResultService {
 
         return saved;
     }
+
     @Transactional
     public void createBulk(
             List<DiagnosticOrderTestResultCreateDTO> dtos
@@ -229,6 +228,7 @@ public class DiagnosticOrderTestResultService {
                                 ::recomputeTestProcessingStatusFromResults
                 );
     }
+
     public DiagnosticOrderTestResult updateWithValidation(
             Long id,
             DiagnosticOrderTestResultUpdateDTO testResultUpdateDTO
@@ -267,7 +267,9 @@ public class DiagnosticOrderTestResultService {
                         "diagnostic_order_tests_result",
                         "DiagnosticOrderTestResult not found with id " + resultId
                 ));
-
+        diagnosticOrderTestService.validateSettlementTestBeforeApprove(
+                result.getOrderTestId()
+        );
         Long patientId = resolvePatientId(result.getOrderTestId());
 
         TestResultMarker viewMarker = result.getMarker();
@@ -394,6 +396,17 @@ public class DiagnosticOrderTestResultService {
         });
     }
 
+    @Transactional(readOnly = true)
+    public List<Long> resultFilterIds(
+            Specification<DiagnosticOrderTestResult> specification
+    ) {
+
+        return diagnosticOrderTestResultRepository
+                .findAll(specification)
+                .stream()
+                .map(DiagnosticOrderTestResult::getId)
+                .toList();
+    }
 
     @Transactional(readOnly = true)
     public Page<DiagnosticOrderTestResultResultsVM> resultsPage(
@@ -744,7 +757,7 @@ public class DiagnosticOrderTestResultService {
         }
         String login = SecurityUtils.getCurrentUserLogin().orElse(null);
 
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, result.getCreatedBy(), resolvePatient(order.getPatientId()).orElse(null), null,false);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, result.getCreatedBy(), resolvePatient(order.getPatientId()).orElse(null), null, false);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("result_id", result.getId());
@@ -827,7 +840,7 @@ public class DiagnosticOrderTestResultService {
             );
             return;
         }
-        if(!isCriticalMarker(calculatedMarker)) {
+        if (!isCriticalMarker(calculatedMarker)) {
             LOG.debug(
                     "Skip diagnostic result notification because it is not critical marker. resultId={}, orderId={}, marker={}",
                     result.getId(),
@@ -852,7 +865,7 @@ public class DiagnosticOrderTestResultService {
         }
         String login = SecurityUtils.getCurrentUserLogin().orElse(null);
 
-        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, result.getCreatedBy(), resolvePatient(order.getPatientId()).orElse(null), null,false);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(departmentId, login, result.getCreatedBy(), resolvePatient(order.getPatientId()).orElse(null), null, false);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("result_id", result.getId());
@@ -956,5 +969,318 @@ public class DiagnosticOrderTestResultService {
             return false;
         }
         return Severity.SEVERE == report.getSeverity() || Severity.CRITICAL == report.getSeverity();
+    }
+
+    public Specification<DiagnosticOrderTestResult> buildResultSpecification(
+            List<Long> orderIdInFilter,
+            Long orderTestIdFilter,
+            Long profileTestIdFilter,
+            List<TestResultMarker> markerInFilter,
+            List<TestResultMarker> excludeMarkerInFilter,
+            DiagnosticStatus processingStatusFilter,
+            String approvedByFilter,
+            String rejectedByFilter,
+            String reviewByFilter,
+            Instant approvedDateFromFilter,
+            Instant approvedDateToFilter,
+            Instant rejectedDateFromFilter,
+            Instant rejectedDateToFilter,
+            Instant reviewDateFromFilter,
+            Instant reviewDateToFilter,
+            Boolean reviewed,
+            List<Long> fromDepartmentIn,
+            String patientName,
+            String mrn,
+            List<Long> patientIdIn,
+            String orderNumber
+    ) {
+
+        return (testResultRoot, criteriaQuery, criteriaBuilder) -> {
+
+            List<Predicate> predicates = new ArrayList<>();
+
+            boolean needOrderIdFilter =
+                    orderIdInFilter != null && !orderIdInFilter.isEmpty();
+
+            boolean needOrderFilter =
+                    fromDepartmentIn != null && !fromDepartmentIn.isEmpty();
+
+            boolean needOrderNumberFilter =
+                    orderNumber != null;
+
+            boolean needPatientIdFilter =
+                    patientIdIn != null && !patientIdIn.isEmpty();
+
+            boolean needPatientFilter =
+                    (patientName != null && !patientName.isBlank()) ||
+                            (mrn != null && !mrn.isBlank());
+
+            boolean needSubquery =
+                    needOrderIdFilter ||
+                            needOrderFilter ||
+                            needOrderNumberFilter ||
+                            needPatientIdFilter ||
+                            needPatientFilter;
+
+            if (needSubquery) {
+
+                var subQuery = criteriaQuery.subquery(Long.class);
+
+                var testRoot = subQuery.from(DiagnosticOrderTest.class);
+                var orderRoot = subQuery.from(DiagnosticOrder.class);
+
+                List<Predicate> subPredicates = new ArrayList<>();
+
+                subPredicates.add(criteriaBuilder.equal(
+                        testRoot.get("id"),
+                        testResultRoot.get("orderTestId")
+                ));
+
+                subPredicates.add(criteriaBuilder.equal(
+                        orderRoot.get("id"),
+                        testRoot.get("orderId")
+                ));
+
+                if (needOrderIdFilter) {
+                    subPredicates.add(orderRoot.get("id").in(orderIdInFilter));
+                }
+
+                if (needOrderFilter) {
+                    subPredicates.add(
+                            orderRoot.get("fromDepartmentId")
+                                    .in(fromDepartmentIn)
+                    );
+                }
+
+                if (needOrderNumberFilter &&
+                        orderNumber != null &&
+                        !orderNumber.isBlank()) {
+
+                    subPredicates.add(
+                            criteriaBuilder.like(
+                                    criteriaBuilder.lower(
+                                            orderRoot.get("orderNumber")
+                                    ),
+                                    "%" + orderNumber
+                                            .trim()
+                                            .toLowerCase() + "%"
+                            )
+                    );
+                }
+
+                if (needPatientIdFilter) {
+                    subPredicates.add(
+                            orderRoot.get("patientId")
+                                    .in(patientIdIn)
+                    );
+                }
+
+                if (needPatientFilter) {
+
+                    var patientRoot = subQuery.from(Patient.class);
+
+                    subPredicates.add(criteriaBuilder.equal(
+                            patientRoot.get("id"),
+                            orderRoot.get("patientId")
+                    ));
+
+                    if (mrn != null && !mrn.isBlank()) {
+
+                        subPredicates.add(
+                                criteriaBuilder.like(
+                                        criteriaBuilder.lower(
+                                                patientRoot.get(
+                                                        "medicalRecordNumber"
+                                                )
+                                        ),
+                                        "%" + mrn.trim().toLowerCase() + "%"
+                                )
+                        );
+                    }
+
+                    if (patientName != null &&
+                            !patientName.isBlank()) {
+
+                        String like =
+                                "%" +
+                                        patientName.trim().toLowerCase() +
+                                        "%";
+
+                        subPredicates.add(
+                                criteriaBuilder.or(
+                                        criteriaBuilder.like(
+                                                criteriaBuilder.lower(
+                                                        patientRoot.get("firstName")
+                                                ),
+                                                like
+                                        ),
+                                        criteriaBuilder.like(
+                                                criteriaBuilder.lower(
+                                                        patientRoot.get("secondName")
+                                                ),
+                                                like
+                                        ),
+                                        criteriaBuilder.like(
+                                                criteriaBuilder.lower(
+                                                        patientRoot.get("thirdName")
+                                                ),
+                                                like
+                                        ),
+                                        criteriaBuilder.like(
+                                                criteriaBuilder.lower(
+                                                        patientRoot.get("lastName")
+                                                ),
+                                                like
+                                        )
+                                )
+                        );
+                    }
+                }
+
+                subQuery.select(testRoot.get("id"))
+                        .where(subPredicates.toArray(new Predicate[0]));
+
+                predicates.add(criteriaBuilder.exists(subQuery));
+            }
+
+            if (orderTestIdFilter != null) {
+                predicates.add(criteriaBuilder.equal(
+                        testResultRoot.get("orderTestId"),
+                        orderTestIdFilter
+                ));
+            }
+
+            if (profileTestIdFilter != null) {
+                predicates.add(criteriaBuilder.equal(
+                        testResultRoot.get("profileTestId"),
+                        profileTestIdFilter
+                ));
+            }
+
+            if (processingStatusFilter != null) {
+                predicates.add(criteriaBuilder.equal(
+                        testResultRoot.get("processingStatus"),
+                        processingStatusFilter
+                ));
+            }
+
+            if (markerInFilter != null &&
+                    !markerInFilter.isEmpty()) {
+
+                predicates.add(
+                        testResultRoot.get("marker")
+                                .in(markerInFilter)
+                );
+            }
+
+            if (excludeMarkerInFilter != null &&
+                    !excludeMarkerInFilter.isEmpty()) {
+
+                predicates.add(
+                        criteriaBuilder.not(
+                                testResultRoot.get("marker")
+                                        .in(excludeMarkerInFilter)
+                        )
+                );
+            }
+
+            if (approvedByFilter != null &&
+                    !approvedByFilter.isBlank()) {
+
+                predicates.add(criteriaBuilder.equal(
+                        testResultRoot.get("approvedBy"),
+                        approvedByFilter
+                ));
+            }
+
+            if (rejectedByFilter != null &&
+                    !rejectedByFilter.isBlank()) {
+
+                predicates.add(criteriaBuilder.equal(
+                        testResultRoot.get("rejectedBy"),
+                        rejectedByFilter
+                ));
+            }
+
+            if (reviewByFilter != null &&
+                    !reviewByFilter.isBlank()) {
+
+                predicates.add(criteriaBuilder.equal(
+                        testResultRoot.get("reviewBy"),
+                        reviewByFilter
+                ));
+            }
+
+            if (approvedDateFromFilter != null) {
+                predicates.add(
+                        criteriaBuilder.greaterThanOrEqualTo(
+                                testResultRoot.get("approvedDate"),
+                                approvedDateFromFilter
+                        )
+                );
+            }
+
+            if (approvedDateToFilter != null) {
+                predicates.add(
+                        criteriaBuilder.lessThanOrEqualTo(
+                                testResultRoot.get("approvedDate"),
+                                approvedDateToFilter
+                        )
+                );
+            }
+
+            if (rejectedDateFromFilter != null) {
+                predicates.add(
+                        criteriaBuilder.greaterThanOrEqualTo(
+                                testResultRoot.get("rejectedDate"),
+                                rejectedDateFromFilter
+                        )
+                );
+            }
+
+            if (rejectedDateToFilter != null) {
+                predicates.add(
+                        criteriaBuilder.lessThanOrEqualTo(
+                                testResultRoot.get("rejectedDate"),
+                                rejectedDateToFilter
+                        )
+                );
+            }
+
+            if (reviewDateFromFilter != null) {
+                predicates.add(
+                        criteriaBuilder.greaterThanOrEqualTo(
+                                testResultRoot.get("reviewDate"),
+                                reviewDateFromFilter
+                        )
+                );
+            }
+
+            if (reviewDateToFilter != null) {
+                predicates.add(
+                        criteriaBuilder.lessThanOrEqualTo(
+                                testResultRoot.get("reviewDate"),
+                                reviewDateToFilter
+                        )
+                );
+            }
+
+            if (reviewed != null) {
+
+                predicates.add(
+                        reviewed
+                                ? criteriaBuilder.isNotNull(
+                                testResultRoot.get("reviewDate")
+                        )
+                                : criteriaBuilder.isNull(
+                                testResultRoot.get("reviewDate")
+                        )
+                );
+            }
+
+            return criteriaBuilder.and(
+                    predicates.toArray(new Predicate[0])
+            );
+        };
     }
 }

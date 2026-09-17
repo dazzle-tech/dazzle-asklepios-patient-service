@@ -20,7 +20,9 @@ public class PrescriptionMedicationCreateDTO {
     public String doesUnit;
     public String rout;
     public String frequency;
-    public Long  activeIngredientId;
+    @NotNull
+    public Long activeIngredientId;
+    public String otherMedicationName;
     public Boolean chronicMedication;
     public Long duration;
     public String durationType;

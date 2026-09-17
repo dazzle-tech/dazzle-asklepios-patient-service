@@ -4,6 +4,7 @@ import com.dazzle.asklepios.service.BillingEligibilitySnapshotService;
 import com.dazzle.asklepios.service.InvoiceGenerationService;
 import com.dazzle.asklepios.service.dto.billing.BillableVisitResponse;
 import com.dazzle.asklepios.service.dto.billing.BillingEligibilitySnapshotResponse;
+import com.dazzle.asklepios.service.dto.billing.EncounterHasInvoiceResponse;
 import com.dazzle.asklepios.service.dto.billing.EncounterInvoiceDetailsResponse;
 import com.dazzle.asklepios.service.dto.billing.FinancialCloseRequest;
 import com.dazzle.asklepios.service.dto.billing.FinancialCloseResult;
@@ -48,6 +49,20 @@ public class InvoiceGenerationController {
 
         return ResponseEntity.ok(
                 invoiceGenerationService.findBillableVisits(patientId)
+        );
+    }
+
+    @GetMapping("/encounters/{encounterId}/has-invoice")
+    public ResponseEntity<EncounterHasInvoiceResponse> hasInvoice(
+            @PathVariable("encounterId") @NotNull Long encounterId
+    ) {
+        LOG.debug(
+                "REST request has invoice encounterId={}",
+                encounterId
+        );
+
+        return ResponseEntity.ok(
+                invoiceGenerationService.hasInvoice(encounterId)
         );
     }
 

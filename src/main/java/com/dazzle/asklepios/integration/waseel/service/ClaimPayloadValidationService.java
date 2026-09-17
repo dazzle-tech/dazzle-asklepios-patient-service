@@ -43,6 +43,13 @@ public class ClaimPayloadValidationService {
         }
 
         WaseelClaimPreAuthorizationInfo preAuth = claim.preAuthorizationInfo();
+        if (preAuth == null || blankToNull(preAuth.type()) == null || blankToNull(preAuth.subType()) == null) {
+            errors.add(error(
+                    "Claim Information - Type",
+                    "Please provide Type and Sub Type for the claim.",
+                    "Claim Information"
+            ));
+        }
         if (preAuth != null) {
             LocalDate accountingPeriod = preAuth.accountingPeriod();
             if (accountingPeriod != null && !accountingPeriod.isBefore(LocalDate.now())) {

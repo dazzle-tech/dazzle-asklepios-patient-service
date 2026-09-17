@@ -8,10 +8,13 @@ import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
 import com.dazzle.asklepios.domain.AdditionalMeasurements;
 import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.BodyMeasurements;
+import com.dazzle.asklepios.domain.EncounterDischargeLog;
 import com.dazzle.asklepios.domain.PainAssessment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientEncounterFieldAudit;
 import com.dazzle.asklepios.domain.PatientObservationsComplaints;
+import com.dazzle.asklepios.domain.User;
 import com.dazzle.asklepios.domain.VitalSigns;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
@@ -21,12 +24,16 @@ import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.AdditionalMeasurementsRepository;
 import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.BodyMeasurementsRepository;
+import com.dazzle.asklepios.repository.EncounterDischargeLogRepository;
 import com.dazzle.asklepios.repository.PainAssessmentRepository;
+import com.dazzle.asklepios.repository.PatientEncounterFieldAuditRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientObservationsComplaintsRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.repository.UserRepository;
 import com.dazzle.asklepios.repository.VitalSignsRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.billing.EncounterHasInvoiceResponse;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
@@ -38,6 +45,9 @@ import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import feign.FeignException;
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
+import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCompletionValidationDTO;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Expression;
@@ -58,6 +68,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -73,6 +84,19 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
+import com.dazzle.asklepios.domain.FinancialDocument;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
+import jakarta.persistence.criteria.Subquery;
+import com.dazzle.asklepios.repository.EncounterAssessmentRepository;
+import com.dazzle.asklepios.repository.EncounterPlanRepository;
+import com.dazzle.asklepios.repository.ProgressNoteRepository;
+import com.dazzle.asklepios.repository.PatientDiagnosisRepository;
+import com.dazzle.asklepios.repository.PatientProblemRepository;
+import com.dazzle.asklepios.repository.FamilyHistoryRepository;
+import com.dazzle.asklepios.repository.HospitalizationRepository;
+import com.dazzle.asklepios.repository.CurrentMedicationRepository;
+import com.dazzle.asklepios.repository.SurgicalHistoryRepository;
+import com.dazzle.asklepios.repository.SocialHistoryRepository;
 
 @Service
 @Transactional
@@ -82,6 +106,17 @@ public class PatientEncounterService {
 
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientRepository patientRepository;
+    private final EncounterAssessmentRepository encounterAssessmentRepository;
+    private final EncounterPlanRepository encounterPlanRepository;
+    private final ProgressNoteRepository progressNoteRepository;
+    private final PatientDiagnosisRepository patientDiagnosisRepository;
+
+    private final PatientProblemRepository patientProblemRepository;
+    private final FamilyHistoryRepository familyHistoryRepository;
+    private final HospitalizationRepository hospitalizationRepository;
+    private final CurrentMedicationRepository currentMedicationRepository;
+    private final SurgicalHistoryRepository surgicalHistoryRepository;
+    private final SocialHistoryRepository socialHistoryRepository;
     private final EntityManager entityManager;
     private final EncounterAssignToBedService encounterAssignToBedService;
     private final AdditionalMeasurementsRepository additionalMeasurementsRepository;
@@ -96,10 +131,27 @@ public class PatientEncounterService {
     private final PractitionerClient practitionerClient;
     private final BillingEngineService billingEngineService;
     private final NotificationHelper notificationHelper;
+    private final InvoiceGenerationService invoiceGenerationService;
+    private final UserRepository userRepository;
+    private final EncounterDischargeLogRepository encounterDischargeLogRepository;
+    private final PatientEncounterFieldAuditRepository auditRepository;
 
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
             PatientRepository patientRepository,
+
+            EncounterAssessmentRepository encounterAssessmentRepository,
+            EncounterPlanRepository encounterPlanRepository,
+            ProgressNoteRepository progressNoteRepository,
+            PatientDiagnosisRepository patientDiagnosisRepository,
+
+            PatientProblemRepository patientProblemRepository,
+            FamilyHistoryRepository familyHistoryRepository,
+            HospitalizationRepository hospitalizationRepository,
+            CurrentMedicationRepository currentMedicationRepository,
+            SurgicalHistoryRepository surgicalHistoryRepository,
+            SocialHistoryRepository socialHistoryRepository,
+
             EntityManager entityManager,
             EncounterAssignToBedService encounterAssignToBedService,
             AdditionalMeasurementsRepository additionalMeasurementsRepository,
@@ -112,10 +164,12 @@ public class PatientEncounterService {
             PractitionerHelper practitionerHelper,
             PractitionerClient practitionerClient,
             @Lazy BillingEngineService billingEngineService,
-            NotificationHelper notificationHelper) {
+            NotificationHelper notificationHelper, InvoiceGenerationService invoiceGenerationService, UserRepository userRepository, EncounterDischargeLogRepository encounterDischargeLogRepository, PatientEncounterFieldAuditRepository auditRepository) {
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.entityManager = entityManager;
+        
+        
         this.encounterAssignToBedService = encounterAssignToBedService;
         this.additionalMeasurementsRepository = additionalMeasurementsRepository;
         this.painAssessmentRepository = painAssessmentRepository;
@@ -129,6 +183,24 @@ public class PatientEncounterService {
         this.practitionerClient = practitionerClient;
         this.billingEngineService = billingEngineService;
         this.notificationHelper = notificationHelper;
+        this.invoiceGenerationService = invoiceGenerationService;
+        this.userRepository = userRepository;
+
+        this.encounterAssessmentRepository = encounterAssessmentRepository;
+        this.encounterPlanRepository = encounterPlanRepository;
+        this.progressNoteRepository = progressNoteRepository;
+        this.patientDiagnosisRepository = patientDiagnosisRepository;
+
+        this.patientProblemRepository = patientProblemRepository;
+        this.familyHistoryRepository = familyHistoryRepository;
+        this.hospitalizationRepository = hospitalizationRepository;
+        this.currentMedicationRepository = currentMedicationRepository;
+        this.surgicalHistoryRepository = surgicalHistoryRepository;
+        this.socialHistoryRepository = socialHistoryRepository;
+
+
+        this.encounterDischargeLogRepository = encounterDischargeLogRepository;
+        this.auditRepository = auditRepository;
     }
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
@@ -196,6 +268,9 @@ public class PatientEncounterService {
         try {
             PatientEncounter createdPatientEncounter = patientEncounterRepository.saveAndFlush(patientEncounterToCreate);
             entityManager.refresh(createdPatientEncounter); // keep ONLY here (create)
+            if (createdPatientEncounter.getFollowUpEncounter() != null) {
+                createdPatientEncounter.getFollowUpEncounter().getCreatedDate();
+            }
             LOG.info("[CREATE] PatientEncounter success id={} patientId={} departmentId={} status={}",
                     createdPatientEncounter.getId(),
                     createDTO.patientId(),
@@ -636,6 +711,7 @@ public class PatientEncounterService {
         return saved;
     }
 
+    @Transactional
     public PatientEncounter completeEncounter(Long encounterId) {
         LOG.info("[COMPLETE] PatientEncounter id={}", encounterId);
 
@@ -649,6 +725,11 @@ public class PatientEncounterService {
         if (encounter.getStatus() != TreatmentStatus.NEW
                 && encounter.getStatus() != TreatmentStatus.ONGOING
                 && encounter.getStatus() != TreatmentStatus.TRIAGE_STARTED) {
+
+            LOG.warn("[COMPLETE] PatientEncounter rejected: invalid status id={} status={}",
+                    encounterId,
+                    encounter.getStatus());
+
             throw new BadRequestAlertException(
                     "Complete allowed only when status is NEW, ONGOING, or TRIAGE_STARTED.",
                     "patientEncounter",
@@ -656,19 +737,689 @@ public class PatientEncounterService {
             );
         }
 
+        /*
+         * Update encounter completion details
+         */
         encounter.setStatus(TreatmentStatus.COMPLETED);
         encounter.setCompletedAt(Instant.now());
         encounter.setCompletedBy(
                 SecurityUtils.getCurrentUserLogin().orElse("system")
         );
 
-        PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
-        updateAppointmentStatusForEncounter(AppointmentStatus.COMPLETED, encounter.getAppointment().getId());
-        notifyEncounterEvent(saved, NotificationCode.ENCOUNTER_CLOSED, null);
+        try {
+            /*
+             * Save encounter
+             */
+            PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
 
-        LOG.info("[COMPLETE] success id={} status={}", saved.getId(), saved.getStatus());
+            /*
+             * Create completion log
+             */
+            LocalDateTime dischargedAt = saved.getCompletedAt().atZone(ZoneId.systemDefault()).toLocalDateTime();
+            EncounterDischargeLog completionLog = EncounterDischargeLog.builder()
+                    .encounter(saved)
+                    .dischargedAt(dischargedAt)
+                    .dischargedBy(currentUsername())
+                    .createdDate(Instant.now())
+
+                    .build();
+
+            encounterDischargeLogRepository.save(completionLog);
+
+            /*
+             * Update appointment
+             */
+            if (saved.getAppointment() != null) {
+                updateAppointmentStatusForEncounter(
+                        AppointmentStatus.COMPLETED,
+                        saved.getAppointment().getId()
+                );
+            }
+
+            /*
+             * Notify encounter closed
+             */
+            notifyEncounterEvent(
+                    saved,
+                    NotificationCode.ENCOUNTER_CLOSED,
+                    null
+            );
+
+            LOG.info(
+                    "[COMPLETE] success id={} status={} completedAt={} completedBy={}",
+                    saved.getId(),
+                    saved.getStatus(),
+                    saved.getCompletedAt(),
+                    saved.getCompletedBy()
+            );
+
+            return saved;
+
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            LOG.warn("[COMPLETE] failed (constraint) id={}", encounterId, ex);
+            throw handleConstraintViolation(ex);
+
+        } catch (RuntimeException ex) {
+            LOG.error("[COMPLETE] failed (unexpected) id={}", encounterId, ex);
+            throw ex;
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public PatientEncounterCompletionValidationDTO validateCompletion(Long encounterId) {
+
+        PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "PatientEncounter not found with id " + encounterId,
+                        "patientEncounter",
+                        "id.notfound"
+                ));
+
+        boolean insuranceVisit =
+                BillingCoverageType.INSURANCE.equals(encounter.getCoverageType());
+
+        // Non-insurance visits do not need the insurance completion validation.
+        if (!insuranceVisit) {
+            return new PatientEncounterCompletionValidationDTO(
+                    encounterId,
+                    encounter.getCoverageType(),
+                    encounter.getPatientInsuranceId(),
+                    false,
+                    true, // chiefComplaint
+                    true, // historyOfPresentIllness
+                    true, // physicalExaminationSummary
+                    true, // primaryDiagnosis
+                    true, // assessment
+                    true, // treatmentPlan
+                    true, // medicalHistory
+                    true, // surgicalHistory
+                    true, // socialHistory
+                    true, // progressNotes
+                    true, // vitalSigns
+                    true, // bodyMeasurements
+                    true, // canComplete
+                    Collections.emptyList()
+            );
+        }
+        Long patientId = encounter.getPatient().getId();
+
+        boolean chiefComplaint =
+                !isBlank(encounter.getChiefComplaint());
+
+        boolean historyOfPresentIllness =
+                !isBlank(encounter.getHistoryOfPresentIllness());
+
+        boolean physicalExaminationSummary =
+                !isBlank(encounter.getPhysicalExaminationSummery());
+
+        boolean primaryDiagnosis =
+                patientDiagnosisRepository.existsByEncounterId(encounterId);
+
+        boolean assessment =
+                encounterAssessmentRepository
+                        .findTopByEncounterIdOrderByCreatedDateDesc(encounterId)
+                        .isPresent();
+
+        boolean treatmentPlan =
+                encounterPlanRepository
+                        .findTopByEncounterIdOrderByCreatedDateDesc(encounterId)
+                        .isPresent();
+
+        boolean medicalHistory =
+                patientProblemRepository
+                        .findAllByPatientIdAndStatus(
+                                patientId,
+                                PatientHistoryStatus.ACTIVE,
+                                Pageable.unpaged()
+                        )
+                        .hasContent()
+                        ||
+                        familyHistoryRepository
+                                .findAllByPatientIdAndStatus(
+                                        patientId,
+                                        PatientHistoryStatus.ACTIVE,
+                                        Pageable.unpaged()
+                                )
+                                .hasContent()
+                        ||
+                        hospitalizationRepository
+                                .findAllByPatientIdAndStatusNot(
+                                        patientId,
+                                        PatientHistoryStatus.CANCELLED,
+                                        Pageable.unpaged()
+                                )
+                                .hasContent()
+                        ||
+                        currentMedicationRepository
+                                .findAllByPatientIdAndStatusNot(
+                                        patientId,
+                                        PatientHistoryStatus.CANCELLED,
+                                        Pageable.unpaged()
+                                )
+                                .hasContent();
+
+        boolean surgicalHistory =
+                !surgicalHistoryRepository
+                        .findAllByPatientIdAndStatusNot(
+                                patientId,
+                                PatientHistoryStatus.CANCELLED,
+                                Pageable.unpaged()
+                        )
+                        .isEmpty();
+
+        boolean socialHistory =
+                socialHistoryRepository
+                        .findTopByPatientIdOrderByCreatedDateDesc(patientId)
+                        .isPresent();
+
+        boolean progressNotes =
+                progressNoteRepository
+                        .findTopByEncounterIdAndCancelledDateIsNullOrderByCreatedDateDesc(encounterId)
+                        .isPresent();
+
+        boolean vitalSigns =
+                !findEncounterIdsWithObservation(List.of(encounterId)).isEmpty();
+
+        boolean bodyMeasurements =
+                bodyMeasurementsRepository
+                        .findFirstByEncounterIdAndIsActiveTrueOrderByCreatedDateDesc(encounterId)
+                        .isPresent();
+
+        List<String> missing = new ArrayList<>();
+
+        if (!chiefComplaint) {
+            missing.add("Chief Complaint");
+        }
+
+        if (!historyOfPresentIllness) {
+            missing.add("History Of Present Illness");
+        }
+
+        if (!physicalExaminationSummary) {
+            missing.add("Physical Examination Summary");
+        }
+
+        if (!primaryDiagnosis) {
+            missing.add("Primary Diagnosis");
+        }
+
+        if (!assessment) {
+            missing.add("Assessment");
+        }
+
+        if (!treatmentPlan) {
+            missing.add("Treatment Plan / Management");
+        }
+
+        if (!medicalHistory) {
+            missing.add("Medical History");
+        }
+
+        if (!surgicalHistory) {
+            missing.add("Surgical History");
+        }
+
+        if (!socialHistory) {
+            missing.add("Social History");
+        }
+
+        if (!progressNotes) {
+            missing.add("Progress Notes");
+        }
+
+        if (!vitalSigns) {
+            missing.add("Vital Signs & Measurements");
+        }
+
+        if (!bodyMeasurements) {
+            missing.add("Body Measurements");
+        }
+
+        boolean canComplete = missing.isEmpty();
+
+        return new PatientEncounterCompletionValidationDTO(
+                encounterId,
+                encounter.getCoverageType(),
+                encounter.getPatientInsuranceId(),
+                true,
+                chiefComplaint,
+                historyOfPresentIllness,
+                physicalExaminationSummary,
+                primaryDiagnosis,
+                assessment,
+                treatmentPlan,
+                medicalHistory,
+                surgicalHistory,
+                socialHistory,
+                progressNotes,
+                bodyMeasurements,
+                vitalSigns,
+                canComplete,
+                missing
+        );
+    }
+
+
+    @Transactional
+    public PatientEncounter reopenEncounter(Long encounterId) {
+
+        LOG.info("[REOPEN] PatientEncounter id={}", encounterId);
+
+        PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "PatientEncounter not found with id " + encounterId,
+                        "patientEncounter",
+                        "id.notfound"
+                ));
+
+        User user = userRepository.findByLogin(currentUsername())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "User not found with login " + currentUsername(),
+                        "patientEncounter",
+                        "user.notfound"
+                ));
+
+        TreatmentStatus currentStatus = encounter.getStatus();
+
+        if (currentStatus != TreatmentStatus.COMPLETED
+                && currentStatus != TreatmentStatus.DISCHARGED) {
+
+            throw new BadRequestAlertException(
+                    "Only completed or discharged encounters can be reopened.",
+                    "patientEncounter",
+                    "reopen.notAllowed"
+            );
+        }
+
+       EncounterHasInvoiceResponse invoiceResponse =
+          invoiceGenerationService.hasInvoice(encounterId);
+
+         if (invoiceResponse != null && invoiceResponse.hasInvoice()) {
+             throw new BadRequestAlertException(
+                     "Cannot reopen encounter because an invoice has already been generated.",
+                     "patientEncounter",
+                     "reopen.invoiceExists"
+             );
+         }
+
+
+
+        if (encounter.getEncounterType() == EncounterType.CLINIC
+                && !user.isCanUnCompleteEncounter()) {
+
+            throw new BadRequestAlertException(
+                    "You do not have permission to reopen outpatient encounters.",
+                    "patientEncounter",
+                    "reopen.permissionDenied"
+            );
+        }
+
+        if (encounter.getEncounterType() == EncounterType.EMERGENCY
+                && !user.isCanUnDischargeUrgentCare()) {
+
+            throw new BadRequestAlertException(
+                    "You do not have permission to reopen emergency encounters.",
+                    "patientEncounter",
+                    "reopen.permissionDenied"
+            );
+        }
+
+        encounter.setStatus(TreatmentStatus.ONGOING);
+
+        encounter.setCompletedAt(null);
+        encounter.setCompletedBy(null);
+
+        encounter.setDischargeAt(null);
+        encounter.setDischargeType(null);
+
+        PatientEncounter saved =
+                patientEncounterRepository.saveAndFlush(encounter);
+
+        LOG.info(
+                "[REOPEN] success id={} fromStatus={} toStatus={}",
+                saved.getId(),
+                currentStatus,
+                saved.getStatus()
+        );
+
         return saved;
     }
+
+
+
+
+
+    @Transactional(readOnly = true)
+    public Page<PatientEncounter> searchBillingPendingQueue(
+            Long facilityId,
+            PatientEncounterSearchFilterDTO filter,
+            Pageable pageable
+    ) {
+        LOG.debug(
+                "[BILLING_PENDING_QUEUE] facilityId={} filter={} pageable={}",
+                facilityId,
+                filter,
+                pageable
+        );
+
+        LocalDate effectiveFrom =
+                filter != null && filter.fromDate() != null
+                        ? filter.fromDate()
+                        : null;
+
+        LocalDate effectiveTo =
+                filter != null && filter.toDate() != null
+                        ? filter.toDate()
+                        : null;
+
+        boolean hasPatientName =
+                filter != null
+                        && filter.patientName() != null
+                        && !filter.patientName().isBlank();
+
+        boolean hasEncounterNumber =
+                filter != null
+                        && filter.encounterNumber() != null
+                        && !filter.encounterNumber().isBlank();
+
+        boolean hasMrn =
+                filter != null
+                        && filter.mrn() != null
+                        && !filter.mrn().isBlank();
+
+        Long departmentId =
+                filter != null
+                        ? filter.departmentId()
+                        : null;
+
+        Long practitionerId =
+                filter != null
+                        ? filter.practitionerId()
+                        : null;
+
+        Specification<PatientEncounter> spec = (root, query, cb) -> {
+
+            applyFetches(root, query);
+
+            List<Predicate> predicates = new ArrayList<>();
+
+            /*
+             * Facility
+             */
+            if (facilityId != null) {
+                predicates.add(
+                        cb.equal(
+                                root.get("facilityId"),
+                                facilityId
+                        )
+                );
+            }
+
+            /*
+             * Department
+             */
+            if (departmentId != null) {
+                predicates.add(
+                        cb.equal(
+                                root.get("departmentId"),
+                                departmentId
+                        )
+                );
+            }
+
+            /*
+             * Practitioner
+             */
+            if (practitionerId != null) {
+                predicates.add(
+                        cb.equal(
+                                root.get("practitionerId"),
+                                practitionerId
+                        )
+                );
+            }
+
+            /*
+             * Encounter Number - partial search
+             */
+            if (hasEncounterNumber) {
+                predicates.add(
+                        cb.like(
+                                cb.lower(root.get("encounterNumber")),
+                                "%"
+                                        + filter.encounterNumber()
+                                        .trim()
+                                        .toLowerCase()
+                                        + "%"
+                        )
+                );
+            }
+
+            /*
+             * Date range
+             *
+             * No default "today" here.
+             * If no dates are supplied, all dates are included.
+             */
+            if (effectiveFrom != null && effectiveTo != null) {
+
+                predicates.add(
+                        cb.between(
+                                root.get("encounterDate"),
+                                effectiveFrom,
+                                effectiveTo
+                        )
+                );
+
+            } else if (effectiveFrom != null) {
+
+                predicates.add(
+                        cb.greaterThanOrEqualTo(
+                                root.get("encounterDate"),
+                                effectiveFrom
+                        )
+                );
+
+            } else if (effectiveTo != null) {
+
+                predicates.add(
+                        cb.lessThanOrEqualTo(
+                                root.get("encounterDate"),
+                                effectiveTo
+                        )
+                );
+            }
+
+            /*
+             * Treatment Status
+             */
+            if (filter != null
+                    && filter.statuses() != null
+                    && !filter.statuses().isEmpty()) {
+
+                predicates.add(
+                        root.get("status")
+                                .in(filter.statuses())
+                );
+            }
+
+            /*
+             * Encounter Reason
+             */
+            if (filter != null
+                    && filter.encounterReasons() != null
+                    && !filter.encounterReasons().isEmpty()) {
+
+                predicates.add(
+                        root.get("encounterReason")
+                                .in(filter.encounterReasons())
+                );
+            }
+
+            /*
+             * Priority
+             */
+            if (filter != null
+                    && filter.priorities() != null
+                    && !filter.priorities().isEmpty()) {
+
+                predicates.add(
+                        root.get("priorityLevel")
+                                .in(filter.priorities())
+                );
+            }
+
+            /*
+             * Patient Name / MRN
+             */
+            if (hasPatientName || hasMrn) {
+
+                Join<PatientEncounter, Patient> patientJoin =
+                        root.join(
+                                "patient",
+                                JoinType.INNER
+                        );
+
+                /*
+                 * MRN
+                 */
+                if (hasMrn) {
+                    predicates.add(
+                            cb.equal(
+                                    patientJoin.get("medicalRecordNumber"),
+                                    filter.mrn().trim()
+                            )
+                    );
+                }
+
+                /*
+                 * Patient Name
+                 */
+                if (hasPatientName) {
+
+                    String[] tokens =
+                            filter.patientName()
+                                    .trim()
+                                    .toLowerCase()
+                                    .split("\\s+");
+
+                    Expression<String> first =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("firstName"),
+                                            ""
+                                    )
+                            );
+
+                    Expression<String> second =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("secondName"),
+                                            ""
+                                    )
+                            );
+
+                    Expression<String> third =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("thirdName"),
+                                            ""
+                                    )
+                            );
+
+                    Expression<String> last =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("lastName"),
+                                            ""
+                                    )
+                            );
+
+                    Predicate[] tokenPredicates =
+                            Arrays.stream(tokens)
+                                    .filter(
+                                            token ->
+                                                    token != null
+                                                            && !token.isBlank()
+                                    )
+                                    .map(token -> {
+
+                                        String like =
+                                                "%" + token + "%";
+
+                                        return cb.or(
+                                                cb.like(first, like),
+                                                cb.like(second, like),
+                                                cb.like(third, like),
+                                                cb.like(last, like)
+                                        );
+                                    })
+                                    .toArray(Predicate[]::new);
+
+                    if (tokenPredicates.length > 0) {
+                        predicates.add(
+                                cb.and(tokenPredicates)
+                        );
+                    }
+                }
+            }
+
+            /*
+             * =========================================================
+             * ONLY ENCOUNTERS WITHOUT AN INVOICE
+             * =========================================================
+             */
+            Subquery<Long> invoiceSubquery =
+                    query.subquery(Long.class);
+
+            Root<FinancialDocument> invoiceRoot =
+                    invoiceSubquery.from(FinancialDocument.class);
+
+            invoiceSubquery.select(
+                    invoiceRoot.get("id")
+            );
+
+            invoiceSubquery.where(
+                    cb.equal(
+                            invoiceRoot.get("encounterId"),
+                            root.get("id")
+                    ),
+                    cb.equal(
+                            invoiceRoot.get("documentType"),
+                            FinancialDocumentType.INVOICE
+                    )
+            );
+
+            predicates.add(
+                    cb.not(
+                            cb.exists(invoiceSubquery)
+                    )
+            );
+
+            return cb.and(
+                    predicates.toArray(
+                            new Predicate[0]
+                    )
+            );
+        };
+
+        Page<PatientEncounter> result =
+                patientEncounterRepository.findAll(
+                        spec,
+                        pageable
+                );
+
+        LOG.debug(
+                "[BILLING_PENDING_QUEUE] result totalElements={} totalPages={} pageNumber={} pageSize={}",
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.getNumber(),
+                result.getSize()
+        );
+
+        return result;
+    }
+
 
     @Transactional(readOnly = true)
     public long countTodayEncountersByFacility(Long facilityId) {
@@ -1268,12 +2019,15 @@ public class PatientEncounterService {
         return updated;
     }
 
+    @Transactional
     public PatientEncounter dischargeEncounter(PatientEncounterDischargeDTO dischargeDTO) {
         LOG.info("[DISCHARGE] PatientEncounter payload={}", dischargeDTO);
 
         PatientEncounter encounter = patientEncounterRepository.findById(dischargeDTO.encounterId())
                 .orElseThrow(() -> {
-                    LOG.warn("[DISCHARGE] PatientEncounter rejected: not found id={}", dischargeDTO.encounterId());
+                    LOG.warn("[DISCHARGE] PatientEncounter rejected: not found id={}",
+                            dischargeDTO.encounterId());
+
                     return new NotFoundAlertException(
                             "PatientEncounter not found with id " + dischargeDTO.encounterId(),
                             "patientEncounter",
@@ -1283,7 +2037,9 @@ public class PatientEncounterService {
 
         if (encounter.getStatus() != TreatmentStatus.ONGOING) {
             LOG.warn("[DISCHARGE] PatientEncounter rejected: invalid status id={} status={}",
-                    dischargeDTO.encounterId(), encounter.getStatus());
+                    dischargeDTO.encounterId(),
+                    encounter.getStatus());
+
             throw new BadRequestAlertException(
                     "Discharge allowed only when status is ONGOING.",
                     "patientEncounter",
@@ -1292,7 +2048,9 @@ public class PatientEncounterService {
         }
 
         if (dischargeDTO.dischargeType() == null) {
-            LOG.warn("[DISCHARGE] PatientEncounter rejected: dischargeType is null id={}", dischargeDTO.encounterId());
+            LOG.warn("[DISCHARGE] PatientEncounter rejected: dischargeType is null id={}",
+                    dischargeDTO.encounterId());
+
             throw new BadRequestAlertException(
                     "Discharge type is required.",
                     "patientEncounter",
@@ -1301,7 +2059,9 @@ public class PatientEncounterService {
         }
 
         if (dischargeDTO.dischargeAt() == null) {
-            LOG.warn("[DISCHARGE] PatientEncounter rejected: dischargeAt is null id={}", dischargeDTO.encounterId());
+            LOG.warn("[DISCHARGE] PatientEncounter rejected: dischargeAt is null id={}",
+                    dischargeDTO.encounterId());
+
             throw new BadRequestAlertException(
                     "Discharge date and time are required.",
                     "patientEncounter",
@@ -1309,32 +2069,67 @@ public class PatientEncounterService {
             );
         }
 
+        /*
+         * Update encounter discharge details
+         */
         encounter.setDischargeType(dischargeDTO.dischargeType());
         encounter.setDischargeAt(dischargeDTO.dischargeAt());
         encounter.setStatus(TreatmentStatus.DISCHARGED);
+
         try {
+            /*
+             * Save the encounter first
+             */
             PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
 
-            encounterAssignToBedService.dischargeActiveAssignmentByEncounterId(saved.getId());
-            notifyEncounterEvent(saved, NotificationCode.ENCOUNTER_CLOSED, null);
+            /*
+             * Create discharge log
+             */
+            EncounterDischargeLog dischargeLog = EncounterDischargeLog.builder()
+                    .encounter(saved)
+                    .dischargedAt(dischargeDTO.dischargeAt())
+                    .dischargedBy(currentUsername())
+                    .createdDate(Instant.now())
 
-            LOG.info("[DISCHARGE] success id={} status={} dischargeType={} dischargeAt={}",
+                    .build();
+
+            encounterDischargeLogRepository.save(dischargeLog);
+
+            /*
+             * Discharge active bed assignment
+             */
+            encounterAssignToBedService
+                    .dischargeActiveAssignmentByEncounterId(saved.getId());
+
+            /*
+             * Notify encounter closed
+             */
+            notifyEncounterEvent(
+                    saved,
+                    NotificationCode.ENCOUNTER_CLOSED,
+                    null
+            );
+
+            LOG.info(
+                    "[DISCHARGE] success id={} status={} dischargeType={} dischargeAt={} dischargedBy={}",
                     saved.getId(),
                     saved.getStatus(),
                     saved.getDischargeType(),
-                    saved.getDischargeAt());
+                    saved.getDischargeAt(),
+                    dischargeLog.getDischargedBy()
+            );
 
             return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             LOG.warn("[DISCHARGE] failed (constraint) payload={}", dischargeDTO, ex);
             throw handleConstraintViolation(ex);
+
         } catch (RuntimeException ex) {
             LOG.error("[DISCHARGE] failed (unexpected) payload={}", dischargeDTO, ex);
             throw ex;
         }
     }
-
     public PatientEncounter closeEncounterForBilling(Long encounterId) {
         LOG.info("[CLOSE_BILLING] PatientEncounter id={}", encounterId);
 
@@ -1694,5 +2489,11 @@ public class PatientEncounterService {
         data.put("chief_complaint", encounter.getChiefComplaint() != null ? encounter.getChiefComplaint() : "");
         data.put("notes", encounter.getNotes() != null ? encounter.getNotes() : "");
         return data;
+    }
+
+    @Transactional(readOnly = true)
+    public List<PatientEncounterFieldAudit> getAuditHistory(Long encounterId) {
+
+        return auditRepository.findByPatientEncounterIdOrderByLogDateDesc(encounterId);
     }
 }

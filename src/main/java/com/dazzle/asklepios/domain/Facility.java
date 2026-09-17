@@ -35,6 +35,7 @@ public class Facility extends AbstractAuditingEntity<Long> implements Serializab
     @Column(nullable = false, length = 255)
     private String name;
 
-
+    @Column(name="approving-diagnostic-test-settle-payment")
+    private Boolean approvingDiagnosticTestSettlePayment ;
 }
 

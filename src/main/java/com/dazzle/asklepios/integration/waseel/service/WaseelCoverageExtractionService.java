@@ -43,6 +43,77 @@ public class WaseelCoverageExtractionService {
         );
     }
 
+    /**
+     * Coverage is billable as insurance only when Waseel returned coverage
+     * details that are actually in-force. A successful eligibility transaction
+     * is not enough.
+     */
+    public boolean isCoverageInForce(String responseJson) {
+        if (responseJson == null || responseJson.isBlank()) {
+            return false;
+        }
+
+        try {
+            EligibilityResponse response =
+                    objectMapper.readValue(
+                            responseJson,
+                            EligibilityResponse.class
+                    );
+
+            return isCoverageInForce(response);
+        } catch (Exception exception) {
+            return false;
+        }
+    }
+
+    public boolean isCoverageInForce(EligibilityResponse response) {
+        if (response == null) {
+            return false;
+        }
+
+        if (isNotInForceDisposition(response.disposition())) {
+            return false;
+        }
+
+        if (response.coverages() == null || response.coverages().isEmpty()) {
+            return false;
+        }
+
+        EligibilityCoverageDTO coverage = response.coverages().get(0);
+        if (coverage == null) {
+            return false;
+        }
+
+        if (isNotInForceDisposition(coverage.notInforceReason())) {
+            return false;
+        }
+
+        return !isExplicitlyNotInForce(coverage.inforce());
+    }
+
+    private boolean isNotInForceDisposition(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+
+        String normalized = value.trim().toLowerCase();
+        return normalized.contains("not in-force")
+                || normalized.contains("not in force")
+                || normalized.contains("not inforce");
+    }
+
+    private boolean isExplicitlyNotInForce(String inforce) {
+        if (inforce == null || inforce.isBlank()) {
+            return false;
+        }
+
+        String normalized = inforce.trim().toLowerCase();
+        return normalized.equals("false")
+                || normalized.equals("no")
+                || normalized.equals("0")
+                || normalized.equals("n");
+    }
+
     public List<InsuranceBenefitRule> extractBenefitRules(String responseJson) {
         return extractBenefitRules(responseJson, null, null);
     }

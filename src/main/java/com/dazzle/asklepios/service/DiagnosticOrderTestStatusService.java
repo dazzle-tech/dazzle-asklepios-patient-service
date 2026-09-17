@@ -102,6 +102,28 @@ public class DiagnosticOrderTestStatusService {
         return saved;
     }
 
+    public DiagnosticOrderTest returnToNew(Long testId) {
+
+        LOG.debug("[DiagnosticOrderTestStatus] RETURN_TO_NEW - start. testId={}", testId);
+
+        DiagnosticOrderTest test = getTest(testId);
+
+        test.setProcessingStatus(DiagnosticStatus.NEW);
+
+        DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
+
+        diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
+
+        LOG.debug(
+                "[DiagnosticOrderTestStatus] RETURN_TO_NEW - done. testId={} orderId={} status={}",
+                saved.getId(),
+                saved.getOrderId(),
+                saved.getProcessingStatus()
+        );
+
+        return saved;
+    }
+
     public PatientArrivedResponseVM patientArrived(Long testId, PatientArrivedCreateRequestDTO dto) {
         DiagnosticOrderTest test = getTest(testId);
 
@@ -274,6 +296,18 @@ public class DiagnosticOrderTestStatusService {
             );
         }
 
+        DiagnosticStatus processingStatus = normalize(test.getProcessingStatus());
+
+        if (processingStatus != DiagnosticStatus.NEW) {
+            throw new BadRequestAlertException(
+                    "Cannot cancel because this test has already started",
+                    "test_already_started",
+
+                    "diagnostic_order_tests"
+
+            );
+        }
+
         String cancelReason =
                 cancellationReason == null || cancellationReason.isBlank()
                         ? "Diagnostic test cancelled"
@@ -367,6 +401,11 @@ public class DiagnosticOrderTestStatusService {
     public void bulkAccept(List<Long> testIds, String acceptedBy) {
         for (Long id : testIds) {
             accept(id, acceptedBy);
+        }
+    }
+    public void bulkCancel(List<Long> testIds,String cancelBy ,String cancellationReason){
+        for (Long id : testIds) {
+            cancel(id, cancelBy,cancellationReason);
         }
     }
 
@@ -665,6 +704,8 @@ public class DiagnosticOrderTestStatusService {
     private DiagnosticStatus normalize(DiagnosticStatus status) {
         return status == null ? DiagnosticStatus.NEW : status;
     }
+
+
 
     private void ensureTransition(DiagnosticOrderTest test, DiagnosticStatus to) {
         DiagnosticStatus from = normalize(test.getProcessingStatus());
