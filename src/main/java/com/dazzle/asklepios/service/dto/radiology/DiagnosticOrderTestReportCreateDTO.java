@@ -12,6 +12,12 @@ public record DiagnosticOrderTestReportCreateDTO(
 
         String report,
 
+        String radiologistInformation,
+
+        String criticalFindings,
+
+        String radiologistComments,
+
         Severity severity
 ) implements Serializable {
 }

@@ -6,6 +6,13 @@ import java.io.Serializable;
 
 public record DiagnosticOrderTestReportUpdateDTO(
         String report,
+
+        String radiologistInformation,
+
+        String criticalFindings,
+
+        String radiologistComments,
+
         Severity severity
 ) implements Serializable {
 }
