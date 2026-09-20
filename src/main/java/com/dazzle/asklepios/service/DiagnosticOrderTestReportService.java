@@ -171,13 +171,16 @@ public class DiagnosticOrderTestReportService {
         DiagnosticOrderTestReport report = DiagnosticOrderTestReport.builder()
                 .orderTestId(reportCreateDTO.orderTestId())
                 .report(reportCreateDTO.report())
+                .radiologistInformation(reportCreateDTO.radiologistInformation())
+                .criticalFindings(reportCreateDTO.criticalFindings())
+                .radiologistComments(reportCreateDTO.radiologistComments())
                 .severity(reportCreateDTO.severity())
                 .processingStatus(DiagnosticStatus.NEW)
                 .build();
 
         DiagnosticOrderTestReport saved = diagnosticOrderTestReportRepository.save(report);
 
-        if (reportCreateDTO.report() != null && !reportCreateDTO.report().isBlank()) {
+        if (hasRadiologyContent(reportCreateDTO.report(), reportCreateDTO.radiologistInformation(), reportCreateDTO.criticalFindings(), reportCreateDTO.radiologistComments())) {
             diagnosticOrderTestStatusService.markReady(reportCreateDTO.orderTestId());
         }
 
@@ -199,7 +202,7 @@ public class DiagnosticOrderTestReportService {
 
         requireRadiologyTest(report.getOrderTestId());
 
-        if (orderTestReportUpdateDTO.report() != null) {
+        if (hasRadiologyContent(orderTestReportUpdateDTO.report(), orderTestReportUpdateDTO.radiologistInformation(), orderTestReportUpdateDTO.criticalFindings(), orderTestReportUpdateDTO.radiologistComments())) {
             if (report.getImageStatus() != RadiologyImageStatus.FINISHED) {
                 LOG.warn("[DiagnosticOrderTestReportService] UPDATE_RADIOLOGY_REPORT - report text update blocked. reportId={} orderTestId={} imageStatus={}",
                         reportId, report.getOrderTestId(), report.getImageStatus());
@@ -212,6 +215,9 @@ public class DiagnosticOrderTestReportService {
         }
 
         report.setReport(orderTestReportUpdateDTO.report());
+        report.setRadiologistInformation(orderTestReportUpdateDTO.radiologistInformation());
+        report.setCriticalFindings(orderTestReportUpdateDTO.criticalFindings());
+        report.setRadiologistComments(orderTestReportUpdateDTO.radiologistComments());
         report.setSeverity(orderTestReportUpdateDTO.severity());
         DiagnosticOrderTestReport saved = diagnosticOrderTestReportRepository.save(report);
 
@@ -220,6 +226,13 @@ public class DiagnosticOrderTestReportService {
         LOG.debug("[DiagnosticOrderTestReportService] UPDATE_RADIOLOGY_REPORT - done. reportId={} orderTestId={} severity={}",
                 saved.getId(), saved.getOrderTestId(), saved.getSeverity());
         return saved;
+    }
+
+    private boolean hasRadiologyContent(String report, String radiologistInformation, String criticalFindings, String radiologistComments) {
+        return StringUtils.isNotBlank(report)
+                || StringUtils.isNotBlank(radiologistInformation)
+                || StringUtils.isNotBlank(criticalFindings)
+                || StringUtils.isNotBlank(radiologistComments);
     }
 
     @Transactional
