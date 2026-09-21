@@ -59,6 +59,7 @@ import com.dazzle.asklepios.service.helper.RoomHelper;
 import com.dazzle.asklepios.service.helper.ServiceHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentDetailsVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentLogResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentQuickAppointmentResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentTransferVM;
@@ -344,7 +345,7 @@ public class AppointmentService {
     }
 
     @Transactional(readOnly = true)
-    public Page<Appointment> filterAppointment(AppointmentSearchFilterMultiDepartmentDTO filter, Pageable pageable) {
+    public Page<AppointmentDetailsVM> filterAppointment(AppointmentSearchFilterMultiDepartmentDTO filter, Pageable pageable){
 
         LOG.debug("Service filter Appointments filter={} pageable={}", filter, pageable);
 
@@ -423,7 +424,7 @@ public class AppointmentService {
                 result.getSize()
         );
 
-        return result;
+        return result.map(this::toAppointmentDetailsVM);
     }
 
     @Transactional(readOnly = true)
@@ -2532,5 +2533,99 @@ public class AppointmentService {
                     e.getMessage()
             );
         }
+    }
+    private AppointmentDetailsVM toAppointmentDetailsVM(Appointment appointment) {
+
+        String resourceName = null;
+
+        if (appointment.getResourceId() != null && appointment.getResourceType() != null) {
+
+            switch (appointment.getResourceType().name()) {
+
+                case "SERVICE" -> {
+                    ServiceSetupDTO resource = serviceHelper.getService(appointment.getResourceId());
+                    resourceName = resource == null ? null : resource.name();
+                }
+
+                case "ROOM" -> {
+                    RoomDTO resource = roomHelper.getRoom(appointment.getResourceId());
+                    resourceName = resource == null ? null : resource.name();
+                }
+
+                case "PRACTITIONER" -> {
+                    PractitionerDTO resource = practitionerHelper.getPractitioner(appointment.getResourceId());
+                    resourceName = resource == null
+                            ? null
+                            : resource.firstName() + " " + resource.lastName();
+                }
+
+                case "DIAGNOSTIC_TEST" -> {
+                    DiagnosticTestSetupDTO resource =
+                            diagnosticTestHelper.getDiagnosticTest(appointment.getResourceId());
+
+                    resourceName = resource == null ? null : resource.name();
+                }
+
+                case "CATALOG" -> {
+                    CatalogDTO resource = catalogHelper.getCatalog(appointment.getResourceId());
+                    resourceName = resource == null ? null : resource.name();
+                }
+
+                case "DEPARTMENT" -> {
+                    DepartmentDTO resource = departmentHelper.getDepartment(appointment.getResourceId());
+                    resourceName = resource == null ? null : resource.name();
+                }
+
+                default -> resourceName = null;
+            }
+        }
+
+        return new AppointmentDetailsVM(
+                appointment.getId(),
+                appointment.getFacilityId(),
+                appointment.getDepartmentId(),
+                appointment.getAvailabilityGenerationBatch() != null
+                        ? appointment.getAvailabilityGenerationBatch().getId()
+                        : null,
+                appointment.getResourceType(),
+                appointment.getResourceId(),
+                resourceName,
+                appointment.getCapacityIndex(),
+                appointment.getStartDatetime(),
+                appointment.getEndDatetime(),
+                appointment.getPatient() != null
+                        ? appointment.getPatient().getId()
+                        : null,
+                appointment.getDefaultServiceId(),
+                appointment.getDefaultPractitionerId(),
+                appointment.getRequirePractitioner(),
+                appointment.getReason(),
+                appointment.getService(),
+                appointment.getServiceGroupId(),
+                appointment.getBookingMode(),
+                appointment.getStatus(),
+                appointment.getDeferred(),
+                appointment.getDeferredAt(),
+                appointment.getRequireConfirmation(),
+                appointment.getNoShowReason(),
+                appointment.getCancelReason(),
+                appointment.getCancelledBy(),
+                appointment.getPriority(),
+                appointment.getOriginType(),
+                appointment.getOriginName(),
+                appointment.getNote(),
+                appointment.getFollowUpEncounter() != null
+                        ? appointment.getFollowUpEncounter().getId()
+                        : null,
+                appointment.getConfirmedAt(),
+                appointment.getCheckedInAt(),
+                appointment.getBookingGroup() != null
+                        ? appointment.getBookingGroup().getId()
+                        : null,
+                appointment.getWaitingList() != null
+                        ? appointment.getWaitingList().getId()
+                        : null,
+                appointment.getHl7AppointmentNumber()
+        );
     }
 }
