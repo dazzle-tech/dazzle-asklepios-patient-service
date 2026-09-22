@@ -172,6 +172,11 @@ public class InvoiceGenerationService {
                         ? eligibilitySnapshot.eligibilityResponseId()
                         : resolveLiveEligibilityReference(encounter);
 
+        String coverageType = resolveCoverageType(encounterId);
+        boolean eligibilityFreezeRequired =
+                "INSURANCE".equals(coverageType)
+                        && billingEligibilitySnapshotService.isEligibilityFreezeRequired(encounterId);
+
         return new EncounterInvoiceDetailsResponse(
                 encounter.getId(),
                 encounter.getEncounterNumber(),
@@ -181,12 +186,13 @@ public class InvoiceGenerationService {
                 resolveBillingStatus(encounter),
                 encounter.getFinanciallyClosedAt(),
                 encounter.getFinanciallyClosedBy(),
-                resolveCoverageType(encounterId),
+                coverageType,
                 encounter.getPatientInsuranceId(),
                 eligibilityReference,
                 eligibilitySnapshot,
                 mapPatientHeader(patient),
-                billingSummary
+                billingSummary,
+                eligibilityFreezeRequired
         );
     }
 
@@ -371,15 +377,7 @@ public class InvoiceGenerationService {
         }
 
         if ("INSURANCE".equals(resolveCoverageType(encounterId))) {
-            try {
-                billingEligibilitySnapshotService.ensureFrozenForEncounter(encounterId);
-            } catch (NotFoundAlertException exception) {
-                throw new BadRequestAlertException(
-                        "Insurance eligibility is required before financial closure.",
-                        ENTITY_NAME,
-                        "encounter.eligibility.required"
-                );
-            }
+            billingEligibilitySnapshotService.requireReadyForFinancialClose(encounterId);
         }
 
         if (hasFinalInvoice(encounterId)) {

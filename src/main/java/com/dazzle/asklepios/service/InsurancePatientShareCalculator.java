@@ -527,7 +527,7 @@ public class InsurancePatientShareCalculator {
         }
     }
 
-    private boolean isWaseelCoverage(PatientInsurance insurance) {
+    public boolean isWaseelCoverage(PatientInsurance insurance) {
         if (insurance == null || insurance.getPayorId() == null) {
             return false;
         }

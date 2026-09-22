@@ -142,7 +142,7 @@ public class PatientFinancialStatementService {
         DashboardTotals totals = sumDashboardTotals(charges, responsibilitiesByEncounter);
 
         Page<PatientEncounter> encounterPage =
-                patientEncounterRepository.findByPatientIdOrderByCreatedDateDesc(
+                patientEncounterRepository.findDashboardPageByPatientId(
                         patientId,
                         safePageable
                 );

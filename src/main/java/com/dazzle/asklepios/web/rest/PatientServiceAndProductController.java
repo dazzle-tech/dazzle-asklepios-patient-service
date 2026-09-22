@@ -3,6 +3,7 @@ package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.service.ClinicalFulfillmentStatusResolver;
 import com.dazzle.asklepios.service.PatientServiceAndProductService;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductUpdateDTO;
@@ -39,11 +40,14 @@ public class PatientServiceAndProductController {
     private static final Logger LOG = LoggerFactory.getLogger(PatientServiceAndProductController.class);
 
     private final PatientServiceAndProductService patientServiceAndProductService;
+    private final ClinicalFulfillmentStatusResolver clinicalFulfillmentStatusResolver;
 
     public PatientServiceAndProductController(
-            PatientServiceAndProductService patientServiceAndProductService
+            PatientServiceAndProductService patientServiceAndProductService,
+            ClinicalFulfillmentStatusResolver clinicalFulfillmentStatusResolver
     ) {
         this.patientServiceAndProductService = patientServiceAndProductService;
+        this.clinicalFulfillmentStatusResolver = clinicalFulfillmentStatusResolver;
     }
 
     @PostMapping("/patient-services-products")
@@ -80,6 +84,7 @@ public class PatientServiceAndProductController {
 
         Page<PatientServiceAndProduct> page =
                 patientServiceAndProductService.findAllServicesAndProductsByEncounterId(pageable, encounterId);
+        clinicalFulfillmentStatusResolver.attachToItems(page.getContent());
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
@@ -99,7 +104,7 @@ public class PatientServiceAndProductController {
         Page<PatientServiceAndProduct> page =
                 patientServiceAndProductService
                         .findAllServicesAndProductsByPatientId(pageable, patientId);
-
+        clinicalFulfillmentStatusResolver.attachToItems(page.getContent());
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
@@ -205,6 +210,7 @@ public class PatientServiceAndProductController {
                                 source,
                                 sourceId
                         );
+        clinicalFulfillmentStatusResolver.attachToItems(page.getContent());
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page

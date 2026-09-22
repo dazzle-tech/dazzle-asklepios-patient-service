@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
@@ -63,4 +64,30 @@ public interface DiagnosticOrderTestRepository extends JpaRepository<DiagnosticO
         where t.id in :orderTestIds
     """)
     List<Object[]> findIdAndOrderIdByIdIn(List<Long> orderTestIds);
+
+    @Query("""
+            select t
+            from DiagnosticOrderTest t, DiagnosticOrder o
+            where t.orderId = o.id
+              and o.encounterId = :encounterId
+              and t.testId in :testIds
+              and t.status <> com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus.CANCELLED
+            order by t.id desc
+            """)
+    List<DiagnosticOrderTest> findActiveByEncounterIdAndTestIdIn(
+            @Param("encounterId") Long encounterId,
+            @Param("testIds") Collection<Long> testIds
+    );
+
+    @Query("""
+            select t
+            from DiagnosticOrderTest t, DiagnosticOrder o
+            where t.orderId = o.id
+              and o.encounterId = :encounterId
+              and t.status <> com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus.CANCELLED
+            order by t.id desc
+            """)
+    List<DiagnosticOrderTest> findActiveByEncounterId(
+            @Param("encounterId") Long encounterId
+    );
 }

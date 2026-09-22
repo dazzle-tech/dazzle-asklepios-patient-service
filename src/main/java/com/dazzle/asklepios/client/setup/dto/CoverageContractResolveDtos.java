@@ -164,6 +164,7 @@ public final class CoverageContractResolveDtos {
             String priceListName,
             LocalDate startDate,
             LocalDate endDate,
+            Long classId,
             String className,
             Boolean isActive
     ) {}

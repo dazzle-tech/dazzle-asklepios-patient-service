@@ -39,6 +39,7 @@ public class BillingEligibilitySnapshotService {
     private final PatientInsuranceRepository patientInsuranceRepository;
     private final EligibilityRequestPlanIdentityReader requestPlanIdentityReader;
     private final ObjectMapper objectMapper;
+    private final InsurancePatientShareCalculator insurancePatientShareCalculator;
 
     @Transactional(readOnly = true)
     public Optional<BillingEligibilitySnapshotResponse> findByEncounterId(Long encounterId) {
@@ -65,6 +66,17 @@ public class BillingEligibilitySnapshotService {
                                 "encounter.notfound"
                         )
                 );
+
+        if (!isEligibilityFreezeRequired(
+                encounter,
+                request == null ? null : request.patientInsuranceId()
+        )) {
+            throw new BadRequestAlertException(
+                    "Eligibility freeze is not required for this insurance coverage.",
+                    ENTITY_NAME,
+                    "eligibility.freeze.notRequired"
+            );
+        }
 
         if (encounter.getPatient() == null || encounter.getPatient().getId() == null) {
             throw new BadRequestAlertException(
@@ -102,9 +114,95 @@ public class BillingEligibilitySnapshotService {
     }
 
     @Transactional(readOnly = true)
+    public boolean isEligibilityFreezeRequired(Long encounterId) {
+        if (encounterId == null) {
+            return false;
+        }
+
+        return patientEncounterRepository.findById(encounterId)
+                .map(encounter -> isEligibilityFreezeRequired(encounter, encounter.getPatientInsuranceId()))
+                .orElse(false);
+    }
+
+    /**
+     * Waseel visits still require a frozen eligibility snapshot.
+     * Other payors use the selected patient-insurance expiration date.
+     */
+    @Transactional
+    public void requireReadyForFinancialClose(Long encounterId) {
+        PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
+                .orElseThrow(() ->
+                        new NotFoundAlertException(
+                                "Encounter not found with id " + encounterId,
+                                ENTITY_NAME,
+                                "encounter.notfound"
+                        )
+                );
+
+        PatientInsurance insurance = resolveInsurance(encounter, encounter.getPatientInsuranceId());
+        if (insurance != null
+                && !insurancePatientShareCalculator.isWaseelCoverage(insurance)) {
+            if (!insurancePatientShareCalculator.isLatestCoverageInForce(insurance)) {
+                throw new BadRequestAlertException(
+                        "The patient's insurance coverage is not in-force.",
+                        ENTITY_NAME,
+                        "patientInsurance.expired"
+                );
+            }
+            return;
+        }
+
+        try {
+            ensureFrozenForEncounter(encounterId);
+        } catch (NotFoundAlertException exception) {
+            throw new BadRequestAlertException(
+                    "Insurance eligibility is required before financial closure.",
+                    ENTITY_NAME,
+                    "encounter.eligibility.required"
+            );
+        }
+    }
+
+    @Transactional(readOnly = true)
     public Optional<String> resolveEligibilityReference(Long encounterId) {
         return snapshotRepository.findByEncounterId(encounterId)
                 .map(BillingEligibilitySnapshot::getEligibilityResponseId);
+    }
+
+    private boolean isEligibilityFreezeRequired(
+            PatientEncounter encounter,
+            Long patientInsuranceId
+    ) {
+        return isEligibilityFreezeRequired(
+                encounter,
+                resolveInsurance(encounter, patientInsuranceId)
+        );
+    }
+
+    private boolean isEligibilityFreezeRequired(
+            PatientEncounter encounter,
+            PatientInsurance insurance
+    ) {
+        if (insurance == null) {
+            return true;
+        }
+
+        return insurancePatientShareCalculator.isWaseelCoverage(insurance);
+    }
+
+    private PatientInsurance resolveInsurance(
+            PatientEncounter encounter,
+            Long patientInsuranceId
+    ) {
+        Long insuranceId = patientInsuranceId;
+        if (insuranceId == null && encounter != null) {
+            insuranceId = encounter.getPatientInsuranceId();
+        }
+        if (insuranceId == null) {
+            return null;
+        }
+
+        return patientInsuranceRepository.findById(insuranceId).orElse(null);
     }
 
     private WaseelEligibilityRequest resolveEligibilityRequest(

@@ -369,7 +369,8 @@ public class BillingPatientViewService {
 
                 responsibilities.stream()
                         .map(this::mapResponsibility)
-                        .toList()
+                        .toList(),
+                null
         );
     }
 

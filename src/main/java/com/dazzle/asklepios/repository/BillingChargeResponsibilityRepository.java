@@ -45,10 +45,17 @@ public interface BillingChargeResponsibilityRepository
             Collection<BillingResponsibilityStatus> excludedStatuses
     );
 
+    @Query("""
+            select r from BillingChargeResponsibility r
+            join fetch r.encounter
+            where r.patient.id = :patientId
+              and r.status not in :excludedStatuses
+            order by r.id asc
+            """)
     List<BillingChargeResponsibility>
     findAllByPatient_IdAndStatusNotInOrderByIdAsc(
-            Long patientId,
-            Collection<BillingResponsibilityStatus> excludedStatuses
+            @Param("patientId") Long patientId,
+            @Param("excludedStatuses") Collection<BillingResponsibilityStatus> excludedStatuses
     );
 
     Optional<BillingChargeResponsibility>

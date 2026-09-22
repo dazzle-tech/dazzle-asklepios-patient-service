@@ -7,6 +7,7 @@ import com.dazzle.asklepios.domain.BillingAllocation;
 import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
 import com.dazzle.asklepios.domain.FinancialDocumentItemStatus;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.billing.AllocationSourceType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingAllocationStatus;
@@ -206,6 +207,11 @@ public class InvoiceChargePaymentSyncService {
             return;
         }
 
+        if (isInsuranceClaimItem(item)) {
+            applyInsuranceClaimBalance(item);
+            return;
+        }
+
         BillingChargeLine chargeLine =
                 billingChargeLineRepository
                         .findById(chargeLineId)
@@ -237,6 +243,37 @@ public class InvoiceChargePaymentSyncService {
         item.setRemainingAmount(remaining);
         item.setStatus(
                 resolveStatus(mergedPaid, collectibleShare, remaining)
+        );
+    }
+
+    private boolean isInsuranceClaimItem(FinancialDocumentItem item) {
+        FinancialDocument document = item.getDocument();
+        return document != null
+                && document.getDocumentSubtype() == FinancialDocumentSubtype.INSURANCE_CLAIM;
+    }
+
+    /**
+     * Patient wallet / cash collections never settle an insurance-claim line.
+     * Payer remittance is tracked on insurance_paid_amount.
+     */
+    private void applyInsuranceClaimBalance(FinancialDocumentItem item) {
+        BigDecimal insuranceShare = money(item.getInsuranceShareAmount());
+        if (insuranceShare.signum() <= 0) {
+            insuranceShare = money(item.getNetAmount());
+        }
+
+        BigDecimal insurancePaid = money(item.getInsurancePaidAmount());
+        BigDecimal remaining =
+                insuranceShare
+                        .subtract(insurancePaid)
+                        .max(BigDecimal.ZERO)
+                        .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+
+        item.setPaidAmount(insurancePaid);
+        item.setRemainingAmount(remaining);
+        item.setInsuranceRemainingAmount(remaining);
+        item.setStatus(
+                resolveStatus(insurancePaid, insuranceShare, remaining)
         );
     }
 

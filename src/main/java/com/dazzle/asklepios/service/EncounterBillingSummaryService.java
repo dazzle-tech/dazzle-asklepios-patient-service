@@ -122,6 +122,9 @@ public class EncounterBillingSummaryService {
     private final BillingEngineService
             billingEngineService;
 
+    private final ClinicalFulfillmentStatusResolver
+            clinicalFulfillmentStatusResolver;
+
     /**
      * Returns an empty summary when the encounter does not yet have a
      * financial charge. This prevents the billing screen from receiving
@@ -164,9 +167,12 @@ public class EncounterBillingSummaryService {
 
             return emptySummary(
                     encounter,
-                    buildUnbilledItemSummaries(
-                            encounter,
-                            List.of()
+                    clinicalFulfillmentStatusResolver.attachToSummaries(
+                            buildUnbilledItemSummaries(
+                                    encounter,
+                                    List.of()
+                            ),
+                            encounter.getId()
                     ),
                     invoiceBalance
             );
@@ -273,6 +279,13 @@ public class EncounterBillingSummaryService {
                     invoiceBalance.invoiceId()
             );
         }
+
+        items = new ArrayList<>(
+                clinicalFulfillmentStatusResolver.attachToSummaries(
+                        items,
+                        encounter.getId()
+                )
+        );
 
         BigDecimal walletSettledAmount =
                 settlementTotals.walletSettledAmount();
@@ -415,7 +428,8 @@ public class EncounterBillingSummaryService {
                 line.getCreatedDate(),
                 responsibilities.stream()
                         .map(this::buildResponsibilitySummary)
-                        .toList()
+                        .toList(),
+                null
         );
     }
 
@@ -671,7 +685,8 @@ public class EncounterBillingSummaryService {
                 item.getCurrency(),
                 BillingChargeLineStatus.DRAFT,
                 item.getCreatedDate(),
-                List.of()
+                List.of(),
+                null
         );
     }
 
@@ -826,7 +841,8 @@ public class EncounterBillingSummaryService {
                 item.currency(),
                 item.status(),
                 item.chargedAt(),
-                item.responsibilities()
+                item.responsibilities(),
+                item.clinicalStatus()
         );
     }
 

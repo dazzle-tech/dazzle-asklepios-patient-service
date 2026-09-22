@@ -956,7 +956,7 @@ class CoverageContractShareServiceTest {
     private CoverageContractResolveDtos.ContractSnapshot contract() {
         return new CoverageContractResolveDtos.ContractSnapshot(
                 21L, "INSURANCE", 9L, "Tawuniya", "C-1", "POL-100", "GROSS",
-                9L, "Tawuniya", 4L, "PL", null, null, "A", true
+                9L, "Tawuniya", 4L, "PL", null, null, 21L, "A", true
         );
     }
 

@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.setup.PayorClient;
+import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientInsuranceBenefitRule;
 import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
@@ -11,6 +13,7 @@ import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
 import com.dazzle.asklepios.service.dto.InsuranceBenefitRule;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,6 +41,7 @@ public class InsuranceBenefitRuleService {
     private final WaseelEligibilityRequestRepository waseelEligibilityRequestRepository;
     private final InsuranceBenefitRuleMatcher benefitRuleMatcher;
     private final ObjectMapper objectMapper;
+    private final PayorClient payorClient;
 
     @Transactional
     public void syncFromCoverage(
@@ -144,6 +149,19 @@ public class InsuranceBenefitRuleService {
             return false;
         }
 
+        if (!isWaseelCoverage(insurance)) {
+            boolean inForce = isPatientInsuranceExpirationInForce(insurance);
+            if (!inForce) {
+                LOG.info(
+                        "[INSURANCE] Non-Waseel coverage is not in-force "
+                                + "patientInsuranceId={} expirationDate={}",
+                        insurance.getId(),
+                        insurance.getExpirationDate()
+                );
+            }
+            return inForce;
+        }
+
         WaseelEligibilityRequest eligibility = resolveEligibilityRequest(insurance);
         if (eligibility == null
                 || eligibility.getResponseJson() == null
@@ -165,6 +183,43 @@ public class InsuranceBenefitRuleService {
         }
 
         return inForce;
+    }
+
+    /**
+     * Approval Coverage Co. and other non-Waseel payors have no Waseel
+     * eligibility response. Coverage is in-force while the selected
+     * patient insurance expiration date is today or in the future.
+     */
+    private boolean isPatientInsuranceExpirationInForce(PatientInsurance insurance) {
+        return insurance.getExpirationDate() != null
+                && !insurance.getExpirationDate().isBefore(LocalDate.now());
+    }
+
+    private boolean isWaseelCoverage(PatientInsurance insurance) {
+        if (insurance.getPayorId() == null) {
+            return false;
+        }
+
+        try {
+            PayorDTO payor = payorClient.getPayorById(insurance.getPayorId());
+            return payor != null && Boolean.TRUE.equals(payor.isWaseelEnabled());
+        } catch (FeignException exception) {
+            LOG.warn(
+                    "[INSURANCE] Unable to resolve payor waseel flag payorId={}. "
+                            + "Keeping Waseel eligibility in-force check.",
+                    insurance.getPayorId(),
+                    exception
+            );
+            return true;
+        } catch (RuntimeException exception) {
+            LOG.warn(
+                    "[INSURANCE] Payor lookup failed payorId={}. "
+                            + "Keeping Waseel eligibility in-force check.",
+                    insurance.getPayorId(),
+                    exception
+            );
+            return true;
+        }
     }
 
     public void clearBenefitRules(Long patientInsuranceId) {

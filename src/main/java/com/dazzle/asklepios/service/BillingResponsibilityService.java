@@ -861,6 +861,10 @@ public class BillingResponsibilityService {
             );
         }
 
+        if (!insurancePatientShareCalculator.isWaseelCoverage(insurance)) {
+            return insurance;
+        }
+
         if (insurance.getPayerNphiesId() == null
                 || insurance.getPayerNphiesId().isBlank()) {
             throw new BadRequestAlertException(

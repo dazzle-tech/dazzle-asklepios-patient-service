@@ -55,10 +55,17 @@ public interface BillingChargeRepository
             Long encounterId
     );
 
+    @Query("""
+            select c from BillingCharge c
+            join fetch c.encounter
+            where c.patient.id = :patientId
+              and c.status not in :excludedStatuses
+            order by c.id asc
+            """)
     List<BillingCharge>
     findAllByPatient_IdAndStatusNotInOrderByIdAsc(
-            Long patientId,
-            Collection<BillingChargeStatus> excludedStatuses
+            @Param("patientId") Long patientId,
+            @Param("excludedStatuses") Collection<BillingChargeStatus> excludedStatuses
     );
 
     @Query("""

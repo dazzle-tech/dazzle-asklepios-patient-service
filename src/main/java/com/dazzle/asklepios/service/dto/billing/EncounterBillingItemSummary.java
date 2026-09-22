@@ -61,7 +61,47 @@ public record EncounterBillingItemSummary(
 
         java.time.Instant chargedAt,
 
-        List<BillingResponsibilitySummary> responsibilities
+        List<BillingResponsibilitySummary> responsibilities,
+
+        String clinicalStatus
 
 ) implements Serializable {
+
+    public EncounterBillingItemSummary withClinicalStatus(String nextClinicalStatus) {
+        if ((clinicalStatus == null && nextClinicalStatus == null)
+                || (clinicalStatus != null && clinicalStatus.equals(nextClinicalStatus))) {
+            return this;
+        }
+
+        return new EncounterBillingItemSummary(
+                patientServiceProductId,
+                chargeLineId,
+                billingItemType,
+                sourceId,
+                itemCode,
+                itemName,
+                quantity,
+                unitPrice,
+                setupUnitPrice,
+                priceSource,
+                priceListItemCode,
+                grossAmount,
+                discountAmount,
+                exemptionAmount,
+                taxAmount,
+                netAmount,
+                patientResponsibilityAmount,
+                insuranceResponsibilityAmount,
+                otherPayerResponsibilityAmount,
+                reservedAmount,
+                allocatedAmount,
+                outstandingAmount,
+                exempted,
+                currency,
+                status,
+                chargedAt,
+                responsibilities,
+                nextClinicalStatus
+        );
+    }
 }

@@ -35,7 +35,9 @@ public record EncounterInvoiceDetailsResponse(
 
         PatientInvoiceHeader patient,
 
-        EncounterBillingSummary billingSummary
+        EncounterBillingSummary billingSummary,
+
+        boolean eligibilityFreezeRequired
 
 ) implements Serializable {
 
