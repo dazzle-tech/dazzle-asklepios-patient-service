@@ -23,6 +23,9 @@ public record DiagnosticOrderTestReportResultsVM(
         Instant orderedAt,
 
         String report,
+        String radiologistInformation,
+        String criticalFindings,
+        String radiologistComments,
         Severity severity,
 
         String approvedBy,
@@ -75,6 +78,9 @@ public record DiagnosticOrderTestReportResultsVM(
                 orderedAt,
 
                 entity.getReport(),
+                entity.getRadiologistInformation(),
+                entity.getCriticalFindings(),
+                entity.getRadiologistComments(),
                 entity.getSeverity(),
 
                 entity.getApprovedBy(),

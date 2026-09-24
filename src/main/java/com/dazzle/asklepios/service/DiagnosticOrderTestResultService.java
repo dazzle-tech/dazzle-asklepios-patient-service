@@ -618,9 +618,6 @@ public class DiagnosticOrderTestResultService {
             return bestNormalRangeMatch.resultText();
         }
 
-        if (bestNormalRangeMatch.resultLov() != null && !bestNormalRangeMatch.resultLov().isBlank()) {
-            return bestNormalRangeMatch.resultLov();
-        }
 
         if (bestNormalRangeMatch.lovKeys() != null && !bestNormalRangeMatch.lovKeys().isEmpty()) {
             return String.join(", ", bestNormalRangeMatch.lovKeys());

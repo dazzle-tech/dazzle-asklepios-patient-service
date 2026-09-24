@@ -54,9 +54,9 @@ spring:
       indent-output: true
   datasource:
     type: com.zaxxer.hikari.HikariDataSource
-    url: jdbc:postgresql://localhost:5433/postgres
+    url: jdbc:postgresql://localhost:5432/test
     username: postgres
-    password: qse123H
+    password: 123456
 
     hikari:
       poolName: Hikari
@@ -80,6 +80,8 @@ patient:
         # Token is valid 24 hours
         token-validity-in-seconds: 86400
         token-validity-in-seconds-for-remember-me: 2592000
+  portal:
+    secret: ${PATIENT_PORTAL_SECRET:dev-patient-portal-secret}
   logging:
     use-json-format: false # By default, logs are not in Json format
     logstash: # Forward logs to logstash over a socket, used by LoggingConfiguration

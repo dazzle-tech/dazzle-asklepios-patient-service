@@ -678,6 +678,7 @@ public class PatientEncounterService {
         encounter.setStatus(TreatmentStatus.CANCELLED);
         try {
             PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
+            encounterAssignToBedService.dischargeActiveAssignmentByEncounterId(saved.getId());
             LOG.info("[CANCEL] success id={} status={}", saved.getId(), saved.getStatus());
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -707,6 +708,7 @@ public class PatientEncounterService {
         encounter.setStatus(TreatmentStatus.DISCHARGED);
 
         PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
+        encounterAssignToBedService.dischargeActiveAssignmentByEncounterId(saved.getId());
         LOG.info("[DISCHARGE] success id={} status={}", saved.getId(), saved.getStatus());
         return saved;
     }
@@ -765,6 +767,11 @@ public class PatientEncounterService {
                     .build();
 
             encounterDischargeLogRepository.save(completionLog);
+
+            /*
+             * Release active bed assignment and mark the bed IN_CLEANING
+             */
+            encounterAssignToBedService.dischargeActiveAssignmentByEncounterId(saved.getId());
 
             /*
              * Update appointment

@@ -234,6 +234,7 @@ public class EncounterAssignToBedService {
                     isExternal,
                     BedTransactionType.TRANSFER
             ));
+            bedHelper.markAsInCleaning(previousBedId);
 
             LOG.info("[UPDATE] EncounterAssignToBed success oldId={} newId={} encounterId={} patientId={} roomId={} bedId={}",
                     currentActiveEncounterAssignToBed.getId(),
@@ -294,6 +295,7 @@ public class EncounterAssignToBedService {
                     false,
                     BedTransactionType.RELEASE
             ));
+            bedHelper.markAsInCleaning(releasedEncounterAssignToBed.getBedId());
 
             LOG.info("[RELEASE] EncounterAssignToBed success id={} encounterId={} bedId={}",
                     releasedEncounterAssignToBed.getId(),
@@ -457,6 +459,7 @@ public class EncounterAssignToBedService {
                     false,
                     BedTransactionType.DISCHARGE
             ));
+            bedHelper.markAsInCleaning(dischargedAssignment.getBedId());
 
             LOG.info("[DISCHARGE_ASSIGNMENT] success assignmentId={} encounterId={} roomId={} bedId={}",
                     dischargedAssignment.getId(),

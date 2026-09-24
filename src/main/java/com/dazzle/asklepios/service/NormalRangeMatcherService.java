@@ -313,12 +313,7 @@ public class NormalRangeMatcherService {
         }
 
         String normalizedResultValue = resultValueText.trim();
-
-        if (normalRange.resultLov() != null && !normalRange.resultLov().isBlank()) {
-            return normalizedResultValue.equalsIgnoreCase(normalRange.resultLov().trim())
-                    ? TestResultMarker.NORMAL_MARKER
-                    : TestResultMarker.ABNORMAL_MARKER;
-        }
+        
 
         if (normalRange.lovKeys() != null && !normalRange.lovKeys().isEmpty()) {
             boolean matchesAllowedLovKey = normalRange.lovKeys().stream()

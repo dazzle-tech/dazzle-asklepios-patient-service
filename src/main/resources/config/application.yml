@@ -204,4 +204,8 @@ patient:
       zone: Asia/Hebron
       springdoc:
       pre-loading-enabled: true
+  portal:
+    # Shared secret for POST /api/patient/patient-portal/request-otp and verify-login-otp.
+    # Callers send it in the X-Portal-Secret header. Set PATIENT_PORTAL_SECRET in each environment.
+    secret: ${PATIENT_PORTAL_SECRET:}
   security:
