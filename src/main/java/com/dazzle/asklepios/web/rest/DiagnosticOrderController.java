@@ -72,13 +72,15 @@ public class DiagnosticOrderController {
      * @throws BadRequestAlertException if no authenticated user is available
      */
     private String currentUsername() {
-        LOG.debug("[DiagnosticOrder] CURRENT_USER - resolving username");
         return SecurityUtils.getCurrentUserLogin()
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "unauthenticated",
-                        "diagnostic_orders",
-                        "No authenticated user"
-                ));
+                .orElseThrow(() -> {
+                    LOG.warn("[DiagnosticOrder] Submit rejected. reason=unauthenticated_user");
+                    return new BadRequestAlertException(
+                            "unauthenticated",
+                            "diagnostic_orders",
+                            "No authenticated user"
+                    );
+                });
     }
 
     /**
@@ -90,11 +92,13 @@ public class DiagnosticOrderController {
      */
     @PostMapping("/diagnostic-orders")
     public ResponseEntity<DiagnosticOrderResponseVM> create(@Valid @RequestBody DiagnosticOrderCreateDTO dto) {
-        LOG.debug("[DiagnosticOrder] CREATE - request received. payload={}", dto);
+        LOG.debug("[DiagnosticOrder] CREATE request received. payload={}", dto);
+        LOG.info("[DiagnosticOrder] CREATE requested. patientId={} encounterId={} fromFacilityId={} fromDepartmentId={} isUrgent={}",
+                dto.patientId(), dto.encounterId(), dto.fromFacilityId(), dto.fromDepartmentId(), dto.isUrgent());
 
         DiagnosticOrder createdOrder = diagnosticOrderService.create(dto);
 
-        LOG.debug("[DiagnosticOrder] CREATE - created successfully. id={}", createdOrder.getId());
+        LOG.info("[DiagnosticOrder] CREATE completed. orderId={} status={} saveDraft={}", createdOrder.getId(), createdOrder.getStatus(), createdOrder.getSaveDraft());
         return ResponseEntity
                 .created(URI.create("/api/patient/diagnostic-orders/" + createdOrder.getId()))
                 .body(DiagnosticOrderResponseVM.ofEntity(createdOrder));
@@ -116,7 +120,8 @@ public class DiagnosticOrderController {
             @PathVariable Long id,
             @Valid @RequestBody DiagnosticOrderUpdateDTO dto
     ) {
-        LOG.debug("[DiagnosticOrder] UPDATE - request received. id={} payload={}", id, dto);
+        LOG.debug("[DiagnosticOrder] UPDATE request received. id={} payload={}", id, dto);
+        LOG.info("[DiagnosticOrder] UPDATE requested. orderId={} isUrgent={}", id, dto.isUrgent());
 
         DiagnosticOrder orderToUpdate = diagnosticOrderService.findById(id);
 
@@ -129,7 +134,7 @@ public class DiagnosticOrderController {
 
         DiagnosticOrder updatedOrder = diagnosticOrderService.update(orderToUpdate, fixedDto);
 
-        LOG.debug("[DiagnosticOrder] UPDATE - updated successfully. id={}", updatedOrder.getId());
+        LOG.info("[DiagnosticOrder] UPDATE completed. orderId={} isUrgent={}", updatedOrder.getId(), updatedOrder.getIsUrgent());
         return ResponseEntity.ok(DiagnosticOrderResponseVM.ofEntity(updatedOrder));
     }
 
@@ -270,13 +275,16 @@ public class DiagnosticOrderController {
      */
     @DeleteMapping("/diagnostic-orders/{id}")
     public ResponseEntity<Void> delete(@Valid @PathVariable Long id) {
-        LOG.debug("[DiagnosticOrder] DELETE - request received. id={}", id);
-
+        LOG.info(
+                "[DiagnosticOrder] DELETE requested. orderId={} requestedBy={}",
+                id,
+                currentUsername()
+        );
         DiagnosticOrder orderToDelete = diagnosticOrderService.findById(id);
 
         diagnosticOrderService.delete(orderToDelete.getId());
 
-        LOG.debug("[DiagnosticOrder] DELETE - deleted successfully. id={}", id);
+        LOG.info("[DiagnosticOrder] DELETE completed. orderId={}", id);
         return ResponseEntity.noContent().build();
     }
 
@@ -403,13 +411,15 @@ public class DiagnosticOrderController {
     @PostMapping("/diagnostic-orders/{id}/submit")
 
     public ResponseEntity<DiagnosticOrderResponseVM> submit(@Valid @PathVariable Long id) {
-        LOG.debug("[DiagnosticOrder] SUBMIT - request received. id={}", id);
+        LOG.info("[DiagnosticOrder] SUBMIT requested. orderId={}", id);
 
         String username = currentUsername();
+        LOG.debug("[DiagnosticOrder] SUBMIT request context. orderId={} requestedBy={}", id, username);
 
         DiagnosticOrder submittedOrder = diagnosticOrderService.submit(id, username);
 
-        LOG.debug("[DiagnosticOrder] SUBMIT - submitted successfully. id={}", submittedOrder.getId());
+        LOG.info("[DiagnosticOrder] SUBMIT completed. orderId={} status={} saveDraft={} submittedBy={}",
+                submittedOrder.getId(), submittedOrder.getStatus(), submittedOrder.getSaveDraft(), submittedOrder.getSubmittedBy());
         return ResponseEntity.ok(DiagnosticOrderResponseVM.ofEntity(submittedOrder));
     }
 }

@@ -1,6 +1,10 @@
 package com.dazzle.asklepios.aop.logging;
 
 import com.dazzle.asklepios.config.Constants;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.InsuranceItemNotCoveredException;
+import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import com.dazzle.asklepios.web.rest.errors.PatientAlreadyActiveException;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.AfterThrowing;
@@ -68,21 +72,51 @@ public class LoggingAspect {
      * @param joinPoint join point for advice.
      * @param e exception.
      */
-    @AfterThrowing(pointcut = "applicationPackagePointcut() && springBeanPointcut()", throwing = "e")
-    public void logAfterThrowing(JoinPoint joinPoint, Throwable e) {
-        if (env.acceptsProfiles(Profiles.of(Constants.SPRING_PROFILE_DEVELOPMENT))) {
-            logger(joinPoint).error(
-                "Exception in {}() with cause = '{}' and exception = '{}'",
-                joinPoint.getSignature().getName(),
-                e.getCause() != null ? e.getCause() : "NULL",
-                e.getMessage(),
-                e
+    @AfterThrowing(
+            pointcut =
+                    "applicationPackagePointcut() && springBeanPointcut()",
+            throwing = "e"
+    )
+    public void logAfterThrowing(
+            JoinPoint joinPoint,
+            Throwable e
+    ) {
+
+        Logger log = logger(joinPoint);
+
+        if (isBusinessException(e)) {
+
+            if (log.isWarnEnabled()) {
+                log.warn(
+                        "Business exception in {}() : {}",
+                        joinPoint.getSignature().getName(),
+                        e.getMessage()
+                );
+            }
+
+            return;
+        }
+
+        if (env.acceptsProfiles(
+                Profiles.of(Constants.SPRING_PROFILE_DEVELOPMENT)
+        )) {
+
+            log.error(
+                    "Exception in {}() with cause = '{}' and exception = '{}'",
+                    joinPoint.getSignature().getName(),
+                    e.getCause() != null ? e.getCause() : "NULL",
+                    e.getMessage(),
+                    e
             );
+
         } else {
-            logger(joinPoint).error(
-                "Exception in {}() with cause = {}",
-                joinPoint.getSignature().getName(),
-                e.getCause() != null ? String.valueOf(e.getCause()) : "NULL"
+
+            log.error(
+                    "Exception in {}() with cause = {}",
+                    joinPoint.getSignature().getName(),
+                    e.getCause() != null
+                            ? String.valueOf(e.getCause())
+                            : "NULL"
             );
         }
     }
@@ -110,6 +144,13 @@ public class LoggingAspect {
             log.error("Illegal argument: {} in {}()", Arrays.toString(joinPoint.getArgs()), joinPoint.getSignature().getName());
             throw e;
         }
+    }
+
+    private boolean isBusinessException(Throwable ex) {
+        return ex instanceof BadRequestAlertException
+                || ex instanceof NotFoundAlertException
+                || ex instanceof InsuranceItemNotCoveredException
+                || ex instanceof PatientAlreadyActiveException;
     }
 
 }
