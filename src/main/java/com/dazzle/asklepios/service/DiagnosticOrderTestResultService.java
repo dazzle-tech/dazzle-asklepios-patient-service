@@ -82,25 +82,7 @@ public class DiagnosticOrderTestResultService {
             BigDecimal resultValueNumber,
             String resultValueText
     ) {
-
-        TestResultType resultType;
-
-        try {
-            resultType =
-                    diagnosticTestProfileClient
-                            .getResultTypeByProfileTestIdInternal(
-                                    profileTestId
-                            );
-
-        } catch (Exception e) {
-
-            throw new BadRequestAlertException(
-                    "setup_service_error",
-                    "diagnostic_order_tests_result",
-                    "Failed to fetch result type for profileTestId "
-                            + profileTestId
-            );
-        }
+        TestResultType resultType = resolveResultTypeByProfileTestId(profileTestId);
 
         switch (resultType) {
 
@@ -144,6 +126,25 @@ public class DiagnosticOrderTestResultService {
         }
     }
 
+    private TestResultType resolveResultTypeByProfileTestId(Long profileTestId) {
+
+        try {
+            return diagnosticTestProfileClient
+                    .getResultTypeByProfileTestIdInternal(
+                            profileTestId
+                    );
+
+        } catch (Exception e) {
+
+            throw new BadRequestAlertException(
+                    "setup_service_error",
+                    "diagnostic_order_tests_result",
+                    "Failed to fetch result type for profileTestId "
+                            + profileTestId
+            );
+        }
+    }
+
     /**
      * Creates and persists a new {@link DiagnosticOrderTestResult}.
      *
@@ -174,6 +175,7 @@ public class DiagnosticOrderTestResultService {
         result.setMarker(testResultCreateDTO.marker());
         result.setNormalRangeValue(testResultCreateDTO.normalRangeValue());
         result.setProcessingStatus(DiagnosticStatus.RESULT_READY);
+        result.setResultTypeAtEntry(resolveResultTypeByProfileTestId(testResultCreateDTO.profileTestId()));
 
         DiagnosticOrderTestResult saved = diagnosticOrderTestResultRepository.save(result);
 
@@ -215,6 +217,7 @@ public class DiagnosticOrderTestResultService {
             result.setMarker(dto.marker());
             result.setNormalRangeValue(dto.normalRangeValue());
             result.setProcessingStatus(DiagnosticStatus.RESULT_READY);
+            result.setResultTypeAtEntry(resolveResultTypeByProfileTestId(dto.profileTestId()));
 
             diagnosticOrderTestResultRepository.save(result);
 
@@ -251,6 +254,7 @@ public class DiagnosticOrderTestResultService {
         testResult.setResultValueText(testResultUpdateDTO.resultValueText());
         testResult.setMarker(testResultUpdateDTO.marker());
         testResult.setNormalRangeValue(testResultUpdateDTO.normalRangeValue());
+        testResult.setResultTypeAtEntry(resolveResultTypeByProfileTestId(testResultUpdateDTO.profileTestId()));
 
         return diagnosticOrderTestResultRepository.save(testResult);
     }
