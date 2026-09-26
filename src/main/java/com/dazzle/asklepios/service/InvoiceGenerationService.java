@@ -194,14 +194,17 @@ public class InvoiceGenerationService {
     public List<PatientFinancialDocumentResponse> listPatientInvoices(Long patientId) {
         validatePatientId(patientId);
 
-        return financialDocumentRepository
-                .findAllByPatientIdAndDocumentTypeOrderByCreatedDateDesc(
-                        patientId,
-                        FinancialDocumentType.INVOICE
-                )
-                .stream()
-                .map(this::mapFinancialDocument)
-                .toList();
+        List<PatientFinancialDocumentResponse> invoices =
+                financialDocumentRepository
+                        .findAllByPatientIdAndDocumentTypeOrderByCreatedDateDesc(
+                                patientId,
+                                FinancialDocumentType.INVOICE
+                        )
+                        .stream()
+                        .map(this::mapFinancialDocument)
+                        .toList();
+
+        return enrichDocumentsWithEncounterNumbers(invoices);
     }
 
     @Transactional(readOnly = true)
@@ -254,9 +257,12 @@ public class InvoiceGenerationService {
 
         Map<Long, String> encounterNumbersById =
                 patientEncounterRepository.findAllById(encounterIds).stream()
+                        .filter(encounter -> encounter.getEncounterNumber() != null
+                                && !encounter.getEncounterNumber().isBlank())
                         .collect(Collectors.toMap(
                                 PatientEncounter::getId,
-                                PatientEncounter::getEncounterNumber
+                                PatientEncounter::getEncounterNumber,
+                                (left, right) -> left
                         ));
 
         return documents.stream()
