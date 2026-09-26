@@ -34,6 +34,7 @@ public class CoverageContractShareService {
     private static final Logger LOG = LoggerFactory.getLogger(CoverageContractShareService.class);
     private static final int MONEY_SCALE = 4;
     private static final BigDecimal ONE_HUNDRED = new BigDecimal("100");
+    static final String CONTRACT_EXCLUSION = "CONTRACT_EXCLUSION";
 
     private final CoverageContractClient coverageContractClient;
     private final PayorClient payorClient;
@@ -59,11 +60,13 @@ public class CoverageContractShareService {
 
         CoverageContractResolveDtos.Response resolved = resolve(insurance, item);
         if (resolved == null || !resolved.matched()) {
+            rememberExclusion(item, false);
             return Optional.empty();
         }
 
         boolean uncovered = Boolean.TRUE.equals(resolved.uncovered());
         boolean excluded = isExcluded(resolved);
+        rememberExclusion(item, excluded);
         boolean cashOut = uncovered || excluded;
         BigDecimal billedNet = applyPriceDiscount(normalizedNet, resolved, cashOut, excluded);
 
@@ -82,7 +85,7 @@ public class CoverageContractShareService {
             return Optional.of(applyPeriodLimits(cashSplit, resolved, insurance, item, billedNet, true));
         }
 
-        BigDecimal coveredAmount = coveredAmount(billedNet, resolved.coverage());
+        BigDecimal coveredAmount = coveredAmount(insurance, item, billedNet, resolved.coverage());
         BigDecimal uncoveredAmount = money(billedNet.subtract(coveredAmount));
         InsuranceSplit coveredSplit = splitCoveredAmount(coveredAmount, resolved.copayment());
         if (coveredSplit == null) {
@@ -127,10 +130,13 @@ public class CoverageContractShareService {
         BigDecimal normalizedNet = money(netAmount);
         CoverageContractResolveDtos.Response resolved = resolve(insurance, item);
         if (resolved == null || !resolved.matched()) {
+            rememberExclusion(item, false);
             return existingSplit;
         }
 
-        if (isExcluded(resolved)) {
+        boolean excluded = isExcluded(resolved);
+        rememberExclusion(item, excluded);
+        if (excluded) {
             BigDecimal billedNet = applyPriceDiscount(normalizedNet, resolved, true, true);
             InsuranceSplit cashSplit = new InsuranceSplit(
                     billedNet,
@@ -147,7 +153,7 @@ public class CoverageContractShareService {
         BigDecimal billedNet = applyPriceDiscount(normalizedNet, resolved, false, false);
         InsuranceSplit split = scaleSplit(existingSplit, normalizedNet, billedNet);
         if (resolved.coverage() != null) {
-            BigDecimal coveredAmount = coveredAmount(billedNet, resolved.coverage());
+            BigDecimal coveredAmount = coveredAmount(insurance, item, billedNet, resolved.coverage());
             BigDecimal insuranceShare = money(split.insuranceShare()).min(coveredAmount);
             split = new InsuranceSplit(
                     money(billedNet.subtract(insuranceShare)),
@@ -179,8 +185,10 @@ public class CoverageContractShareService {
             return existingSplit;
         }
         CoverageContractResolveDtos.Response resolved = resolve(insurance, item);
+        boolean excluded = isExcluded(resolved);
+        rememberExclusion(item, excluded);
         BigDecimal originalNet = money(netAmount);
-        if (isExcluded(resolved)) {
+        if (excluded) {
             BigDecimal billedNet = applyPriceDiscount(originalNet, resolved, true, true);
             InsuranceSplit cashSplit = new InsuranceSplit(
                     billedNet,
@@ -598,7 +606,7 @@ public class CoverageContractShareService {
         if (previous.getPaymentStatus() == PaymentStatus.CANCELLED) {
             return false;
         }
-        if (previous.isUncoveredCashItem()) {
+        if (previous.isUncoveredCashItem() || isContractExclusion(previous)) {
             return false;
         }
         if (previous.getPatientInsuranceId() == null) {
@@ -625,6 +633,9 @@ public class CoverageContractShareService {
         if (previous.getPaymentStatus() == PaymentStatus.CANCELLED) {
             return false;
         }
+        if (isContractExclusion(previous)) {
+            return false;
+        }
         if (previous.getPatientInsuranceId() != null
                 && insurance.getId() != null
                 && !insurance.getId().equals(previous.getPatientInsuranceId())
@@ -632,6 +643,23 @@ public class CoverageContractShareService {
             return false;
         }
         return matchesReading(previous, cashLimit);
+    }
+
+    private void rememberExclusion(PatientServiceAndProduct item, boolean excluded) {
+        if (item == null) {
+            return;
+        }
+        if (excluded) {
+            item.setNotCoveredReason(CONTRACT_EXCLUSION);
+            return;
+        }
+        if (CONTRACT_EXCLUSION.equals(item.getNotCoveredReason())) {
+            item.setNotCoveredReason(null);
+        }
+    }
+
+    private boolean isContractExclusion(PatientServiceAndProduct item) {
+        return item != null && CONTRACT_EXCLUSION.equals(item.getNotCoveredReason());
     }
 
     private boolean matchesReading(
@@ -783,18 +811,46 @@ public class CoverageContractShareService {
     }
 
     private BigDecimal coveredAmount(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
             BigDecimal normalizedNet,
             CoverageContractResolveDtos.CoverageReadingSnapshot coverage
     ) {
         if (coverage == null || coverage.limitValue() == null) {
             return normalizedNet;
         }
-        if ("FIXED".equalsIgnoreCase(coverage.valueType())) {
-            return money(coverage.limitValue()).min(normalizedNet);
+        if (!"FIXED".equalsIgnoreCase(coverage.valueType())) {
+            BigDecimal percent = money(coverage.limitValue());
+            return money(normalizedNet.multiply(percent).divide(ONE_HUNDRED, MONEY_SCALE, RoundingMode.HALF_UP))
+                    .min(normalizedNet);
         }
-        BigDecimal percent = money(coverage.limitValue());
-        return money(normalizedNet.multiply(percent).divide(ONE_HUNDRED, MONEY_SCALE, RoundingMode.HALF_UP))
-                .min(normalizedNet);
+        BigDecimal remaining = money(coverage.limitValue()).subtract(consumedFixedCoverage(insurance, item, coverage));
+        if (remaining.signum() < 0) {
+            remaining = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        }
+        return remaining.min(normalizedNet);
+    }
+
+    /**
+     * A fixed coverage amount is one pool at the selected scope: the service,
+     * the category, or the rule. It is not reopened for every charge line.
+     */
+    private BigDecimal consumedFixedCoverage(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            CoverageContractResolveDtos.CoverageReadingSnapshot coverage
+    ) {
+        if (item == null || insurance == null) {
+            return BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        }
+        BigDecimal consumed = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        for (PatientServiceAndProduct previous : periodItems(item, insurance, coverage, false)) {
+            if (!countsTowardLimit(previous, item, insurance, coverage)) {
+                continue;
+            }
+            consumed = consumed.add(money(previous.getNetAmount()));
+        }
+        return money(consumed).min(money(coverage.limitValue()));
     }
 
     private InsuranceSplit applyCopayment(

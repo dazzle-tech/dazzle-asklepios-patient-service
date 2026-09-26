@@ -497,6 +497,71 @@ class CoverageContractShareServiceTest {
     }
 
     @Test
+    void calculateSplit_fixedCoverageIsSharedAcrossTheSelectedService() {
+        when(coverageContractClient.resolve(any())).thenReturn(new CoverageContractResolveDtos.Response(
+                true,
+                "matched",
+                contract(),
+                copayment("PERCENTAGE", "20"),
+                true,
+                false,
+                coverage("FIXED", "10")
+        ));
+        when(insuranceCalculationService.calculateSplit(any(), any(), any()))
+                .thenReturn(new InsuranceSplit(new BigDecimal("0.8000"), new BigDecimal("3.2000")));
+        when(patientServiceAndProductRepository.findByEncounterId(12L)).thenReturn(List.of(previousItem("6")));
+
+        Optional<InsuranceSplit> split = coverageContractShareService.calculateSplit(
+                insurance(),
+                item(),
+                new BigDecimal("1000")
+        );
+
+        assertThat(split).isPresent();
+        assertThat(split.get().patientShare()).isEqualByComparingTo("996.8000");
+        assertThat(split.get().insuranceShare()).isEqualByComparingTo("3.2000");
+        verify(insuranceCalculationService).calculateSplit(
+                new BigDecimal("4.0000"),
+                new BigDecimal("20"),
+                BigDecimal.ZERO
+        );
+    }
+
+    @Test
+    void calculateSplit_generalCashLimitCountsOtherItemsAndSkipsExclusions() {
+        when(coverageContractClient.resolve(any())).thenReturn(new CoverageContractResolveDtos.Response(
+                true,
+                "matched",
+                contract(),
+                copayment("PERCENTAGE", "20"),
+                true,
+                false,
+                coverage("PERCENTAGE", "80"),
+                null,
+                generalCashLimit("FIXED", "100")
+        ));
+        when(insuranceCalculationService.calculateSplit(any(), any(), any()))
+                .thenReturn(new InsuranceSplit(new BigDecimal("160.0000"), new BigDecimal("640.0000")));
+        PatientServiceAndProduct covered = previousCashItem("40");
+        covered.setServiceId(28295L);
+        PatientServiceAndProduct excluded = previousCashItem("80");
+        excluded.setId(11L);
+        excluded.setServiceId(28295L);
+        excluded.setNotCoveredReason(CoverageContractShareService.CONTRACT_EXCLUSION);
+        when(patientServiceAndProductRepository.findByEncounterId(12L)).thenReturn(List.of(covered, excluded));
+
+        Optional<InsuranceSplit> split = coverageContractShareService.calculateSplit(
+                insurance(),
+                item(),
+                new BigDecimal("1000")
+        );
+
+        assertThat(split).isPresent();
+        assertThat(split.get().patientShare()).isEqualByComparingTo("60.0000");
+        assertThat(split.get().insuranceShare()).isEqualByComparingTo("940.0000");
+    }
+
+    @Test
     void capWithCoverage_cashLimitCapsWaselPatientShare() {
         InsuranceSplit waseel = new InsuranceSplit(new BigDecimal("200.0000"), new BigDecimal("800.0000"));
         when(coverageContractClient.resolve(any())).thenReturn(new CoverageContractResolveDtos.Response(
@@ -652,15 +717,17 @@ class CoverageContractShareServiceTest {
                 exclusion("YES")
         ));
 
+        PatientServiceAndProduct line = item();
         Optional<InsuranceSplit> split = coverageContractShareService.calculateSplit(
                 insurance(),
-                item(),
+                line,
                 new BigDecimal("1000")
         );
 
         assertThat(split).isPresent();
         assertThat(split.get().patientShare()).isEqualByComparingTo("1000.0000");
         assertThat(split.get().insuranceShare()).isEqualByComparingTo("0.0000");
+        assertThat(line.getNotCoveredReason()).isEqualTo(CoverageContractShareService.CONTRACT_EXCLUSION);
         verify(insuranceCalculationService, never()).calculateSplit(any(), any(), any());
     }
 
@@ -991,6 +1058,20 @@ class CoverageContractShareServiceTest {
                 "CATEGORY",
                 "SERVICE",
                 90L,
+                valueType,
+                new BigDecimal(amount),
+                "PER_ENCOUNTER",
+                "NET"
+        );
+    }
+
+    private CoverageContractResolveDtos.CoverageReadingSnapshot generalCashLimit(String valueType, String amount) {
+        return new CoverageContractResolveDtos.CoverageReadingSnapshot(
+                71L,
+                null,
+                "ALL",
+                null,
+                null,
                 valueType,
                 new BigDecimal(amount),
                 "PER_ENCOUNTER",
