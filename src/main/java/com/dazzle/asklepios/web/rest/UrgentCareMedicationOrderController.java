@@ -177,6 +177,33 @@ public class UrgentCareMedicationOrderController {
         return ResponseEntity.ok(page);
     }
 
+
+    @PutMapping("/urgent-care-medication-orders/group/{orderGroupId}")
+    public ResponseEntity<List<UrgentCareMedicationOrder>> updateGroup(
+            @PathVariable("orderGroupId") Long orderGroupId,
+            @Valid @RequestBody UrgentCareMedicationOrderUpdateDTO dto
+    ) {
+        LOG.debug(
+                "[UPDATE_GROUP] request -> orderGroupId={} payload={}",
+                orderGroupId,
+                dto
+        );
+
+        List<UrgentCareMedicationOrder> updated =
+                UrgentCareMedicationOrderService.updateGroup(
+                        orderGroupId,
+                        dto
+                );
+
+        LOG.debug(
+                "[UPDATE_GROUP] response -> orderGroupId={} size={}",
+                orderGroupId,
+                updated.size()
+        );
+
+        return ResponseEntity.ok(updated);
+    }
+
     @GetMapping("/urgent-care-medication-orders/filter")
     public ResponseEntity<Page<UrgentCareMedicationOrder>> filter(
             @RequestParam(name = "patientId", required = false) Long patientId,
