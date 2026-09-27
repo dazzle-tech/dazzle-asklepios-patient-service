@@ -2503,4 +2503,25 @@ public class PatientEncounterService {
 
         return auditRepository.findByPatientEncounterIdOrderByLogDateDesc(encounterId);
     }
+
+    @Transactional
+    public void assignNurse(Long encounterId, Long nurseId) {
+        PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
+                .orElse(null);
+
+        if (encounter == null) {
+            return;
+        }
+
+        if (encounter.getStatus() != TreatmentStatus.ONGOING && encounter.getStatus() != TreatmentStatus.ASSIGNED_TO_BED) {
+            throw new BadRequestAlertException(
+                    "Nurse can only be assigned when status is ONGOING or ASSIGNED TO BED.",
+                    "patientEncounter",
+                    "nurseAssignment.notAllowed"
+            );
+        }
+
+        encounter.setAssignedNurseId(nurseId);
+        patientEncounterRepository.save(encounter);
+    }
 }

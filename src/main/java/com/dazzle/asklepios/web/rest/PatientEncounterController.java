@@ -2,8 +2,10 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientEncounterFieldAudit;
+import com.dazzle.asklepios.domain.User;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
+import com.dazzle.asklepios.repository.UserRepository;
 import com.dazzle.asklepios.service.DiagnosticOrderService;
 import com.dazzle.asklepios.service.EncounterCoverageService;
 import com.dazzle.asklepios.service.PatientEncounterService;
@@ -46,7 +48,10 @@ import com.dazzle.asklepios.web.rest.vm.EncounterListVM;
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/patient")
@@ -60,6 +65,7 @@ public class PatientEncounterController {
     private final EncounterCoverageService encounterCoverageService;
     private final PatientDocumentRepository patientDocumentRepository;
     private final EncounterListService encounterListService;
+    private final UserRepository userRepository;
 
     public PatientEncounterController(
             PatientEncounterService patientEncounterService,
@@ -67,7 +73,8 @@ public class PatientEncounterController {
             PatientPrescriptionService patientPrescriptionService,
             EncounterCoverageService encounterCoverageService,
             PatientDocumentRepository patientDocumentRepository,
-            EncounterListService encounterListService
+            EncounterListService encounterListService,
+            UserRepository userRepository
     ) {
         this.patientEncounterService = patientEncounterService;
         this.diagnosticOrderService = diagnosticOrderService;
@@ -75,6 +82,7 @@ public class PatientEncounterController {
         this.encounterCoverageService = encounterCoverageService;
         this.patientDocumentRepository = patientDocumentRepository;
         this.encounterListService = encounterListService;
+        this.userRepository = userRepository;
     }
 
     @PostMapping("/encounter")
@@ -218,13 +226,25 @@ public class PatientEncounterController {
         Set<Long> orderEncounterIds = diagnosticOrderService.findEncounterIdsWithOrders(encounterIds);
         Set<Long> prescriptionEncounterIds = patientPrescriptionService.findEncounterIdsWithOrders(encounterIds);
         Set<Long> observasionEncounterIds = patientEncounterService.findEncounterIdsWithObservation(encounterIds);
+        List<Long> nurseIds = page.getContent().stream()
+                .map(PatientEncounter::getAssignedNurseId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        Map<Long, String> nurseNames = userRepository.findAllById(nurseIds).stream()
+                .collect(Collectors.toMap(
+                        User::getId,
+                        user -> (user.getFirstName() + " " + user.getLastName()).trim()
+                ));
         List<PatientEncounterVM> vmList = page.getContent().stream()
                 .map(encounter -> PatientEncounterVM.ofEntity(
                                 encounter,
                                 orderEncounterIds.contains(encounter.getId()),
                                 prescriptionEncounterIds.contains(encounter.getId()),
                                 observasionEncounterIds.contains(encounter.getId()),
-                                null
+                                null,
+                                nurseNames.get(encounter.getAssignedNurseId())
                         ))
                 .toList();
 
@@ -280,7 +300,17 @@ public class PatientEncounterController {
 
         Set<Long> observationEncounterIds =
                 patientEncounterService.findEncounterIdsWithObservation(encounterIds);
+        List<Long> nurseIds = page.getContent().stream()
+                .map(PatientEncounter::getAssignedNurseId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
 
+        Map<Long, String> nurseNames = userRepository.findAllById(nurseIds).stream()
+                .collect(Collectors.toMap(
+                        User::getId,
+                        user -> (user.getFirstName() + " " + user.getLastName()).trim()
+                ));
         List<PatientEncounterVM> vmList =
                 page.getContent().stream()
                         .map(encounter -> {
@@ -298,7 +328,8 @@ public class PatientEncounterController {
                                     orderEncounterIds.contains(encounter.getId()),
                                     prescriptionEncounterIds.contains(encounter.getId()),
                                     observationEncounterIds.contains(encounter.getId()),
-                                    documentType
+                                    documentType,
+                                    nurseNames.get(encounter.getAssignedNurseId())
                             );
                         })
                         .toList();
@@ -379,7 +410,17 @@ public class PatientEncounterController {
 
         Set<Long> observationEncounterIds =
                 patientEncounterService.findEncounterIdsWithObservation(encounterIds);
+        List<Long> nurseIds = page.getContent().stream()
+                .map(PatientEncounter::getAssignedNurseId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
 
+        Map<Long, String> nurseNames = userRepository.findAllById(nurseIds).stream()
+                .collect(Collectors.toMap(
+                        User::getId,
+                        user -> (user.getFirstName() + " " + user.getLastName()).trim()
+                ));
         List<PatientEncounterVM> vmList =
                 page.getContent().stream()
                         .map(encounter ->
@@ -388,7 +429,8 @@ public class PatientEncounterController {
                                         orderEncounterIds.contains(encounter.getId()),
                                         prescriptionEncounterIds.contains(encounter.getId()),
                                         observationEncounterIds.contains(encounter.getId()),
-                                        null
+                                        null,
+                                        nurseNames.get(encounter.getAssignedNurseId())
                                 )
                         )
                         .toList();
@@ -737,5 +779,14 @@ public class PatientEncounterController {
         return ResponseEntity.ok(
                 patientEncounterService.getAuditHistory(encounterId)
         );
+    }
+
+    @PutMapping("/encounter/{encounterId}/assigned-nurse/{nurseId}")
+    public ResponseEntity<Void> assignNurse(
+            @PathVariable Long encounterId,
+            @PathVariable Long nurseId
+    ) {
+        patientEncounterService.assignNurse(encounterId, nurseId);
+        return ResponseEntity.ok().build();
     }
 }
