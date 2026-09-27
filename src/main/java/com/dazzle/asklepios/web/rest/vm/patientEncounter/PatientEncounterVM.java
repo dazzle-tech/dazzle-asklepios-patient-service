@@ -48,7 +48,9 @@ public record PatientEncounterVM(
         Instant createdAt,
         LocalDateTime dischargeAt,
         String historyOfPresentIllness,
-        String createdBy
+        String createdBy,
+        Long assignedNurseId,
+        String assignedNurseName
 
 ) {
 
@@ -57,7 +59,8 @@ public record PatientEncounterVM(
             Boolean hasOrder,
             Boolean hasPrescription,
             Boolean hasObservation,
-            String documentType
+            String documentType,
+            String assignedNurseName
     ) {
         if (encounter == null) {
             return null;
@@ -99,7 +102,9 @@ public record PatientEncounterVM(
                 encounter.getCreatedDate(),
                 encounter.getDischargeAt(),
                 encounter.getHistoryOfPresentIllness(),
-                encounter.getCreatedBy()
+                encounter.getCreatedBy(),
+                encounter.getAssignedNurseId(),
+                assignedNurseName
         );
     }
    }
