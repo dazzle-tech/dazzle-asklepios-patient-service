@@ -237,6 +237,81 @@ public class PatientEncounterController {
         return new ResponseEntity<>(vmList, headers, HttpStatus.OK);
     }
 
+
+    @GetMapping("/encounter/opd")
+    public ResponseEntity<List<PatientEncounterVM>> filterOpdEncounters(
+            @RequestParam @NotNull Long facilityId,
+            @ParameterObject PatientEncounterSearchFilterDTO filter,
+            @ParameterObject Pageable pageable
+    ) {
+        LOG.debug(
+                "REST filter OPD PatientEncounters facilityId={} filter={} pageable={}",
+                facilityId,
+                filter,
+                pageable
+        );
+
+        Page<PatientEncounter> page =
+                patientEncounterService.filterOpdEncounters(
+                        facilityId,
+                        filter,
+                        pageable
+                );
+
+        List<Long> encounterIds =
+                page.getContent()
+                        .stream()
+                        .map(PatientEncounter::getId)
+                        .toList();
+
+        Set<Long> orderEncounterIds =
+                diagnosticOrderService.findEncounterIdsWithOrders(
+                        encounterIds
+                );
+
+        Set<Long> prescriptionEncounterIds =
+                patientPrescriptionService.findEncounterIdsWithOrders(
+                        encounterIds
+                );
+
+        Set<Long> observationEncounterIds =
+                patientEncounterService.findEncounterIdsWithObservation(
+                        encounterIds
+                );
+
+        List<PatientEncounterVM> vmList =
+                page.getContent()
+                        .stream()
+                        .map(encounter ->
+                                PatientEncounterVM.ofEntity(
+                                        encounter,
+                                        orderEncounterIds.contains(
+                                                encounter.getId()
+                                        ),
+                                        prescriptionEncounterIds.contains(
+                                                encounter.getId()
+                                        ),
+                                        observationEncounterIds.contains(
+                                                encounter.getId()
+                                        ),
+                                        null
+                                )
+                        )
+                        .toList();
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        return new ResponseEntity<>(
+                vmList,
+                headers,
+                HttpStatus.OK
+        );
+    }
+
     @GetMapping("/encounter/department/{departmentId}/count/today/total-patients")
     public ResponseEntity<Long> countTodayDepartmentTotalPatients(
             @PathVariable @NotNull Long departmentId
