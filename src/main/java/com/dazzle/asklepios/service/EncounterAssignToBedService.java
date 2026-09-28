@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
+import com.dazzle.asklepios.web.rest.vm.EncounterAssignToBedBedManagementVM;
 
 @Service
 @RequiredArgsConstructor
@@ -397,6 +398,37 @@ public class EncounterAssignToBedService {
                     "bed.alreadyAssigned"
             );
         }
+    }
+
+    @Transactional(readOnly = true)
+    public List<EncounterAssignToBedBedManagementVM> getActiveAssignmentsByBedIds(
+            List<Long> bedIds
+    ) {
+        LOG.debug("[GET_ACTIVE_LIST_BY_BEDS] bedIds={}", bedIds);
+
+        List<EncounterAssignToBed> activeAssignments =
+                encounterAssignToBedRepository.findAllByBedIdInAndIsActiveTrue(bedIds);
+
+        return activeAssignments.stream()
+                .map(assignment -> {
+                    Patient patient = assignment.getPatient();
+
+                    String patientName = java.util.stream.Stream.of(
+                                    patient.getFirstName(),
+                                    patient.getSecondName(),
+                                    patient.getThirdName(),
+                                    patient.getLastName()
+                            )
+                            .filter(name -> name != null && !name.isBlank())
+                            .collect(java.util.stream.Collectors.joining(" "));
+
+                    return new EncounterAssignToBedBedManagementVM(
+                            assignment.getBedId(),
+                            patient.getId(),
+                            patientName
+                    );
+                })
+                .toList();
     }
 
     @Transactional(readOnly = true)

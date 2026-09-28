@@ -18,6 +18,8 @@ public class VitalSignsResponseVM {
 
     private Integer respiratoryRate;
 
+    private String fastingBloodGlucose;
+
     private Integer bloodPressureSystolic;
 
     private Integer bloodPressureDiastolic;

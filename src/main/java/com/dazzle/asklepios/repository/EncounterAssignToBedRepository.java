@@ -14,6 +14,7 @@ public interface EncounterAssignToBedRepository extends JpaRepository<EncounterA
 
     List<EncounterAssignToBed> findAllByEncounter_IdInAndIsActiveTrue(List<Long> encounterIds);
 
+    List<EncounterAssignToBed> findAllByBedIdInAndIsActiveTrue(List<Long> bedIds);
 
     boolean existsByBedIdAndIsActiveTrue(Long bedId);
 }

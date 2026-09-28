@@ -156,6 +156,7 @@ public ResponseEntity<List<VitalSignsResponseVM>> findByPatientBetweenDates(
                                 : null;
 
                         return VitalSignsResponseVM.builder()
+                                .fastingBloodGlucose(vitalSigns.getFastingBloodGlucose())
                                 .temperature(vitalSigns.getTemperature())
                                 .pulseRate(vitalSigns.getHeartRate())
                                 .respiratoryRate(vitalSigns.getRespiratoryRate())
