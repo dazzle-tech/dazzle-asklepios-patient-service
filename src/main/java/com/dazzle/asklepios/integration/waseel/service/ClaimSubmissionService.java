@@ -237,7 +237,13 @@ public class ClaimSubmissionService {
         );
         String requestJson = toJson(uploadRequest);
 
-        ClaimRequest claimRequest = persistDraft(invoice, built, uploadName, requestJson, claimModel);
+        ClaimRequest claimRequest = persistDraft(
+                invoice,
+                built,
+                uploadName,
+                requestJson,
+                claimModel
+        );
 
         List<ClaimValidationError> validationErrors = claimPayloadValidationService.validate(claimModel);
         if (!validationErrors.isEmpty()) {
@@ -472,12 +478,11 @@ public class ClaimSubmissionService {
                 refreshedClaims.add(claimStatusRefreshService.refresh(claimRequest.getId()));
             }
 
-            ClaimRequest first = refreshedClaims.get(0);
             return toBatchResponse(
-                    first.getUploadName(),
-                    first.getUploadId(),
-                    first.getOutcome(),
-                    first.getMessage(),
+                    refreshedClaims.get(0).getUploadName(),
+                    refreshedClaims.get(0).getUploadId(),
+                    batchOutcome(refreshedClaims),
+                    batchMessage(refreshedClaims),
                     refreshedClaims
             );
 
@@ -929,27 +934,38 @@ public class ClaimSubmissionService {
         claimRequest.setResponseJson(responseJson);
         claimRequest.setMessage(response == null ? null : response.message());
 
-        if (response != null
-                && response.noOfNotAcceptedClaims() != null
-                && response.noOfNotAcceptedClaims() > 0) {
-            claimRequest.setStatus(ClaimStatus.REJECTED);
-            claimRequest.setOutcome("NOT_ACCEPTED");
-            if (claimRequest.getMessage() == null || claimRequest.getMessage().isBlank()) {
-                claimRequest.setMessage("Waseel rejected " + response.noOfNotAcceptedClaims() + " claim(s).");
-            }
-            return;
-        }
+        claimStatusRefreshService.applySummaryStatus(claimRequest, response);
 
-        if (response != null
-                && response.noOfAcceptedClaims() != null
-                && response.noOfAcceptedClaims() > 0) {
-            claimRequest.setStatus(ClaimStatus.ACCEPTED);
-            claimRequest.setOutcome("ACCEPTED");
-            return;
+        if (claimRequest.getStatus() == null || claimRequest.getStatus() == ClaimStatus.SUBMITTING) {
+            claimRequest.setStatus(ClaimStatus.SUBMITTED);
+            claimRequest.setOutcome(resolveOutcome(response));
         }
+    }
 
-        claimRequest.setStatus(ClaimStatus.SUBMITTED);
-        claimRequest.setOutcome(resolveOutcome(response));
+    private String batchOutcome(List<ClaimRequest> claims) {
+        long accepted = countStatus(claims, ClaimStatus.ACCEPTED);
+        long rejected = countStatus(claims, ClaimStatus.REJECTED) + countStatus(claims, ClaimStatus.FAILED);
+        if (accepted > 0 && rejected > 0) {
+            return "PARTIAL";
+        }
+        if (accepted == claims.size()) {
+            return "ACCEPTED";
+        }
+        ClaimRequest first = claims.get(0);
+        return first.getOutcome();
+    }
+
+    private String batchMessage(List<ClaimRequest> claims) {
+        long accepted = countStatus(claims, ClaimStatus.ACCEPTED);
+        long rejected = countStatus(claims, ClaimStatus.REJECTED) + countStatus(claims, ClaimStatus.FAILED);
+        if (accepted > 0 && rejected > 0) {
+            return "Waseel accepted " + accepted + " claim(s) and rejected " + rejected + " claim(s).";
+        }
+        return claims.get(0).getMessage();
+    }
+
+    private long countStatus(List<ClaimRequest> claims, ClaimStatus status) {
+        return claims.stream().filter(claim -> claim.getStatus() == status).count();
     }
 
     private String buildValidationFailureMessage(List<ClaimValidationError> validationErrors) {

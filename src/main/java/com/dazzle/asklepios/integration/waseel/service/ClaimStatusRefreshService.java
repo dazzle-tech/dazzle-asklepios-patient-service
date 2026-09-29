@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimValidationError;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimUploadResponse;
 import com.dazzle.asklepios.repository.ClaimRequestRepository;
+import com.dazzle.asklepios.service.ClaimSettlementNumberService;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -29,6 +30,7 @@ import java.util.Set;
 public class ClaimStatusRefreshService {
 
     private final ClaimRequestRepository claimRequestRepository;
+    private final ClaimSettlementNumberService claimSettlementNumberService;
     private final WaseelClaimService waseelClaimService;
     private final ClaimPayloadValidationService claimPayloadValidationService;
     private final ObjectMapper objectMapper;
@@ -43,6 +45,7 @@ public class ClaimStatusRefreshService {
                 ));
 
         List<ClaimValidationError> errors = new ArrayList<>();
+        ClaimStatus statusBeforeSummary = claim.getStatus();
 
         if (claim.getUploadId() != null) {
             try {
@@ -50,35 +53,19 @@ public class ClaimStatusRefreshService {
                         waseelClaimService.getUploadSummary(claim.getUploadId());
                 applyUploadSummary(claim, summary);
 
-                if (summary != null
-                        && summary.noOfNotAcceptedClaims() != null
-                        && summary.noOfNotAcceptedClaims() > 0) {
-                    claim.setStatus(ClaimStatus.REJECTED);
-                    claim.setOutcome("NOT_ACCEPTED");
-                    if (claim.getMessage() == null || claim.getMessage().isBlank()) {
-                        claim.setMessage(
-                                "Waseel rejected "
-                                        + summary.noOfNotAcceptedClaims()
-                                        + " claim(s) in upload "
-                                        + claim.getUploadId()
-                        );
-                    }
-                } else if (summary != null
-                        && summary.noOfAcceptedClaims() != null
-                        && summary.noOfAcceptedClaims() > 0) {
-                    claim.setStatus(ClaimStatus.ACCEPTED);
-                    claim.setOutcome("ACCEPTED");
-                }
+                applySummaryStatus(claim, summary);
             } catch (RestClientException ex) {
                 log.warn("[CLAIM_REFRESH] Upload summary failed claimId={} uploadId={}",
                         claimId, claim.getUploadId(), ex);
             }
         }
 
+        JsonNode claimSearch = null;
         if (claim.getProvClaimNo() != null && !claim.getProvClaimNo().isBlank()) {
             try {
                 String searchBody = waseelClaimService.searchClaimByProvClaimNo(claim.getProvClaimNo());
                 errors.addAll(parseWaseelErrors(searchBody));
+                claimSearch = readTree(searchBody);
                 claim.setResponseJson(mergeResponseJson(claim.getResponseJson(), searchBody));
             } catch (HttpStatusCodeException ex) {
                 log.warn(
@@ -95,20 +82,204 @@ public class ClaimStatusRefreshService {
 
         errors.addAll(readStoredValidationErrors(claim.getValidationErrorsJson()));
 
-        if (errors.isEmpty() && claim.getRequestJson() != null && !claim.getRequestJson().isBlank()) {
+        if (errors.isEmpty()
+                && !"PARTIAL".equals(claim.getOutcome())
+                && claim.getRequestJson() != null
+                && !claim.getRequestJson().isBlank()) {
             errors.addAll(revalidateRequestJson(claim.getRequestJson()));
         }
 
         claim.setValidationErrorsJson(toJson(dedupeErrors(errors)));
-
-        if (!errors.isEmpty() && claim.getStatus() != ClaimStatus.FAILED) {
-            claim.setStatus(ClaimStatus.REJECTED);
-            if (claim.getOutcome() == null || claim.getOutcome().isBlank()) {
-                claim.setOutcome("NOT_ACCEPTED");
-            }
-        }
+        applyIndividualStatus(claim, claimSearch, errors, statusBeforeSummary);
+        claimSettlementNumberService.syncSettlementNo(claim);
 
         return claimRequestRepository.save(claim);
+    }
+
+    /**
+     * Upload summary counts describe the whole file. A mixed file must not mark every claim rejected.
+     * All-accepted and all-rejected files keep a single status.
+     */
+    public void applySummaryStatus(ClaimRequest claim, WaseelClaimUploadResponse summary) {
+        if (claim == null || summary == null) {
+            return;
+        }
+
+        int accepted = count(summary.noOfAcceptedClaims());
+        int rejected = count(summary.noOfNotAcceptedClaims());
+
+        if (rejected > 0 && accepted == 0) {
+            claim.setStatus(ClaimStatus.REJECTED);
+            claim.setOutcome("NOT_ACCEPTED");
+            if (claim.getMessage() == null || claim.getMessage().isBlank()) {
+                claim.setMessage(
+                        "Waseel rejected "
+                                + rejected
+                                + " claim(s)"
+                                + (claim.getUploadId() == null
+                                        ? "."
+                                        : " in upload " + claim.getUploadId() + ".")
+                );
+            }
+            return;
+        }
+
+        if (accepted > 0 && rejected == 0) {
+            claim.setStatus(ClaimStatus.ACCEPTED);
+            claim.setOutcome("ACCEPTED");
+            return;
+        }
+
+        if (accepted > 0 && rejected > 0) {
+            claim.setStatus(ClaimStatus.SUBMITTED);
+            claim.setOutcome("PARTIAL");
+            claim.setMessage(
+                    "Waseel accepted " + accepted + " and rejected " + rejected + " claim(s)."
+            );
+        }
+    }
+
+    private void applyIndividualStatus(
+            ClaimRequest claim,
+            JsonNode claimSearch,
+            List<ClaimValidationError> errors,
+            ClaimStatus statusBeforeSummary
+    ) {
+        if (claim.getStatus() == ClaimStatus.FAILED) {
+            return;
+        }
+
+        if (!"PARTIAL".equals(claim.getOutcome())) {
+            if (!errors.isEmpty()) {
+                claim.setStatus(ClaimStatus.REJECTED);
+                if (claim.getOutcome() == null || claim.getOutcome().isBlank()) {
+                    claim.setOutcome("NOT_ACCEPTED");
+                }
+            }
+            return;
+        }
+
+        ClaimStatus individual = classifyIndividualClaim(claimSearch, claim.getProvClaimNo());
+        if (individual == ClaimStatus.ACCEPTED) {
+            claim.setStatus(ClaimStatus.ACCEPTED);
+            claim.setOutcome("ACCEPTED");
+            claim.setMessage(null);
+            claim.setValidationErrorsJson(toJson(List.of()));
+            return;
+        }
+
+        if (individual == ClaimStatus.REJECTED || !errors.isEmpty()) {
+            claim.setStatus(ClaimStatus.REJECTED);
+            claim.setOutcome("NOT_ACCEPTED");
+            if (errors.isEmpty()) {
+                claim.setMessage("Waseel did not accept this claim.");
+            }
+            return;
+        }
+
+        if (statusBeforeSummary == ClaimStatus.ACCEPTED || statusBeforeSummary == ClaimStatus.REJECTED) {
+            claim.setStatus(statusBeforeSummary);
+            claim.setOutcome(statusBeforeSummary == ClaimStatus.ACCEPTED ? "ACCEPTED" : "NOT_ACCEPTED");
+        }
+    }
+
+    private ClaimStatus classifyIndividualClaim(JsonNode searchBody, String provClaimNo) {
+        JsonNode claimNode = claimNode(searchBody, provClaimNo);
+        if (claimNode == null) {
+            return null;
+        }
+
+        String status = firstNonBlank(
+                text(claimNode.get("status")),
+                text(claimNode.get("claimStatus")),
+                text(claimNode.get("outcome")),
+                text(claimNode.get("disposition"))
+        );
+        if (status == null) {
+            return null;
+        }
+
+        String normalized = status.toLowerCase(Locale.ROOT).replace(" ", "").replace("_", "");
+        if (normalized.contains("notaccepted")
+                || normalized.contains("notsaved")
+                || normalized.contains("rejected")
+                || normalized.contains("denied")) {
+            return ClaimStatus.REJECTED;
+        }
+        if (normalized.contains("accepted")) {
+            return ClaimStatus.ACCEPTED;
+        }
+        return null;
+    }
+
+    private JsonNode claimNode(JsonNode root, String provClaimNo) {
+        if (root == null || root.isNull()) {
+            return null;
+        }
+
+        if (root.isArray()) {
+            JsonNode matched = null;
+            for (JsonNode child : root) {
+                if (matchesProvClaimNo(child, provClaimNo)) {
+                    return child;
+                }
+                if (matched == null) {
+                    matched = child;
+                }
+            }
+            return root.size() == 1 ? matched : null;
+        }
+
+        if (!root.isObject()) {
+            return null;
+        }
+
+        JsonNode claims = firstPresent(root, "claims", "content", "claimList");
+        if (claims != null && claims.isArray()) {
+            return claimNode(claims, provClaimNo);
+        }
+
+        JsonNode nested = firstPresent(root, "claim", "claimResponse", "data");
+        if (nested != null && nested.isObject() && hasClaimIdentity(nested)) {
+            return nested;
+        }
+
+        return root;
+    }
+
+    private boolean matchesProvClaimNo(JsonNode node, String provClaimNo) {
+        if (node == null || provClaimNo == null || provClaimNo.isBlank()) {
+            return false;
+        }
+        String value = firstNonBlank(
+                text(node.get("provClaimNo")),
+                text(node.get("provclaimno")),
+                text(node.get("providerClaimNo"))
+        );
+        return provClaimNo.equalsIgnoreCase(value);
+    }
+
+    private boolean hasClaimIdentity(JsonNode node) {
+        return text(node.get("status")) != null
+                || text(node.get("claimStatus")) != null
+                || text(node.get("provClaimNo")) != null
+                || text(node.get("outcome")) != null;
+    }
+
+    private JsonNode readTree(String body) {
+        if (body == null || body.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readTree(body);
+        } catch (JsonProcessingException ex) {
+            log.warn("[CLAIM_REFRESH] Failed to read claim search JSON", ex);
+            return null;
+        }
+    }
+
+    private int count(Integer value) {
+        return value == null ? 0 : value;
     }
 
     private void applyUploadSummary(ClaimRequest claim, WaseelClaimUploadResponse summary) {
