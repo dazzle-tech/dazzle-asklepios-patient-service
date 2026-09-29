@@ -17,6 +17,9 @@ import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -61,28 +64,20 @@ public class NotificationHelper {
                 return;
             }
 
-            try {
-                String logoUrl = systemConfigurationClient
-                        .getResolvedValue(SystemConfigKey.SYSTEM_LOGO);
+            if (hasUserJwt()) {
+                applyAuthenticatedLogo(data);
 
-                if (logoUrl != null && !logoUrl.isBlank()) {
-                    data.put("logo_url", logoUrl);
+                Long loggedInFacilityId = getLoggedInFacility();
+
+                if (loggedInFacilityId != null) {
+                    FacilityDTO facilityDTO = facilityHelper.getFacility(loggedInFacilityId);
+
+                    if (facilityDTO != null && facilityDTO.name() != null) {
+                        data.put("logged_in_facility_name", facilityDTO.name());
+                    }
                 }
-            } catch (Exception e) {
-                log.warn(
-                        "[NOTIFICATION] Could not resolve SYSTEM_LOGO. Continuing without logo. error={}",
-                        e.getMessage()
-                );
-            }
-
-            Long loggedInFacilityId = getLoggedInFacility();
-
-            if (loggedInFacilityId != null) {
-                FacilityDTO facilityDTO = facilityHelper.getFacility(loggedInFacilityId);
-
-                if (facilityDTO != null && facilityDTO.name() != null) {
-                    data.put("logged_in_facility_name", facilityDTO.name());
-                }
+            } else {
+                applyPublicLogo(data);
             }
 
             Map<String, Map<String, List<NotificationResolvedRecipientDTO>>> groupedRecipients =
@@ -1182,6 +1177,40 @@ public class NotificationHelper {
         }
 
         return result;
+    }
+
+    private boolean hasUserJwt() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.getPrincipal() instanceof Jwt;
+    }
+
+    private void applyAuthenticatedLogo(Map<String, Object> data) {
+        try {
+            putLogo(data, systemConfigurationClient.getResolvedValue(SystemConfigKey.SYSTEM_LOGO));
+        } catch (Exception e) {
+            log.warn(
+                    "[NOTIFICATION] Could not resolve SYSTEM_LOGO. Continuing without logo. error={}",
+                    e.getMessage()
+            );
+        }
+    }
+
+    private void applyPublicLogo(Map<String, Object> data) {
+        try {
+            Map<SystemConfigKey, String> configs = systemConfigurationClient.getPublicConfigurations();
+            putLogo(data, configs == null ? null : configs.get(SystemConfigKey.SYSTEM_LOGO));
+        } catch (Exception e) {
+            log.warn(
+                    "[NOTIFICATION] Could not resolve SYSTEM_LOGO. Continuing without logo. error={}",
+                    e.getMessage()
+            );
+        }
+    }
+
+    private void putLogo(Map<String, Object> data, String logoUrl) {
+        if (data != null && logoUrl != null && !logoUrl.isBlank()) {
+            data.put("logo_url", logoUrl);
+        }
     }
 
     private Long getLoggedInFacility() {
