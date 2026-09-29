@@ -79,6 +79,7 @@ public class NormalRangeMatcherService {
         String patientGender = toGenderString(patient.getSexAtBirth());
         LocalDate patientDateOfBirth = patient.getDateOfBirth();
         return candidates.stream()
+                .filter(normalRange -> isActive(normalRange))
                 .filter(normalRange -> matchesGender(normalRange, patientGender))
                 .filter(normalRange -> matchesAge(normalRange, patientDateOfBirth))
                 .filter(normalRange -> matchesCondition(normalRange, patient))
@@ -90,6 +91,15 @@ public class NormalRangeMatcherService {
                                 .reversed()
                 )
                 .findFirst();
+    }
+
+    /**
+     * Check if a normal range is active.
+     * A range is considered active if isActive is null (backward compatibility) or explicitly true.
+     * Ranges with isActive=false are considered inactive/deprecated and are excluded.
+     */
+    private boolean isActive(NormalRangeMatchDTO normalRange) {
+        return normalRange.isActive() == null || Boolean.TRUE.equals(normalRange.isActive());
     }
 
     private boolean matchesGender(NormalRangeMatchDTO normalRange, String patientGender) {

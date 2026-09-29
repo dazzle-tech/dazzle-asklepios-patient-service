@@ -82,25 +82,7 @@ public class DiagnosticOrderTestResultService {
             BigDecimal resultValueNumber,
             String resultValueText
     ) {
-
-        TestResultType resultType;
-
-        try {
-            resultType =
-                    diagnosticTestProfileClient
-                            .getResultTypeByProfileTestIdInternal(
-                                    profileTestId
-                            );
-
-        } catch (Exception e) {
-
-            throw new BadRequestAlertException(
-                    "setup_service_error",
-                    "diagnostic_order_tests_result",
-                    "Failed to fetch result type for profileTestId "
-                            + profileTestId
-            );
-        }
+        TestResultType resultType = resolveResultTypeByProfileTestId(profileTestId);
 
         switch (resultType) {
 
@@ -144,6 +126,58 @@ public class DiagnosticOrderTestResultService {
         }
     }
 
+    private TestResultType resolveResultTypeByProfileTestId(Long profileTestId) {
+
+        try {
+            return diagnosticTestProfileClient
+                    .getResultTypeByProfileTestIdInternal(
+                            profileTestId
+                    );
+
+        } catch (Exception e) {
+
+            throw new BadRequestAlertException(
+                    "setup_service_error",
+                    "diagnostic_order_tests_result",
+                    "Failed to fetch result type for profileTestId "
+                            + profileTestId
+            );
+        }
+    }
+
+    private TestResultType resolveEffectiveResultType(DiagnosticOrderTestResult result) {
+        if (result == null) {
+            throw new BadRequestAlertException(
+                    "notfound",
+                    "diagnostic_order_tests_result",
+                    "DiagnosticOrderTestResult not found"
+            );
+        }
+        if (result.getResultTypeAtEntry() != null) {
+            return result.getResultTypeAtEntry();
+        }
+        return resolveResultTypeByProfileTestId(result.getProfileTestId());
+    }
+
+    private TestResultType resolveEffectiveResultTypeForView(DiagnosticOrderTestResult result) {
+        if (result == null) {
+            return null;
+        }
+        if (result.getResultTypeAtEntry() != null) {
+            return result.getResultTypeAtEntry();
+        }
+        try {
+            return resolveResultTypeByProfileTestId(result.getProfileTestId());
+        } catch (Exception ex) {
+            LOG.warn(
+                    "ResultType fetch failed for profileTestId={}",
+                    result.getProfileTestId(),
+                    ex
+            );
+            return null;
+        }
+    }
+
     /**
      * Creates and persists a new {@link DiagnosticOrderTestResult}.
      *
@@ -174,6 +208,7 @@ public class DiagnosticOrderTestResultService {
         result.setMarker(testResultCreateDTO.marker());
         result.setNormalRangeValue(testResultCreateDTO.normalRangeValue());
         result.setProcessingStatus(DiagnosticStatus.RESULT_READY);
+        result.setResultTypeAtEntry(resolveResultTypeByProfileTestId(testResultCreateDTO.profileTestId()));
 
         DiagnosticOrderTestResult saved = diagnosticOrderTestResultRepository.save(result);
 
@@ -215,6 +250,7 @@ public class DiagnosticOrderTestResultService {
             result.setMarker(dto.marker());
             result.setNormalRangeValue(dto.normalRangeValue());
             result.setProcessingStatus(DiagnosticStatus.RESULT_READY);
+            result.setResultTypeAtEntry(resolveResultTypeByProfileTestId(dto.profileTestId()));
 
             diagnosticOrderTestResultRepository.save(result);
 
@@ -251,6 +287,7 @@ public class DiagnosticOrderTestResultService {
         testResult.setResultValueText(testResultUpdateDTO.resultValueText());
         testResult.setMarker(testResultUpdateDTO.marker());
         testResult.setNormalRangeValue(testResultUpdateDTO.normalRangeValue());
+        testResult.setResultTypeAtEntry(resolveResultTypeByProfileTestId(testResultUpdateDTO.profileTestId()));
 
         return diagnosticOrderTestResultRepository.save(testResult);
     }
@@ -275,16 +312,7 @@ public class DiagnosticOrderTestResultService {
         TestResultMarker viewMarker = result.getMarker();
         String viewNormalRange = result.getNormalRangeValue();
 
-        TestResultType resultType;
-        try {
-            resultType = diagnosticTestProfileClient.getResultTypeByProfileTestIdInternal(result.getProfileTestId());
-        } catch (Exception e) {
-            throw new BadRequestAlertException(
-                    "setup_service_error",
-                    "diagnostic_order_tests_result",
-                    "Failed to fetch result type for profileTestId " + result.getProfileTestId()
-            );
-        }
+        TestResultType resultType = resolveEffectiveResultType(result);
 
         if (patientId != null) {
             NormalRangeMatchDTO bestNormalRange =
@@ -297,7 +325,7 @@ public class DiagnosticOrderTestResultService {
                     bestNormalRange
             );
 
-            viewNormalRange = buildViewNormalRange(bestNormalRange);
+            viewNormalRange = buildViewNormalRange(bestNormalRange, resultType);
         }
 
         DiagnosticOrderTestResult approvedResult =
@@ -357,17 +385,8 @@ public class DiagnosticOrderTestResultService {
             TestResultMarker viewMarker = TestResultMarker.UNKNOWN;
             String viewNormalRange = " ";
 
-            TestResultType resultType = null;
-
-            try {
-                resultType = diagnosticTestProfileClient
-                        .getResultTypeByProfileTestIdInternal(
-                                result.getProfileTestId()
-                        );
-            } catch (Exception ignored) {
-                LOG.warn("ResultType fetch failed for profileTestId={}",
-                        result.getProfileTestId());
-            }
+            TestResultType resultType =
+                    resolveEffectiveResultTypeForView(result);
 
             if (patientId != null && resultType != null) {
 
@@ -384,7 +403,7 @@ public class DiagnosticOrderTestResultService {
                         best
                 );
 
-                viewNormalRange = buildViewNormalRange(best);
+                viewNormalRange = buildViewNormalRange(best, resultType);
             }
             boolean hasNote =
                     diagnosticOrderTestResultTechnicianNoteRepository.existsByResultId(
@@ -511,23 +530,8 @@ public class DiagnosticOrderTestResultService {
             TestResultMarker viewMarker = result.getMarker();
             String viewNormalRange = result.getNormalRangeValue();
 
-            TestResultType resultType = null;
-
-            try {
-
-                resultType =
-                        diagnosticTestProfileClient
-                                .getResultTypeByProfileTestIdInternal(
-                                        result.getProfileTestId()
-                                );
-
-            } catch (Exception ignored) {
-
-                LOG.warn(
-                        "ResultType fetch failed for Results page. profileTestId={}",
-                        result.getProfileTestId()
-                );
-            }
+            TestResultType resultType =
+                    resolveEffectiveResultTypeForView(result);
 
             if (patient != null && resultType != null) {
 
@@ -546,7 +550,7 @@ public class DiagnosticOrderTestResultService {
                         );
 
                 viewNormalRange =
-                        buildViewNormalRange(best);
+                        buildViewNormalRange(best, resultType);
             }
 
             // =====================================================
@@ -609,43 +613,48 @@ public class DiagnosticOrderTestResultService {
                 .orElse(null);
     }
 
-    private String buildViewNormalRange(NormalRangeMatchDTO bestNormalRangeMatch) {
-        if (bestNormalRangeMatch == null) {
+    private String buildViewNormalRange(
+            NormalRangeMatchDTO bestNormalRangeMatch,
+            TestResultType resultType
+    ) {
+        if (bestNormalRangeMatch == null || resultType == null) {
             return " ";
         }
 
-        if (bestNormalRangeMatch.resultText() != null && !bestNormalRangeMatch.resultText().isBlank()) {
-            return bestNormalRangeMatch.resultText();
-        }
+        return switch (resultType) {
+            case TEXT -> bestNormalRangeMatch.resultText() != null
+                    && !bestNormalRangeMatch.resultText().isBlank()
+                    ? bestNormalRangeMatch.resultText()
+                    : " ";
+            case LOV -> bestNormalRangeMatch.lovKeys() != null
+                    && !bestNormalRangeMatch.lovKeys().isEmpty()
+                    ? String.join(", ", bestNormalRangeMatch.lovKeys())
+                    : " ";
+            case NUMBER -> {
+                Double from = bestNormalRangeMatch.rangeFrom();
+                Double to = bestNormalRangeMatch.rangeTo();
 
-
-        if (bestNormalRangeMatch.lovKeys() != null && !bestNormalRangeMatch.lovKeys().isEmpty()) {
-            return String.join(", ", bestNormalRangeMatch.lovKeys());
-        }
-
-        Double from = bestNormalRangeMatch.rangeFrom();
-        Double to = bestNormalRangeMatch.rangeTo();
-
-        NormalRangeType normalRangeType = bestNormalRangeMatch.normalRangeType();
-        if (normalRangeType == null) {
-            normalRangeType = NormalRangeType.RANGE;
-        }
-
-        return switch (normalRangeType) {
-            case RANGE -> {
-                if (from != null && to != null) {
-                    yield from + " - " + to;
+                NormalRangeType normalRangeType = bestNormalRangeMatch.normalRangeType();
+                if (normalRangeType == null) {
+                    normalRangeType = NormalRangeType.RANGE;
                 }
-                if (from != null) {
-                    yield ">= " + from;
-                }
-                if (to != null) {
-                    yield "<= " + to;
-                }
-                yield " ";
+                yield switch (normalRangeType) {
+                    case RANGE -> {
+                        if (from != null && to != null) {
+                            yield from + " - " + to;
+                        }
+                        if (from != null) {
+                            yield ">= " + from;
+                        }
+                        if (to != null) {
+                            yield "<= " + to;
+                        }
+                        yield " ";
+                    }
+                    case LESS_THAN -> to != null ? "< " + to : " ";
+                    case MORE_THAN -> from != null ? "> " + from : " ";
+                };
             }
-            case LESS_THAN -> to != null ? "< " + to : " ";
-            case MORE_THAN -> from != null ? "> " + from : " ";
         };
     }
 
