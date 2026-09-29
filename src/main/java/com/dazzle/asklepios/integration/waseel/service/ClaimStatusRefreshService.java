@@ -22,7 +22,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
@@ -34,9 +36,15 @@ public class ClaimStatusRefreshService {
     private final WaseelClaimService waseelClaimService;
     private final ClaimPayloadValidationService claimPayloadValidationService;
     private final ObjectMapper objectMapper;
+    private final Map<Long, TimedLookup> recentLookups = new ConcurrentHashMap<>();
 
     @Transactional
     public ClaimRequest refresh(Long claimId) {
+        return refresh(claimId, true);
+    }
+
+    @Transactional
+    public ClaimRequest refresh(Long claimId, boolean assignSettlement) {
         ClaimRequest claim = claimRequestRepository.findById(claimId)
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Claim not found with id " + claimId,
@@ -82,6 +90,11 @@ public class ClaimStatusRefreshService {
 
         errors.addAll(readStoredValidationErrors(claim.getValidationErrorsJson()));
 
+        Map<String, List<ClaimValidationError>> notAcceptedClaims = null;
+        if ("PARTIAL".equals(claim.getOutcome()) && claim.getUploadId() != null) {
+            notAcceptedClaims = loadNotAcceptedClaims(claim.getUploadId(), claimId);
+        }
+
         if (errors.isEmpty()
                 && !"PARTIAL".equals(claim.getOutcome())
                 && claim.getRequestJson() != null
@@ -89,9 +102,18 @@ public class ClaimStatusRefreshService {
             errors.addAll(revalidateRequestJson(claim.getRequestJson()));
         }
 
+        List<ClaimValidationError> uploadErrors = uploadErrorsFor(notAcceptedClaims, claim.getProvClaimNo());
+        if (!uploadErrors.isEmpty()) {
+            errors.addAll(uploadErrors);
+        }
+
         claim.setValidationErrorsJson(toJson(dedupeErrors(errors)));
-        applyIndividualStatus(claim, claimSearch, errors, statusBeforeSummary);
-        claimSettlementNumberService.syncSettlementNo(claim);
+        applyIndividualStatus(claim, claimSearch, errors, statusBeforeSummary, notAcceptedClaims);
+        if (assignSettlement) {
+            claimSettlementNumberService.syncSettlementNo(claim);
+        } else if (claim.getStatus() != ClaimStatus.ACCEPTED) {
+            claim.setSettlementNo(null);
+        }
 
         return claimRequestRepository.save(claim);
     }
@@ -143,9 +165,25 @@ public class ClaimStatusRefreshService {
             ClaimRequest claim,
             JsonNode claimSearch,
             List<ClaimValidationError> errors,
-            ClaimStatus statusBeforeSummary
+            ClaimStatus statusBeforeSummary,
+            Map<String, List<ClaimValidationError>> notAcceptedClaims
     ) {
         if (claim.getStatus() == ClaimStatus.FAILED) {
+            return;
+        }
+
+        if ("PARTIAL".equals(claim.getOutcome()) && notAcceptedClaims != null && !notAcceptedClaims.isEmpty()) {
+            List<ClaimValidationError> uploadErrors = uploadErrorsFor(notAcceptedClaims, claim.getProvClaimNo());
+            if (!uploadErrors.isEmpty()) {
+                claim.setStatus(ClaimStatus.REJECTED);
+                claim.setOutcome("NOT_ACCEPTED");
+                claim.setMessage(uploadErrors.get(0).message());
+                return;
+            }
+            claim.setStatus(ClaimStatus.ACCEPTED);
+            claim.setOutcome("ACCEPTED");
+            claim.setMessage(null);
+            claim.setValidationErrorsJson(toJson(List.of()));
             return;
         }
 
@@ -181,6 +219,55 @@ public class ClaimStatusRefreshService {
             claim.setStatus(statusBeforeSummary);
             claim.setOutcome(statusBeforeSummary == ClaimStatus.ACCEPTED ? "ACCEPTED" : "NOT_ACCEPTED");
         }
+    }
+
+    private Map<String, List<ClaimValidationError>> loadNotAcceptedClaims(Long uploadId, Long claimId) {
+        TimedLookup cached = recentLookups.get(uploadId);
+        if (cached != null && System.currentTimeMillis() - cached.atMillis() < 20_000L) {
+            return cached.value();
+        }
+        Map<String, List<ClaimValidationError>> latest = null;
+        for (int attempt = 1; attempt <= 4; attempt++) {
+            try {
+                latest = waseelClaimService.findNotAcceptedClaims(uploadId);
+                if (latest != null && !latest.isEmpty()) {
+                    recentLookups.put(uploadId, new TimedLookup(System.currentTimeMillis(), latest));
+                    return latest;
+                }
+            } catch (RestClientException ex) {
+                log.warn(
+                        "[CLAIM_REFRESH] Upload claim details failed claimId={} uploadId={} attempt={}",
+                        claimId,
+                        uploadId,
+                        attempt,
+                        ex
+                );
+            }
+            if (attempt < 4) {
+                try {
+                    Thread.sleep(1000L);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    return latest;
+                }
+            }
+        }
+        recentLookups.put(uploadId, new TimedLookup(System.currentTimeMillis(), latest));
+        return latest;
+    }
+
+    private record TimedLookup(long atMillis, Map<String, List<ClaimValidationError>> value) {
+    }
+
+    private List<ClaimValidationError> uploadErrorsFor(
+            Map<String, List<ClaimValidationError>> notAcceptedClaims,
+            String provClaimNo
+    ) {
+        if (notAcceptedClaims == null || provClaimNo == null || provClaimNo.isBlank()) {
+            return List.of();
+        }
+        List<ClaimValidationError> matched = notAcceptedClaims.get(provClaimNo.trim().toUpperCase(Locale.ROOT));
+        return matched == null ? List.of() : matched;
     }
 
     private ClaimStatus classifyIndividualClaim(JsonNode searchBody, String provClaimNo) {

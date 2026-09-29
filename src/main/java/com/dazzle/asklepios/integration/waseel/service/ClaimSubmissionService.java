@@ -35,6 +35,7 @@ import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.service.ClaimSettlementNumberService;
 import com.dazzle.asklepios.service.helper.NphiesPayerHelper;
 import com.dazzle.asklepios.service.helper.PayorHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -91,6 +92,7 @@ public class ClaimSubmissionService {
     private final ObjectMapper objectMapper;
     private final ClaimPayloadValidationService claimPayloadValidationService;
     private final ClaimStatusRefreshService claimStatusRefreshService;
+    private final ClaimSettlementNumberService claimSettlementNumberService;
     private final NphiesPayerHelper nphiesPayerHelper;
     private final PayorHelper payorHelper;
     private final ClaimSubmissionService self;
@@ -111,6 +113,7 @@ public class ClaimSubmissionService {
             ObjectMapper objectMapper,
             ClaimPayloadValidationService claimPayloadValidationService,
             ClaimStatusRefreshService claimStatusRefreshService,
+            ClaimSettlementNumberService claimSettlementNumberService,
             NphiesPayerHelper nphiesPayerHelper,
             PayorHelper payorHelper,
             @Lazy ClaimSubmissionService self,
@@ -130,6 +133,7 @@ public class ClaimSubmissionService {
         this.objectMapper = objectMapper;
         this.claimPayloadValidationService = claimPayloadValidationService;
         this.claimStatusRefreshService = claimStatusRefreshService;
+        this.claimSettlementNumberService = claimSettlementNumberService;
         this.nphiesPayerHelper = nphiesPayerHelper;
         this.payorHelper = payorHelper;
         this.self = self;
@@ -165,6 +169,20 @@ public class ClaimSubmissionService {
             Long financialDocumentId,
             WaseelClaimType claimType,
             WaseelClaimSubType claimSubType
+    ) {
+        return submitForInsuranceInvoice(financialDocumentId, claimType, claimSubType, true);
+    }
+
+    /**
+     * Same Waseel upload as one invoice. Batch submission passes {@code assignSettlement=false}
+     * so accepted claims from that click can share one settlement number afterwards.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    public ClaimRequest submitForInsuranceInvoice(
+            Long financialDocumentId,
+            WaseelClaimType claimType,
+            WaseelClaimSubType claimSubType,
+            boolean assignSettlement
     ) {
         FinancialDocument invoice = financialDocumentRepository.findById(financialDocumentId)
                 .orElseThrow(() -> new BadRequestAlertException(
@@ -262,7 +280,7 @@ public class ClaimSubmissionService {
             claimRequest.setSubmittedAt(Instant.now());
             claimRequest = claimRequestRepository.save(claimRequest);
 
-            return claimStatusRefreshService.refresh(claimRequest.getId());
+            return claimStatusRefreshService.refresh(claimRequest.getId(), assignSettlement);
 
         } catch (HttpStatusCodeException ex) {
             String details = buildWaseelFailureMessage(
@@ -371,8 +389,6 @@ public class ClaimSubmissionService {
 
         Set<Long> payorIds = new LinkedHashSet<>();
         Set<String> nphiesKeys = new LinkedHashSet<>();
-        List<FinancialDocument> invoices = new ArrayList<>();
-        List<ClaimRequestBuilderService.ClaimBuildResult> builds = new ArrayList<>();
 
         for (Long financialDocumentId : uniqueIds) {
             FinancialDocument invoice = loadClaimableInsuranceInvoice(financialDocumentId);
@@ -395,13 +411,6 @@ public class ClaimSubmissionService {
             if (nphiesId != null) {
                 nphiesKeys.add(nphiesId);
             }
-
-            invoices.add(invoice);
-            builds.add(claimRequestBuilderService.buildForInsuranceInvoice(
-                    invoice,
-                    claimType,
-                    claimSubType
-            ));
         }
 
         if (payorIds.size() > 1 || nphiesKeys.size() > 1) {
@@ -412,98 +421,36 @@ public class ClaimSubmissionService {
             );
         }
 
-        String uploadName = ensureUniqueUploadName(
-                "CLM-BATCH-" + Instant.now().toEpochMilli()
-        );
-
-        List<WaseelClaimRequest> claimModels = builds.stream()
-                .map(ClaimRequestBuilderService.ClaimBuildResult::claimRequest)
-                .toList();
-
-        WaseelClaimUploadRequest uploadRequest = new WaseelClaimUploadRequest(
-                uploadName,
-                null,
-                claimModels
-        );
-        String requestJson = toJson(uploadRequest);
-
         List<ClaimRequest> claimRequests = new ArrayList<>();
-        for (int i = 0; i < invoices.size(); i++) {
-            claimRequests.add(
-                    persistDraft(
-                            invoices.get(i),
-                            builds.get(i),
-                            uploadName,
-                            requestJson,
-                            claimModels.get(i)
-                    )
+        for (Long financialDocumentId : uniqueIds) {
+            ClaimRequest claim = self.submitForInsuranceInvoice(
+                    financialDocumentId,
+                    claimType,
+                    claimSubType,
+                    false
+            );
+            if (claim != null) {
+                claimRequests.add(claim);
+            }
+        }
+
+        if (claimRequests.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "No claim was generated for the selected invoices.",
+                    "claim",
+                    "claim.notGenerated"
             );
         }
 
-        List<ClaimValidationError> validationErrors = claimModels.stream()
-                .flatMap(model -> claimPayloadValidationService.validate(model).stream())
-                .toList();
+        claimSettlementNumberService.assignSharedSettlement(claimRequests);
 
-        if (!validationErrors.isEmpty()) {
-            String message = buildValidationFailureMessage(validationErrors);
-            for (ClaimRequest claimRequest : claimRequests) {
-                claimRequest.setValidationErrorsJson(toJson(validationErrors));
-                claimRequest.setStatus(ClaimStatus.REJECTED);
-                claimRequest.setOutcome("NOT_ACCEPTED");
-                claimRequest.setMessage(message);
-                claimRequestRepository.save(claimRequest);
-            }
-
-            return toBatchResponse(
-                    uploadName,
-                    null,
-                    "NOT_ACCEPTED",
-                    message,
-                    claimRequests
-            );
-        }
-
-        try {
-            WaseelClaimUploadResponse response = waseelClaimService.uploadClaims(uploadRequest);
-            String responseJson = toJson(response);
-
-            for (ClaimRequest claimRequest : claimRequests) {
-                applyUploadOutcome(claimRequest, response, responseJson);
-                claimRequest.setSubmittedAt(Instant.now());
-                claimRequestRepository.save(claimRequest);
-            }
-
-            List<ClaimRequest> refreshedClaims = new ArrayList<>();
-            for (ClaimRequest claimRequest : claimRequests) {
-                refreshedClaims.add(claimStatusRefreshService.refresh(claimRequest.getId()));
-            }
-
-            return toBatchResponse(
-                    refreshedClaims.get(0).getUploadName(),
-                    refreshedClaims.get(0).getUploadId(),
-                    batchOutcome(refreshedClaims),
-                    batchMessage(refreshedClaims),
-                    refreshedClaims
-            );
-
-        } catch (HttpStatusCodeException ex) {
-            String details = buildWaseelFailureMessage(
-                    ex.getStatusCode().value(),
-                    ex.getResponseBodyAsString(),
-                    ex.getMessage()
-            );
-            for (ClaimRequest claimRequest : claimRequests) {
-                markFailed(claimRequest, requestJson, details);
-            }
-            return toBatchResponse(uploadName, null, "FAILED", details, claimRequests);
-
-        } catch (RestClientException ex) {
-            String details = "Failed to upload claim batch to Waseel: " + ex.getMessage();
-            for (ClaimRequest claimRequest : claimRequests) {
-                markFailed(claimRequest, requestJson, details);
-            }
-            return toBatchResponse(uploadName, null, "FAILED", details, claimRequests);
-        }
+        return toBatchResponse(
+                null,
+                null,
+                batchOutcome(claimRequests),
+                batchMessage(claimRequests),
+                claimRequests
+        );
     }
 
     private FinancialDocument loadClaimableInsuranceInvoice(Long financialDocumentId) {
@@ -816,7 +763,7 @@ public class ClaimSubmissionService {
                 ? null
                 : String.join(",", claimModel.preAuthRefNo());
 
-        ClaimRequest claimRequest = ClaimRequest.builder()
+           ClaimRequest claimRequest = ClaimRequest.builder()
                 .patientId(invoice.getPatientId())
                 .encounterId(invoice.getEncounterId())
                 .financialDocumentId(invoice.getId())

@@ -2325,10 +2325,13 @@ public class PatientEncounterService {
     private boolean resolvesToWaitingTriageAfterRegistrationPayment(
             PatientEncounter encounter
     ) {
+        if (EncounterType.CLINIC.equals(encounter.getEncounterType())
+                && EncounterReason.URGENT_VISIT.equals(encounter.getEncounterReason())) {
+            return false;
+        }
+
         return EncounterType.EMERGENCY.equals(encounter.getEncounterType())
-                || EncounterReason.URGENT_VISIT.equals(
-                encounter.getEncounterReason()
-        );
+                || EncounterReason.URGENT_VISIT.equals(encounter.getEncounterReason());
     }
 
     public List<PatientEncounter> getEncountersByIds(List<Long> encounterIds) {

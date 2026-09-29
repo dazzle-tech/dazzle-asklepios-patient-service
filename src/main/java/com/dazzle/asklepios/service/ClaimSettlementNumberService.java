@@ -10,9 +10,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 /**
  * Settlement numbers are reserved only for accepted claims.
- * Claims from the same upload share one number. Rejected and failed claims keep none.
+ * One invoice keeps its own number. A batch click shares one number across the claims it accepted.
+ * Rejected and failed claims keep none.
  */
 @Service
 @RequiredArgsConstructor
@@ -38,6 +41,40 @@ public class ClaimSettlementNumberService {
 
         String shared = sharedSettlementNo(claim);
         claim.setSettlementNo(shared != null ? shared : nextSettlementNo());
+    }
+
+    /**
+     * One settlement number for every accepted claim in this batch that does not already have one.
+     */
+    @Transactional
+    public void assignSharedSettlement(List<ClaimRequest> claims) {
+        if (claims == null || claims.isEmpty()) {
+            return;
+        }
+
+        List<ClaimRequest> needNumber = claims.stream()
+                .filter(claim -> claim != null && claim.getId() != null)
+                .filter(claim -> claim.getStatus() == ClaimStatus.ACCEPTED)
+                .filter(claim -> !hasText(claim.getSettlementNo()))
+                .toList();
+        if (needNumber.isEmpty()) {
+            return;
+        }
+
+        String settlementNo = nextSettlementNo();
+        List<ClaimRequest> stored = claimRequestRepository.findAllById(
+                needNumber.stream().map(ClaimRequest::getId).toList()
+        );
+        for (ClaimRequest claim : stored) {
+            if (claim.getStatus() == ClaimStatus.ACCEPTED && !hasText(claim.getSettlementNo())) {
+                claim.setSettlementNo(settlementNo);
+            }
+        }
+        claimRequestRepository.saveAll(stored);
+
+        for (ClaimRequest claim : needNumber) {
+            claim.setSettlementNo(settlementNo);
+        }
     }
 
     private String sharedSettlementNo(ClaimRequest claim) {
