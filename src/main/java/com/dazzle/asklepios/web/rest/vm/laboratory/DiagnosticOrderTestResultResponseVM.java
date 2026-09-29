@@ -2,6 +2,7 @@ package com.dazzle.asklepios.web.rest.vm.laboratory;
 
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 
 import java.io.Serializable;
@@ -38,7 +39,8 @@ public record DiagnosticOrderTestResultResponseVM(
         Instant lastModifiedDate,
         String createdBy,
         String lastModifiedBy,
-        boolean hasNote
+        boolean hasNote,
+        TestResultType resultTypeAtEntry
 ) implements Serializable {
 
     public static DiagnosticOrderTestResultResponseVM ofEntity(DiagnosticOrderTestResult diagnosticOrderTestResult) {
@@ -67,7 +69,8 @@ public record DiagnosticOrderTestResultResponseVM(
                 diagnosticOrderTestResult.getLastModifiedDate(),
                 diagnosticOrderTestResult.getCreatedBy(),
                 diagnosticOrderTestResult.getLastModifiedBy(),
-                false
+                false,
+                diagnosticOrderTestResult.getResultTypeAtEntry()
         );
     }
 
@@ -101,7 +104,8 @@ public record DiagnosticOrderTestResultResponseVM(
                 diagnosticOrderTestResult.getLastModifiedDate(),
                 diagnosticOrderTestResult.getCreatedBy(),
                 diagnosticOrderTestResult.getLastModifiedBy(),
-                hasNote
+                hasNote,
+                diagnosticOrderTestResult.getResultTypeAtEntry()
         );
     }
 
