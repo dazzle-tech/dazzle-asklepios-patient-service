@@ -2,6 +2,7 @@ package com.dazzle.asklepios.web.rest.vm.laboratory;
 
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 
 import java.math.BigDecimal;
@@ -18,7 +19,8 @@ public record PatientDiagnosticResultHistoryVM(
         String resultValueText,
         TestResultMarker marker,
         String normalRangeValue,
-        DiagnosticStatus processingStatus
+        DiagnosticStatus processingStatus,
+        TestResultType resultTypeAtEntry
 ) {
     public static PatientDiagnosticResultHistoryVM of(Long orderId, Instant resultDate, DiagnosticOrderTestResult diagnosticOrderTestResult) {
         return new PatientDiagnosticResultHistoryVM(
@@ -32,7 +34,8 @@ public record PatientDiagnosticResultHistoryVM(
                 diagnosticOrderTestResult.getResultValueText(),
                 diagnosticOrderTestResult.getMarker(),
                 diagnosticOrderTestResult.getNormalRangeValue(),
-                diagnosticOrderTestResult.getProcessingStatus()
+                diagnosticOrderTestResult.getProcessingStatus(),
+                diagnosticOrderTestResult.getResultTypeAtEntry()
         );
     }
 }
