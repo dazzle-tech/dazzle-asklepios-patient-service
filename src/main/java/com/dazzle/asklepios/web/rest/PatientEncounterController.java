@@ -237,6 +237,7 @@ public class PatientEncounterController {
         return new ResponseEntity<>(vmList, headers, HttpStatus.OK);
     }
 
+    
     @GetMapping("/encounter/department/{departmentId}/count/today/total-patients")
     public ResponseEntity<Long> countTodayDepartmentTotalPatients(
             @PathVariable @NotNull Long departmentId
