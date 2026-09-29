@@ -1289,4 +1289,58 @@ public class DiagnosticOrderTestResultService {
             );
         };
     }
+    /**
+     * Calculates the normal range and marker of a result for the patient of its order (visit) and saves them.
+     *
+     * @param resultId result id
+     * @return updated result
+     */
+    public DiagnosticOrderTestResult calculateAndSaveNormalRange(Long resultId) {
+        DiagnosticOrderTestResult result = diagnosticOrderTestResultRepository.findById(resultId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_order_tests_result",
+                        "DiagnosticOrderTestResult not found with id " + resultId
+                ));
+
+        Long patientId = resolvePatientId(result.getOrderTestId());
+        if (patientId == null) {
+            throw new BadRequestAlertException(
+                    "patient_not_found",
+                    "diagnostic_order_tests_result",
+                    "Patient not found for result id " + resultId
+            );
+        }
+
+        TestResultType resultType = resolveResultTypeByProfileTestId(result.getProfileTestId());
+
+        NormalRangeMatchDTO bestNormalRange =
+                normalRangeMatcherService.findBestNormalRange(result.getProfileTestId(), patientId);
+
+        result.setMarker(NormalRangeMatcherService.calculateMarker(
+                resultType,
+                result.getResultValueNumber(),
+                result.getResultValueText(),
+                bestNormalRange
+        ));
+        result.setNormalRangeValue(buildViewNormalRange(bestNormalRange, resultType));
+
+        DiagnosticOrderTestResult saved = diagnosticOrderTestResultRepository.save(result);
+
+        LOG.debug("[DiagnosticOrderTestResultService] CALCULATE_NORMAL_RANGE - id={} marker={} normalRange={}",
+                saved.getId(), saved.getMarker(), saved.getNormalRangeValue());
+
+        return saved;
+    }
+
+    public List<DiagnosticOrderTestResult> calculateAndSaveNormalRanges(List<Long> resultIds) {
+        LOG.debug("[DiagnosticOrderTestResultService] BULK_CALCULATE_NORMAL_RANGE - count={} ids={}",
+                resultIds.size(), resultIds);
+
+        return resultIds.stream()
+                .distinct()
+                .map(this::calculateAndSaveNormalRange)
+                .toList();
+    }
+
 }
