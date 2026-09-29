@@ -157,12 +157,12 @@ public class UrgentCareMedicationOrderService {
             orders.add(order);
 
             if (dto.frequencyUnit() ==
-                    com.dazzle.asklepios.domain.enumeration.Unit.MINUTES) {
+                    com.dazzle.asklepios.domain.enumeration.FrequencyList.MINUTES) {
 
                 doseTime = doseTime.plusMinutes(dto.frequencyNumber());
 
             } else if (dto.frequencyUnit() ==
-                    com.dazzle.asklepios.domain.enumeration.Unit.HOURS) {
+                    com.dazzle.asklepios.domain.enumeration.FrequencyList.HOURS) {
 
                 doseTime = doseTime.plusHours(dto.frequencyNumber());
             }
