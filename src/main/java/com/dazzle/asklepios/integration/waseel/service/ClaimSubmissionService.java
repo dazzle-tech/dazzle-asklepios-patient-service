@@ -2,6 +2,7 @@ package com.dazzle.asklepios.integration.waseel.service;
 
 import com.dazzle.asklepios.domain.ClaimItem;
 import com.dazzle.asklepios.domain.ClaimRequest;
+import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
 import com.dazzle.asklepios.domain.Patient;
@@ -9,6 +10,8 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.PreAuthorizationRequest;
+import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
+import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
@@ -29,6 +32,7 @@ import com.dazzle.asklepios.client.setup.dto.NphiesPayerDTO;
 import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.repository.ClaimItemRepository;
 import com.dazzle.asklepios.repository.ClaimRequestRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.FinancialDocumentItemRepository;
 import com.dazzle.asklepios.repository.FinancialDocumentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
@@ -55,6 +59,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -99,6 +105,7 @@ public class ClaimSubmissionService {
     private final PatientRepository patientRepository;
     private final FinancialDocumentItemRepository financialDocumentItemRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
+    private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
     private final WaseelClaimClassification waseelClaimClassification;
 
     public ClaimSubmissionService(
@@ -120,6 +127,7 @@ public class ClaimSubmissionService {
             PatientRepository patientRepository,
             FinancialDocumentItemRepository financialDocumentItemRepository,
             PatientServiceAndProductRepository patientServiceAndProductRepository,
+            DiagnosticOrderTestRepository diagnosticOrderTestRepository,
             WaseelClaimClassification waseelClaimClassification
     ) {
         this.claimRequestBuilderService = claimRequestBuilderService;
@@ -140,6 +148,7 @@ public class ClaimSubmissionService {
         this.patientRepository = patientRepository;
         this.financialDocumentItemRepository = financialDocumentItemRepository;
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
+        this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
         this.waseelClaimClassification = waseelClaimClassification;
     }
 
@@ -389,9 +398,19 @@ public class ClaimSubmissionService {
 
         Set<Long> payorIds = new LinkedHashSet<>();
         Set<String> nphiesKeys = new LinkedHashSet<>();
+        Set<Long> blockedInvoiceIds = invoicesWithUnapprovedDiagnosticResults(uniqueIds, claimType);
 
         for (Long financialDocumentId : uniqueIds) {
             FinancialDocument invoice = loadClaimableInsuranceInvoice(financialDocumentId);
+
+            if (blockedInvoiceIds.contains(invoice.getId())) {
+                throw new BadRequestAlertException(
+                        "Invoice " + invoice.getDocumentNumber()
+                                + " has a test result that is not Result Approved.",
+                        "claim",
+                        "claim.resultsNotApproved"
+                );
+            }
 
             if (hasActiveClaimForType(invoice.getId(), claimType)) {
                 throw new BadRequestAlertException(
@@ -633,6 +652,8 @@ public class ClaimSubmissionService {
                 .filter(patient -> patient.getId() != null)
                 .collect(Collectors.toMap(Patient::getId, Function.identity()));
 
+        Set<Long> unapprovedOrderTestIds = unapprovedDiagnosticOrderTestIds(productsById.values());
+
         List<PendingClaimInvoiceResponse> results = new ArrayList<>();
         for (FinancialDocument invoice : invoices) {
             PatientEncounter encounter = encountersById.get(invoice.getEncounterId());
@@ -683,11 +704,104 @@ public class ClaimSubmissionService {
                     claimType,
                     claimSubType,
                     matchingItems.size(),
-                    matchingNet.setScale(2, RoundingMode.HALF_UP)
+                    matchingNet.setScale(2, RoundingMode.HALF_UP),
+                    !hasUnapprovedDiagnosticResult(matchingItems, productsById, unapprovedOrderTestIds)
             ));
         }
 
         return results;
+    }
+
+    private Set<Long> unapprovedDiagnosticOrderTestIds(Collection<PatientServiceAndProduct> products) {
+        List<Long> orderTestIds = products.stream()
+                .filter(this::isDiagnosticItem)
+                .map(PatientServiceAndProduct::getSourceId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (orderTestIds.isEmpty()) {
+            return Set.of();
+        }
+
+        Map<Long, DiagnosticOrderTest> testsById = diagnosticOrderTestRepository.findAllById(orderTestIds).stream()
+                .filter(test -> test.getId() != null)
+                .collect(Collectors.toMap(DiagnosticOrderTest::getId, Function.identity(), (a, b) -> a));
+
+        Set<Long> unapproved = new HashSet<>();
+        for (Long orderTestId : orderTestIds) {
+            if (!isResultApproved(testsById.get(orderTestId))) {
+                unapproved.add(orderTestId);
+            }
+        }
+        return unapproved;
+    }
+
+    private boolean isDiagnosticItem(PatientServiceAndProduct product) {
+        return product != null && product.getDiagnosticTestId() != null;
+    }
+
+    private boolean isResultApproved(DiagnosticOrderTest test) {
+        return test != null
+                && test.getStatus() != DiagnosticOrderTestStatus.CANCELLED
+                && test.getProcessingStatus() == DiagnosticStatus.RESULT_APPROVED;
+    }
+
+    private boolean hasUnapprovedDiagnosticResult(
+            List<FinancialDocumentItem> items,
+            Map<Long, PatientServiceAndProduct> productsById,
+            Set<Long> unapprovedOrderTestIds
+    ) {
+        return items.stream()
+                .map(item -> item.getPatientServiceProductId() == null
+                        ? null
+                        : productsById.get(item.getPatientServiceProductId()))
+                .filter(this::isDiagnosticItem)
+                .anyMatch(product -> product.getSourceId() == null
+                        || unapprovedOrderTestIds.contains(product.getSourceId()));
+    }
+
+    private Set<Long> invoicesWithUnapprovedDiagnosticResults(
+            List<Long> invoiceIds,
+            WaseelClaimType claimType
+    ) {
+        if (invoiceIds.isEmpty()) {
+            return Set.of();
+        }
+
+        Map<Long, List<FinancialDocumentItem>> itemsByInvoiceId = financialDocumentItemRepository
+                .findByDocument_IdIn(invoiceIds)
+                .stream()
+                .filter(item -> item.getDocument() != null && item.getDocument().getId() != null)
+                .collect(Collectors.groupingBy(item -> item.getDocument().getId()));
+
+        List<Long> productIds = itemsByInvoiceId.values().stream()
+                .flatMap(List::stream)
+                .map(FinancialDocumentItem::getPatientServiceProductId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<Long, PatientServiceAndProduct> productsById = productIds.isEmpty()
+                ? Map.of()
+                : patientServiceAndProductRepository.findAllById(productIds).stream()
+                .filter(product -> product.getId() != null)
+                .collect(Collectors.toMap(PatientServiceAndProduct::getId, Function.identity(), (a, b) -> a));
+
+        Set<Long> unapprovedOrderTestIds = unapprovedDiagnosticOrderTestIds(productsById.values());
+        Set<Long> blocked = new HashSet<>();
+        itemsByInvoiceId.forEach((invoiceId, items) -> {
+            List<FinancialDocumentItem> claimItems = items.stream()
+                    .filter(item -> waseelClaimClassification.isClaimableForType(
+                            item.getPatientServiceProductId() == null
+                                    ? null
+                                    : productsById.get(item.getPatientServiceProductId()),
+                            claimType
+                    ))
+                    .toList();
+            if (hasUnapprovedDiagnosticResult(claimItems, productsById, unapprovedOrderTestIds)) {
+                blocked.add(invoiceId);
+            }
+        });
+        return blocked;
     }
 
     private boolean hasActiveClaimForType(Long financialDocumentId, WaseelClaimType claimType) {
