@@ -918,4 +918,36 @@ public class DiagnosticOrderTestResultController {
         statusService.bulkReject(dto.ids(), currentUsername(), dto.rejectedReason());
         return ResponseEntity.ok().build();
     }
+
+    /**
+     * Calculates the normal range and marker of a result for the patient of its visit and saves them.
+     *
+     * @param id result id
+     * @return updated result mapped to response VM (HTTP 200)
+     */
+    @PostMapping("/diagnostic-order-tests-results/{id}/calculate-normal-range")
+    public ResponseEntity<DiagnosticOrderTestResultResponseVM> calculateNormalRange(@PathVariable Long id) {
+        LOG.debug("REST calculate-normal-range DiagnosticOrderTestResult id={}", id);
+        DiagnosticOrderTestResult saved = service.calculateAndSaveNormalRange(id);
+        return ResponseEntity.ok(DiagnosticOrderTestResultResponseVM.ofEntity(saved));
+    }
+
+    /**
+     * Calculates the normal range and marker for multiple results and saves them.
+     *
+     * @param dto result ids
+     * @return updated results mapped to response VMs (HTTP 200)
+     */
+    @PostMapping("/diagnostic-order-tests-results/bulk-calculate-normal-range")
+    public ResponseEntity<List<DiagnosticOrderTestResultResponseVM>> bulkCalculateNormalRange(
+            @Valid @RequestBody BulkIdsDTO dto
+    ) {
+        LOG.debug("REST bulk-calculate-normal-range DiagnosticOrderTestResult count={} ids={}",
+                dto.ids().size(), dto.ids());
+        List<DiagnosticOrderTestResultResponseVM> body = service.calculateAndSaveNormalRanges(dto.ids())
+                .stream()
+                .map(DiagnosticOrderTestResultResponseVM::ofEntity)
+                .toList();
+        return ResponseEntity.ok(body);
+    }
 }

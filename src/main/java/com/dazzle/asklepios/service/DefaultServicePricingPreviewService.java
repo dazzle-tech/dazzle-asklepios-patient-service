@@ -75,9 +75,33 @@ public class DefaultServicePricingPreviewService {
                 request,
                 patient
         );
-        BillingCoverageType coverageType = request.coverageType();
-        PatientInsurance insurance = resolveInsurance(request);
-        if (coverageType == BillingCoverageType.SELF_PAY) {
+        BillingCoverageType coverageType;
+        PatientInsurance insurance;
+        var inheritedCoverage =
+                followUpReviewDefaultServicePolicy.coverageMatchingCompletedVisit(
+                        encounter
+                );
+        if (inheritedCoverage.isPresent()) {
+            coverageType = inheritedCoverage.get().coverageType();
+            insurance = coverageType == BillingCoverageType.INSURANCE
+                    ? loadPatientInsurance(
+                            request.patientId(),
+                            inheritedCoverage.get().patientInsuranceId()
+                    )
+                    : null;
+            LOG.info(
+                    "[PREVIEW_PRICING] Follow-up within {} days of completed visit {}. "
+                            + "Using original coverageType={} patientInsuranceId={}",
+                    FollowUpReviewDefaultServicePolicy.REVIEW_WINDOW_DAYS,
+                    inheritedCoverage.get().previousEncounterId(),
+                    coverageType,
+                    insurance == null ? null : insurance.getId()
+            );
+        } else {
+            coverageType = request.coverageType();
+            insurance = resolveInsurance(request);
+        }
+        if (inheritedCoverage.isEmpty() && coverageType == BillingCoverageType.SELF_PAY) {
             PatientInsurance linkedInsurance =
                     encounterCoverageService.findLinkedInsurance(encounter);
             if (linkedInsurance != null) {
@@ -465,6 +489,27 @@ public class DefaultServicePricingPreviewService {
         }
 
         return encounter;
+    }
+
+    private PatientInsurance loadPatientInsurance(
+            Long patientId,
+            Long patientInsuranceId
+    ) {
+        if (patientInsuranceId == null) {
+            throw new BadRequestAlertException(
+                    "Patient insurance is required for insurance coverage.",
+                    ENTITY_NAME,
+                    "patientInsurance.required"
+            );
+        }
+
+        return patientInsuranceRepository
+                .findByIdAndPatient_Id(patientInsuranceId, patientId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient insurance not found with id " + patientInsuranceId,
+                        ENTITY_NAME,
+                        "patientInsurance.notfound"
+                ));
     }
 
     private PatientInsurance resolveInsurance(

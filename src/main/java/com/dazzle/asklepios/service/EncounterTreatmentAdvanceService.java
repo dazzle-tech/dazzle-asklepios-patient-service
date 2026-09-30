@@ -222,12 +222,13 @@ public class EncounterTreatmentAdvanceService {
     private boolean resolvesToWaitingTriageAfterRegistrationPayment(
             PatientEncounter encounter
     ) {
-        return EncounterType.EMERGENCY.equals(
-                encounter.getEncounterType()
-        )
-                || EncounterReason.URGENT_VISIT.equals(
-                        encounter.getEncounterReason()
-                );
+        if (EncounterType.CLINIC.equals(encounter.getEncounterType())
+                && EncounterReason.URGENT_VISIT.equals(encounter.getEncounterReason())) {
+            return false;
+        }
+
+        return EncounterType.EMERGENCY.equals(encounter.getEncounterType())
+                || EncounterReason.URGENT_VISIT.equals(encounter.getEncounterReason());
     }
 
     private BigDecimal money(

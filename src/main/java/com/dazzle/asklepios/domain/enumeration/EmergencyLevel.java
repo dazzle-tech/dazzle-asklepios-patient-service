@@ -1,9 +1,9 @@
 package com.dazzle.asklepios.domain.enumeration;
 
 public enum EmergencyLevel {
-    LESS_URGENT,
-    NON_URGENT,
-    URGENT,
+    RESUSCITATION,
     EMERGENT,
-    RESUSCITATION
+    URGENT,
+    LESS_URGENT,
+    NON_URGENT
 }

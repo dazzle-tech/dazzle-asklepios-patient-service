@@ -38,5 +38,8 @@ public record NormalRangeMatchDTO(
         Double criticalValueMoreThan,
 
         // LOV options (only when profile resultType == LOV)
-        List<String> lovKeys
+        List<String> lovKeys,
+
+        // active status (excludes inactive/deprecated ranges)
+        Boolean isActive
 ) {}
