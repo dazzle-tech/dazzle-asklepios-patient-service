@@ -66,6 +66,24 @@ public class NormalRangeMatcherService {
         return getBestNormalRangeMatchForPatient(candidates, patient).orElse(null);
     }
 
+    /**
+     * Same matching rules as {@link #findBestNormalRange(Long, Long)}, using a patient already loaded by the caller.
+     */
+    public NormalRangeMatchDTO findBestNormalRange(Long profileTestId, Patient patient) {
+        if (profileTestId == null || patient == null) {
+            return null;
+        }
+
+        List<NormalRangeMatchDTO> candidates =
+                diagnosticTestNormalRangeClient.findAllByProfileTestIdInternal(profileTestId);
+
+        if (candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+
+        return getBestNormalRangeMatchForPatient(candidates, patient).orElse(null);
+    }
+
     private int ageSpecificityScore(NormalRangeMatchDTO normalRange) {
         boolean hasFrom = normalRange.ageFrom() != null;
         boolean hasTo = normalRange.ageTo() != null;
