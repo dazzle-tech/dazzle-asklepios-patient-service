@@ -433,7 +433,16 @@ public class InvestigationResultsPdfRenderer {
             drawLabeledParagraph("REPORT", result.report(), accentTextColor);
             drawLabeledParagraph("CRITICAL FINDINGS", result.criticalFindings(), abnormalColor);
             drawLabeledParagraph("RADIOLOGIST COMMENTS", result.radiologistComments(), accentTextColor);
-            drawLabeledParagraph("RADIOLOGIST", result.radiologistInformation(), accentTextColor);
+            drawLabeledParagraph("RADIOLOGIST INFORMATION", result.radiologistInformation(), accentTextColor);
+
+            if (blankToNull(result.reviewedBy()) != null || blankToNull(result.approvedBy()) != null) {
+                reserve(22f);
+                float reviewX = boxX + cellPaddingX;
+                float reviewBaseline = y - 9;
+                reviewX = drawMeta(reviewX, reviewBaseline, "REVIEWED BY", result.reviewedBy());
+                drawMeta(reviewX, reviewBaseline, "APPROVED BY", result.approvedBy());
+                y -= 18;
+            }
 
             y -= 2;
             endBox();

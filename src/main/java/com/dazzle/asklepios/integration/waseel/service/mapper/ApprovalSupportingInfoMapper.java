@@ -20,11 +20,15 @@ import com.dazzle.asklepios.domain.ProgressNote;
 import com.dazzle.asklepios.domain.SocialHistory;
 import com.dazzle.asklepios.domain.SurgicalHistory;
 import com.dazzle.asklepios.domain.VitalSigns;
+import com.dazzle.asklepios.client.setup.dto.NormalRangeMatchDTO;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.NormalRangeType;
 import com.dazzle.asklepios.domain.enumeration.Severity;
+import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
+import com.dazzle.asklepios.service.NormalRangeMatcherService;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalSupportingInfo;
 import com.dazzle.asklepios.integration.waseel.service.pdf.InvestigationResultsPdfRenderer;
 import com.dazzle.asklepios.integration.waseel.service.pdf.InvestigationResultsReport;
@@ -57,6 +61,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -103,6 +108,7 @@ public class ApprovalSupportingInfoMapper {
     private final DiagnosticTestLaboratoryRepository diagnosticTestLaboratoryRepository;
     private final DepartmentRepository departmentRepository;
     private final ApLovValueRepository apLovValueRepository;
+    private final NormalRangeMatcherService normalRangeMatcherService;
     private final InvestigationResultsPdfRenderer investigationResultsPdfRenderer;
 
     public List<WaseelApprovalSupportingInfo> toSupportingInfo(PatientEncounter encounter) {
@@ -398,6 +404,8 @@ public class ApprovalSupportingInfoMapper {
 
         Map<Long, DiagnosticTestProfile> profiles = findProfiles(labResults);
         Map<Long, String> categories = findLabCategories(tests);
+        Map<Long, NormalRangeMatchDTO> normalRanges = findNormalRanges(encounter, labResults);
+        Map<String, String> lovLabels = findInvestigationLovLabels(profiles.values(), labResults, normalRanges);
 
         Map<Long, List<InvestigationResultsReport.LabResultRow>> labRowsByOrderTest = labResults.stream()
                 .filter(source -> isNotBlank(formatLabResultValue(source)))
@@ -413,6 +421,11 @@ public class ApprovalSupportingInfoMapper {
                             DiagnosticTestProfile profile = source.getProfileTestId() == null
                                     ? null
                                     : profiles.get(source.getProfileTestId());
+                            TestResultType resultType = resolveResultType(source, profile);
+                            NormalRangeMatchDTO normalRange = source.getProfileTestId() == null
+                                    ? null
+                                    : normalRanges.get(source.getProfileTestId());
+                            String unit = resolveUnitLabel(profile, resultType, lovLabels);
                             return new InvestigationResultsReport.LabResultRow(
                                     firstNonBlank(
                                             profile == null ? null : profile.getName(),
@@ -420,8 +433,8 @@ public class ApprovalSupportingInfoMapper {
                                     ),
                                     test == null || test.getTestId() == null ? null : categories.get(test.getTestId()),
                                     formatLabResultValue(source),
-                                    profile == null ? null : clean(profile.getResultUnit()),
-                                    clean(source.getNormalRangeValue()),
+                                    unit,
+                                    formatDisplayedNormalRange(source, resultType, normalRange, lovLabels, unit),
                                     markerLabel(source.getMarker()),
                                     isAbnormalMarker(source.getMarker()),
                                     firstNonNull(source.getApprovedDate(), source.getReviewDate(), source.getCreatedDate())
@@ -441,9 +454,7 @@ public class ApprovalSupportingInfoMapper {
                 .filter(Objects::nonNull)
                 .filter(source -> source.getOrderTestId() != null)
                 .filter(source -> !isExcludedRadiologyStatus(source.getProcessingStatus()))
-                .filter(source -> isNotBlank(source.getReport())
-                        || isNotBlank(source.getCriticalFindings())
-                        || isNotBlank(source.getRadiologistComments()))
+                .filter(this::hasRadiologyReportContent)
                 .sorted(Comparator
                         .comparing(DiagnosticOrderTestReport::getOrderTestId)
                         .thenComparing(DiagnosticOrderTestReport::getId, Comparator.nullsLast(Comparator.naturalOrder())))
@@ -458,7 +469,9 @@ public class ApprovalSupportingInfoMapper {
                                 toPlainText(source.getReport()),
                                 toPlainText(source.getCriticalFindings()),
                                 toPlainText(source.getRadiologistComments()),
-                                toPlainText(source.getRadiologistInformation())
+                                toPlainText(source.getRadiologistInformation()),
+                                clean(source.getReviewBy()),
+                                firstNonBlank(clean(source.getApprovedBy()), clean(source.getSecondApprovedBy()))
                         ), Collectors.toList())
                 ));
 
@@ -541,6 +554,180 @@ public class ApprovalSupportingInfoMapper {
     }
 
     /**
+     * Best normal range per profile, using the patient already on the encounter.
+     * A lookup failure leaves that profile without a computed range; the saved value is used instead.
+     */
+    private Map<Long, NormalRangeMatchDTO> findNormalRanges(
+            PatientEncounter encounter,
+            List<DiagnosticOrderTestResult> labResults
+    ) {
+        Patient patient = encounter.getPatient();
+        if (patient == null) {
+            return Map.of();
+        }
+
+        Map<Long, NormalRangeMatchDTO> ranges = new HashMap<>();
+        for (Long profileId : labResults.stream()
+                .map(DiagnosticOrderTestResult::getProfileTestId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList()) {
+            try {
+                NormalRangeMatchDTO match = normalRangeMatcherService.findBestNormalRange(profileId, patient);
+                if (match != null) {
+                    ranges.put(profileId, match);
+                }
+            } catch (RuntimeException ex) {
+                log.warn("Unable to resolve normal range for profileTestId={}", profileId, ex);
+            }
+        }
+        return ranges;
+    }
+
+    /**
+     * Unit and LOV results are stored as LOV keys. Labels are resolved with the existing key lookup.
+     */
+    private Map<String, String> findInvestigationLovLabels(
+            Collection<DiagnosticTestProfile> profiles,
+            List<DiagnosticOrderTestResult> labResults,
+            Map<Long, NormalRangeMatchDTO> normalRanges
+    ) {
+        List<String> keys = new ArrayList<>();
+        for (DiagnosticTestProfile profile : profiles) {
+            if (profile != null && isNotBlank(profile.getResultUnit())) {
+                keys.add(profile.getResultUnit().trim());
+            }
+        }
+        for (DiagnosticOrderTestResult result : labResults) {
+            addLovKeys(keys, result.getNormalRangeValue());
+            NormalRangeMatchDTO match = result.getProfileTestId() == null
+                    ? null
+                    : normalRanges.get(result.getProfileTestId());
+            if (match != null && match.lovKeys() != null) {
+                match.lovKeys().stream().filter(this::isNotBlank).map(String::trim).forEach(keys::add);
+            }
+        }
+
+        List<String> distinct = keys.stream().distinct().toList();
+        if (distinct.isEmpty()) {
+            return Map.of();
+        }
+        return apLovValueRepository.findByKeyIn(distinct).stream()
+                .filter(value -> value.getKey() != null && isNotBlank(value.getLovDisplayVale()))
+                .collect(Collectors.toMap(ApLovValue::getKey, value -> value.getLovDisplayVale().trim(), (a, b) -> a));
+    }
+
+    private void addLovKeys(List<String> keys, String raw) {
+        if (!isNotBlank(raw)) {
+            return;
+        }
+        for (String key : raw.split(",")) {
+            if (isNotBlank(key)) {
+                keys.add(key.trim());
+            }
+        }
+    }
+
+    private TestResultType resolveResultType(DiagnosticOrderTestResult result, DiagnosticTestProfile profile) {
+        if (result != null && result.getResultTypeAtEntry() != null) {
+            return result.getResultTypeAtEntry();
+        }
+        return profile == null ? null : profile.getResultType();
+    }
+
+    /**
+     * LOV profiles have no unit. Numeric and text profiles show the VALUE_UNIT label, never the stored key.
+     */
+    private String resolveUnitLabel(
+            DiagnosticTestProfile profile,
+            TestResultType resultType,
+            Map<String, String> lovLabels
+    ) {
+        if (resultType == TestResultType.LOV || profile == null || !isNotBlank(profile.getResultUnit())) {
+            return null;
+        }
+        return lovLabels.get(profile.getResultUnit().trim());
+    }
+
+    /**
+     * Matches the results screen: text has no range, LOV shows its labels, numbers show the bound plus unit.
+     * Bound shape follows the test normal-range type (range, less than, more than).
+     */
+    private String formatDisplayedNormalRange(
+            DiagnosticOrderTestResult result,
+            TestResultType resultType,
+            NormalRangeMatchDTO match,
+            Map<String, String> lovLabels,
+            String unit
+    ) {
+        if (resultType == TestResultType.TEXT) {
+            return null;
+        }
+
+        String view = formatViewNormalRange(match, resultType);
+        if (!isNotBlank(view)) {
+            view = clean(result.getNormalRangeValue());
+        }
+        if (!isNotBlank(view)) {
+            return null;
+        }
+        if (resultType == TestResultType.LOV) {
+            return resolveLovList(view, lovLabels);
+        }
+        if (resultType == TestResultType.NUMBER && isNotBlank(unit) && !view.endsWith(unit)) {
+            return view + " " + unit;
+        }
+        return view;
+    }
+
+    private String formatViewNormalRange(NormalRangeMatchDTO match, TestResultType resultType) {
+        if (match == null || resultType == null) {
+            return null;
+        }
+        return switch (resultType) {
+            case TEXT -> null;
+            case LOV -> match.lovKeys() == null || match.lovKeys().isEmpty()
+                    ? null
+                    : match.lovKeys().stream()
+                    .filter(this::isNotBlank)
+                    .map(String::trim)
+                    .collect(Collectors.joining(", "));
+            case NUMBER -> formatNumericRange(match);
+        };
+    }
+
+    private String formatNumericRange(NormalRangeMatchDTO match) {
+        Double from = match.rangeFrom();
+        Double to = match.rangeTo();
+        NormalRangeType type = match.normalRangeType() == null ? NormalRangeType.RANGE : match.normalRangeType();
+        return switch (type) {
+            case RANGE -> {
+                if (from != null && to != null) {
+                    yield from + " - " + to;
+                }
+                if (from != null) {
+                    yield ">= " + from;
+                }
+                if (to != null) {
+                    yield "<= " + to;
+                }
+                yield null;
+            }
+            case LESS_THAN -> to == null ? null : "< " + to;
+            case MORE_THAN -> from == null ? null : "> " + from;
+        };
+    }
+
+    private String resolveLovList(String raw, Map<String, String> lovLabels) {
+        String labels = Arrays.stream(raw.split(","))
+                .map(String::trim)
+                .filter(this::isNotBlank)
+                .map(key -> lovLabels.getOrDefault(key, key))
+                .collect(Collectors.joining(", "));
+        return blankToNull(labels);
+    }
+
+    /**
      * Lab category is stored as a LAB_CATEGORIES LOV key; resolved to its display value when possible.
      */
     private Map<Long, String> findLabCategories(List<DiagnosticOrderTest> tests) {
@@ -615,6 +802,13 @@ public class ApprovalSupportingInfoMapper {
         return diagnosticOrderTestResultRepository.findByOrderTestIdIn(labOrderTestIds).stream()
                 .filter(this::isUsableInvestigationResult)
                 .toList();
+    }
+
+    private boolean hasRadiologyReportContent(DiagnosticOrderTestReport source) {
+        return isNotBlank(source.getReport())
+                || isNotBlank(source.getCriticalFindings())
+                || isNotBlank(source.getRadiologistComments())
+                || isNotBlank(source.getRadiologistInformation());
     }
 
     private boolean isExcludedRadiologyStatus(DiagnosticStatus status) {

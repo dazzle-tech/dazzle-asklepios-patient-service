@@ -51,7 +51,9 @@ public record InvestigationResultsReport(
             String report,
             String criticalFindings,
             String radiologistComments,
-            String radiologistInformation
+            String radiologistInformation,
+            String reviewedBy,
+            String approvedBy
     ) {}
 
     public boolean hasResults() {
