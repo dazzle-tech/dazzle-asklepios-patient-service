@@ -143,8 +143,41 @@ public final class WaseelPracticeCodeMapper {
             Map.entry("ANESTHESIOLOGY", "Anesthesiology Specialty")
     );
 
+    /**
+     * Practitioner {@code specialty} is a rank (GP / Specialist / Consultant), not a Waseel practice code.
+     * Used only when {@code sub_specialty} is empty, so pre-auth and claim still send a real speciality.
+     */
+    private static final Map<String, String> SPECIALTY_RANK_TO_SUB_SPECIALTY = Map.ofEntries(
+            Map.entry("GENERAL_PRACTITIONER", "SUB_SPC_001"),
+            Map.entry("SPEC_GP", "SUB_SPC_001"),
+            Map.entry("GP", "SUB_SPC_001"),
+            Map.entry("SPECIALIST", "SUB_SPC_002"),
+            Map.entry("SPEC_SPECIL", "SUB_SPC_002"),
+            Map.entry("CONSULTANT", "SUB_SPC_002"),
+            Map.entry("RESIDENT_DOCTOR", "SUB_SPC_002"),
+            Map.entry("EMERGENCY_ROOM_DOCTOR", "SUB_SPC_028"),
+            Map.entry("SPEC_ER_DOC", "SUB_SPC_028"),
+            Map.entry("EMERGENCY", "SUB_SPC_028")
+    );
+
+    /** General Medicine ({@code 08.26}) when the rank itself has no explicit mapping. */
+    private static final String DEFAULT_SUB_SPECIALTY_WHEN_MISSING = "SUB_SPC_002";
+
     public static boolean hasSubSpecialtyMapping(String subSpecialty) {
         return SUB_SPECIALTY_TO_WASEEL_CODE.containsKey(clean(subSpecialty));
+    }
+
+    public static boolean hasSpecialtyRankMapping(String specialtyRank) {
+        return SPECIALTY_RANK_TO_SUB_SPECIALTY.containsKey(clean(specialtyRank));
+    }
+
+    /**
+     * Maps a practitioner rank to a {@code SUB_SPC_XXX} value that already exists in the Waseel map.
+     * Never returns blank.
+     */
+    public static String mapSpecialtyRankToSubSpecialtyValueCode(String specialtyRank) {
+        String mapped = SPECIALTY_RANK_TO_SUB_SPECIALTY.get(clean(specialtyRank));
+        return mapped != null ? mapped : DEFAULT_SUB_SPECIALTY_WHEN_MISSING;
     }
 
     public static String mapSubSpecialtyCode(String subSpecialty) {
