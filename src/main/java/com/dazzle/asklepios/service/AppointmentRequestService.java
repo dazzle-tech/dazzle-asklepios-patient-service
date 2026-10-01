@@ -334,6 +334,15 @@ public class AppointmentRequestService {
         appointmentRequestRepository.delete(request);
     }
 
+    @Transactional(readOnly = true)
+    public long countRequested() {
+        log.debug("Request to count requested AppointmentRequests");
+
+        return appointmentRequestRepository.countAppointmentRequestByStatus(
+                AppointmentRequestStatus.REQUESTED
+        );
+    }
+
     private AppointmentRequest getRequest(Long id) {
         return appointmentRequestRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException(
