@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -88,6 +89,8 @@ public class WaseelClaimController {
             @RequestParam(required = false) String payerNphiesId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant fromDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant toDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate encounterDateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate encounterDateTo,
             @RequestParam WaseelClaimType claimType,
             @RequestParam WaseelClaimSubType claimSubType
     ) {
@@ -96,6 +99,8 @@ public class WaseelClaimController {
                 payerNphiesId,
                 fromDate,
                 toDate,
+                encounterDateFrom,
+                encounterDateTo,
                 claimType,
                 claimSubType
         );
