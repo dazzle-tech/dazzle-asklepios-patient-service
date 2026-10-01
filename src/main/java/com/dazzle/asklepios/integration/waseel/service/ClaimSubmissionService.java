@@ -58,6 +58,7 @@ import org.springframework.web.client.RestClientException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -317,7 +318,7 @@ public class ClaimSubmissionService {
             Instant fromDate,
             Instant toDate
     ) {
-        return listPendingInsuranceInvoices(payorId, null, fromDate, toDate, null, null);
+        return listPendingInsuranceInvoices(payorId, null, fromDate, toDate, null, null, null, null);
     }
 
     @Transactional(readOnly = true)
@@ -327,7 +328,7 @@ public class ClaimSubmissionService {
             Instant fromDate,
             Instant toDate
     ) {
-        return listPendingInsuranceInvoices(payorId, payerNphiesId, fromDate, toDate, null, null);
+        return listPendingInsuranceInvoices(payorId, payerNphiesId, fromDate, toDate, null, null, null, null);
     }
 
     @Transactional(readOnly = true)
@@ -336,6 +337,8 @@ public class ClaimSubmissionService {
             String payerNphiesId,
             Instant fromDate,
             Instant toDate,
+            LocalDate encounterDateFrom,
+            LocalDate encounterDateTo,
             WaseelClaimType claimType,
             WaseelClaimSubType claimSubType
     ) {
@@ -348,14 +351,16 @@ public class ClaimSubmissionService {
         Long resolvedPayorId = payorId != null ? payorId : -1L;
 
         log.info(
-                "[CLAIM_BATCH] Listing pending invoices payorId={} payerNphiesId={} nphiesIds={} from={} to={} type={} subType={}",
+                "[CLAIM_BATCH] Listing pending invoices payorId={} payerNphiesId={} nphiesIds={} from={} to={} type={} subType={} encounterDateFrom={} encounterDateTo={}",
                 payorId,
                 payerNphiesId,
                 nphiesIds,
                 from,
                 to,
                 claimType,
-                claimSubType
+                claimSubType,
+                encounterDateFrom,
+                encounterDateTo
         );
 
         List<FinancialDocument> invoices = financialDocumentRepository.findPendingInsuranceClaimInvoices(
@@ -364,6 +369,8 @@ public class ClaimSubmissionService {
                         nphiesIds,
                         from,
                         to,
+                        encounterDateFrom,
+                        encounterDateTo,
                         CLAIMABLE_INVOICE_STATUSES.stream().map(Enum::name).toList(),
                         ACTIVE_STATUSES.stream().map(Enum::name).toList(),
                         claimType.name()

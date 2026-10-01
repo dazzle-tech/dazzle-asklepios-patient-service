@@ -11,6 +11,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.List;
@@ -105,6 +106,8 @@ public interface FinancialDocumentRepository extends JpaRepository<FinancialDocu
                           )
                       AND fd.created_date >= :fromDate
                       AND fd.created_date < :toDate
+                      AND (:encounterDateFrom IS NULL OR pe.encounter_date >= :encounterDateFrom)
+                      AND (:encounterDateTo IS NULL OR pe.encounter_date <= :encounterDateTo)
                       AND NOT EXISTS (
                             SELECT 1
                             FROM claim_request cr
@@ -128,6 +131,8 @@ public interface FinancialDocumentRepository extends JpaRepository<FinancialDocu
             @Param("payerNphiesIds") Collection<String> payerNphiesIds,
             @Param("fromDate") Instant fromDate,
             @Param("toDate") Instant toDate,
+            @Param("encounterDateFrom") LocalDate encounterDateFrom,
+            @Param("encounterDateTo") LocalDate encounterDateTo,
             @Param("statuses") Collection<String> statuses,
             @Param("activeClaimStatuses") Collection<String> activeClaimStatuses,
             @Param("claimType") String claimType
