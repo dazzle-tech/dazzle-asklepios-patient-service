@@ -25,5 +25,6 @@ public record PendingClaimInvoiceResponse(
         WaseelClaimType claimType,
         WaseelClaimSubType claimSubType,
         Integer matchingItemCount,
-        BigDecimal matchingNetAmount
+        BigDecimal matchingNetAmount,
+        boolean selectable
 ) {}

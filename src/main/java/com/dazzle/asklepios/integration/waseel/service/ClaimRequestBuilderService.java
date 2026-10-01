@@ -236,7 +236,7 @@ public class ClaimRequestBuilderService {
             );
         }
 
-        var supportingInfo = approvalSupportingInfoMapper.toSupportingInfo(encounter);
+        var supportingInfo = approvalSupportingInfoMapper.toClaimSupportingInfo(encounter);
 
         List<PatientServiceAndProduct> products = invoiceItems.stream()
                 .map(FinancialDocumentItem::getPatientServiceProductId)
