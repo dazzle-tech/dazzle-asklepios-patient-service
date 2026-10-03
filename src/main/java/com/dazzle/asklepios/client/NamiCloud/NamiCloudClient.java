@@ -12,6 +12,8 @@ import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -167,19 +169,22 @@ public class NamiCloudClient {
                 .body(NamiRegisterWebhookResponse.class);
     }
 
-    public String resolveCallbackUrl(NamiGenerateWebhookUrlResponse response) {
+    public String resolveCallbackUrl(
+            NamiGenerateWebhookUrlResponse response
+    ) {
+
         if (response == null) {
             return null;
         }
 
-        return List.of(
+        return Stream.of(
                         response.callbackUrl(),
                         response.webhookUrl(),
                         response.url(),
                         response.tokenizedUrl()
                 )
-                .stream()
-                .filter(value -> value != null && !value.isBlank())
+                .filter(Objects::nonNull)
+                .filter(value -> !value.isBlank())
                 .findFirst()
                 .orElse(null);
     }

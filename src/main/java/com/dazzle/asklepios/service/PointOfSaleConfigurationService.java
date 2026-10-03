@@ -231,7 +231,10 @@ public class PointOfSaleConfigurationService {
 
         NamiGenerateWebhookUrlResponse generatedWebhookUrl =
                 namiCloudClient.generateWebhookUrl(configuration);
-
+        LOG.info(
+                "Generated Webhook Response={}",
+                generatedWebhookUrl
+        );
         String callbackUrl =
                 namiCloudClient.resolveCallbackUrl(generatedWebhookUrl);
 
