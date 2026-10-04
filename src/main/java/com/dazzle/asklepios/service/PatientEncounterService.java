@@ -60,7 +60,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
@@ -524,8 +526,25 @@ public class PatientEncounterService {
 
             return cb.and(predicates.toArray(new Predicate[0]));
         };
+        Pageable effectivePageable = pageable;
 
-        Page<PatientEncounter> result = patientEncounterRepository.findAll(spec, pageable);
+        if (Boolean.TRUE.equals(filter.sortByPriority())) {
+            Sort prioritySort = Sort.by(
+                    Sort.Order.desc("priorityLevel"),
+                    Sort.Order.desc("encounterDate"),
+                    Sort.Order.desc("encounterTime"),
+                    Sort.Order.desc("id")
+            );
+
+            effectivePageable = PageRequest.of(
+                    pageable.getPageNumber(),
+                    pageable.getPageSize(),
+                    prioritySort
+            );
+        }
+
+        Page<PatientEncounter> result =
+                patientEncounterRepository.findAll(spec, effectivePageable);
 
         LOG.debug("[FILTER] PatientEncounters result totalElements={} totalPages={} pageNumber={} pageSize={}", result.getTotalElements(), result.getTotalPages(), result.getNumber(), result.getSize());
 
