@@ -33,12 +33,12 @@ import java.util.List;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
-
 @Service
 @Transactional
 public class PatientAllergiesService {
 
     private static final Logger LOG = LoggerFactory.getLogger(PatientAllergiesService.class);
+
     private final PatientAllergiesRepository patientAllergiesRepository;
     private final PatientAllergiesActiveIngredientsRepository patientAllergiesActiveIngredientRepository;
     private final PatientRepository patientRepository;
@@ -47,7 +47,15 @@ public class PatientAllergiesService {
     private final AllergenHelper allergenHelper;
     private final ActiveIngredientHelper activeIngredientHelper;
 
-    public PatientAllergiesService(PatientAllergiesRepository patientAllergiesRepository, PatientAllergiesActiveIngredientsRepository patientAllergiesActiveIngredientRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository, MedicationCategoryClassHelper medicationCategoryClassHelper, AllergenHelper allergenHelper, ActiveIngredientHelper activeIngredientHelper) {
+    public PatientAllergiesService(
+            PatientAllergiesRepository patientAllergiesRepository,
+            PatientAllergiesActiveIngredientsRepository patientAllergiesActiveIngredientRepository,
+            PatientRepository patientRepository,
+            PatientEncounterRepository patientEncounterRepository,
+            MedicationCategoryClassHelper medicationCategoryClassHelper,
+            AllergenHelper allergenHelper,
+            ActiveIngredientHelper activeIngredientHelper
+    ) {
         this.patientAllergiesRepository = patientAllergiesRepository;
         this.patientAllergiesActiveIngredientRepository = patientAllergiesActiveIngredientRepository;
         this.patientRepository = patientRepository;
@@ -59,8 +67,19 @@ public class PatientAllergiesService {
 
     public PatientAllergies create(PatientAllergiesCreateDTO patientAllergyCreateDto) {
         LOG.debug("Request to create Patient Allergies : {}", patientAllergyCreateDto);
+
+        if (patientAllergyCreateDto.allergenType() != AllergenTypes.UNKNOWN
+                && patientAllergyCreateDto.severity() == null) {
+            throw new BadRequestAlertException(
+                    "severityRequired",
+                    "patientAllergies",
+                    "Severity is required"
+            );
+        }
+
         if (patientAllergyCreateDto.allergenType() == AllergenTypes.MEDICATION) {
             LOG.debug("The allergen type is medication : {}", patientAllergyCreateDto);
+
             if (patientAllergyCreateDto.medicationClassId() == null) {
                 LOG.debug("The medication class id is null : {}", patientAllergyCreateDto);
                 throw new BadRequestAlertException(
@@ -69,6 +88,7 @@ public class PatientAllergiesService {
                         "Medication Class ID is required for MEDICATION type"
                 );
             }
+
             if (patientAllergyCreateDto.allergenId() != null) {
                 LOG.debug("The allergen id is not null : {}", patientAllergyCreateDto);
                 throw new BadRequestAlertException(
@@ -77,11 +97,15 @@ public class PatientAllergiesService {
                         "Allergen must be null for MEDICATION type"
                 );
             }
-            if (patientAllergyCreateDto.medicationClassId() != null)
-                medicationCategoryClassHelper.validateMedicationCategoryClassExists(patientAllergyCreateDto.medicationClassId());
+
+            medicationCategoryClassHelper.validateMedicationCategoryClassExists(
+                    patientAllergyCreateDto.medicationClassId()
+            );
+
         } else if (patientAllergyCreateDto.allergenType() == AllergenTypes.OTHER) {
 
-            if (patientAllergyCreateDto.allergenName() == null || patientAllergyCreateDto.allergenName().isBlank()) {
+            if (patientAllergyCreateDto.allergenName() == null
+                    || patientAllergyCreateDto.allergenName().isBlank()) {
                 throw new BadRequestAlertException(
                         "allergenNameRequired",
                         "patientAllergies",
@@ -105,37 +129,65 @@ public class PatientAllergiesService {
                 );
             }
 
-            if (patientAllergyCreateDto.activeIngredients() != null && !patientAllergyCreateDto.activeIngredients().isEmpty()) {
+            if (patientAllergyCreateDto.activeIngredients() != null
+                    && !patientAllergyCreateDto.activeIngredients().isEmpty()) {
                 throw new BadRequestAlertException(
                         "activeIngredientsMustBeEmpty",
                         "patientAllergies",
                         "Active Ingredients must be empty for OTHER type"
                 );
             }
-
         }
-        if (patientAllergyCreateDto.onsetDateUndefined() && patientAllergyCreateDto.onsetDate() != null) {
-            LOG.debug("The onset date is not null : {}", patientAllergyCreateDto);
-            throw new BadRequestAlertException(
-                    "onsetDateMustBeNull",
-                    "patientAllergies",
-                    "Onset Date must be null when onset Date undefined is true"
+
+        if (patientAllergyCreateDto.allergenType() != AllergenTypes.UNKNOWN) {
+
+            if (patientAllergyCreateDto.onsetDateUndefined()
+                    && patientAllergyCreateDto.onsetDate() != null) {
+                LOG.debug("The onset date is not null : {}", patientAllergyCreateDto);
+                throw new BadRequestAlertException(
+                        "onsetDateMustBeNull",
+                        "patientAllergies",
+                        "Onset Date must be null when onset Date undefined is true"
+                );
+            }
+
+            if (!patientAllergyCreateDto.onsetDateUndefined()
+                    && patientAllergyCreateDto.onsetDate() == null) {
+                LOG.debug("The onset date is null : {}", patientAllergyCreateDto);
+                throw new BadRequestAlertException(
+                        "onsetDateRequired",
+                        "patientAllergies",
+                        "Onset Date is required when onset Date undefined is false"
+                );
+            }
+
+            if (patientAllergyCreateDto.byPatient()
+                    && patientAllergyCreateDto.sourceOfInformation() != null) {
+                LOG.debug("The source of information is not null : {}", patientAllergyCreateDto);
+                throw new BadRequestAlertException(
+                        "sourceMustBeNull",
+                        "patientAllergies",
+                        "source of Information must be null"
+                );
+            }
+
+            if (!patientAllergyCreateDto.byPatient()
+                    && patientAllergyCreateDto.sourceOfInformation() == null) {
+                LOG.debug("The source of information is null : {}", patientAllergyCreateDto);
+                throw new BadRequestAlertException(
+                        "sourceRequired",
+                        "patientAllergies",
+                        "source of Information is required"
+                );
+            }
+        }
+
+        if (patientAllergyCreateDto.onsetDate() != null
+                && patientAllergyCreateDto.onsetDate().isAfter(Instant.now())) {
+            LOG.debug(
+                    "The onset date is in the future : {}",
+                    patientAllergyCreateDto.onsetDate()
             );
-        }
-
-        if (!patientAllergyCreateDto.onsetDateUndefined() && patientAllergyCreateDto.onsetDate() == null) {
-            LOG.debug("The onset date is null : {}", patientAllergyCreateDto);
-            throw new BadRequestAlertException(
-                    "onsetDateRequired",
-                    "patientAllergies",
-                    "Onset Date is required when onset Date undefined is false"
-            );
-        }
-        // Validate onset date is not in the future
-        if (patientAllergyCreateDto.onsetDate() != null &&
-                patientAllergyCreateDto.onsetDate().isAfter(Instant.now())) {
-
-            LOG.debug("The onset date is in the future : {}", patientAllergyCreateDto.onsetDate());
 
             throw new BadRequestAlertException(
                     "onsetDateInFuture",
@@ -144,32 +196,19 @@ public class PatientAllergiesService {
             );
         }
 
-        if (patientAllergyCreateDto.byPatient() && patientAllergyCreateDto.sourceOfInformation() != null) {
-            LOG.debug("The source of information is not null : {}", patientAllergyCreateDto);
-            throw new BadRequestAlertException(
-                    "sourceMustBeNull",
-                    "patientAllergies",
-                    "source of Information must be null"
-            );
-        }
-        if (!patientAllergyCreateDto.byPatient() && patientAllergyCreateDto.sourceOfInformation() == null) {
-            LOG.debug("The source of information is null : {}", patientAllergyCreateDto);
-            throw new BadRequestAlertException(
-                    "sourceRequired",
-                    "patientAllergies",
-                    "source of Information is required"
-            );
-        }
-        if (patientAllergyCreateDto.allergenId() != null) {
+        if (patientAllergyCreateDto.allergenType() != AllergenTypes.UNKNOWN
+                && patientAllergyCreateDto.allergenId() != null) {
             allergenHelper.validateAllergenExists(patientAllergyCreateDto.allergenId());
-
         }
+
         PatientAllergies entity = PatientAllergies.builder()
                 .patientId(patientAllergyCreateDto.patientId())
                 .encounterId(patientAllergyCreateDto.encounterId())
                 .allergenType(patientAllergyCreateDto.allergenType())
                 .allergenId(
-                        patientAllergyCreateDto.allergenType() == AllergenTypes.OTHER || patientAllergyCreateDto.allergenType() == AllergenTypes.MEDICATION
+                        patientAllergyCreateDto.allergenType() == AllergenTypes.OTHER
+                                || patientAllergyCreateDto.allergenType() == AllergenTypes.MEDICATION
+                                || patientAllergyCreateDto.allergenType() == AllergenTypes.UNKNOWN
                                 ? null
                                 : patientAllergyCreateDto.allergenId()
                 )
@@ -178,8 +217,16 @@ public class PatientAllergiesService {
                                 ? patientAllergyCreateDto.allergenName()
                                 : null
                 )
-                .severity(patientAllergyCreateDto.severity())
-                .medicationClassId(patientAllergyCreateDto.medicationClassId())
+                .severity(
+                        patientAllergyCreateDto.allergenType() == AllergenTypes.UNKNOWN
+                                ? null
+                                : patientAllergyCreateDto.severity()
+                )
+                .medicationClassId(
+                        patientAllergyCreateDto.allergenType() == AllergenTypes.UNKNOWN
+                                ? null
+                                : patientAllergyCreateDto.medicationClassId()
+                )
                 .criticality(patientAllergyCreateDto.criticality())
                 .certainty(patientAllergyCreateDto.certainty())
                 .treatmentStrategy(patientAllergyCreateDto.treatmentStrategy())
@@ -196,26 +243,31 @@ public class PatientAllergiesService {
 
         try {
             PatientAllergies saved = patientAllergiesRepository.save(entity);
-            if (patientAllergyCreateDto.allergenType() == AllergenTypes.MEDICATION &&
-                    patientAllergyCreateDto.activeIngredients() != null &&
-                    !patientAllergyCreateDto.activeIngredients().isEmpty()) {
+
+            if (patientAllergyCreateDto.allergenType() == AllergenTypes.MEDICATION
+                    && patientAllergyCreateDto.activeIngredients() != null
+                    && !patientAllergyCreateDto.activeIngredients().isEmpty()) {
+
                 LOG.debug("Save active ingredients");
+
                 for (Long activeIngredient : patientAllergyCreateDto.activeIngredients()) {
-                    PatientAllergiesActiveIngredient ai = new PatientAllergiesActiveIngredient();
+                    PatientAllergiesActiveIngredient ai =
+                            new PatientAllergiesActiveIngredient();
+
                     ai.setPatientAllergy(saved);
                     ai.setActiveIngredientId(activeIngredient);
+
                     patientAllergiesActiveIngredientRepository.save(ai);
                 }
             }
 
             LOG.debug("Created PatientAllergies: {}", saved);
             return saved;
+
         } catch (DataIntegrityViolationException | JpaSystemException constraintException) {
             throw handleConstraintViolation(constraintException);
-
         }
     }
-
 
     @Transactional(readOnly = true)
     public Page<PatientAllergiesResponseVM> findAllAllergiesByPatientId(
@@ -224,6 +276,7 @@ public class PatientAllergiesService {
             Long patientId
     ) {
         Page<PatientAllergies> page;
+
         if (showCancelled) {
             LOG.debug("Fetch PatientAllergies with cancelled allergies");
             page = patientAllergiesRepository.findByPatientId(patientId, pageable);
@@ -235,6 +288,7 @@ public class PatientAllergiesService {
                     pageable
             );
         }
+
         return page.map(allergy ->
                 PatientAllergiesResponseVM.ofEntity(
                         allergy,
@@ -243,20 +297,26 @@ public class PatientAllergiesService {
         );
     }
 
-
     @Transactional
     public PatientAllergiesResponseVM cancel(Long id, String reason) {
         LOG.debug("Request to cancel PatientAllergy: {}", id);
-        String login = SecurityUtils.getCurrentUserLogin()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated."));
 
+        String login = SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.UNAUTHORIZED,
+                                "User not authenticated."
+                        )
+                );
 
         PatientAllergies entity = patientAllergiesRepository.findById(id)
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "idnotfound",
-                        "patientAllergies",
-                        "PatientAllergies not found"
-                ));
+                .orElseThrow(() ->
+                        new BadRequestAlertException(
+                                "idnotfound",
+                                "patientAllergies",
+                                "PatientAllergies not found"
+                        )
+                );
 
         entity.setStatus(PatientAllergyStatus.CANCELLED);
         entity.setCancelledBy(login);
@@ -274,14 +334,21 @@ public class PatientAllergiesService {
         LOG.debug("Request to resolve PatientAllergy : {}", id);
 
         PatientAllergies entity = patientAllergiesRepository.findById(id)
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "idnotfound",
-                        "patientAllergies",
-                        "PatientAllergies not found"
-                ));
+                .orElseThrow(() ->
+                        new BadRequestAlertException(
+                                "idnotfound",
+                                "patientAllergies",
+                                "PatientAllergies not found"
+                        )
+                );
 
         String login = SecurityUtils.getCurrentUserLogin()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated."));
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.UNAUTHORIZED,
+                                "User not authenticated."
+                        )
+                );
 
         entity.setStatus(PatientAllergyStatus.RESOLVED);
         entity.setResolvedBy(login);
@@ -298,11 +365,13 @@ public class PatientAllergiesService {
         LOG.debug("Request to undo resolve PatientAllergy : {}", id);
 
         PatientAllergies entity = patientAllergiesRepository.findById(id)
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "idnotfound",
-                        "patientAllergies",
-                        "PatientAllergies not found"
-                ));
+                .orElseThrow(() ->
+                        new BadRequestAlertException(
+                                "idnotfound",
+                                "patientAllergies",
+                                "PatientAllergies not found"
+                        )
+                );
 
         if (entity.getStatus() != PatientAllergyStatus.RESOLVED) {
             throw new BadRequestAlertException(
@@ -320,71 +389,135 @@ public class PatientAllergiesService {
         );
     }
 
-
     @Transactional
-    public PatientAllergies update(PatientAllergiesUpdateDTO patientAllergiesUpdateDTO) {
-        LOG.debug("Request to update PatientAllergy: {}", patientAllergiesUpdateDTO);
-        PatientAllergies entity = patientAllergiesRepository.findById(patientAllergiesUpdateDTO.id())
-                .orElseThrow(() -> new BadRequestAlertException(
-                        "idNotFound",
-                        "patientAllergies",
-                        "PatientAllergies not found with id " + patientAllergiesUpdateDTO.id()
-                ));
-        // Only active warnings can be updated
-        if (!(entity.getStatus() == PatientAllergyStatus.ACTIVE)) {
-            LOG.debug("The updated warning status is not active : {}", entity.getStatus());
+    public PatientAllergies update(
+            PatientAllergiesUpdateDTO patientAllergiesUpdateDTO
+    ) {
+        LOG.debug(
+                "Request to update PatientAllergy: {}",
+                patientAllergiesUpdateDTO
+        );
+
+        if (patientAllergiesUpdateDTO.allergenType() != AllergenTypes.UNKNOWN
+                && patientAllergiesUpdateDTO.severity() == null) {
+            throw new BadRequestAlertException(
+                    "severityRequired",
+                    "patientAllergies",
+                    "Severity is required"
+            );
+        }
+
+        PatientAllergies entity =
+                patientAllergiesRepository.findById(patientAllergiesUpdateDTO.id())
+                        .orElseThrow(() ->
+                                new BadRequestAlertException(
+                                        "idNotFound",
+                                        "patientAllergies",
+                                        "PatientAllergies not found with id "
+                                                + patientAllergiesUpdateDTO.id()
+                                )
+                        );
+
+        if (entity.getStatus() != PatientAllergyStatus.ACTIVE) {
+            LOG.debug(
+                    "The updated warning status is not active : {}",
+                    entity.getStatus()
+            );
+
             throw new BadRequestAlertException(
                     "statusMustBeActive",
                     "patientWarnings",
                     "Status must be Active"
             );
         }
+
         if (patientAllergiesUpdateDTO.allergenType() == AllergenTypes.MEDICATION) {
-            LOG.debug("The updated allergen type is medication : {}", patientAllergiesUpdateDTO);
+
+            LOG.debug(
+                    "The updated allergen type is medication : {}",
+                    patientAllergiesUpdateDTO
+            );
+
             if (patientAllergiesUpdateDTO.medicationClassId() == null) {
-                LOG.debug("The updated medication class id is null : {}", patientAllergiesUpdateDTO);
                 throw new BadRequestAlertException(
                         "medicationClassIdRequired",
                         "patientAllergies",
                         "Medication Class ID is required for MEDICATION type"
                 );
             }
-            if (patientAllergiesUpdateDTO.medicationClassId() != null)
-                medicationCategoryClassHelper.validateMedicationCategoryClassExists(patientAllergiesUpdateDTO.medicationClassId());
-            if (patientAllergiesUpdateDTO.allergenId() != null) {
-                LOG.debug("The updated allergen id is not null : {}", patientAllergiesUpdateDTO);
 
+            medicationCategoryClassHelper.validateMedicationCategoryClassExists(
+                    patientAllergiesUpdateDTO.medicationClassId()
+            );
+
+            if (patientAllergiesUpdateDTO.allergenId() != null) {
                 throw new BadRequestAlertException(
                         "allergenMustBeNull",
                         "patientAllergies",
                         "Allergen must be null for MEDICATION type"
                 );
             }
-        } else {
-            if (patientAllergiesUpdateDTO.allergenId() == null) {
-                LOG.debug("The updated allergen id is null : {}", patientAllergiesUpdateDTO);
 
+        } else if (patientAllergiesUpdateDTO.allergenType() == AllergenTypes.OTHER) {
+
+            if (patientAllergiesUpdateDTO.allergenName() == null
+                    || patientAllergiesUpdateDTO.allergenName().isBlank()) {
+                throw new BadRequestAlertException(
+                        "allergenNameRequired",
+                        "patientAllergies",
+                        "Allergen free text is required"
+                );
+            }
+
+            if (patientAllergiesUpdateDTO.allergenId() != null) {
+                throw new BadRequestAlertException(
+                        "allergenMustBeNull",
+                        "patientAllergies",
+                        "Allergen ID must be null for OTHER type"
+                );
+            }
+
+            if (patientAllergiesUpdateDTO.medicationClassId() != null) {
+                throw new BadRequestAlertException(
+                        "medicationClassMustBeNull",
+                        "patientAllergies",
+                        "Medication Class must be null for OTHER type"
+                );
+            }
+
+            if (patientAllergiesUpdateDTO.activeIngredients() != null
+                    && !patientAllergiesUpdateDTO.activeIngredients().isEmpty()) {
+                throw new BadRequestAlertException(
+                        "activeIngredientsMustBeEmpty",
+                        "patientAllergies",
+                        "Active Ingredients must be empty for OTHER type"
+                );
+            }
+
+        } else if (patientAllergiesUpdateDTO.allergenType() != AllergenTypes.UNKNOWN) {
+
+            if (patientAllergiesUpdateDTO.allergenId() == null) {
                 throw new BadRequestAlertException(
                         "allergenRequired",
                         "patientAllergies",
-                        "Allergen ID is required for non-MEDICATION types"
+                        "Allergen ID is required"
                 );
             }
-            if (patientAllergiesUpdateDTO.allergenId() != null)
-                allergenHelper.validateAllergenExists(patientAllergiesUpdateDTO.allergenId());
+
+            allergenHelper.validateAllergenExists(
+                    patientAllergiesUpdateDTO.allergenId()
+            );
 
             if (patientAllergiesUpdateDTO.medicationClassId() != null) {
-                LOG.debug("The updated medication class id is not null : {}", patientAllergiesUpdateDTO);
-
                 throw new BadRequestAlertException(
                         "medicationClassMustBeNull",
                         "patientAllergies",
                         "Medication Class must be null for non-MEDICATION types"
                 );
             }
-            if (patientAllergiesUpdateDTO.activeIngredients() != null && !patientAllergiesUpdateDTO.activeIngredients().isEmpty()) {
-                LOG.debug("The updated active ingredients list is not empty : {}", patientAllergiesUpdateDTO);
 
+            if (patientAllergiesUpdateDTO.activeIngredients() != null
+                    && !patientAllergiesUpdateDTO.activeIngredients().isEmpty()) {
                 throw new BadRequestAlertException(
                         "activeIngredientsMustBeEmpty",
                         "patientAllergies",
@@ -392,60 +525,64 @@ public class PatientAllergiesService {
                 );
             }
         }
-        if (patientAllergiesUpdateDTO.onsetDateUndefined() && patientAllergiesUpdateDTO.onsetDate() != null) {
-            LOG.debug("The updated onset date is not null : {}", patientAllergiesUpdateDTO);
 
-            throw new BadRequestAlertException(
-                    "onsetDateMustBeNull",
-                    "patientAllergies",
-                    "Onset Date must be null when onset Date undefined is true"
-            );
+        if (patientAllergiesUpdateDTO.allergenType() != AllergenTypes.UNKNOWN) {
+
+            if (Boolean.TRUE.equals(patientAllergiesUpdateDTO.onsetDateUndefined())
+                    && patientAllergiesUpdateDTO.onsetDate() != null) {
+                throw new BadRequestAlertException(
+                        "onsetDateMustBeNull",
+                        "patientAllergies",
+                        "Onset Date must be null when onset Date undefined is true"
+                );
+            }
+
+            if (!Boolean.TRUE.equals(patientAllergiesUpdateDTO.onsetDateUndefined())
+                    && patientAllergiesUpdateDTO.onsetDate() == null) {
+                throw new BadRequestAlertException(
+                        "onsetDateRequired",
+                        "patientAllergies",
+                        "Onset Date is required when onset Date undefined is false"
+                );
+            }
+
+            if (Boolean.TRUE.equals(patientAllergiesUpdateDTO.byPatient())
+                    && patientAllergiesUpdateDTO.sourceOfInformation() != null) {
+                throw new BadRequestAlertException(
+                        "sourceMustBeNull",
+                        "patientAllergies",
+                        "source of Information must be null"
+                );
+            }
+
+            if (!Boolean.TRUE.equals(patientAllergiesUpdateDTO.byPatient())
+                    && patientAllergiesUpdateDTO.sourceOfInformation() == null) {
+                throw new BadRequestAlertException(
+                        "sourceRequired",
+                        "patientAllergies",
+                        "source of Information is required"
+                );
+            }
         }
 
-        if (!patientAllergiesUpdateDTO.onsetDateUndefined() && patientAllergiesUpdateDTO.onsetDate() == null) {
-            LOG.debug("The updated onset date is null : {}", patientAllergiesUpdateDTO);
-
-            throw new BadRequestAlertException(
-                    "onsetDateRequired",
-                    "patientAllergies",
-                    "Onset Date is required when onset Date undefined is false"
-            );
-        }
-        // Validate onset date is not in the future
-        if (patientAllergiesUpdateDTO.onsetDate() != null &&
-                patientAllergiesUpdateDTO.onsetDate().isAfter(Instant.now())) {
-
-            LOG.debug("The updated onset date is in the future : {}", patientAllergiesUpdateDTO.onsetDate());
-
+        if (patientAllergiesUpdateDTO.onsetDate() != null
+                && patientAllergiesUpdateDTO.onsetDate().isAfter(Instant.now())) {
             throw new BadRequestAlertException(
                     "onsetDateInFuture",
                     "patientAllergies",
                     "Onset Date cannot be in the future"
             );
         }
-        if (patientAllergiesUpdateDTO.byPatient() && patientAllergiesUpdateDTO.sourceOfInformation() != null) {
-            LOG.debug("The updated source of information is not null : {}", patientAllergiesUpdateDTO);
 
-            throw new BadRequestAlertException(
-                    "sourceMustBeNull",
-                    "patientAllergies",
-                    "source of Information must be null"
-            );
-        }
-        if (!patientAllergiesUpdateDTO.byPatient() && patientAllergiesUpdateDTO.sourceOfInformation() == null) {
-            LOG.debug("The updated source of information is null : {}", patientAllergiesUpdateDTO);
+        Instant todayStart =
+                Instant.now().truncatedTo(java.time.temporal.ChronoUnit.DAYS);
 
-            throw new BadRequestAlertException(
-                    "sourceRequired",
-                    "patientAllergies",
-                    "source of Information is required"
-            );
-        }
-
-
-        Instant todayStart = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.DAYS);
         if (entity.getCreatedDate().isBefore(todayStart)) {
-            LOG.debug("The created date is before today: {}", entity.getCreatedDate());
+            LOG.debug(
+                    "The created date is before today: {}",
+                    entity.getCreatedDate()
+            );
+
             throw new BadRequestAlertException(
                     "updateNotAllowed",
                     "patientAllergies",
@@ -454,9 +591,33 @@ public class PatientAllergiesService {
         }
 
         entity.setAllergenType(patientAllergiesUpdateDTO.allergenType());
-        entity.setAllergenId(patientAllergiesUpdateDTO.allergenId());
-        entity.setSeverity(patientAllergiesUpdateDTO.severity());
-        entity.setMedicationClassId(patientAllergiesUpdateDTO.medicationClassId());
+
+        entity.setAllergenId(
+                patientAllergiesUpdateDTO.allergenType() == AllergenTypes.OTHER
+                        || patientAllergiesUpdateDTO.allergenType() == AllergenTypes.MEDICATION
+                        || patientAllergiesUpdateDTO.allergenType() == AllergenTypes.UNKNOWN
+                        ? null
+                        : patientAllergiesUpdateDTO.allergenId()
+        );
+
+        entity.setAllergenName(
+                patientAllergiesUpdateDTO.allergenType() == AllergenTypes.OTHER
+                        ? patientAllergiesUpdateDTO.allergenName()
+                        : null
+        );
+
+        entity.setSeverity(
+                patientAllergiesUpdateDTO.allergenType() == AllergenTypes.UNKNOWN
+                        ? null
+                        : patientAllergiesUpdateDTO.severity()
+        );
+
+        entity.setMedicationClassId(
+                patientAllergiesUpdateDTO.allergenType() == AllergenTypes.UNKNOWN
+                        ? null
+                        : patientAllergiesUpdateDTO.medicationClassId()
+        );
+
         entity.setCriticality(patientAllergiesUpdateDTO.criticality());
         entity.setCertainty(patientAllergiesUpdateDTO.certainty());
         entity.setTreatmentStrategy(patientAllergiesUpdateDTO.treatmentStrategy());
@@ -470,14 +631,22 @@ public class PatientAllergiesService {
         entity.setAllergicReactions(patientAllergiesUpdateDTO.allergicReactions());
 
         if (entity.getAllergenType() == AllergenTypes.MEDICATION) {
-            LOG.debug("The updated allergen type is medication : {}", patientAllergiesUpdateDTO);
-            List<Long> newIds = patientAllergiesUpdateDTO.activeIngredients() == null
-                    ? List.of()
-                    : new ArrayList<>(patientAllergiesUpdateDTO.activeIngredients());
 
+            LOG.debug(
+                    "The updated allergen type is medication : {}",
+                    patientAllergiesUpdateDTO
+            );
+
+            List<Long> newIds =
+                    patientAllergiesUpdateDTO.activeIngredients() == null
+                            ? List.of()
+                            : new ArrayList<>(
+                            patientAllergiesUpdateDTO.activeIngredients()
+                    );
 
             List<PatientAllergiesActiveIngredient> current =
-                    patientAllergiesActiveIngredientRepository.findByPatientAllergy(entity);
+                    patientAllergiesActiveIngredientRepository
+                            .findByPatientAllergy(entity);
 
             current.stream()
                     .filter(ai -> !newIds.contains(ai.getActiveIngredientId()))
@@ -485,36 +654,60 @@ public class PatientAllergiesService {
 
             for (Long id : newIds) {
                 boolean exists = current.stream()
-                        .anyMatch(ai -> ai.getActiveIngredientId().equals(id));
+                        .anyMatch(ai ->
+                                ai.getActiveIngredientId().equals(id)
+                        );
+
                 if (!exists) {
-                    PatientAllergiesActiveIngredient ai = new PatientAllergiesActiveIngredient();
+                    PatientAllergiesActiveIngredient ai =
+                            new PatientAllergiesActiveIngredient();
+
                     ai.setPatientAllergy(entity);
                     ai.setActiveIngredientId(id);
+
                     patientAllergiesActiveIngredientRepository.save(ai);
                 }
             }
 
         } else {
-            patientAllergiesActiveIngredientRepository.deleteByPatientAllergy(entity);
+            patientAllergiesActiveIngredientRepository
+                    .deleteByPatientAllergy(entity);
         }
 
         try {
-            PatientAllergies updated = patientAllergiesRepository.saveAndFlush(entity);
+            PatientAllergies updated =
+                    patientAllergiesRepository.saveAndFlush(entity);
+
             LOG.debug("Updated PatientAllergies: {}", updated);
+
             return updated;
+
         } catch (DataIntegrityViolationException | JpaSystemException constraintException) {
             LOG.debug("Constraint violation caught during update");
             throw handleConstraintViolation(constraintException);
         }
     }
 
-
-    private BadRequestAlertException handleConstraintViolation(RuntimeException constraintException) {
+    private BadRequestAlertException handleConstraintViolation(
+            RuntimeException constraintException
+    ) {
         Throwable root = getRootCause(constraintException);
-        String message = (root != null ? root.getMessage() : constraintException.getMessage());
-        String msgLower = message != null ? message.toLowerCase() : "";
 
-        LOG.error("Database constraint violation while saving patient allergy: {}", message, constraintException);
+        String message =
+                root != null
+                        ? root.getMessage()
+                        : constraintException.getMessage();
+
+        String msgLower =
+                message != null
+                        ? message.toLowerCase()
+                        : "";
+
+        LOG.error(
+                "Database constraint violation while saving patient allergy: {}",
+                message,
+                constraintException
+        );
 
         if (msgLower.contains("uk_patient_allergies_allergen")
                 || msgLower.contains("uk_patient_allergies_medication_class")) {
@@ -541,6 +734,4 @@ public class PatientAllergiesService {
                 "Database constraint violated while saving patient allergy"
         );
     }
-
-
 }

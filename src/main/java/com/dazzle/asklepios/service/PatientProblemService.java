@@ -77,6 +77,7 @@ public class PatientProblemService {
                 .byPatient(patientProblemCreateDTO.byPatient())
                 .sourceOfInformation(patientProblemCreateDTO.sourceOfInformation())
                 .patientIsFree(patientProblemCreateDTO.patientIsFree())
+                .freeText(patientProblemCreateDTO.freeText())
                 // Default status for new records
                 .status(PatientHistoryStatus.ACTIVE)
 
@@ -114,6 +115,7 @@ public class PatientProblemService {
         entity.setByPatient(patientProblemUpdateDTO.byPatient());
         entity.setSourceOfInformation(patientProblemUpdateDTO.sourceOfInformation());
         entity.setPatientIsFree(patientProblemUpdateDTO.patientIsFree());
+        entity.setFreeText(patientProblemUpdateDTO.freeText());
 
         try {
             return patientProblemRepository.saveAndFlush(entity);
@@ -278,7 +280,22 @@ public class PatientProblemService {
 
     private void validateRequiredFields(PatientProblemCreateDTO dto) {
 
+        if (dto.patientIsFree() == null) {
+            throw new BadRequestAlertException(
+                    "Patient free flag is required.",
+                    "patientProblem",
+                    "patientIsFree.required"
+            );
+        }
+
         if (Boolean.TRUE.equals(dto.patientIsFree())) {
+            if (dto.freeText() == null || dto.freeText().isBlank()) {
+                throw new BadRequestAlertException(
+                        "Free text is required.",
+                        "patientProblem",
+                        "freeText.required"
+                );
+            }
             return;
         }
 
@@ -328,9 +345,6 @@ public class PatientProblemService {
 
     private void validateRequiredFields(PatientProblemUpdateDTO dto) {
 
-        if (Boolean.TRUE.equals(dto.patientIsFree())) {
-            return;
-        }
         if (dto.patientIsFree() == null) {
             throw new BadRequestAlertException(
                     "Patient free flag is required.",
@@ -338,6 +352,18 @@ public class PatientProblemService {
                     "patientIsFree.required"
             );
         }
+
+        if (Boolean.TRUE.equals(dto.patientIsFree())) {
+            if (dto.freeText() == null || dto.freeText().isBlank()) {
+                throw new BadRequestAlertException(
+                        "Free text is required.",
+                        "patientProblem",
+                        "freeText.required"
+                );
+            }
+            return;
+        }
+
         if (dto.condition() == null || dto.condition().isBlank()) {
             throw new BadRequestAlertException(
                     "Condition is required.",

@@ -98,9 +98,16 @@ public class SocialHistory extends AbstractAuditingEntity<Long>
     @Column(name = "diagnosed_eating_disorders", length = 50)
     private String diagnosedEatingDisorders;
 
+    @Column(name = "patient_is_free", nullable = false)
+    @Builder.Default
+    private Boolean patientIsFree = Boolean.FALSE;
+
+    @Column(name = "free_text", columnDefinition = "text")
+    private String freeText;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
-
+    @Builder.Default
     private PatientHistoryStatus status = PatientHistoryStatus.ACTIVE;
 
     @Column(name = "cancelled_by", length = 50)

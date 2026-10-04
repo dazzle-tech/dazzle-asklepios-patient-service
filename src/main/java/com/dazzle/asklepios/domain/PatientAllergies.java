@@ -50,7 +50,7 @@ public class PatientAllergies extends AbstractAuditingEntity<Long> implements Se
     private String allergenName;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "severity", nullable = false)
+    @Column(name = "severity")
     private Severity severity;
 
     @Column(name = "medication_class_id")

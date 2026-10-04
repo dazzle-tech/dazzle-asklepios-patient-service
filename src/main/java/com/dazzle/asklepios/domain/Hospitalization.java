@@ -12,7 +12,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -49,20 +48,16 @@ public class Hospitalization extends AbstractAuditingEntity<Long>
     @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
-    @NotBlank
-    @Column(name = "facility", nullable = false)
+    @Column(name = "facility")
     private String facility;
 
-    @NotBlank
-    @Column(name = "reason", nullable = false)
+    @Column(name = "reason")
     private String reason;
 
-    @NotNull
-    @Column(name = "admission_type", nullable = false, length = 100)
+    @Column(name = "admission_type", length = 100)
     private String admissionType;
 
-    @NotNull
-    @Column(name = "date_of_admission", nullable = false)
+    @Column(name = "date_of_admission")
     private Date dateOfAdmission;
 
     @Column(name = "length_of_stay_days")
@@ -74,10 +69,17 @@ public class Hospitalization extends AbstractAuditingEntity<Long>
     @Column(name = "medical_interventions_performed", length = 1000)
     private String medicalInterventionsPerformed;
 
+    @Column(name = "patient_is_free", nullable = false)
+    @Builder.Default
+    private Boolean patientIsFree = Boolean.FALSE;
+
+    @Column(name = "free_text", columnDefinition = "text")
+    private String freeText;
+
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
-
+    @Builder.Default
     private PatientHistoryStatus status = PatientHistoryStatus.ACTIVE;
 
     @Column(name = "cancelled_by", length = 50)

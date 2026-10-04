@@ -1,12 +1,6 @@
 package com.dazzle.asklepios.domain;
 
-import com.dazzle.asklepios.domain.enumeration.DischargeType;
-import com.dazzle.asklepios.domain.enumeration.EncounterBillingStatus;
-import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
-import com.dazzle.asklepios.domain.enumeration.EncounterReason;
-import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
-import com.dazzle.asklepios.domain.enumeration.EncounterType;
-import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
+import com.dazzle.asklepios.domain.enumeration.*;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.Column;
@@ -168,6 +162,12 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "encounter_status")
     private EncounterStatus encounterStatus = EncounterStatus.OPEN;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cancellation_reason_type", length = 50)
+    private EncounterCancellationReason cancellationReasonType;
+
+    @Column(name = "cancellation_reason", columnDefinition = "text")
+    private String cancellationReason;
 
     @PrePersist
     @PreUpdate

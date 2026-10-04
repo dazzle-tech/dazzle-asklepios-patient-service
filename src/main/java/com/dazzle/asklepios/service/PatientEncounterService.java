@@ -97,6 +97,7 @@ import com.dazzle.asklepios.repository.HospitalizationRepository;
 import com.dazzle.asklepios.repository.CurrentMedicationRepository;
 import com.dazzle.asklepios.repository.SurgicalHistoryRepository;
 import com.dazzle.asklepios.repository.SocialHistoryRepository;
+import com.dazzle.asklepios.domain.enumeration.EncounterCancellationReason;
 
 @Service
 @Transactional
@@ -660,8 +661,35 @@ public class PatientEncounterService {
         return value == null || value.isBlank();
     }
 
-    public PatientEncounter cancelEncounter(Long encounterId) {
-        LOG.info("[CANCEL] PatientEncounter id={}", encounterId);
+    public PatientEncounter cancelEncounter(
+            Long encounterId,
+            EncounterCancellationReason reason,
+            String otherReason
+    ) {
+        LOG.info(
+                "[CANCEL] PatientEncounter id={} reason={} otherReason={}",
+                encounterId,
+                reason,
+                otherReason
+        );
+
+        if (reason == null) {
+            throw new BadRequestAlertException(
+                    "Cancellation reason is required.",
+                    "patientEncounter",
+                    "cancel.reason.required"
+            );
+        }
+
+        if (reason == EncounterCancellationReason.OTHER
+                && (otherReason == null || otherReason.isBlank())) {
+
+            throw new BadRequestAlertException(
+                    "Other cancellation reason is required.",
+                    "patientEncounter",
+                    "cancel.otherReason.required"
+            );
+        }
 
         PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -675,13 +703,16 @@ public class PatientEncounterService {
                 TreatmentStatus.WAITING_TRIAGE,
                 TreatmentStatus.PENDING_PAYMENT
         ).contains(encounter.getStatus())) {
+
             throw new BadRequestAlertException(
                     "cancel.notAllowed.rule",
                     "patientEncounter",
                     "Cancel is allowed only when status is NEW, WAITING_TRIAGE, or PENDING_PAYMENT."
             );
         }
-        boolean hasObservation = !findEncounterIdsWithObservation(List.of(encounterId)).isEmpty();
+
+        boolean hasObservation =
+                !findEncounterIdsWithObservation(List.of(encounterId)).isEmpty();
 
         if (hasObservation) {
             throw new BadRequestAlertException(
@@ -691,24 +722,55 @@ public class PatientEncounterService {
             );
         }
 
+        String cancellationReasonText =
+                reason == EncounterCancellationReason.OTHER
+                        ? otherReason.trim()
+                        : reason.name();
+
         billingEngineService.cancelEncounter(
                 encounterId,
-                "Clinical encounter cancelled",
+                cancellationReasonText,
                 "ENCOUNTER-CANCEL:" + encounterId
         );
 
+        encounter.setCancellationReasonType(reason);
+
+        encounter.setCancellationReason(
+                reason == EncounterCancellationReason.OTHER
+                        ? otherReason.trim()
+                        : null
+        );
+
         encounter.setStatus(TreatmentStatus.CANCELLED);
+
         try {
-            PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
-            encounterAssignToBedService.dischargeActiveAssignmentByEncounterId(saved.getId());
-            LOG.info("[CANCEL] success id={} status={}", saved.getId(), saved.getStatus());
+            PatientEncounter saved =
+                    patientEncounterRepository.saveAndFlush(encounter);
+
+            encounterAssignToBedService
+                    .dischargeActiveAssignmentByEncounterId(saved.getId());
+
+            LOG.info(
+                    "[CANCEL] success id={} status={} reasonType={} otherReason={}",
+                    saved.getId(),
+                    saved.getStatus(),
+                    saved.getCancellationReasonType(),
+                    saved.getCancellationReason()
+            );
+
             return saved;
+
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
-            LOG.warn("[CANCEL] failed (constraint) id={}", encounterId, ex);
+
+            LOG.warn(
+                    "[CANCEL] failed (constraint) id={}",
+                    encounterId,
+                    ex
+            );
+
             throw handleConstraintViolation(ex);
         }
     }
-
     public PatientEncounter dischargeEncounter(Long encounterId) {
         LOG.info("[DISCHARGE] PatientEncounter id={}", encounterId);
 
