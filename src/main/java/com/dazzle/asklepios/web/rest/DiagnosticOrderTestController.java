@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.web.rest;
 
+import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticTest;
 import com.dazzle.asklepios.domain.DiagnosticTestLaboratory;
 import com.dazzle.asklepios.domain.DiagnosticTestRadiology;
@@ -26,6 +27,7 @@ import com.dazzle.asklepios.web.rest.vm.diagnosticorders.DiagnosticOrderTestResp
 import com.dazzle.asklepios.web.rest.vm.diagnosticorders.PatientArrivedResponseVM;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -330,15 +332,22 @@ public class DiagnosticOrderTestController {
             @RequestParam(name = "testName", required = false) String testName,
             @RequestParam(name = "submitDateFrom", required = false) Instant submitDateFrom,
             @RequestParam(name = "submitDateTo", required = false) Instant submitDateTo,
+            @RequestParam(name = "encounterIdIn", required = false) List<Long> encounterIdIn,
+            @RequestParam(name = "patientIdIn", required = false) List<Long> patientIdIn,
+            @RequestParam(name = "resultConfirmed", required = false) Boolean resultConfirmed,
             @ParameterObject Pageable pageable
     ) {
 
         LOG.debug(
-                "[FILTER] params -> orderId={} orderIdIn={} testId={} status={} statusIn={} statusNotIn={} excludeStatus={} receivedDepartmentId={} processingStatus={} orderType={} acceptedBy={} rejectedBy={} category={} testName={} from={} to={} pageable={}",
+                "[FILTER] params -> orderId={} orderIdIn={} testId={} status={} statusIn={} statusNotIn={} excludeStatus={} receivedDepartmentId={} processingStatus={} orderType={} acceptedBy={} rejectedBy={} category={} testName={} from={} to={} encounterIdIn={} patientIdIn={} resultConfirmed={} pageable={}",
                 orderId, orderIdIn, testId, status, includedStatuses, excludedStatuses,
                 excludedStatus, receivedDepartmentId, processingStatus, orderType,
-                acceptedBy, rejectedBy, category, testName, submitDateFrom, submitDateTo, pageable
+                acceptedBy, rejectedBy, category, testName, submitDateFrom, submitDateTo,
+                encounterIdIn, patientIdIn, resultConfirmed, pageable
         );
+
+        boolean hasEncounterFilter = encounterIdIn != null && !encounterIdIn.isEmpty();
+        boolean hasPatientFilter = patientIdIn != null && !patientIdIn.isEmpty();
 
         if (status != null && includedStatuses != null && !includedStatuses.isEmpty()) {
             throw new BadRequestAlertException(
@@ -441,6 +450,35 @@ public class DiagnosticOrderTestController {
             if (submitDateTo != null) {
                 LOG.debug("[FILTER] apply submitDate <= {}", submitDateTo);
                 predicates.add(cb.lessThanOrEqualTo(root.get("submitDate"), submitDateTo));
+            }
+
+            if (resultConfirmed != null) {
+                LOG.debug("[FILTER] apply resultConfirmed={}", resultConfirmed);
+                predicates.add(resultConfirmed
+                        ? cb.isNotNull(root.get("confirmedAt"))
+                        : cb.isNull(root.get("confirmedAt")));
+            }
+
+            if (hasEncounterFilter || hasPatientFilter) {
+                LOG.debug("[FILTER] apply order encounterId IN {} patientId IN {}", encounterIdIn, patientIdIn);
+
+                Subquery<Long> orderSubquery = query.subquery(Long.class);
+                Root<DiagnosticOrder> orderRoot = orderSubquery.from(DiagnosticOrder.class);
+
+                List<Predicate> orderPredicates = new ArrayList<>();
+
+                if (hasEncounterFilter) {
+                    orderPredicates.add(orderRoot.get("encounterId").in(encounterIdIn));
+                }
+
+                if (hasPatientFilter) {
+                    orderPredicates.add(orderRoot.get("patientId").in(patientIdIn));
+                }
+
+                orderSubquery.select(orderRoot.get("id"))
+                        .where(cb.and(orderPredicates.toArray(new Predicate[0])));
+
+                predicates.add(root.get("orderId").in(orderSubquery));
             }
 
             if (hasTestNameFilter) {
@@ -589,6 +627,23 @@ public class DiagnosticOrderTestController {
     }
 
     /**
+     * Action endpoint: confirm a test.
+     * <p>
+     * Uses the currently authenticated username as the confirmer.
+     *
+     * @param orderTestId order test id
+     * @return updated entity response
+     */
+    @PostMapping("/diagnostic-order-tests/{id}/confirm")
+    public ResponseEntity<DiagnosticOrderTestResponseVM> confirm(@PathVariable("id") Long orderTestId) {
+        LOG.debug("[DiagnosticOrderTest] CONFIRM - request received. id={}", orderTestId);
+        String username = currentUsername();
+        DiagnosticOrderTest updatedTest = diagnosticOrderTestStatusService.confirm(orderTestId, username);
+        LOG.debug("[DiagnosticOrderTest] CONFIRM - done. id={}", updatedTest.getId());
+        return ResponseEntity.ok(DiagnosticOrderTestResponseVM.ofEntity(updatedTest));
+    }
+
+    /**
      * Action endpoint: reject a test.
      * <p>
      * Uses the currently authenticated username as the rejecter.
@@ -651,6 +706,21 @@ public class DiagnosticOrderTestController {
     public ResponseEntity<Void> bulkAccept(@Valid @RequestBody BulkIdsDTO dto) {
         LOG.debug("REST bulk-accept DiagnosticOrderTest count={} ids={}", dto.ids().size(), dto.ids());
         diagnosticOrderTestStatusService.bulkAccept(dto.ids(), currentUsername());
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Bulk action: confirm multiple tests.
+     * <p>
+     * Applies the same workflow as {@code /diagnostic-order-tests/{id}/confirm} but for a list of ids.
+     *
+     * @param dto list of test ids to confirm
+     * @return 200 OK on success
+     */
+    @PostMapping("/diagnostic-order-tests/bulk-confirm")
+    public ResponseEntity<Void> bulkConfirm(@Valid @RequestBody BulkIdsDTO dto) {
+        LOG.debug("REST bulk-confirm DiagnosticOrderTest count={} ids={}", dto.ids().size(), dto.ids());
+        diagnosticOrderTestStatusService.bulkConfirm(dto.ids(), currentUsername());
         return ResponseEntity.ok().build();
     }
 
