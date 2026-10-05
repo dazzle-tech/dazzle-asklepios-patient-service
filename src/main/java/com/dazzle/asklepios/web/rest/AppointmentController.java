@@ -16,6 +16,7 @@ import com.dazzle.asklepios.service.dto.appointment.BulkAppointmentTransferDTO;
 import com.dazzle.asklepios.service.dto.appointment.DiagnosticTestAppointmentRescheduleDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentDetailsVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentLogResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentQuickAppointmentResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentTransferVM;
@@ -83,8 +84,8 @@ public class AppointmentController {
     }
 
     @PostMapping("/appointments/search")
-    public ResponseEntity<List<Appointment>> filterAppointments(@Valid @RequestBody AppointmentSearchFilterMultiDepartmentDTO filter, Pageable pageable) {
-        Page<Appointment> appointment = appointmentService.filterAppointment(filter, pageable);
+    public ResponseEntity<List<AppointmentDetailsVM>> filterAppointments(@Valid @RequestBody AppointmentSearchFilterMultiDepartmentDTO filter, Pageable pageable) {
+        Page<AppointmentDetailsVM> appointment = appointmentService.filterAppointment(filter, pageable);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(),

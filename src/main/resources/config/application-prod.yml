@@ -25,6 +25,24 @@ management:
     sampling:
       probability: 1.0 # report 100% of traces
 
+application:
+  pos:
+    nami:
+      base-url: ${NAMI_BASE_URL:https://mw.namipay.com.sa}
+      client-id: ${NAMI_CLIENT_ID:}
+      client-secret: ${NAMI_CLIENT_SECRET:}
+      purchase-endpoint: ${NAMI_PURCHASE_ENDPOINT:/api/payments/performTransaction}
+      refund-endpoint: ${NAMI_REFUND_ENDPOINT:/api/payments/performTransaction}
+      reversal-endpoint: ${NAMI_REVERSAL_ENDPOINT:/api/payments/performTransaction}
+      register-endpoint: ${NAMI_REGISTER_ENDPOINT:/api/terminals/register}
+      webhook-generate-url-endpoint: ${NAMI_WEBHOOK_GENERATE_URL_ENDPOINT:/api/webhooks/generate-url}
+      webhook-register-endpoint: ${NAMI_WEBHOOK_REGISTER_ENDPOINT:/api/webhooks/register}
+      webhook-base-url: ${NAMI_WEBHOOK_BASE_URL:https://api-tst.onehealth.com.sa}
+      webhook-path: ${NAMI_WEBHOOK_PATH:/api/patient/point-of-sale-transactions/webhook}
+      webhook-signature-algorithm: ${NAMI_WEBHOOK_SIGNATURE_ALGORITHM:HMAC_SHA256}
+      webhook-token-expiry-hours: ${NAMI_WEBHOOK_TOKEN_EXPIRY_HOURS:24}
+      webhook-retry-attempts: ${NAMI_WEBHOOK_RETRY_ATTEMPTS:3}
+
 spring:
   devtools:
     restart:
@@ -107,3 +125,7 @@ patient:
       zone: "Asia/Gaza"
       springdoc:
       pre-loading-enabled: true
+  portal:
+    # Shared secret for POST /api/patient/patient-portal/request-otp and verify-login-otp.
+    # Callers send it in the X-Portal-Secret header. Set PATIENT_PORTAL_SECRET in each environment.
+    secret: ${PATIENT_PORTAL_SECRET:}

@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
+import com.dazzle.asklepios.web.rest.vm.EncounterAssignToBedBedManagementVM;
 
 @Service
 @RequiredArgsConstructor
@@ -234,6 +235,7 @@ public class EncounterAssignToBedService {
                     isExternal,
                     BedTransactionType.TRANSFER
             ));
+            bedHelper.markAsInCleaning(previousBedId);
 
             LOG.info("[UPDATE] EncounterAssignToBed success oldId={} newId={} encounterId={} patientId={} roomId={} bedId={}",
                     currentActiveEncounterAssignToBed.getId(),
@@ -294,6 +296,7 @@ public class EncounterAssignToBedService {
                     false,
                     BedTransactionType.RELEASE
             ));
+            bedHelper.markAsInCleaning(releasedEncounterAssignToBed.getBedId());
 
             LOG.info("[RELEASE] EncounterAssignToBed success id={} encounterId={} bedId={}",
                     releasedEncounterAssignToBed.getId(),
@@ -398,6 +401,37 @@ public class EncounterAssignToBedService {
     }
 
     @Transactional(readOnly = true)
+    public List<EncounterAssignToBedBedManagementVM> getActiveAssignmentsByBedIds(
+            List<Long> bedIds
+    ) {
+        LOG.debug("[GET_ACTIVE_LIST_BY_BEDS] bedIds={}", bedIds);
+
+        List<EncounterAssignToBed> activeAssignments =
+                encounterAssignToBedRepository.findAllByBedIdInAndIsActiveTrue(bedIds);
+
+        return activeAssignments.stream()
+                .map(assignment -> {
+                    Patient patient = assignment.getPatient();
+
+                    String patientName = java.util.stream.Stream.of(
+                                    patient.getFirstName(),
+                                    patient.getSecondName(),
+                                    patient.getThirdName(),
+                                    patient.getLastName()
+                            )
+                            .filter(name -> name != null && !name.isBlank())
+                            .collect(java.util.stream.Collectors.joining(" "));
+
+                    return new EncounterAssignToBedBedManagementVM(
+                            assignment.getBedId(),
+                            patient.getId(),
+                            patientName
+                    );
+                })
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public List<EncounterAssignToBed> getActiveAssignmentsByEncounterIds(List<Long> encounterIds) {
         LOG.debug("[GET_ACTIVE_LIST_BY_ENCOUNTERS] encounterIds={}", encounterIds);
 
@@ -457,6 +491,7 @@ public class EncounterAssignToBedService {
                     false,
                     BedTransactionType.DISCHARGE
             ));
+            bedHelper.markAsInCleaning(dischargedAssignment.getBedId());
 
             LOG.info("[DISCHARGE_ASSIGNMENT] success assignmentId={} encounterId={} roomId={} bedId={}",
                     dischargedAssignment.getId(),

@@ -34,10 +34,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Instant;
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,11 +53,6 @@ public class ClaimSettlementService {
 
     private static final String ENTITY_NAME = "claimSettlement";
 
-    private static final int MONEY_SCALE = 2;
-
-    private static final EnumSet<ClaimStatus> REJECTED_STATUSES =
-            EnumSet.of(ClaimStatus.REJECTED, ClaimStatus.FAILED);
-
     private final ClaimRequestRepository claimRequestRepository;
     private final ClaimItemRepository claimItemRepository;
     private final BillingChargeLineRepository billingChargeLineRepository;
@@ -72,68 +64,123 @@ public class ClaimSettlementService {
     private final PayorHelper payorHelper;
     private final NphiesPayerHelper nphiesPayerHelper;
 
+    public List<String> listSettlementNumbers(
+            String payerNphiesId,
+            String encounterTypeValue,
+            Instant fromDate,
+            Instant toDate
+    ) {
+        return matchingClaims(payerNphiesId, encounterTypeValue, fromDate, toDate, null, Sort.by(Sort.Direction.DESC, "id"))
+                .stream()
+                .map(this::displaySettlementNo)
+                .distinct()
+                .sorted(this::newestSettlementFirst)
+                .toList();
+    }
+
     public Page<ClaimSettlementRowResponse> search(
             String payerNphiesId,
             String encounterTypeValue,
             Instant fromDate,
             Instant toDate,
+            String settlementNo,
             Pageable pageable
     ) {
         LOG.debug(
-                "[CLAIM_SETTLEMENT] Search payerNphiesId={} encounterType={} from={} to={}",
+                "[CLAIM_SETTLEMENT] Search payerNphiesId={} encounterType={} from={} to={} settlementNo={}",
                 payerNphiesId,
                 encounterTypeValue,
                 fromDate,
-                toDate
+                toDate,
+                settlementNo
         );
 
-        EncounterType encounterType = parseEncounterType(encounterTypeValue);
-        Long payorId = payorHelper.resolvePayorId(null, payerNphiesId);
         Pageable sorted = withDefaultSort(pageable);
-
-        List<ClaimRequest> claims = claimRequestRepository.findAll(sorted.getSort());
-        Map<Long, PatientEncounter> encounters = loadEncounters(claims);
-        Map<Long, PatientInsurance> insurances = loadInsurances(claims, encounters);
-
-        List<ClaimRequest> filtered =
-                claims.stream()
-                        .filter(claim -> claim.getStatus() == ClaimStatus.ACCEPTED)
-                        .filter(claim ->
-                                matchesPayer(
-                                        claim,
-                                        encounters,
-                                        insurances,
-                                        payerNphiesId,
-                                        payorId
-                                )
-                        )
-                        .filter(claim ->
-                                matchesEncounterType(claim, encounters, encounterType)
-                        )
-                        .filter(claim ->
-                                matchesSettlementDate(claim, fromDate, toDate)
-                        )
-                        .toList();
+        List<ClaimRequest> filtered = matchingClaims(
+                payerNphiesId,
+                encounterTypeValue,
+                fromDate,
+                toDate,
+                settlementNo,
+                sorted.getSort()
+        );
+        Map<Long, PatientEncounter> encounters = loadEncounters(filtered);
+        Map<Long, PatientInsurance> insurances = loadInsurances(filtered, encounters);
 
         int start = (int) sorted.getOffset();
         int end = Math.min(start + sorted.getPageSize(), filtered.size());
-        List<ClaimRequest> pageClaims =
-                start >= filtered.size()
-                        ? List.of()
-                        : filtered.subList(start, end);
+        List<ClaimRequest> pageClaims = start >= filtered.size()
+                ? List.of()
+                : filtered.subList(start, end);
 
         if (pageClaims.isEmpty()) {
             return new PageImpl<>(List.of(), sorted, filtered.size());
         }
 
         SettlementLookups lookups = loadLookups(pageClaims, encounters, insurances);
-
-        List<ClaimSettlementRowResponse> rows =
-                pageClaims.stream()
-                        .map(claim -> toRow(claim, lookups))
-                        .toList();
+        List<ClaimSettlementRowResponse> rows = pageClaims.stream()
+                .map(claim -> toRow(claim, lookups))
+                .toList();
 
         return new PageImpl<>(rows, sorted, filtered.size());
+    }
+
+    private List<ClaimRequest> matchingClaims(
+            String payerNphiesId,
+            String encounterTypeValue,
+            Instant fromDate,
+            Instant toDate,
+            String settlementNo,
+            Sort sort
+    ) {
+        EncounterType encounterType = parseEncounterType(encounterTypeValue);
+        Long payorId = payorHelper.resolvePayorId(null, payerNphiesId);
+        List<ClaimRequest> acceptedClaims = claimRequestRepository.findByStatus(ClaimStatus.ACCEPTED, sort);
+        Map<Long, PatientEncounter> encounters = loadEncounters(acceptedClaims);
+        Map<Long, PatientInsurance> insurances = loadInsurances(acceptedClaims, encounters);
+
+        return acceptedClaims.stream()
+                .filter(claim -> matchesPayer(claim, encounters, insurances, payerNphiesId, payorId))
+                .filter(claim -> matchesEncounterType(claim, encounters, encounterType))
+                .filter(claim -> matchesSettlementDate(claim, fromDate, toDate))
+                .filter(claim -> matchesSettlementNo(claim, settlementNo))
+                .toList();
+    }
+
+    private boolean matchesSettlementNo(ClaimRequest claim, String settlementNo) {
+        if (!hasText(settlementNo)) {
+            return true;
+        }
+        String actual = displaySettlementNo(claim);
+        return actual != null && actual.equalsIgnoreCase(settlementNo.trim());
+    }
+
+    private String displaySettlementNo(ClaimRequest claim) {
+        return firstNonBlank(claim.getSettlementNo(), "SET-" + claim.getId());
+    }
+
+    private int newestSettlementFirst(String left, String right) {
+        Long leftNo = settlementSequence(left);
+        Long rightNo = settlementSequence(right);
+        if (leftNo != null && rightNo != null && !leftNo.equals(rightNo)) {
+            return rightNo.compareTo(leftNo);
+        }
+        return right.compareToIgnoreCase(left);
+    }
+
+    private Long settlementSequence(String settlementNo) {
+        if (!hasText(settlementNo)) {
+            return null;
+        }
+        int dash = settlementNo.lastIndexOf('-');
+        if (dash < 0 || dash == settlementNo.length() - 1) {
+            return null;
+        }
+        try {
+            return Long.parseLong(settlementNo.substring(dash + 1).trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     private Map<Long, PatientEncounter> loadEncounters(List<ClaimRequest> claims) {
@@ -180,14 +227,12 @@ public class ClaimSettlementService {
             return true;
         }
 
-        PatientInsurance insurance =
-                insurances.get(insuranceIdFor(claim, encounters));
+        PatientInsurance insurance = insurances.get(insuranceIdFor(claim, encounters));
         if (insurance == null) {
             return false;
         }
 
-        if (hasText(payerNphiesId)
-                && payerNphiesId.equalsIgnoreCase(insurance.getPayerNphiesId())) {
+        if (hasText(payerNphiesId) && payerNphiesId.equalsIgnoreCase(insurance.getPayerNphiesId())) {
             return true;
         }
 
@@ -207,20 +252,12 @@ public class ClaimSettlementService {
         return encounter != null && encounterType == encounter.getEncounterType();
     }
 
-    private boolean matchesSettlementDate(
-            ClaimRequest claim,
-            Instant fromDate,
-            Instant toDate
-    ) {
+    private boolean matchesSettlementDate(ClaimRequest claim, Instant fromDate, Instant toDate) {
         Instant settlementDate = settlementDate(claim);
-
-        if (fromDate != null
-                && (settlementDate == null || settlementDate.isBefore(fromDate))) {
+        if (fromDate != null && (settlementDate == null || settlementDate.isBefore(fromDate))) {
             return false;
         }
-
-        return toDate == null
-                || (settlementDate != null && settlementDate.isBefore(toDate));
+        return toDate == null || (settlementDate != null && settlementDate.isBefore(toDate));
     }
 
     private Instant settlementDate(ClaimRequest claim) {
@@ -323,7 +360,42 @@ public class ClaimSettlementService {
                 documentItemsByDocument,
                 patients,
                 documents,
-                new HashMap<>()
+                new HashMap<>(),
+                preloadPayors(insurances)
+        );
+    }
+
+    private Map<String, PayorDTO> preloadPayors(Map<Long, PatientInsurance> insurances) {
+        Map<String, PayorDTO> payors = new HashMap<>();
+        for (PatientInsurance insurance : insurances.values()) {
+            if (insurance == null || hasText(insurance.getTpaName()) || hasText(insurance.getTpaNphiesId())) {
+                continue;
+            }
+            String cacheKey = payorCacheKey(insurance.getPayorId(), insurance.getPayerNphiesId());
+            if (payors.containsKey(cacheKey)) {
+                continue;
+            }
+            PayorDTO payor = payorHelper.findPayor(insurance.getPayorId(), insurance.getPayerNphiesId());
+            payors.put(cacheKey, payor);
+        }
+        return payors;
+    }
+
+    private String payorCacheKey(Long payorId, String payerNphiesId) {
+        return (payorId == null ? "" : payorId) + "|" + (payerNphiesId == null ? "" : payerNphiesId.trim());
+    }
+
+    private ClaimSettlementAmounts.Amounts amountsFor(
+            ClaimRequest claim,
+            List<ClaimItem> items,
+            SettlementLookups lookups
+    ) {
+        return ClaimSettlementAmounts.forClaim(
+                claim,
+                items,
+                lookups.chargeLines,
+                lookups.documentItemsById,
+                lookups.documentItemsByDocument
         );
     }
 
@@ -349,7 +421,7 @@ public class ClaimSettlementService {
         List<ClaimItem> items =
                 lookups.itemsByClaim.getOrDefault(claim.getId(), List.of());
 
-        Amounts amounts = amountsFor(claim, items, lookups);
+        ClaimSettlementAmounts.Amounts amounts = amountsFor(claim, items, lookups);
         PatientInsurance insurance =
                 lookups.insurances.get(insuranceIdFor(claim, lookups.encounters));
         Patient patient = lookups.patients.get(claim.getPatientId());
@@ -362,20 +434,20 @@ public class ClaimSettlementService {
 
         return new ClaimSettlementRowResponse(
                 claim.getId(),
-                "SET-" + claim.getId(),
+                displaySettlementNo(claim),
                 settlementDate,
                 resolveInsuranceCompany(insurance, lookups),
                 resolveTpa(insurance, lookups),
                 firstNonBlank(claim.getProvClaimNo(), claim.getClaimReference()),
                 claimDate,
-                amounts.billedAmount,
-                amounts.approvedAmount,
-                amounts.rejectedAmount,
-                amounts.patientShare,
-                amounts.insuranceAmount,
-                amounts.paidAmount,
-                amounts.outstandingAmount,
-                settlementStatus(claim.getStatus(), amounts),
+                amounts.billedAmount(),
+                amounts.approvedAmount(),
+                amounts.rejectedAmount(),
+                amounts.patientShare(),
+                amounts.insuranceAmount(),
+                amounts.paidAmount(),
+                amounts.outstandingAmount(),
+                ClaimSettlementAmounts.paymentStatus(amounts),
                 claim.getPatientId(),
                 patientName(patient),
                 patient == null ? null : firstNonBlank(patient.getMedicalRecordNumber()),
@@ -409,88 +481,6 @@ public class ClaimSettlementService {
         return firstNonBlank(fullName);
     }
 
-    private Amounts amountsFor(
-            ClaimRequest claim,
-            List<ClaimItem> items,
-            SettlementLookups lookups
-    ) {
-        BigDecimal billed = sum(items, ClaimItem::getNet);
-        if (billed.signum() == 0) {
-            billed = money(claim.getTotalNet());
-        }
-
-        BigDecimal patientShare = sum(items, ClaimItem::getPatientShare);
-        if (patientShare.signum() == 0) {
-            patientShare = patientShareFromChargeLines(items, lookups);
-        }
-        BigDecimal insuranceAmount = sum(items, ClaimItem::getPayerShare);
-
-        List<FinancialDocumentItem> documentItems =
-                documentItemsFor(claim, items, lookups);
-
-        BigDecimal paid = sumDocument(documentItems, FinancialDocumentItem::getInsurancePaidAmount);
-        BigDecimal outstanding =
-                sumDocument(documentItems, FinancialDocumentItem::getInsuranceRemainingAmount);
-
-        if (outstanding.signum() == 0 && insuranceAmount.signum() > 0) {
-            outstanding = money(insuranceAmount.subtract(paid).max(BigDecimal.ZERO));
-        }
-
-        boolean rejected = REJECTED_STATUSES.contains(claim.getStatus());
-        BigDecimal approved = rejected ? BigDecimal.ZERO.setScale(MONEY_SCALE) : insuranceAmount;
-        BigDecimal rejectedAmount =
-                rejected
-                        ? (insuranceAmount.signum() > 0 ? insuranceAmount : billed)
-                        : BigDecimal.ZERO.setScale(MONEY_SCALE);
-
-        return new Amounts(
-                billed,
-                approved,
-                rejectedAmount,
-                patientShare,
-                insuranceAmount,
-                paid,
-                outstanding
-        );
-    }
-
-    private BigDecimal patientShareFromChargeLines(
-            List<ClaimItem> items,
-            SettlementLookups lookups
-    ) {
-        return items.stream()
-                .map(ClaimItem::getBillingChargeLineId)
-                .filter(Objects::nonNull)
-                .map(lookups.chargeLines::get)
-                .filter(Objects::nonNull)
-                .map(BillingChargeLine::getPatientResponsibilityAmount)
-                .map(this::money)
-                .reduce(BigDecimal.ZERO.setScale(MONEY_SCALE), BigDecimal::add);
-    }
-
-    private List<FinancialDocumentItem> documentItemsFor(
-            ClaimRequest claim,
-            List<ClaimItem> items,
-            SettlementLookups lookups
-    ) {
-        List<FinancialDocumentItem> linked =
-                items.stream()
-                        .map(ClaimItem::getFinancialDocumentItemId)
-                        .filter(Objects::nonNull)
-                        .map(lookups.documentItemsById::get)
-                        .filter(Objects::nonNull)
-                        .toList();
-
-        if (!linked.isEmpty()) {
-            return linked;
-        }
-
-        return lookups.documentItemsByDocument.getOrDefault(
-                claim.getFinancialDocumentId(),
-                List.of()
-        );
-    }
-
     private String resolveInsuranceCompany(
             PatientInsurance insurance,
             SettlementLookups lookups
@@ -522,11 +512,9 @@ public class ClaimSettlementService {
 
         String tpaNphiesId = firstNonBlank(insurance.getTpaNphiesId());
         if (tpaNphiesId == null) {
-            PayorDTO payor =
-                    payorHelper.findPayor(
-                            insurance.getPayorId(),
-                            insurance.getPayerNphiesId()
-                    );
+            PayorDTO payor = lookups.payors.get(
+                    payorCacheKey(insurance.getPayorId(), insurance.getPayerNphiesId())
+            );
             tpaNphiesId = payor == null ? null : firstNonBlank(payor.tpaNphiesId());
         }
 
@@ -542,22 +530,6 @@ public class ClaimSettlementService {
                 nphiesId.trim(),
                 id -> nphiesPayerHelper.resolvePayerDisplayName(id, null)
         );
-    }
-
-    private String settlementStatus(ClaimStatus status, Amounts amounts) {
-        if (REJECTED_STATUSES.contains(status)) {
-            return "REJECTED";
-        }
-
-        if (amounts.paidAmount.signum() > 0 && amounts.outstandingAmount.signum() <= 0) {
-            return "SETTLED";
-        }
-
-        if (amounts.paidAmount.signum() > 0) {
-            return "PARTIALLY_SETTLED";
-        }
-
-        return "UNSETTLED";
     }
 
     private EncounterType parseEncounterType(String value) {
@@ -588,32 +560,6 @@ public class ClaimSettlementService {
         );
     }
 
-    private BigDecimal sum(
-            List<ClaimItem> items,
-            Function<ClaimItem, BigDecimal> getter
-    ) {
-        return items.stream()
-                .map(getter)
-                .map(this::money)
-                .reduce(BigDecimal.ZERO.setScale(MONEY_SCALE), BigDecimal::add);
-    }
-
-    private BigDecimal sumDocument(
-            List<FinancialDocumentItem> items,
-            Function<FinancialDocumentItem, BigDecimal> getter
-    ) {
-        return items.stream()
-                .map(getter)
-                .map(this::money)
-                .reduce(BigDecimal.ZERO.setScale(MONEY_SCALE), BigDecimal::add);
-    }
-
-    private BigDecimal money(BigDecimal value) {
-        return value == null
-                ? BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP)
-                : value.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-    }
-
     private String firstNonBlank(String... values) {
         if (values == null) {
             return null;
@@ -641,18 +587,8 @@ public class ClaimSettlementService {
             Map<Long, List<FinancialDocumentItem>> documentItemsByDocument,
             Map<Long, Patient> patients,
             Map<Long, FinancialDocument> documents,
-            Map<String, String> payerNames
-    ) {
-    }
-
-    private record Amounts(
-            BigDecimal billedAmount,
-            BigDecimal approvedAmount,
-            BigDecimal rejectedAmount,
-            BigDecimal patientShare,
-            BigDecimal insuranceAmount,
-            BigDecimal paidAmount,
-            BigDecimal outstandingAmount
+            Map<String, String> payerNames,
+            Map<String, PayorDTO> payors
     ) {
     }
 }

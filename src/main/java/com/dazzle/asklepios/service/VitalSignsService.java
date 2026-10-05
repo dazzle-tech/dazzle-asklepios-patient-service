@@ -69,6 +69,7 @@ public class VitalSignsService {
                     .heartRate(dto.heartRate())
                     .oxygenSaturation(dto.oxygenSaturation())
                     .respiratoryRate(dto.respiratoryRate())
+                    .fastingBloodGlucose(dto.fastingBloodGlucose())
                     .notes(dto.notes())
                     .isTriage(dto.isTriage())
                     .isActive(true)
@@ -105,6 +106,7 @@ public class VitalSignsService {
             entity.setPatient(patient);
             entity.setEncounterId(encounter.getId());
             entity.setBloodPressureSystolic(dto.bloodPressureSystolic());
+            entity.setFastingBloodGlucose(dto.fastingBloodGlucose());
             entity.setBloodPressureDiastolic(dto.bloodPressureDiastolic());
             entity.setTemperature(dto.temperature());
             entity.setMeasurementSite(dto.measurementSite());

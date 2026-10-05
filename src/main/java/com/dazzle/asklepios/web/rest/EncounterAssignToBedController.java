@@ -30,6 +30,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import java.net.URI;
 import java.time.Instant;
 import java.util.List;
+import com.dazzle.asklepios.web.rest.vm.EncounterAssignToBedBedManagementVM;
 
 @RestController
 @RequestMapping("/api/patient")
@@ -57,6 +58,20 @@ public class EncounterAssignToBedController {
                 .created(URI.create("/api/patient/encounter-assign-to-bed/" + createdEncounterAssignToBed.getId()))
                 .body(createdEncounterAssignToBed);
     }
+
+
+    @GetMapping("/encounter-assign-to-bed/active-list/by-beds")
+    public ResponseEntity<List<EncounterAssignToBedBedManagementVM>> getActiveAssignmentsByBedIds(
+            @RequestParam @NotNull List<Long> bedIds
+    ) {
+        LOG.debug("REST get active assignments list by bedIds={}", bedIds);
+
+        List<EncounterAssignToBedBedManagementVM> activeAssignments =
+                encounterAssignToBedService.getActiveAssignmentsByBedIds(bedIds);
+
+        return ResponseEntity.ok(activeAssignments);
+    }
+
 
     @PutMapping("/encounter-assign-to-bed/{id}")
     public ResponseEntity<EncounterAssignToBed> updateEncounterAssignToBed(

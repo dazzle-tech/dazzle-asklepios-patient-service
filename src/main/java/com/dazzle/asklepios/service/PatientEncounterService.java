@@ -135,6 +135,7 @@ public class PatientEncounterService {
     private final UserRepository userRepository;
     private final EncounterDischargeLogRepository encounterDischargeLogRepository;
     private final PatientEncounterFieldAuditRepository auditRepository;
+    private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
 
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
@@ -164,7 +165,8 @@ public class PatientEncounterService {
             PractitionerHelper practitionerHelper,
             PractitionerClient practitionerClient,
             @Lazy BillingEngineService billingEngineService,
-            NotificationHelper notificationHelper, InvoiceGenerationService invoiceGenerationService, UserRepository userRepository, EncounterDischargeLogRepository encounterDischargeLogRepository, PatientEncounterFieldAuditRepository auditRepository) {
+            NotificationHelper notificationHelper, InvoiceGenerationService invoiceGenerationService, UserRepository userRepository, EncounterDischargeLogRepository encounterDischargeLogRepository, PatientEncounterFieldAuditRepository auditRepository,
+            FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy) {
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.entityManager = entityManager;
@@ -201,6 +203,7 @@ public class PatientEncounterService {
 
         this.encounterDischargeLogRepository = encounterDischargeLogRepository;
         this.auditRepository = auditRepository;
+        this.followUpReviewDefaultServicePolicy = followUpReviewDefaultServicePolicy;
     }
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
@@ -265,6 +268,8 @@ public class PatientEncounterService {
                 .encounterDate(createDTO.encounterDate())
                 .encounterTime(createDTO.encounterTime()).build();
 
+        applyCompletedVisitCoverage(patientEncounterToCreate);
+
         try {
             PatientEncounter createdPatientEncounter = patientEncounterRepository.saveAndFlush(patientEncounterToCreate);
             entityManager.refresh(createdPatientEncounter); // keep ONLY here (create)
@@ -285,6 +290,23 @@ public class PatientEncounterService {
             LOG.error("[CREATE] PatientEncounter failed (unexpected) payload={}", createDTO, ex);
             throw ex;
         }
+    }
+
+    private void applyCompletedVisitCoverage(PatientEncounter encounter) {
+        followUpReviewDefaultServicePolicy
+                .coverageMatchingCompletedVisit(encounter)
+                .ifPresent(inherited -> {
+                    encounter.setCoverageType(inherited.coverageType());
+                    encounter.setPatientInsuranceId(inherited.patientInsuranceId());
+                    LOG.info(
+                            "[CREATE] Follow-up within {} days of completed visit {}. "
+                                    + "Using original coverageType={} patientInsuranceId={}",
+                            FollowUpReviewDefaultServicePolicy.REVIEW_WINDOW_DAYS,
+                            inherited.previousEncounterId(),
+                            inherited.coverageType(),
+                            inherited.patientInsuranceId()
+                    );
+                });
     }
 
     public PatientEncounter update(Long patientEncounterId, PatientEncounterUpdateDTO updateDTO) {
@@ -678,6 +700,7 @@ public class PatientEncounterService {
         encounter.setStatus(TreatmentStatus.CANCELLED);
         try {
             PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
+            encounterAssignToBedService.dischargeActiveAssignmentByEncounterId(saved.getId());
             LOG.info("[CANCEL] success id={} status={}", saved.getId(), saved.getStatus());
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -707,6 +730,7 @@ public class PatientEncounterService {
         encounter.setStatus(TreatmentStatus.DISCHARGED);
 
         PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
+        encounterAssignToBedService.dischargeActiveAssignmentByEncounterId(saved.getId());
         LOG.info("[DISCHARGE] success id={} status={}", saved.getId(), saved.getStatus());
         return saved;
     }
@@ -765,6 +789,11 @@ public class PatientEncounterService {
                     .build();
 
             encounterDischargeLogRepository.save(completionLog);
+
+            /*
+             * Release active bed assignment and mark the bed IN_CLEANING
+             */
+            encounterAssignToBedService.dischargeActiveAssignmentByEncounterId(saved.getId());
 
             /*
              * Update appointment
@@ -2296,10 +2325,13 @@ public class PatientEncounterService {
     private boolean resolvesToWaitingTriageAfterRegistrationPayment(
             PatientEncounter encounter
     ) {
+        if (EncounterType.CLINIC.equals(encounter.getEncounterType())
+                && EncounterReason.URGENT_VISIT.equals(encounter.getEncounterReason())) {
+            return false;
+        }
+
         return EncounterType.EMERGENCY.equals(encounter.getEncounterType())
-                || EncounterReason.URGENT_VISIT.equals(
-                encounter.getEncounterReason()
-        );
+                || EncounterReason.URGENT_VISIT.equals(encounter.getEncounterReason());
     }
 
     public List<PatientEncounter> getEncountersByIds(List<Long> encounterIds) {

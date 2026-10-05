@@ -1,12 +1,14 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
+import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimValidationError;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimUploadRequest;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimUploadResponse;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,8 +22,12 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -141,6 +147,129 @@ public class WaseelClaimService {
             logWaseelError("CLAIM_SUMMARY", ex, null);
             throw ex;
         }
+    }
+
+    /**
+     * Claims Waseel marked not accepted inside one upload, keyed by provider claim number.
+     * An empty map means the upload has no not-accepted claim rows.
+     */
+    public Map<String, List<ClaimValidationError>> findNotAcceptedClaims(Long uploadId) {
+        Map<String, List<ClaimValidationError>> rejected = new LinkedHashMap<>();
+        int page = 0;
+        boolean last = false;
+        while (!last) {
+            JsonNode body = getJson(uploadDetailsUrl(uploadId, null, page));
+            JsonNode content = body == null ? null : body.get("content");
+            if (content != null && content.isArray()) {
+                for (JsonNode field : content) {
+                    if (!isNotAccepted(field)) {
+                        continue;
+                    }
+                    String fieldName = text(field.get("fieldName"));
+                    if (fieldName == null) {
+                        continue;
+                    }
+                    collectFieldErrors(uploadId, fieldName, rejected);
+                }
+            }
+            last = body == null || body.path("last").asBoolean(true);
+            page++;
+        }
+        return rejected;
+    }
+
+    private void collectFieldErrors(
+            Long uploadId,
+            String fieldName,
+            Map<String, List<ClaimValidationError>> rejected
+    ) {
+        int page = 0;
+        boolean last = false;
+        while (!last) {
+            JsonNode body = getJson(uploadDetailsUrl(uploadId, fieldName, page));
+            JsonNode content = body == null ? null : body.get("content");
+            if (content != null && content.isArray()) {
+                for (JsonNode row : content) {
+                    String provClaimNo = text(row.get("providerClaimNo"));
+                    String message = text(row.get("errorDescription"));
+                    if (provClaimNo == null || message == null) {
+                        continue;
+                    }
+                    rejected.computeIfAbsent(provClaimNo.toUpperCase(Locale.ROOT), key -> new ArrayList<>())
+                            .add(new ClaimValidationError(
+                                    firstNonBlank(text(row.get("errorCode")), text(row.get("fieldName")), "Waseel"),
+                                    message,
+                                    firstNonBlank(text(row.get("fieldName")), "Errors & Warnings")
+                            ));
+                }
+            }
+            last = body == null || body.path("last").asBoolean(true);
+            page++;
+        }
+    }
+
+    private String uploadDetailsUrl(Long uploadId, String fieldName, int page) {
+        UriComponentsBuilder builder = UriComponentsBuilder
+                .fromHttpUrl(properties.baseUrl())
+                .path("/provider-nphies-claim-search/providers/{providerId}/history/{uploadId}/details");
+        if (fieldName != null) {
+            builder.path("/{fieldName}");
+        }
+        builder.queryParam("page", page).queryParam("size", 50);
+        if (fieldName == null) {
+            return builder.buildAndExpand(properties.providerId(), uploadId).encode().toUriString();
+        }
+        return builder.buildAndExpand(properties.providerId(), uploadId, fieldName).encode().toUriString();
+    }
+
+    private JsonNode getJson(String url) {
+        String token = tokenService.getToken();
+        HttpEntity<Void> entity = new HttpEntity<>(buildHeaders(token));
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    entity,
+                    String.class
+            );
+            if (response.getBody() == null || response.getBody().isBlank()) {
+                return null;
+            }
+            return objectMapper.readTree(response.getBody());
+        } catch (HttpStatusCodeException ex) {
+            logWaseelError("CLAIM_UPLOAD_DETAILS", ex, null);
+            throw ex;
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("Failed to read Waseel upload claim details", ex);
+        }
+    }
+
+    private boolean isNotAccepted(JsonNode field) {
+        String subStatus = text(field == null ? null : field.get("subStatus"));
+        if (subStatus == null) {
+            return false;
+        }
+        String normalized = subStatus.toLowerCase(Locale.ROOT).replace(" ", "").replace("_", "");
+        return normalized.contains("notaccepted")
+                || normalized.contains("rejected")
+                || normalized.contains("denied");
+    }
+
+    private String text(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        String value = node.asText(null);
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return null;
     }
 
     /**

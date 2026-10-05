@@ -99,4 +99,11 @@ public class ClaimRequest extends AbstractAuditingEntity<Long> implements Serial
 
     @Column(name = "submitted_at")
     private Instant submittedAt;
+
+    /**
+     * Shared by every claim created in one submit action.
+     * Format: SET-{sequence}.
+     */
+    @Column(name = "settlement_no", length = 50)
+    private String settlementNo;
 }

@@ -49,6 +49,15 @@ public class DiagnosticOrderTestReport extends AbstractAuditingEntity implements
     @Column(name = "report", columnDefinition = "text")
     private String report;
 
+    @Column(name = "radiologist_information", columnDefinition = "text")
+    private String radiologistInformation;
+
+    @Column(name = "critical_findings", columnDefinition = "text")
+    private String criticalFindings;
+
+    @Column(name = "radiologist_comments", columnDefinition = "text")
+    private String radiologistComments;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "severity", length = 50)
     private Severity severity;
