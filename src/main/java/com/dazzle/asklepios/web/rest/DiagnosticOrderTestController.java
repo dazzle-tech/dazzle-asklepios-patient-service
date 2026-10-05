@@ -5,6 +5,8 @@ import com.dazzle.asklepios.domain.DiagnosticTest;
 import com.dazzle.asklepios.domain.DiagnosticTestLaboratory;
 import com.dazzle.asklepios.domain.DiagnosticTestRadiology;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
+import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
+import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
@@ -335,15 +337,16 @@ public class DiagnosticOrderTestController {
             @RequestParam(name = "encounterIdIn", required = false) List<Long> encounterIdIn,
             @RequestParam(name = "patientIdIn", required = false) List<Long> patientIdIn,
             @RequestParam(name = "resultConfirmed", required = false) Boolean resultConfirmed,
+            @RequestParam(name = "isReviewed", required = false) Boolean isReviewed,
             @ParameterObject Pageable pageable
     ) {
 
         LOG.debug(
-                "[FILTER] params -> orderId={} orderIdIn={} testId={} status={} statusIn={} statusNotIn={} excludeStatus={} receivedDepartmentId={} processingStatus={} orderType={} acceptedBy={} rejectedBy={} category={} testName={} from={} to={} encounterIdIn={} patientIdIn={} resultConfirmed={} pageable={}",
+                "[FILTER] params -> orderId={} orderIdIn={} testId={} status={} statusIn={} statusNotIn={} excludeStatus={} receivedDepartmentId={} processingStatus={} orderType={} acceptedBy={} rejectedBy={} category={} testName={} from={} to={} encounterIdIn={} patientIdIn={} resultConfirmed={} isReviewed={} pageable={}",
                 orderId, orderIdIn, testId, status, includedStatuses, excludedStatuses,
                 excludedStatus, receivedDepartmentId, processingStatus, orderType,
                 acceptedBy, rejectedBy, category, testName, submitDateFrom, submitDateTo,
-                encounterIdIn, patientIdIn, resultConfirmed, pageable
+                encounterIdIn, patientIdIn, resultConfirmed, isReviewed, pageable
         );
 
         boolean hasEncounterFilter = encounterIdIn != null && !encounterIdIn.isEmpty();
@@ -457,6 +460,54 @@ public class DiagnosticOrderTestController {
                 predicates.add(resultConfirmed
                         ? cb.isNotNull(root.get("confirmedAt"))
                         : cb.isNull(root.get("confirmedAt")));
+            }
+
+            if (isReviewed != null) {
+                LOG.debug("[FILTER] apply isReviewed={}", isReviewed);
+
+                // LABORATORY: reviewed = has results AND every result has reviewDate
+                Subquery<Long> labAny = query.subquery(Long.class);
+                Root<DiagnosticOrderTestResult> labAnyRoot = labAny.from(DiagnosticOrderTestResult.class);
+                labAny.select(labAnyRoot.get("id"))
+                        .where(cb.equal(labAnyRoot.get("orderTestId"), root.get("id")));
+
+                Subquery<Long> labNotReviewed = query.subquery(Long.class);
+                Root<DiagnosticOrderTestResult> labNotReviewedRoot = labNotReviewed.from(DiagnosticOrderTestResult.class);
+                labNotReviewed.select(labNotReviewedRoot.get("id"))
+                        .where(
+                                cb.equal(labNotReviewedRoot.get("orderTestId"), root.get("id")),
+                                cb.isNull(labNotReviewedRoot.get("reviewDate"))
+                        );
+
+                Predicate labReviewed = cb.and(
+                        cb.equal(root.get("orderType"), TestType.LABORATORY),
+                        cb.exists(labAny),
+                        cb.not(cb.exists(labNotReviewed))
+                );
+
+                // RADIOLOGY: reviewed = has reports AND every report has reviewDate
+                Subquery<Long> radAny = query.subquery(Long.class);
+                Root<DiagnosticOrderTestReport> radAnyRoot = radAny.from(DiagnosticOrderTestReport.class);
+                radAny.select(radAnyRoot.get("id"))
+                        .where(cb.equal(radAnyRoot.get("orderTestId"), root.get("id")));
+
+                Subquery<Long> radNotReviewed = query.subquery(Long.class);
+                Root<DiagnosticOrderTestReport> radNotReviewedRoot = radNotReviewed.from(DiagnosticOrderTestReport.class);
+                radNotReviewed.select(radNotReviewedRoot.get("id"))
+                        .where(
+                                cb.equal(radNotReviewedRoot.get("orderTestId"), root.get("id")),
+                                cb.isNull(radNotReviewedRoot.get("reviewDate"))
+                        );
+
+                Predicate radReviewed = cb.and(
+                        cb.equal(root.get("orderType"), TestType.RADIOLOGY),
+                        cb.exists(radAny),
+                        cb.not(cb.exists(radNotReviewed))
+                );
+
+                Predicate reviewed = cb.or(labReviewed, radReviewed);
+
+                predicates.add(isReviewed ? reviewed : cb.not(reviewed));
             }
 
             if (hasEncounterFilter || hasPatientFilter) {
