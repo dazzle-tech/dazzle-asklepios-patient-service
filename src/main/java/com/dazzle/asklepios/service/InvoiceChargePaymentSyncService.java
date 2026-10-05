@@ -224,8 +224,9 @@ public class InvoiceChargePaymentSyncService {
                 sumCashEquivalentCollections(chargeLineId);
         BigDecimal syncedFromCharge = cashCollected.min(collectibleShare);
         BigDecimal existingPaid = money(item.getPaidAmount());
-        // Keep direct invoice payments (e.g. invoice-level tax) when re-syncing from charge.
-        BigDecimal mergedPaid = existingPaid.max(syncedFromCharge);
+        // Keep direct invoice payments (e.g. invoice-level tax) when re-syncing from charge,
+        // but never above the line share left after a credit note.
+        BigDecimal mergedPaid = existingPaid.max(syncedFromCharge).min(collectibleShare);
 
         BigDecimal remaining =
                 collectibleShare

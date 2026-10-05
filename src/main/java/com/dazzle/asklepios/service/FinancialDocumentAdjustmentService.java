@@ -426,20 +426,11 @@ public class FinancialDocumentAdjustmentService {
                     invoice,
                     preparedLine
             );
-            if (preparedLine.originalItem() != null) {
-                item.setPaidAmount(
-                        calculatePaidCreditForLine(
-                                preparedLine.originalItem(),
-                                preparedLine.amount(),
-                                preparedLine.action()
-                                        == FinancialDocumentItemAdjustmentAction.REMOVE
-                        )
-                );
-            }
+            finalizeCreditNoteItem(item, preparedLine);
             savedItems.add(itemRepo.save(item));
 
             if (preparedLine.originalItem() != null) {
-                applyCreditToOriginalItem(preparedLine);
+                applyCreditToOriginalItem(preparedLine, item);
             }
         }
 
@@ -858,21 +849,13 @@ public class FinancialDocumentAdjustmentService {
         for (int index = 0; index < preparedLines.size(); index++) {
             PreparedAdjustmentLine preparedLine = preparedLines.get(index);
             FinancialDocumentItem item = draftItems.get(index);
-            if (preparedLine.originalItem() != null
-                    && documentType == FinancialDocumentType.CREDIT_NOTE) {
-                item.setPaidAmount(
-                        calculatePaidCreditForLine(
-                                preparedLine.originalItem(),
-                                preparedLine.amount(),
-                                preparedLine.action()
-                                        == FinancialDocumentItemAdjustmentAction.REMOVE
-                        )
-                );
+            if (documentType == FinancialDocumentType.CREDIT_NOTE) {
+                finalizeCreditNoteItem(item, preparedLine);
             }
             savedItems.add(itemRepo.save(item));
 
             if (preparedLine.originalItem() != null && documentType == FinancialDocumentType.CREDIT_NOTE) {
-                applyCreditToOriginalItem(preparedLine);
+                applyCreditToOriginalItem(preparedLine, item);
             }
         }
 
@@ -1579,7 +1562,122 @@ public class FinancialDocumentAdjustmentService {
                 .reduce(ZERO, BigDecimal::add);
     }
 
-    private void applyCreditToOriginalItem(PreparedAdjustmentLine preparedLine) {
+    /**
+     * A credit note line is not a new receivable. {@code paidAmount} keeps the
+     * cash portion that must be refunded; the line itself is closed.
+     */
+    private void finalizeCreditNoteItem(
+            FinancialDocumentItem item,
+            PreparedAdjustmentLine preparedLine
+    ) {
+        if (preparedLine.originalItem() != null) {
+            item.setPaidAmount(
+                    calculatePaidCreditForLine(
+                            preparedLine.originalItem(),
+                            preparedLine.amount(),
+                            preparedLine.action()
+                                    == FinancialDocumentItemAdjustmentAction.REMOVE
+                    )
+            );
+        }
+        item.setRemainingAmount(ZERO);
+        item.setInsuranceRemainingAmount(ZERO);
+        item.setStatus(FinancialDocumentItemStatus.PAID);
+    }
+
+    /**
+     * Debit-funded lines have invoice {@code paidAmount = 0} and the obligation
+     * sits on the debit account. Crediting them must reverse that debit on the
+     * same charge line. Cash already collected is refunded to the wallet later
+     * and is not reversed here.
+     */
+    private void reverseDebitCoveringCredit(
+            FinancialDocumentItem originalItem,
+            FinancialDocumentItem creditItem,
+            BigDecimal obligationAmount
+    ) {
+        BigDecimal remaining = money(obligationAmount);
+        if (remaining.signum() <= 0 || creditItem == null || creditItem.getId() == null) {
+            return;
+        }
+
+        Long chargeLineId = originalItem.getBillingChargeLineId();
+        if (chargeLineId == null && originalItem.getPatientServiceProductId() != null) {
+            chargeLineId =
+                    chargeLineRepo
+                            .findFirstByPatientServiceProduct_IdAndStatusNotInOrderByIdAsc(
+                                    originalItem.getPatientServiceProductId(),
+                                    EXCLUDED_LINE_STATUSES
+                            )
+                            .map(BillingChargeLine::getId)
+                            .orElse(null);
+        }
+
+        if (chargeLineId == null) {
+            return;
+        }
+
+        List<BillingAllocation> allocations =
+                billingAllocationRepository
+                        .findAllByChargeLine_IdAndStatusInOrderByAllocationDateDescIdDesc(
+                                chargeLineId,
+                                ACTIVE_ALLOCATION_STATUSES
+                        );
+
+        String reversedBy =
+                SecurityUtils.getCurrentUserLogin().orElse("CREDIT_NOTE");
+        String reason =
+                "Credit note reversed debit for invoice line " + originalItem.getId();
+
+        for (BillingAllocation allocation : allocations) {
+            if (remaining.signum() <= 0) {
+                break;
+            }
+
+            if (allocation.getAllocationSourceType() != AllocationSourceType.DEBIT
+                    || allocation.getDebitTransactionId() == null) {
+                continue;
+            }
+
+            BigDecimal allocationRemaining =
+                    money(allocation.getRemainingAllocatedAmount());
+            if (allocationRemaining.signum() <= 0) {
+                continue;
+            }
+
+            BigDecimal reversalAmount = remaining.min(allocationRemaining);
+            String requestId =
+                    "CREDIT_NOTE:"
+                            + creditItem.getId()
+                            + ":DEBIT_LINE:"
+                            + allocation.getId();
+
+            billingDebitService.reverseDebit(
+                    allocation.getDebitTransactionId(),
+                    reversalAmount,
+                    reason,
+                    reversedBy,
+                    requestId,
+                    BillingLedgerSourceChannel.SYSTEM
+            );
+
+            remaining = remaining.subtract(reversalAmount);
+
+            LOG.info(
+                    "[CREDIT_NOTE] Debit reversed on credited line creditItemId={} "
+                            + "invoiceItemId={} allocationId={} amount={}",
+                    creditItem.getId(),
+                    originalItem.getId(),
+                    allocation.getId(),
+                    reversalAmount
+            );
+        }
+    }
+
+    private void applyCreditToOriginalItem(
+            PreparedAdjustmentLine preparedLine,
+            FinancialDocumentItem creditItem
+    ) {
         FinancialDocumentItem originalItem = preparedLine.originalItem();
         BigDecimal creditAmount = preparedLine.amount();
         boolean fullLineRemoval =
@@ -1588,11 +1686,19 @@ public class FinancialDocumentAdjustmentService {
                 preparedLine.action() == FinancialDocumentItemAdjustmentAction.REDUCE
                         && preparedLine.remainingInsurance() != null;
 
+        BigDecimal financialNetBeforeCredit = money(originalItem.getNetAmount());
         BigDecimal priorRemaining =
                 money(originalItem.getRemainingAmount());
         BigDecimal paid = money(originalItem.getPaidAmount());
 
+        reverseDebitCoveringCredit(
+                originalItem,
+                creditItem,
+                creditAmount.min(priorRemaining)
+        );
+
         if (fullLineRemoval) {
+            reduceOriginalItemAmounts(originalItem, creditAmount);
             BigDecimal paidReduction =
                     creditAmount.subtract(priorRemaining)
                             .max(ZERO)
@@ -1645,7 +1751,11 @@ public class FinancialDocumentAdjustmentService {
                     remaining.insuranceShare()
             );
         } else {
-            syncCreditNoteToChargeLine(originalItem, creditAmount);
+            syncCreditNoteToChargeLine(
+                    originalItem,
+                    creditAmount,
+                    financialNetBeforeCredit
+            );
         }
     }
 
@@ -1720,7 +1830,8 @@ public class FinancialDocumentAdjustmentService {
 
     private void syncCreditNoteToChargeLine(
             FinancialDocumentItem creditedItem,
-            BigDecimal creditAmount
+            BigDecimal creditAmount,
+            BigDecimal financialNetBeforeCredit
     ) {
         Long chargeLineId = creditedItem.getBillingChargeLineId();
 
@@ -1743,7 +1854,7 @@ public class FinancialDocumentAdjustmentService {
         billingChargeService.applyCreditNoteChargeLineSync(
                 chargeLineId,
                 creditAmount,
-                money(creditedItem.getNetAmount())
+                financialNetBeforeCredit
         );
     }
 
@@ -1883,10 +1994,20 @@ public class FinancialDocumentAdjustmentService {
                             return;
                         }
 
+                        BigDecimal sourceNet = money(sourceItem.getNetAmount());
+                        if (money(chargeLine.getNetAmount()).compareTo(sourceNet) <= 0) {
+                            return;
+                        }
+
+                        BigDecimal financialNetBeforeCredit =
+                                sourceNet.signum() > 0
+                                        ? sourceNet.add(creditApplied)
+                                        : creditApplied;
+
                         billingChargeService.applyCreditNoteChargeLineSync(
                                 chargeLineId,
                                 creditApplied,
-                                money(sourceItem.getNetAmount())
+                                financialNetBeforeCredit
                         );
                     }
             );
