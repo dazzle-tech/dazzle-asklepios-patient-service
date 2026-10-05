@@ -17,7 +17,21 @@ public record NamiProperties(
 
         String reversalEndpoint,
 
-        String registerEndpoint
+        String registerEndpoint,
+
+        String webhookGenerateUrlEndpoint,
+
+        String webhookRegisterEndpoint,
+
+        String webhookBaseUrl,
+
+        String webhookPath,
+
+        String webhookSignatureAlgorithm,
+
+        Integer webhookTokenExpiryHours,
+
+        Integer webhookRetryAttempts
 
 ) {
 }

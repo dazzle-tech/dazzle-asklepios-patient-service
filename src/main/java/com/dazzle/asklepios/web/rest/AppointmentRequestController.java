@@ -105,4 +105,9 @@ public class AppointmentRequestController {
         appointmentRequestService.delete(id);
         return ResponseEntity.noContent().build();
     }
+
+    @GetMapping("/appointment-requests/count/requested")
+    public ResponseEntity<Long> countRequested() {
+        return ResponseEntity.ok(appointmentRequestService.countRequested());
+    }
 }

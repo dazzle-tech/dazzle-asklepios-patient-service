@@ -37,6 +37,13 @@ application:
       refund-endpoint: /api/payments/performTransaction
       reversal-endpoint: /api/payments/performTransaction
       register-endpoint: /api/terminals/register
+      webhook-generate-url-endpoint: ${NAMI_WEBHOOK_GENERATE_URL_ENDPOINT:/api/webhooks/generate-url}
+      webhook-register-endpoint: ${NAMI_WEBHOOK_REGISTER_ENDPOINT:/api/webhooks/register}
+      webhook-base-url: ${NAMI_WEBHOOK_BASE_URL:https://api-tst.onehealth.com.sa}
+      webhook-path: ${NAMI_WEBHOOK_PATH:/api/patient/point-of-sale-transactions/webhook}
+      webhook-signature-algorithm: ${NAMI_WEBHOOK_SIGNATURE_ALGORITHM:HMAC_SHA256}
+      webhook-token-expiry-hours: ${NAMI_WEBHOOK_TOKEN_EXPIRY_HOURS:24}
+      webhook-retry-attempts: ${NAMI_WEBHOOK_RETRY_ATTEMPTS:3}
 pacs:
   base-url: https://him.onehealth.com.sa/api/method/casting.casting.dicom_share.get_dicom_studies_by_accession_number
   token: YmNhYTQ4ZTVjODQ5MWZiOjQ2MzU1ODU5MTM0NDcyMw==

@@ -93,51 +93,32 @@ public class ApprovalCareTeamMapper {
                 )
         );
 
-        String subSpecialtyRaw = required(
-                practitioner.subSpecialty(),
-                "Practitioner sub specialty is required",
-                "practitioner.subSpecialty.required"
-        );
-
-        // Practitioner stores LOV key (e.g. 515674776343000); Waseel needs SUB_SPC_XXX.
-        String subSpecialtyValueCode = apLovMapperService.resolvePractSubSpecialtyValueCode(subSpecialtyRaw);
-        if (isBlank(subSpecialtyValueCode)) {
-            throw badRequest(
-                    "Unknown practitioner sub specialty LOV value: " + subSpecialtyRaw
-                            + ". Expected PRACT_SUB_SPECIALTY key or SUB_SPC_XXX value code.",
-                    "practitioner.subSpecialty.invalid"
-            );
-        }
-
-        log.info(
-                "[PREAUTH_CARE_TEAM] Resolved sub specialty. raw={} valueCode={}",
-                subSpecialtyRaw,
-                subSpecialtyValueCode
-        );
+        ResolvedPractice practice = resolvePractice(practitioner);
 
         String specialityCode = required(
-                WaseelPracticeCodeMapper.mapSubSpecialtyCode(subSpecialtyValueCode),
+                WaseelPracticeCodeMapper.mapSubSpecialtyCode(practice.valueCode()),
                 "Practitioner specialty code is required",
                 "practitioner.specialityCode.required"
         );
 
         String specialityDisplay = firstNonBlank(
-                apLovMapperService.getDisplayValueByLovCodeAndKey(
-                        AsklepiosLovCodes.PRACT_SUB_SPECIALTY,
-                        subSpecialtyRaw
-                ),
+                practice.lovKey() == null
+                        ? null
+                        : apLovMapperService.getDisplayValueByLovCodeAndKey(
+                                AsklepiosLovCodes.PRACT_SUB_SPECIALTY,
+                                practice.lovKey()
+                        ),
                 apLovMapperService.getDisplayValueByLovCodeAndValueCode(
                         AsklepiosLovCodes.PRACT_SUB_SPECIALTY,
-                        subSpecialtyValueCode
+                        practice.valueCode()
                 ),
-                WaseelPracticeCodeMapper.mapSubSpecialtyDisplay(subSpecialtyValueCode)
+                WaseelPracticeCodeMapper.mapSubSpecialtyDisplay(practice.valueCode())
         );
 
         if (isBlank(specialityDisplay)) {
             log.warn(
-                    "No display value found for LOV '{}' value code '{}'. Falling back to specialty code '{}'.",
-                    AsklepiosLovCodes.PRACT_SUB_SPECIALTY,
-                    subSpecialtyValueCode,
+                    "No display value found for practice value code '{}'. Falling back to specialty code '{}'.",
+                    practice.valueCode(),
                     specialityCode
             );
             specialityDisplay = specialityCode;
@@ -162,6 +143,51 @@ public class ApprovalCareTeamMapper {
                 specialityCode,
                 qualificationCode
         );
+    }
+
+    /**
+     * Prefer the practitioner sub-specialty. When it is empty, map the specialty rank
+     * to a Waseel practice code so pre-authorization and claim never send a blank speciality.
+     */
+    private ResolvedPractice resolvePractice(PractitionerDTO practitioner) {
+        String subSpecialtyRaw = normalizeBlankToNull(practitioner.subSpecialty());
+        if (subSpecialtyRaw != null) {
+            String subSpecialtyValueCode = apLovMapperService.resolvePractSubSpecialtyValueCode(subSpecialtyRaw);
+            if (isBlank(subSpecialtyValueCode)) {
+                throw badRequest(
+                        "Unknown practitioner sub specialty LOV value: " + subSpecialtyRaw
+                                + ". Expected PRACT_SUB_SPECIALTY key or SUB_SPC_XXX value code.",
+                        "practitioner.subSpecialty.invalid"
+                );
+            }
+
+            log.info(
+                    "[WASEEL_CARE_TEAM] Resolved sub specialty. raw={} valueCode={}",
+                    subSpecialtyRaw,
+                    subSpecialtyValueCode
+            );
+            return new ResolvedPractice(subSpecialtyValueCode, subSpecialtyRaw);
+        }
+
+        String specialtyRank = normalizeBlankToNull(practitioner.specialty());
+        String valueCode = WaseelPracticeCodeMapper.mapSpecialtyRankToSubSpecialtyValueCode(specialtyRank);
+        if (!WaseelPracticeCodeMapper.hasSpecialtyRankMapping(specialtyRank)) {
+            log.warn(
+                    "[WASEEL_CARE_TEAM] No sub specialty and no explicit rank mapping for '{}'. Using {}.",
+                    specialtyRank,
+                    valueCode
+            );
+        } else {
+            log.info(
+                    "[WASEEL_CARE_TEAM] No sub specialty. Mapped specialty rank '{}' to {}.",
+                    specialtyRank,
+                    valueCode
+            );
+        }
+        return new ResolvedPractice(valueCode, null);
+    }
+
+    private record ResolvedPractice(String valueCode, String lovKey) {
     }
 
     private String mapPractitionerRole(String jobRole) {

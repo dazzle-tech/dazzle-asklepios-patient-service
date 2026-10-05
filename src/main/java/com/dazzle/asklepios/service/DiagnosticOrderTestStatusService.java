@@ -268,6 +268,15 @@ public class DiagnosticOrderTestStatusService {
         return saved;
     }
 
+    public DiagnosticOrderTest confirm(Long testId, String confirmedBy) {
+        DiagnosticOrderTest test = getTest(testId);
+
+        test.setConfirmedBy(confirmedBy);
+        test.setConfirmedAt(Instant.now());
+
+        return diagnosticOrderTestRepository.save(test);
+    }
+
     public DiagnosticOrderTest reject(Long testId, String rejectedBy, String rejectedReason) {
         DiagnosticOrderTest test = getTest(testId);
         ensureTransition(test, DiagnosticStatus.REJECTED);
@@ -403,6 +412,12 @@ public class DiagnosticOrderTestStatusService {
             accept(id, acceptedBy);
         }
     }
+    public void bulkConfirm(List<Long> testIds, String confirmedBy) {
+        for (Long id : testIds) {
+            confirm(id, confirmedBy);
+        }
+    }
+
     public void bulkCancel(List<Long> testIds,String cancelBy ,String cancellationReason){
         for (Long id : testIds) {
             cancel(id, cancelBy,cancellationReason);

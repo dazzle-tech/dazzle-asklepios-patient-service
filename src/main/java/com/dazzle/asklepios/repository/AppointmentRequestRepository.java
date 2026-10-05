@@ -12,8 +12,6 @@ import java.util.Optional;
 @Repository
 public interface AppointmentRequestRepository extends JpaRepository<AppointmentRequest, Long>, JpaSpecificationExecutor<AppointmentRequest> {
 
-    List<AppointmentRequest> findByFacilityId(Long facilityId);
-
     List<AppointmentRequest> findByPatientId(Long patientId);
 
     List<AppointmentRequest> findBySourceEncounterId(Long sourceEncounterId);
@@ -21,4 +19,6 @@ public interface AppointmentRequestRepository extends JpaRepository<AppointmentR
     List<AppointmentRequest> findByStatus(AppointmentRequestStatus status);
 
     List<AppointmentRequest> findByFacilityIdAndDepartmentIdIn(Long facilityId, List<Long> departmentIds);
+
+    Long countAppointmentRequestByStatus(AppointmentRequestStatus status);
 }

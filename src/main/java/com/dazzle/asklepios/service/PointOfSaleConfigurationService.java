@@ -1,11 +1,14 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.NamiCloud.NamiCloudClient;
+import com.dazzle.asklepios.client.NamiCloud.dto.NamiGenerateWebhookUrlResponse;
 import com.dazzle.asklepios.client.NamiCloud.dto.NamiRegisterTerminalResponse;
+import com.dazzle.asklepios.client.NamiCloud.dto.NamiRegisterWebhookResponse;
 import com.dazzle.asklepios.domain.PointOfSaleConfiguration;
 import com.dazzle.asklepios.repository.PointOfSaleCheckInRepository;
 import com.dazzle.asklepios.repository.PointOfSaleConfigurationRepository;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleConfigurationDTO;
+import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleWebhookRegistrationDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.transaction.Transactional;
@@ -209,6 +212,50 @@ public class PointOfSaleConfigurationService {
 
         return namiCloudClient.registerTerminal(
                 configuration
+        );
+    }
+
+    public PointOfSaleWebhookRegistrationDTO registerTerminalWebhook(
+            Long configurationId
+    ) {
+        PointOfSaleConfiguration configuration =
+                pointOfSaleConfigurationRepository
+                        .findById(configurationId)
+                        .orElseThrow(() ->
+                                new BadRequestAlertException(
+                                        "POS configuration not found",
+                                        "pointOfSaleConfiguration",
+                                        "notFound"
+                                )
+                        );
+
+        NamiGenerateWebhookUrlResponse generatedWebhookUrl =
+                namiCloudClient.generateWebhookUrl(configuration);
+        LOG.info(
+                "Generated Webhook Response={}",
+                generatedWebhookUrl
+        );
+        String callbackUrl =
+                namiCloudClient.resolveCallbackUrl(generatedWebhookUrl);
+
+        if (callbackUrl == null || callbackUrl.isBlank()) {
+            throw new BadRequestAlertException(
+                    "invalid_webhook_callback_url",
+                    "pointOfSaleConfiguration",
+                    "Generated callback URL is missing"
+            );
+        }
+
+        NamiRegisterWebhookResponse registerWebhookResponse =
+                namiCloudClient.registerWebhook(
+                        configuration,
+                        callbackUrl
+                );
+
+        return new PointOfSaleWebhookRegistrationDTO(
+                callbackUrl,
+                generatedWebhookUrl,
+                registerWebhookResponse
         );
     }
 }

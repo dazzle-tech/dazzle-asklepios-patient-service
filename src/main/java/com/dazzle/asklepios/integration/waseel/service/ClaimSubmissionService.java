@@ -47,6 +47,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,6 +61,7 @@ import org.springframework.web.client.RestClientException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -317,7 +321,7 @@ public class ClaimSubmissionService {
             Instant fromDate,
             Instant toDate
     ) {
-        return listPendingInsuranceInvoices(payorId, null, fromDate, toDate, null, null);
+        return listPendingInsuranceInvoices(payorId, null, fromDate, toDate, null, null, null, null);
     }
 
     @Transactional(readOnly = true)
@@ -327,7 +331,7 @@ public class ClaimSubmissionService {
             Instant fromDate,
             Instant toDate
     ) {
-        return listPendingInsuranceInvoices(payorId, payerNphiesId, fromDate, toDate, null, null);
+        return listPendingInsuranceInvoices(payorId, payerNphiesId, fromDate, toDate, null, null, null, null);
     }
 
     @Transactional(readOnly = true)
@@ -336,6 +340,8 @@ public class ClaimSubmissionService {
             String payerNphiesId,
             Instant fromDate,
             Instant toDate,
+            LocalDate encounterDateFrom,
+            LocalDate encounterDateTo,
             WaseelClaimType claimType,
             WaseelClaimSubType claimSubType
     ) {
@@ -348,14 +354,16 @@ public class ClaimSubmissionService {
         Long resolvedPayorId = payorId != null ? payorId : -1L;
 
         log.info(
-                "[CLAIM_BATCH] Listing pending invoices payorId={} payerNphiesId={} nphiesIds={} from={} to={} type={} subType={}",
+                "[CLAIM_BATCH] Listing pending invoices payorId={} payerNphiesId={} nphiesIds={} from={} to={} type={} subType={} encounterDateFrom={} encounterDateTo={}",
                 payorId,
                 payerNphiesId,
                 nphiesIds,
                 from,
                 to,
                 claimType,
-                claimSubType
+                claimSubType,
+                encounterDateFrom,
+                encounterDateTo
         );
 
         List<FinancialDocument> invoices = financialDocumentRepository.findPendingInsuranceClaimInvoices(
@@ -364,6 +372,8 @@ public class ClaimSubmissionService {
                         nphiesIds,
                         from,
                         to,
+                        encounterDateFrom,
+                        encounterDateTo,
                         CLAIMABLE_INVOICE_STATUSES.stream().map(Enum::name).toList(),
                         ACTIVE_STATUSES.stream().map(Enum::name).toList(),
                         claimType.name()
@@ -373,6 +383,39 @@ public class ClaimSubmissionService {
                 .toList();
 
         return toPendingClaimInvoiceResponses(invoices, claimType, claimSubType);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<PendingClaimInvoiceResponse> listPendingInsuranceInvoices(
+            Long payorId,
+            String payerNphiesId,
+            Instant fromDate,
+            Instant toDate,
+            LocalDate encounterDateFrom,
+            LocalDate encounterDateTo,
+            WaseelClaimType claimType,
+            WaseelClaimSubType claimSubType,
+            Pageable pageable
+    ) {
+        List<PendingClaimInvoiceResponse> rows = listPendingInsuranceInvoices(
+                payorId,
+                payerNphiesId,
+                fromDate,
+                toDate,
+                encounterDateFrom,
+                encounterDateTo,
+                claimType,
+                claimSubType
+        );
+        Page<PendingClaimInvoiceResponse> page = toPage(rows, pageable);
+        log.info(
+                "[CLAIM_BATCH] Pending invoices page={} size={} returned={} total={}",
+                page.getNumber(),
+                page.getSize(),
+                page.getNumberOfElements(),
+                page.getTotalElements()
+        );
+        return page;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
@@ -592,6 +635,20 @@ public class ClaimSubmissionService {
         if (nphiesId != null && !nphiesId.isBlank()) {
             nphiesIds.add(nphiesId.trim());
         }
+    }
+
+    private Page<PendingClaimInvoiceResponse> toPage(
+            List<PendingClaimInvoiceResponse> rows,
+            Pageable pageable
+    ) {
+        if (pageable == null || pageable.isUnpaged()) {
+            return new PageImpl<>(rows);
+        }
+
+        int total = rows.size();
+        int start = (int) Math.min(pageable.getOffset(), total);
+        int end = Math.min(start + pageable.getPageSize(), total);
+        return new PageImpl<>(List.copyOf(rows.subList(start, end)), pageable, total);
     }
 
     private List<PendingClaimInvoiceResponse> toPendingClaimInvoiceResponses(

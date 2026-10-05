@@ -47,7 +47,10 @@ public record DiagnosticOrderTestResponseVM(
         String undoAcceptReason,
         String undoAcceptBy,
         Instant undoAcceptDate,
-        Long icdDiagnosisId
+        Long icdDiagnosisId,
+
+        String confirmedBy,
+        Instant confirmedAt
 
 ) implements Serializable {
 
@@ -92,7 +95,10 @@ public record DiagnosticOrderTestResponseVM(
                 orderTest.getUndoAcceptReason(),
                 orderTest.getUndoAcceptBy(),
                 orderTest.getUndoAcceptDate(),
-                orderTest.getIcdDiagnosisId()
+                orderTest.getIcdDiagnosisId(),
+
+                orderTest.getConfirmedBy(),
+                orderTest.getConfirmedAt()
         );
     }
 
@@ -137,8 +143,10 @@ public record DiagnosticOrderTestResponseVM(
                 orderTest.getUndoAcceptReason(),
                 orderTest.getUndoAcceptBy(),
                 orderTest.getUndoAcceptDate(),
-                orderTest.getIcdDiagnosisId()
+                orderTest.getIcdDiagnosisId(),
 
+                orderTest.getConfirmedBy(),
+                orderTest.getConfirmedAt()
         );
     }
 }

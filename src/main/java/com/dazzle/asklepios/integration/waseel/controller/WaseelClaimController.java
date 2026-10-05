@@ -15,8 +15,10 @@ import com.dazzle.asklepios.integration.waseel.service.ClaimTrackingService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelClaimService;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -83,21 +86,27 @@ public class WaseelClaimController {
     }
 
     @GetMapping("/internal/waseel/claims/pending-invoices")
-    public List<PendingClaimInvoiceResponse> listPendingInvoices(
+    public Page<PendingClaimInvoiceResponse> listPendingInvoices(
             @RequestParam(required = false) Long payorId,
             @RequestParam(required = false) String payerNphiesId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant fromDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant toDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate encounterDateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate encounterDateTo,
             @RequestParam WaseelClaimType claimType,
-            @RequestParam WaseelClaimSubType claimSubType
+            @RequestParam WaseelClaimSubType claimSubType,
+            @ParameterObject @PageableDefault(size = 20) Pageable pageable
     ) {
         return claimSubmissionService.listPendingInsuranceInvoices(
                 payorId,
                 payerNphiesId,
                 fromDate,
                 toDate,
+                encounterDateFrom,
+                encounterDateTo,
                 claimType,
-                claimSubType
+                claimSubType,
+                pageable
         );
     }
 
