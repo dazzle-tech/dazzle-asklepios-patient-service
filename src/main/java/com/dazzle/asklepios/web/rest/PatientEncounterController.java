@@ -299,7 +299,17 @@ public class PatientEncounterController {
                 patientEncounterService.findEncounterIdsWithObservation(
                         encounterIds
                 );
+        List<Long> nurseIds = page.getContent().stream()
+                .map(PatientEncounter::getAssignedNurseId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
 
+        Map<Long, String> nurseNames = userRepository.findAllById(nurseIds).stream()
+                .collect(Collectors.toMap(
+                        User::getId,
+                        user -> (user.getFirstName() + " " + user.getLastName()).trim()
+                ));
         List<PatientEncounterVM> vmList =
                 page.getContent()
                         .stream()
@@ -315,7 +325,8 @@ public class PatientEncounterController {
                                         observationEncounterIds.contains(
                                                 encounter.getId()
                                         ),
-                                        null
+                                        null,
+                                        nurseNames.get(encounter.getAssignedNurseId())
                                 )
                         )
                         .toList();
