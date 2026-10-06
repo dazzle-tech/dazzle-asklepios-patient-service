@@ -8,7 +8,14 @@ import com.dazzle.asklepios.service.DiagnosticOrderService;
 import com.dazzle.asklepios.service.EncounterCoverageService;
 import com.dazzle.asklepios.service.PatientEncounterService;
 import com.dazzle.asklepios.service.PatientPrescriptionService;
-import com.dazzle.asklepios.service.dto.patientEncounter.*;
+import com.dazzle.asklepios.service.dto.patientEncounter.ReassignPractitionerDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.EncounterHistoryOfPresentIllnessDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCancelDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCompletionValidationDTO;
 import com.dazzle.asklepios.service.dto.billing.EncounterCoverageDTO;
 import com.dazzle.asklepios.service.dto.billing.UpdateEncounterCoverageRequest;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
@@ -228,6 +235,81 @@ public class PatientEncounterController {
                 );
 
         return new ResponseEntity<>(vmList, headers, HttpStatus.OK);
+    }
+
+
+    @GetMapping("/encounter/opd")
+    public ResponseEntity<List<PatientEncounterVM>> filterOpdEncounters(
+            @RequestParam @NotNull Long facilityId,
+            @ParameterObject PatientEncounterSearchFilterDTO filter,
+            @ParameterObject Pageable pageable
+    ) {
+        LOG.debug(
+                "REST filter OPD PatientEncounters facilityId={} filter={} pageable={}",
+                facilityId,
+                filter,
+                pageable
+        );
+
+        Page<PatientEncounter> page =
+                patientEncounterService.filterOpdEncounters(
+                        facilityId,
+                        filter,
+                        pageable
+                );
+
+        List<Long> encounterIds =
+                page.getContent()
+                        .stream()
+                        .map(PatientEncounter::getId)
+                        .toList();
+
+        Set<Long> orderEncounterIds =
+                diagnosticOrderService.findEncounterIdsWithOrders(
+                        encounterIds
+                );
+
+        Set<Long> prescriptionEncounterIds =
+                patientPrescriptionService.findEncounterIdsWithOrders(
+                        encounterIds
+                );
+
+        Set<Long> observationEncounterIds =
+                patientEncounterService.findEncounterIdsWithObservation(
+                        encounterIds
+                );
+
+        List<PatientEncounterVM> vmList =
+                page.getContent()
+                        .stream()
+                        .map(encounter ->
+                                PatientEncounterVM.ofEntity(
+                                        encounter,
+                                        orderEncounterIds.contains(
+                                                encounter.getId()
+                                        ),
+                                        prescriptionEncounterIds.contains(
+                                                encounter.getId()
+                                        ),
+                                        observationEncounterIds.contains(
+                                                encounter.getId()
+                                        ),
+                                        null
+                                )
+                        )
+                        .toList();
+
+        HttpHeaders headers =
+                PaginationUtil.generatePaginationHttpHeaders(
+                        ServletUriComponentsBuilder.fromCurrentRequest(),
+                        page
+                );
+
+        return new ResponseEntity<>(
+                vmList,
+                headers,
+                HttpStatus.OK
+        );
     }
 
     
@@ -463,27 +545,28 @@ public class PatientEncounterController {
         return ResponseEntity.ok(started);
     }
 
-    @PostMapping("/encounter/{id}/cancel")
-    public ResponseEntity<PatientEncounter> cancelEncounter(
-            @PathVariable("id") @NotNull Long encounterId,
-            @Valid @RequestBody @NotNull PatientEncounterCancelDTO dto
-    ) {
-        LOG.debug(
-                "REST cancel PatientEncounter id={} reason={} otherReason={}",
-                encounterId,
-                dto.reason(),
-                dto.otherReason()
-        );
+@PostMapping("/encounter/{id}/cancel")
+public ResponseEntity<PatientEncounter> cancelEncounter(
+        @PathVariable("id") @NotNull Long encounterId,
+        @RequestBody(required = false) PatientEncounterCancelDTO cancelDTO
+) {
+    LOG.debug(
+            "REST cancel PatientEncounter id={} payload={}",
+            encounterId,
+            cancelDTO
+    );
 
-        PatientEncounter cancelled =
-                patientEncounterService.cancelEncounter(
-                        encounterId,
-                        dto.reason(),
-                        dto.otherReason()
-                );
+    String cancellationReason =
+            cancelDTO != null ? cancelDTO.cancellationReason() : null;
 
-        return ResponseEntity.ok(cancelled);
-    }
+    PatientEncounter cancelled =
+            patientEncounterService.cancelEncounter(
+                    encounterId,
+                    cancellationReason
+            );
+
+    return ResponseEntity.ok(cancelled);
+}
 
     @PostMapping("/encounter/{id}/discharge")
     public ResponseEntity<PatientEncounter> dischargeEncounter(

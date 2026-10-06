@@ -137,6 +137,15 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "completed_at")
     private Instant completedAt;
 
+    @Column(name = "cancellation_reason", columnDefinition = "text")
+    private String cancellationReason;
+
+    @Column(name = "cancelled_by", length = 50)
+    private String cancelledBy;
+
+    @Column(name = "cancelled_at")
+    private Instant cancelledAt;
+
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "billing_status", nullable = false, length = 50)
