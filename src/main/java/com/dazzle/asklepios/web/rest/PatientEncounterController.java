@@ -10,6 +10,7 @@ import com.dazzle.asklepios.service.PatientEncounterService;
 import com.dazzle.asklepios.service.PatientPrescriptionService;
 import com.dazzle.asklepios.service.dto.patientEncounter.ReassignPractitionerDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.EncounterHistoryOfPresentIllnessDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCancelDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
@@ -472,11 +473,13 @@ public class PatientEncounterController {
 
     @PostMapping("/encounter/{id}/cancel")
     public ResponseEntity<PatientEncounter> cancelEncounter(
-            @PathVariable("id") @NotNull Long encounterId
+            @PathVariable("id") @NotNull Long encounterId,
+            @RequestBody(required = false) PatientEncounterCancelDTO cancelDTO
     ) {
-        LOG.debug("REST cancel PatientEncounter id={}", encounterId);
+        LOG.debug("REST cancel PatientEncounter id={} payload={}", encounterId, cancelDTO);
 
-        PatientEncounter cancelled = patientEncounterService.cancelEncounter(encounterId);
+        String cancellationReason = cancelDTO != null ? cancelDTO.cancellationReason() : null;
+        PatientEncounter cancelled = patientEncounterService.cancelEncounter(encounterId, cancellationReason);
         return ResponseEntity.ok(cancelled);
     }
 
