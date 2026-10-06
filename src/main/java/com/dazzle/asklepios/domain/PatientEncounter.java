@@ -208,6 +208,10 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "encounter_status")
     private EncounterStatus encounterStatus = EncounterStatus.OPEN;
 
+    @Column(name = "assigned_nurse_id")
+    private Long assignedNurseId;
+
+
     @PrePersist
     @PreUpdate
     private void syncEncounterStatus() {
