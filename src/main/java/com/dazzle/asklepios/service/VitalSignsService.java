@@ -36,6 +36,7 @@ public class VitalSignsService {
     private final VitalSignsRepository vitalSignsRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public VitalSigns create(VitalSignsCreateDTO dto) {
         LOG.info("[CREATE] VitalSigns payload={}", dto);
@@ -56,6 +57,8 @@ public class VitalSignsService {
                         )
                 );
 
+        reopenSessionAuditContext.applyOpenSession(encounter.getId());
+
         try {
             resetIsActiveForEncounterToday(dto.encounterId());
 
@@ -75,7 +78,8 @@ public class VitalSignsService {
                     .isActive(true)
                     .build();
 
-            return vitalSignsRepository.saveAndFlush(entity);
+            VitalSigns saved = vitalSignsRepository.saveAndFlush(entity);
+            return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
@@ -87,6 +91,8 @@ public class VitalSignsService {
         LOG.info("[UPDATE] VitalSigns id={} payload={}", targetId, dto);
 
         return vitalSignsRepository.findById(targetId).map(entity -> {
+            Long ownedEncounterId = entity.getEncounterId();
+            reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
 
             Patient patient = patientRepository.findById(dto.patientId())
                     .orElseThrow(() -> new NotFoundAlertException(
@@ -118,7 +124,8 @@ public class VitalSignsService {
             entity.setIsActive(dto.isActive());
 
             try {
-                return vitalSignsRepository.saveAndFlush(entity);
+                VitalSigns saved = vitalSignsRepository.saveAndFlush(entity);
+                return saved;
             } catch (DataIntegrityViolationException | JpaSystemException ex) {
                 throw handleConstraintViolation(ex);
             }

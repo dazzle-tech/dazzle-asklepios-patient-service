@@ -79,6 +79,7 @@ public class PatientServiceAndProductService {
     private final PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository;
     private final PatientItemPricingApplicationService patientItemPricingApplicationService;
     private final InsurancePriceListCoverageService insurancePriceListCoverageService;
+    private final EncounterReopenGuard encounterReopenGuard;
 
     public PatientServiceAndProductService(
             PatientServiceAndProductRepository patientServiceAndProductRepository,
@@ -97,7 +98,8 @@ public class PatientServiceAndProductService {
             @Lazy BillingChargeService billingChargeService,
             PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository,
             PatientItemPricingApplicationService patientItemPricingApplicationService,
-            InsurancePriceListCoverageService insurancePriceListCoverageService
+            InsurancePriceListCoverageService insurancePriceListCoverageService,
+            EncounterReopenGuard encounterReopenGuard
     ) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.patientRepository = patientRepository;
@@ -116,6 +118,7 @@ public class PatientServiceAndProductService {
         this.patientPrescriptionMedicationRepository = patientPrescriptionMedicationRepository;
         this.patientItemPricingApplicationService = patientItemPricingApplicationService;
         this.insurancePriceListCoverageService = insurancePriceListCoverageService;
+        this.encounterReopenGuard = encounterReopenGuard;
     }
 
     public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
@@ -192,6 +195,8 @@ public class PatientServiceAndProductService {
                         "patientServicesAndProducts",
                         "Record not found with id " + dto.id()
                 ));
+
+        encounterReopenGuard.rejectIfOpenReopenSession(entity.getEncounterId());
 
         PatientEncounter encounter = patientEncounterRepository.findById(entity.getEncounterId())
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -302,6 +307,10 @@ public class PatientServiceAndProductService {
                     "patient_services_and_products",
                     "Billing items list cannot be empty"
             );
+        }
+
+        for (PatientServiceProductCreateDTO dto : dtos) {
+            encounterReopenGuard.rejectIfOpenReopenSession(dto.encounterId());
         }
 
         try {
@@ -526,6 +535,13 @@ public class PatientServiceAndProductService {
 
     @Transactional
     public void remove(Long id) {
+        PatientServiceAndProduct entity = patientServiceAndProductRepository.findById(id)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "Patient service/product not found with id " + id,
+                        "patientServicesAndProducts",
+                        "idNotFound"
+                ));
+        encounterReopenGuard.rejectIfOpenReopenSession(entity.getEncounterId());
         cancel(id, "Service/product item cancelled");
     }
 

@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.AdditionalMeasurements;
+import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.repository.AdditionalMeasurementsRepository;
@@ -37,6 +38,7 @@ public class AdditionalMeasurementsService {
     private final AdditionalMeasurementsRepository additionalMeasurementsRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final EncounterAmendmentAuditService amendmentAudit;
 
 
     public AdditionalMeasurements createInfant(AdditionalMeasurementsInfantCreateDTO dto) {
@@ -61,7 +63,9 @@ public class AdditionalMeasurementsService {
                     .isActive(true)
                     .build();
 
-            return additionalMeasurementsRepository.saveAndFlush(entity);
+            AdditionalMeasurements saved = additionalMeasurementsRepository.saveAndFlush(entity);
+            amendmentAudit.added(encounter.getId(), AmendmentMedicalSheet.ADDITIONAL_MEASUREMENTS, saved.getId(), saved);
+            return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
@@ -73,6 +77,8 @@ public class AdditionalMeasurementsService {
         LOG.info("[UPDATE_INFANT] AdditionalMeasurements id={} payload={}", targetId, dto);
 
         return additionalMeasurementsRepository.findById(targetId).map(entity -> {
+            Long ownedEncounterId = entity.getEncounterId();
+            var before = amendmentAudit.capture(entity);
             Patient patient = loadPatient(dto.patientId());
             PatientEncounter encounter = loadEncounter(dto.encounterId());
             entity.setPatient(patient);
@@ -88,7 +94,9 @@ public class AdditionalMeasurementsService {
             entity.setIsActive(dto.isActive());
 
             try {
-                return additionalMeasurementsRepository.saveAndFlush(entity);
+                AdditionalMeasurements saved = additionalMeasurementsRepository.saveAndFlush(entity);
+                amendmentAudit.changed(ownedEncounterId, AmendmentMedicalSheet.ADDITIONAL_MEASUREMENTS, saved.getId(), before, saved);
+                return saved;
             } catch (DataIntegrityViolationException | JpaSystemException ex) {
                 throw handleConstraintViolation(ex);
             }
@@ -116,7 +124,9 @@ public class AdditionalMeasurementsService {
                     .isActive(true)
                     .build();
 
-            return additionalMeasurementsRepository.saveAndFlush(entity);
+            AdditionalMeasurements saved = additionalMeasurementsRepository.saveAndFlush(entity);
+            amendmentAudit.added(encounter.getId(), AmendmentMedicalSheet.ADDITIONAL_MEASUREMENTS, saved.getId(), saved);
+            return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
@@ -128,6 +138,8 @@ public class AdditionalMeasurementsService {
         LOG.info("[UPDATE_GERIATRIC] AdditionalMeasurements id={} payload={}", targetId, dto);
 
         return additionalMeasurementsRepository.findById(targetId).map(entity -> {
+            Long ownedEncounterId = entity.getEncounterId();
+            var before = amendmentAudit.capture(entity);
             Patient patient = loadPatient(dto.patientId());
             PatientEncounter encounter = loadEncounter(dto.encounterId());
 
@@ -142,7 +154,9 @@ public class AdditionalMeasurementsService {
             entity.setIsActive(dto.isActive());
 
             try {
-                return additionalMeasurementsRepository.saveAndFlush(entity);
+                AdditionalMeasurements saved = additionalMeasurementsRepository.saveAndFlush(entity);
+                amendmentAudit.changed(ownedEncounterId, AmendmentMedicalSheet.ADDITIONAL_MEASUREMENTS, saved.getId(), before, saved);
+                return saved;
             } catch (DataIntegrityViolationException | JpaSystemException ex) {
                 throw handleConstraintViolation(ex);
             }
@@ -195,8 +209,15 @@ public class AdditionalMeasurementsService {
                 .findFirstByEncounterIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateDesc(
                         encounterId, dayStart, dayEnd)
                 .ifPresentOrElse(existing -> {
+                    Long ownedEncounterId = existing.getEncounterId();
+                    var before = amendmentAudit.capture(existing);
                     existing.setIsActive(false);
                     additionalMeasurementsRepository.saveAndFlush(existing);
+                    amendmentAudit.deactivated(ownedEncounterId,
+                            AmendmentMedicalSheet.ADDITIONAL_MEASUREMENTS,
+                            existing.getId(),
+                            before
+                    );
                     LOG.debug("[RESET_ACTIVE] Done. deactivatedId={} encounterId={}",
                             existing.getId(), encounterId);
                 }, () -> LOG.debug("[RESET_ACTIVE] No active record found to deactivate"));

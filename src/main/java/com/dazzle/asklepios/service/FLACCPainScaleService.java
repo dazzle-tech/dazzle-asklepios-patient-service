@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.ApLovValue;
 import com.dazzle.asklepios.domain.FLACCPainScale;
+import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.domain.enumeration.FLACCPainLevel;
 import com.dazzle.asklepios.domain.enumeration.FLACCPainScaleStatus;
 import com.dazzle.asklepios.repository.ApLovValueRepository;
@@ -35,6 +36,7 @@ public class FLACCPainScaleService {
     private final ApLovValueRepository apLovValueRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final EncounterAmendmentAuditService amendmentAudit;
 
     public FLACCPainScale create(FLACCPainScaleCreateDTO dto) {
         LOG.info("[CREATE] FLACCPainScale payload={}", dto);
@@ -78,6 +80,7 @@ public class FLACCPainScaleService {
 
         FLACCPainScale saved =
                 flaccPainScaleRepository.save(flaccPainScale);
+        amendmentAudit.added(saved.getEncounterId(), AmendmentMedicalSheet.FLACC, saved.getId(), saved);
 
         LOG.info(
                 "[CREATE] Successfully created FLACCPainScale id={} patientId={} encounterId={} totalScore={}",
@@ -133,6 +136,8 @@ public class FLACCPainScaleService {
                             );
                         });
 
+        Long ownedEncounterId = existing.getEncounterId();
+        var before = amendmentAudit.capture(existing);
         if (existing.getStatus() == FLACCPainScaleStatus.CANCELLED) {
             LOG.warn(
                     "[UPDATE] Cannot update cancelled FLACCPainScale id={}",
@@ -170,6 +175,7 @@ public class FLACCPainScaleService {
 
         FLACCPainScale updated =
                 flaccPainScaleRepository.save(existing);
+        amendmentAudit.changed(ownedEncounterId, AmendmentMedicalSheet.FLACC, updated.getId(), before, updated);
 
         LOG.info(
                 "[UPDATE] Successfully updated FLACCPainScale id={} totalScore={}",
@@ -513,6 +519,8 @@ public class FLACCPainScaleService {
                             );
                         });
 
+        Long ownedEncounterId = existing.getEncounterId();
+        var before = amendmentAudit.capture(existing);
         if (existing.getStatus() == FLACCPainScaleStatus.CANCELLED) {
             LOG.warn(
                     "[CANCEL] FLACCPainScale already cancelled id={}",
@@ -535,6 +543,7 @@ public class FLACCPainScaleService {
 
         FLACCPainScale cancelled =
                 flaccPainScaleRepository.save(existing);
+        amendmentAudit.cancelled(ownedEncounterId, AmendmentMedicalSheet.FLACC, cancelled.getId(), before, cancelled);
 
         LOG.info(
                 "[CANCEL] Successfully cancelled FLACCPainScale id={} cancelledBy={}",

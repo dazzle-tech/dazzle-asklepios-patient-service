@@ -59,6 +59,7 @@ public class DiagnosticOrderTestStatusService {
     private final PatientItemPricingApplicationService patientItemPricingApplicationService;
 
     private final InsurancePriceListCoverageService insurancePriceListCoverageService;
+    private final EncounterReopenGuard encounterReopenGuard;
 
     public DiagnosticOrderTestStatusService(
             DiagnosticOrderRepository diagnosticOrderRepository,
@@ -73,7 +74,8 @@ public class DiagnosticOrderTestStatusService {
             @Lazy BillingChargeService billingChargeService,
             @Lazy PatientServiceAndProductService patientServiceAndProductService,
             PatientItemPricingApplicationService patientItemPricingApplicationService,
-            InsurancePriceListCoverageService insurancePriceListCoverageService
+            InsurancePriceListCoverageService insurancePriceListCoverageService,
+            EncounterReopenGuard encounterReopenGuard
     ) {
         this.diagnosticOrderRepository = diagnosticOrderRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
@@ -88,6 +90,7 @@ public class DiagnosticOrderTestStatusService {
         this.patientServiceAndProductService = patientServiceAndProductService;
         this.patientItemPricingApplicationService = patientItemPricingApplicationService;
         this.insurancePriceListCoverageService = insurancePriceListCoverageService;
+        this.encounterReopenGuard = encounterReopenGuard;
     }
 
     public DiagnosticOrderTest collectSample(Long testId) {
@@ -294,6 +297,7 @@ public class DiagnosticOrderTestStatusService {
 
     public DiagnosticOrderTest cancel(Long testId, String cancelledBy, String cancellationReason) {
         DiagnosticOrderTest test = getTest(testId);
+        rejectIfOrderEncounterReopened(test.getOrderId());
 
         DiagnosticOrderTestStatus current = test.getStatus() == null ? DiagnosticOrderTestStatus.NEW : test.getStatus();
 
@@ -453,6 +457,11 @@ public class DiagnosticOrderTestStatusService {
                         "diagnostic_order_tests",
                         "DiagnosticOrderTest not found with id " + testId
                 ));
+    }
+
+    private void rejectIfOrderEncounterReopened(Long orderId) {
+        DiagnosticOrder order = getOrder(orderId);
+        encounterReopenGuard.rejectIfOpenReopenSession(order.getEncounterId());
     }
 
     private DiagnosticOrder getOrder(Long orderId) {

@@ -4,10 +4,14 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientEncounterFieldAudit;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
+import com.dazzle.asklepios.domain.EncounterReopenSession;
 import com.dazzle.asklepios.service.DiagnosticOrderService;
+import com.dazzle.asklepios.service.EncounterAmendmentHistoryService;
+import com.dazzle.asklepios.service.EncounterAmendmentService;
 import com.dazzle.asklepios.service.EncounterCoverageService;
 import com.dazzle.asklepios.service.PatientEncounterService;
 import com.dazzle.asklepios.service.PatientPrescriptionService;
+import com.dazzle.asklepios.service.dto.patientEncounter.EncounterAmendmentDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.ReassignPractitionerDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.EncounterHistoryOfPresentIllnessDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCancelDTO;
@@ -20,6 +24,9 @@ import com.dazzle.asklepios.service.dto.billing.EncounterCoverageDTO;
 import com.dazzle.asklepios.service.dto.billing.UpdateEncounterCoverageRequest;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.vm.patientEncounter.AmendmentHistorySessionVM;
+import com.dazzle.asklepios.web.rest.vm.patientEncounter.EncounterAmendmentSummaryVM;
+import com.dazzle.asklepios.web.rest.vm.patientEncounter.EncounterReopenSessionVM;
 import com.dazzle.asklepios.web.rest.vm.patientEncounter.PatientEncounterVM;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -56,6 +63,8 @@ public class PatientEncounterController {
     private static final Logger LOG = LoggerFactory.getLogger(PatientEncounterController.class);
 
     private final PatientEncounterService patientEncounterService;
+    private final EncounterAmendmentService encounterAmendmentService;
+    private final EncounterAmendmentHistoryService encounterAmendmentHistoryService;
     private final DiagnosticOrderService diagnosticOrderService;
     private final PatientPrescriptionService patientPrescriptionService;
     private final EncounterCoverageService encounterCoverageService;
@@ -64,6 +73,8 @@ public class PatientEncounterController {
 
     public PatientEncounterController(
             PatientEncounterService patientEncounterService,
+            EncounterAmendmentService encounterAmendmentService,
+            EncounterAmendmentHistoryService encounterAmendmentHistoryService,
             DiagnosticOrderService diagnosticOrderService,
             PatientPrescriptionService patientPrescriptionService,
             EncounterCoverageService encounterCoverageService,
@@ -71,6 +82,8 @@ public class PatientEncounterController {
             EncounterListService encounterListService
     ) {
         this.patientEncounterService = patientEncounterService;
+        this.encounterAmendmentService = encounterAmendmentService;
+        this.encounterAmendmentHistoryService = encounterAmendmentHistoryService;
         this.diagnosticOrderService = diagnosticOrderService;
         this.patientPrescriptionService = patientPrescriptionService;
         this.encounterCoverageService = encounterCoverageService;
@@ -805,6 +818,60 @@ public class PatientEncounterController {
                 patientEncounterService.reopenEncounter(encounterId);
 
         return ResponseEntity.ok(reopened);
+    }
+
+    @PostMapping("/encounter/{id}/amendments")
+    public ResponseEntity<EncounterReopenSessionVM> startAmendment(
+            @PathVariable("id") @NotNull Long encounterId,
+            @Valid @RequestBody @NotNull EncounterAmendmentDTO amendmentDTO
+    ) {
+        LOG.debug("REST start encounter amendment id={} payload={}", encounterId, amendmentDTO);
+
+        EncounterReopenSession session =
+                encounterAmendmentService.startAmendment(encounterId, amendmentDTO);
+
+        return ResponseEntity.ok(EncounterReopenSessionVM.ofEntity(session));
+    }
+
+    @PostMapping("/encounter/{encounterId}/amendments/{sessionId}/finish")
+    public ResponseEntity<EncounterReopenSessionVM> finishAmendment(
+            @PathVariable @NotNull Long encounterId,
+            @PathVariable @NotNull Long sessionId
+    ) {
+        LOG.debug("REST finish encounter amendment encounterId={} sessionId={}", encounterId, sessionId);
+
+        EncounterReopenSession session = encounterAmendmentService.finishAmendment(encounterId, sessionId);
+        return ResponseEntity.ok(EncounterReopenSessionVM.ofEntity(session));
+    }
+
+    @GetMapping("/encounter/{id}/amendments")
+    public ResponseEntity<List<EncounterReopenSessionVM>> findAmendments(
+            @PathVariable("id") @NotNull Long encounterId
+    ) {
+        LOG.debug("REST list encounter amendments encounterId={}", encounterId);
+
+        List<EncounterReopenSessionVM> amendments =
+                encounterAmendmentService.findAmendments(encounterId)
+                        .stream()
+                        .map(EncounterReopenSessionVM::ofEntity)
+                        .toList();
+
+        return ResponseEntity.ok(amendments);
+    }
+
+    @GetMapping("/encounter/amendment-summaries")
+    public ResponseEntity<List<EncounterAmendmentSummaryVM>> findAmendmentSummaries(
+            @RequestParam(name = "encounterIds", required = false) List<Long> encounterIds
+    ) {
+        return ResponseEntity.ok(encounterAmendmentService.findSummaries(encounterIds));
+    }
+
+    @GetMapping("/encounter/{encounterId}/amendment-history")
+    public ResponseEntity<List<AmendmentHistorySessionVM>> findAmendmentHistory(
+            @PathVariable @NotNull Long encounterId
+    ) {
+        LOG.debug("REST encounter amendment history encounterId={}", encounterId);
+        return ResponseEntity.ok(encounterAmendmentHistoryService.findHistory(encounterId));
     }
 
     @GetMapping("/encounter/{id}/audit")

@@ -4,6 +4,7 @@ import com.dazzle.asklepios.client.setup.ICDTreeClient;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDiagnosis;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.domain.enumeration.DiagnosisType;
 import com.dazzle.asklepios.repository.PatientDiagnosisRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
@@ -38,15 +39,18 @@ public class PatientDiagnosisService {
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final ICDTreeClient iCDTreeClient;
+    private final EncounterAmendmentAuditService amendmentAudit;
 
     public PatientDiagnosisService(
             PatientDiagnosisRepository patientDiagnosisRepository,
             PatientRepository patientRepository,
-            PatientEncounterRepository patientEncounterRepository, ICDTreeClient iCDTreeClient) {
+            PatientEncounterRepository patientEncounterRepository, ICDTreeClient iCDTreeClient,
+            EncounterAmendmentAuditService amendmentAudit) {
         this.patientDiagnosisRepository = patientDiagnosisRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
         this.iCDTreeClient = iCDTreeClient;
+        this.amendmentAudit = amendmentAudit;
     }
 
     public PatientDiagnosis create(PatientDiagnosisCreateDTO dto) {
@@ -77,7 +81,9 @@ public class PatientDiagnosisService {
                 .build();
 
         try {
-            return patientDiagnosisRepository.saveAndFlush(entity);
+            PatientDiagnosis saved = patientDiagnosisRepository.saveAndFlush(entity);
+            amendmentAudit.added(encounter.getId(), AmendmentMedicalSheet.DIAGNOSIS, saved.getId(), saved);
+            return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
@@ -99,6 +105,8 @@ public class PatientDiagnosisService {
                         "notfound"
                 ));
 
+        Long ownedEncounterId = existing.getEncounterId();
+        var before = amendmentAudit.capture(existing);
         Patient patient = patientRepository.findById(dto.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Patient not found with id " + dto.patientId(),
@@ -122,7 +130,9 @@ public class PatientDiagnosisService {
         existing.setLastModifiedDate(Instant.now());
 
         try {
-            return patientDiagnosisRepository.saveAndFlush(existing);
+            PatientDiagnosis saved = patientDiagnosisRepository.saveAndFlush(existing);
+            amendmentAudit.changed(ownedEncounterId, AmendmentMedicalSheet.DIAGNOSIS, saved.getId(), before, saved);
+            return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
@@ -173,7 +183,10 @@ public class PatientDiagnosisService {
                         "notfound"
                 ));
 
+        Long encounterId = entity.getEncounterId();
+        var before = amendmentAudit.capture(entity);
         patientDiagnosisRepository.delete(entity);
+        amendmentAudit.removed(encounterId, AmendmentMedicalSheet.DIAGNOSIS, entity.getId(), before);
 
         LOG.info("[HARD_DELETE] PatientDiagnosis deleted permanently id={}", id);
     }

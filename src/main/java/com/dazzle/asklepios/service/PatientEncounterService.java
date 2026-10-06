@@ -138,6 +138,9 @@ public class PatientEncounterService {
     private final EncounterDischargeLogRepository encounterDischargeLogRepository;
     private final PatientEncounterFieldAuditRepository auditRepository;
     private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
+    private final EncounterReopenGuard encounterReopenGuard;
+    private final EncounterAmendmentService encounterAmendmentService;
 
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
@@ -168,7 +171,10 @@ public class PatientEncounterService {
             PractitionerClient practitionerClient,
             @Lazy BillingEngineService billingEngineService,
             NotificationHelper notificationHelper, InvoiceGenerationService invoiceGenerationService, UserRepository userRepository, EncounterDischargeLogRepository encounterDischargeLogRepository, PatientEncounterFieldAuditRepository auditRepository,
-            FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy) {
+            FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy,
+            ReopenSessionAuditContext reopenSessionAuditContext,
+            EncounterReopenGuard encounterReopenGuard,
+            EncounterAmendmentService encounterAmendmentService) {
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.entityManager = entityManager;
@@ -206,6 +212,9 @@ public class PatientEncounterService {
         this.encounterDischargeLogRepository = encounterDischargeLogRepository;
         this.auditRepository = auditRepository;
         this.followUpReviewDefaultServicePolicy = followUpReviewDefaultServicePolicy;
+        this.reopenSessionAuditContext = reopenSessionAuditContext;
+        this.encounterReopenGuard = encounterReopenGuard;
+        this.encounterAmendmentService = encounterAmendmentService;
     }
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
@@ -323,6 +332,8 @@ public class PatientEncounterService {
                             "id.notfound"
                     );
                 });
+
+        reopenSessionAuditContext.applyOpenSession(existingPatientEncounter.getId());
 
         Patient patient = patientRepository.findById(updateDTO.patientId())
                 .orElseThrow(() -> {
@@ -1036,6 +1047,17 @@ public class PatientEncounterService {
                         "patientEncounter",
                         "id.notfound"
                 ));
+
+        var openAmendmentId = encounterReopenGuard.findOpenReopenSessionId(encounter.getId());
+        if (openAmendmentId.isPresent()) {
+            LOG.info(
+                    "[COMPLETE] open amendment encounterId={} sessionId={} -> finish amendment",
+                    encounterId,
+                    openAmendmentId.get()
+            );
+            encounterAmendmentService.finishAmendment(encounter.getId(), openAmendmentId.get());
+            return patientEncounterRepository.findById(encounter.getId()).orElse(encounter);
+        }
 
         if (encounter.getStatus() != TreatmentStatus.NEW
                 && encounter.getStatus() != TreatmentStatus.ONGOING
@@ -2643,6 +2665,7 @@ public class PatientEncounterService {
                         "idnotfound"
                 ));
 
+        reopenSessionAuditContext.applyOpenSession(encounter.getId());
         encounter.setHistoryOfPresentIllness(historyOfPresentIllness);
 
         PatientEncounter saved = patientEncounterRepository.save(encounter);

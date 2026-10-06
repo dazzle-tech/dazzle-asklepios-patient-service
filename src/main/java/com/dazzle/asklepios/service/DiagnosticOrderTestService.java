@@ -76,6 +76,7 @@ public class DiagnosticOrderTestService {
 
     private final BillingRuleEvaluationService billingRuleEvaluationService;
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
+    private final EncounterReopenGuard encounterReopenGuard;
 
     /**
      * Creates the service with required dependencies.
@@ -92,7 +93,8 @@ public class DiagnosticOrderTestService {
             DepartmentHelper departmentHelper,
             ICDTreeHelper icdTreeHelper, FacilityHelper facilityHelper,
             BillingRuleEvaluationService billingRuleEvaluationService,
-            @org.springframework.context.annotation.Lazy DiagnosticOrderTestStatusService diagnosticOrderTestStatusService
+            @org.springframework.context.annotation.Lazy DiagnosticOrderTestStatusService diagnosticOrderTestStatusService,
+            EncounterReopenGuard encounterReopenGuard
     ) {
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
@@ -105,6 +107,7 @@ public class DiagnosticOrderTestService {
         this.facilityHelper = facilityHelper;
         this.billingRuleEvaluationService = billingRuleEvaluationService;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
+        this.encounterReopenGuard = encounterReopenGuard;
     }
 
     /**
@@ -125,6 +128,7 @@ public class DiagnosticOrderTestService {
 
         // Build a new entity instance from DTO fields
         DiagnosticOrder order = getDiagnosticOrder(dto.orderId());
+        encounterReopenGuard.rejectIfOpenReopenSession(order.getEncounterId());
         diagnosticTestHelper.getDiagnosticTest(dto.testId());
         Long finalReceivedDepartmentId = null;
         if (dto.receivedDepartmentId() != null) {
@@ -193,6 +197,12 @@ public class DiagnosticOrderTestService {
      */
     public DiagnosticOrderTest update(DiagnosticOrderTest existing, DiagnosticOrderTestUpdateDTO dto) {
         LOG.debug("Request to update DiagnosticOrderTest id={} payload={}", existing.getId(), dto);
+        DiagnosticOrder persistedOrder = getDiagnosticOrder(existing.getOrderId());
+        encounterReopenGuard.rejectIfOpenReopenSession(persistedOrder.getEncounterId());
+        if (dto.orderId() != null && !dto.orderId().equals(existing.getOrderId())) {
+            DiagnosticOrder requestedOrder = getDiagnosticOrder(dto.orderId());
+            encounterReopenGuard.rejectIfOpenReopenSession(requestedOrder.getEncounterId());
+        }
         DiagnosticOrder order = getDiagnosticOrder(dto.orderId());
         diagnosticTestHelper.getDiagnosticTest(dto.testId());
         if (dto.receivedDepartmentId() != null)
@@ -312,6 +322,14 @@ public class DiagnosticOrderTestService {
      */
     public void delete(Long id) {
         LOG.debug("[DiagnosticOrderTestService] DELETE - start. id={}", id);
+        DiagnosticOrderTest existing = diagnosticOrderTestRepository.findById(id)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "notfound",
+                        "diagnostic_order_tests",
+                        "DiagnosticOrderTest not found with id " + id
+                ));
+        DiagnosticOrder order = getDiagnosticOrder(existing.getOrderId());
+        encounterReopenGuard.rejectIfOpenReopenSession(order.getEncounterId());
         diagnosticOrderTestRepository.deleteById(id);
         LOG.debug("[DiagnosticOrderTestService] DELETE - done. id={}", id);
     }

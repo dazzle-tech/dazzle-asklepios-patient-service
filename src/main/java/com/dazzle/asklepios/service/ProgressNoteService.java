@@ -38,19 +38,20 @@ public class ProgressNoteService {
     private final PatientRepository patientRepository;
     private final ProgressNoteLogRepository logRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public ProgressNoteService(
             ProgressNoteRepository repository,
             PatientRepository patientRepository,
-
             ProgressNoteLogRepository logRepository,
-            PatientEncounterRepository patientEncounterRepository
-
+            PatientEncounterRepository patientEncounterRepository,
+            ReopenSessionAuditContext reopenSessionAuditContext
     ) {
         this.repository = repository;
         this.patientRepository = patientRepository;
         this.logRepository = logRepository;
         this.patientEncounterRepository = patientEncounterRepository;
+        this.reopenSessionAuditContext = reopenSessionAuditContext;
     }
 
     private String currentUsername() {
@@ -85,6 +86,7 @@ public class ProgressNoteService {
                                 "encounter.notfound"
                         )
                 );
+        reopenSessionAuditContext.applyOpenSession(encounter.getId());
         ProgressNote entity = ProgressNote.builder()
                 .patient(patient)
                 .encounter(encounter)
@@ -92,7 +94,8 @@ public class ProgressNoteService {
                 .build();
 
         try {
-            return repository.saveAndFlush(entity);
+            ProgressNote saved = repository.saveAndFlush(entity);
+            return saved;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
             throw new BadRequestAlertException(
@@ -105,10 +108,13 @@ public class ProgressNoteService {
 
     public ProgressNote update(Long id, ProgressNoteUpdateDTO dto) {
         ProgressNote existing = findById(id);
+        Long encounterId = encounterIdOf(existing);
+        reopenSessionAuditContext.applyOpenSession(encounterId);
         existing.setNoteText(dto.noteText());
 
         try {
-            return repository.saveAndFlush(existing);
+            ProgressNote saved = repository.saveAndFlush(existing);
+            return saved;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
             throw new BadRequestAlertException(
@@ -121,6 +127,8 @@ public class ProgressNoteService {
 
     public ProgressNote cancel(Long id, String reason) {
         ProgressNote existing = findById(id);
+        Long encounterId = encounterIdOf(existing);
+        reopenSessionAuditContext.applyOpenSession(encounterId);
 
         existing.setCancelledDate(Instant.now());
         existing.setCancelledBy(currentUsername());
@@ -129,7 +137,8 @@ public class ProgressNoteService {
         LOG.debug("[CANCEL] ProgressNote id={} cancelledBy={}", id, existing.getCancelledBy());
 
         try {
-            return repository.saveAndFlush(existing);
+            ProgressNote saved = repository.saveAndFlush(existing);
+            return saved;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
             throw new BadRequestAlertException(
@@ -166,6 +175,13 @@ public class ProgressNoteService {
     public List<ProgressNoteLog> findLogsByProgressNoteId(Long progressNoteId) {
         findById(progressNoteId);
         return logRepository.findByProgressNoteIdOrderByCreatedDateDesc(progressNoteId);
+    }
+
+    private Long encounterIdOf(ProgressNote note) {
+        if (note == null || note.getEncounter() == null) {
+            return null;
+        }
+        return note.getEncounter().getId();
     }
 
     private void handleConstraintsOnCreateOrUpdate(RuntimeException exception) {

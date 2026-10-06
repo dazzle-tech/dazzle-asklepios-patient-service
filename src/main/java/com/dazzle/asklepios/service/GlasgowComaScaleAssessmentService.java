@@ -3,6 +3,7 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.GlasgowComaScaleAssessment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.domain.enumeration.GCSScoreInterpretation;
 import com.dazzle.asklepios.repository.GlasgowComaScaleAssessmentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
@@ -39,6 +40,7 @@ public class GlasgowComaScaleAssessmentService {
     private final GlasgowComaScaleAssessmentRepository glasgowComaScaleAssessmentRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientRepository patientRepository;
+    private final EncounterAmendmentAuditService amendmentAudit;
 
     public GlasgowComaScaleAssessment create(GlasgowComaScaleAssessmentCreateDTO createDTO) {
         LOG.info("[CREATE] GlasgowComaScaleAssessment payload={}", createDTO);
@@ -78,7 +80,9 @@ public class GlasgowComaScaleAssessmentService {
                 .build();
 
         try {
-            return glasgowComaScaleAssessmentRepository.saveAndFlush(entity);
+            GlasgowComaScaleAssessment saved = glasgowComaScaleAssessmentRepository.saveAndFlush(entity);
+            amendmentAudit.added(encounter.getId(), AmendmentMedicalSheet.GLASGOW, saved.getId(), saved);
+            return saved;
         } catch (DataIntegrityViolationException | JpaSystemException exception) {
             throw handleConstraintViolation(exception);
         }
@@ -94,6 +98,8 @@ public class GlasgowComaScaleAssessmentService {
                         "id.notfound"
                 ));
 
+        Long ownedEncounterId = existing.getEncounter() == null ? null : existing.getEncounter().getId();
+        var before = amendmentAudit.capture(existing);
 
         Integer eyeScore = updateDTO.eyeOpening().getScore();
         Integer verbalScore = updateDTO.verbalResponse().getScore();
@@ -110,7 +116,9 @@ public class GlasgowComaScaleAssessmentService {
         existing.setScoreInterpretation(resolveScoreInterpretation(totalScore));
 
         try {
-            return glasgowComaScaleAssessmentRepository.saveAndFlush(existing);
+            GlasgowComaScaleAssessment saved = glasgowComaScaleAssessmentRepository.saveAndFlush(existing);
+            amendmentAudit.changed(ownedEncounterId, AmendmentMedicalSheet.GLASGOW, saved.getId(), before, saved);
+            return saved;
         } catch (DataIntegrityViolationException | JpaSystemException exception) {
             throw handleConstraintViolation(exception);
         }
@@ -131,12 +139,16 @@ public class GlasgowComaScaleAssessmentService {
                         "id.notfound"
                 ));
 
+        Long ownedEncounterId = existing.getEncounter() == null ? null : existing.getEncounter().getId();
+        var before = amendmentAudit.capture(existing);
         existing.setCancelledAt(LocalDateTime.now());
         existing.setCancelledBy(currentUser);
         existing.setCancellationReason(cancelDTO.cancellationReason());
 
         try {
-            return glasgowComaScaleAssessmentRepository.saveAndFlush(existing);
+            GlasgowComaScaleAssessment saved = glasgowComaScaleAssessmentRepository.saveAndFlush(existing);
+            amendmentAudit.cancelled(ownedEncounterId, AmendmentMedicalSheet.GLASGOW, saved.getId(), before, saved);
+            return saved;
         } catch (DataIntegrityViolationException | JpaSystemException exception) {
             throw handleConstraintViolation(exception);
         }

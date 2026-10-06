@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientSickLeave;
+import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientSickLeaveRepository;
 import com.dazzle.asklepios.service.dto.patientSickLeave.PatientSickLeaveCreateDTO;
@@ -22,10 +23,16 @@ public class PatientSickLeaveService {
 
     private final PatientSickLeaveRepository patientSickLeaveRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final EncounterAmendmentAuditService amendmentAudit;
 
-    public PatientSickLeaveService(PatientSickLeaveRepository patientSickLeaveRepository, PatientEncounterRepository patientEncounterRepository) {
+    public PatientSickLeaveService(
+            PatientSickLeaveRepository patientSickLeaveRepository,
+            PatientEncounterRepository patientEncounterRepository,
+            EncounterAmendmentAuditService amendmentAudit
+    ) {
         this.patientSickLeaveRepository = patientSickLeaveRepository;
         this.patientEncounterRepository = patientEncounterRepository;
+        this.amendmentAudit = amendmentAudit;
     }
 
     public PatientSickLeave create(PatientSickLeaveCreateDTO dto) {
@@ -37,13 +44,19 @@ public class PatientSickLeaveService {
 
         PatientSickLeave sickLeave = new PatientSickLeave();
         sickLeave.setPatientId(encounter.getPatient().getId());
-        sickLeave.setEncounterId(dto.encounterId());
+        sickLeave.setEncounterId(encounter.getId());
         sickLeave.setStartDate(dto.startDate());
         sickLeave.setEndDate(dto.endDate());
         sickLeave.setNotes(dto.notes());
         sickLeave.setLanguage(dto.language() != null ? dto.language() : "en");
 
-        return patientSickLeaveRepository.save(sickLeave);
+        PatientSickLeave saved = patientSickLeaveRepository.save(sickLeave);
+        amendmentAudit.added(encounter.getId(),
+                AmendmentMedicalSheet.SICK_LEAVE,
+                saved.getId(),
+                saved
+        );
+        return saved;
     }
 
     @Transactional(readOnly = true)

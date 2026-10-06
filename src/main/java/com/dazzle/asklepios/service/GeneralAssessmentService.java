@@ -3,6 +3,7 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.GeneralAssessment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.repository.GeneralAssessmentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -24,11 +25,18 @@ public class GeneralAssessmentService {
     private final GeneralAssessmentRepository generalAssessmentRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final EncounterAmendmentAuditService amendmentAudit;
 
-    public GeneralAssessmentService(GeneralAssessmentRepository generalAssessmentRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository) {
+    public GeneralAssessmentService(
+            GeneralAssessmentRepository generalAssessmentRepository,
+            PatientRepository patientRepository,
+            PatientEncounterRepository patientEncounterRepository,
+            EncounterAmendmentAuditService amendmentAudit
+    ) {
         this.generalAssessmentRepository = generalAssessmentRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
+        this.amendmentAudit = amendmentAudit;
     }
 
     public GeneralAssessment create(GeneralAssessmentCreateDTO generalAssessmentCreateDTO) {
@@ -36,14 +44,27 @@ public class GeneralAssessmentService {
         GeneralAssessment entity = toEntityForCreate(generalAssessmentCreateDTO);
         GeneralAssessment saved = generalAssessmentRepository.save(entity);
         LOG.debug("create: saved id={}", saved.getId());
+        amendmentAudit.added(encounterId(saved),
+                AmendmentMedicalSheet.GENERAL_ASSESSMENT,
+                saved.getId(),
+                saved
+        );
         return saved;
     }
 
     public GeneralAssessment update(GeneralAssessmentUpdateDTO generalAssessmentUpdateDTO) {
         LOG.debug("update general assessment {}", generalAssessmentUpdateDTO);
         GeneralAssessment entity = getRequired(generalAssessmentUpdateDTO.id());
+        Long encounterId = encounterId(entity);
+        var before = amendmentAudit.capture(entity);
         applyUpdate(entity, generalAssessmentUpdateDTO);
         GeneralAssessment saved = generalAssessmentRepository.save(entity);
+        amendmentAudit.changed(encounterId,
+                AmendmentMedicalSheet.GENERAL_ASSESSMENT,
+                saved.getId(),
+                before,
+                saved
+        );
         LOG.debug("update: saved id={}", saved.getId());
         return saved;
     }
@@ -75,9 +96,13 @@ public class GeneralAssessmentService {
     @Transactional
     public void hardDelete(Long id) {
         LOG.debug("hard delete GeneralAssessment id={}", id);
-        if (!generalAssessmentRepository.existsById(id)) { throw new NotFoundAlertException("GeneralAssessment not found: " + id, ENTITY_NAME, "notfound");
-        }
-        generalAssessmentRepository.deleteById(id);
+        GeneralAssessment entity = getRequired(id);
+        amendmentAudit.removed(encounterId(entity),
+                AmendmentMedicalSheet.GENERAL_ASSESSMENT,
+                entity.getId(),
+                entity
+        );
+        generalAssessmentRepository.delete(entity);
     }
     // Helpers
 
@@ -131,6 +156,10 @@ public class GeneralAssessmentService {
                 .findById(id)
                 .orElseThrow(() -> new NotFoundAlertException("Patient not found: " + id, "Patient", "notfound"));
     }
+    private static Long encounterId(GeneralAssessment entity) {
+        return entity.getEncounter() == null ? null : entity.getEncounter().getId();
+    }
+
     private PatientEncounter getEncounter(Long id) {
         return patientEncounterRepository.findById(id).orElseThrow(() -> new NotFoundAlertException("Patient Encounter not found: " + id, "PatientEncounter", "notfound"));
     }

@@ -5,6 +5,7 @@ import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.PainAssessment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.domain.enumeration.PainLevel;
 import com.dazzle.asklepios.domain.enumeration.Severity;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
@@ -46,6 +47,7 @@ public class PainAssessmentService {
     private final PatientEncounterRepository patientEncounterRepository;
     private final NotificationHelper notificationHelper;
     private final DepartmentHelper departmentHelper;
+    private final EncounterAmendmentAuditService amendmentAudit;
 
     public PainAssessment create(PainAssessmentCreateDTO dto) {
         LOG.info("[CREATE] PainAssessment payload={}", dto);
@@ -78,7 +80,7 @@ public class PainAssessmentService {
                     .build();
 
             PainAssessment saved = painAssessmentRepository.saveAndFlush(entity);
-
+            amendmentAudit.added(encounter.getId(), AmendmentMedicalSheet.PAIN_ASSESSMENT, saved.getId(), saved);
 
             notificationForSeverePain(saved, patient, encounter);
 
@@ -93,6 +95,8 @@ public class PainAssessmentService {
         LOG.info("[UPDATE] PainAssessment id={} payload={}", targetId, dto);
 
         return painAssessmentRepository.findById(targetId).map(entity -> {
+            Long ownedEncounterId = entity.getEncounterId();
+            var before = amendmentAudit.capture(entity);
 
             Patient patient = patientRepository.findById(dto.patientId())
                     .orElseThrow(() -> new NotFoundAlertException(
@@ -117,6 +121,7 @@ public class PainAssessmentService {
 
             try {
                 PainAssessment saved = painAssessmentRepository.saveAndFlush(entity);
+                amendmentAudit.changed(ownedEncounterId, AmendmentMedicalSheet.PAIN_ASSESSMENT, saved.getId(), before, saved);
 
                 notificationForSeverePain(saved, patient, encounter);
 
@@ -151,8 +156,15 @@ public class PainAssessmentService {
                         dayEnd
                 )
                 .ifPresentOrElse(painAssessment -> {
+                    Long ownedEncounterId = painAssessment.getEncounterId();
+                    var before = amendmentAudit.capture(painAssessment);
                     painAssessment.setIsActive(false);
                     painAssessmentRepository.flush();
+                    amendmentAudit.deactivated(ownedEncounterId,
+                            AmendmentMedicalSheet.PAIN_ASSESSMENT,
+                            painAssessment.getId(),
+                            before
+                    );
                     LOG.debug(
                             "[RESET ACTIVE] Reset done. painAssessmentId={} encounterId={}",
                             painAssessment.getId(),

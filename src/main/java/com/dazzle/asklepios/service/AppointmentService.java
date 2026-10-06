@@ -137,6 +137,7 @@ public class AppointmentService {
     private final DiagnosticOrderRepository diagnosticOrderRepository;
     private final PractitionerHelper practitionerHelper;
     private final NotificationHelper notificationHelper;
+    private final EncounterReopenGuard encounterReopenGuard;
 
     public List<AppointmentLogResponseVM> getAppointmentLogs(Long appointmentId) {
         LOG.debug("Request to get Appointment Log id={}", appointmentId);
@@ -842,6 +843,8 @@ public class AppointmentService {
                         "DiagnosticOrder",
                         "notfound"
                 ));
+
+        encounterReopenGuard.rejectIfOpenReopenSession(order.getEncounterId());
 
         if (order.getEncounter() == null) {
             throw new BadRequestAlertException(

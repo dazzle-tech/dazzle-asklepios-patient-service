@@ -11,6 +11,7 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientPrescription;
 import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
+import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionUrgencyLevel;
@@ -64,6 +65,7 @@ public class PatientPrescriptionService {
     private final BrandMedicationClient brandMedicationClient;
     private final NotificationHelper notificationHelper;
     private final PatientServiceAndProductService patientServiceAndProductService;
+    private final EncounterAmendmentAuditService amendmentAudit;
 
     private String currentUsername() {
         String username = SecurityUtils.getCurrentUserLogin().orElse(null);
@@ -104,7 +106,9 @@ public class PatientPrescriptionService {
                 .toDepartmentId(prescriptionCreateDto.toDepartmentId)
                 .build();
 
-        return toDto(prescriptionRepository.save(entity));
+        PatientPrescription saved = prescriptionRepository.save(entity);
+        amendmentAudit.added(encounter.getId(), AmendmentMedicalSheet.PRESCRIPTION, saved.getId(), saved);
+        return toDto(saved);
     }
 
     public PatientPrescription update(Long id, PatientPrescriptionUpdateDTO patientPrescriptionUpdateDTO) {
@@ -113,6 +117,8 @@ public class PatientPrescriptionService {
         PatientPrescription entity = prescriptionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
 
+        Long encounterId = entity.getEncounterId();
+        var before = amendmentAudit.capture(entity);
         if (patientPrescriptionUpdateDTO.prescriptionDate != null)
             entity.setPrescriptionDate(patientPrescriptionUpdateDTO.prescriptionDate);
         if (patientPrescriptionUpdateDTO.urgencyLevel != null)
@@ -126,7 +132,9 @@ public class PatientPrescriptionService {
             entity.setToDepartmentId(patientPrescriptionUpdateDTO.toDepartmentId);
         }
 
-        return toDto(prescriptionRepository.save(entity));
+        PatientPrescription saved = prescriptionRepository.save(entity);
+        amendmentAudit.changed(encounterId, AmendmentMedicalSheet.PRESCRIPTION, saved.getId(), before, saved);
+        return toDto(saved);
     }
 
     /**
@@ -145,10 +153,11 @@ public class PatientPrescriptionService {
         return patientPrescriptionRepository
                 .findTopByEncounterIdAndStatusOrderByCreatedDateDesc(patientPrescriptionCreateDto.getEncounterId(), PrescriptionStatus.DRAFT)
                 .orElseGet(() -> {
+                    PatientEncounter encounter = getEncounter(patientPrescriptionCreateDto.getEncounterId());
                     Patient patient = getPatient(patientPrescriptionCreateDto.getPatientId());
                     PatientPrescription entity = PatientPrescription.builder()
                             .patient(patient)
-                            .encounterId(patientPrescriptionCreateDto.getEncounterId())
+                            .encounterId(encounter.getId())
                             .prescriptionDate(
                                     patientPrescriptionCreateDto.getPrescriptionDate() != null
                                             ? patientPrescriptionCreateDto.getPrescriptionDate()
@@ -158,7 +167,9 @@ public class PatientPrescriptionService {
                             .fromFacilityId(patientPrescriptionCreateDto.getFromFacilityId())
                             .fromDepartmentId(patientPrescriptionCreateDto.getFromDepartmentId())
                             .build();
-                    return patientPrescriptionRepository.save(entity);
+                    PatientPrescription saved = patientPrescriptionRepository.save(entity);
+                    amendmentAudit.added(encounter.getId(), AmendmentMedicalSheet.PRESCRIPTION, saved.getId(), saved);
+                    return saved;
                 });
 
     }
@@ -227,6 +238,8 @@ public class PatientPrescriptionService {
         PatientPrescription entity = prescriptionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
 
+        Long encounterId = entity.getEncounterId();
+        var before = amendmentAudit.capture(entity);
         String username = currentUsername();
         Instant now = Instant.now();
 
@@ -239,10 +252,17 @@ public class PatientPrescriptionService {
                 if (PrescriptionStatus.CANCELLED.equals(med.getStatus())) {
                     continue;
                 }
+                var medicationBefore = amendmentAudit.capture(med);
                 med.setStatus(PrescriptionStatus.SUBMITTED);
                 med.setLastModifiedBy(username);
                 med.setLastModifiedDate(now);
-                prescriptionMedicationRepository.save(med);
+                PatientPrescriptionMedication savedMedication = prescriptionMedicationRepository.save(med);
+                amendmentAudit.changed(encounterId,
+                        AmendmentMedicalSheet.PRESCRIPTION_MEDICATION,
+                        savedMedication.getId(),
+                        medicationBefore,
+                        savedMedication
+                );
             }
         }
 
@@ -255,6 +275,8 @@ public class PatientPrescriptionService {
                 acceptUncoveredAsCash
         );
 
+        amendmentAudit.changed(encounterId, AmendmentMedicalSheet.PRESCRIPTION, saved.getId(), before, saved);
+
         return toDto(saved);
     }
 
@@ -265,6 +287,8 @@ public class PatientPrescriptionService {
         PatientPrescription entity = prescriptionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
 
+        Long encounterId = entity.getEncounterId();
+        var before = amendmentAudit.capture(entity);
         entity.setStatus(PrescriptionStatus.CANCELLED);
 
         Instant now = Instant.now();
@@ -273,6 +297,7 @@ public class PatientPrescriptionService {
         List<PatientPrescriptionMedication> medications =
                 prescriptionMedicationRepository.findByPrescriptionHeader_Id(id);
 
+        List<Map<String, Object>> medicationBefores = new java.util.ArrayList<>();
         for (PatientPrescriptionMedication medication : medications) {
             patientServiceAndProductService.cancelBySource(
                     ServiceSource.PRESCRIPTION,
@@ -281,13 +306,24 @@ public class PatientPrescriptionService {
                     "Prescription cancelled"
             );
 
+            medicationBefores.add(amendmentAudit.capture(medication));
             medication.setStatus(PrescriptionStatus.CANCELLED);
             medication.setLastModifiedBy(username);
             medication.setLastModifiedDate(now);
         }
 
         prescriptionMedicationRepository.saveAll(medications);
+        for (int index = 0; index < medications.size(); index++) {
+            PatientPrescriptionMedication medication = medications.get(index);
+            amendmentAudit.cancelled(encounterId,
+                    AmendmentMedicalSheet.PRESCRIPTION_MEDICATION,
+                    medication.getId(),
+                    medicationBefores.get(index),
+                    medication
+            );
+        }
         PatientPrescription saved = prescriptionRepository.save(entity);
+        amendmentAudit.cancelled(encounterId, AmendmentMedicalSheet.PRESCRIPTION, saved.getId(), before, saved);
 
         return toDto(saved);
     }

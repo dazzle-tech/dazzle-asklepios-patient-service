@@ -46,6 +46,11 @@ public class ConsultationPortalService {
     private final DepartmentHelper departmentHelper;
     private final NotificationHelper notificationHelper;
     private final PractitionerHelper practitionerHelper;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
+
+    private Long encounterIdOf(Consultation consultation) {
+        return consultation.getEncounter() == null ? null : consultation.getEncounter().getId();
+    }
 
     private String currentUsername() {
         String username = SecurityUtils.getCurrentUserLogin().orElse(null);
@@ -320,6 +325,8 @@ public class ConsultationPortalService {
                 .orElseThrow(() -> new BadRequestAlertException(
                         "Consultation not found", "consultation", "notfound"));
 
+        Long encounterId = encounterIdOf(consultation);
+        reopenSessionAuditContext.applyOpenSession(encounterId);
         consultation.setStatus(ConsultationStatus.CONFIRMED);
         consultation.setConfirmedDate(Instant.now());
         consultation.setConfirmedBy(username);
@@ -338,6 +345,8 @@ public class ConsultationPortalService {
                 .orElseThrow(() -> new BadRequestAlertException(
                         "Consultation not found", "consultation", "notfound"));
 
+        Long encounterId = encounterIdOf(consultation);
+        reopenSessionAuditContext.applyOpenSession(encounterId);
         consultation.setStatus(ConsultationStatus.REJECTED);
         consultation.setRejectedDate(Instant.now());
         consultation.setRejectedBy(username);
@@ -366,6 +375,8 @@ public class ConsultationPortalService {
                 .orElseThrow(() -> new BadRequestAlertException(
                         "Consultation not found", "consultation", "notfound"));
 
+        Long encounterId = encounterIdOf(consultation);
+        reopenSessionAuditContext.applyOpenSession(encounterId);
         consultation.setResponseText(dto.responseText());
         consultation.setResponseBy(username);
         consultation.setResponseDate(Instant.now());
@@ -403,12 +414,15 @@ public class ConsultationPortalService {
                         && c.getStatus() == ConsultationStatus.READY)
                 .toList();
 
-        consultationsToSubmit.forEach(c -> {
-            c.setStatus(ConsultationStatus.SUBMITTED);
-            c.setSubmittedBy(username);
-            c.setSubmittedDate(Instant.now());
+        consultationsToSubmit.forEach(consultation -> {
+            Long encounterId = encounterIdOf(consultation);
+            reopenSessionAuditContext.applyOpenSession(encounterId);
+            consultation.setStatus(ConsultationStatus.SUBMITTED);
+            consultation.setSubmittedBy(username);
+            consultation.setSubmittedDate(Instant.now());
+            consultationRepository.saveAndFlush(consultation);
         });
-        List<Consultation> savedConsultations = consultationRepository.saveAll(consultationsToSubmit);
+        List<Consultation> savedConsultations = consultationsToSubmit;
 
         savedConsultations.forEach(consultation ->
                 notificationForRequestingDepartmentWhenConsultationEvent(

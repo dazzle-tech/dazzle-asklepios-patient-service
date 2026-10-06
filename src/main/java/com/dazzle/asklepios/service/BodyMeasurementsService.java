@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.BodyMeasurements;
+import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.repository.BodyMeasurementsRepository;
@@ -36,6 +37,7 @@ public class BodyMeasurementsService {
     private final BodyMeasurementsRepository bodyMeasurementsRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final EncounterAmendmentAuditService amendmentAudit;
 
     public BodyMeasurements create(BodyMeasurementsCreateDTO dto) {
         LOG.info("[CREATE] BodyMeasurements payload={}", dto);
@@ -46,21 +48,23 @@ public class BodyMeasurementsService {
                         "bodyMeasurements",
                         "patient.notfound"
                 ));
-        getEncounter(dto.encounterId());
+        PatientEncounter encounter = getEncounter(dto.encounterId());
 
         try {
-            resetIsActiveForEncounterToday(dto.encounterId());
+            resetIsActiveForEncounterToday(encounter.getId());
 
             BodyMeasurements bodyMeasurements = BodyMeasurements.builder()
                     .patient(patient)
-                    .encounterId(dto.encounterId())
+                    .encounterId(encounter.getId())
                     .weight(dto.weight())
                     .height(dto.height())
                     .headCircumference(dto.headCircumference())
                     .isActive(true)
                     .build();
 
-            return bodyMeasurementsRepository.saveAndFlush(bodyMeasurements);
+            BodyMeasurements saved = bodyMeasurementsRepository.saveAndFlush(bodyMeasurements);
+            amendmentAudit.added(encounter.getId(), AmendmentMedicalSheet.BODY_MEASUREMENTS, saved.getId(), saved);
+            return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
@@ -73,6 +77,8 @@ public class BodyMeasurementsService {
         LOG.info("[UPDATE] BodyMeasurements id={} payload={}", targetId, dto);
 
         return bodyMeasurementsRepository.findById(targetId).map(bodyMeasurements -> {
+            Long ownedEncounterId = bodyMeasurements.getEncounterId();
+            var before = amendmentAudit.capture(bodyMeasurements);
 
             Patient patient = patientRepository.findById(dto.patientId())
                     .orElseThrow(() -> new NotFoundAlertException(
@@ -90,7 +96,9 @@ public class BodyMeasurementsService {
             bodyMeasurements.setIsActive(dto.isActive());
 
             try {
-                return bodyMeasurementsRepository.saveAndFlush(bodyMeasurements);
+                BodyMeasurements saved = bodyMeasurementsRepository.saveAndFlush(bodyMeasurements);
+                amendmentAudit.changed(ownedEncounterId, AmendmentMedicalSheet.BODY_MEASUREMENTS, saved.getId(), before, saved);
+                return saved;
             } catch (DataIntegrityViolationException | JpaSystemException ex) {
                 throw handleConstraintViolation(ex);
             }
@@ -170,8 +178,15 @@ public class BodyMeasurementsService {
                         dayEnd
                 )
                 .ifPresentOrElse(bodyMeasurements -> {
+                    Long ownedEncounterId = bodyMeasurements.getEncounterId();
+                    var before = amendmentAudit.capture(bodyMeasurements);
                     bodyMeasurements.setIsActive(false);
                     bodyMeasurementsRepository.flush();
+                    amendmentAudit.deactivated(ownedEncounterId,
+                            AmendmentMedicalSheet.BODY_MEASUREMENTS,
+                            bodyMeasurements.getId(),
+                            before
+                    );
                     LOG.debug(
                             "[RESET ACTIVE] Reset done. bodyMeasurementsId={} encounterId={}",
                             bodyMeasurements.getId(),

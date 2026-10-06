@@ -3,6 +3,7 @@ package com.dazzle.asklepios.repository;
 import com.dazzle.asklepios.domain.EncounterAssessmentLog;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface EncounterAssessmentLogRepository
@@ -10,5 +11,9 @@ public interface EncounterAssessmentLogRepository
 
     List<EncounterAssessmentLog> findByEncounterAssessmentIdOrderByLogDateDesc(
             Long encounterAssessmentId
+    );
+
+    List<EncounterAssessmentLog> findByReopenSessionIdInOrderByLogDateAscIdAsc(
+            Collection<Long> reopenSessionIds
     );
 }

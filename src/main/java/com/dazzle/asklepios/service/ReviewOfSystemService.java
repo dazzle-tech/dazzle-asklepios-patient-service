@@ -3,6 +3,7 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.ReviewOfSystem;
+import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.ReviewOfSystemRepository;
@@ -26,11 +27,13 @@ public class ReviewOfSystemService {
     private final ReviewOfSystemRepository reviewOfSystemRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final EncounterAmendmentAuditService amendmentAudit;
 
-    public ReviewOfSystemService(ReviewOfSystemRepository reviewOfSystemRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository) {
+    public ReviewOfSystemService(ReviewOfSystemRepository reviewOfSystemRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository, EncounterAmendmentAuditService amendmentAudit) {
         this.reviewOfSystemRepository = reviewOfSystemRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
+        this.amendmentAudit = amendmentAudit;
     }
 
     public ReviewOfSystem create(ReviewOfSystemCreateDTO dto) {
@@ -40,6 +43,9 @@ public class ReviewOfSystemService {
         ReviewOfSystem reviewOfSystem = reviewOfSystemRepository
                 .findByEncounterIdAndBodySystemAndSystemDetail(dto.encounterId(), dto.bodySystem(), dto.systemDetail())
                 .orElseGet(ReviewOfSystem::new);
+        boolean creating = reviewOfSystem.getId() == null;
+        Long ownedEncounterId = reviewOfSystem.getEncounterId();
+        var before = creating ? null : amendmentAudit.capture(reviewOfSystem);
 
         Patient patient = patientRepository.findById(dto.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -59,7 +65,13 @@ public class ReviewOfSystemService {
         reviewOfSystem.setSystemDetail(dto.systemDetail());
         reviewOfSystem.setNote(dto.note());
 
-        return reviewOfSystemRepository.save(reviewOfSystem);
+        ReviewOfSystem saved = reviewOfSystemRepository.save(reviewOfSystem);
+        if (creating) {
+            amendmentAudit.added(encounter.getId(), AmendmentMedicalSheet.REVIEW_OF_SYSTEMS, saved.getId(), saved);
+        } else {
+            amendmentAudit.changed(ownedEncounterId, AmendmentMedicalSheet.REVIEW_OF_SYSTEMS, saved.getId(), before, saved);
+        }
+        return saved;
     }
 
     public ReviewOfSystem update(ReviewOfSystemUpdateDTO dto) {
@@ -71,6 +83,8 @@ public class ReviewOfSystemService {
                         "review_of_system",
                         "notfound"
                 ));
+        Long ownedEncounterId = existing.getEncounterId();
+        var before = amendmentAudit.capture(existing);
         Patient patient = patientRepository.findById(dto.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Patient not found with id " + dto.patientId(),
@@ -89,7 +103,9 @@ public class ReviewOfSystemService {
         existing.setSystemDetail(dto.systemDetail());
         existing.setNote(dto.note());
 
-        return reviewOfSystemRepository.save(existing);
+        ReviewOfSystem saved = reviewOfSystemRepository.save(existing);
+        amendmentAudit.changed(ownedEncounterId, AmendmentMedicalSheet.REVIEW_OF_SYSTEMS, saved.getId(), before, saved);
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -116,11 +132,24 @@ public class ReviewOfSystemService {
         LOG.debug("Request to delete ReviewOfSystem encounterId={} bodySystem={} systemDetail={}",
                 encounterId, bodySystem, systemDetail
         );
+        var existing = reviewOfSystemRepository
+                .findByEncounterIdAndBodySystemAndSystemDetail(encounterId, bodySystem, systemDetail);
+        Long ownedEncounterId = existing.map(ReviewOfSystem::getEncounterId).orElse(null);
+        var before = existing
+                .map(row -> amendmentAudit.capture(row))
+                .orElse(null);
         reviewOfSystemRepository.deleteByEncounterIdAndBodySystemAndSystemDetail(encounterId, bodySystem, systemDetail);
+        existing.ifPresent(row -> amendmentAudit.removed(ownedEncounterId, AmendmentMedicalSheet.REVIEW_OF_SYSTEMS, row.getId(), before));
     }
 
     public void delete(Long id) {
+        var existing = reviewOfSystemRepository.findById(id);
+        Long ownedEncounterId = existing.map(ReviewOfSystem::getEncounterId).orElse(null);
+        var before = existing
+                .map(row -> amendmentAudit.capture(row))
+                .orElse(null);
         reviewOfSystemRepository.deleteById(id);
+        existing.ifPresent(row -> amendmentAudit.removed(ownedEncounterId, AmendmentMedicalSheet.REVIEW_OF_SYSTEMS, row.getId(), before));
     }
 }
 

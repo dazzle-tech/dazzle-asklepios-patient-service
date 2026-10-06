@@ -48,4 +48,7 @@ public class EncounterPlanFieldAudit implements Serializable {
 
     @Column(name = "log_by", nullable = false)
     private String logBy;
+
+    @Column(name = "reopen_session_id")
+    private Long reopenSessionId;
 }

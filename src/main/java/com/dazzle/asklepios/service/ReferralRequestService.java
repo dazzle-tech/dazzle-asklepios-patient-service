@@ -7,6 +7,7 @@ import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.ReferralRequest;
+import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.domain.enumeration.ReferralStatus;
 import com.dazzle.asklepios.domain.enumeration.ReferralType;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
@@ -54,6 +55,7 @@ public class ReferralRequestService {
     ;
     private final AppointmentRepository appointmentRepository;
     private final NotificationHelper notificationHelper;
+    private final EncounterAmendmentAuditService amendmentAudit;
 
     public ReferralRequest createReferralRequest(ReferralRequestCreateDTO createDto) {
         LOG.info("[CREATE] ReferralRequest payload={}", createDto);
@@ -86,6 +88,7 @@ public class ReferralRequestService {
 
         try {
             ReferralRequest savedReferralRequest = referralRequestRepository.saveAndFlush(referralRequest);
+            amendmentAudit.added(encounter.getId(), AmendmentMedicalSheet.REFERRAL, savedReferralRequest.getId(), savedReferralRequest);
 
             notifyDestinationDepartmentForNewReferralRequest(
                     savedReferralRequest,
@@ -105,6 +108,9 @@ public class ReferralRequestService {
         LOG.info("[UPDATE] ReferralRequest id={} payload={}", targetReferralRequestId, updateDto);
 
         return referralRequestRepository.findById(targetReferralRequestId).map(existingReferralRequest -> {
+            Long ownedEncounterId = existingReferralRequest.getEncounter() == null
+                    ? null : existingReferralRequest.getEncounter().getId();
+            var before = amendmentAudit.capture(existingReferralRequest);
 
             Patient patient = patientRepository.findById(updateDto.patientId())
                     .orElseThrow(() -> new NotFoundAlertException(
@@ -132,6 +138,7 @@ public class ReferralRequestService {
 
             try {
                 ReferralRequest updatedReferralRequest = referralRequestRepository.saveAndFlush(existingReferralRequest);
+                amendmentAudit.changed(ownedEncounterId, AmendmentMedicalSheet.REFERRAL, updatedReferralRequest.getId(), before, updatedReferralRequest);
                 LOG.info("[UPDATE] Successfully updated ReferralRequest id={}", updatedReferralRequest.getId());
                 return updatedReferralRequest;
             } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -155,6 +162,8 @@ public class ReferralRequestService {
                     );
                 });
 
+        Long encounterId = referralRequest.getEncounter() == null ? null : referralRequest.getEncounter().getId();
+        var before = amendmentAudit.capture(referralRequest);
         Appointment appointment = appointmentRepository.findById(appointmentId)
                 .orElseThrow(() -> {
                     LOG.warn("[ACCEPT] Appointment not found id={}", appointmentId);
@@ -172,6 +181,7 @@ public class ReferralRequestService {
 
         try {
             ReferralRequest savedReferralRequest = referralRequestRepository.saveAndFlush(referralRequest);
+            amendmentAudit.changed(encounterId, AmendmentMedicalSheet.REFERRAL, savedReferralRequest.getId(), before, savedReferralRequest);
             LOG.info("[ACCEPT] ReferralRequest success id={} acceptedBy={}", referralRequestId, currentUsername);
             return savedReferralRequest;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -200,6 +210,8 @@ public class ReferralRequestService {
                     );
                 });
 
+        Long encounterId = referralRequest.getEncounter() == null ? null : referralRequest.getEncounter().getId();
+        var before = amendmentAudit.capture(referralRequest);
         referralRequest.setStatus(ReferralStatus.REJECTED);
         referralRequest.setRejectReason(rejectReason);
         referralRequest.setRejectedDate(Instant.now());
@@ -207,6 +219,7 @@ public class ReferralRequestService {
 
         try {
             ReferralRequest savedReferralRequest = referralRequestRepository.saveAndFlush(referralRequest);
+            amendmentAudit.changed(encounterId, AmendmentMedicalSheet.REFERRAL, savedReferralRequest.getId(), before, savedReferralRequest);
             LOG.info("[REJECT] ReferralRequest success id={} rejectedBy={}", referralRequestId, currentUsername);
             return savedReferralRequest;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {

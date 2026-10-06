@@ -8,6 +8,7 @@ import com.dazzle.asklepios.domain.DentalProcedure;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
@@ -68,6 +69,7 @@ public class DentalProcedureService {
     private final BillingEngineService billingEngineService;
     private final PatientServiceAndProductService patientServiceAndProductService;
     private final InsurancePriceListCoverageService insurancePriceListCoverageService;
+    private final EncounterAmendmentAuditService amendmentAudit;
 
     public DentalProcedureService(
             DentalProcedureRepository dentalProcedureRepository,
@@ -83,7 +85,8 @@ public class DentalProcedureService {
             PreAuthorizationResolutionService preAuthorizationResolutionService,
             @Lazy BillingEngineService billingEngineService,
             @Lazy PatientServiceAndProductService patientServiceAndProductService,
-            InsurancePriceListCoverageService insurancePriceListCoverageService
+            InsurancePriceListCoverageService insurancePriceListCoverageService,
+            EncounterAmendmentAuditService amendmentAudit
     ) {
         this.dentalProcedureRepository = dentalProcedureRepository;
         this.patientRepository = patientRepository;
@@ -99,6 +102,7 @@ public class DentalProcedureService {
         this.billingEngineService = billingEngineService;
         this.patientServiceAndProductService = patientServiceAndProductService;
         this.insurancePriceListCoverageService = insurancePriceListCoverageService;
+        this.amendmentAudit = amendmentAudit;
     }
 
     public DentalProcedure create(DentalProcedureCreateDTO dto) {
@@ -166,6 +170,7 @@ public class DentalProcedureService {
 
             completeDentalBillingFlow(encounter, procedureBilling, serviceBilling);
 
+            amendmentAudit.added(encounter.getId(), AmendmentMedicalSheet.DENTAL_PROCEDURES, saved.getId(), saved);
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException e) {
             throw handleConstraintViolation(e);
@@ -181,6 +186,8 @@ public class DentalProcedureService {
 
     public DentalProcedure update(DentalProcedureUpdateDTO dto) {
         DentalProcedure entity = getDentalProcedure(dto.id());
+        Long ownedEncounterId = entity.getEncounter() == null ? null : entity.getEncounter().getId();
+        var before = amendmentAudit.capture(entity);
 
         if (entity.isCancelled()) {
             throw new BadRequestAlertException(
@@ -236,6 +243,7 @@ public class DentalProcedureService {
 
             completeDentalBillingFlow(updated.getEncounter(), procedureBilling, serviceBilling);
 
+            amendmentAudit.changed(ownedEncounterId, AmendmentMedicalSheet.DENTAL_PROCEDURES, updated.getId(), before, updated);
             return updated;
         } catch (DataIntegrityViolationException | JpaSystemException e) {
             throw handleConstraintViolation(e);
@@ -247,6 +255,8 @@ public class DentalProcedureService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated."));
 
         DentalProcedure entity = getDentalProcedure(id);
+        Long ownedEncounterId = entity.getEncounter() == null ? null : entity.getEncounter().getId();
+        var before = amendmentAudit.capture(entity);
 
         if (entity.isCancelled()) {
             throw new BadRequestAlertException(
@@ -282,7 +292,9 @@ public class DentalProcedureService {
         entity.setCancelledBy(SecurityUtils.getCurrentUserLogin().orElse("unknown"));
         entity.setCancelledDate(Instant.now());
 
-        return dentalProcedureRepository.saveAndFlush(entity);
+        DentalProcedure saved = dentalProcedureRepository.saveAndFlush(entity);
+        amendmentAudit.cancelled(ownedEncounterId, AmendmentMedicalSheet.DENTAL_PROCEDURES, saved.getId(), before, saved);
+        return saved;
     }
 
     private Patient getPatient(Long patientId) {
