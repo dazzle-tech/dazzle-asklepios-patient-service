@@ -8,14 +8,15 @@ import com.dazzle.asklepios.service.DiagnosticOrderService;
 import com.dazzle.asklepios.service.EncounterCoverageService;
 import com.dazzle.asklepios.service.PatientEncounterService;
 import com.dazzle.asklepios.service.PatientPrescriptionService;
-import com.dazzle.asklepios.service.dto.patientEncounter.ReassignPractitionerDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.EncounterHistoryOfPresentIllnessDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.EncounterListFilterDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCancelDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCompletionValidationDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.ReassignPractitionerDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
-import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCompletionValidationDTO;
 import com.dazzle.asklepios.service.dto.billing.EncounterCoverageDTO;
 import com.dazzle.asklepios.service.dto.billing.UpdateEncounterCoverageRequest;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
@@ -42,7 +43,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import com.dazzle.asklepios.service.EncounterListService;
-import com.dazzle.asklepios.service.dto.patientEncounter.EncounterListFilterDTO;
 import com.dazzle.asklepios.web.rest.vm.EncounterListVM;
 import java.net.URI;
 import java.time.LocalDate;
@@ -221,12 +221,12 @@ public class PatientEncounterController {
         Set<Long> observasionEncounterIds = patientEncounterService.findEncounterIdsWithObservation(encounterIds);
         List<PatientEncounterVM> vmList = page.getContent().stream()
                 .map(encounter -> PatientEncounterVM.ofEntity(
-                                encounter,
-                                orderEncounterIds.contains(encounter.getId()),
-                                prescriptionEncounterIds.contains(encounter.getId()),
-                                observasionEncounterIds.contains(encounter.getId()),
-                                null
-                        ))
+                        encounter,
+                        orderEncounterIds.contains(encounter.getId()),
+                        prescriptionEncounterIds.contains(encounter.getId()),
+                        observasionEncounterIds.contains(encounter.getId()),
+                        null
+                ))
                 .toList();
 
         HttpHeaders headers =
@@ -313,7 +313,7 @@ public class PatientEncounterController {
         );
     }
 
-    
+
     @GetMapping("/encounter/department/{departmentId}/count/today/total-patients")
     public ResponseEntity<Long> countTodayDepartmentTotalPatients(
             @PathVariable @NotNull Long departmentId
@@ -551,10 +551,21 @@ public class PatientEncounterController {
             @PathVariable("id") @NotNull Long encounterId,
             @RequestBody(required = false) PatientEncounterCancelDTO cancelDTO
     ) {
-        LOG.debug("REST cancel PatientEncounter id={} payload={}", encounterId, cancelDTO);
+        LOG.debug(
+                "REST cancel PatientEncounter id={} payload={}",
+                encounterId,
+                cancelDTO
+        );
 
-        String cancellationReason = cancelDTO != null ? cancelDTO.cancellationReason() : null;
-        PatientEncounter cancelled = patientEncounterService.cancelEncounter(encounterId, cancellationReason);
+        String cancellationReason =
+                cancelDTO != null ? cancelDTO.cancellationReason() : null;
+
+        PatientEncounter cancelled =
+                patientEncounterService.cancelEncounter(
+                        encounterId,
+                        cancellationReason
+                );
+
         return ResponseEntity.ok(cancelled);
     }
 

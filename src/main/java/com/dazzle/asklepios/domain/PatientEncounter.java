@@ -2,6 +2,7 @@ package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.DischargeType;
 import com.dazzle.asklepios.domain.enumeration.EncounterBillingStatus;
+import com.dazzle.asklepios.domain.enumeration.EncounterCancellationReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
@@ -54,7 +55,14 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "encounters"})
     private Patient patient;
 
-    @Column(name = "encounter_number", nullable = false, unique = true, length = 50, updatable = false, insertable = false)
+    @Column(
+            name = "encounter_number",
+            nullable = false,
+            unique = true,
+            length = 50,
+            updatable = false,
+            insertable = false
+    )
     private String encounterNumber;
 
     @NotNull
@@ -86,7 +94,13 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "follow_up_encounter_id")
-    @JsonIgnoreProperties({"followUpEncounter", "patient", "appointment", "hibernateLazyInitializer", "handler"})
+    @JsonIgnoreProperties({
+            "followUpEncounter",
+            "patient",
+            "appointment",
+            "hibernateLazyInitializer",
+            "handler"
+    })
     private PatientEncounter followUpEncounter;
 
     @NotNull
@@ -103,7 +117,11 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "notes", columnDefinition = "text")
     private String notes;
 
-    @Column(name = "department_daily_sequence_number", insertable = false, updatable = false)
+    @Column(
+            name = "department_daily_sequence_number",
+            insertable = false,
+            updatable = false
+    )
     private Integer departmentDailySequenceNumber;
 
     @Column(name = "encounter_date", updatable = false)
@@ -136,12 +154,20 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @Column(name = "physical_examination_summery")
     private String physicalExaminationSummery;
-    
+
     @Column(name = "completed_by", length = 50)
     private String completedBy;
 
     @Column(name = "completed_at")
     private Instant completedAt;
+
+    /*
+     * Cancellation
+     */
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cancellation_reason_type", length = 50)
+    private EncounterCancellationReason cancellationReasonType;
 
     @Column(name = "cancellation_reason", columnDefinition = "text")
     private String cancellationReason;
@@ -151,6 +177,10 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
+
+    /*
+     * Billing
+     */
 
     @NotNull
     @Enumerated(EnumType.STRING)
@@ -170,6 +200,7 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
 
     @Column(name = "patient_insurance_id")
     private Long patientInsuranceId;
+
     @Column(name = "history_of_present_illness")
     private String historyOfPresentIllness;
 
@@ -177,27 +208,23 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "encounter_status")
     private EncounterStatus encounterStatus = EncounterStatus.OPEN;
 
-
     @PrePersist
     @PreUpdate
-
     private void syncEncounterStatus() {
 
         if (status != null) {
-
             this.encounterStatus = computeEncounterStatus(status);
-
         }
-
     }
 
-
     private EncounterStatus computeEncounterStatus(TreatmentStatus status) {
+
         if (status == null) {
             return EncounterStatus.OPEN;
         }
 
         return switch (status) {
+
             case NEW,
                  PENDING_PAYMENT,
                  WAITING_TRIAGE ->

@@ -1,9 +1,7 @@
 package com.dazzle.asklepios.service.dto.surgicalHistory;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.PastOrPresent;
 
 import java.io.Serializable;
 import java.util.Date;
@@ -16,7 +14,6 @@ public record SurgicalHistoryUpdateDTO(
 
         @NotNull
         Long patientId,
-
 
         String surgery,
 
@@ -33,7 +30,11 @@ public record SurgicalHistoryUpdateDTO(
         Boolean hasImplantsOrDevices,
 
         String implantsOrDevicesDescription,
-      Boolean patientIsFree
+
+        @NotNull
+        Boolean patientIsFree,
+
+        String freeText
 
 ) implements Serializable {
 }

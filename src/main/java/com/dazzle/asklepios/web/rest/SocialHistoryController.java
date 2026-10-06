@@ -72,9 +72,7 @@ public class SocialHistoryController {
     ) {
         LOG.debug("REST update SocialHistory payload={}", updateDTO);
 
-        SocialHistoryUpdateDTO sanitizedDTO = sanitizeUpdateDTO(updateDTO);
-
-        SocialHistory updated = socialHistoryService.update(sanitizedDTO);
+        SocialHistory updated = socialHistoryService.update(updateDTO);
 
         LOG.info("REST update SocialHistory - updated id={}", updated.getId());
 
@@ -141,58 +139,6 @@ public class SocialHistoryController {
                 page.getContent(),
                 headers,
                 HttpStatus.OK
-        );
-    }
-
-    private SocialHistoryUpdateDTO sanitizeUpdateDTO(SocialHistoryUpdateDTO dto) {
-
-        Date smokeStartDate = dto.smokeStartDate();
-        Integer cigaretteAmount = dto.cigaretteAmount();
-        String cigaretteType = dto.cigaretteType();
-        Date smokeQuitDate = dto.smokeQuitDate();
-        String typeOfAlcohol = dto.typeOfAlcohol();
-        Date alcoholSinceWhen = dto.alcoholSinceWhen();
-        String route = dto.route();
-        String frequency = dto.frequency();
-
-        if (Boolean.FALSE.equals(dto.isCurrentSmoker())) {
-            smokeStartDate = null;
-            cigaretteAmount = null;
-            cigaretteType = null;
-        }
-
-        if (Boolean.FALSE.equals(dto.isPreviousSmoker())) {
-            smokeQuitDate = null;
-        }
-
-        if (Boolean.FALSE.equals(dto.alcoholConsumption())) {
-            typeOfAlcohol = null;
-            alcoholSinceWhen = null;
-        }
-
-        if (Boolean.FALSE.equals(dto.substanceUse())) {
-            route = null;
-            frequency = null;
-        }
-
-        return new SocialHistoryUpdateDTO(
-                dto.id(),
-                dto.patientId(),
-                dto.isCurrentSmoker(),
-                smokeStartDate,
-                cigaretteAmount,
-                cigaretteType,
-                dto.isPreviousSmoker(),
-                smokeQuitDate,
-                dto.exposureToSecondHandSmoke(),
-                dto.alcoholConsumption(),
-                typeOfAlcohol,
-                alcoholSinceWhen,
-                dto.substanceUse(),
-                route,
-                frequency,
-                dto.physicalLimitation(),
-                dto.diagnosedEatingDisorders()
         );
     }
 }
