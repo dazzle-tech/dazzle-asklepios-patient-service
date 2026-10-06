@@ -551,6 +551,275 @@ public class PatientEncounterService {
         return result;
     }
 
+
+    @Transactional(readOnly = true)
+    public Page<PatientEncounter> filterOpdEncounters(
+            Long facilityId,
+            PatientEncounterSearchFilterDTO filter,
+            Pageable pageable
+    ) {
+        LOG.debug(
+                "Service filter OPD PatientEncounters facilityId={} filter={} pageable={}",
+                facilityId,
+                filter,
+                pageable
+        );
+
+        LocalDate today = LocalDate.now();
+
+        LocalDate effectiveFrom =
+                filter.fromDate() != null
+                        ? filter.fromDate()
+                        : today;
+
+        LocalDate effectiveTo =
+                filter.toDate() != null
+                        ? filter.toDate()
+                        : today;
+
+        List<TreatmentStatus> effectiveStatuses =
+                (filter.statuses() != null && !filter.statuses().isEmpty())
+                        ? filter.statuses()
+                        : List.of(
+                        TreatmentStatus.NEW,
+                        TreatmentStatus.ONGOING
+                );
+
+        boolean hasPatientName =
+                filter.patientName() != null
+                        && !filter.patientName().isBlank();
+
+        boolean hasMrn =
+                filter.mrn() != null
+                        && !filter.mrn().isBlank();
+
+        boolean hasEncounterNumber =
+                filter.encounterNumber() != null
+                        && !filter.encounterNumber().isBlank();
+
+        boolean hasChief =
+                filter.chiefComplaint() != null
+                        && !filter.chiefComplaint().isBlank();
+
+        LOG.debug(
+                "[OPD FILTER] facilityId={} effectiveFrom={} effectiveTo={} " +
+                        "treatmentStatuses={} hasPatientName={} hasMrn={} " +
+                        "hasEncounterNumber={} hasChief={}",
+                facilityId,
+                effectiveFrom,
+                effectiveTo,
+                effectiveStatuses,
+                hasPatientName,
+                hasMrn,
+                hasEncounterNumber,
+                hasChief
+        );
+
+        Specification<PatientEncounter> spec = (root, query, cb) -> {
+
+            applyFetches(root, query);
+
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(
+                    cb.equal(
+                            root.get("facilityId"),
+                            facilityId
+                    )
+            );
+            predicates.add(
+                    cb.equal(
+                            root.get("encounterType"),
+                            EncounterType.CLINIC
+                    )
+            );
+
+            predicates.add(
+                    cb.between(
+                            root.get("encounterDate"),
+                            effectiveFrom,
+                            effectiveTo
+                    )
+            );
+
+            predicates.add(
+                    root.get("status").in(effectiveStatuses)
+            );
+
+            if (
+                    filter.encounterReasons() != null
+                            && !filter.encounterReasons().isEmpty()
+            ) {
+                predicates.add(
+                        root.get("encounterReason")
+                                .in(filter.encounterReasons())
+                );
+            }
+
+            if (
+                    filter.priorities() != null
+                            && !filter.priorities().isEmpty()
+            ) {
+                predicates.add(
+                        root.get("priorityLevel")
+                                .in(filter.priorities())
+                );
+            }
+
+            if (filter.practitionerId() != null) {
+                predicates.add(
+                        cb.equal(
+                                root.get("practitionerId"),
+                                filter.practitionerId()
+                        )
+                );
+            }
+
+            if (hasEncounterNumber) {
+                predicates.add(
+                        cb.like(
+                                cb.lower(
+                                        cb.coalesce(
+                                                root.get("encounterNumber"),
+                                                ""
+                                        )
+                                ),
+                                "%" +
+                                        filter.encounterNumber()
+                                                .trim()
+                                                .toLowerCase()
+                                        + "%"
+                        )
+                );
+            }
+
+            if (hasChief) {
+                predicates.add(
+                        cb.like(
+                                cb.lower(
+                                        cb.coalesce(
+                                                root.get("chiefComplaint"),
+                                                ""
+                                        )
+                                ),
+                                "%" +
+                                        filter.chiefComplaint()
+                                                .trim()
+                                                .toLowerCase()
+                                        + "%"
+                        )
+                );
+            }
+
+            if (hasPatientName || hasMrn) {
+
+                Join<PatientEncounter, Patient> patientJoin =
+                        root.join(
+                                "patient",
+                                JoinType.INNER
+                        );
+
+                if (hasMrn) {
+                    predicates.add(
+                            cb.equal(
+                                    patientJoin.get("medicalRecordNumber"),
+                                    filter.mrn().trim()
+                            )
+                    );
+                }
+
+                if (hasPatientName) {
+
+                    String[] tokens =
+                            filter.patientName()
+                                    .trim()
+                                    .toLowerCase()
+                                    .split("\\s+");
+
+                    Expression<String> first =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("firstName"),
+                                            ""
+                                    )
+                            );
+
+                    Expression<String> second =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("secondName"),
+                                            ""
+                                    )
+                            );
+
+                    Expression<String> third =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("thirdName"),
+                                            ""
+                                    )
+                            );
+
+                    Expression<String> last =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("lastName"),
+                                            ""
+                                    )
+                            );
+
+                    Predicate[] tokenPredicates =
+                            Arrays.stream(tokens)
+                                    .filter(
+                                            token ->
+                                                    token != null
+                                                            && !token.isBlank()
+                                    )
+                                    .map(token -> {
+
+                                        String like =
+                                                "%" + token + "%";
+
+                                        return cb.or(
+                                                cb.like(first, like),
+                                                cb.like(second, like),
+                                                cb.like(third, like),
+                                                cb.like(last, like)
+                                        );
+                                    })
+                                    .toArray(Predicate[]::new);
+
+                    if (tokenPredicates.length > 0) {
+                        predicates.add(
+                                cb.and(tokenPredicates)
+                        );
+                    }
+                }
+            }
+
+            return cb.and(
+                    predicates.toArray(
+                            new Predicate[0]
+                    )
+            );
+        };
+
+        Page<PatientEncounter> result =
+                patientEncounterRepository.findAll(
+                        spec,
+                        pageable
+                );
+
+        LOG.debug(
+                "[OPD FILTER] result totalElements={} totalPages={} pageNumber={} pageSize={}",
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.getNumber(),
+                result.getSize()
+        );
+
+        return result;
+    }
+
     private void applyFetches(Root<PatientEncounter> root, CriteriaQuery<?> query) {
         if (query == null || query.getResultType() == null) {
             return;
