@@ -3,6 +3,7 @@ import com.dazzle.asklepios.client.NamiCloud.dto.NamiRegisterTerminalResponse;
 import com.dazzle.asklepios.domain.PointOfSaleConfiguration;
 import com.dazzle.asklepios.service.PointOfSaleConfigurationService;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleConfigurationDTO;
+import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleWebhookRegistrationDTO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -82,6 +83,15 @@ public class PointOfSaleConfigurationController {
 
         return ResponseEntity.ok(
                 pointOfSaleConfigurationService.registerTerminal(id)
+        );
+    }
+
+    @PostMapping("/pos-configration/{id}/register-webhook")
+    public ResponseEntity<PointOfSaleWebhookRegistrationDTO> registerWebhook(
+            @PathVariable Long id
+    ) {
+        return ResponseEntity.ok(
+                pointOfSaleConfigurationService.registerTerminalWebhook(id)
         );
     }
 

@@ -60,18 +60,33 @@ public class CurrentMedicationService {
     public CurrentMedication create(CurrentMedicationCreateDTO dto) {
         LOG.info("[CREATE] CurrentMedication dto={}", dto);
 
-        Patient patient = getPatientOrThrow(dto.patientId());
-        activeIngredientHelper.validateActiveIngredientExists(
-                dto.activeIngredientId()
+        validate(
+                dto.patientIsFree(),
+                dto.freeText(),
+                dto.activeIngredientId(),
+                dto.startDate()
         );
+
+        boolean isFree = Boolean.TRUE.equals(dto.patientIsFree());
+
+        Patient patient = getPatientOrThrow(dto.patientId());
+
+        if (!isFree) {
+            activeIngredientHelper.validateActiveIngredientExists(
+                    dto.activeIngredientId()
+            );
+        }
 
         CurrentMedication entity = CurrentMedication.builder()
                 .patient(patient)
-                .activeIngredientId(dto.activeIngredientId())
-                .dosage(dto.dosage())
-                .unit(dto.unit())
-                .frequency(dto.frequency())
-                .startDate(dto.startDate())
+                .activeIngredientId(isFree ? null : dto.activeIngredientId())
+                .dosage(isFree ? null : dto.dosage())
+                .unit(isFree ? null : dto.unit())
+                .frequency(isFree ? null : dto.frequency())
+                .startDate(isFree ? null : dto.startDate())
+                .patientIsFree(isFree)
+                .freeText(isFree ? dto.freeText().trim() : null)
+                .status(PatientHistoryStatus.ACTIVE)
                 .build();
 
         try {
@@ -96,6 +111,13 @@ public class CurrentMedicationService {
     public CurrentMedication update(CurrentMedicationUpdateDTO dto) {
         LOG.info("[UPDATE] CurrentMedication dto={}", dto);
 
+        validate(
+                dto.patientIsFree(),
+                dto.freeText(),
+                dto.activeIngredientId(),
+                dto.startDate()
+        );
+
         CurrentMedication entity =
                 currentMedicationRepository.findById(dto.id())
                         .orElseThrow(() -> new NotFoundAlertException(
@@ -104,17 +126,24 @@ public class CurrentMedicationService {
                                 "notfound"
                         ));
 
+        boolean isFree = Boolean.TRUE.equals(dto.patientIsFree());
+
         Patient patient = getPatientOrThrow(dto.patientId());
-        activeIngredientHelper.validateActiveIngredientExists(
-                dto.activeIngredientId()
-        );
+
+        if (!isFree) {
+            activeIngredientHelper.validateActiveIngredientExists(
+                    dto.activeIngredientId()
+            );
+        }
 
         entity.setPatient(patient);
-        entity.setActiveIngredientId(dto.activeIngredientId());
-        entity.setDosage(dto.dosage());
-        entity.setUnit(dto.unit());
-        entity.setFrequency(dto.frequency());
-        entity.setStartDate(dto.startDate());
+        entity.setActiveIngredientId(isFree ? null : dto.activeIngredientId());
+        entity.setDosage(isFree ? null : dto.dosage());
+        entity.setUnit(isFree ? null : dto.unit());
+        entity.setFrequency(isFree ? null : dto.frequency());
+        entity.setStartDate(isFree ? null : dto.startDate());
+        entity.setPatientIsFree(isFree);
+        entity.setFreeText(isFree ? dto.freeText().trim() : null);
 
         try {
             CurrentMedication updated =
@@ -223,10 +252,55 @@ public class CurrentMedicationService {
         );
     }
 
+    private void validate(
+            Boolean patientIsFree,
+            String freeText,
+            Long activeIngredientId,
+            Date startDate
+    ) {
+        boolean isFree = Boolean.TRUE.equals(patientIsFree);
+
+        if (isFree) {
+            if (freeText == null || freeText.trim().isEmpty()) {
+                throw new BadRequestAlertException(
+                        "Free text is required.",
+                        "currentMedication",
+                        "freeText.required"
+                );
+            }
+
+            return;
+        }
+
+        if (activeIngredientId == null) {
+            throw new BadRequestAlertException(
+                    "Active ingredient is required.",
+                    "currentMedication",
+                    "activeIngredient.required"
+            );
+        }
+
+        if (startDate == null) {
+            throw new BadRequestAlertException(
+                    "Start date is required.",
+                    "currentMedication",
+                    "startDate.required"
+            );
+        }
+
+        if (startDate.after(new Date())) {
+            throw new BadRequestAlertException(
+                    "Start date must be in the past or present.",
+                    "currentMedication",
+                    "startDate.future"
+            );
+        }
+    }
+
     private void handleConstraints(RuntimeException exception) {
         Throwable root = getRootCause(exception);
         String message =
-                (root != null ? root.getMessage() : exception.getMessage());
+                root != null ? root.getMessage() : exception.getMessage();
         String lower =
                 message != null ? message.toLowerCase() : "";
 

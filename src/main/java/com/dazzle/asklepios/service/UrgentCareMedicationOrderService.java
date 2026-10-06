@@ -90,6 +90,42 @@ public class UrgentCareMedicationOrderService {
 
         List<UrgentCareMedicationOrder> orders = new java.util.ArrayList<>();
 
+        if (Boolean.TRUE.equals(dto.isStat())) {
+
+            UrgentCareMedicationOrder order = new UrgentCareMedicationOrder();
+
+            order.setActiveIngredientId(dto.activeIngredientId());
+            order.setInstructionType(dto.instructionType());
+            order.setInstructionText("STAT");
+            order.setIsStat(true);
+
+            order.setDose(null);
+            order.setDoseUnit(null);
+            order.setRoute(null);
+            order.setFrequencyNumber(null);
+            order.setFrequencyUnit(null);
+            order.setDuration(null);
+            order.setStartTime(null);
+            order.setDoseTime(null);
+
+            order.setStatus(MedicationOrderStatus.NEW);
+            order.setPatient(patient);
+            order.setEncounter(encounter);
+
+            UrgentCareMedicationOrder saved =
+                    urgentCareMedicationOrderRepository.save(order);
+
+            saved.setOrderGroupId(saved.getId());
+
+            saved = urgentCareMedicationOrderRepository.save(saved);
+
+            notificationForUCCMedicationOrderCreated(saved, patient, encounter);
+
+            orders.add(saved);
+
+            return orders;
+        }
+
         if (dto.instructionType() ==
                 com.dazzle.asklepios.domain.enumeration.MedicationInstructionType.MANUAL_INSTRUCTIONS) {
 
@@ -98,6 +134,7 @@ public class UrgentCareMedicationOrderService {
             order.setActiveIngredientId(dto.activeIngredientId());
             order.setInstructionType(dto.instructionType());
             order.setInstructionText(dto.instructionText());
+            order.setIsStat(Boolean.TRUE.equals(dto.isStat()));
             order.setDose(dto.dose());
             order.setDoseUnit(dto.doseUnit());
             order.setRoute(dto.route());
@@ -139,6 +176,7 @@ public class UrgentCareMedicationOrderService {
             order.setActiveIngredientId(dto.activeIngredientId());
             order.setInstructionType(dto.instructionType());
             order.setInstructionText(dto.instructionText());
+            order.setIsStat(Boolean.TRUE.equals(dto.isStat()));
             order.setDose(dto.dose());
             order.setDoseUnit(dto.doseUnit());
             order.setRoute(dto.route());
@@ -157,12 +195,12 @@ public class UrgentCareMedicationOrderService {
             orders.add(order);
 
             if (dto.frequencyUnit() ==
-                    com.dazzle.asklepios.domain.enumeration.Unit.MINUTES) {
+                    com.dazzle.asklepios.domain.enumeration.FrequencyList.MINUTES) {
 
                 doseTime = doseTime.plusMinutes(dto.frequencyNumber());
 
             } else if (dto.frequencyUnit() ==
-                    com.dazzle.asklepios.domain.enumeration.Unit.HOURS) {
+                    com.dazzle.asklepios.domain.enumeration.FrequencyList.HOURS) {
 
                 doseTime = doseTime.plusHours(dto.frequencyNumber());
             }
@@ -201,6 +239,7 @@ public class UrgentCareMedicationOrderService {
         existing.setActiveIngredientId(dto.activeIngredientId());
         existing.setInstructionType(dto.instructionType());
         existing.setInstructionText(dto.instructionText());
+        existing.setIsStat(Boolean.TRUE.equals(dto.isStat()));
         existing.setDose(dto.dose());
         existing.setDoseUnit(dto.doseUnit());
         existing.setRoute(dto.route());
@@ -213,6 +252,65 @@ public class UrgentCareMedicationOrderService {
         LOG.debug("[SERVICE][UPDATE] saved -> id={} status={}", saved.getId(), saved.getStatus());
         return saved;
     }
+
+    public List<UrgentCareMedicationOrder> updateGroup(
+            Long orderGroupId,
+            UrgentCareMedicationOrderUpdateDTO dto
+    ) {
+        LOG.debug(
+                "[SERVICE][UPDATE_GROUP] request -> orderGroupId={} payload={}",
+                orderGroupId,
+                dto
+        );
+
+        activeIngredientHelper.validateActiveIngredientExists(dto.activeIngredientId());
+
+        List<UrgentCareMedicationOrder> orders =
+                urgentCareMedicationOrderRepository.findByOrderGroupId(orderGroupId);
+
+        if (orders.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "notfound",
+                    "patient_ucc_medication_order",
+                    "No medication orders found for orderGroupId " + orderGroupId
+            );
+        }
+
+        for (UrgentCareMedicationOrder order : orders) {
+
+            if (order.getStatus() != MedicationOrderStatus.NEW) {
+                throw new BadRequestAlertException(
+                        "invalid_status",
+                        "patient_ucc_medication_order",
+                        "Medication order can only be edited when status is NEW"
+                );
+            }
+
+            order.setActiveIngredientId(dto.activeIngredientId());
+            order.setInstructionType(dto.instructionType());
+            order.setInstructionText(dto.instructionText());
+            order.setIsStat(Boolean.TRUE.equals(dto.isStat()));
+            order.setDose(dto.dose());
+            order.setDoseUnit(dto.doseUnit());
+            order.setRoute(dto.route());
+            order.setFrequencyNumber(dto.frequencyNumber());
+            order.setFrequencyUnit(dto.frequencyUnit());
+            order.setDuration(dto.duration());
+            order.setStartTime(dto.startTime());
+        }
+
+        List<UrgentCareMedicationOrder> savedOrders =
+                urgentCareMedicationOrderRepository.saveAll(orders);
+
+        LOG.debug(
+                "[SERVICE][UPDATE_GROUP] saved -> orderGroupId={} size={}",
+                orderGroupId,
+                savedOrders.size()
+        );
+
+        return savedOrders;
+    }
+
 
     @Transactional(readOnly = true)
     public UrgentCareMedicationOrder findOne(Long id) {
@@ -382,6 +480,7 @@ public class UrgentCareMedicationOrderService {
                 first.getActiveIngredientId(),
                 first.getInstructionType(),
                 first.getInstructionText(),
+                first.getIsStat(),
                 first.getDose(),
                 first.getDoseUnit(),
                 first.getRoute(),
@@ -498,14 +597,20 @@ public class UrgentCareMedicationOrderService {
     }
 
     public UrgentCareMedicationOrder doubleCheck(Long orderId, String username) {
-        LOG.debug("[STATUS][DOUBLE_CHECK] request -> orderId={} username={}", orderId, username);
+        LOG.debug(
+                "[STATUS][DOUBLE_CHECK] request -> orderId={} username={}",
+                orderId,
+                username
+        );
 
         UrgentCareMedicationOrder order = getOrder(orderId);
 
-        ensureTransition(order, MedicationOrderStatus.ADMINISTERED);
-
         if (order.getStatus() != MedicationOrderStatus.WAITING_DOUBLE_CHECK) {
-            LOG.error("[STATUS][DOUBLE_CHECK] invalid status -> currentStatus={}", order.getStatus());
+            LOG.error(
+                    "[STATUS][DOUBLE_CHECK] invalid status -> currentStatus={}",
+                    order.getStatus()
+            );
+
             throw new BadRequestAlertException(
                     "invalid_transition",
                     "patient_ucc_medication_order",
@@ -513,18 +618,38 @@ public class UrgentCareMedicationOrderService {
             );
         }
 
+        if (order.getAdministeredBy() != null &&
+                order.getAdministeredBy().equals(username)) {
+
+            LOG.error(
+                    "[STATUS][DOUBLE_CHECK] same user not allowed -> administeredBy={} doubleCheckUser={}",
+                    order.getAdministeredBy(),
+                    username
+            );
+
+            throw new BadRequestAlertException(
+                    "same_user_double_check",
+                    "patient_ucc_medication_order",
+                    "Double-check must be performed by another user"
+            );
+        }
+
         order.setStatus(MedicationOrderStatus.ADMINISTERED);
         order.setDoubleCheckedBy(username);
         order.setDoubleCheckedDate(Instant.now());
 
-        UrgentCareMedicationOrder saved = urgentCareMedicationOrderRepository.save(order);
+        UrgentCareMedicationOrder saved =
+                urgentCareMedicationOrderRepository.save(order);
 
-        LOG.debug("[STATUS][DOUBLE_CHECK] saved -> id={} status={} doubleCheckedBy={}",
-                saved.getId(), saved.getStatus(), saved.getDoubleCheckedBy());
+        LOG.debug(
+                "[STATUS][DOUBLE_CHECK] saved -> id={} status={} doubleCheckedBy={}",
+                saved.getId(),
+                saved.getStatus(),
+                saved.getDoubleCheckedBy()
+        );
 
         return saved;
     }
-
     public UrgentCareMedicationOrder discard(Long orderId, String username, String discardReason) {
         LOG.debug("[STATUS][DISCARD] request -> orderId={} username={} reason={}", orderId, username, discardReason);
 

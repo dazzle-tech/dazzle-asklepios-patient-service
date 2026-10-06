@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.web.rest.vm.uccmedicationorders;
 
+import com.dazzle.asklepios.domain.enumeration.FrequencyList;
 import com.dazzle.asklepios.domain.enumeration.MedicationInstructionType;
 import com.dazzle.asklepios.domain.enumeration.MedicationOrderStatus;
 import com.dazzle.asklepios.domain.enumeration.Unit;
@@ -13,11 +14,12 @@ public record PatientUccMedicationOrderGroupVM(
         Long activeIngredientId,
         MedicationInstructionType instructionType,
         String instructionText,
+        Boolean isStat,
         Long dose,
         String doseUnit,
         String route,
         Integer frequencyNumber,
-        Unit frequencyUnit,
+        FrequencyList frequencyUnit,
         Integer duration,
         LocalTime startTime,
         Integer doseCount,

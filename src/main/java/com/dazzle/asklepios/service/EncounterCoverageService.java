@@ -22,6 +22,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Objects;
+import java.util.Optional;
+
 @Service
 @RequiredArgsConstructor
 public class EncounterCoverageService {
@@ -37,6 +40,7 @@ public class EncounterCoverageService {
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
+    private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
 
     /**
      * Walk-in preview/prepare often send SELF_PAY as the form default.
@@ -69,9 +73,22 @@ public class EncounterCoverageService {
                         .findFirstByEncounterIdOrderByIdDesc(encounterId)
                         .orElse(null);
 
-        BillingCoverageType coverageType = resolveCoverageType(encounter, payment);
-        Long patientInsuranceId = resolvePatientInsuranceId(encounter, payment);
-        PaymentTypes paymentTypes = payment == null ? null : payment.getPaymentTypes();
+        BillingCoverageType coverageType;
+        Long patientInsuranceId;
+        PaymentTypes paymentTypes;
+        Optional<FollowUpReviewDefaultServicePolicy.InheritedVisitCoverage> inheritedCoverage =
+                followUpReviewDefaultServicePolicy.coverageMatchingCompletedVisit(encounter);
+        if (inheritedCoverage.isPresent()) {
+            coverageType = inheritedCoverage.get().coverageType();
+            patientInsuranceId = inheritedCoverage.get().patientInsuranceId();
+            paymentTypes = coverageType == BillingCoverageType.INSURANCE
+                    ? PaymentTypes.INSURANCE_PLAN
+                    : PaymentTypes.CASH;
+        } else {
+            coverageType = resolveCoverageType(encounter, payment);
+            patientInsuranceId = resolvePatientInsuranceId(encounter, payment);
+            paymentTypes = payment == null ? null : payment.getPaymentTypes();
+        }
         boolean insuranceVisit = coverageType == BillingCoverageType.INSURANCE;
 
         boolean hasPendingPreAuthorization =
@@ -96,12 +113,14 @@ public class EncounterCoverageService {
             UpdateEncounterCoverageRequest request
     ) {
         PatientEncounter encounter = getEncounter(encounterId);
-        validateCoverageRequest(encounter, request);
+        UpdateEncounterCoverageRequest effectiveRequest =
+                coverageRequestForFollowUp(encounter, request);
+        validateCoverageRequest(encounter, effectiveRequest);
 
-        encounter.setCoverageType(request.coverageType());
+        encounter.setCoverageType(effectiveRequest.coverageType());
         encounter.setPatientInsuranceId(
-                request.coverageType() == BillingCoverageType.INSURANCE
-                        ? request.patientInsuranceId()
+                effectiveRequest.coverageType() == BillingCoverageType.INSURANCE
+                        ? effectiveRequest.patientInsuranceId()
                         : null
         );
 
@@ -110,11 +129,11 @@ public class EncounterCoverageService {
         LOG.info(
                 "[ENCOUNTER_COVERAGE] Saved encounterId={} coverageType={} patientInsuranceId={}",
                 encounterId,
-                request.coverageType(),
+                effectiveRequest.coverageType(),
                 encounter.getPatientInsuranceId()
         );
 
-        if (request.coverageType() == BillingCoverageType.INSURANCE) {
+        if (effectiveRequest.coverageType() == BillingCoverageType.INSURANCE) {
             encounterPreAuthorizationSyncService.scheduleSyncAfterCommit(
                     encounterId,
                     BillingCoverageType.INSURANCE
@@ -149,7 +168,18 @@ public class EncounterCoverageService {
             BillingCoverageType coverageType,
             Long patientInsuranceId
     ) {
-        if (encounter == null || coverageType == null) {
+        if (encounter == null) {
+            return;
+        }
+
+        Optional<FollowUpReviewDefaultServicePolicy.InheritedVisitCoverage> inheritedCoverage =
+                followUpReviewDefaultServicePolicy.coverageMatchingCompletedVisit(encounter);
+        if (inheritedCoverage.isPresent()) {
+            coverageType = inheritedCoverage.get().coverageType();
+            patientInsuranceId = inheritedCoverage.get().patientInsuranceId();
+        }
+
+        if (coverageType == null) {
             return;
         }
 
@@ -173,6 +203,35 @@ public class EncounterCoverageService {
                 coverageType,
                 encounter.getPatientInsuranceId()
         );
+    }
+
+    private UpdateEncounterCoverageRequest coverageRequestForFollowUp(
+            PatientEncounter encounter,
+            UpdateEncounterCoverageRequest request
+    ) {
+        return followUpReviewDefaultServicePolicy
+                .coverageMatchingCompletedVisit(encounter)
+                .map(inherited -> {
+                    if (request.coverageType() != inherited.coverageType()
+                            || !Objects.equals(
+                                    request.patientInsuranceId(),
+                                    inherited.patientInsuranceId()
+                            )) {
+                        LOG.info(
+                                "[ENCOUNTER_COVERAGE] Follow-up within {} days of completed visit {}. "
+                                        + "Keeping original coverageType={} patientInsuranceId={}",
+                                FollowUpReviewDefaultServicePolicy.REVIEW_WINDOW_DAYS,
+                                inherited.previousEncounterId(),
+                                inherited.coverageType(),
+                                inherited.patientInsuranceId()
+                        );
+                    }
+                    return new UpdateEncounterCoverageRequest(
+                            inherited.coverageType(),
+                            inherited.patientInsuranceId()
+                    );
+                })
+                .orElse(request);
     }
 
     private PatientEncounter getEncounter(Long encounterId) {

@@ -39,6 +39,9 @@ public record VitalSignsUpdateDTO(
         @NotNull
         Integer respiratoryRate,
 
+        String fastingBloodGlucose,
+
+
         @NotNull
         Boolean isTriage,
 

@@ -66,6 +66,24 @@ public class NormalRangeMatcherService {
         return getBestNormalRangeMatchForPatient(candidates, patient).orElse(null);
     }
 
+    /**
+     * Same matching rules as {@link #findBestNormalRange(Long, Long)}, using a patient already loaded by the caller.
+     */
+    public NormalRangeMatchDTO findBestNormalRange(Long profileTestId, Patient patient) {
+        if (profileTestId == null || patient == null) {
+            return null;
+        }
+
+        List<NormalRangeMatchDTO> candidates =
+                diagnosticTestNormalRangeClient.findAllByProfileTestIdInternal(profileTestId);
+
+        if (candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+
+        return getBestNormalRangeMatchForPatient(candidates, patient).orElse(null);
+    }
+
     private int ageSpecificityScore(NormalRangeMatchDTO normalRange) {
         boolean hasFrom = normalRange.ageFrom() != null;
         boolean hasTo = normalRange.ageTo() != null;
@@ -79,6 +97,7 @@ public class NormalRangeMatcherService {
         String patientGender = toGenderString(patient.getSexAtBirth());
         LocalDate patientDateOfBirth = patient.getDateOfBirth();
         return candidates.stream()
+                .filter(normalRange -> isActive(normalRange))
                 .filter(normalRange -> matchesGender(normalRange, patientGender))
                 .filter(normalRange -> matchesAge(normalRange, patientDateOfBirth))
                 .filter(normalRange -> matchesCondition(normalRange, patient))
@@ -90,6 +109,15 @@ public class NormalRangeMatcherService {
                                 .reversed()
                 )
                 .findFirst();
+    }
+
+    /**
+     * Check if a normal range is active.
+     * A range is considered active if isActive is null (backward compatibility) or explicitly true.
+     * Ranges with isActive=false are considered inactive/deprecated and are excluded.
+     */
+    private boolean isActive(NormalRangeMatchDTO normalRange) {
+        return normalRange.isActive() == null || Boolean.TRUE.equals(normalRange.isActive());
     }
 
     private boolean matchesGender(NormalRangeMatchDTO normalRange, String patientGender) {

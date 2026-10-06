@@ -1,7 +1,7 @@
 package com.dazzle.asklepios.service.validation;
 
 import com.dazzle.asklepios.domain.enumeration.MedicationInstructionType;
-import com.dazzle.asklepios.domain.enumeration.Unit;
+import com.dazzle.asklepios.domain.enumeration.FrequencyList;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderUpdateDTO;
 import jakarta.validation.ConstraintValidator;
@@ -18,12 +18,13 @@ public class MedicationInstructionValidator
 
         MedicationInstructionType instructionType = null;
         String instructionText = null;
+        Boolean isStat = false;
         Long dose = null;
         String doseUnit = null;
         String route = null;
 
         Integer frequencyNumber = null;
-        Unit frequencyUnit = null;
+        FrequencyList frequencyUnit = null;
         Integer duration = null;
         java.time.LocalTime startTime = null;
 
@@ -31,6 +32,7 @@ public class MedicationInstructionValidator
 
             instructionType = dto.instructionType();
             instructionText = dto.instructionText();
+            isStat = dto.isStat();
             dose = dto.dose();
             doseUnit = dto.doseUnit();
             route = dto.route();
@@ -44,6 +46,7 @@ public class MedicationInstructionValidator
 
             instructionType = dto.instructionType();
             instructionText = dto.instructionText();
+            isStat = dto.isStat();
             dose = dto.dose();
             doseUnit = dto.doseUnit();
             route = dto.route();
@@ -52,6 +55,10 @@ public class MedicationInstructionValidator
             frequencyUnit = dto.frequencyUnit();
             duration = dto.duration();
             startTime = dto.startTime();
+        }
+
+        if (Boolean.TRUE.equals(isStat)) {
+            return true;
         }
 
         if (instructionType == null) {
@@ -87,6 +94,7 @@ public class MedicationInstructionValidator
                         .addConstraintViolation();
 
                 valid = false;
+
             } else if (dose <= 0) {
                 context.buildConstraintViolationWithTemplate(
                                 "dose must be greater than 0")
@@ -114,7 +122,6 @@ public class MedicationInstructionValidator
                 valid = false;
             }
 
-            // Frequency Number
             if (frequencyNumber == null) {
 
                 context.buildConstraintViolationWithTemplate(
@@ -134,7 +141,6 @@ public class MedicationInstructionValidator
                 valid = false;
             }
 
-            // Frequency Unit
             if (frequencyUnit == null) {
 
                 context.buildConstraintViolationWithTemplate(
@@ -144,7 +150,8 @@ public class MedicationInstructionValidator
 
                 valid = false;
 
-            } else if (frequencyUnit != Unit.MINUTES && frequencyUnit != Unit.HOURS) {
+            } else if (frequencyUnit != FrequencyList.MINUTES
+                    && frequencyUnit != FrequencyList.HOURS) {
 
                 context.buildConstraintViolationWithTemplate(
                                 "frequencyUnit must be MINUTES or HOURS")
@@ -154,7 +161,6 @@ public class MedicationInstructionValidator
                 valid = false;
             }
 
-            // Duration
             if (duration == null) {
 
                 context.buildConstraintViolationWithTemplate(
@@ -174,7 +180,6 @@ public class MedicationInstructionValidator
                 valid = false;
             }
 
-            // Start Time
             if (startTime == null) {
 
                 context.buildConstraintViolationWithTemplate(

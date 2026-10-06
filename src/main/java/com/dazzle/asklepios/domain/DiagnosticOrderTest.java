@@ -124,4 +124,10 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
 
    @Column(name = "icd_diagnosis_id")
     private Long icdDiagnosisId;
+
+    @Column(name = "confirmed_by", length = 50)
+    private String confirmedBy;
+
+    @Column(name = "confirmed_at")
+    private Instant confirmedAt;
 }

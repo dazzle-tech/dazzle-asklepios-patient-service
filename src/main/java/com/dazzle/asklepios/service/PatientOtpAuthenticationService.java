@@ -7,7 +7,6 @@ import com.dazzle.asklepios.domain.PatientLoginOtp;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.repository.PatientLoginOtpRepository;
-import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patientPortal.PatientOtpRequestDTO;
 import com.dazzle.asklepios.service.dto.patientPortal.PatientOtpVerifyDTO;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
@@ -309,17 +308,24 @@ LOG.info(
             data.put("otp", otp);
             data.put("patient_mobile", patient.getPrimaryMobileNumber());
 
-            String login = SecurityUtils.getCurrentUserLogin().orElse(null);
+            String language = patient.getPreferredLanguage() != null
+                    && !patient.getPreferredLanguage().isBlank()
+                    ? patient.getPreferredLanguage()
+                    : "en";
+
+            NotificationResolvedRecipientDTO phoneRecipient =
+                    NotificationResolvedRecipientDTO.builder()
+                            .recipientType("PATIENT")
+                            .recipientId(patient.getId())
+                            .recipientName(patientName)
+                            .recipientPhone(patient.getPrimaryMobileNumber())
+                            .toPhone(patient.getPrimaryMobileNumber())
+                            .language(language)
+                            .build();
 
             Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
-                    notificationHelper.resolveRecipients(
-                            null,
-                            login,
-                            patient.getCreatedBy(),
-                            patient,
-                            null,
-                            false
-                    );
+                    new LinkedHashMap<>();
+            recipientsByRule.put("PATIENT_PHONE", List.of(phoneRecipient));
 
             notificationHelper.sendNotification(
                     null,
