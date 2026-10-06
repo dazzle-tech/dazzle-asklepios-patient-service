@@ -71,6 +71,9 @@ public class UrgentCareMedicationOrder extends AbstractAuditingEntity implements
     @Column(name = "instruction_text", columnDefinition = "text")
     private String instructionText;
 
+    @Column(name = "is_stat", nullable = false)
+    private Boolean isStat = false;
+
     @Column(name = "dose")
     private Long dose;
 
