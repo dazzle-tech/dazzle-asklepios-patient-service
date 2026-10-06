@@ -679,7 +679,7 @@ public class PatientEncounterService {
         return value == null || value.isBlank();
     }
 
-    public PatientEncounter cancelEncounter(Long encounterId) {
+    public PatientEncounter cancelEncounter(Long encounterId, String cancellationReason) {
         LOG.info("[CANCEL] PatientEncounter id={}", encounterId);
 
         PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
@@ -717,6 +717,9 @@ public class PatientEncounterService {
         );
 
         encounter.setStatus(TreatmentStatus.CANCELLED);
+        encounter.setCancellationReason(isBlank(cancellationReason) ? null : cancellationReason.trim());
+        encounter.setCancelledBy(currentUsername());
+        encounter.setCancelledAt(Instant.now());
         try {
             PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
             encounterAssignToBedService.dischargeActiveAssignmentByEncounterId(saved.getId());
