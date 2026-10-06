@@ -11,6 +11,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.List;
@@ -88,38 +89,45 @@ public interface FinancialDocumentRepository extends JpaRepository<FinancialDocu
             @Param("documentType") String documentType,
             @Param("year") int year
     );
-
     @Query(
             value = """
-                    SELECT fd.*
-                    FROM financial_documents fd
-                    INNER JOIN patient_encounters pe ON pe.id = fd.encounter_id
-                    INNER JOIN patient_insurances pi ON pi.id = pe.patient_insurance_id
-                    WHERE fd.document_type = 'INVOICE'
-                      AND fd.document_subtype = 'INSURANCE_CLAIM'
-                      AND fd.status IN (:statuses)
-                      AND (
-                            (:useNphiesFilter = 1 AND LOWER(pi.payer_nphies_id) IN (:payerNphiesIds))
-                            OR
-                            (:useNphiesFilter = 0 AND pi.payor_id = :payorId)
-                          )
-                      AND fd.created_date >= :fromDate
-                      AND fd.created_date < :toDate
-                      AND NOT EXISTS (
-                            SELECT 1
-                            FROM claim_request cr
-                            WHERE cr.financial_document_id = fd.id
-                              AND cr.status IN (:activeClaimStatuses)
-                              AND (
-                                    cr.claim_type = :claimType
-                                    OR (
-                                        :claimType = 'PROFESSIONAL'
-                                        AND cr.claim_type IS NULL
-                                    )
-                                  )
-                          )
-                    ORDER BY fd.created_date DESC
-                    """,
+                SELECT fd.*
+                FROM financial_documents fd
+                INNER JOIN patient_encounters pe ON pe.id = fd.encounter_id
+                INNER JOIN patient_insurances pi ON pi.id = pe.patient_insurance_id
+                WHERE fd.document_type = 'INVOICE'
+                  AND fd.document_subtype = 'INSURANCE_CLAIM'
+                  AND fd.status IN (:statuses)
+                  AND (
+                        (:useNphiesFilter = 1 AND LOWER(pi.payer_nphies_id) IN (:payerNphiesIds))
+                        OR
+                        (:useNphiesFilter = 0 AND pi.payor_id = :payorId)
+                      )
+                  AND fd.created_date >= :fromDate
+                  AND fd.created_date < :toDate
+                AND pe.encounter_date >= COALESCE(
+                    CAST(:encounterDateFrom AS DATE),
+                    pe.encounter_date
+                )
+                AND pe.encounter_date <= COALESCE(
+                    CAST(:encounterDateTo AS DATE),
+                    pe.encounter_date
+                )
+                  AND NOT EXISTS (
+                        SELECT 1
+                        FROM claim_request cr
+                        WHERE cr.financial_document_id = fd.id
+                          AND cr.status IN (:activeClaimStatuses)
+                          AND (
+                                cr.claim_type = :claimType
+                                OR (
+                                    :claimType = 'PROFESSIONAL'
+                                    AND cr.claim_type IS NULL
+                                )
+                              )
+                      )
+                ORDER BY fd.created_date DESC
+                """,
             nativeQuery = true
     )
     List<FinancialDocument> findPendingInsuranceClaimInvoices(
@@ -128,6 +136,8 @@ public interface FinancialDocumentRepository extends JpaRepository<FinancialDocu
             @Param("payerNphiesIds") Collection<String> payerNphiesIds,
             @Param("fromDate") Instant fromDate,
             @Param("toDate") Instant toDate,
+            @Param("encounterDateFrom") LocalDate encounterDateFrom,
+            @Param("encounterDateTo") LocalDate encounterDateTo,
             @Param("statuses") Collection<String> statuses,
             @Param("activeClaimStatuses") Collection<String> activeClaimStatuses,
             @Param("claimType") String claimType

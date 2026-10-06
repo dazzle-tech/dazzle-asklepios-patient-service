@@ -11,6 +11,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -108,6 +111,82 @@ public class NamiCloudClient {
                 .body(
                         NamiRegisterTerminalResponse.class
                 );
+    }
+
+    public NamiGenerateWebhookUrlResponse generateWebhookUrl(
+            PointOfSaleConfiguration configuration
+    ) {
+        NamiGenerateWebhookUrlRequest request =
+                new NamiGenerateWebhookUrlRequest(
+                        configuration.getClientId(),
+                        configuration.getTerminalId(),
+                        configuration.getClientSecret(),
+                        namiProperties.webhookBaseUrl(),
+                        namiProperties.webhookPath(),
+                        namiProperties.webhookSignatureAlgorithm(),
+                        namiProperties.webhookTokenExpiryHours(),
+                        namiProperties.webhookRetryAttempts()
+                );
+
+        String token =
+                namiAuthenticationService.getToken(
+                        configuration.getClientId(),
+                        configuration.getClientSecret()
+                );
+
+        return restClient()
+                .post()
+                .uri(namiProperties.webhookGenerateUrlEndpoint())
+                .header("Authorization", token)
+                .body(request)
+                .retrieve()
+                .body(NamiGenerateWebhookUrlResponse.class);
+    }
+
+    public NamiRegisterWebhookResponse registerWebhook(
+            PointOfSaleConfiguration configuration,
+            String callbackUrl
+    ) {
+        NamiRegisterWebhookRequest request =
+                new NamiRegisterWebhookRequest(
+                        configuration.getTerminalId(),
+                        callbackUrl,
+                        configuration.getClientSecret()
+                );
+
+        String token =
+                namiAuthenticationService.getToken(
+                        configuration.getClientId(),
+                        configuration.getClientSecret()
+                );
+
+        return restClient()
+                .post()
+                .uri(namiProperties.webhookRegisterEndpoint())
+                .header("Authorization", token)
+                .body(request)
+                .retrieve()
+                .body(NamiRegisterWebhookResponse.class);
+    }
+
+    public String resolveCallbackUrl(
+            NamiGenerateWebhookUrlResponse response
+    ) {
+
+        if (response == null) {
+            return null;
+        }
+
+        return Stream.of(
+                        response.callbackUrl(),
+                        response.webhookUrl(),
+                        response.url(),
+                        response.tokenizedUrl()
+                )
+                .filter(Objects::nonNull)
+                .filter(value -> !value.isBlank())
+                .findFirst()
+                .orElse(null);
     }
 
     public NamiTransactionResponse getTransactionResponse(

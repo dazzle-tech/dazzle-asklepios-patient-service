@@ -60,7 +60,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
@@ -135,6 +137,7 @@ public class PatientEncounterService {
     private final UserRepository userRepository;
     private final EncounterDischargeLogRepository encounterDischargeLogRepository;
     private final PatientEncounterFieldAuditRepository auditRepository;
+    private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
 
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
@@ -164,7 +167,8 @@ public class PatientEncounterService {
             PractitionerHelper practitionerHelper,
             PractitionerClient practitionerClient,
             @Lazy BillingEngineService billingEngineService,
-            NotificationHelper notificationHelper, InvoiceGenerationService invoiceGenerationService, UserRepository userRepository, EncounterDischargeLogRepository encounterDischargeLogRepository, PatientEncounterFieldAuditRepository auditRepository) {
+            NotificationHelper notificationHelper, InvoiceGenerationService invoiceGenerationService, UserRepository userRepository, EncounterDischargeLogRepository encounterDischargeLogRepository, PatientEncounterFieldAuditRepository auditRepository,
+            FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy) {
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.entityManager = entityManager;
@@ -201,6 +205,7 @@ public class PatientEncounterService {
 
         this.encounterDischargeLogRepository = encounterDischargeLogRepository;
         this.auditRepository = auditRepository;
+        this.followUpReviewDefaultServicePolicy = followUpReviewDefaultServicePolicy;
     }
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
@@ -265,6 +270,8 @@ public class PatientEncounterService {
                 .encounterDate(createDTO.encounterDate())
                 .encounterTime(createDTO.encounterTime()).build();
 
+        applyCompletedVisitCoverage(patientEncounterToCreate);
+
         try {
             PatientEncounter createdPatientEncounter = patientEncounterRepository.saveAndFlush(patientEncounterToCreate);
             entityManager.refresh(createdPatientEncounter); // keep ONLY here (create)
@@ -285,6 +292,23 @@ public class PatientEncounterService {
             LOG.error("[CREATE] PatientEncounter failed (unexpected) payload={}", createDTO, ex);
             throw ex;
         }
+    }
+
+    private void applyCompletedVisitCoverage(PatientEncounter encounter) {
+        followUpReviewDefaultServicePolicy
+                .coverageMatchingCompletedVisit(encounter)
+                .ifPresent(inherited -> {
+                    encounter.setCoverageType(inherited.coverageType());
+                    encounter.setPatientInsuranceId(inherited.patientInsuranceId());
+                    LOG.info(
+                            "[CREATE] Follow-up within {} days of completed visit {}. "
+                                    + "Using original coverageType={} patientInsuranceId={}",
+                            FollowUpReviewDefaultServicePolicy.REVIEW_WINDOW_DAYS,
+                            inherited.previousEncounterId(),
+                            inherited.coverageType(),
+                            inherited.patientInsuranceId()
+                    );
+                });
     }
 
     public PatientEncounter update(Long patientEncounterId, PatientEncounterUpdateDTO updateDTO) {
@@ -502,8 +526,25 @@ public class PatientEncounterService {
 
             return cb.and(predicates.toArray(new Predicate[0]));
         };
+        Pageable effectivePageable = pageable;
 
-        Page<PatientEncounter> result = patientEncounterRepository.findAll(spec, pageable);
+        if (Boolean.TRUE.equals(filter.sortByPriority())) {
+            Sort prioritySort = Sort.by(
+                    Sort.Order.desc("priorityLevel"),
+                    Sort.Order.desc("encounterDate"),
+                    Sort.Order.desc("encounterTime"),
+                    Sort.Order.desc("id")
+            );
+
+            effectivePageable = PageRequest.of(
+                    pageable.getPageNumber(),
+                    pageable.getPageSize(),
+                    prioritySort
+            );
+        }
+
+        Page<PatientEncounter> result =
+                patientEncounterRepository.findAll(spec, effectivePageable);
 
         LOG.debug("[FILTER] PatientEncounters result totalElements={} totalPages={} pageNumber={} pageSize={}", result.getTotalElements(), result.getTotalPages(), result.getNumber(), result.getSize());
 
@@ -907,7 +948,7 @@ public class PatientEncounterService {
         return value == null || value.isBlank();
     }
 
-    public PatientEncounter cancelEncounter(Long encounterId) {
+    public PatientEncounter cancelEncounter(Long encounterId, String cancellationReason) {
         LOG.info("[CANCEL] PatientEncounter id={}", encounterId);
 
         PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
@@ -945,6 +986,9 @@ public class PatientEncounterService {
         );
 
         encounter.setStatus(TreatmentStatus.CANCELLED);
+        encounter.setCancellationReason(isBlank(cancellationReason) ? null : cancellationReason.trim());
+        encounter.setCancelledBy(currentUsername());
+        encounter.setCancelledAt(Instant.now());
         try {
             PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
             encounterAssignToBedService.dischargeActiveAssignmentByEncounterId(saved.getId());
@@ -2572,10 +2616,13 @@ public class PatientEncounterService {
     private boolean resolvesToWaitingTriageAfterRegistrationPayment(
             PatientEncounter encounter
     ) {
+        if (EncounterType.CLINIC.equals(encounter.getEncounterType())
+                && EncounterReason.URGENT_VISIT.equals(encounter.getEncounterReason())) {
+            return false;
+        }
+
         return EncounterType.EMERGENCY.equals(encounter.getEncounterType())
-                || EncounterReason.URGENT_VISIT.equals(
-                encounter.getEncounterReason()
-        );
+                || EncounterReason.URGENT_VISIT.equals(encounter.getEncounterReason());
     }
 
     public List<PatientEncounter> getEncountersByIds(List<Long> encounterIds) {

@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service.validation;
 
+import com.dazzle.asklepios.domain.enumeration.FrequencyList;
 import com.dazzle.asklepios.domain.enumeration.MedicationInstructionType;
 import com.dazzle.asklepios.domain.enumeration.Unit;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderCreateDTO;
@@ -23,7 +24,7 @@ public class MedicationInstructionValidator
         String route = null;
 
         Integer frequencyNumber = null;
-        Unit frequencyUnit = null;
+        FrequencyList frequencyUnit = null;
         Integer duration = null;
         java.time.LocalTime startTime = null;
 
@@ -144,7 +145,7 @@ public class MedicationInstructionValidator
 
                 valid = false;
 
-            } else if (frequencyUnit != Unit.MINUTES && frequencyUnit != Unit.HOURS) {
+            } else if (frequencyUnit != FrequencyList.MINUTES && frequencyUnit != FrequencyList.HOURS) {
 
                 context.buildConstraintViolationWithTemplate(
                                 "frequencyUnit must be MINUTES or HOURS")

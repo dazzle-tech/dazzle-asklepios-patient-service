@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders;
 
+import com.dazzle.asklepios.domain.enumeration.FrequencyList;
 import com.dazzle.asklepios.domain.enumeration.MedicationInstructionType;
 import com.dazzle.asklepios.domain.enumeration.Unit;
 import com.dazzle.asklepios.service.validation.ValidMedicationInstruction;
@@ -29,7 +30,7 @@ public record UrgentCareMedicationOrderCreateDTO(
         String route,
 
         Integer frequencyNumber,
-        Unit frequencyUnit,
+        FrequencyList frequencyUnit,
         Integer duration,
         java.time.LocalTime startTime
 ) {
