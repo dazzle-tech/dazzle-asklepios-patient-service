@@ -219,7 +219,7 @@ public class PatientDocumentService {
                     );
                 }
             }
-            case IQAMA, BORDER_NUMBER -> {
+            case IQAMA -> {
                 if (!num.startsWith("2")) {
                     throw new BadRequestAlertException(
                             "Saudi " + type.name() + " number must start with 2.",
