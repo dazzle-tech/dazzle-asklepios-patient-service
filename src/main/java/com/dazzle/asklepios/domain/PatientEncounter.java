@@ -1,6 +1,13 @@
 package com.dazzle.asklepios.domain;
 
-import com.dazzle.asklepios.domain.enumeration.*;
+import com.dazzle.asklepios.domain.enumeration.DischargeType;
+import com.dazzle.asklepios.domain.enumeration.EncounterBillingStatus;
+import com.dazzle.asklepios.domain.enumeration.EncounterCancellationReason;
+import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
+import com.dazzle.asklepios.domain.enumeration.EncounterReason;
+import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
+import com.dazzle.asklepios.domain.enumeration.EncounterType;
+import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.Column;
