@@ -5,8 +5,11 @@ import com.dazzle.asklepios.service.AppointmentRequestService;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestCancelDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestCreateDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestUpdateDTO;
+import com.dazzle.asklepios.service.dto.appointmentRequest.RecurringAppointmentRequestDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointmentRequest.AppointmentRequestResponseVM;
+import com.dazzle.asklepios.web.rest.vm.appointmentRequest.RecurringAppointmentPreviewVM;
+import com.dazzle.asklepios.web.rest.vm.appointmentRequest.RecurringAppointmentRequestCreateResponseVM;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +39,20 @@ public class AppointmentRequestController {
     ) {
         AppointmentRequestResponseVM result = appointmentRequestService.create(dto);
         return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/appointment-requests/recurring/preview")
+    public ResponseEntity<RecurringAppointmentPreviewVM> previewRecurring(
+            @Valid @RequestBody RecurringAppointmentRequestDTO dto
+    ) {
+        return ResponseEntity.ok(appointmentRequestService.previewRecurring(dto));
+    }
+
+    @PostMapping("/appointment-requests/recurring")
+    public ResponseEntity<RecurringAppointmentRequestCreateResponseVM> createRecurring(
+            @Valid @RequestBody RecurringAppointmentRequestDTO dto
+    ) {
+        return ResponseEntity.ok(appointmentRequestService.createRecurring(dto));
     }
 
     @PutMapping("/appointment-requests/approve")

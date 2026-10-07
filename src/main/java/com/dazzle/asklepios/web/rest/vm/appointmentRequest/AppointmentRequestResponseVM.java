@@ -2,6 +2,7 @@ package com.dazzle.asklepios.web.rest.vm.appointmentRequest;
 
 import com.dazzle.asklepios.domain.enumeration.AppointmentRequestStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
+import com.dazzle.asklepios.domain.enumeration.RecurrenceUnit;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 
 import java.time.Instant;
@@ -40,7 +41,14 @@ public record AppointmentRequestResponseVM(
         Instant createdDate,
         String lastModifiedBy,
         Instant lastModifiedDate,
-        LocalDate preferredDate
+        LocalDate preferredDate,
+        Boolean recurring,
+        String recurrenceDays,
+        LocalDate recurrenceStartDate,
+        Integer recurrencePeriod,
+        RecurrenceUnit recurrenceUnit,
+        Instant preferredStartTime,
+        Instant preferredEndTime
 )
 {
 

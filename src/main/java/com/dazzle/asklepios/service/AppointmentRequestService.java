@@ -10,7 +10,9 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.AppointmentRequestStatus;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
+import com.dazzle.asklepios.domain.enumeration.DayOfWeek;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
+import com.dazzle.asklepios.domain.enumeration.RecurrenceUnit;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.AppointmentRepository;
@@ -22,6 +24,7 @@ import com.dazzle.asklepios.service.dto.appointment.AppointmentBookPatientDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestCancelDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestCreateDTO;
 import com.dazzle.asklepios.service.dto.appointmentRequest.AppointmentRequestUpdateDTO;
+import com.dazzle.asklepios.service.dto.appointmentRequest.RecurringAppointmentRequestDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
@@ -29,18 +32,31 @@ import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointmentRequest.AppointmentRequestResponseVM;
+import com.dazzle.asklepios.web.rest.vm.appointmentRequest.RecurringAppointmentDayVM;
+import com.dazzle.asklepios.web.rest.vm.appointmentRequest.RecurringAppointmentPreviewVM;
+import com.dazzle.asklepios.web.rest.vm.appointmentRequest.RecurringAppointmentRequestCreateResponseVM;
+import com.dazzle.asklepios.web.rest.vm.appointmentRequest.RecurringAvailableSlotVM;
+import com.dazzle.asklepios.web.rest.vm.appointmentRequest.RecurringSkippedDayVM;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -63,7 +79,14 @@ public class AppointmentRequestService {
     DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm").withZone(ZoneId.systemDefault());
 
     public AppointmentRequestResponseVM create(AppointmentRequestCreateDTO dto) {
-        log.debug("Request to create AppointmentRequest dto={}", dto);
+        return persist(dto, null);
+    }
+
+    private AppointmentRequestResponseVM persist(
+            AppointmentRequestCreateDTO dto,
+            RecurringAppointmentRequestDTO recurring
+    ) {
+        log.debug("Request to create AppointmentRequest dto={} recurring={}", dto, recurring != null);
 
         Patient patient = patientRepository.findById(dto.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -94,6 +117,15 @@ public class AppointmentRequestService {
         request.setNote(dto.note());
         request.setStatus(AppointmentRequestStatus.REQUESTED);
         request.setPreferredDate(dto.preferredDate());
+        request.setPreferredStartTime(dto.preferredStartTime());
+        request.setPreferredEndTime(dto.preferredEndTime());
+        request.setRecurring(recurring != null);
+        if (recurring != null) {
+            request.setRecurrenceDays(formatRecurrenceDays(recurring.daysOfWeek()));
+            request.setRecurrenceStartDate(recurring.startDate());
+            request.setRecurrencePeriod(recurring.period());
+            request.setRecurrenceUnit(recurring.periodUnit());
+        }
 
         AppointmentRequest saved = appointmentRequestRepository.save(request);
 
@@ -104,6 +136,59 @@ public class AppointmentRequestService {
         );
 
         return toResponseVM(saved);    }
+
+    @Transactional(readOnly = true)
+    public RecurringAppointmentPreviewVM previewRecurring(RecurringAppointmentRequestDTO dto) {
+        log.debug("Request to preview recurring AppointmentRequests dto={}", dto);
+        RecurringPlan plan = buildRecurringPlan(dto);
+        return toPreview(plan);
+    }
+
+    public RecurringAppointmentRequestCreateResponseVM createRecurring(RecurringAppointmentRequestDTO dto) {
+        log.debug("Request to create recurring AppointmentRequests dto={}", dto);
+
+        if (dto.priority() == null) {
+            throw new BadRequestAlertException(
+                    "Priority is required",
+                    ENTITY_NAME,
+                    "priorityrequired"
+            );
+        }
+
+        RecurringPlan plan = buildRecurringPlan(dto);
+        List<Appointment> selectedSlots = resolveSelectedSlots(dto.selectedAppointmentIds(), plan);
+        if (selectedSlots.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "No days with an available slot can be requested",
+                    ENTITY_NAME,
+                    "noslots"
+            );
+        }
+
+        List<AppointmentRequestResponseVM> created = new ArrayList<>();
+        for (Appointment slot : selectedSlots) {
+            created.add(persist(new AppointmentRequestCreateDTO(
+                    dto.patientId(),
+                    dto.facilityId(),
+                    dto.departmentId(),
+                    dto.sourceEncounterId(),
+                    dto.requestedResourceType(),
+                    dto.requestedResourceId(),
+                    dto.priority(),
+                    dto.reason(),
+                    dto.note(),
+                    toLocalDate(slot.getStartDatetime()),
+                    slot.getStartDatetime(),
+                    slot.getEndDatetime()
+            ), dto));
+        }
+
+        int daysWithoutSlot = (int) plan.days().stream()
+                .filter(day -> day.slot() == null)
+                .count();
+
+        return new RecurringAppointmentRequestCreateResponseVM(created, plan.skippedDays(), daysWithoutSlot);
+    }
 
     public AppointmentRequestResponseVM approve(AppointmentRequestUpdateDTO dto) {
         log.debug("Request to approve AppointmentRequest dto={}", dto);
@@ -343,6 +428,213 @@ public class AppointmentRequestService {
         );
     }
 
+    private RecurringPlan buildRecurringPlan(RecurringAppointmentRequestDTO dto) {
+        validateRecurringPeriod(dto);
+
+        patientRepository.findById(dto.patientId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient not found with id: " + dto.patientId(),
+                        ENTITY_NAME,
+                        "patient.notfound"
+                ));
+        patientEncounterRepository.findById(dto.sourceEncounterId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Patient encounter not found with id: " + dto.sourceEncounterId(),
+                        ENTITY_NAME,
+                        "sourceEncounter.notfound"
+                ));
+        facilityHelper.validateFacilityExists(dto.facilityId());
+        departmentHelper.validateDepartmentExists(dto.departmentId());
+
+        Set<DayOfWeek> selectedDays = EnumSet.copyOf(dto.daysOfWeek());
+        LocalDate rangeStart = dto.startDate();
+        LocalDate rangeEnd = dto.periodUnit() == RecurrenceUnit.MONTH
+                ? rangeStart.plusMonths(dto.period())
+                : rangeStart.plusWeeks(dto.period());
+
+        List<LocalDate> occurrences = new ArrayList<>();
+        for (LocalDate cursor = rangeStart; cursor.isBefore(rangeEnd); cursor = cursor.plusDays(1)) {
+            DayOfWeek day = DayOfWeek.valueOf(cursor.getDayOfWeek().name());
+            if (selectedDays.contains(day)) {
+                occurrences.add(cursor);
+            }
+        }
+        if (occurrences.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "No dates fall on the selected days in this period",
+                    ENTITY_NAME,
+                    "nodates"
+            );
+        }
+
+        ZoneId zone = ZoneId.systemDefault();
+        Instant from = rangeStart.atStartOfDay(zone).toInstant();
+        Instant to = rangeEnd.atStartOfDay(zone).toInstant();
+        Instant now = Instant.now();
+
+        List<Appointment> resourceAppointments = appointmentRepository
+                .findByFacilityIdAndDepartmentIdAndResourceTypeAndResourceIdAndStartDatetimeGreaterThanEqualAndStartDatetimeLessThanOrderByStartDatetimeAsc(
+                        dto.facilityId(),
+                        dto.departmentId(),
+                        dto.requestedResourceType(),
+                        dto.requestedResourceId(),
+                        from,
+                        to
+                );
+        List<Appointment> patientAppointments = appointmentRepository
+                .findByFacilityIdAndPatient_IdAndStartDatetimeGreaterThanEqualAndStartDatetimeLessThan(
+                        dto.facilityId(),
+                        dto.patientId(),
+                        from,
+                        to
+                );
+
+        Set<LocalDate> occupiedDates = new HashSet<>();
+        for (Appointment appointment : resourceAppointments) {
+            if (occupiesDay(appointment) && appointment.getStartDatetime() != null) {
+                occupiedDates.add(toLocalDate(appointment.getStartDatetime()));
+            }
+        }
+        for (Appointment appointment : patientAppointments) {
+            if (occupiesDay(appointment) && appointment.getStartDatetime() != null) {
+                occupiedDates.add(toLocalDate(appointment.getStartDatetime()));
+            }
+        }
+
+        List<Appointment> availableSlots = resourceAppointments.stream()
+                .filter(appointment -> appointment.getStatus() == AppointmentStatus.NEW)
+                .filter(appointment -> appointment.getStartDatetime() != null && !appointment.getStartDatetime().isBefore(now))
+                .filter(appointment -> !occupiedDates.contains(toLocalDate(appointment.getStartDatetime())))
+                .sorted(Comparator.comparing(Appointment::getStartDatetime))
+                .toList();
+
+        Map<LocalDate, Appointment> earliestSlotByDate = new LinkedHashMap<>();
+        for (Appointment slot : availableSlots) {
+            earliestSlotByDate.putIfAbsent(toLocalDate(slot.getStartDatetime()), slot);
+        }
+
+        List<MappedDay> days = new ArrayList<>();
+        List<RecurringSkippedDayVM> skippedDays = new ArrayList<>();
+        for (LocalDate date : occurrences) {
+            DayOfWeek day = DayOfWeek.valueOf(date.getDayOfWeek().name());
+            if (occupiedDates.contains(date)) {
+                skippedDays.add(new RecurringSkippedDayVM(
+                        date,
+                        day,
+                        "Appointment already exists on this day"
+                ));
+                continue;
+            }
+            days.add(new MappedDay(date, day, earliestSlotByDate.get(date)));
+        }
+
+        return new RecurringPlan(days, skippedDays, availableSlots);
+    }
+
+    private void validateRecurringPeriod(RecurringAppointmentRequestDTO dto) {
+        if (dto.periodUnit() == RecurrenceUnit.WEEK && dto.period() > 52) {
+            throw new BadRequestAlertException(
+                    "Period cannot be more than 52 weeks",
+                    ENTITY_NAME,
+                    "periodlimit"
+            );
+        }
+        if (dto.periodUnit() == RecurrenceUnit.MONTH && dto.period() > 24) {
+            throw new BadRequestAlertException(
+                    "Period cannot be more than 24 months",
+                    ENTITY_NAME,
+                    "periodlimit"
+            );
+        }
+    }
+
+    private List<Appointment> resolveSelectedSlots(List<Long> selectedAppointmentIds, RecurringPlan plan) {
+        if (selectedAppointmentIds == null || selectedAppointmentIds.isEmpty()) {
+            return plan.days().stream()
+                    .map(MappedDay::slot)
+                    .filter(Objects::nonNull)
+                    .toList();
+        }
+
+        Map<Long, Appointment> availableById = new LinkedHashMap<>();
+        for (Appointment slot : plan.availableSlots()) {
+            if (slot.getId() != null) {
+                availableById.putIfAbsent(slot.getId(), slot);
+            }
+        }
+
+        Set<LocalDate> usedDates = new HashSet<>();
+        List<Appointment> selected = new ArrayList<>();
+        for (Long appointmentId : selectedAppointmentIds) {
+            Appointment slot = availableById.get(appointmentId);
+            if (slot == null || slot.getStartDatetime() == null) {
+                continue;
+            }
+            if (usedDates.add(toLocalDate(slot.getStartDatetime()))) {
+                selected.add(slot);
+            }
+        }
+        return selected;
+    }
+
+    private RecurringAppointmentPreviewVM toPreview(RecurringPlan plan) {
+        List<RecurringAppointmentDayVM> days = plan.days().stream()
+                .map(day -> new RecurringAppointmentDayVM(
+                        day.date(),
+                        day.dayOfWeek(),
+                        day.slot() != null ? day.slot().getId() : null,
+                        day.slot() != null ? day.slot().getStartDatetime() : null,
+                        day.slot() != null ? day.slot().getEndDatetime() : null,
+                        day.slot() != null
+                ))
+                .toList();
+
+        List<RecurringAvailableSlotVM> slots = plan.availableSlots().stream()
+                .map(slot -> new RecurringAvailableSlotVM(
+                        slot.getId(),
+                        toLocalDate(slot.getStartDatetime()),
+                        slot.getStartDatetime(),
+                        slot.getEndDatetime()
+                ))
+                .toList();
+
+        return new RecurringAppointmentPreviewVM(days, plan.skippedDays(), slots);
+    }
+
+    private boolean occupiesDay(Appointment appointment) {
+        AppointmentStatus status = appointment.getStatus();
+        return status != null
+                && status != AppointmentStatus.NEW
+                && status != AppointmentStatus.CANCELLED
+                && status != AppointmentStatus.NO_SHOW;
+    }
+
+    private LocalDate toLocalDate(Instant instant) {
+        return instant.atZone(ZoneId.systemDefault()).toLocalDate();
+    }
+
+    private String formatRecurrenceDays(List<DayOfWeek> days) {
+        if (days == null || days.isEmpty()) {
+            return null;
+        }
+        return days.stream()
+                .filter(Objects::nonNull)
+                .map(DayOfWeek::name)
+                .distinct()
+                .sorted()
+                .collect(Collectors.joining(","));
+    }
+
+    private record MappedDay(LocalDate date, DayOfWeek dayOfWeek, Appointment slot) {
+    }
+
+    private record RecurringPlan(
+            List<MappedDay> days,
+            List<RecurringSkippedDayVM> skippedDays,
+            List<Appointment> availableSlots
+    ) {
+    }
+
     private AppointmentRequest getRequest(Long id) {
         return appointmentRequestRepository.findById(id)
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -382,7 +674,14 @@ public class AppointmentRequestService {
                 entity.getCreatedDate(),
                 entity.getLastModifiedBy(),
                 entity.getLastModifiedDate(),
-                entity.getPreferredDate()
+                entity.getPreferredDate(),
+                entity.getRecurring(),
+                entity.getRecurrenceDays(),
+                entity.getRecurrenceStartDate(),
+                entity.getRecurrencePeriod(),
+                entity.getRecurrenceUnit(),
+                entity.getPreferredStartTime(),
+                entity.getPreferredEndTime()
         );
     }
     private void notifyAppointmentRequestEvent(
@@ -566,6 +865,26 @@ public class AppointmentRequestService {
                 request.getPreferredDate() != null
                         ? request.getPreferredDate().toString()
                         : ""
+        );
+        data.put(
+                "preferred_start_time",
+                request.getPreferredStartTime() != null ? formatter.format(request.getPreferredStartTime()) : ""
+        );
+        data.put(
+                "preferred_end_time",
+                request.getPreferredEndTime() != null ? formatter.format(request.getPreferredEndTime()) : ""
+        );
+
+        data.put("recurring", Boolean.TRUE.equals(request.getRecurring()));
+        data.put("recurrence_days", request.getRecurrenceDays() != null ? request.getRecurrenceDays() : "");
+        data.put(
+                "recurrence_start_date",
+                request.getRecurrenceStartDate() != null ? request.getRecurrenceStartDate().toString() : ""
+        );
+        data.put("recurrence_period", request.getRecurrencePeriod());
+        data.put(
+                "recurrence_unit",
+                request.getRecurrenceUnit() != null ? request.getRecurrenceUnit().name() : ""
         );
 
         data.put(
