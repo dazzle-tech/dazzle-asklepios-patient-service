@@ -808,7 +808,7 @@ public class BillingAllocationService {
                 amount
         );
 
-        updatePatientItemAfterDebit(
+        updatePatientItem(
                 item,
                 responsibility
         );
@@ -1807,53 +1807,6 @@ public class BillingAllocationService {
                         PaymentStatus.PARTIALLY_PAID
                 );
 
-            } else {
-                item.setPaymentStatus(
-                        PaymentStatus.PENDING
-                );
-            }
-        }
-
-        patientServiceAndProductRepository.save(
-                item
-        );
-    }
-
-    /**
-     * Debit allocation closes the charge but the patient still owes it.
-     * That must not be stored as a cash payment on the service row.
-     */
-    private void updatePatientItemAfterDebit(
-            PatientServiceAndProduct item,
-            BillingChargeResponsibility responsibility
-    ) {
-        BigDecimal patientPaid =
-                money(
-                        responsibility.getAllocatedAmount()
-                );
-
-        BigDecimal patientRemaining =
-                money(
-                        responsibility.getOutstandingAmount()
-                );
-
-        item.setPaidAmount(
-                patientPaid
-        );
-
-        item.setRemainingAmount(
-                patientRemaining
-        );
-
-        if (!isCancelledPaymentStatus(item)) {
-            if (patientRemaining.signum() == 0) {
-                item.setPaymentStatus(
-                        PaymentStatus.DEBIT
-                );
-            } else if (patientPaid.signum() > 0) {
-                item.setPaymentStatus(
-                        PaymentStatus.PARTIALLY_DEBIT
-                );
             } else {
                 item.setPaymentStatus(
                         PaymentStatus.PENDING

@@ -3,7 +3,6 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.BillingCharge;
 import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingChargeResponsibility;
-import com.dazzle.asklepios.domain.BillingAllocation;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentItemAdjustmentAction;
 import com.dazzle.asklepios.domain.Patient;
@@ -14,13 +13,10 @@ import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeType;
-import com.dazzle.asklepios.domain.enumeration.billing.BillingAllocationStatus;
-import com.dazzle.asklepios.domain.enumeration.billing.AllocationSourceType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.ReservationReleaseReason;
 import com.dazzle.asklepios.domain.enumeration.billing.ResponsibilityRole;
 import com.dazzle.asklepios.domain.enumeration.billing.ResponsiblePartyType;
-import com.dazzle.asklepios.repository.BillingAllocationRepository;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingChargeRepository;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
@@ -84,18 +80,11 @@ public class BillingChargeService {
             BillingChargeLineStatus.REVERSED
     );
 
-    private static final EnumSet<BillingAllocationStatus>
-            ACTIVE_ALLOCATION_STATUSES = EnumSet.of(
-            BillingAllocationStatus.ACTIVE,
-            BillingAllocationStatus.PARTIALLY_REVERSED
-    );
-
     private static final int MONEY_SCALE = 4;
 
     private final BillingChargeRepository billingChargeRepository;
     private final BillingChargeLineRepository billingChargeLineRepository;
     private final BillingChargeResponsibilityRepository billingChargeResponsibilityRepository;
-    private final BillingAllocationRepository billingAllocationRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientInsuranceRepository patientInsuranceRepository;
@@ -1431,16 +1420,10 @@ public class BillingChargeService {
                         .findById(chargeLineId)
                         .orElse(null);
 
-        if (chargeLine == null) {
-            return;
-        }
-
-        if (EXCLUDED_LINE_STATUSES.contains(chargeLine.getStatus())) {
-            reflectCreditOnPatientService(
-                    chargeLine.getPatientServiceProduct(),
-                    creditAmount,
-                    financialItemNetAmount
-            );
+        if (chargeLine == null
+                || EXCLUDED_LINE_STATUSES.contains(
+                        chargeLine.getStatus()
+                )) {
             return;
         }
 
@@ -1450,11 +1433,6 @@ public class BillingChargeService {
                 );
 
         if (patientResponsibility.signum() <= 0) {
-            reflectCreditOnPatientService(
-                    chargeLine.getPatientServiceProduct(),
-                    creditAmount,
-                    financialItemNetAmount
-            );
             return;
         }
 
@@ -1466,8 +1444,7 @@ public class BillingChargeService {
                 );
 
         BigDecimal allocatedOnLine =
-                defaultZero(chargeLine.getAllocatedAmount())
-                        .max(activeCollectedAllocationFloor(chargeLineId));
+                defaultZero(chargeLine.getAllocatedAmount());
         BigDecimal reservedOnLine =
                 defaultZero(chargeLine.getReservedAmount());
         BigDecimal unpaidPatient =
@@ -1480,14 +1457,9 @@ public class BillingChargeService {
 
         if (chargeCredit.signum() <= 0) {
             LOG.info(
-                    "[CREDIT_NOTE] Charge line {} is already covered by "
-                            + "allocations. Reflecting the credit on the service only.",
+                    "[CREDIT_NOTE] Skipping charge-line amount sync lineId={} "
+                            + "because patient share is already allocated/reserved",
                     chargeLineId
-            );
-            reflectCreditOnPatientService(
-                    chargeLine.getPatientServiceProduct(),
-                    creditAmount,
-                    financialItemNetAmount
             );
             return;
         }
@@ -1654,8 +1626,6 @@ public class BillingChargeService {
 
         recalculateChargeTotals(context);
 
-        syncPatientServiceProductFromChargeLine(chargeLine);
-
         LOG.info(
                 "[CREDIT_NOTE] Charge line synced lineId={} credit={} "
                         + "net={} patientResponsibility={} outstanding={}",
@@ -1665,147 +1635,6 @@ public class BillingChargeService {
                 chargeLine.getPatientResponsibilityAmount(),
                 chargeLine.getOutstandingAmount()
         );
-    }
-
-    /**
-     * Allocation rows are the source of truth. A stale lower
-     * {@code allocated_amount} on the charge line must not be treated as
-     * unpaid, or the credit is posted as a discount the allocations do not
-     * support.
-     */
-    private BigDecimal activeCollectedAllocationFloor(Long chargeLineId) {
-        return billingAllocationRepository
-                .findAllByChargeLine_IdAndStatusInOrderByAllocationDateDescIdDesc(
-                        chargeLineId,
-                        ACTIVE_ALLOCATION_STATUSES
-                )
-                .stream()
-                .filter(allocation ->
-                        allocation.getAllocationSourceType()
-                                != AllocationSourceType.RESERVATION
-                )
-                .map(allocation ->
-                        defaultZero(allocation.getRemainingAllocatedAmount())
-                )
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-
-    private void syncPatientServiceProductFromChargeLine(
-            BillingChargeLine chargeLine
-    ) {
-        PatientServiceAndProduct item = chargeLine.getPatientServiceProduct();
-        if (item == null) {
-            return;
-        }
-
-        if (chargeLine.getStatus() == BillingChargeLineStatus.CANCELLED
-                || defaultZero(chargeLine.getNetAmount()).signum() == 0) {
-            item.setUnitPrice(defaultZero(chargeLine.getUnitPrice()));
-            item.setGrossAmount(defaultZero(chargeLine.getGrossAmount()));
-            item.setDiscountAmount(defaultZero(chargeLine.getDiscountAmount()));
-            item.setTaxAmount(defaultZero(chargeLine.getTaxAmount()));
-            item.setNetAmount(BigDecimal.ZERO);
-            item.setTotalAmount(BigDecimal.ZERO);
-            item.setPatientShareAmount(BigDecimal.ZERO);
-            item.setInsuranceShareAmount(BigDecimal.ZERO);
-            item.setPaidAmount(BigDecimal.ZERO);
-            item.setRemainingAmount(BigDecimal.ZERO);
-            item.setPaymentStatus(PaymentStatus.CANCELLED);
-            patientServiceAndProductRepository.save(item);
-            return;
-        }
-
-        BigDecimal patientShare =
-                defaultZero(chargeLine.getPatientResponsibilityAmount());
-        BigDecimal paid =
-                defaultZero(item.getPaidAmount()).min(patientShare);
-
-        item.setUnitPrice(defaultZero(chargeLine.getUnitPrice()));
-        item.setGrossAmount(defaultZero(chargeLine.getGrossAmount()));
-        item.setDiscountAmount(defaultZero(chargeLine.getDiscountAmount()));
-        item.setTaxAmount(defaultZero(chargeLine.getTaxAmount()));
-        item.setNetAmount(defaultZero(chargeLine.getNetAmount()));
-        item.setTotalAmount(defaultZero(chargeLine.getNetAmount()));
-        item.setPatientShareAmount(patientShare);
-        item.setInsuranceShareAmount(
-                defaultZero(chargeLine.getInsuranceResponsibilityAmount())
-        );
-        item.setPaidAmount(paid);
-        item.setRemainingAmount(
-                patientShare.subtract(paid).max(BigDecimal.ZERO)
-        );
-        item.setPaymentStatus(resolvePaymentStatus(paid, patientShare));
-        patientServiceAndProductRepository.save(item);
-    }
-
-    /**
-     * Cash already allocated cannot be removed from the charge line without
-     * reversing the payment. The service row still has to show the credit,
-     * because that is what the service-and-product screen reads.
-     */
-    private void reflectCreditOnPatientService(
-            PatientServiceAndProduct item,
-            BigDecimal creditAmount,
-            BigDecimal financialItemNetAmount
-    ) {
-        if (item == null || creditAmount == null || creditAmount.signum() <= 0) {
-            return;
-        }
-
-        BigDecimal share = defaultZero(item.getPatientShareAmount());
-        if (share.signum() <= 0) {
-            share = defaultZero(item.getNetAmount());
-        }
-
-        BigDecimal reduction =
-                mapFinancialCreditToChargeAmount(
-                        creditAmount,
-                        financialItemNetAmount,
-                        share
-                );
-
-        if (reduction.signum() <= 0) {
-            return;
-        }
-
-        BigDecimal newShare = share.subtract(reduction).max(BigDecimal.ZERO);
-        BigDecimal newNet =
-                defaultZero(item.getNetAmount())
-                        .subtract(reduction)
-                        .max(BigDecimal.ZERO);
-
-        item.setDiscountAmount(
-                defaultZero(item.getDiscountAmount()).add(reduction)
-        );
-        item.setNetAmount(newNet);
-        item.setTotalAmount(newNet);
-        item.setPatientShareAmount(newShare);
-
-        if (newShare.signum() == 0 && newNet.signum() == 0) {
-            item.setPaidAmount(BigDecimal.ZERO);
-            item.setRemainingAmount(BigDecimal.ZERO);
-            item.setPaymentStatus(PaymentStatus.CANCELLED);
-        } else {
-            BigDecimal paid = defaultZero(item.getPaidAmount()).min(newShare);
-            item.setPaidAmount(paid);
-            item.setRemainingAmount(newShare.subtract(paid).max(BigDecimal.ZERO));
-            item.setPaymentStatus(resolvePaymentStatus(paid, newShare));
-        }
-
-        patientServiceAndProductRepository.save(item);
-    }
-
-    private PaymentStatus resolvePaymentStatus(
-            BigDecimal paid,
-            BigDecimal patientShare
-    ) {
-        if (patientShare.signum() == 0 || paid.compareTo(patientShare) >= 0) {
-            return PaymentStatus.PAID;
-        }
-        if (paid.signum() > 0) {
-            return PaymentStatus.PARTIALLY_PAID;
-        }
-        return PaymentStatus.PENDING;
     }
 
     /**
