@@ -38,4 +38,12 @@ public class RoomHelper {
         }
     }
 
+    public RoomDTO getRoomInternal(Long roomId) {
+        try {
+            return roomClient.getRoomInternal(roomId);
+        } catch (feign.FeignException.NotFound ex) {
+            return null;
+        }
+    }
+
 }

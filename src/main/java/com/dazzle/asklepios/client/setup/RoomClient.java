@@ -16,4 +16,7 @@ public interface RoomClient {
 
     @GetMapping("/api/setup/room/{id}")
     RoomDTO getRoom(@PathVariable("id") Long id);
+
+    @GetMapping("/api/setup/room/internalJob/{id}")
+    RoomDTO getRoomInternal(@PathVariable("id") Long id);
 }

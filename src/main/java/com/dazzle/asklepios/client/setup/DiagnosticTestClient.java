@@ -18,4 +18,9 @@ public interface DiagnosticTestClient {
     DiagnosticTestSetupDTO getDiagnosticTest(
             @PathVariable("id") Long id
     );
+
+    @GetMapping("/api/setup/diagnostic-test/internalJob/{id}")
+    DiagnosticTestSetupDTO getDiagnosticTestInternal(
+            @PathVariable("id") Long id
+    );
 }
