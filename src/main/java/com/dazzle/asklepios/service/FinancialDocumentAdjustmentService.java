@@ -171,6 +171,8 @@ public class FinancialDocumentAdjustmentService {
         List<InvoiceLineItemResponse> responses = new ArrayList<>();
         PatientInsurance insurance = resolveEncounterInsurance(invoice.getEncounterId());
 
+        Set<Long> removedLineIds = lineIdsRemovedByCreditNote(invoiceId);
+
         itemRepo.findByDocument_Id(invoiceId).stream()
                 .sorted(Comparator.comparing(FinancialDocumentItem::getId))
                 .forEach(item ->
@@ -179,7 +181,8 @@ public class FinancialDocumentAdjustmentService {
                                         item,
                                         chargeLinesByPsp,
                                         "INVOICE",
-                                        insurance
+                                        insurance,
+                                        removedLineIds.contains(item.getId())
                                 )
                         )
                 );
@@ -195,7 +198,8 @@ public class FinancialDocumentAdjustmentService {
                                                         item,
                                                         chargeLinesByPsp,
                                                         "DEBIT_NOTE",
-                                                        insurance
+                                                        insurance,
+                                                        removedLineIds.contains(item.getId())
                                                 )
                                         )
                                 )
@@ -239,6 +243,7 @@ public class FinancialDocumentAdjustmentService {
     }
 
     public InvoiceAdjustmentSummaryResponse getInvoiceAdjustmentSummary(Long invoiceId) {
+        persistLinesRemovedByCreditNote(invoiceId);
         reconcileMissingCreditNoteFinancialAdjustments(invoiceId);
         reconcileCreditNoteChargeLineSync(invoiceId);
 
@@ -1985,11 +1990,54 @@ public class FinancialDocumentAdjustmentService {
                 ));
     }
 
+    /**
+     * Full line removal keeps the original total and posts a credit note.
+     * The services table and the patient remaining must not show that total as unpaid.
+     */
+    private Set<Long> lineIdsRemovedByCreditNote(Long invoiceId) {
+        return documentRepo.findAllByParentDocumentId(invoiceId).stream()
+                .filter(document -> document.getDocumentType() == FinancialDocumentType.CREDIT_NOTE)
+                .flatMap(document -> itemRepo.findByDocument_Id(document.getId()).stream())
+                .filter(creditItem ->
+                        creditItem.getAdjustmentAction()
+                                == FinancialDocumentItemAdjustmentAction.REMOVE
+                )
+                .map(FinancialDocumentItem::getParentDocumentItemId)
+                .filter(parentId -> parentId != null)
+                .collect(Collectors.toSet());
+    }
+
+    private void persistLinesRemovedByCreditNote(Long invoiceId) {
+        Set<Long> removedLineIds = lineIdsRemovedByCreditNote(invoiceId);
+        if (removedLineIds.isEmpty()) {
+            return;
+        }
+
+        List<FinancialDocumentItem> items = itemRepo.findByDocument_Id(invoiceId);
+        boolean changed = false;
+        for (FinancialDocumentItem item : items) {
+            if (!removedLineIds.contains(item.getId())) {
+                continue;
+            }
+            if (money(item.getRemainingAmount()).signum() == 0
+                    && item.getStatus() == FinancialDocumentItemStatus.PAID) {
+                continue;
+            }
+            item.setRemainingAmount(ZERO);
+            item.setStatus(FinancialDocumentItemStatus.PAID);
+            changed = true;
+        }
+        if (changed) {
+            itemRepo.saveAll(items);
+        }
+    }
+
     private InvoiceLineItemResponse toInvoiceLineItemResponse(
             FinancialDocumentItem item,
             Map<Long, BillingChargeLine> chargeLinesByPsp,
             String lineSource,
-            PatientInsurance insurance
+            PatientInsurance insurance,
+            boolean removedByCreditNote
     ) {
         BillingChargeLine chargeLine = chargeLinesByPsp.get(item.getPatientServiceProductId());
         InvoiceItemPricingAdjustmentSnapshot snapshot =
@@ -2030,8 +2078,10 @@ public class FinancialDocumentAdjustmentService {
                 item.getTaxAmount(),
                 item.getNetAmount(),
                 item.getPaidAmount(),
-                item.getRemainingAmount(),
-                item.getStatus() != null ? item.getStatus().name() : null,
+                removedByCreditNote ? ZERO : item.getRemainingAmount(),
+                removedByCreditNote
+                        ? FinancialDocumentItemStatus.PAID.name()
+                        : item.getStatus() != null ? item.getStatus().name() : null,
                 item.getCurrency(),
                 snapshot.discounts() == null
                         ? List.of()

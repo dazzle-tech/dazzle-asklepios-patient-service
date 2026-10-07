@@ -7,6 +7,7 @@ import com.dazzle.asklepios.domain.BillingAllocation;
 import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
 import com.dazzle.asklepios.domain.FinancialDocumentItemStatus;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentItemAdjustmentAction;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.billing.AllocationSourceType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingAllocationStatus;
@@ -146,7 +147,13 @@ public class InvoiceChargePaymentSyncService {
             return;
         }
 
+        Set<Long> removedLineIds = lineIdsRemovedByCreditNote(items);
+
         for (FinancialDocumentItem item : items) {
+            if (item.getId() != null && removedLineIds.contains(item.getId())) {
+                closeRemovedLine(item);
+                continue;
+            }
             syncItemFromChargeLine(item);
         }
 
@@ -200,6 +207,52 @@ public class InvoiceChargePaymentSyncService {
         );
     }
 
+    /**
+     * A removed service keeps its original total, with a credit note beside it.
+     * Payment sync must not treat that original total as money still owed.
+     */
+    private Set<Long> lineIdsRemovedByCreditNote(List<FinancialDocumentItem> items) {
+        Set<Long> invoiceIds = new HashSet<>();
+        for (FinancialDocumentItem item : items) {
+            if (item.getDocument() == null || item.getDocument().getId() == null) {
+                continue;
+            }
+            if (item.getDocument().getDocumentType() == FinancialDocumentType.INVOICE) {
+                invoiceIds.add(item.getDocument().getId());
+            } else if (item.getDocument().getParentDocumentId() != null) {
+                invoiceIds.add(item.getDocument().getParentDocumentId());
+            }
+        }
+
+        Set<Long> removedLineIds = new HashSet<>();
+        for (Long invoiceId : invoiceIds) {
+            financialDocumentRepository
+                    .findAllByParentDocumentId(invoiceId)
+                    .stream()
+                    .filter(document ->
+                            document.getDocumentType() == FinancialDocumentType.CREDIT_NOTE
+                    )
+                    .flatMap(document ->
+                            financialDocumentItemRepository
+                                    .findByDocument_Id(document.getId())
+                                    .stream()
+                    )
+                    .filter(creditItem ->
+                            creditItem.getAdjustmentAction()
+                                    == FinancialDocumentItemAdjustmentAction.REMOVE
+                    )
+                    .map(FinancialDocumentItem::getParentDocumentItemId)
+                    .filter(parentId -> parentId != null)
+                    .forEach(removedLineIds::add);
+        }
+        return removedLineIds;
+    }
+
+    private void closeRemovedLine(FinancialDocumentItem item) {
+        item.setRemainingAmount(money(BigDecimal.ZERO));
+        item.setStatus(FinancialDocumentItemStatus.PAID);
+    }
+
     private void syncItemFromChargeLine(FinancialDocumentItem item) {
         Long chargeLineId = item.getBillingChargeLineId();
         if (chargeLineId == null) {
@@ -227,11 +280,22 @@ public class InvoiceChargePaymentSyncService {
         // Keep direct invoice payments (e.g. invoice-level tax) when re-syncing from charge.
         BigDecimal mergedPaid = existingPaid.max(syncedFromCharge);
 
-        BigDecimal remaining =
+        BigDecimal computedRemaining =
                 collectibleShare
                         .subtract(mergedPaid)
                         .max(BigDecimal.ZERO)
                         .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+
+        /*
+         * A credit removal closes the line (remaining = 0, status PAID)
+         * without reducing patient share. Recomputing from that share
+         * would reopen the removed service as unpaid on the next payment.
+         * Collections may only reduce an already stored remaining.
+         */
+        BigDecimal remaining =
+                item.getRemainingAmount() == null
+                        ? computedRemaining
+                        : computedRemaining.min(money(item.getRemainingAmount()));
 
         item.setPaidAmount(mergedPaid);
         item.setRemainingAmount(remaining);

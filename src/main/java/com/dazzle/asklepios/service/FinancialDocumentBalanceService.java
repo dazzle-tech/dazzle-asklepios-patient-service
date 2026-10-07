@@ -4,6 +4,8 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.FinancialDocument;
 
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentItemAdjustmentAction;
+
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
@@ -27,6 +29,10 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 
 import java.util.List;
+
+import java.util.Set;
+
+import java.util.stream.Collectors;
 
 
 
@@ -352,13 +358,15 @@ public class FinancialDocumentBalanceService {
 
     ) {
 
+        Set<Long> removedLineIds = creditRemovedLineIds(children);
+
         BigDecimal invoiceRemaining =
 
                 itemRepo.findByDocument_Id(invoiceId)
 
                         .stream()
 
-                        .map(this::deriveItemRemaining)
+                        .map(item -> deriveItemRemaining(item, removedLineIds))
 
                         .reduce(ZERO, BigDecimal::add);
 
@@ -372,7 +380,7 @@ public class FinancialDocumentBalanceService {
 
                         .flatMap(d -> itemRepo.findByDocument_Id(d.getId()).stream())
 
-                        .map(this::deriveItemRemaining)
+                        .map(item -> deriveItemRemaining(item, removedLineIds))
 
                         .reduce(ZERO, BigDecimal::add);
 
@@ -384,7 +392,42 @@ public class FinancialDocumentBalanceService {
 
 
 
-    private BigDecimal deriveItemRemaining(FinancialDocumentItem item) {
+    private Set<Long> creditRemovedLineIds(List<FinancialDocument> children) {
+
+        return children.stream()
+
+                .filter(document -> document.getDocumentType() == FinancialDocumentType.CREDIT_NOTE)
+
+                .flatMap(document -> itemRepo.findByDocument_Id(document.getId()).stream())
+
+                .filter(item ->
+                        item.getAdjustmentAction()
+                                == FinancialDocumentItemAdjustmentAction.REMOVE
+                )
+
+                .map(FinancialDocumentItem::getParentDocumentItemId)
+
+                .filter(parentId -> parentId != null)
+
+                .collect(Collectors.toSet());
+
+    }
+
+
+
+    private BigDecimal deriveItemRemaining(
+
+            FinancialDocumentItem item,
+
+            Set<Long> removedLineIds
+
+    ) {
+
+        if (item.getId() != null && removedLineIds.contains(item.getId())) {
+
+            return ZERO;
+
+        }
 
         BigDecimal storedRemaining = safe(item.getRemainingAmount());
 
