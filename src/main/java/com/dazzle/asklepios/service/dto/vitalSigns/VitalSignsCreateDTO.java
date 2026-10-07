@@ -38,6 +38,11 @@ public record VitalSignsCreateDTO(
 
         String fastingBloodGlucose,
 
+        String fluidStatus,
+
+        String edema,
+
+        String urineOutput,
 
         @NotNull
         Boolean isTriage,
@@ -49,16 +54,16 @@ public record VitalSignsCreateDTO(
 
 ) implements Serializable {
 
-        @AssertTrue(message = "measurementSite, heartRate, oxygenSaturation, and respiratoryRate are required when isTriage is true")
-        public boolean isTriageFieldsValid() {
+    @AssertTrue(message = "measurementSite, heartRate, oxygenSaturation, and respiratoryRate are required when isTriage is true")
+    public boolean isTriageFieldsValid() {
 
-                if (isTriage == null || !isTriage) {
-                        return true;
-                }
-
-                return measurementSite != null && !measurementSite.isBlank()
-                        && heartRate != null
-                        && oxygenSaturation != null
-                        && respiratoryRate != null;
+        if (isTriage == null || !isTriage) {
+            return true;
         }
+
+        return measurementSite != null && !measurementSite.isBlank()
+                && heartRate != null
+                && oxygenSaturation != null
+                && respiratoryRate != null;
+    }
 }
