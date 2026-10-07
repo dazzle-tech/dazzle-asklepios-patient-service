@@ -126,5 +126,21 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
             BookingMode bookingMode,
             Long departmentId
     );
+
+    List<Appointment> findByFacilityIdAndDepartmentIdAndResourceTypeAndResourceIdAndStartDatetimeGreaterThanEqualAndStartDatetimeLessThanOrderByStartDatetimeAsc(
+            Long facilityId,
+            Long departmentId,
+            TemplateType resourceType,
+            Long resourceId,
+            Instant startDatetimeFrom,
+            Instant startDatetimeTo
+    );
+
+    List<Appointment> findByFacilityIdAndPatient_IdAndStartDatetimeGreaterThanEqualAndStartDatetimeLessThan(
+            Long facilityId,
+            Long patientId,
+            Instant startDatetimeFrom,
+            Instant startDatetimeTo
+    );
 }
 
