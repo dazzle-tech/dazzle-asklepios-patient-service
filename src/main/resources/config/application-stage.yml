@@ -142,6 +142,10 @@ patient:
       zone: "Asia/Hebron"
       springdoc:
       pre-loading-enabled: true
+    template-interval-ending-soon:
+      cron: "0 0 7 * * *"
+      zone: "Asia/Hebron"
+      lead-days: 7
   portal:
     # Shared secret for POST /api/patient/patient-portal/request-otp and verify-login-otp.
     # Callers send it in the X-Portal-Secret header. Set PATIENT_PORTAL_SECRET in each environment.

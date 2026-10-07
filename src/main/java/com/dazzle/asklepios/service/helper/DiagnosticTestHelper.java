@@ -26,4 +26,12 @@ public class DiagnosticTestHelper {
             );
         }
     }
+
+    public DiagnosticTestSetupDTO getDiagnosticTestInternal(Long testId) {
+        try {
+            return diagnosticTestClient.getDiagnosticTestInternal(testId);
+        } catch (feign.FeignException.NotFound ex) {
+            return null;
+        }
+    }
 }

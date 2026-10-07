@@ -18,4 +18,9 @@ public interface ServiceClient {
     ServiceSetupDTO getServiceDetails(
             @PathVariable("id") Long id
     );
+
+    @GetMapping("/api/setup/service/internalJob/{id}")
+    ServiceSetupDTO getServiceDetailsInternal(
+            @PathVariable("id") Long id
+    );
 }
