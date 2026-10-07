@@ -18,6 +18,7 @@ import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentItemAdjustmentAction;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
@@ -73,8 +74,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -1031,6 +1034,25 @@ public class PatientPaymentsService {
         }
     }
 
+    private Set<Long> lineIdsRemovedByCreditNote(Long invoiceId) {
+        if (invoiceId == null) {
+            return Set.of();
+        }
+
+        Set<Long> removedLineIds = new HashSet<>();
+        documentRepository.findAllByParentDocumentId(invoiceId).stream()
+                .filter(document -> document.getDocumentType() == FinancialDocumentType.CREDIT_NOTE)
+                .flatMap(document -> itemRepo.findByDocument_Id(document.getId()).stream())
+                .filter(creditItem ->
+                        creditItem.getAdjustmentAction()
+                                == FinancialDocumentItemAdjustmentAction.REMOVE
+                )
+                .map(FinancialDocumentItem::getParentDocumentItemId)
+                .filter(parentId -> parentId != null)
+                .forEach(removedLineIds::add);
+        return removedLineIds;
+    }
+
     private void applyInsuranceSplit(Long paymentId) {
 
         PatientPayments payment = paymentRepository.findById(paymentId)
@@ -1044,7 +1066,16 @@ public class PatientPaymentsService {
         boolean insurancePlanPayment =
                 payment.getPaymentTypes() == PaymentTypes.INSURANCE_PLAN;
 
+        Set<Long> removedLineIds =
+                lineIdsRemovedByCreditNote(payment.getDocumentId());
+
         for (FinancialDocumentItem item : items) {
+
+            if (item.getId() != null && removedLineIds.contains(item.getId())) {
+                item.setRemainingAmount(ZERO_AMOUNT);
+                item.setStatus(FinancialDocumentItemStatus.PAID);
+                continue;
+            }
 
             BigDecimal net = nonNullAmount(item.getNetAmount());
 
@@ -1400,6 +1431,48 @@ public class PatientPaymentsService {
         );
     }
 
+    /**
+     * Credit already removed this amount from a settled invoice. It is not
+     * cash that was collected, so it must not be added again from the debit
+     * balance once the invoice outstanding is zero.
+     */
+    private BigDecimal unpaidCreditOnSettledInvoices(Long patientId) {
+        return documentRepository.findAllByPatientIdOrderByCreatedDateDesc(patientId)
+                .stream()
+                .filter(document ->
+                        document.getDocumentType() == FinancialDocumentType.INVOICE
+                )
+                .filter(document ->
+                        document.getDocumentSubtype() == FinancialDocumentSubtype.PATIENT
+                                || document.getDocumentSubtype() == null
+                )
+                .filter(document ->
+                        document.getStatus() != FinancialDocumentStatus.CANCELLED
+                )
+                .filter(document ->
+                        financialDocumentBalanceService
+                                .calculateOutstanding(document.getId())
+                                .signum() <= 0
+                )
+                .flatMap(invoice ->
+                        documentRepository.findAllByParentDocumentId(invoice.getId())
+                                .stream()
+                )
+                .filter(document ->
+                        document.getDocumentType() == FinancialDocumentType.CREDIT_NOTE
+                )
+                .map(creditNote -> {
+                    BigDecimal paidCredit = itemRepo.findByDocument_Id(creditNote.getId())
+                            .stream()
+                            .map(item -> nonNullAmount(item.getPaidAmount()))
+                            .reduce(ZERO_AMOUNT, BigDecimal::add);
+                    return nonNullAmount(creditNote.getTotalAmount())
+                            .subtract(paidCredit)
+                            .max(ZERO_AMOUNT);
+                })
+                .reduce(ZERO_AMOUNT, BigDecimal::add);
+    }
+
     private BigDecimal resolvePatientRemainingBalance(Long patientId) {
         BigDecimal legacyRemaining =
                 nonNullAmount(chargeRepository.sumOpenRemainingByPatient(patientId));
@@ -1434,7 +1507,11 @@ public class PatientPaymentsService {
                         .add(invoiceOutstanding);
 
         if (invoiceOutstanding.signum() <= 0 && debitBalance.signum() > 0) {
-            remaining = remaining.add(debitBalance);
+            BigDecimal unpaidCredit =
+                    unpaidCreditOnSettledInvoices(patientId);
+            remaining = remaining.add(
+                    debitBalance.subtract(unpaidCredit).max(ZERO_AMOUNT)
+            );
         }
 
         return remaining;
