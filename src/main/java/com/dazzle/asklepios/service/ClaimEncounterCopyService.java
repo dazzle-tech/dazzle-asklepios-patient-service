@@ -3,6 +3,8 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.BodyMeasurements;
 import com.dazzle.asklepios.domain.ClaimEncounterCopy;
 import com.dazzle.asklepios.domain.ClaimEncounterCopyCurrentMedication;
+import com.dazzle.asklepios.domain.ClaimEncounterCopyDiagnosticOrderTestReport;
+import com.dazzle.asklepios.domain.ClaimEncounterCopyDiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.ClaimEncounterCopyFamilyHistory;
 import com.dazzle.asklepios.domain.ClaimEncounterCopyHospitalization;
 import com.dazzle.asklepios.domain.ClaimEncounterCopyPatientProblem;
@@ -10,15 +12,22 @@ import com.dazzle.asklepios.domain.ClaimEncounterCopySocialHistory;
 import com.dazzle.asklepios.domain.ClaimEncounterCopySurgicalHistory;
 import com.dazzle.asklepios.domain.ClaimEncounterDiagnosis;
 import com.dazzle.asklepios.domain.ClaimEncounterProgressNote;
+import com.dazzle.asklepios.domain.DiagnosticOrder;
+import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.EncounterAssessment;
 import com.dazzle.asklepios.domain.EncounterPlan;
 import com.dazzle.asklepios.domain.PatientDiagnosis;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.ProgressNote;
 import com.dazzle.asklepios.domain.VitalSigns;
+import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
+import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
+import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.repository.BodyMeasurementsRepository;
 import com.dazzle.asklepios.repository.ClaimEncounterCopyCurrentMedicationRepository;
+import com.dazzle.asklepios.repository.ClaimEncounterCopyDiagnosticOrderTestReportRepository;
+import com.dazzle.asklepios.repository.ClaimEncounterCopyDiagnosticOrderTestResultRepository;
 import com.dazzle.asklepios.repository.ClaimEncounterCopyFamilyHistoryRepository;
 import com.dazzle.asklepios.repository.ClaimEncounterCopyHospitalizationRepository;
 import com.dazzle.asklepios.repository.ClaimEncounterCopyPatientProblemRepository;
@@ -28,6 +37,10 @@ import com.dazzle.asklepios.repository.ClaimEncounterCopySurgicalHistoryReposito
 import com.dazzle.asklepios.repository.ClaimEncounterDiagnosisRepository;
 import com.dazzle.asklepios.repository.ClaimEncounterProgressNoteRepository;
 import com.dazzle.asklepios.repository.CurrentMedicationRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
 import com.dazzle.asklepios.repository.EncounterAssessmentRepository;
 import com.dazzle.asklepios.repository.EncounterPlanRepository;
 import com.dazzle.asklepios.repository.FamilyHistoryRepository;
@@ -78,6 +91,14 @@ public class   ClaimEncounterCopyService {
     private final CurrentMedicationRepository currentMedicationRepository;
     private final ClaimEncounterCopyCurrentMedicationRepository
             claimEncounterCopyCurrentMedicationRepository;
+    private final DiagnosticOrderRepository diagnosticOrderRepository;
+    private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
+    private final DiagnosticOrderTestResultRepository diagnosticOrderTestResultRepository;
+    private final DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository;
+    private final ClaimEncounterCopyDiagnosticOrderTestResultRepository
+            claimEncounterCopyDiagnosticOrderTestResultRepository;
+    private final ClaimEncounterCopyDiagnosticOrderTestReportRepository
+            claimEncounterCopyDiagnosticOrderTestReportRepository;
     @Transactional
     public ClaimEncounterCopy createFromEncounterIfNotExists(
             PatientEncounter encounter
@@ -142,6 +163,8 @@ public class   ClaimEncounterCopyService {
                 savedCopy.getId()
         );
         copyCurrentMedications( encounter.getPatient().getId(), savedCopy.getId());
+        copyDiagnosticOrderTestResults(encounter.getId(), savedCopy.getId());
+        copyDiagnosticOrderTestReports(encounter.getId(), savedCopy.getId());
 
         return savedCopy;
     }
@@ -567,6 +590,105 @@ public class   ClaimEncounterCopyService {
                     copy.setStatus(PatientHistoryStatus.ACTIVE);
 
                     claimEncounterCopyCurrentMedicationRepository.save(copy);
+                });
+    }
+
+    private void copyDiagnosticOrderTestResults(
+            Long encounterId,
+            Long claimEncounterCopyId
+    ) {
+        List<Long> orderIds = diagnosticOrderRepository
+                .findByEncounterIdAndStatusNot(encounterId, DiagnosticStatus.CANCELLED)
+                .stream()
+                .map(DiagnosticOrder::getId)
+                .toList();
+
+        if (orderIds.isEmpty()) {
+            return;
+        }
+
+        List<Long> labTestIds = diagnosticOrderTestRepository
+                .findByOrderIdInAndOrderTypeAndStatusNot(
+                        orderIds,
+                        TestType.LABORATORY,
+                        DiagnosticOrderTestStatus.CANCELLED
+                )
+                .stream()
+                .map(DiagnosticOrderTest::getId)
+                .toList();
+
+        if (labTestIds.isEmpty()) {
+            return;
+        }
+
+        diagnosticOrderTestResultRepository.findByOrderTestIdIn(labTestIds)
+                .stream()
+                .filter(result -> result.getProcessingStatus() != DiagnosticStatus.REJECTED)
+                .forEach(result -> {
+                    ClaimEncounterCopyDiagnosticOrderTestResult copy =
+                            new ClaimEncounterCopyDiagnosticOrderTestResult();
+
+                    copy.setClaimEncounterCopyId(claimEncounterCopyId);
+                    copy.setDiagnosticOrderTestResultId(result.getId());
+                    copy.setOrderTestId(result.getOrderTestId());
+                    copy.setProfileTestId(result.getProfileTestId());
+                    copy.setResultValueNumber(result.getResultValueNumber());
+                    copy.setResultValueText(result.getResultValueText());
+                    copy.setMarker(result.getMarker());
+                    copy.setNormalRangeValue(result.getNormalRangeValue());
+                    copy.setResultTypeAtEntry(result.getResultTypeAtEntry());
+                    copy.setStatus(PatientHistoryStatus.ACTIVE);
+
+                    claimEncounterCopyDiagnosticOrderTestResultRepository.save(copy);
+                });
+    }
+
+    private void copyDiagnosticOrderTestReports(
+            Long encounterId,
+            Long claimEncounterCopyId
+    ) {
+        List<Long> orderIds = diagnosticOrderRepository
+                .findByEncounterIdAndStatusNot(encounterId, DiagnosticStatus.CANCELLED)
+                .stream()
+                .map(DiagnosticOrder::getId)
+                .toList();
+
+        if (orderIds.isEmpty()) {
+            return;
+        }
+
+        List<Long> radTestIds = diagnosticOrderTestRepository
+                .findByOrderIdInAndOrderTypeAndStatusNot(
+                        orderIds,
+                        TestType.RADIOLOGY,
+                        DiagnosticOrderTestStatus.CANCELLED
+                )
+                .stream()
+                .map(DiagnosticOrderTest::getId)
+                .toList();
+
+        if (radTestIds.isEmpty()) {
+            return;
+        }
+
+        diagnosticOrderTestReportRepository.findByOrderTestIdIn(radTestIds)
+                .stream()
+                .filter(report -> report.getProcessingStatus() != DiagnosticStatus.REJECTED)
+                .forEach(report -> {
+                    ClaimEncounterCopyDiagnosticOrderTestReport copy =
+                            new ClaimEncounterCopyDiagnosticOrderTestReport();
+
+                    copy.setClaimEncounterCopyId(claimEncounterCopyId);
+                    copy.setDiagnosticOrderTestReportId(report.getId());
+                    copy.setOrderTestId(report.getOrderTestId());
+                    copy.setReport(report.getReport());
+                    copy.setRadiologistInformation(report.getRadiologistInformation());
+                    copy.setCriticalFindings(report.getCriticalFindings());
+                    copy.setRadiologistComments(report.getRadiologistComments());
+                    copy.setSeverity(report.getSeverity());
+                    copy.setStatus(PatientHistoryStatus.ACTIVE);
+
+                    claimEncounterCopyDiagnosticOrderTestReportRepository.save(copy);
                 });
     }
 }
