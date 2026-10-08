@@ -37,6 +37,7 @@ import com.dazzle.asklepios.web.rest.vm.appointmentRequest.RecurringAppointmentP
 import com.dazzle.asklepios.web.rest.vm.appointmentRequest.RecurringAppointmentRequestCreateResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointmentRequest.RecurringAvailableSlotVM;
 import com.dazzle.asklepios.web.rest.vm.appointmentRequest.RecurringSkippedDayVM;
+import com.dazzle.asklepios.web.rest.vm.appointmentRequest.RecurringUnavailableSlotVM;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -468,8 +469,11 @@ public class AppointmentRequestService {
         }
 
         ZoneId zone = ZoneId.systemDefault();
-        Instant from = rangeStart.atStartOfDay(zone).toInstant();
-        Instant to = rangeEnd.atStartOfDay(zone).toInstant();
+        LocalDate today = LocalDate.now(zone);
+        LocalDate slotRangeStart = today.isBefore(rangeStart) ? today : rangeStart;
+        LocalDate slotRangeEnd = rangeEnd.plusMonths(3);
+        Instant from = slotRangeStart.atStartOfDay(zone).toInstant();
+        Instant to = slotRangeEnd.atStartOfDay(zone).toInstant();
         Instant now = Instant.now();
 
         List<Appointment> resourceAppointments = appointmentRepository
@@ -528,7 +532,57 @@ public class AppointmentRequestService {
             days.add(new MappedDay(date, day, earliestSlotByDate.get(date)));
         }
 
-        return new RecurringPlan(days, skippedDays, availableSlots);
+        Set<LocalDate> occurrenceDates = new HashSet<>(occurrences);
+        Set<Long> seenAppointmentIds = new HashSet<>();
+        List<RecurringUnavailableSlotVM> unavailableSlots = new ArrayList<>();
+        collectUnavailableSlots(
+                resourceAppointments,
+                occurrenceDates,
+                seenAppointmentIds,
+                "Slot already booked",
+                unavailableSlots
+        );
+        collectUnavailableSlots(
+                patientAppointments,
+                occurrenceDates,
+                seenAppointmentIds,
+                "Patient already has an appointment",
+                unavailableSlots
+        );
+        unavailableSlots.sort(Comparator.comparing(
+                RecurringUnavailableSlotVM::startDatetime,
+                Comparator.nullsLast(Comparator.naturalOrder())
+        ));
+
+        return new RecurringPlan(days, skippedDays, availableSlots, unavailableSlots);
+    }
+
+    private void collectUnavailableSlots(
+            List<Appointment> appointments,
+            Set<LocalDate> occurrenceDates,
+            Set<Long> seenAppointmentIds,
+            String reason,
+            List<RecurringUnavailableSlotVM> unavailableSlots
+    ) {
+        for (Appointment appointment : appointments) {
+            if (!occupiesDay(appointment) || appointment.getStartDatetime() == null) {
+                continue;
+            }
+            if (appointment.getId() != null && !seenAppointmentIds.add(appointment.getId())) {
+                continue;
+            }
+            LocalDate date = toLocalDate(appointment.getStartDatetime());
+            if (!occurrenceDates.contains(date)) {
+                continue;
+            }
+            unavailableSlots.add(new RecurringUnavailableSlotVM(
+                    date,
+                    DayOfWeek.valueOf(date.getDayOfWeek().name()),
+                    appointment.getStartDatetime(),
+                    appointment.getEndDatetime(),
+                    reason
+            ));
+        }
     }
 
     private void validateRecurringPeriod(RecurringAppointmentRequestDTO dto) {
@@ -598,7 +652,7 @@ public class AppointmentRequestService {
                 ))
                 .toList();
 
-        return new RecurringAppointmentPreviewVM(days, plan.skippedDays(), slots);
+        return new RecurringAppointmentPreviewVM(days, plan.skippedDays(), slots, plan.unavailableSlots());
     }
 
     private boolean occupiesDay(Appointment appointment) {
@@ -631,7 +685,8 @@ public class AppointmentRequestService {
     private record RecurringPlan(
             List<MappedDay> days,
             List<RecurringSkippedDayVM> skippedDays,
-            List<Appointment> availableSlots
+            List<Appointment> availableSlots,
+            List<RecurringUnavailableSlotVM> unavailableSlots
     ) {
     }
 
