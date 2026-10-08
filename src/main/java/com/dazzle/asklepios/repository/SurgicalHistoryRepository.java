@@ -6,6 +6,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
+
 
 public interface SurgicalHistoryRepository
         extends JpaRepository<SurgicalHistory, Long> {
@@ -19,5 +21,10 @@ public interface SurgicalHistoryRepository
             Long patientId,
             PatientHistoryStatus status,
             Pageable pageable
+    );
+
+    List<SurgicalHistory> findAllByPatientIdAndStatus(
+            Long patientId,
+            PatientHistoryStatus status
     );
 }

@@ -16,4 +16,8 @@ public interface PatientProblemRepository extends JpaRepository<PatientProblem, 
             PatientHistoryStatus status,
             Pageable pageable
     );
+    List<PatientProblem> findAllByPatientIdAndStatus(
+            Long patientId,
+            PatientHistoryStatus status
+    );
 }

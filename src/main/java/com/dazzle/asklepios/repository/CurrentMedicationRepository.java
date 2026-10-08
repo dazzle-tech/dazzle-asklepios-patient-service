@@ -6,6 +6,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
+
 public interface CurrentMedicationRepository extends JpaRepository<CurrentMedication, Long> {
 
     Page<CurrentMedication> findAllByPatientIdAndStatusNot(
@@ -22,5 +24,9 @@ public interface CurrentMedicationRepository extends JpaRepository<CurrentMedica
     boolean existsByPatientIdAndActiveIngredientId(
             Long patientId,
             Long activeIngredientId
+    );
+    List<CurrentMedication> findAllByPatientIdAndStatusNot(
+            Long patientId,
+            PatientHistoryStatus status
     );
 }
