@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.enumeration.DialysisAccessType;
 import com.dazzle.asklepios.domain.enumeration.DialysisRegistrationStatus;
 import com.dazzle.asklepios.domain.enumeration.DialysisScheduleDay;
 import com.dazzle.asklepios.domain.enumeration.DialysisTreatmentType;
+import com.dazzle.asklepios.domain.enumeration.Unit;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -34,6 +35,8 @@ public class NephrologyTreatmentPlanResponseVM {
     private List<DialysisScheduleDay> schedule;
 
     private BigDecimal dialysisDuration;
+
+    private Unit durationType;
 
     private BigDecimal dryWeight;
 

@@ -4,14 +4,20 @@ import com.dazzle.asklepios.domain.DialysisSession;
 import com.dazzle.asklepios.domain.enumeration.DialysisAccessSite;
 import com.dazzle.asklepios.domain.enumeration.DialysisAnticoagulation;
 import com.dazzle.asklepios.repository.DialysisSessionRepository;
+import com.dazzle.asklepios.repository.NephrologyTreatmentPlanRepository;
 import com.dazzle.asklepios.service.dto.DialysisSessionCreateDTO;
 import com.dazzle.asklepios.service.dto.DialysisSessionUpdateDTO;
 import com.dazzle.asklepios.service.vm.DialysisSessionResponseVM;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -19,21 +25,25 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class DialysisSessionService {
 
+    private static final String ENTITY_NAME = "dialysisSession";
+
     private final DialysisSessionRepository repository;
+    private final NephrologyTreatmentPlanRepository treatmentPlanRepository;
 
     public DialysisSessionResponseVM create(
             DialysisSessionCreateDTO dto
     ) {
-        repository
-                .findFirstByPatientIdAndEncounterIdAndIsActiveTrue(
-                        dto.getPatientId(),
-                        dto.getEncounterId()
-                )
-                .ifPresent(existing -> {
-                    throw new IllegalArgumentException(
-                            "Active dialysis session already exists for this patient and encounter"
-                    );
-                });
+        Long treatmentPlanId = requireTreatmentPlanIdForPatient(
+                dto.getTreatmentPlanId(),
+                dto.getPatientId()
+        );
+
+        assertNoActiveSessionForPlan(
+                dto.getPatientId(),
+                dto.getEncounterId(),
+                treatmentPlanId,
+                null
+        );
 
         DialysisSession entity =
                 DialysisSession.builder()
@@ -47,6 +57,7 @@ public class DialysisSessionService {
                         .shift(dto.getShift())
                         .assignedNurseId(dto.getAssignedNurseId())
                         .nephrologistId(dto.getNephrologistId())
+                        .treatmentPlanId(treatmentPlanId)
                         .preWeight(dto.getPreWeight())
                         .dryWeight(dto.getDryWeight())
                         .weightGain(dto.getWeightGain())
@@ -62,6 +73,7 @@ public class DialysisSessionService {
                         .preAccessCondition(dto.getPreAccessCondition())
                         .generalCondition(dto.getGeneralCondition())
                         .dialysisDuration(dto.getDialysisDuration())
+                        .durationType(dto.getDurationType())
                         .bloodFlowRate(dto.getBloodFlowRate())
                         .dialysateFlowRate(dto.getDialysateFlowRate())
                         .ultrafiltrationGoal(dto.getUltrafiltrationGoal())
@@ -126,6 +138,29 @@ public class DialysisSessionService {
                         )
                 );
 
+        Long treatmentPlanId = requireTreatmentPlanIdForPatient(
+                dto.getTreatmentPlanId(),
+                entity.getPatientId()
+        );
+
+        if (
+                entity.getTreatmentPlanId() != null &&
+                !Objects.equals(entity.getTreatmentPlanId(), treatmentPlanId)
+        ) {
+            throw new BadRequestAlertException(
+                    "Treatment Plan cannot be changed for an existing Dialysis Session",
+                    ENTITY_NAME,
+                    "treatmentplan.immutable"
+            );
+        }
+
+        assertNoActiveSessionForPlan(
+                entity.getPatientId(),
+                entity.getEncounterId(),
+                treatmentPlanId,
+                entity.getId()
+        );
+
         entity.setChairStation(dto.getChairStation());
         entity.setMachine(dto.getMachine());
         entity.setDate(dto.getDate());
@@ -134,6 +169,7 @@ public class DialysisSessionService {
         entity.setShift(dto.getShift());
         entity.setAssignedNurseId(dto.getAssignedNurseId());
         entity.setNephrologistId(dto.getNephrologistId());
+        entity.setTreatmentPlanId(treatmentPlanId);
         entity.setPreWeight(dto.getPreWeight());
         entity.setDryWeight(dto.getDryWeight());
         entity.setWeightGain(dto.getWeightGain());
@@ -149,6 +185,7 @@ public class DialysisSessionService {
         entity.setPreAccessCondition(dto.getPreAccessCondition());
         entity.setGeneralCondition(dto.getGeneralCondition());
         entity.setDialysisDuration(dto.getDialysisDuration());
+        entity.setDurationType(dto.getDurationType());
         entity.setBloodFlowRate(dto.getBloodFlowRate());
         entity.setDialysateFlowRate(dto.getDialysateFlowRate());
         entity.setUltrafiltrationGoal(dto.getUltrafiltrationGoal());
@@ -200,19 +237,157 @@ public class DialysisSessionService {
         return toResponseVM(repository.save(entity));
     }
 
+    /**
+     * Legacy single-session lookup. Returns the most recently modified active
+     * session for the patient/encounter when multiple plan-scoped sessions exist.
+     */
     @Transactional(readOnly = true)
     public Optional<DialysisSessionResponseVM>
     findByPatientAndEncounter(
             Long patientId,
             Long encounterId
     ) {
-
         return repository
-                .findFirstByPatientIdAndEncounterIdAndIsActiveTrue(
+                .findFirstByPatientIdAndEncounterIdAndIsActiveTrueOrderByLastModifiedDateDesc(
                         patientId,
                         encounterId
                 )
                 .map(this::toResponseVM);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<DialysisSessionResponseVM> findById(Long id) {
+        return repository.findById(id).map(this::toResponseVM);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<DialysisSessionResponseVM> findByIdForContext(
+            Long id,
+            Long patientId,
+            Long encounterId
+    ) {
+        return repository
+                .findByIdAndPatientIdAndEncounterIdAndIsActiveTrue(
+                        id,
+                        patientId,
+                        encounterId
+                )
+                .map(this::toResponseVM);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<DialysisSessionResponseVM> findByPatientAndEncounter(
+            Long patientId,
+            Long encounterId,
+            Long treatmentPlanId,
+            Pageable pageable
+    ) {
+        Page<DialysisSession> page =
+                treatmentPlanId != null
+                        ? repository.findByPatientIdAndEncounterIdAndTreatmentPlanIdAndIsActiveTrue(
+                                patientId,
+                                encounterId,
+                                treatmentPlanId,
+                                pageable
+                        )
+                        : repository.findByPatientIdAndEncounterIdAndIsActiveTrue(
+                                patientId,
+                                encounterId,
+                                pageable
+                        );
+
+        return page.map(this::toResponseVM);
+    }
+
+    @Transactional(readOnly = true)
+    public List<DialysisSessionResponseVM> findAllByPatientEncounterAndTreatmentPlan(
+            Long patientId,
+            Long encounterId,
+            Long treatmentPlanId
+    ) {
+        return repository
+                .findByPatientIdAndEncounterIdAndTreatmentPlanIdAndIsActiveTrueOrderByLastModifiedDateDesc(
+                        patientId,
+                        encounterId,
+                        treatmentPlanId
+                )
+                .stream()
+                .map(this::toResponseVM)
+                .toList();
+    }
+
+    private void assertNoActiveSessionForPlan(
+            Long patientId,
+            Long encounterId,
+            Long treatmentPlanId,
+            Long excludeSessionId
+    ) {
+        boolean exists;
+
+        if (treatmentPlanId == null) {
+            exists = excludeSessionId == null
+                    ? repository.existsByPatientIdAndEncounterIdAndTreatmentPlanIdIsNullAndIsActiveTrue(
+                            patientId,
+                            encounterId
+                    )
+                    : repository.existsByPatientIdAndEncounterIdAndTreatmentPlanIdIsNullAndIsActiveTrueAndIdNot(
+                            patientId,
+                            encounterId,
+                            excludeSessionId
+                    );
+        } else {
+            exists = excludeSessionId == null
+                    ? repository.existsByPatientIdAndEncounterIdAndTreatmentPlanIdAndIsActiveTrue(
+                            patientId,
+                            encounterId,
+                            treatmentPlanId
+                    )
+                    : repository.existsByPatientIdAndEncounterIdAndTreatmentPlanIdAndIsActiveTrueAndIdNot(
+                            patientId,
+                            encounterId,
+                            treatmentPlanId,
+                            excludeSessionId
+                    );
+        }
+
+        if (exists) {
+            throw new BadRequestAlertException(
+                    treatmentPlanId == null
+                            ? "Active dialysis session without treatment plan already exists for this patient and encounter"
+                            : "Active dialysis session already exists for this patient, encounter, and treatment plan",
+                    ENTITY_NAME,
+                    "session.exists"
+            );
+        }
+    }
+
+    /**
+     * Requires a non-null Treatment Plan that exists, is active, and belongs to the patient.
+     * Never returns null and never silently substitutes another plan.
+     */
+    private Long requireTreatmentPlanIdForPatient(
+            Long treatmentPlanId,
+            Long patientId
+    ) {
+        if (treatmentPlanId == null) {
+            throw new BadRequestAlertException(
+                    "Treatment Plan is required for Dialysis Session",
+                    ENTITY_NAME,
+                    "treatmentplan.required"
+            );
+        }
+
+        return treatmentPlanRepository
+                .findByIdAndPatientIdAndIsActiveTrue(treatmentPlanId, patientId)
+                .map(plan -> plan.getId())
+                .orElseThrow(() ->
+                        new BadRequestAlertException(
+                                "Treatment plan does not belong to this patient: " +
+                                        treatmentPlanId,
+                                ENTITY_NAME,
+                                "treatmentplan.invalid"
+                        )
+                );
     }
 
     private String resolveOtherAnticoagulation(
@@ -252,6 +427,7 @@ public class DialysisSessionService {
                 .shift(entity.getShift())
                 .assignedNurseId(entity.getAssignedNurseId())
                 .nephrologistId(entity.getNephrologistId())
+                .treatmentPlanId(entity.getTreatmentPlanId())
                 .preWeight(entity.getPreWeight())
                 .dryWeight(entity.getDryWeight())
                 .weightGain(entity.getWeightGain())
@@ -267,6 +443,7 @@ public class DialysisSessionService {
                 .preAccessCondition(entity.getPreAccessCondition())
                 .generalCondition(entity.getGeneralCondition())
                 .dialysisDuration(entity.getDialysisDuration())
+                .durationType(entity.getDurationType())
                 .bloodFlowRate(entity.getBloodFlowRate())
                 .dialysateFlowRate(entity.getDialysateFlowRate())
                 .ultrafiltrationGoal(entity.getUltrafiltrationGoal())

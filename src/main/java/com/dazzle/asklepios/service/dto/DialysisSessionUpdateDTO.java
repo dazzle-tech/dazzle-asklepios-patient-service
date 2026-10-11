@@ -6,6 +6,7 @@ import com.dazzle.asklepios.domain.enumeration.DialysisAnticoagulation;
 import com.dazzle.asklepios.domain.enumeration.DialysisComplication;
 import com.dazzle.asklepios.domain.enumeration.DialysisDisposition;
 import com.dazzle.asklepios.domain.enumeration.DialysisShift;
+import com.dazzle.asklepios.domain.enumeration.Unit;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -42,6 +43,9 @@ public class DialysisSessionUpdateDTO {
 
     private Long nephrologistId;
 
+    @NotNull
+    private Long treatmentPlanId;
+
     private BigDecimal preWeight;
 
     private BigDecimal dryWeight;
@@ -71,6 +75,8 @@ public class DialysisSessionUpdateDTO {
     private String generalCondition;
 
     private BigDecimal dialysisDuration;
+
+    private Unit durationType;
 
     private BigDecimal bloodFlowRate;
 

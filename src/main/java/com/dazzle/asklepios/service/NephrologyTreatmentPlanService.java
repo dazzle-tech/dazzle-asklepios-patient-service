@@ -8,6 +8,8 @@ import com.dazzle.asklepios.service.dto.NephrologyTreatmentPlanUpdateDTO;
 import com.dazzle.asklepios.service.vm.NephrologyTreatmentPlanResponseVM;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,17 +30,6 @@ public class NephrologyTreatmentPlanService {
                 dto.getOtherAccessSite()
         );
 
-        repository
-                .findFirstByPatientIdAndEncounterIdAndIsActiveTrue(
-                        dto.getPatientId(),
-                        dto.getEncounterId()
-                )
-                .ifPresent(existing -> {
-                    throw new IllegalArgumentException(
-                            "Active nephrology treatment plan already exists for this patient and encounter"
-                    );
-                });
-
         NephrologyTreatmentPlan entity =
                 NephrologyTreatmentPlan.builder()
                         .patientId(dto.getPatientId())
@@ -47,6 +38,7 @@ public class NephrologyTreatmentPlanService {
                         .frequency(dto.getFrequency())
                         .schedule(dto.getSchedule())
                         .dialysisDuration(dto.getDialysisDuration())
+                        .durationType(dto.getDurationType())
                         .dryWeight(dto.getDryWeight())
                         .targetWeight(dto.getTargetWeight())
                         .dialysisAccess(dto.getDialysisAccess())
@@ -89,6 +81,7 @@ public class NephrologyTreatmentPlanService {
         entity.setFrequency(dto.getFrequency());
         entity.setSchedule(dto.getSchedule());
         entity.setDialysisDuration(dto.getDialysisDuration());
+        entity.setDurationType(dto.getDurationType());
         entity.setDryWeight(dto.getDryWeight());
         entity.setTargetWeight(dto.getTargetWeight());
         entity.setDialysisAccess(dto.getDialysisAccess());
@@ -122,6 +115,32 @@ public class NephrologyTreatmentPlanService {
                         encounterId
                 )
                 .map(this::toResponseVM);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<NephrologyTreatmentPlanResponseVM> findByPatientId(
+            Long patientId,
+            Long encounterId,
+            Pageable pageable
+    ) {
+        Page<NephrologyTreatmentPlan> page =
+                encounterId != null
+                        ? repository.findByPatientIdAndEncounterIdAndIsActiveTrue(
+                                patientId,
+                                encounterId,
+                                pageable
+                        )
+                        : repository.findByPatientIdAndIsActiveTrue(
+                                patientId,
+                                pageable
+                        );
+
+        return page.map(this::toResponseVM);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<NephrologyTreatmentPlanResponseVM> findById(Long id) {
+        return repository.findById(id).map(this::toResponseVM);
     }
 
     private void validateOtherAccessSite(
@@ -160,6 +179,7 @@ public class NephrologyTreatmentPlanService {
                 .frequency(entity.getFrequency())
                 .schedule(entity.getSchedule())
                 .dialysisDuration(entity.getDialysisDuration())
+                .durationType(entity.getDurationType())
                 .dryWeight(entity.getDryWeight())
                 .targetWeight(entity.getTargetWeight())
                 .dialysisAccess(entity.getDialysisAccess())

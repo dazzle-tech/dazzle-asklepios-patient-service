@@ -270,11 +270,11 @@ public class InvoiceBalancePaymentService {
 
                         null,
 
-                        null,
+                        request.authorizationCode(),
 
-                        null,
+                        request.processorReference(),
 
-                        null,
+                        request.cardLastFour(),
 
                         null,
 
@@ -512,7 +512,7 @@ public class InvoiceBalancePaymentService {
 
             case "DEDUCT_FROM_FREE_BALANCE" -> PaymentCategory.WALLET;
 
-            case "CREDIT_CARD", "CREDIT_DEBIT_CARD" -> PaymentCategory.CASH;
+            case "CREDIT_CARD", "CREDIT_DEBIT_CARD" -> PaymentCategory.CARD;
 
             case "BANK_TRANSFER" -> PaymentCategory.BANK_TRANSFER;
 
