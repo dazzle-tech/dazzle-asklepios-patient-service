@@ -47,6 +47,7 @@ import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import feign.FeignException;
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
+import com.dazzle.asklepios.service.dto.patientEncounter.DiagnosticCheckoutApproval;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCompletionValidationDTO;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaQuery;
@@ -138,6 +139,7 @@ public class PatientEncounterService {
     private final EncounterDischargeLogRepository encounterDischargeLogRepository;
     private final PatientEncounterFieldAuditRepository auditRepository;
     private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
+    private final InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService;
 
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
@@ -167,8 +169,9 @@ public class PatientEncounterService {
             PractitionerHelper practitionerHelper,
             PractitionerClient practitionerClient,
             @Lazy BillingEngineService billingEngineService,
-            NotificationHelper notificationHelper, InvoiceGenerationService invoiceGenerationService, UserRepository userRepository, EncounterDischargeLogRepository encounterDischargeLogRepository, PatientEncounterFieldAuditRepository auditRepository,
-            FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy) {
+            NotificationHelper notificationHelper, InvoiceGenerationService invoiceGenerationService, UserRepository userRepository,             EncounterDischargeLogRepository encounterDischargeLogRepository, PatientEncounterFieldAuditRepository auditRepository,
+            FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy,
+            InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService) {
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.entityManager = entityManager;
@@ -206,6 +209,7 @@ public class PatientEncounterService {
         this.encounterDischargeLogRepository = encounterDischargeLogRepository;
         this.auditRepository = auditRepository;
         this.followUpReviewDefaultServicePolicy = followUpReviewDefaultServicePolicy;
+        this.insuranceCheckoutDiagnosticApprovalService = insuranceCheckoutDiagnosticApprovalService;
     }
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
@@ -857,7 +861,10 @@ public class PatientEncounterService {
     }
 
     @Transactional(readOnly = true)
-    public PatientEncounterCompletionValidationDTO validateCompletion(Long encounterId) {
+    public PatientEncounterCompletionValidationDTO validateCompletion(
+            Long encounterId,
+            boolean includeDiagnostics
+    ) {
 
         PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -889,6 +896,7 @@ public class PatientEncounterService {
                     true, // vitalSigns
                     true, // bodyMeasurements
                     true, // canComplete
+                    Collections.emptyList(),
                     Collections.emptyList()
             );
         }
@@ -1028,6 +1036,10 @@ public class PatientEncounterService {
 
         boolean canComplete = missing.isEmpty();
 
+        List<DiagnosticCheckoutApproval> diagnosticApprovals = includeDiagnostics
+                ? insuranceCheckoutDiagnosticApprovalService.findUnapproved(encounterId)
+                : List.of();
+
         return new PatientEncounterCompletionValidationDTO(
                 encounterId,
                 encounter.getCoverageType(),
@@ -1046,7 +1058,8 @@ public class PatientEncounterService {
                 bodyMeasurements,
                 vitalSigns,
                 canComplete,
-                missing
+                missing,
+                diagnosticApprovals
         );
     }
 

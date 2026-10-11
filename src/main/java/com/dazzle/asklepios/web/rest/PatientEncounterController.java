@@ -524,15 +524,17 @@ public class PatientEncounterController {
 
     @GetMapping("/encounter/{id}/completion-validation")
     public ResponseEntity<PatientEncounterCompletionValidationDTO> validateEncounterCompletion(
-            @PathVariable("id") @NotNull Long encounterId
+            @PathVariable("id") @NotNull Long encounterId,
+            @RequestParam(name = "includeDiagnostics", defaultValue = "false") boolean includeDiagnostics
     ) {
         LOG.debug(
-                "REST validate PatientEncounter completion encounterId={}",
-                encounterId
+                "REST validate PatientEncounter completion encounterId={} includeDiagnostics={}",
+                encounterId,
+                includeDiagnostics
         );
 
         PatientEncounterCompletionValidationDTO validation =
-                patientEncounterService.validateCompletion(encounterId);
+                patientEncounterService.validateCompletion(encounterId, includeDiagnostics);
 
         return ResponseEntity.ok(validation);
     }

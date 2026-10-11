@@ -292,9 +292,17 @@ public class DiagnosticOrderTestStatusService {
         DiagnosticOrderTest test = getTest(testId);
         ensureTransition(test, DiagnosticStatus.REJECTED);
 
+        String reason =
+                rejectedReason == null || rejectedReason.isBlank()
+                        ? "Diagnostic test rejected"
+                        : rejectedReason;
+
+        // Same financial reversal as cancel: release the charge so the visit available limit is restored.
+        releaseDiagnosticBilling(test, reason);
+
         test.setProcessingStatus(DiagnosticStatus.REJECTED);
         test.setRejectedBy(rejectedBy);
-        test.setRejectedReason(rejectedReason);
+        test.setRejectedReason(reason);
         test.setRejectedDate(Instant.now());
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
@@ -333,22 +341,7 @@ public class DiagnosticOrderTestStatusService {
                         ? "Diagnostic test cancelled"
                         : cancellationReason;
 
-        BillingItemTypes billingItemType =
-                test.getOrderType() == TestType.RADIOLOGY
-                        ? BillingItemTypes.RADIOLOGY
-                        : BillingItemTypes.LABORATORY;
-
-        ServiceSource serviceSource =
-                test.getOrderType() == TestType.RADIOLOGY
-                        ? ServiceSource.RADIOLOGY
-                        : ServiceSource.LABORATORY;
-
-        patientServiceAndProductService.cancelBySource(
-                serviceSource,
-                test.getId(),
-                billingItemType,
-                cancelReason
-        );
+        releaseDiagnosticBilling(test, cancelReason);
 
         test.setStatus(DiagnosticOrderTestStatus.CANCELLED);
         test.setProcessingStatus(DiagnosticStatus.CANCELLED);
@@ -443,9 +436,16 @@ public class DiagnosticOrderTestStatusService {
 
             ensureTransition(test, DiagnosticStatus.REJECTED);
 
+            String reason =
+                    rejectedReason == null || rejectedReason.isBlank()
+                            ? "Diagnostic test rejected"
+                            : rejectedReason;
+
+            releaseDiagnosticBilling(test, reason);
+
             test.setProcessingStatus(DiagnosticStatus.REJECTED);
             test.setRejectedBy(rejectedBy);
-            test.setRejectedReason(rejectedReason);
+            test.setRejectedReason(reason);
             test.setRejectedDate(Instant.now());
 
             DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
@@ -938,6 +938,29 @@ public class DiagnosticOrderTestStatusService {
 
     private DiagnosticStatus normalize(DiagnosticStatus status) {
         return status == null ? DiagnosticStatus.NEW : status;
+    }
+
+    /**
+     * Reverses the lab/radiology billing item the same way cancel does,
+     * so reserved money returns to the visit available limit.
+     */
+    private void releaseDiagnosticBilling(DiagnosticOrderTest test, String reason) {
+        BillingItemTypes billingItemType =
+                test.getOrderType() == TestType.RADIOLOGY
+                        ? BillingItemTypes.RADIOLOGY
+                        : BillingItemTypes.LABORATORY;
+
+        ServiceSource serviceSource =
+                test.getOrderType() == TestType.RADIOLOGY
+                        ? ServiceSource.RADIOLOGY
+                        : ServiceSource.LABORATORY;
+
+        patientServiceAndProductService.cancelBySource(
+                serviceSource,
+                test.getId(),
+                billingItemType,
+                reason
+        );
     }
 
 
