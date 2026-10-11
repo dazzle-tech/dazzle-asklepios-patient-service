@@ -253,6 +253,7 @@ public class PointOfSaleTransactionService {
                 transaction.getBatchNo(),
                 transaction.getPaymentMethod(),
                 transaction.getSchemeLabel(),
+                transaction.getPanNumber(),
                 transaction.getTransactionDate(),
                 transaction.getWebhookReceived(),
                 transaction.getStanNo(),
@@ -349,6 +350,10 @@ public class PointOfSaleTransactionService {
                 webhook.schemeLabel()
         );
 
+        transaction.setPanNumber(
+                webhook.panNumber()
+        );
+
         transaction.setProductInfo(
                 webhook.productInfo()
         );
@@ -377,6 +382,10 @@ public class PointOfSaleTransactionService {
 
         transaction.setWebhookReceived(
                 Boolean.TRUE
+        );
+
+        transaction.setRawResponse(
+                webhook.toString()
         );
 
         if (isApproved(webhook.responseCode())) {
@@ -535,6 +544,7 @@ public class PointOfSaleTransactionService {
                     transaction.getBatchNo(),
                     transaction.getPaymentMethod(),
                     transaction.getSchemeLabel(),
+                transaction.getPanNumber(),
                     transaction.getTransactionDate(),
                     transaction.getWebhookReceived(),
                     transaction.getStanNo(),
@@ -589,6 +599,10 @@ public class PointOfSaleTransactionService {
                 response.schemeLabel()
         );
 
+        transaction.setPanNumber(
+                response.panNumber()
+        );
+
         transaction.setStanNo(
                 response.stanNo()
         );
@@ -613,6 +627,10 @@ public class PointOfSaleTransactionService {
 
         transaction.setApplicationVersion(
                 response.applicationVersion()
+        );
+
+        transaction.setRawResponse(
+                response.toString()
         );
 
         if (isApproved(response.responseCode())) {
@@ -667,6 +685,7 @@ public class PointOfSaleTransactionService {
                 transaction.getBatchNo(),
                 transaction.getPaymentMethod(),
                 transaction.getSchemeLabel(),
+                transaction.getPanNumber(),
                 transaction.getTransactionDate(),
                 transaction.getWebhookReceived(),
                 transaction.getStanNo(),

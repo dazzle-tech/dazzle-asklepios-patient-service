@@ -52,6 +52,8 @@ public record PointOfSaleTransactionDTO(
 
         String schemeLabel,
 
+        String panNumber,
+
         LocalDateTime transactionDate,
 
         Boolean webhookReceived,
