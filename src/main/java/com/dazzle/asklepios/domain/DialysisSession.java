@@ -6,6 +6,7 @@ import com.dazzle.asklepios.domain.enumeration.DialysisAnticoagulation;
 import com.dazzle.asklepios.domain.enumeration.DialysisComplication;
 import com.dazzle.asklepios.domain.enumeration.DialysisDisposition;
 import com.dazzle.asklepios.domain.enumeration.DialysisShift;
+import com.dazzle.asklepios.domain.enumeration.Unit;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -79,6 +80,9 @@ public class DialysisSession
     @Column(name = "nephrologist_id")
     private Long nephrologistId;
 
+    @Column(name = "treatment_plan_id")
+    private Long treatmentPlanId;
+
     @Column(name = "pre_weight", precision = 10, scale = 2)
     private BigDecimal preWeight;
 
@@ -123,6 +127,10 @@ public class DialysisSession
 
     @Column(name = "dialysis_duration", precision = 10, scale = 2)
     private BigDecimal dialysisDuration;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "duration_type", length = 50)
+    private Unit durationType;
 
     @Column(name = "blood_flow_rate", precision = 10, scale = 2)
     private BigDecimal bloodFlowRate;

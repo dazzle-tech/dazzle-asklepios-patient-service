@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.enumeration.DialysisAccessType;
 import com.dazzle.asklepios.domain.enumeration.DialysisRegistrationStatus;
 import com.dazzle.asklepios.domain.enumeration.DialysisScheduleDay;
 import com.dazzle.asklepios.domain.enumeration.DialysisTreatmentType;
+import com.dazzle.asklepios.domain.enumeration.Unit;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -65,6 +66,10 @@ public class NephrologyTreatmentPlan
 
     @Column(name = "dialysis_duration", precision = 10, scale = 2)
     private BigDecimal dialysisDuration;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "duration_type", length = 50)
+    private Unit durationType;
 
     @Column(name = "dry_weight", precision = 10, scale = 2)
     private BigDecimal dryWeight;
