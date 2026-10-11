@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.service.PatientAuthenticationService;
 import com.dazzle.asklepios.service.PatientOtpAuthenticationService;
 import com.dazzle.asklepios.service.PatientService;
+import com.dazzle.asklepios.service.dto.patient.ExternalPatientCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.FacilityPatientFilterDTO;
 import com.dazzle.asklepios.service.dto.patient.KeyAndPasswordDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientConditionsDTO;
@@ -102,19 +103,19 @@ public class PatientController {
     }
 
     /**
-     * Creates a patient for a system caller. Authentication is the {@code X-Portal-Secret} header
-     * ({@code PATIENT_PORTAL_SECRET}), checked by {@link com.dazzle.asklepios.security.PatientPortalSecretFilter},
-     * not a bearer token.
+     * Creates a patient and a primary document for a system caller.
+     * Authentication is the {@code X-Portal-Secret} header ({@code PATIENT_PORTAL_SECRET}),
+     * checked by {@link com.dazzle.asklepios.security.PatientPortalSecretFilter}, not a bearer token.
      */
     @PostMapping("/external")
-    public ResponseEntity<Patient> createPatientWithSecret(@Valid @RequestBody PatientCreateDTO patientDTO) {
+    public ResponseEntity<Patient> createPatientWithSecret(@Valid @RequestBody ExternalPatientCreateDTO patientDTO) {
         LOG.debug("REST create Patient via secret key payload={}", patientDTO);
 
         if (patientDTO == null) {
             throw new BadRequestAlertException("Patient payload is required", "patient", "payload.required");
         }
 
-        Patient created = patientService.create(patientDTO);
+        Patient created = patientService.createExternal(patientDTO);
         return ResponseEntity.created(URI.create("/api/patient/" + created.getId())).body(created);
     }
 
