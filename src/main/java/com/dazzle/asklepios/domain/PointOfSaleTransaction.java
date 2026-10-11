@@ -110,6 +110,10 @@ public class PointOfSaleTransaction extends AbstractAuditingEntity<Long> impleme
 
     @Column(name = "scheme_label")
     private String schemeLabel;
+
+    @Column(name = "pan_number")
+    private String panNumber;
+
     @Column(name = "stan_no")
     private String stanNo;
 
