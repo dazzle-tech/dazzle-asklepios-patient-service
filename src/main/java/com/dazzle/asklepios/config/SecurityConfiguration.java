@@ -40,6 +40,7 @@ public class SecurityConfiguration {
                                 .requestMatchers(HttpMethod.POST, "/api/patient/patient-satisfaction-survey/submit").permitAll()
                                 .requestMatchers(HttpMethod.POST, "/api/patient/patient-portal/request-otp").permitAll()
                                 .requestMatchers(HttpMethod.POST, "/api/patient/patient-portal/verify-login-otp").permitAll()
+                                .requestMatchers(HttpMethod.POST, "/api/patient/external").permitAll()
                                 .requestMatchers(mvc.pattern("/api/admin/**")).hasAuthority(AuthoritiesConstants.ADMIN)
                                 .requestMatchers(mvc.pattern("/api/**")).authenticated()
                                 .requestMatchers(mvc.pattern("/appointment/**")).authenticated()

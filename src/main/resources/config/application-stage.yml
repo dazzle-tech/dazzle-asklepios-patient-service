@@ -147,6 +147,7 @@ patient:
       zone: "Asia/Hebron"
       lead-days: 7
   portal:
-    # Shared secret for POST /api/patient/patient-portal/request-otp and verify-login-otp.
+    # Shared secret for POST /api/patient/patient-portal/request-otp, verify-login-otp,
+    # and POST /api/patient/external.
     # Callers send it in the X-Portal-Secret header. Set PATIENT_PORTAL_SECRET in each environment.
     secret: ${PATIENT_PORTAL_SECRET:}
