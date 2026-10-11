@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 @FeignClient(name = "setupServiceClient",url = "${service.asklepios-setup-service-url}" , configuration = SetupServiceFeignConfig.class)
 public interface CountryClient {
 
-    @GetMapping("/api/setup/country/{id}")
+    @GetMapping("/api/setup/country/internalJob/{id}")
     ResponseEntity<CountryDTO> getCountry(@PathVariable("id") @NotNull Long countryId);
 
 }
