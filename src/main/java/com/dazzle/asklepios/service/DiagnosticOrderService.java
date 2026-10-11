@@ -58,6 +58,7 @@ public class DiagnosticOrderService {
     private final FacilityHelper facilityHelper;
     private final DepartmentHelper departmentHelper;
     private final NotificationHelper notificationHelper;
+    private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
 
 
     /**
@@ -256,6 +257,7 @@ public class DiagnosticOrderService {
                 saved.getId(), saved.getSaveDraft(), saved.getStatus(), saved.getSubmittedDate(), updatedTests);
 
         notificationForUrgentDiagnosticOrder(saved);
+        diagnosticOrderTestStatusService.chargeSubmittedOrder(saved.getId());
 
         return saved;
     }

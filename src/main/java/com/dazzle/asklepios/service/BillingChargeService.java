@@ -466,6 +466,25 @@ public class BillingChargeService {
     }
 
     /**
+     * Records which workflow action created the charge line.
+     * Amounts on the line are left unchanged.
+     */
+    public void recordChargeLineWorkflow(Long chargeLineId, String workflowNote) {
+        if (chargeLineId == null || workflowNote == null || workflowNote.isBlank()) {
+            return;
+        }
+
+        billingChargeLineRepository.findById(chargeLineId).ifPresent(line -> {
+            if (line.getNotes() != null && !line.getNotes().isBlank()) {
+                return;
+            }
+
+            line.setNotes(workflowNote.trim());
+            billingChargeLineRepository.save(line);
+        });
+    }
+
+    /**
      * Applies newly calculated price values to an existing line.
      *
      * Active allocations must not exceed the new net amount.
