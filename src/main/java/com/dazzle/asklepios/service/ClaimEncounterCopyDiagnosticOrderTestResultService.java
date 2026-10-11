@@ -90,6 +90,7 @@ public class ClaimEncounterCopyDiagnosticOrderTestResultService {
 
         entity.setClaimEncounterCopyId(claimEncounterCopyId);
         entity.setOrderTestId(orderTest.getId());
+        entity.setProfileTestId(dto.profileTestId());
         entity.setResultValueNumber(dto.resultValueNumber());
         entity.setResultValueText(dto.resultValueText());
         entity.setResultTypeAtEntry(dto.resultTypeAtEntry());

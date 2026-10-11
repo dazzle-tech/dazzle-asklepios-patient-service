@@ -7,6 +7,7 @@ import java.math.BigDecimal;
 
 public record ClaimEncounterCopyDiagnosticOrderTestResultCreateDTO(
         @NotNull Long orderTestId,
+        Long profileTestId,
         BigDecimal resultValueNumber,
         String resultValueText,
         TestResultType resultTypeAtEntry
