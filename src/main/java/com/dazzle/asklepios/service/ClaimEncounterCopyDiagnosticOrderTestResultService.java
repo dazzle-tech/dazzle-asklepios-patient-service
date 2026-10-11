@@ -11,7 +11,6 @@ import com.dazzle.asklepios.repository.ClaimEncounterCopyRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
-import com.dazzle.asklepios.service.dto.billing.ClaimEncounterCopyDiagnosticOrderTestResultCancelDTO;
 import com.dazzle.asklepios.service.dto.billing.ClaimEncounterCopyDiagnosticOrderTestResultCreateDTO;
 import com.dazzle.asklepios.service.dto.billing.ClaimEncounterCopyDiagnosticOrderTestResultUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -94,7 +93,6 @@ public class ClaimEncounterCopyDiagnosticOrderTestResultService {
         entity.setResultValueNumber(dto.resultValueNumber());
         entity.setResultValueText(dto.resultValueText());
         entity.setResultTypeAtEntry(dto.resultTypeAtEntry());
-        entity.setStatus(PatientHistoryStatus.ACTIVE);
 
         return claimEncounterCopyDiagnosticOrderTestResultRepository
                 .saveAndFlush(entity);
@@ -115,50 +113,8 @@ public class ClaimEncounterCopyDiagnosticOrderTestResultService {
                                 "claimEncounterCopyDiagnosticOrderTestResult",
                                 "notfound"
                         ));
-
-        if (entity.getStatus() == PatientHistoryStatus.CANCELLED) {
-            throw new BadRequestAlertException(
-                    "Cancelled diagnostic order test result cannot be updated.",
-                    "claimEncounterCopyDiagnosticOrderTestResult",
-                    "cancelled"
-            );
-        }
-
         entity.setResultValueNumber(dto.resultValueNumber());
         entity.setResultValueText(dto.resultValueText());
-
-        return claimEncounterCopyDiagnosticOrderTestResultRepository
-                .saveAndFlush(entity);
-    }
-
-    public ClaimEncounterCopyDiagnosticOrderTestResult cancel(
-            Long id,
-            ClaimEncounterCopyDiagnosticOrderTestResultCancelDTO dto
-    ) {
-        ClaimEncounterCopyDiagnosticOrderTestResult entity =
-                claimEncounterCopyDiagnosticOrderTestResultRepository
-                        .findById(id)
-                        .orElseThrow(() -> new NotFoundAlertException(
-                                "Claim encounter copy diagnostic order test result not found with id "
-                                        + id,
-                                "claimEncounterCopyDiagnosticOrderTestResult",
-                                "notfound"
-                        ));
-
-        if (entity.getStatus() == PatientHistoryStatus.CANCELLED) {
-            throw new BadRequestAlertException(
-                    "Diagnostic order test result is already cancelled.",
-                    "claimEncounterCopyDiagnosticOrderTestResult",
-                    "already.cancelled"
-            );
-        }
-
-        entity.setStatus(PatientHistoryStatus.CANCELLED);
-        entity.setCancelledBy(currentUsername());
-        entity.setCancelledDate(Instant.now());
-        entity.setCancellationReason(
-                dto.cancellationReason().trim()
-        );
 
         return claimEncounterCopyDiagnosticOrderTestResultRepository
                 .saveAndFlush(entity);

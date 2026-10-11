@@ -637,7 +637,6 @@ public class   ClaimEncounterCopyService {
                     copy.setMarker(result.getMarker());
                     copy.setNormalRangeValue(result.getNormalRangeValue());
                     copy.setResultTypeAtEntry(result.getResultTypeAtEntry());
-                    copy.setStatus(PatientHistoryStatus.ACTIVE);
 
                     claimEncounterCopyDiagnosticOrderTestResultRepository.save(copy);
                 });
@@ -686,7 +685,6 @@ public class   ClaimEncounterCopyService {
                     copy.setCriticalFindings(report.getCriticalFindings());
                     copy.setRadiologistComments(report.getRadiologistComments());
                     copy.setSeverity(report.getSeverity());
-                    copy.setStatus(PatientHistoryStatus.ACTIVE);
 
                     claimEncounterCopyDiagnosticOrderTestReportRepository.save(copy);
                 });

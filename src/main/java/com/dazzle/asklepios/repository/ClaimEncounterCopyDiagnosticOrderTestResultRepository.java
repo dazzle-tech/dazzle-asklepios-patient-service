@@ -19,9 +19,4 @@ public interface ClaimEncounterCopyDiagnosticOrderTestResultRepository
             Long claimEncounterCopyId,
             PatientHistoryStatus status
     );
-
-    boolean existsByClaimEncounterCopyIdAndStatus(
-            Long claimEncounterCopyId,
-            PatientHistoryStatus status
-    );
 }

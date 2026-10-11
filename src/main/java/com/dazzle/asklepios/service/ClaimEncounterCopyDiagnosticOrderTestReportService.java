@@ -11,7 +11,6 @@ import com.dazzle.asklepios.repository.ClaimEncounterCopyRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
-import com.dazzle.asklepios.service.dto.billing.ClaimEncounterCopyDiagnosticOrderTestReportCancelDTO;
 import com.dazzle.asklepios.service.dto.billing.ClaimEncounterCopyDiagnosticOrderTestReportCreateDTO;
 import com.dazzle.asklepios.service.dto.billing.ClaimEncounterCopyDiagnosticOrderTestReportUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -100,7 +99,6 @@ public class ClaimEncounterCopyDiagnosticOrderTestReportService {
         entity.setCriticalFindings(dto.criticalFindings());
         entity.setRadiologistComments(dto.radiologistComments());
         entity.setSeverity(dto.severity());
-        entity.setStatus(PatientHistoryStatus.ACTIVE);
 
         return claimEncounterCopyDiagnosticOrderTestReportRepository
                 .saveAndFlush(entity);
@@ -127,13 +125,7 @@ public class ClaimEncounterCopyDiagnosticOrderTestReportService {
                                 "notfound"
                         ));
 
-        if (entity.getStatus() == PatientHistoryStatus.CANCELLED) {
-            throw new BadRequestAlertException(
-                    "Cancelled diagnostic order test report cannot be updated.",
-                    "claimEncounterCopyDiagnosticOrderTestReport",
-                    "cancelled"
-            );
-        }
+
 
         entity.setReport(dto.report());
         entity.setRadiologistInformation(dto.radiologistInformation());
@@ -145,38 +137,6 @@ public class ClaimEncounterCopyDiagnosticOrderTestReportService {
                 .saveAndFlush(entity);
     }
 
-    public ClaimEncounterCopyDiagnosticOrderTestReport cancel(
-            Long id,
-            ClaimEncounterCopyDiagnosticOrderTestReportCancelDTO dto
-    ) {
-        ClaimEncounterCopyDiagnosticOrderTestReport entity =
-                claimEncounterCopyDiagnosticOrderTestReportRepository
-                        .findById(id)
-                        .orElseThrow(() -> new NotFoundAlertException(
-                                "Claim encounter copy diagnostic order test report not found with id "
-                                        + id,
-                                "claimEncounterCopyDiagnosticOrderTestReport",
-                                "notfound"
-                        ));
-
-        if (entity.getStatus() == PatientHistoryStatus.CANCELLED) {
-            throw new BadRequestAlertException(
-                    "Diagnostic order test report is already cancelled.",
-                    "claimEncounterCopyDiagnosticOrderTestReport",
-                    "already.cancelled"
-            );
-        }
-
-        entity.setStatus(PatientHistoryStatus.CANCELLED);
-        entity.setCancelledBy(currentUsername());
-        entity.setCancelledDate(Instant.now());
-        entity.setCancellationReason(
-                dto.cancellationReason().trim()
-        );
-
-        return claimEncounterCopyDiagnosticOrderTestReportRepository
-                .saveAndFlush(entity);
-    }
 
     private DiagnosticOrderTest requireRadiologyTest(
             Long orderTestId,

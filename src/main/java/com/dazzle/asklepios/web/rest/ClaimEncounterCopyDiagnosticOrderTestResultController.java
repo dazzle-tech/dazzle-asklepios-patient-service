@@ -2,7 +2,6 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.ClaimEncounterCopyDiagnosticOrderTestResult;
 import com.dazzle.asklepios.service.ClaimEncounterCopyDiagnosticOrderTestResultService;
-import com.dazzle.asklepios.service.dto.billing.ClaimEncounterCopyDiagnosticOrderTestResultCancelDTO;
 import com.dazzle.asklepios.service.dto.billing.ClaimEncounterCopyDiagnosticOrderTestResultCreateDTO;
 import com.dazzle.asklepios.service.dto.billing.ClaimEncounterCopyDiagnosticOrderTestResultUpdateDTO;
 import jakarta.validation.Valid;
@@ -21,20 +20,6 @@ public class ClaimEncounterCopyDiagnosticOrderTestResultController {
 
     private final ClaimEncounterCopyDiagnosticOrderTestResultService service;
 
-    @GetMapping(
-            "/by-copy/{claimEncounterCopyId}/not-cancelled"
-    )
-    public ResponseEntity<List<ClaimEncounterCopyDiagnosticOrderTestResult>>
-    findByCopyId(
-            @PathVariable Long claimEncounterCopyId
-    ) {
-        return ResponseEntity.ok(
-                service.findByCopyId(
-                        claimEncounterCopyId,
-                        false
-                )
-        );
-    }
 
     @GetMapping(
             "/by-copy/{claimEncounterCopyId}/all"
@@ -78,14 +63,5 @@ public class ClaimEncounterCopyDiagnosticOrderTestResultController {
         );
     }
 
-    @PutMapping("/{id}/cancel")
-    public ResponseEntity<ClaimEncounterCopyDiagnosticOrderTestResult> cancel(
-            @PathVariable Long id,
-            @Valid @RequestBody
-            ClaimEncounterCopyDiagnosticOrderTestResultCancelDTO dto
-    ) {
-        return ResponseEntity.ok(
-                service.cancel(id, dto)
-        );
-    }
+
 }
