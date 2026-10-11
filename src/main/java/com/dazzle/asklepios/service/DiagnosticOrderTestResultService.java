@@ -998,7 +998,8 @@ public class DiagnosticOrderTestResultService {
             String patientName,
             String mrn,
             List<Long> patientIdIn,
-            String orderNumber
+            String orderNumber,
+            String encounterNumber
     ) {
 
         return (testResultRoot, criteriaQuery, criteriaBuilder) -> {
@@ -1014,6 +1015,9 @@ public class DiagnosticOrderTestResultService {
             boolean needOrderNumberFilter =
                     orderNumber != null;
 
+            boolean needEncounterNumberFilter =
+                    encounterNumber != null && !encounterNumber.isBlank();
+
             boolean needPatientIdFilter =
                     patientIdIn != null && !patientIdIn.isEmpty();
 
@@ -1025,6 +1029,7 @@ public class DiagnosticOrderTestResultService {
                     needOrderIdFilter ||
                             needOrderFilter ||
                             needOrderNumberFilter ||
+                            needEncounterNumberFilter ||
                             needPatientIdFilter ||
                             needPatientFilter;
 
@@ -1068,6 +1073,22 @@ public class DiagnosticOrderTestResultService {
                                             orderRoot.get("orderNumber")
                                     ),
                                     "%" + orderNumber
+                                            .trim()
+                                            .toLowerCase() + "%"
+                            )
+                    );
+                }
+
+                if (needEncounterNumberFilter) {
+
+                    var encounterRoot = orderRoot.join("encounter");
+
+                    subPredicates.add(
+                            criteriaBuilder.like(
+                                    criteriaBuilder.lower(
+                                            encounterRoot.get("encounterNumber")
+                                    ),
+                                    "%" + encounterNumber
                                             .trim()
                                             .toLowerCase() + "%"
                             )

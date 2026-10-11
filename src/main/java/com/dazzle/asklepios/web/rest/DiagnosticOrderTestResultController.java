@@ -368,6 +368,9 @@ public class DiagnosticOrderTestResultController {
             @RequestParam(name = "orderNumber", required = false)
             String orderNumber,
 
+            @RequestParam(name = "encounterNumber", required = false)
+            String encounterNumber,
+
             @ParameterObject Pageable pageable
     ) {
         Specification<DiagnosticOrderTestResult> resultSpecification =
@@ -384,6 +387,9 @@ public class DiagnosticOrderTestResultController {
                     boolean needOrderNumberFilter =
                             orderNumber != null;
 
+                    boolean needEncounterNumberFilter =
+                            encounterNumber != null && !encounterNumber.isBlank();
+
                     boolean needPatientIdFilter =
                             patientIdIn != null && !patientIdIn.isEmpty();
 
@@ -395,6 +401,7 @@ public class DiagnosticOrderTestResultController {
                             needOrderIdFilter ||
                                     needOrderFilter ||
                                     needOrderNumberFilter ||
+                                    needEncounterNumberFilter ||
                                     needPatientIdFilter ||
                                     needPatientFilter;
 
@@ -429,6 +436,17 @@ public class DiagnosticOrderTestResultController {
                                     criteriaBuilder.like(
                                             criteriaBuilder.lower(orderRoot.get("orderNumber")),
                                             "%" + orderNumber.trim().toLowerCase() + "%"
+                                    )
+                            );
+                        }
+
+                        if (needEncounterNumberFilter) {
+                            var encounterRoot = orderRoot.join("encounter");
+
+                            subPredicates.add(
+                                    criteriaBuilder.like(
+                                            criteriaBuilder.lower(encounterRoot.get("encounterNumber")),
+                                            "%" + encounterNumber.trim().toLowerCase() + "%"
                                     )
                             );
                         }
@@ -648,7 +666,10 @@ public class DiagnosticOrderTestResultController {
             List<Long> patientIdIn,
 
             @RequestParam(name = "orderNumber", required = false)
-            String orderNumber
+            String orderNumber,
+
+            @RequestParam(name = "encounterNumber", required = false)
+            String encounterNumber
     ) {
 
         Specification<DiagnosticOrderTestResult> specification =
@@ -673,7 +694,8 @@ public class DiagnosticOrderTestResultController {
                         patientName,
                         mrn,
                         patientIdIn,
-                        orderNumber
+                        orderNumber,
+                        encounterNumber
                 );
 
         return ResponseEntity.ok(

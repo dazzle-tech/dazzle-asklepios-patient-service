@@ -584,10 +584,11 @@ public class DiagnosticOrderTestReportService {
             String mrn,
             List<Long> patientIdIn,
             String orderNumber,
+            String encounterNumber,
             Pageable pageable
     ) {
-        LOG.debug("[DiagnosticOrderTestReportService] FILTER_REPORTS - start. id={} orderIdIn={} orderTestId={} severity={} approvedBy={} rejectedBy={} reviewBy={} reviewed={} patientIdIn={} orderNumber={} pageable={}",
-                id, orderIdIn, orderTestId, severity, approvedBy, rejectedBy, reviewBy, reviewed, patientIdIn, orderNumber, pageable);
+        LOG.debug("[DiagnosticOrderTestReportService] FILTER_REPORTS - start. id={} orderIdIn={} orderTestId={} severity={} approvedBy={} rejectedBy={} reviewBy={} reviewed={} patientIdIn={} orderNumber={} encounterNumber={} pageable={}",
+                id, orderIdIn, orderTestId, severity, approvedBy, rejectedBy, reviewBy, reviewed, patientIdIn, orderNumber, encounterNumber, pageable);
 
         Specification<DiagnosticOrderTestReport> spec = (reportRoot, criteriaQuery, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -686,6 +687,9 @@ public class DiagnosticOrderTestReportService {
             boolean needOrderNumberFilter =
                     orderNumber != null;
 
+            boolean needEncounterNumberFilter =
+                    encounterNumber != null && !encounterNumber.isBlank();
+
             boolean needPatientIdFilter =
                     patientIdIn != null && !patientIdIn.isEmpty();
 
@@ -699,6 +703,7 @@ public class DiagnosticOrderTestReportService {
             boolean needSubquery =
                     needOrderFilter ||
                             needOrderNumberFilter ||
+                            needEncounterNumberFilter ||
                             needPatientIdFilter ||
                             needPatientFilter ||
                             needOrderIdFilter;
@@ -734,6 +739,17 @@ public class DiagnosticOrderTestReportService {
                             criteriaBuilder.like(
                                     criteriaBuilder.lower(orderRoot.get("orderNumber")),
                                     "%" + orderNumber.trim().toLowerCase() + "%"
+                            )
+                    );
+                }
+
+                if (needEncounterNumberFilter) {
+                    var encounterRoot = orderRoot.join("encounter");
+
+                    subPredicates.add(
+                            criteriaBuilder.like(
+                                    criteriaBuilder.lower(encounterRoot.get("encounterNumber")),
+                                    "%" + encounterNumber.trim().toLowerCase() + "%"
                             )
                     );
                 }
@@ -1121,7 +1137,8 @@ public class DiagnosticOrderTestReportService {
             String patientName,
             String mrn,
             List<Long> patientIdIn,
-            String orderNumber
+            String orderNumber,
+            String encounterNumber
     ) {
 
         Page<DiagnosticOrderTestReportResponseVM> page =
@@ -1153,6 +1170,7 @@ public class DiagnosticOrderTestReportService {
                         mrn,
                         patientIdIn,
                         orderNumber,
+                        encounterNumber,
                         Pageable.unpaged()
                 );
 
