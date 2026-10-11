@@ -31,7 +31,13 @@ public class EncounterReopenGuard {
     }
 
     public boolean isAmendmentOpen(Long encounterId) {
-        return findOpenReopenSessionId(encounterId).isPresent();
+        if (encounterId == null) {
+            return false;
+        }
+        return encounterReopenSessionRepository.existsByEncounter_IdAndStatus(
+                encounterId,
+                EncounterReopenSessionStatus.OPEN
+        );
     }
 
     public Optional<Long> findOpenReopenSessionId(Long encounterId) {

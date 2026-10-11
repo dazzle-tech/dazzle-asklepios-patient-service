@@ -868,10 +868,17 @@ public class PatientEncounterController {
 
     @GetMapping("/encounter/{encounterId}/amendment-history")
     public ResponseEntity<List<AmendmentHistorySessionVM>> findAmendmentHistory(
-            @PathVariable @NotNull Long encounterId
+            @PathVariable @NotNull Long encounterId,
+            @ParameterObject Pageable pageable
     ) {
         LOG.debug("REST encounter amendment history encounterId={}", encounterId);
-        return ResponseEntity.ok(encounterAmendmentHistoryService.findHistory(encounterId));
+        Page<AmendmentHistorySessionVM> page =
+                encounterAmendmentHistoryService.findHistory(encounterId, pageable);
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                page
+        );
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
     @GetMapping("/encounter/{id}/audit")

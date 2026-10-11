@@ -15,7 +15,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -27,13 +26,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(
-        name = "encounter_reopen_session",
-        uniqueConstraints = @UniqueConstraint(
-                name = "ux_encounter_reopen_session_encounter_number",
-                columnNames = {"encounter_id", "session_number"}
-        )
-)
+@Table(name = "encounter_reopen_session")
 @Getter
 @Setter
 @NoArgsConstructor

@@ -227,21 +227,14 @@ public class EncounterAmendmentAuditService {
         }
     }
 
+    /**
+     * Keeps null and blank string values so comparisons can detect clear/empty transitions.
+     */
     private Map<String, Object> meaningful(Map<String, Object> values) {
         if (values == null || values.isEmpty()) {
             return null;
         }
-        Map<String, Object> kept = new LinkedHashMap<>();
-        values.forEach((key, value) -> {
-            if (value == null) {
-                return;
-            }
-            if (value instanceof String text && text.isBlank()) {
-                return;
-            }
-            kept.put(key, value);
-        });
-        return kept.isEmpty() ? null : kept;
+        return new LinkedHashMap<>(values);
     }
 
     @SuppressWarnings("unchecked")

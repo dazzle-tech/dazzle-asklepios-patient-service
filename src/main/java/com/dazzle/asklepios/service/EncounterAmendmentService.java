@@ -109,21 +109,7 @@ public class EncounterAmendmentService {
             );
         }
 
-        if (encounter.getEncounterType() == EncounterType.CLINIC && !user.isCanUnCompleteEncounter()) {
-            throw new BadRequestAlertException(
-                    "You do not have permission to amend outpatient encounters.",
-                    ENTITY,
-                    "amendment.permissionDenied"
-            );
-        }
-
-        if (encounter.getEncounterType() == EncounterType.EMERGENCY && !user.isCanUnDischargeUrgentCare()) {
-            throw new BadRequestAlertException(
-                    "You do not have permission to amend emergency encounters.",
-                    ENTITY,
-                    "amendment.permissionDenied"
-            );
-        }
+        validateAmendmentPermission(user, encounter);
 
         if (encounterReopenSessionRepository.existsByEncounter_IdAndStatus(
                 encounterId,
@@ -136,8 +122,11 @@ public class EncounterAmendmentService {
             );
         }
 
-        int nextSessionNumber =
-                encounterReopenSessionRepository.findMaxSessionNumberByEncounterId(encounterId) + 1;
+        int nextSessionNumber = encounterReopenSessionRepository
+                .findTopByEncounter_IdOrderBySessionNumberDesc(encounterId)
+                .map(EncounterReopenSession::getSessionNumber)
+                .orElse(0)
+                + 1;
 
         EncounterReopenSession session = EncounterReopenSession.builder()
                 .encounter(encounter)
@@ -222,6 +211,23 @@ public class EncounterAmendmentService {
                         "patientEncounter",
                         "id.notfound"
                 ));
+
+        User user = userRepository.findByLogin(username)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "User not found with login " + username,
+                        "patientEncounter",
+                        "user.notfound"
+                ));
+        validateAmendmentPermission(user, encounter);
+
+        if (encounter.getStatus() != TreatmentStatus.ONGOING) {
+            throw new BadRequestAlertException(
+                    "Only an ongoing amended encounter can be finished.",
+                    ENTITY,
+                    "amendment.notOngoing"
+            );
+        }
+
         EncounterReopenSession session = encounterReopenSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Amendment session not found with id " + sessionId,
@@ -281,6 +287,23 @@ public class EncounterAmendmentService {
             return closed;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw mapPersistenceFailure(ex);
+        }
+    }
+
+    private void validateAmendmentPermission(User user, PatientEncounter encounter) {
+        if (encounter.getEncounterType() == EncounterType.CLINIC && !user.isCanUnCompleteEncounter()) {
+            throw new BadRequestAlertException(
+                    "You do not have permission to amend outpatient encounters.",
+                    ENTITY,
+                    "amendment.permissionDenied"
+            );
+        }
+        if (encounter.getEncounterType() == EncounterType.EMERGENCY && !user.isCanUnDischargeUrgentCare()) {
+            throw new BadRequestAlertException(
+                    "You do not have permission to amend emergency encounters.",
+                    ENTITY,
+                    "amendment.permissionDenied"
+            );
         }
     }
 

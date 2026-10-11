@@ -34,12 +34,12 @@ public class AmendmentHistoryNormalizer {
 
     private static final Logger LOG = LoggerFactory.getLogger(AmendmentHistoryNormalizer.class);
 
-    static final String PROGRESS_NOTES = "Progress Notes";
-    static final String VITAL_SIGNS = "Vital Signs";
-    static final String CONSULTATION = "Consultation";
-    static final String ENCOUNTER_NARRATIVE = "Encounter Narrative";
-    static final String ASSESSMENT = "Assessment";
-    static final String PLAN = "Plan";
+    static final String PROGRESS_NOTES = "PROGRESS_NOTES";
+    static final String VITAL_SIGNS = "VITAL_SIGNS";
+    static final String CONSULTATION = "CONSULTATION";
+    static final String ENCOUNTER_NARRATIVE = "ENCOUNTER_NARRATIVE";
+    static final String ASSESSMENT = "ASSESSMENT";
+    static final String PLAN = "PLAN";
 
     private static final Set<AmendmentMedicalSheet> REPLACEMENT_SHEETS = EnumSet.of(
             AmendmentMedicalSheet.BODY_MEASUREMENTS,
@@ -151,19 +151,14 @@ public class AmendmentHistoryNormalizer {
             return null;
         }
         String code = data.get("medicalSheet").asText();
-        String module = code;
-        try {
-            module = AmendmentMedicalSheet.valueOf(code).label();
-        } catch (IllegalArgumentException ignored) {
-            module = label(code);
-        }
         Map<String, Object> before = objectMap(data.get("before"));
         Map<String, Object> after = objectMap(data.get("after"));
         Long recordId = data.hasNonNull("recordId") && data.get("recordId").canConvertToLong()
                 ? data.get("recordId").asLong()
                 : null;
+        // module is the enum/code identity; frontend formats via formatEnumString.
         return new AmendmentHistoryChangeVM(
-                module,
+                code,
                 code,
                 action,
                 recordId,
@@ -222,7 +217,14 @@ public class AmendmentHistoryNormalizer {
     }
 
     public AmendmentHistoryChangeVM progressNote(ProgressNoteLog log) {
+        return progressNote(log, null);
+    }
+
+    public AmendmentHistoryChangeVM progressNote(ProgressNoteLog log, Long encounterId) {
         JsonNode payload = read(log.getPayload());
+        if (!belongsToEncounter(payload, encounterId)) {
+            return null;
+        }
         AmendmentHistoryAction action = progressNoteAction(log.getAction(), payload);
         List<AmendmentHistoryFieldChangeVM> fields = new ArrayList<>();
         fields.add(new AmendmentHistoryFieldChangeVM(
@@ -320,6 +322,16 @@ public class AmendmentHistoryNormalizer {
     }
 
     public AmendmentHistoryChangeVM assessment(EncounterAssessmentLog audit) {
+        return assessment(audit, null);
+    }
+
+    public AmendmentHistoryChangeVM assessment(EncounterAssessmentLog audit, Long encounterId) {
+        Long storedEncounterId = audit.getEncounterAssessment() == null
+                ? null
+                : audit.getEncounterAssessment().getEncounterId();
+        if (encounterId != null && storedEncounterId != null && !encounterId.equals(storedEncounterId)) {
+            return null;
+        }
         Long recordId = audit.getEncounterAssessment() == null ? null : audit.getEncounterAssessment().getId();
         return fieldChange(
                 ASSESSMENT,
@@ -334,6 +346,13 @@ public class AmendmentHistoryNormalizer {
     }
 
     public AmendmentHistoryChangeVM plan(EncounterPlanFieldAudit audit) {
+        return plan(audit, true);
+    }
+
+    public AmendmentHistoryChangeVM plan(EncounterPlanFieldAudit audit, boolean belongsToEncounter) {
+        if (!belongsToEncounter) {
+            return null;
+        }
         return fieldChange(
                 PLAN,
                 audit.getOperationType(),
@@ -372,7 +391,7 @@ public class AmendmentHistoryNormalizer {
                     );
                     if (!fields.isEmpty()) {
                         addUnified(bySession, log.getReopenSessionId(), change(
-                                sheet.label(),
+                                sheet.name(),
                                 sheet.name(),
                                 AmendmentHistoryAction.CHANGED,
                                 recordId(log),
@@ -443,7 +462,7 @@ public class AmendmentHistoryNormalizer {
             }
         }
         return change(
-                sheet.label(),
+                sheet.name(),
                 sheet.name(),
                 AmendmentHistoryAction.ADDED,
                 recordId(log),
@@ -468,7 +487,7 @@ public class AmendmentHistoryNormalizer {
             return null;
         }
         return change(
-                sheet.label(),
+                sheet.name(),
                 sheet.name(),
                 action,
                 recordId(log),
@@ -542,7 +561,7 @@ public class AmendmentHistoryNormalizer {
             return ReplacementResult.consumed();
         }
         return ReplacementResult.of(change(
-                sheet.label(),
+                sheet.name(),
                 sheet.name(),
                 AmendmentHistoryAction.CHANGED,
                 recordId(replacement),
@@ -627,7 +646,7 @@ public class AmendmentHistoryNormalizer {
             return null;
         }
         return change(
-                sheet.label(),
+                sheet.name(),
                 sheet.name(),
                 AmendmentHistoryAction.CHANGED,
                 recordId(log),
