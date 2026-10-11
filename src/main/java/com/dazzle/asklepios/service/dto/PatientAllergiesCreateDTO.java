@@ -1,6 +1,5 @@
 package com.dazzle.asklepios.service.dto;
 
-
 import com.dazzle.asklepios.domain.enumeration.AllergenTypes;
 import com.dazzle.asklepios.domain.enumeration.PatientAllergyStatus;
 import com.dazzle.asklepios.domain.enumeration.Severity;
@@ -16,7 +15,7 @@ public record PatientAllergiesCreateDTO(
         @NotNull AllergenTypes allergenType,
         Long allergenId,
         String allergenName,
-        @NotNull Severity severity,
+        Severity severity,
         Long medicationClassId,
         String criticality,
         String certainty,

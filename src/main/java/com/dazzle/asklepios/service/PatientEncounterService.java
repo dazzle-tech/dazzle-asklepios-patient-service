@@ -551,6 +551,275 @@ public class PatientEncounterService {
         return result;
     }
 
+
+    @Transactional(readOnly = true)
+    public Page<PatientEncounter> filterOpdEncounters(
+            Long facilityId,
+            PatientEncounterSearchFilterDTO filter,
+            Pageable pageable
+    ) {
+        LOG.debug(
+                "Service filter OPD PatientEncounters facilityId={} filter={} pageable={}",
+                facilityId,
+                filter,
+                pageable
+        );
+
+        LocalDate today = LocalDate.now();
+
+        LocalDate effectiveFrom =
+                filter.fromDate() != null
+                        ? filter.fromDate()
+                        : today;
+
+        LocalDate effectiveTo =
+                filter.toDate() != null
+                        ? filter.toDate()
+                        : today;
+
+        List<TreatmentStatus> effectiveStatuses =
+                (filter.statuses() != null && !filter.statuses().isEmpty())
+                        ? filter.statuses()
+                        : List.of(
+                        TreatmentStatus.NEW,
+                        TreatmentStatus.ONGOING
+                );
+
+        boolean hasPatientName =
+                filter.patientName() != null
+                        && !filter.patientName().isBlank();
+
+        boolean hasMrn =
+                filter.mrn() != null
+                        && !filter.mrn().isBlank();
+
+        boolean hasEncounterNumber =
+                filter.encounterNumber() != null
+                        && !filter.encounterNumber().isBlank();
+
+        boolean hasChief =
+                filter.chiefComplaint() != null
+                        && !filter.chiefComplaint().isBlank();
+
+        LOG.debug(
+                "[OPD FILTER] facilityId={} effectiveFrom={} effectiveTo={} " +
+                        "treatmentStatuses={} hasPatientName={} hasMrn={} " +
+                        "hasEncounterNumber={} hasChief={}",
+                facilityId,
+                effectiveFrom,
+                effectiveTo,
+                effectiveStatuses,
+                hasPatientName,
+                hasMrn,
+                hasEncounterNumber,
+                hasChief
+        );
+
+        Specification<PatientEncounter> spec = (root, query, cb) -> {
+
+            applyFetches(root, query);
+
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(
+                    cb.equal(
+                            root.get("facilityId"),
+                            facilityId
+                    )
+            );
+            predicates.add(
+                    cb.equal(
+                            root.get("encounterType"),
+                            EncounterType.CLINIC
+                    )
+            );
+
+            predicates.add(
+                    cb.between(
+                            root.get("encounterDate"),
+                            effectiveFrom,
+                            effectiveTo
+                    )
+            );
+
+            predicates.add(
+                    root.get("status").in(effectiveStatuses)
+            );
+
+            if (
+                    filter.encounterReasons() != null
+                            && !filter.encounterReasons().isEmpty()
+            ) {
+                predicates.add(
+                        root.get("encounterReason")
+                                .in(filter.encounterReasons())
+                );
+            }
+
+            if (
+                    filter.priorities() != null
+                            && !filter.priorities().isEmpty()
+            ) {
+                predicates.add(
+                        root.get("priorityLevel")
+                                .in(filter.priorities())
+                );
+            }
+
+            if (filter.practitionerId() != null) {
+                predicates.add(
+                        cb.equal(
+                                root.get("practitionerId"),
+                                filter.practitionerId()
+                        )
+                );
+            }
+
+            if (hasEncounterNumber) {
+                predicates.add(
+                        cb.like(
+                                cb.lower(
+                                        cb.coalesce(
+                                                root.get("encounterNumber"),
+                                                ""
+                                        )
+                                ),
+                                "%" +
+                                        filter.encounterNumber()
+                                                .trim()
+                                                .toLowerCase()
+                                        + "%"
+                        )
+                );
+            }
+
+            if (hasChief) {
+                predicates.add(
+                        cb.like(
+                                cb.lower(
+                                        cb.coalesce(
+                                                root.get("chiefComplaint"),
+                                                ""
+                                        )
+                                ),
+                                "%" +
+                                        filter.chiefComplaint()
+                                                .trim()
+                                                .toLowerCase()
+                                        + "%"
+                        )
+                );
+            }
+
+            if (hasPatientName || hasMrn) {
+
+                Join<PatientEncounter, Patient> patientJoin =
+                        root.join(
+                                "patient",
+                                JoinType.INNER
+                        );
+
+                if (hasMrn) {
+                    predicates.add(
+                            cb.equal(
+                                    patientJoin.get("medicalRecordNumber"),
+                                    filter.mrn().trim()
+                            )
+                    );
+                }
+
+                if (hasPatientName) {
+
+                    String[] tokens =
+                            filter.patientName()
+                                    .trim()
+                                    .toLowerCase()
+                                    .split("\\s+");
+
+                    Expression<String> first =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("firstName"),
+                                            ""
+                                    )
+                            );
+
+                    Expression<String> second =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("secondName"),
+                                            ""
+                                    )
+                            );
+
+                    Expression<String> third =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("thirdName"),
+                                            ""
+                                    )
+                            );
+
+                    Expression<String> last =
+                            cb.lower(
+                                    cb.coalesce(
+                                            patientJoin.get("lastName"),
+                                            ""
+                                    )
+                            );
+
+                    Predicate[] tokenPredicates =
+                            Arrays.stream(tokens)
+                                    .filter(
+                                            token ->
+                                                    token != null
+                                                            && !token.isBlank()
+                                    )
+                                    .map(token -> {
+
+                                        String like =
+                                                "%" + token + "%";
+
+                                        return cb.or(
+                                                cb.like(first, like),
+                                                cb.like(second, like),
+                                                cb.like(third, like),
+                                                cb.like(last, like)
+                                        );
+                                    })
+                                    .toArray(Predicate[]::new);
+
+                    if (tokenPredicates.length > 0) {
+                        predicates.add(
+                                cb.and(tokenPredicates)
+                        );
+                    }
+                }
+            }
+
+            return cb.and(
+                    predicates.toArray(
+                            new Predicate[0]
+                    )
+            );
+        };
+
+        Page<PatientEncounter> result =
+                patientEncounterRepository.findAll(
+                        spec,
+                        pageable
+                );
+
+        LOG.debug(
+                "[OPD FILTER] result totalElements={} totalPages={} pageNumber={} pageSize={}",
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.getNumber(),
+                result.getSize()
+        );
+
+        return result;
+    }
+
     private void applyFetches(Root<PatientEncounter> root, CriteriaQuery<?> query) {
         if (query == null || query.getResultType() == null) {
             return;
@@ -679,58 +948,89 @@ public class PatientEncounterService {
         return value == null || value.isBlank();
     }
 
-    public PatientEncounter cancelEncounter(Long encounterId, String cancellationReason) {
-        LOG.info("[CANCEL] PatientEncounter id={}", encounterId);
+public PatientEncounter cancelEncounter(Long encounterId, String cancellationReason) {
+    LOG.info(
+            "[CANCEL] PatientEncounter id={} cancellationReason={}",
+            encounterId,
+            cancellationReason
+    );
 
-        PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "id.notfound",
-                        "patientEncounter",
-                        "PatientEncounter not found with id " + encounterId
-                ));
-
-        if (!Set.of(
-                TreatmentStatus.NEW,
-                TreatmentStatus.WAITING_TRIAGE,
-                TreatmentStatus.PENDING_PAYMENT
-        ).contains(encounter.getStatus())) {
-            throw new BadRequestAlertException(
-                    "cancel.notAllowed.rule",
+    PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
+            .orElseThrow(() -> new NotFoundAlertException(
+                    "id.notfound",
                     "patientEncounter",
-                    "Cancel is allowed only when status is NEW, WAITING_TRIAGE, or PENDING_PAYMENT."
-            );
-        }
-        boolean hasObservation = !findEncounterIdsWithObservation(List.of(encounterId)).isEmpty();
+                    "PatientEncounter not found with id " + encounterId
+            ));
 
-        if (hasObservation) {
-            throw new BadRequestAlertException(
-                    "cancel.notAllowed.hasObservation",
-                    "patientEncounter",
-                    "Cannot cancel encounter with observations."
-            );
-        }
+    if (!Set.of(
+            TreatmentStatus.NEW,
+            TreatmentStatus.WAITING_TRIAGE,
+            TreatmentStatus.PENDING_PAYMENT
+    ).contains(encounter.getStatus())) {
 
-        billingEngineService.cancelEncounter(
-                encounterId,
-                "Clinical encounter cancelled",
-                "ENCOUNTER-CANCEL:" + encounterId
+        throw new BadRequestAlertException(
+                "cancel.notAllowed.rule",
+                "patientEncounter",
+                "Cancel is allowed only when status is NEW, WAITING_TRIAGE, or PENDING_PAYMENT."
         );
-
-        encounter.setStatus(TreatmentStatus.CANCELLED);
-        encounter.setCancellationReason(isBlank(cancellationReason) ? null : cancellationReason.trim());
-        encounter.setCancelledBy(currentUsername());
-        encounter.setCancelledAt(Instant.now());
-        try {
-            PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
-            encounterAssignToBedService.dischargeActiveAssignmentByEncounterId(saved.getId());
-            LOG.info("[CANCEL] success id={} status={}", saved.getId(), saved.getStatus());
-            return saved;
-        } catch (DataIntegrityViolationException | JpaSystemException ex) {
-            LOG.warn("[CANCEL] failed (constraint) id={}", encounterId, ex);
-            throw handleConstraintViolation(ex);
-        }
     }
 
+    boolean hasObservation =
+            !findEncounterIdsWithObservation(List.of(encounterId)).isEmpty();
+
+    if (hasObservation) {
+        throw new BadRequestAlertException(
+                "cancel.notAllowed.hasObservation",
+                "patientEncounter",
+                "Cannot cancel encounter with observations."
+        );
+    }
+
+    String cancellationReasonText =
+            isBlank(cancellationReason)
+                    ? null
+                    : cancellationReason.trim();
+
+    billingEngineService.cancelEncounter(
+            encounterId,
+            cancellationReasonText,
+            "ENCOUNTER-CANCEL:" + encounterId
+    );
+
+    encounter.setStatus(TreatmentStatus.CANCELLED);
+    encounter.setCancellationReason(cancellationReasonText);
+    encounter.setCancelledBy(currentUsername());
+    encounter.setCancelledAt(Instant.now());
+
+    try {
+        PatientEncounter saved =
+                patientEncounterRepository.saveAndFlush(encounter);
+
+        encounterAssignToBedService
+                .dischargeActiveAssignmentByEncounterId(saved.getId());
+
+        LOG.info(
+                "[CANCEL] success id={} status={} cancellationReason={} cancelledBy={} cancelledAt={}",
+                saved.getId(),
+                saved.getStatus(),
+                saved.getCancellationReason(),
+                saved.getCancelledBy(),
+                saved.getCancelledAt()
+        );
+
+        return saved;
+
+    } catch (DataIntegrityViolationException | JpaSystemException ex) {
+
+        LOG.warn(
+                "[CANCEL] failed (constraint) id={}",
+                encounterId,
+                ex
+        );
+
+        throw handleConstraintViolation(ex);
+    }
+}
     public PatientEncounter dischargeEncounter(Long encounterId) {
         LOG.info("[DISCHARGE] PatientEncounter id={}", encounterId);
 
@@ -2549,5 +2849,26 @@ public class PatientEncounterService {
     public List<PatientEncounterFieldAudit> getAuditHistory(Long encounterId) {
 
         return auditRepository.findByPatientEncounterIdOrderByLogDateDesc(encounterId);
+    }
+
+    @Transactional
+    public void assignNurse(Long encounterId, Long nurseId) {
+        PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
+                .orElse(null);
+
+        if (encounter == null) {
+            return;
+        }
+
+        if (encounter.getStatus() != TreatmentStatus.ONGOING && encounter.getStatus() != TreatmentStatus.ASSIGNED_TO_BED) {
+            throw new BadRequestAlertException(
+                    "Nurse can only be assigned when status is ONGOING or ASSIGNED TO BED.",
+                    "patientEncounter",
+                    "nurseAssignment.notAllowed"
+            );
+        }
+
+        encounter.setAssignedNurseId(nurseId);
+        patientEncounterRepository.save(encounter);
     }
 }

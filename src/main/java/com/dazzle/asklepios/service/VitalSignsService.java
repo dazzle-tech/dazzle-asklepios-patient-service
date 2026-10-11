@@ -70,6 +70,9 @@ public class VitalSignsService {
                     .oxygenSaturation(dto.oxygenSaturation())
                     .respiratoryRate(dto.respiratoryRate())
                     .fastingBloodGlucose(dto.fastingBloodGlucose())
+                    .fluidStatus(dto.fluidStatus())
+                    .edema(dto.edema())
+                    .urineOutput(dto.urineOutput())
                     .notes(dto.notes())
                     .isTriage(dto.isTriage())
                     .isActive(true)
@@ -94,6 +97,7 @@ public class VitalSignsService {
                             "vitalSigns",
                             "patient.notfound"
                     ));
+
             PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
                     .orElseThrow(() ->
                             new NotFoundAlertException(
@@ -107,6 +111,11 @@ public class VitalSignsService {
             entity.setEncounterId(encounter.getId());
             entity.setBloodPressureSystolic(dto.bloodPressureSystolic());
             entity.setFastingBloodGlucose(dto.fastingBloodGlucose());
+
+            entity.setFluidStatus(dto.fluidStatus());
+            entity.setEdema(dto.edema());
+            entity.setUrineOutput(dto.urineOutput());
+
             entity.setBloodPressureDiastolic(dto.bloodPressureDiastolic());
             entity.setTemperature(dto.temperature());
             entity.setMeasurementSite(dto.measurementSite());
@@ -128,7 +137,9 @@ public class VitalSignsService {
     @Transactional(readOnly = true)
     public Optional<VitalSigns> findLatestByEncounterId(Long encounterId) {
         LOG.debug("[FIND_LATEST_BY_ENCOUNTER] encounterId={}", encounterId);
-        return vitalSignsRepository.findFirstByEncounterIdAndIsActiveTrueOrderByCreatedDateDesc(encounterId);
+
+        return vitalSignsRepository
+                .findFirstByEncounterIdAndIsActiveTrueOrderByCreatedDateDesc(encounterId);
     }
 
     @Transactional(readOnly = true)
@@ -144,11 +155,19 @@ public class VitalSignsService {
         String message = root != null ? root.getMessage() : exception.getMessage();
         String messageLower = message != null ? message.toLowerCase() : "";
 
-        LOG.warn("[DB_CONSTRAINT] VitalSigns constraint violated rootMessage={}", message, exception);
+        LOG.warn(
+                "[DB_CONSTRAINT] VitalSigns constraint violated rootMessage={}",
+                message,
+                exception
+        );
 
         if (messageLower.contains("fk_encounter_vital_signs_patient")
                 || messageLower.contains("fk_vital_signs_patient")) {
-            return new BadRequestAlertException("Invalid patient id.", "vitalSigns", "patient.invalid");
+            return new BadRequestAlertException(
+                    "Invalid patient id.",
+                    "vitalSigns",
+                    "patient.invalid"
+            );
         }
 
         return new BadRequestAlertException(
@@ -175,17 +194,21 @@ public class VitalSignsService {
                         dayStart,
                         dayEnd
                 )
-                .ifPresentOrElse(vitalSigns -> {
-                    vitalSigns.setIsActive(false);
-                    vitalSignsRepository.flush();
-                    LOG.debug(
-                            "[RESET ACTIVE] Reset done. vitalSignsId={} encounterId={}",
-                            vitalSigns.getId(),
-                            encounterId
-                    );
-                }, () -> LOG.debug(
-                        "[RESET ACTIVE] No active VitalSigns found to reset"
-                ));
+                .ifPresentOrElse(
+                        vitalSigns -> {
+                            vitalSigns.setIsActive(false);
+                            vitalSignsRepository.flush();
+
+                            LOG.debug(
+                                    "[RESET ACTIVE] Reset done. vitalSignsId={} encounterId={}",
+                                    vitalSigns.getId(),
+                                    encounterId
+                            );
+                        },
+                        () -> LOG.debug(
+                                "[RESET ACTIVE] No active VitalSigns found to reset"
+                        )
+                );
     }
 
     @Transactional(readOnly = true)
@@ -198,7 +221,10 @@ public class VitalSignsService {
 
         LOG.debug(
                 "[FIND_BY_PATIENT_BETWEEN_DATES] patientId={} from={} to={} pageable={}",
-                patientId, from, to, pageable
+                patientId,
+                from,
+                to,
+                pageable
         );
 
         patientRepository.findById(patientId)
@@ -210,11 +236,19 @@ public class VitalSignsService {
 
         if (from != null && to != null) {
             return vitalSignsRepository
-                    .findByPatientIdAndCreatedDateBetween(patientId, from, to, pageable);
+                    .findByPatientIdAndCreatedDateBetween(
+                            patientId,
+                            from,
+                            to,
+                            pageable
+                    );
         }
 
         return vitalSignsRepository
-                .findByPatientId(patientId, pageable);
+                .findByPatientId(
+                        patientId,
+                        pageable
+                );
     }
 
     @Transactional(readOnly = true)
@@ -223,7 +257,13 @@ public class VitalSignsService {
             Instant from,
             Instant to
     ) {
-        LOG.debug("[FIND_VITAL_SIGNS_LIST] patientId={} from={} to={}", patientId, from, to);
+
+        LOG.debug(
+                "[FIND_VITAL_SIGNS_LIST] patientId={} from={} to={}",
+                patientId,
+                from,
+                to
+        );
 
         patientRepository.findById(patientId)
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -233,7 +273,10 @@ public class VitalSignsService {
                 ));
 
         return vitalSignsRepository
-                .findByPatientIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateAsc(patientId, from, to);
+                .findByPatientIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateAsc(
+                        patientId,
+                        from,
+                        to
+                );
     }
-
 }

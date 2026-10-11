@@ -1,9 +1,7 @@
 package com.dazzle.asklepios.service.dto.surgicalHistory;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.PastOrPresent;
 
 import java.io.Serializable;
 import java.util.Date;
@@ -14,15 +12,11 @@ public record SurgicalHistoryCreateDTO(
         @NotNull
         Long patientId,
 
-
         String surgery,
-
 
         Date dateOfSurgery,
 
-
         String facility,
-
 
         String anesthesiaType,
 
@@ -33,7 +27,11 @@ public record SurgicalHistoryCreateDTO(
         Boolean hasImplantsOrDevices,
 
         String implantsOrDevicesDescription,
-         Boolean patientIsFree
+
+        @NotNull
+        Boolean patientIsFree,
+
+        String freeText
 
 ) implements Serializable {
 }

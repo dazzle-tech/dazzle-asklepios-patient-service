@@ -2,8 +2,11 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.SocialHistory;
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.SocialHistoryRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.socialHistory.SocialHistoryCancelDTO;
 import com.dazzle.asklepios.service.dto.socialHistory.SocialHistoryCreateDTO;
 import com.dazzle.asklepios.service.dto.socialHistory.SocialHistoryUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -17,12 +20,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.dazzle.asklepios.security.SecurityUtils;
-import com.dazzle.asklepios.service.dto.socialHistory.SocialHistoryCancelDTO;
-import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 
 import java.time.Instant;
 import java.util.Date;
+
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
 @Service
@@ -30,7 +31,8 @@ import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 @Transactional
 public class SocialHistoryService {
 
-    private static final Logger LOG = LoggerFactory.getLogger(SocialHistoryService.class);
+    private static final Logger LOG =
+            LoggerFactory.getLogger(SocialHistoryService.class);
 
     private final SocialHistoryRepository socialHistoryRepository;
     private final PatientRepository patientRepository;
@@ -53,34 +55,55 @@ public class SocialHistoryService {
                 ));
     }
 
-    public SocialHistory create(SocialHistoryCreateDTO socialHistoryCreateDTO) {
-        LOG.info("[CREATE] SocialHistory dto={}", socialHistoryCreateDTO);
+    public SocialHistory create(SocialHistoryCreateDTO dto) {
+        LOG.info("[CREATE] SocialHistory dto={}", dto);
+
+        validate(
+                dto.patientIsFree(),
+                dto.freeText(),
+                dto.isCurrentSmoker(),
+                dto.smokeStartDate(),
+                dto.cigaretteAmount(),
+                dto.isPreviousSmoker(),
+                dto.smokeQuitDate(),
+                dto.exposureToSecondHandSmoke(),
+                dto.alcoholConsumption(),
+                dto.alcoholSinceWhen(),
+                dto.substanceUse()
+        );
+
+        boolean isFree = Boolean.TRUE.equals(dto.patientIsFree());
 
         SocialHistory entity = SocialHistory.builder()
-                // Use the existing helper method in this service
-                .patient(getPatientOrThrow(socialHistoryCreateDTO.patientId()))
-                .isCurrentSmoker(socialHistoryCreateDTO.isCurrentSmoker())
-                .smokeStartDate(socialHistoryCreateDTO.smokeStartDate())
-                .cigaretteAmount(socialHistoryCreateDTO.cigaretteAmount())
-                .cigaretteType(socialHistoryCreateDTO.cigaretteType())
-                .isPreviousSmoker(socialHistoryCreateDTO.isPreviousSmoker())
-                .smokeQuitDate(socialHistoryCreateDTO.smokeQuitDate())
+                .patient(getPatientOrThrow(dto.patientId()))
+                .isCurrentSmoker(isFree ? null : dto.isCurrentSmoker())
+                .smokeStartDate(isFree ? null : dto.smokeStartDate())
+                .cigaretteAmount(isFree ? null : dto.cigaretteAmount())
+                .cigaretteType(isFree ? null : dto.cigaretteType())
+                .isPreviousSmoker(isFree ? null : dto.isPreviousSmoker())
+                .smokeQuitDate(isFree ? null : dto.smokeQuitDate())
                 .exposureToSecondHandSmoke(
-                        socialHistoryCreateDTO.exposureToSecondHandSmoke()
+                        isFree ? null : dto.exposureToSecondHandSmoke()
                 )
-                .alcoholConsumption(socialHistoryCreateDTO.alcoholConsumption())
-                .typeOfAlcohol(socialHistoryCreateDTO.typeOfAlcohol())
-                .alcoholSinceWhen(socialHistoryCreateDTO.alcoholSinceWhen())
-                .substanceUse(socialHistoryCreateDTO.substanceUse())
-                .route(socialHistoryCreateDTO.route())
-                .frequency(socialHistoryCreateDTO.frequency())
-                .physicalLimitation(socialHistoryCreateDTO.physicalLimitation())
+                .alcoholConsumption(
+                        isFree ? null : dto.alcoholConsumption()
+                )
+                .typeOfAlcohol(isFree ? null : dto.typeOfAlcohol())
+                .alcoholSinceWhen(
+                        isFree ? null : dto.alcoholSinceWhen()
+                )
+                .substanceUse(isFree ? null : dto.substanceUse())
+                .route(isFree ? null : dto.route())
+                .frequency(isFree ? null : dto.frequency())
+                .physicalLimitation(
+                        isFree ? null : dto.physicalLimitation()
+                )
                 .diagnosedEatingDisorders(
-                        socialHistoryCreateDTO.diagnosedEatingDisorders()
+                        isFree ? null : dto.diagnosedEatingDisorders()
                 )
-
+                .patientIsFree(isFree)
+                .freeText(isFree ? dto.freeText().trim() : null)
                 .status(PatientHistoryStatus.ACTIVE)
-
                 .build();
 
         try {
@@ -88,6 +111,7 @@ public class SocialHistoryService {
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
+
             throw new BadRequestAlertException(
                     "Database constraint violated while saving social history.",
                     "socialHistory",
@@ -96,43 +120,116 @@ public class SocialHistoryService {
         }
     }
 
-    public SocialHistory update(SocialHistoryUpdateDTO socialHistoryUpdateDTO) {
-        LOG.info("[UPDATE] SocialHistory dto={}", socialHistoryUpdateDTO);
+    public SocialHistory update(SocialHistoryUpdateDTO dto) {
+        LOG.info("[UPDATE] SocialHistory dto={}", dto);
 
-        SocialHistory socialHistory = socialHistoryRepository.findById(socialHistoryUpdateDTO.id())
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Social history not found with id " + socialHistoryUpdateDTO.id(),
-                        "socialHistory",
-                        "notfound"
-                ));
+        validate(
+                dto.patientIsFree(),
+                dto.freeText(),
+                dto.isCurrentSmoker(),
+                dto.smokeStartDate(),
+                dto.cigaretteAmount(),
+                dto.isPreviousSmoker(),
+                dto.smokeQuitDate(),
+                dto.exposureToSecondHandSmoke(),
+                dto.alcoholConsumption(),
+                dto.alcoholSinceWhen(),
+                dto.substanceUse()
+        );
 
-        Patient patient = getPatientOrThrow(socialHistoryUpdateDTO.patientId());
+        SocialHistory socialHistory =
+                socialHistoryRepository.findById(dto.id())
+                        .orElseThrow(() -> new NotFoundAlertException(
+                                "Social history not found with id " + dto.id(),
+                                "socialHistory",
+                                "notfound"
+                        ));
 
-        socialHistory.setPatient(patient);
-        socialHistory.setIsCurrentSmoker(Boolean.TRUE.equals(socialHistoryUpdateDTO.isCurrentSmoker()));
-        socialHistory.setIsPreviousSmoker(Boolean.TRUE.equals(socialHistoryUpdateDTO.isPreviousSmoker()));
-        socialHistory.setExposureToSecondHandSmoke(Boolean.TRUE.equals(socialHistoryUpdateDTO.exposureToSecondHandSmoke()));
-        socialHistory.setAlcoholConsumption(Boolean.TRUE.equals(socialHistoryUpdateDTO.alcoholConsumption()));
-        socialHistory.setSubstanceUse(Boolean.TRUE.equals(socialHistoryUpdateDTO.substanceUse()));
+        boolean isFree = Boolean.TRUE.equals(dto.patientIsFree());
 
-        socialHistory.setSmokeStartDate(socialHistoryUpdateDTO.smokeStartDate());
-        socialHistory.setCigaretteAmount(socialHistoryUpdateDTO.cigaretteAmount());
-        socialHistory.setCigaretteType(socialHistoryUpdateDTO.cigaretteType());
-        socialHistory.setSmokeQuitDate(socialHistoryUpdateDTO.smokeQuitDate());
-        socialHistory.setAlcoholSinceWhen(socialHistoryUpdateDTO.alcoholSinceWhen());
-        socialHistory.setTypeOfAlcohol(socialHistoryUpdateDTO.typeOfAlcohol());
-        socialHistory.setRoute(socialHistoryUpdateDTO.route());
-        socialHistory.setFrequency(socialHistoryUpdateDTO.frequency());
-        socialHistory.setPhysicalLimitation(socialHistoryUpdateDTO.physicalLimitation());
-        socialHistory.setDiagnosedEatingDisorders(socialHistoryUpdateDTO.diagnosedEatingDisorders());
+        socialHistory.setPatient(
+                getPatientOrThrow(dto.patientId())
+        );
+
+        socialHistory.setIsCurrentSmoker(
+                isFree ? null : dto.isCurrentSmoker()
+        );
+
+        socialHistory.setSmokeStartDate(
+                isFree ? null : dto.smokeStartDate()
+        );
+
+        socialHistory.setCigaretteAmount(
+                isFree ? null : dto.cigaretteAmount()
+        );
+
+        socialHistory.setCigaretteType(
+                isFree ? null : dto.cigaretteType()
+        );
+
+        socialHistory.setIsPreviousSmoker(
+                isFree ? null : dto.isPreviousSmoker()
+        );
+
+        socialHistory.setSmokeQuitDate(
+                isFree ? null : dto.smokeQuitDate()
+        );
+
+        socialHistory.setExposureToSecondHandSmoke(
+                isFree ? null : dto.exposureToSecondHandSmoke()
+        );
+
+        socialHistory.setAlcoholConsumption(
+                isFree ? null : dto.alcoholConsumption()
+        );
+
+        socialHistory.setTypeOfAlcohol(
+                isFree ? null : dto.typeOfAlcohol()
+        );
+
+        socialHistory.setAlcoholSinceWhen(
+                isFree ? null : dto.alcoholSinceWhen()
+        );
+
+        socialHistory.setSubstanceUse(
+                isFree ? null : dto.substanceUse()
+        );
+
+        socialHistory.setRoute(
+                isFree ? null : dto.route()
+        );
+
+        socialHistory.setFrequency(
+                isFree ? null : dto.frequency()
+        );
+
+        socialHistory.setPhysicalLimitation(
+                isFree ? null : dto.physicalLimitation()
+        );
+
+        socialHistory.setDiagnosedEatingDisorders(
+                isFree ? null : dto.diagnosedEatingDisorders()
+        );
+
+        socialHistory.setPatientIsFree(isFree);
+        socialHistory.setFreeText(
+                isFree ? dto.freeText().trim() : null
+        );
 
         try {
-            SocialHistory updated = socialHistoryRepository.saveAndFlush(socialHistory);
-            LOG.info("[UPDATE] SocialHistory updated id={}", updated.getId());
+            SocialHistory updated =
+                    socialHistoryRepository.saveAndFlush(socialHistory);
+
+            LOG.info(
+                    "[UPDATE] SocialHistory updated id={}",
+                    updated.getId()
+            );
+
             return updated;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
+
             throw new BadRequestAlertException(
                     "Database constraint violated while updating social history.",
                     "socialHistory",
@@ -144,12 +241,13 @@ public class SocialHistoryService {
     public SocialHistory cancel(SocialHistoryCancelDTO cancelDTO) {
         LOG.info("[CANCEL] SocialHistory dto={}", cancelDTO);
 
-        SocialHistory socialHistory = socialHistoryRepository.findById(cancelDTO.id())
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Social history not found with id " + cancelDTO.id(),
-                        "socialHistory",
-                        "notfound"
-                ));
+        SocialHistory socialHistory =
+                socialHistoryRepository.findById(cancelDTO.id())
+                        .orElseThrow(() -> new NotFoundAlertException(
+                                "Social history not found with id " + cancelDTO.id(),
+                                "socialHistory",
+                                "notfound"
+                        ));
 
         if (socialHistory.getStatus() == PatientHistoryStatus.CANCELLED) {
             throw new BadRequestAlertException(
@@ -162,10 +260,17 @@ public class SocialHistoryService {
         socialHistory.setStatus(PatientHistoryStatus.CANCELLED);
         socialHistory.setCancelledBy(currentUsername());
         socialHistory.setCancelledDate(Instant.now());
-        socialHistory.setCancellationReason(cancelDTO.cancellationReason());
-        SocialHistory cancelled = socialHistoryRepository.saveAndFlush(socialHistory);
+        socialHistory.setCancellationReason(
+                cancelDTO.cancellationReason()
+        );
 
-        LOG.info("[CANCEL] SocialHistory cancelled id={}", cancelled.getId());
+        SocialHistory cancelled =
+                socialHistoryRepository.saveAndFlush(socialHistory);
+
+        LOG.info(
+                "[CANCEL] SocialHistory cancelled id={}",
+                cancelled.getId()
+        );
 
         return cancelled;
     }
@@ -173,12 +278,13 @@ public class SocialHistoryService {
     public void delete(Long id) {
         LOG.info("[DELETE] SocialHistory id={}", id);
 
-        SocialHistory socialHistory = socialHistoryRepository.findById(id)
-                .orElseThrow(() -> new NotFoundAlertException(
-                        "Social history not found with id " + id,
-                        "socialHistory",
-                        "notfound"
-                ));
+        SocialHistory socialHistory =
+                socialHistoryRepository.findById(id)
+                        .orElseThrow(() -> new NotFoundAlertException(
+                                "Social history not found with id " + id,
+                                "socialHistory",
+                                "notfound"
+                        ));
 
         socialHistoryRepository.delete(socialHistory);
     }
@@ -210,10 +316,158 @@ public class SocialHistoryService {
         );
     }
 
+    private void validate(
+            Boolean patientIsFree,
+            String freeText,
+            Boolean isCurrentSmoker,
+            Date smokeStartDate,
+            Integer cigaretteAmount,
+            Boolean isPreviousSmoker,
+            Date smokeQuitDate,
+            Boolean exposureToSecondHandSmoke,
+            Boolean alcoholConsumption,
+            Date alcoholSinceWhen,
+            Boolean substanceUse
+    ) {
+        boolean isFree = Boolean.TRUE.equals(patientIsFree);
+
+        if (isFree) {
+            if (freeText == null || freeText.trim().isEmpty()) {
+                throw new BadRequestAlertException(
+                        "Free text is required.",
+                        "socialHistory",
+                        "freeText.required"
+                );
+            }
+
+            return;
+        }
+
+        if (isCurrentSmoker == null) {
+            throw new BadRequestAlertException(
+                    "Current smoker is required.",
+                    "socialHistory",
+                    "currentSmoker.required"
+            );
+        }
+
+        if (isPreviousSmoker == null) {
+            throw new BadRequestAlertException(
+                    "Previous smoker is required.",
+                    "socialHistory",
+                    "previousSmoker.required"
+            );
+        }
+
+        if (exposureToSecondHandSmoke == null) {
+            throw new BadRequestAlertException(
+                    "Exposure to second hand smoke is required.",
+                    "socialHistory",
+                    "secondHandSmoke.required"
+            );
+        }
+
+        if (alcoholConsumption == null) {
+            throw new BadRequestAlertException(
+                    "Alcohol consumption is required.",
+                    "socialHistory",
+                    "alcoholConsumption.required"
+            );
+        }
+
+        if (substanceUse == null) {
+            throw new BadRequestAlertException(
+                    "Substance use is required.",
+                    "socialHistory",
+                    "substanceUse.required"
+            );
+        }
+
+        if (
+                Boolean.TRUE.equals(isCurrentSmoker) &&
+                        Boolean.TRUE.equals(isPreviousSmoker)
+        ) {
+            throw new BadRequestAlertException(
+                    "Patient cannot be current smoker and previous smoker at the same time.",
+                    "socialHistory",
+                    "smoker.conflict"
+            );
+        }
+
+        if (Boolean.TRUE.equals(isCurrentSmoker)) {
+            if (smokeStartDate == null || cigaretteAmount == null) {
+                throw new BadRequestAlertException(
+                        "Start date and cigarette amount are required for current smoker.",
+                        "socialHistory",
+                        "current.smoker.required"
+                );
+            }
+        }
+
+        if (
+                Boolean.TRUE.equals(isPreviousSmoker) &&
+                        smokeQuitDate == null
+        ) {
+            throw new BadRequestAlertException(
+                    "Quit date is required for previous smoker.",
+                    "socialHistory",
+                    "previous.smoker.required"
+            );
+        }
+
+        if (
+                Boolean.TRUE.equals(alcoholConsumption) &&
+                        alcoholSinceWhen == null
+        ) {
+            throw new BadRequestAlertException(
+                    "Alcohol since-when date is required when alcohol consumption is enabled.",
+                    "socialHistory",
+                    "alcohol.since.required"
+            );
+        }
+
+        Date now = new Date();
+
+        if (smokeStartDate != null && smokeStartDate.after(now)) {
+            throw new BadRequestAlertException(
+                    "Smoke start date must be in the past or present.",
+                    "socialHistory",
+                    "smokeStartDate.future"
+            );
+        }
+
+        if (smokeQuitDate != null && smokeQuitDate.after(now)) {
+            throw new BadRequestAlertException(
+                    "Smoke quit date must be in the past or present.",
+                    "socialHistory",
+                    "smokeQuitDate.future"
+            );
+        }
+
+        if (
+                alcoholSinceWhen != null &&
+                        alcoholSinceWhen.after(now)
+        ) {
+            throw new BadRequestAlertException(
+                    "Alcohol since-when date must be in the past or present.",
+                    "socialHistory",
+                    "alcoholSinceWhen.future"
+            );
+        }
+    }
+
     private void handleConstraints(RuntimeException exception) {
         Throwable root = getRootCause(exception);
-        String message = (root != null ? root.getMessage() : exception.getMessage());
-        String lower = message != null ? message.toLowerCase() : "";
+
+        String message =
+                root != null
+                        ? root.getMessage()
+                        : exception.getMessage();
+
+        String lower =
+                message != null
+                        ? message.toLowerCase()
+                        : "";
 
         LOG.error("DB ROOT CAUSE: {}", message, exception);
 
@@ -225,7 +479,11 @@ public class SocialHistoryService {
             );
         }
 
-        if (lower.contains("ck_social_history_current_smoker_required")) {
+        if (
+                lower.contains(
+                        "ck_social_history_current_smoker_required"
+                )
+        ) {
             throw new BadRequestAlertException(
                     "Start date and cigarette amount are required for current smoker.",
                     "socialHistory",
@@ -233,7 +491,11 @@ public class SocialHistoryService {
             );
         }
 
-        if (lower.contains("ck_social_history_previous_smoker_required")) {
+        if (
+                lower.contains(
+                        "ck_social_history_previous_smoker_required"
+                )
+        ) {
             throw new BadRequestAlertException(
                     "Quit date is required for previous smoker.",
                     "socialHistory",
@@ -249,7 +511,11 @@ public class SocialHistoryService {
             );
         }
 
-        if (lower.contains("ck_social_history_alcohol_since_when_required")) {
+        if (
+                lower.contains(
+                        "ck_social_history_alcohol_since_when_required"
+                )
+        ) {
             throw new BadRequestAlertException(
                     "Alcohol since-when date is required when alcohol consumption is enabled.",
                     "socialHistory",

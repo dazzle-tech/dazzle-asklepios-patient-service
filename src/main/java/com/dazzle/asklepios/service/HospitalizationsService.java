@@ -22,7 +22,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.Date;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -55,29 +54,38 @@ public class HospitalizationsService {
                 ));
     }
 
+    public Hospitalization create(HospitalizationsCreateDTO dto) {
+        LOG.info("[CREATE] Hospitalization payload={}", dto);
 
-    public Hospitalization create(HospitalizationsCreateDTO hospitalizationCreateDTO) {
-        LOG.info("[CREATE] Hospitalization payload={}", hospitalizationCreateDTO);
+        validate(
+                dto.patientIsFree(),
+                dto.freeText(),
+                dto.facility(),
+                dto.reason(),
+                dto.admissionType(),
+                dto.dateOfAdmission()
+        );
+
+        boolean isFree = Boolean.TRUE.equals(dto.patientIsFree());
 
         Hospitalization entity = Hospitalization.builder()
-                .patient(refPatient(hospitalizationCreateDTO.patientId()))
-                .facility(hospitalizationCreateDTO.facility())
-                .reason(hospitalizationCreateDTO.reason())
-                .admissionType(hospitalizationCreateDTO.admissionType())
-                .dateOfAdmission(hospitalizationCreateDTO.dateOfAdmission())
-                .lengthOfStayDays(hospitalizationCreateDTO.lengthOfStayDays())
-                .outcomes(hospitalizationCreateDTO.outcomes())
+                .patient(refPatient(dto.patientId()))
+                .facility(isFree ? null : dto.facility())
+                .reason(isFree ? null : dto.reason())
+                .admissionType(isFree ? null : dto.admissionType())
+                .dateOfAdmission(isFree ? null : dto.dateOfAdmission())
+                .lengthOfStayDays(isFree ? null : dto.lengthOfStayDays())
+                .outcomes(isFree ? null : dto.outcomes())
                 .medicalInterventionsPerformed(
-                        hospitalizationCreateDTO.medicalInterventionsPerformed()
+                        isFree ? null : dto.medicalInterventionsPerformed()
                 )
-
+                .patientIsFree(isFree)
+                .freeText(isFree ? dto.freeText().trim() : null)
                 .status(PatientHistoryStatus.ACTIVE)
-
                 .build();
 
         try {
             return hospitalizationRepository.saveAndFlush(entity);
-
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
             throw new BadRequestAlertException(
@@ -88,33 +96,42 @@ public class HospitalizationsService {
         }
     }
 
-    public Hospitalization update(HospitalizationsUpdateDTO hospitalizationsUpdateDTO) {
-        LOG.info("[UPDATE] Hospitalization payload={}", hospitalizationsUpdateDTO);
+    public Hospitalization update(HospitalizationsUpdateDTO dto) {
+        LOG.info("[UPDATE] Hospitalization payload={}", dto);
 
-        Hospitalization entity = hospitalizationRepository.findById(
-                        hospitalizationsUpdateDTO.id()
-                )
+        validate(
+                dto.patientIsFree(),
+                dto.freeText(),
+                dto.facility(),
+                dto.reason(),
+                dto.admissionType(),
+                dto.dateOfAdmission()
+        );
+
+        Hospitalization entity = hospitalizationRepository.findById(dto.id())
                 .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient admission not found with id "
-                                + hospitalizationsUpdateDTO.id(),
+                        "Patient admission not found with id " + dto.id(),
                         "hospitalization",
                         "notfound"
                 ));
 
-        entity.setPatient(refPatient(hospitalizationsUpdateDTO.patientId()));
-        entity.setFacility(hospitalizationsUpdateDTO.facility());
-        entity.setReason(hospitalizationsUpdateDTO.reason());
-        entity.setAdmissionType(hospitalizationsUpdateDTO.admissionType());
-        entity.setDateOfAdmission(hospitalizationsUpdateDTO.dateOfAdmission());
-        entity.setLengthOfStayDays(hospitalizationsUpdateDTO.lengthOfStayDays());
-        entity.setOutcomes(hospitalizationsUpdateDTO.outcomes());
+        boolean isFree = Boolean.TRUE.equals(dto.patientIsFree());
+
+        entity.setPatient(refPatient(dto.patientId()));
+        entity.setFacility(isFree ? null : dto.facility());
+        entity.setReason(isFree ? null : dto.reason());
+        entity.setAdmissionType(isFree ? null : dto.admissionType());
+        entity.setDateOfAdmission(isFree ? null : dto.dateOfAdmission());
+        entity.setLengthOfStayDays(isFree ? null : dto.lengthOfStayDays());
+        entity.setOutcomes(isFree ? null : dto.outcomes());
         entity.setMedicalInterventionsPerformed(
-                hospitalizationsUpdateDTO.medicalInterventionsPerformed()
+                isFree ? null : dto.medicalInterventionsPerformed()
         );
+        entity.setPatientIsFree(isFree);
+        entity.setFreeText(isFree ? dto.freeText().trim() : null);
 
         try {
             return hospitalizationRepository.saveAndFlush(entity);
-
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
             throw new BadRequestAlertException(
@@ -125,15 +142,12 @@ public class HospitalizationsService {
         }
     }
 
-    public Hospitalization cancel(HospitalizationCancelDTO hospitalizationCancelDTO) {
-        LOG.info("[CANCEL] Hospitalization payload={}", hospitalizationCancelDTO);
+    public Hospitalization cancel(HospitalizationCancelDTO dto) {
+        LOG.info("[CANCEL] Hospitalization payload={}", dto);
 
-        Hospitalization entity = hospitalizationRepository.findById(
-                        hospitalizationCancelDTO.id()
-                )
+        Hospitalization entity = hospitalizationRepository.findById(dto.id())
                 .orElseThrow(() -> new NotFoundAlertException(
-                        "Patient admission not found with id "
-                                + hospitalizationCancelDTO.id(),
+                        "Patient admission not found with id " + dto.id(),
                         "hospitalization",
                         "notfound"
                 ));
@@ -141,13 +155,10 @@ public class HospitalizationsService {
         entity.setStatus(PatientHistoryStatus.CANCELLED);
         entity.setCancelledBy(currentUsername());
         entity.setCancelledDate(Instant.now());
-        entity.setCancellationReason(
-                hospitalizationCancelDTO.cancellationReason()
-        );
+        entity.setCancellationReason(dto.cancellationReason());
 
         try {
             return hospitalizationRepository.saveAndFlush(entity);
-
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
             throw new BadRequestAlertException(
@@ -198,14 +209,69 @@ public class HospitalizationsService {
         );
     }
 
+    private void validate(
+            Boolean patientIsFree,
+            String freeText,
+            String facility,
+            String reason,
+            String admissionType,
+            java.util.Date dateOfAdmission
+    ) {
+        boolean isFree = Boolean.TRUE.equals(patientIsFree);
+
+        if (isFree) {
+            if (freeText == null || freeText.trim().isEmpty()) {
+                throw new BadRequestAlertException(
+                        "Free text is required.",
+                        "hospitalization",
+                        "freeText.required"
+                );
+            }
+
+            return;
+        }
+
+        if (facility == null || facility.trim().isEmpty()) {
+            throw new BadRequestAlertException(
+                    "Facility is required.",
+                    "hospitalization",
+                    "facility.required"
+            );
+        }
+
+        if (reason == null || reason.trim().isEmpty()) {
+            throw new BadRequestAlertException(
+                    "Reason is required.",
+                    "hospitalization",
+                    "reason.required"
+            );
+        }
+
+        if (admissionType == null || admissionType.trim().isEmpty()) {
+            throw new BadRequestAlertException(
+                    "Admission type is required.",
+                    "hospitalization",
+                    "admissionType.required"
+            );
+        }
+
+        if (dateOfAdmission == null) {
+            throw new BadRequestAlertException(
+                    "Date of admission is required.",
+                    "hospitalization",
+                    "dateOfAdmission.required"
+            );
+        }
+    }
+
     private void handleConstraints(RuntimeException exception) {
         Throwable root = getRootCause(exception);
         String message =
-                (root != null ? root.getMessage() : exception.getMessage());
+                root != null ? root.getMessage() : exception.getMessage();
 
         LOG.error("DB ROOT CAUSE: {}", message, exception);
 
-        String lower = (message != null ? message.toLowerCase() : "");
+        String lower = message != null ? message.toLowerCase() : "";
 
         if (lower.contains("ux_patient_admissions_patient_facility_date")
                 || (lower.contains("unique")

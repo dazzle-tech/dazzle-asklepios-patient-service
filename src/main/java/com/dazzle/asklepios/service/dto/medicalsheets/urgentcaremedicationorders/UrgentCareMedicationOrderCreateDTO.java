@@ -25,6 +25,8 @@ public record UrgentCareMedicationOrderCreateDTO(
 
         String instructionText,
 
+        Boolean isStat,
+
         Long dose,
         String doseUnit,
         String route,

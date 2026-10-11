@@ -200,6 +200,10 @@ patient:
     template-interval-ended:
       cron: "0 0 7 * * *"
       zone: "Asia/Gaza"
+    template-interval-ending-soon:
+      cron: "0 0 7 * * *"
+      zone: "Asia/Gaza"
+      lead-days: 7
     scheduling:
       zone: Asia/Hebron
       springdoc:

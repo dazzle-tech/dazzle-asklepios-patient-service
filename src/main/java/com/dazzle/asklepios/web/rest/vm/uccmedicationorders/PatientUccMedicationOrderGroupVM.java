@@ -14,6 +14,7 @@ public record PatientUccMedicationOrderGroupVM(
         Long activeIngredientId,
         MedicationInstructionType instructionType,
         String instructionText,
+        Boolean isStat,
         Long dose,
         String doseUnit,
         String route,

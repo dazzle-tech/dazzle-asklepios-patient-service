@@ -3,8 +3,10 @@ package com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorder
 import com.dazzle.asklepios.domain.enumeration.FrequencyList;
 import com.dazzle.asklepios.domain.enumeration.MedicationInstructionType;
 import com.dazzle.asklepios.domain.enumeration.Unit;
+import com.dazzle.asklepios.service.validation.ValidMedicationInstruction;
 import jakarta.validation.constraints.NotNull;
 
+@ValidMedicationInstruction
 public record UrgentCareMedicationOrderUpdateDTO(
 
         @NotNull
@@ -17,6 +19,8 @@ public record UrgentCareMedicationOrderUpdateDTO(
         MedicationInstructionType instructionType,
 
         String instructionText,
+
+        Boolean isStat,
 
         Long dose,
         String doseUnit,

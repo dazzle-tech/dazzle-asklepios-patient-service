@@ -90,6 +90,42 @@ public class UrgentCareMedicationOrderService {
 
         List<UrgentCareMedicationOrder> orders = new java.util.ArrayList<>();
 
+        if (Boolean.TRUE.equals(dto.isStat())) {
+
+            UrgentCareMedicationOrder order = new UrgentCareMedicationOrder();
+
+            order.setActiveIngredientId(dto.activeIngredientId());
+            order.setInstructionType(dto.instructionType());
+            order.setInstructionText("STAT");
+            order.setIsStat(true);
+
+            order.setDose(null);
+            order.setDoseUnit(null);
+            order.setRoute(null);
+            order.setFrequencyNumber(null);
+            order.setFrequencyUnit(null);
+            order.setDuration(null);
+            order.setStartTime(null);
+            order.setDoseTime(null);
+
+            order.setStatus(MedicationOrderStatus.NEW);
+            order.setPatient(patient);
+            order.setEncounter(encounter);
+
+            UrgentCareMedicationOrder saved =
+                    urgentCareMedicationOrderRepository.save(order);
+
+            saved.setOrderGroupId(saved.getId());
+
+            saved = urgentCareMedicationOrderRepository.save(saved);
+
+            notificationForUCCMedicationOrderCreated(saved, patient, encounter);
+
+            orders.add(saved);
+
+            return orders;
+        }
+
         if (dto.instructionType() ==
                 com.dazzle.asklepios.domain.enumeration.MedicationInstructionType.MANUAL_INSTRUCTIONS) {
 
@@ -98,6 +134,7 @@ public class UrgentCareMedicationOrderService {
             order.setActiveIngredientId(dto.activeIngredientId());
             order.setInstructionType(dto.instructionType());
             order.setInstructionText(dto.instructionText());
+            order.setIsStat(Boolean.TRUE.equals(dto.isStat()));
             order.setDose(dto.dose());
             order.setDoseUnit(dto.doseUnit());
             order.setRoute(dto.route());
@@ -139,6 +176,7 @@ public class UrgentCareMedicationOrderService {
             order.setActiveIngredientId(dto.activeIngredientId());
             order.setInstructionType(dto.instructionType());
             order.setInstructionText(dto.instructionText());
+            order.setIsStat(Boolean.TRUE.equals(dto.isStat()));
             order.setDose(dto.dose());
             order.setDoseUnit(dto.doseUnit());
             order.setRoute(dto.route());
@@ -201,6 +239,7 @@ public class UrgentCareMedicationOrderService {
         existing.setActiveIngredientId(dto.activeIngredientId());
         existing.setInstructionType(dto.instructionType());
         existing.setInstructionText(dto.instructionText());
+        existing.setIsStat(Boolean.TRUE.equals(dto.isStat()));
         existing.setDose(dto.dose());
         existing.setDoseUnit(dto.doseUnit());
         existing.setRoute(dto.route());
@@ -250,6 +289,7 @@ public class UrgentCareMedicationOrderService {
             order.setActiveIngredientId(dto.activeIngredientId());
             order.setInstructionType(dto.instructionType());
             order.setInstructionText(dto.instructionText());
+            order.setIsStat(Boolean.TRUE.equals(dto.isStat()));
             order.setDose(dto.dose());
             order.setDoseUnit(dto.doseUnit());
             order.setRoute(dto.route());
@@ -440,6 +480,7 @@ public class UrgentCareMedicationOrderService {
                 first.getActiveIngredientId(),
                 first.getInstructionType(),
                 first.getInstructionText(),
+                first.getIsStat(),
                 first.getDose(),
                 first.getDoseUnit(),
                 first.getRoute(),

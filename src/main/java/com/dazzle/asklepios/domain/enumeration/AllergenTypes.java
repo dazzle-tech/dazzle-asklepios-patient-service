@@ -8,6 +8,7 @@ public enum AllergenTypes {
     INSECT_STING,
     ANIMAL,
     OTHER,
-    CHEMICALS
+    CHEMICALS,
+    UNKNOWN
 }
 
