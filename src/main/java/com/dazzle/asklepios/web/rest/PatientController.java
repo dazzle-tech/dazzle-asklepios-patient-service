@@ -101,6 +101,23 @@ public class PatientController {
         return ResponseEntity.created(URI.create("/api/patient/" + created.getId())).body(created);
     }
 
+    /**
+     * Creates a patient for a system caller. Authentication is the {@code X-Portal-Secret} header
+     * ({@code PATIENT_PORTAL_SECRET}), checked by {@link com.dazzle.asklepios.security.PatientPortalSecretFilter},
+     * not a bearer token.
+     */
+    @PostMapping("/external")
+    public ResponseEntity<Patient> createPatientWithSecret(@Valid @RequestBody PatientCreateDTO patientDTO) {
+        LOG.debug("REST create Patient via secret key payload={}", patientDTO);
+
+        if (patientDTO == null) {
+            throw new BadRequestAlertException("Patient payload is required", "patient", "payload.required");
+        }
+
+        Patient created = patientService.create(patientDTO);
+        return ResponseEntity.created(URI.create("/api/patient/" + created.getId())).body(created);
+    }
+
     @PutMapping("/{id}")
     public ResponseEntity<Patient> updatePatient(@PathVariable Long id, @Valid @RequestBody PatientUpdateDTO patientDTO) {
         LOG.debug("REST update Patient id={} payload={}", id, patientDTO);
