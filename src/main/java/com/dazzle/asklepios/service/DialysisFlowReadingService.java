@@ -1,11 +1,13 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.DialysisFlowReading;
+import com.dazzle.asklepios.domain.DialysisSession;
 import com.dazzle.asklepios.repository.DialysisFlowReadingRepository;
 import com.dazzle.asklepios.repository.DialysisSessionRepository;
 import com.dazzle.asklepios.service.dto.DialysisFlowReadingCreateDTO;
 import com.dazzle.asklepios.service.dto.DialysisFlowReadingUpdateDTO;
 import com.dazzle.asklepios.service.vm.DialysisFlowReadingResponseVM;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -18,13 +20,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DialysisFlowReadingService {
 
+    private static final String ENTITY_NAME = "dialysisFlowReading";
+
     private final DialysisFlowReadingRepository repository;
     private final DialysisSessionRepository dialysisSessionRepository;
 
     public DialysisFlowReadingResponseVM create(
             DialysisFlowReadingCreateDTO dto
     ) {
-        requireSession(dto.getDialysisSessionId());
+        requireSessionWithTreatmentPlan(dto.getDialysisSessionId());
 
         DialysisFlowReading entity =
                 DialysisFlowReading.builder()
@@ -54,7 +58,7 @@ public class DialysisFlowReadingService {
                         )
                 );
 
-        requireSession(dto.getDialysisSessionId());
+        requireSessionWithTreatmentPlan(dto.getDialysisSessionId());
 
         entity.setDialysisSessionId(dto.getDialysisSessionId());
         entity.setTime(dto.getTime());
@@ -82,19 +86,32 @@ public class DialysisFlowReadingService {
     }
 
     public void delete(Long id) {
-        if (!repository.existsById(id)) {
-            throw new EntityNotFoundException(
-                    "Dialysis flow reading not found: " + id
-            );
-        }
+        DialysisFlowReading entity = repository
+                .findById(id)
+                .orElseThrow(() ->
+                        new EntityNotFoundException(
+                                "Dialysis flow reading not found: " + id
+                        )
+                );
 
+        requireSessionWithTreatmentPlan(entity.getDialysisSessionId());
         repository.deleteById(id);
     }
 
-    private void requireSession(Long dialysisSessionId) {
-        if (!dialysisSessionRepository.existsById(dialysisSessionId)) {
-            throw new EntityNotFoundException(
-                    "Dialysis session not found: " + dialysisSessionId
+    private void requireSessionWithTreatmentPlan(Long dialysisSessionId) {
+        DialysisSession session = dialysisSessionRepository
+                .findById(dialysisSessionId)
+                .orElseThrow(() ->
+                        new EntityNotFoundException(
+                                "Dialysis session not found: " + dialysisSessionId
+                        )
+                );
+
+        if (session.getTreatmentPlanId() == null) {
+            throw new BadRequestAlertException(
+                    "Treatment Plan is required before modifying dialysis flow readings",
+                    ENTITY_NAME,
+                    "treatmentplan.required"
             );
         }
     }

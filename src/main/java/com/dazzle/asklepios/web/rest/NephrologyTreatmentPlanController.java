@@ -4,16 +4,26 @@ import com.dazzle.asklepios.service.NephrologyTreatmentPlanService;
 import com.dazzle.asklepios.service.dto.NephrologyTreatmentPlanCreateDTO;
 import com.dazzle.asklepios.service.dto.NephrologyTreatmentPlanUpdateDTO;
 import com.dazzle.asklepios.service.vm.NephrologyTreatmentPlanResponseVM;
+import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/patient/nephrology-treatment-plans")
@@ -40,6 +50,33 @@ public class NephrologyTreatmentPlanController {
                 service.update(dto);
 
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping
+    public ResponseEntity<List<NephrologyTreatmentPlanResponseVM>> findByPatientId(
+            @RequestParam Long patientId,
+            @RequestParam(required = false) Long encounterId,
+            @ParameterObject Pageable pageable
+    ) {
+        Page<NephrologyTreatmentPlanResponseVM> page =
+                service.findByPatientId(patientId, encounterId, pageable);
+
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                page
+        );
+
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<NephrologyTreatmentPlanResponseVM> findById(
+            @PathVariable Long id
+    ) {
+        return service
+                .findById(id)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @GetMapping("/by-patient-and-encounter")

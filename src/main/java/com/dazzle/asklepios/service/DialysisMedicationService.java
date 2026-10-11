@@ -1,12 +1,14 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.DialysisMedication;
+import com.dazzle.asklepios.domain.DialysisSession;
 import com.dazzle.asklepios.repository.DialysisMedicationRepository;
 import com.dazzle.asklepios.repository.DialysisSessionRepository;
 import com.dazzle.asklepios.service.dto.DialysisMedicationCreateDTO;
 import com.dazzle.asklepios.service.dto.DialysisMedicationUpdateDTO;
 import com.dazzle.asklepios.service.helper.ActiveIngredientHelper;
 import com.dazzle.asklepios.service.vm.DialysisMedicationResponseVM;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -19,6 +21,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DialysisMedicationService {
 
+    private static final String ENTITY_NAME = "dialysisMedication";
+
     private final DialysisMedicationRepository repository;
     private final DialysisSessionRepository dialysisSessionRepository;
     private final ActiveIngredientHelper activeIngredientHelper;
@@ -26,7 +30,7 @@ public class DialysisMedicationService {
     public DialysisMedicationResponseVM create(
             DialysisMedicationCreateDTO dto
     ) {
-        requireSession(dto.getDialysisSessionId());
+        requireSessionWithTreatmentPlan(dto.getDialysisSessionId());
         activeIngredientHelper.validateActiveIngredientExists(
                 dto.getActiveIngredientId()
         );
@@ -53,7 +57,7 @@ public class DialysisMedicationService {
                         )
                 );
 
-        requireSession(dto.getDialysisSessionId());
+        requireSessionWithTreatmentPlan(dto.getDialysisSessionId());
         activeIngredientHelper.validateActiveIngredientExists(
                 dto.getActiveIngredientId()
         );
@@ -78,19 +82,32 @@ public class DialysisMedicationService {
     }
 
     public void delete(Long id) {
-        if (!repository.existsById(id)) {
-            throw new EntityNotFoundException(
-                    "Dialysis medication not found: " + id
-            );
-        }
+        DialysisMedication entity = repository
+                .findById(id)
+                .orElseThrow(() ->
+                        new EntityNotFoundException(
+                                "Dialysis medication not found: " + id
+                        )
+                );
 
+        requireSessionWithTreatmentPlan(entity.getDialysisSessionId());
         repository.deleteById(id);
     }
 
-    private void requireSession(Long dialysisSessionId) {
-        if (!dialysisSessionRepository.existsById(dialysisSessionId)) {
-            throw new EntityNotFoundException(
-                    "Dialysis session not found: " + dialysisSessionId
+    private void requireSessionWithTreatmentPlan(Long dialysisSessionId) {
+        DialysisSession session = dialysisSessionRepository
+                .findById(dialysisSessionId)
+                .orElseThrow(() ->
+                        new EntityNotFoundException(
+                                "Dialysis session not found: " + dialysisSessionId
+                        )
+                );
+
+        if (session.getTreatmentPlanId() == null) {
+            throw new BadRequestAlertException(
+                    "Treatment Plan is required before modifying dialysis medications",
+                    ENTITY_NAME,
+                    "treatmentplan.required"
             );
         }
     }

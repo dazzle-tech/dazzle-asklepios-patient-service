@@ -1,6 +1,8 @@
 package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.NephrologyTreatmentPlan;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -14,5 +16,21 @@ public interface NephrologyTreatmentPlanRepository
     findFirstByPatientIdAndEncounterIdAndIsActiveTrue(
             Long patientId,
             Long encounterId
+    );
+
+    Page<NephrologyTreatmentPlan> findByPatientIdAndIsActiveTrue(
+            Long patientId,
+            Pageable pageable
+    );
+
+    Page<NephrologyTreatmentPlan> findByPatientIdAndEncounterIdAndIsActiveTrue(
+            Long patientId,
+            Long encounterId,
+            Pageable pageable
+    );
+
+    Optional<NephrologyTreatmentPlan> findByIdAndPatientIdAndIsActiveTrue(
+            Long id,
+            Long patientId
     );
 }
