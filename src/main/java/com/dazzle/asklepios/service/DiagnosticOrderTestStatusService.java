@@ -10,6 +10,7 @@ import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingTrigger;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
@@ -18,12 +19,14 @@ import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
+import com.dazzle.asklepios.service.dto.billing.BillingRuleResolveResponse;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.patientarrived.PatientArrivedCreateRequestDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.diagnosticorders.PatientArrivedResponseVM;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Pageable;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +35,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 @Service
@@ -60,6 +64,8 @@ public class DiagnosticOrderTestStatusService {
 
     private final InsurancePriceListCoverageService insurancePriceListCoverageService;
 
+    private final DiagnosticChargeTimingService diagnosticChargeTimingService;
+
     public DiagnosticOrderTestStatusService(
             DiagnosticOrderRepository diagnosticOrderRepository,
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
@@ -73,7 +79,8 @@ public class DiagnosticOrderTestStatusService {
             @Lazy BillingChargeService billingChargeService,
             @Lazy PatientServiceAndProductService patientServiceAndProductService,
             PatientItemPricingApplicationService patientItemPricingApplicationService,
-            InsurancePriceListCoverageService insurancePriceListCoverageService
+            InsurancePriceListCoverageService insurancePriceListCoverageService,
+            DiagnosticChargeTimingService diagnosticChargeTimingService
     ) {
         this.diagnosticOrderRepository = diagnosticOrderRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
@@ -88,6 +95,7 @@ public class DiagnosticOrderTestStatusService {
         this.patientServiceAndProductService = patientServiceAndProductService;
         this.patientItemPricingApplicationService = patientItemPricingApplicationService;
         this.insurancePriceListCoverageService = insurancePriceListCoverageService;
+        this.diagnosticChargeTimingService = diagnosticChargeTimingService;
     }
 
     public DiagnosticOrderTest collectSample(Long testId) {
@@ -98,6 +106,7 @@ public class DiagnosticOrderTestStatusService {
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
+        chargeForWorkflowStage(saved, BillingTrigger.COLLECT_SAMPLE);
 
         return saved;
     }
@@ -208,9 +217,10 @@ public class DiagnosticOrderTestStatusService {
                 throw new BadRequestAlertException(title, "diagnostic_order_tests", errorKey);
             }
         } else {
-            billDiagnosticItemOnOrder(
+            billDiagnosticItemIfDue(
                     savedBillingItem,
-                    order.getEncounterId()
+                    order,
+                    test
             );
         }
 
@@ -227,7 +237,7 @@ public class DiagnosticOrderTestStatusService {
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.saveAndFlush(test);
 
-        // Billing + pre-auth already happen when the test is added to the order.
+        chargeForWorkflowStage(saved, BillingTrigger.ACCEPT_ORDER);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
 
         return saved;
@@ -263,6 +273,7 @@ public class DiagnosticOrderTestStatusService {
         test.setApprovedDate(Instant.now());
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
+        chargeForWorkflowStage(saved, BillingTrigger.APPROVED);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
 
         return saved;
@@ -281,9 +292,17 @@ public class DiagnosticOrderTestStatusService {
         DiagnosticOrderTest test = getTest(testId);
         ensureTransition(test, DiagnosticStatus.REJECTED);
 
+        String reason =
+                rejectedReason == null || rejectedReason.isBlank()
+                        ? "Diagnostic test rejected"
+                        : rejectedReason;
+
+        // Same financial reversal as cancel: release the charge so the visit available limit is restored.
+        releaseDiagnosticBilling(test, reason);
+
         test.setProcessingStatus(DiagnosticStatus.REJECTED);
         test.setRejectedBy(rejectedBy);
-        test.setRejectedReason(rejectedReason);
+        test.setRejectedReason(reason);
         test.setRejectedDate(Instant.now());
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
@@ -322,22 +341,7 @@ public class DiagnosticOrderTestStatusService {
                         ? "Diagnostic test cancelled"
                         : cancellationReason;
 
-        BillingItemTypes billingItemType =
-                test.getOrderType() == TestType.RADIOLOGY
-                        ? BillingItemTypes.RADIOLOGY
-                        : BillingItemTypes.LABORATORY;
-
-        ServiceSource serviceSource =
-                test.getOrderType() == TestType.RADIOLOGY
-                        ? ServiceSource.RADIOLOGY
-                        : ServiceSource.LABORATORY;
-
-        patientServiceAndProductService.cancelBySource(
-                serviceSource,
-                test.getId(),
-                billingItemType,
-                cancelReason
-        );
+        releaseDiagnosticBilling(test, cancelReason);
 
         test.setStatus(DiagnosticOrderTestStatus.CANCELLED);
         test.setProcessingStatus(DiagnosticStatus.CANCELLED);
@@ -432,9 +436,16 @@ public class DiagnosticOrderTestStatusService {
 
             ensureTransition(test, DiagnosticStatus.REJECTED);
 
+            String reason =
+                    rejectedReason == null || rejectedReason.isBlank()
+                            ? "Diagnostic test rejected"
+                            : rejectedReason;
+
+            releaseDiagnosticBilling(test, reason);
+
             test.setProcessingStatus(DiagnosticStatus.REJECTED);
             test.setRejectedBy(rejectedBy);
-            test.setRejectedReason(rejectedReason);
+            test.setRejectedReason(reason);
             test.setRejectedDate(Instant.now());
 
             DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
@@ -638,9 +649,190 @@ public class DiagnosticOrderTestStatusService {
         return patientServiceAndProductRepository.saveAndFlush(existing);
     }
 
+    public void chargeSubmittedOrder(Long orderId) {
+        if (orderId == null) {
+            return;
+        }
+
+        diagnosticOrderTestRepository
+                .findByOrderId(orderId, Pageable.unpaged())
+                .getContent()
+                .forEach(test ->
+                        chargeForWorkflowStage(
+                                test,
+                                BillingTrigger.SUBMIT_ORDER
+                        )
+                );
+    }
+
+    /**
+     * After pre-authorization approval, create the charge line only when the
+     * billing rule trigger has already been reached. Returns true when this
+     * diagnostic item is controlled by a workflow billing rule.
+     */
+    public boolean billApprovedPreAuthorization(PatientServiceAndProduct billingItem) {
+        if (billingItem == null
+                || billingItem.getSourceId() == null
+                || billingItem.getEncounterId() == null) {
+            return false;
+        }
+
+        DiagnosticOrderTest test = diagnosticOrderTestRepository
+                .findById(billingItem.getSourceId())
+                .orElse(null);
+
+        if (!DiagnosticChargeTimingService.appliesTo(test)) {
+            return false;
+        }
+
+        DiagnosticOrder order = getOrder(test.getOrderId());
+        Optional<BillingRuleResolveResponse> rule = diagnosticChargeTimingService.controllingRule(
+                order,
+                test,
+                billingItem,
+                true
+        );
+
+        if (rule.isEmpty()) {
+            return false;
+        }
+
+        if (!diagnosticChargeTimingService.triggerReached(
+                order,
+                test,
+                rule.get().billingTrigger()
+        )) {
+            LOG.info(
+                    "[BILLING_RULE] Pre-authorization approved before trigger. "
+                            + "pspId={} trigger={}",
+                    billingItem.getId(),
+                    rule.get().billingTrigger()
+            );
+            return true;
+        }
+
+        billDiagnosticItemOnOrder(
+                billingItem,
+                billingItem.getEncounterId(),
+                rule.get()
+        );
+        return true;
+    }
+
+    private void chargeForWorkflowStage(
+            DiagnosticOrderTest test,
+            BillingTrigger stage
+    ) {
+        if (!DiagnosticChargeTimingService.appliesTo(test)
+                || test.getStatus() == DiagnosticOrderTestStatus.CANCELLED) {
+            return;
+        }
+
+        DiagnosticOrder order = getOrder(test.getOrderId());
+        PatientServiceAndProduct billingItem = findDiagnosticBillingItem(test);
+        if (billingItem == null) {
+            onTestAddedToOrder(test);
+            return;
+        }
+
+        Optional<BillingRuleResolveResponse> rule = diagnosticChargeTimingService.controllingRule(
+                order,
+                test,
+                billingItem,
+                true
+        );
+
+        if (rule.isEmpty()) {
+            return;
+        }
+
+        boolean dueNow =
+                rule.get().billingTrigger() == stage
+                        || diagnosticChargeTimingService.triggerReached(
+                                order,
+                                test,
+                                rule.get().billingTrigger()
+                        );
+
+        if (!dueNow) {
+            return;
+        }
+
+        if (billingItem.getPreAuthorizationStatus()
+                == PreAuthorizationStatus.PENDING_APPROVAL) {
+            LOG.info(
+                    "[BILLING_RULE] Charge waits for pre-authorization. "
+                            + "pspId={} trigger={}",
+                    billingItem.getId(),
+                    rule.get().billingTrigger()
+            );
+            return;
+        }
+
+        billDiagnosticItemOnOrder(
+                billingItem,
+                order.getEncounterId(),
+                rule.get()
+        );
+    }
+
+    private void billDiagnosticItemIfDue(
+            PatientServiceAndProduct billingItem,
+            DiagnosticOrder order,
+            DiagnosticOrderTest test
+    ) {
+        Optional<BillingRuleResolveResponse> rule = diagnosticChargeTimingService.controllingRule(
+                order,
+                test,
+                billingItem,
+                true
+        );
+
+        if (rule.isPresent()
+                && !diagnosticChargeTimingService.triggerReached(
+                        order,
+                        test,
+                        rule.get().billingTrigger()
+                )) {
+            LOG.info(
+                    "[BILLING_RULE] Charge deferred pspId={} trigger={}",
+                    billingItem.getId(),
+                    rule.get().billingTrigger()
+            );
+            return;
+        }
+
+        billDiagnosticItemOnOrder(
+                billingItem,
+                order.getEncounterId(),
+                rule.orElse(null)
+        );
+    }
+
+    private PatientServiceAndProduct findDiagnosticBillingItem(DiagnosticOrderTest test) {
+        BillingItemTypes billingItemType =
+                test.getOrderType() == TestType.RADIOLOGY
+                        ? BillingItemTypes.RADIOLOGY
+                        : BillingItemTypes.LABORATORY;
+
+        ServiceSource serviceSource =
+                test.getOrderType() == TestType.RADIOLOGY
+                        ? ServiceSource.RADIOLOGY
+                        : ServiceSource.LABORATORY;
+
+        return patientServiceAndProductRepository
+                .findByServiceSourceAndSourceIdAndBillingItemType(
+                        serviceSource,
+                        test.getId(),
+                        billingItemType
+                )
+                .orElse(null);
+    }
+
     private void billDiagnosticItemOnOrder(
             PatientServiceAndProduct billingItem,
-            Long encounterId
+            Long encounterId,
+            BillingRuleResolveResponse rule
     ) {
         if (billingItem == null || billingItem.getId() == null) {
             return;
@@ -675,11 +867,29 @@ public class DiagnosticOrderTestStatusService {
         }
 
         BillingOperationResult result =
-                billingEngineService.onItemOrdered(
-                        billingItem.getId(),
-                        facilityId,
-                        "DIAG-ORDER:" + billingItem.getId()
-                );
+                rule == null
+                        ? billingEngineService.onItemOrdered(
+                                billingItem.getId(),
+                                facilityId,
+                                "DIAG-ORDER:" + billingItem.getId()
+                        )
+                        : billingEngineService.onSelectedBillingRule(
+                                billingItem.getId(),
+                                facilityId,
+                                "DIAG-RULE:"
+                                        + rule.billingTrigger()
+                                        + ":"
+                                        + rule.billingRuleId()
+                                        + ":"
+                                        + billingItem.getId()
+                        );
+
+        if (rule != null && result.chargeLineId() != null) {
+            billingChargeService.recordChargeLineWorkflow(
+                    result.chargeLineId(),
+                    workflowNote(rule)
+            );
+        }
 
         LOG.info(
                 "[DIAG_ORDER_BILLING] pspId={} processed={} chargeLineId={} message={}",
@@ -700,6 +910,16 @@ public class DiagnosticOrderTestStatusService {
         }
     }
 
+    private String workflowNote(BillingRuleResolveResponse rule) {
+        return "Charge generated by billing rule '"
+                + rule.billingRuleName()
+                + "' on workflow action "
+                + rule.billingTrigger()
+                + ". Payment type "
+                + (rule.paymentType() == null ? "BOTH" : rule.paymentType())
+                + ".";
+    }
+
     @Transactional(readOnly = true)
     public PatientArrivedResponseVM getPatientArrived(Long testId) {
         DiagnosticOrderTest test = diagnosticOrderTestRepository.findById(testId)
@@ -718,6 +938,29 @@ public class DiagnosticOrderTestStatusService {
 
     private DiagnosticStatus normalize(DiagnosticStatus status) {
         return status == null ? DiagnosticStatus.NEW : status;
+    }
+
+    /**
+     * Reverses the lab/radiology billing item the same way cancel does,
+     * so reserved money returns to the visit available limit.
+     */
+    private void releaseDiagnosticBilling(DiagnosticOrderTest test, String reason) {
+        BillingItemTypes billingItemType =
+                test.getOrderType() == TestType.RADIOLOGY
+                        ? BillingItemTypes.RADIOLOGY
+                        : BillingItemTypes.LABORATORY;
+
+        ServiceSource serviceSource =
+                test.getOrderType() == TestType.RADIOLOGY
+                        ? ServiceSource.RADIOLOGY
+                        : ServiceSource.LABORATORY;
+
+        patientServiceAndProductService.cancelBySource(
+                serviceSource,
+                test.getId(),
+                billingItemType,
+                reason
+        );
     }
 
 

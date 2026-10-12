@@ -14,6 +14,7 @@ import com.dazzle.asklepios.repository.PatientProcedureRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.BillingChargeService;
 import com.dazzle.asklepios.service.BillingEngineService;
+import com.dazzle.asklepios.service.DiagnosticOrderTestStatusService;
 import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import org.slf4j.Logger;
@@ -48,6 +49,7 @@ public class PreAuthorizationCompletionService {
     private final PatientProcedureRepository patientProcedureRepository;
     private final BillingChargeService billingChargeService;
     private final BillingEngineService billingEngineService;
+    private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
     private final PreAuthorizationCompletionService self;
 
     public PreAuthorizationCompletionService(
@@ -56,6 +58,7 @@ public class PreAuthorizationCompletionService {
             PatientProcedureRepository patientProcedureRepository,
             BillingChargeService billingChargeService,
             BillingEngineService billingEngineService,
+            DiagnosticOrderTestStatusService diagnosticOrderTestStatusService,
             @Lazy PreAuthorizationCompletionService self
     ) {
         this.patientEncounterRepository = patientEncounterRepository;
@@ -63,6 +66,7 @@ public class PreAuthorizationCompletionService {
         this.patientProcedureRepository = patientProcedureRepository;
         this.billingChargeService = billingChargeService;
         this.billingEngineService = billingEngineService;
+        this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
         this.self = self;
     }
 
@@ -108,6 +112,10 @@ public class PreAuthorizationCompletionService {
             releaseProcedureAfterPreAuthorization(item);
 
             if (!shouldBillDeferredItem(item, encounterId)) {
+                continue;
+            }
+
+            if (diagnosticOrderTestStatusService.billApprovedPreAuthorization(item)) {
                 continue;
             }
 

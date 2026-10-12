@@ -91,6 +91,9 @@ public class BillingEngineService {
     private final BillingChargeService
             billingChargeService;
 
+    private final DiagnosticChargeTimingService
+            diagnosticChargeTimingService;
+
     private final EncounterPreAuthorizationSyncService
             encounterPreAuthorizationSyncService;
 
@@ -185,6 +188,18 @@ public class BillingEngineService {
                         billingRule.billingTrigger(),
                         eventType
                 );
+
+        if (!triggerMatches
+                && eventType == BillingEventType.ITEM_ORDERED
+                && DiagnosticChargeTimingService.isWorkflowTrigger(
+                        billingRule.billingTrigger()
+                )
+                && !diagnosticChargeTimingService.paymentApplies(
+                        item,
+                        billingRule
+                )) {
+            triggerMatches = true;
+        }
 
         if (!triggerMatches) {
             LOG.info(
@@ -392,11 +407,18 @@ public class BillingEngineService {
                         patientServiceProductId
                 );
 
+        if (diagnosticChargeTimingService.isChargeDeferred(item)) {
+            return BillingOperationResult.skipped(
+                    patientServiceProductId,
+                    "Billing rule defers this charge until its workflow trigger."
+            );
+        }
+
         BillingRuleResolveResponse billingRule =
                 resolveBillingRule(item);
 
         List<BillingEventType> eventCandidates =
-                buildChargeLineEventCandidates(billingRule);
+                buildChargeLineEventCandidates(item, billingRule);
 
         String baseRequestId =
                 requestId == null
@@ -496,6 +518,30 @@ public class BillingEngineService {
     }
 
     /**
+     * Creates the charge line with the catalog or default billing rule.
+     * Price calculation stays on the existing billing path. The rule only
+     * chooses which billing event runs.
+     */
+    public BillingOperationResult onSelectedBillingRule(
+            Long patientServiceProductId,
+            Long facilityId,
+            String requestId
+    ) {
+        PatientServiceAndProduct item =
+                findPatientServiceProduct(patientServiceProductId);
+
+        BillingRuleResolveResponse billingRule =
+                resolveBillingRule(item);
+
+        return process(
+                patientServiceProductId,
+                resolveEventType(billingRule.billingTrigger()),
+                facilityId,
+                requestId
+        );
+    }
+
+    /**
      * Called when medication is dispensed.
      */
     public BillingOperationResult onItemDispensed(
@@ -570,6 +616,14 @@ public class BillingEngineService {
                         patientServiceProductId
                 );
 
+        if (diagnosticChargeTimingService.isChargeDeferred(item)) {
+            throw new BadRequestAlertException(
+                    "This charge line is created when the billing rule trigger is reached.",
+                    ENTITY_NAME,
+                    "billingRule.chargeDeferred"
+            );
+        }
+
         BillingRuleResolveResponse billingRule =
                 resolveBillingRule(
                         item
@@ -577,6 +631,7 @@ public class BillingEngineService {
 
         List<BillingEventType> eventCandidates =
                 buildChargeLineEventCandidates(
+                        item,
                         billingRule
                 );
 
@@ -644,10 +699,33 @@ public class BillingEngineService {
     }
 
     private List<BillingEventType> buildChargeLineEventCandidates(
+            PatientServiceAndProduct item,
             BillingRuleResolveResponse billingRule
     ) {
         Set<BillingEventType> candidates =
                 new LinkedHashSet<>();
+
+        if (billingRule != null
+                && DiagnosticChargeTimingService.isWorkflowTrigger(
+                        billingRule.billingTrigger()
+                )) {
+            if (diagnosticChargeTimingService.paymentApplies(item, billingRule)
+                    && diagnosticChargeTimingService.triggerReached(
+                            item,
+                            billingRule.billingTrigger()
+                    )) {
+                candidates.add(
+                        resolveEventType(billingRule.billingTrigger())
+                );
+            } else if (!diagnosticChargeTimingService.paymentApplies(
+                    item,
+                    billingRule
+            )) {
+                candidates.add(BillingEventType.ITEM_ORDERED);
+            }
+
+            return new ArrayList<>(candidates);
+        }
 
         if (billingRule != null
                 && billingRule.billingTrigger() != null) {
@@ -696,6 +774,18 @@ public class BillingEngineService {
 
             case DEBIT_NOTE ->
                     BillingEventType.DEBIT_NOTE;
+
+            case SUBMIT_ORDER ->
+                    BillingEventType.SUBMIT_ORDER;
+
+            case COLLECT_SAMPLE ->
+                    BillingEventType.COLLECT_SAMPLE;
+
+            case ACCEPT_ORDER ->
+                    BillingEventType.ACCEPT_ORDER;
+
+            case APPROVED ->
+                    BillingEventType.APPROVED;
         };
     }
 

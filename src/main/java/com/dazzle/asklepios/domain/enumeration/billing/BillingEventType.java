@@ -22,5 +22,13 @@ public enum BillingEventType {
 
     MANUAL,
 
-    DEBIT_NOTE
+    DEBIT_NOTE,
+
+    SUBMIT_ORDER,
+
+    COLLECT_SAMPLE,
+
+    ACCEPT_ORDER,
+
+    APPROVED
 }

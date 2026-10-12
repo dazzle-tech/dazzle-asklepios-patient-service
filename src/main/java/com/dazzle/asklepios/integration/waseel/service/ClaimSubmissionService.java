@@ -934,7 +934,40 @@ public class ClaimSubmissionService {
                 ? null
                 : String.join(",", claimModel.preAuthRefNo());
 
-           ClaimRequest claimRequest = ClaimRequest.builder()
+           ClaimRequest claimRequest = ClaimRequest.builder
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                           ()
                 .patientId(invoice.getPatientId())
                 .encounterId(invoice.getEncounterId())
                 .financialDocumentId(invoice.getId())
