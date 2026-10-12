@@ -9,6 +9,14 @@ public record PointOfSaleWebhookLogDTO(
 
         Long transactionId,
 
+        String sourceType,
+
+        Long patientId,
+
+        Long encounterId,
+
+        String encounterNumber,
+
         String orderId,
 
         String externalTransactionId,
