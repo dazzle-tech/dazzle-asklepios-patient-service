@@ -68,6 +68,7 @@ public class DentalProcedureService {
     private final BillingEngineService billingEngineService;
     private final PatientServiceAndProductService patientServiceAndProductService;
     private final InsurancePriceListCoverageService insurancePriceListCoverageService;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public DentalProcedureService(
             DentalProcedureRepository dentalProcedureRepository,
@@ -83,7 +84,8 @@ public class DentalProcedureService {
             PreAuthorizationResolutionService preAuthorizationResolutionService,
             @Lazy BillingEngineService billingEngineService,
             @Lazy PatientServiceAndProductService patientServiceAndProductService,
-            InsurancePriceListCoverageService insurancePriceListCoverageService
+            InsurancePriceListCoverageService insurancePriceListCoverageService,
+            ReopenSessionAuditContext reopenSessionAuditContext
     ) {
         this.dentalProcedureRepository = dentalProcedureRepository;
         this.patientRepository = patientRepository;
@@ -99,6 +101,7 @@ public class DentalProcedureService {
         this.billingEngineService = billingEngineService;
         this.patientServiceAndProductService = patientServiceAndProductService;
         this.insurancePriceListCoverageService = insurancePriceListCoverageService;
+        this.reopenSessionAuditContext = reopenSessionAuditContext;
     }
 
     public DentalProcedure create(DentalProcedureCreateDTO dto) {
@@ -157,6 +160,7 @@ public class DentalProcedureService {
                     dto.acceptUncoveredAsCash()
             );
 
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
             DentalProcedure saved = dentalProcedureRepository.saveAndFlush(entity);
 
             PatientServiceAndProduct procedureBilling =
@@ -181,6 +185,7 @@ public class DentalProcedureService {
 
     public DentalProcedure update(DentalProcedureUpdateDTO dto) {
         DentalProcedure entity = getDentalProcedure(dto.id());
+        Long ownedEncounterId = entity.getEncounter() == null ? null : entity.getEncounter().getId();
 
         if (entity.isCancelled()) {
             throw new BadRequestAlertException(
@@ -227,6 +232,7 @@ public class DentalProcedureService {
         updateDentalProcedureFields(entity, dto);
 
         try {
+            reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
             DentalProcedure updated = dentalProcedureRepository.saveAndFlush(entity);
 
             PatientServiceAndProduct procedureBilling =
@@ -247,6 +253,7 @@ public class DentalProcedureService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated."));
 
         DentalProcedure entity = getDentalProcedure(id);
+        Long ownedEncounterId = entity.getEncounter() == null ? null : entity.getEncounter().getId();
 
         if (entity.isCancelled()) {
             throw new BadRequestAlertException(
@@ -282,7 +289,9 @@ public class DentalProcedureService {
         entity.setCancelledBy(SecurityUtils.getCurrentUserLogin().orElse("unknown"));
         entity.setCancelledDate(Instant.now());
 
-        return dentalProcedureRepository.saveAndFlush(entity);
+        reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
+        DentalProcedure saved = dentalProcedureRepository.saveAndFlush(entity);
+        return saved;
     }
 
     private Patient getPatient(Long patientId) {

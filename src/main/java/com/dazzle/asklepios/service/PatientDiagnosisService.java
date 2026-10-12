@@ -38,15 +38,18 @@ public class PatientDiagnosisService {
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final ICDTreeClient iCDTreeClient;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public PatientDiagnosisService(
             PatientDiagnosisRepository patientDiagnosisRepository,
             PatientRepository patientRepository,
-            PatientEncounterRepository patientEncounterRepository, ICDTreeClient iCDTreeClient) {
+            PatientEncounterRepository patientEncounterRepository, ICDTreeClient iCDTreeClient,
+            ReopenSessionAuditContext reopenSessionAuditContext) {
         this.patientDiagnosisRepository = patientDiagnosisRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
         this.iCDTreeClient = iCDTreeClient;
+        this.reopenSessionAuditContext = reopenSessionAuditContext;
     }
 
     public PatientDiagnosis create(PatientDiagnosisCreateDTO dto) {
@@ -77,7 +80,9 @@ public class PatientDiagnosisService {
                 .build();
 
         try {
-            return patientDiagnosisRepository.saveAndFlush(entity);
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
+            PatientDiagnosis saved = patientDiagnosisRepository.saveAndFlush(entity);
+            return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
@@ -99,6 +104,7 @@ public class PatientDiagnosisService {
                         "notfound"
                 ));
 
+        Long ownedEncounterId = existing.getEncounterId();
         Patient patient = patientRepository.findById(dto.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Patient not found with id " + dto.patientId(),
@@ -122,7 +128,9 @@ public class PatientDiagnosisService {
         existing.setLastModifiedDate(Instant.now());
 
         try {
-            return patientDiagnosisRepository.saveAndFlush(existing);
+            reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
+            PatientDiagnosis saved = patientDiagnosisRepository.saveAndFlush(existing);
+            return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
@@ -173,6 +181,8 @@ public class PatientDiagnosisService {
                         "notfound"
                 ));
 
+        Long encounterId = entity.getEncounterId();
+        reopenSessionAuditContext.applyOpenSession(encounterId);
         patientDiagnosisRepository.delete(entity);
 
         LOG.info("[HARD_DELETE] PatientDiagnosis deleted permanently id={}", id);

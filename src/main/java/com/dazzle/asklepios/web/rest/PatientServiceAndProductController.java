@@ -3,6 +3,7 @@ package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.service.EncounterReopenGuard;
 import com.dazzle.asklepios.service.PatientServiceAndProductService;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductUpdateDTO;
@@ -39,11 +40,14 @@ public class PatientServiceAndProductController {
     private static final Logger LOG = LoggerFactory.getLogger(PatientServiceAndProductController.class);
 
     private final PatientServiceAndProductService patientServiceAndProductService;
+    private final EncounterReopenGuard encounterReopenGuard;
 
     public PatientServiceAndProductController(
-            PatientServiceAndProductService patientServiceAndProductService
+            PatientServiceAndProductService patientServiceAndProductService,
+            EncounterReopenGuard encounterReopenGuard
     ) {
         this.patientServiceAndProductService = patientServiceAndProductService;
+        this.encounterReopenGuard = encounterReopenGuard;
     }
 
     @PostMapping("/patient-services-products")
@@ -60,6 +64,8 @@ public class PatientServiceAndProductController {
                 patientServiceProductCreateDTO.serviceId(),
                 patientServiceProductCreateDTO.procedureId()
         );
+
+        encounterReopenGuard.rejectIfOpenReopenSession(patientServiceProductCreateDTO.encounterId());
 
         PatientServiceAndProduct created = patientServiceAndProductService.create(patientServiceProductCreateDTO);
 

@@ -37,6 +37,7 @@ public class PatientPrescriptionMedicationService {
     private final BrandMedicationHelper brandMedicationHelper;
     private final ICDTreeHelper icdTreeHelper;
     private final PatientServiceAndProductService patientServiceAndProductService;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public PatientPrescriptionMedication create(PrescriptionMedicationCreateDTO prescriptionMedicationCreateDTO) {
         LOG.debug("create a PrescriptionMedicationCreateDTO={}", prescriptionMedicationCreateDTO);
@@ -87,7 +88,9 @@ public class PatientPrescriptionMedicationService {
                 .status(PrescriptionStatus.DRAFT)
                 .build();
 
-        return patientPrescriptionMedicationRepository.saveAndFlush(entity);
+        reopenSessionAuditContext.applyOpenSession(header.getEncounterId());
+        PatientPrescriptionMedication saved = patientPrescriptionMedicationRepository.saveAndFlush(entity);
+        return saved;
     }
 
     public PatientPrescriptionMedication update(Long id, PrescriptionMedicationUpdateDTO prescriptionMedicationUpdateDTO) {
@@ -95,6 +98,7 @@ public class PatientPrescriptionMedicationService {
 
         PatientPrescriptionMedication entity = patientPrescriptionMedicationRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescriptionMedication not found: " + id));
+        Long encounterId = entity.getPrescriptionHeader() == null ? null : entity.getPrescriptionHeader().getEncounterId();
         if (prescriptionMedicationUpdateDTO.instructionsType != null)
             entity.setInstructionsType(prescriptionMedicationUpdateDTO.instructionsType);
 
@@ -186,7 +190,9 @@ public class PatientPrescriptionMedicationService {
             entity.setOtherMedicationName(otherMedicationName);
         }
 
-        return patientPrescriptionMedicationRepository.saveAndFlush(entity);
+        reopenSessionAuditContext.applyOpenSession(encounterId);
+        PatientPrescriptionMedication saved = patientPrescriptionMedicationRepository.saveAndFlush(entity);
+        return saved;
     }
 
 
@@ -218,6 +224,7 @@ public class PatientPrescriptionMedicationService {
         PatientPrescriptionMedication entity = patientPrescriptionMedicationRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescriptionMedication not found: " + id));
 
+        Long encounterId = entity.getPrescriptionHeader() == null ? null : entity.getPrescriptionHeader().getEncounterId();
         patientServiceAndProductService.cancelBySource(
                 ServiceSource.PRESCRIPTION,
                 entity.getId(),
@@ -229,7 +236,9 @@ public class PatientPrescriptionMedicationService {
         entity.setCancellationReason(cancellationReason);
         entity.setCancelledBy(currentUsername());
         entity.setCancelledDate(Instant.now());
-        return patientPrescriptionMedicationRepository.saveAndFlush(entity);
+        reopenSessionAuditContext.applyOpenSession(encounterId);
+        PatientPrescriptionMedication saved = patientPrescriptionMedicationRepository.saveAndFlush(entity);
+        return saved;
     }
 
     private void validateChronicVsDuration(Boolean chronic, Long duration) {

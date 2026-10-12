@@ -46,6 +46,7 @@ public class PatientAllergiesService {
     private final MedicationCategoryClassHelper medicationCategoryClassHelper;
     private final AllergenHelper allergenHelper;
     private final ActiveIngredientHelper activeIngredientHelper;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public PatientAllergiesService(
             PatientAllergiesRepository patientAllergiesRepository,
@@ -54,7 +55,8 @@ public class PatientAllergiesService {
             PatientEncounterRepository patientEncounterRepository,
             MedicationCategoryClassHelper medicationCategoryClassHelper,
             AllergenHelper allergenHelper,
-            ActiveIngredientHelper activeIngredientHelper
+            ActiveIngredientHelper activeIngredientHelper,
+            ReopenSessionAuditContext reopenSessionAuditContext
     ) {
         this.patientAllergiesRepository = patientAllergiesRepository;
         this.patientAllergiesActiveIngredientRepository = patientAllergiesActiveIngredientRepository;
@@ -63,6 +65,7 @@ public class PatientAllergiesService {
         this.medicationCategoryClassHelper = medicationCategoryClassHelper;
         this.allergenHelper = allergenHelper;
         this.activeIngredientHelper = activeIngredientHelper;
+        this.reopenSessionAuditContext = reopenSessionAuditContext;
     }
 
     public PatientAllergies create(PatientAllergiesCreateDTO patientAllergyCreateDto) {
@@ -242,6 +245,7 @@ public class PatientAllergiesService {
                 .build();
 
         try {
+            reopenSessionAuditContext.applyOpenSession(entity.getEncounterId());
             PatientAllergies saved = patientAllergiesRepository.save(entity);
 
             if (patientAllergyCreateDto.allergenType() == AllergenTypes.MEDICATION
@@ -318,10 +322,14 @@ public class PatientAllergiesService {
                         )
                 );
 
+        Long encounterId = entity.getEncounterId();
+
         entity.setStatus(PatientAllergyStatus.CANCELLED);
         entity.setCancelledBy(login);
         entity.setCancelledDate(Instant.now());
         entity.setCancellationReason(reason);
+
+        reopenSessionAuditContext.applyOpenSession(encounterId);
 
         return PatientAllergiesResponseVM.ofEntity(
                 entity,
@@ -342,6 +350,8 @@ public class PatientAllergiesService {
                         )
                 );
 
+        Long encounterId = entity.getEncounterId();
+
         String login = SecurityUtils.getCurrentUserLogin()
                 .orElseThrow(() ->
                         new ResponseStatusException(
@@ -353,6 +363,8 @@ public class PatientAllergiesService {
         entity.setStatus(PatientAllergyStatus.RESOLVED);
         entity.setResolvedBy(login);
         entity.setResolvedDate(Instant.now());
+
+        reopenSessionAuditContext.applyOpenSession(encounterId);
 
         return PatientAllergiesResponseVM.ofEntity(
                 entity,
@@ -381,7 +393,11 @@ public class PatientAllergiesService {
             );
         }
 
+        Long encounterId = entity.getEncounterId();
+
         entity.setStatus(PatientAllergyStatus.ACTIVE);
+
+        reopenSessionAuditContext.applyOpenSession(encounterId);
 
         return PatientAllergiesResponseVM.ofEntity(
                 entity,
@@ -589,6 +605,9 @@ public class PatientAllergiesService {
                     "Only today's records can be updated"
             );
         }
+
+        Long encounterId = entity.getEncounterId();
+        reopenSessionAuditContext.applyOpenSession(encounterId);
 
         entity.setAllergenType(patientAllergiesUpdateDTO.allergenType());
 

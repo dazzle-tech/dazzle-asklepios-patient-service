@@ -42,4 +42,7 @@ public class ProgressNoteLog extends AbstractAuditingEntity<Long> implements Ser
 
     @Column(name = "new_note_text", columnDefinition = "text")
     private String newNoteText;
+
+    @Column(name = "reopen_session_id")
+    private Long reopenSessionId;
 }

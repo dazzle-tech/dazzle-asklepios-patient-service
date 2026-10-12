@@ -39,6 +39,7 @@ public class GlasgowComaScaleAssessmentService {
     private final GlasgowComaScaleAssessmentRepository glasgowComaScaleAssessmentRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientRepository patientRepository;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public GlasgowComaScaleAssessment create(GlasgowComaScaleAssessmentCreateDTO createDTO) {
         LOG.info("[CREATE] GlasgowComaScaleAssessment payload={}", createDTO);
@@ -78,7 +79,9 @@ public class GlasgowComaScaleAssessmentService {
                 .build();
 
         try {
-            return glasgowComaScaleAssessmentRepository.saveAndFlush(entity);
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
+            GlasgowComaScaleAssessment saved = glasgowComaScaleAssessmentRepository.saveAndFlush(entity);
+            return saved;
         } catch (DataIntegrityViolationException | JpaSystemException exception) {
             throw handleConstraintViolation(exception);
         }
@@ -94,6 +97,7 @@ public class GlasgowComaScaleAssessmentService {
                         "id.notfound"
                 ));
 
+        Long ownedEncounterId = existing.getEncounter() == null ? null : existing.getEncounter().getId();
 
         Integer eyeScore = updateDTO.eyeOpening().getScore();
         Integer verbalScore = updateDTO.verbalResponse().getScore();
@@ -110,7 +114,9 @@ public class GlasgowComaScaleAssessmentService {
         existing.setScoreInterpretation(resolveScoreInterpretation(totalScore));
 
         try {
-            return glasgowComaScaleAssessmentRepository.saveAndFlush(existing);
+            reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
+            GlasgowComaScaleAssessment saved = glasgowComaScaleAssessmentRepository.saveAndFlush(existing);
+            return saved;
         } catch (DataIntegrityViolationException | JpaSystemException exception) {
             throw handleConstraintViolation(exception);
         }
@@ -131,12 +137,15 @@ public class GlasgowComaScaleAssessmentService {
                         "id.notfound"
                 ));
 
+        Long ownedEncounterId = existing.getEncounter() == null ? null : existing.getEncounter().getId();
         existing.setCancelledAt(LocalDateTime.now());
         existing.setCancelledBy(currentUser);
         existing.setCancellationReason(cancelDTO.cancellationReason());
 
         try {
-            return glasgowComaScaleAssessmentRepository.saveAndFlush(existing);
+            reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
+            GlasgowComaScaleAssessment saved = glasgowComaScaleAssessmentRepository.saveAndFlush(existing);
+            return saved;
         } catch (DataIntegrityViolationException | JpaSystemException exception) {
             throw handleConstraintViolation(exception);
         }

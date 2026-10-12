@@ -35,6 +35,7 @@ public class PatientObservationsComplaintsService {
     private final PatientObservationsComplaintsRepository patientObservationsComplaintsRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public PatientObservationsComplaints create(PatientObservationsComplaintsCreateDTO dto) {
         LOG.info("[CREATE] PatientObservationsComplaints payload={}", dto);
@@ -72,6 +73,7 @@ public class PatientObservationsComplaintsService {
                 .build();
 
         try {
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
             PatientObservationsComplaints saved =
                     patientObservationsComplaintsRepository.saveAndFlush(entity);
 
@@ -102,6 +104,7 @@ public class PatientObservationsComplaintsService {
         );
 
         return patientObservationsComplaintsRepository.findById(targetId).map(entity -> {
+            Long ownedEncounterId = entity.getEncounterId();
 
             Patient patient = patientRepository.findById(dto.patientId())
                     .orElseThrow(() -> new NotFoundAlertException(
@@ -129,6 +132,7 @@ public class PatientObservationsComplaintsService {
             entity.setIsActive(dto.isActive());
 
             try {
+                reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
                 PatientObservationsComplaints updated =
                         patientObservationsComplaintsRepository.saveAndFlush(entity);
 
