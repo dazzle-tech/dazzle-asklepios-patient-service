@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.service.PointOfSaleTransactionService;
+import com.dazzle.asklepios.service.dto.billing.BillingPaymentResult;
 import com.dazzle.asklepios.service.dto.pointOfSale.CreatePointOfSaleTransactionDTO;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleTransactionDTO;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleWebhookDTO;
@@ -96,6 +97,34 @@ public class PointOfSaleTransactionController {
                 result.id(),
                 result.transactionStatus(),
                 result.responseCode()
+        );
+
+        return ResponseEntity.ok(
+                result
+        );
+    }
+
+    @PostMapping(
+            "/point-of-sale-transactions/transactions/{id}/complete-payment"
+    )
+    public ResponseEntity<BillingPaymentResult>
+    completePayment(
+            @PathVariable Long id
+    ) {
+
+        LOG.info(
+                "Complete payment requested. InternalTransactionId={}",
+                id
+        );
+
+        BillingPaymentResult result =
+                pointOfSaleTransactionService
+                        .completePayment(id);
+
+        LOG.info(
+                "Complete payment finished. InternalTransactionId={}, PaymentId={}",
+                id,
+                result.paymentId()
         );
 
         return ResponseEntity.ok(

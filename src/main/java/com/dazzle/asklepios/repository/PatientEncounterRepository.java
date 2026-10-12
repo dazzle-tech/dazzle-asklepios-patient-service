@@ -80,4 +80,12 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
             List<TreatmentStatus> statuses
     );
 
+    Optional<PatientEncounter> findByEncounterNumber(
+            String encounterNumber
+    );
+
+    List<PatientEncounter> findByEncounterNumberContainingIgnoreCase(
+            String encounterNumber
+    );
+
 }
