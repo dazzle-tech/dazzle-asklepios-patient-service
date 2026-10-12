@@ -3,7 +3,6 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.ReviewOfSystem;
-import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.ReviewOfSystemRepository;
@@ -27,13 +26,18 @@ public class ReviewOfSystemService {
     private final ReviewOfSystemRepository reviewOfSystemRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
-    private final EncounterAmendmentAuditService amendmentAudit;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
-    public ReviewOfSystemService(ReviewOfSystemRepository reviewOfSystemRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository, EncounterAmendmentAuditService amendmentAudit) {
+    public ReviewOfSystemService(
+            ReviewOfSystemRepository reviewOfSystemRepository,
+            PatientRepository patientRepository,
+            PatientEncounterRepository patientEncounterRepository,
+            ReopenSessionAuditContext reopenSessionAuditContext
+    ) {
         this.reviewOfSystemRepository = reviewOfSystemRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
-        this.amendmentAudit = amendmentAudit;
+        this.reopenSessionAuditContext = reopenSessionAuditContext;
     }
 
     public ReviewOfSystem create(ReviewOfSystemCreateDTO dto) {
@@ -45,7 +49,6 @@ public class ReviewOfSystemService {
                 .orElseGet(ReviewOfSystem::new);
         boolean creating = reviewOfSystem.getId() == null;
         Long ownedEncounterId = reviewOfSystem.getEncounterId();
-        var before = creating ? null : amendmentAudit.capture(reviewOfSystem);
 
         Patient patient = patientRepository.findById(dto.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -65,12 +68,12 @@ public class ReviewOfSystemService {
         reviewOfSystem.setSystemDetail(dto.systemDetail());
         reviewOfSystem.setNote(dto.note());
 
-        ReviewOfSystem saved = reviewOfSystemRepository.save(reviewOfSystem);
         if (creating) {
-            amendmentAudit.added(encounter.getId(), AmendmentMedicalSheet.REVIEW_OF_SYSTEMS, saved.getId(), saved);
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
         } else {
-            amendmentAudit.changed(ownedEncounterId, AmendmentMedicalSheet.REVIEW_OF_SYSTEMS, saved.getId(), before, saved);
+            reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
         }
+        ReviewOfSystem saved = reviewOfSystemRepository.save(reviewOfSystem);
         return saved;
     }
 
@@ -84,7 +87,6 @@ public class ReviewOfSystemService {
                         "notfound"
                 ));
         Long ownedEncounterId = existing.getEncounterId();
-        var before = amendmentAudit.capture(existing);
         Patient patient = patientRepository.findById(dto.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Patient not found with id " + dto.patientId(),
@@ -103,8 +105,8 @@ public class ReviewOfSystemService {
         existing.setSystemDetail(dto.systemDetail());
         existing.setNote(dto.note());
 
+        reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
         ReviewOfSystem saved = reviewOfSystemRepository.save(existing);
-        amendmentAudit.changed(ownedEncounterId, AmendmentMedicalSheet.REVIEW_OF_SYSTEMS, saved.getId(), before, saved);
         return saved;
     }
 
@@ -134,22 +136,15 @@ public class ReviewOfSystemService {
         );
         var existing = reviewOfSystemRepository
                 .findByEncounterIdAndBodySystemAndSystemDetail(encounterId, bodySystem, systemDetail);
-        Long ownedEncounterId = existing.map(ReviewOfSystem::getEncounterId).orElse(null);
-        var before = existing
-                .map(row -> amendmentAudit.capture(row))
-                .orElse(null);
+        Long ownedEncounterId = existing.map(ReviewOfSystem::getEncounterId).orElse(encounterId);
+        reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
         reviewOfSystemRepository.deleteByEncounterIdAndBodySystemAndSystemDetail(encounterId, bodySystem, systemDetail);
-        existing.ifPresent(row -> amendmentAudit.removed(ownedEncounterId, AmendmentMedicalSheet.REVIEW_OF_SYSTEMS, row.getId(), before));
     }
 
     public void delete(Long id) {
         var existing = reviewOfSystemRepository.findById(id);
         Long ownedEncounterId = existing.map(ReviewOfSystem::getEncounterId).orElse(null);
-        var before = existing
-                .map(row -> amendmentAudit.capture(row))
-                .orElse(null);
+        reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
         reviewOfSystemRepository.deleteById(id);
-        existing.ifPresent(row -> amendmentAudit.removed(ownedEncounterId, AmendmentMedicalSheet.REVIEW_OF_SYSTEMS, row.getId(), before));
     }
 }
-

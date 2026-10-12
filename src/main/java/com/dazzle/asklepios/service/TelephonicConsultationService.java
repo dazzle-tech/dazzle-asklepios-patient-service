@@ -3,7 +3,6 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.TelephonicConsultation;
-import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -39,7 +38,7 @@ public class TelephonicConsultationService {
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final PractitionerHelper practitionerHelper;
-    private final EncounterAmendmentAuditService amendmentAudit;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -49,12 +48,12 @@ public class TelephonicConsultationService {
             PatientRepository patientRepository,
             PatientEncounterRepository patientEncounterRepository,
             PractitionerHelper practitionerHelper,
-            EncounterAmendmentAuditService amendmentAudit) {
+            ReopenSessionAuditContext reopenSessionAuditContext) {
         this.repository = repository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
         this.practitionerHelper = practitionerHelper;
-        this.amendmentAudit = amendmentAudit;
+        this.reopenSessionAuditContext = reopenSessionAuditContext;
     }
 
     private String currentUsername() {
@@ -103,9 +102,9 @@ public class TelephonicConsultationService {
                 .status(dto.status() != null ? dto.status() : DiagnosticStatus.NEW).build();
 
         try {
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
             TelephonicConsultation saved = repository.saveAndFlush(entity);
             entityManager.refresh(saved);
-            amendmentAudit.added(encounter.getId(), AmendmentMedicalSheet.TELEPHONIC_CONSULTATION, saved.getId(), saved);
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
@@ -137,7 +136,6 @@ public class TelephonicConsultationService {
             );
         }
         Long ownedEncounterId = existing.getEncounter() == null ? null : existing.getEncounter().getId();
-        var before = amendmentAudit.capture(existing);
         practitionerHelper.validatePractitionerExists(dto.practitionerId());
 
         existing.setPractitionerId(dto.practitionerId());
@@ -148,9 +146,9 @@ public class TelephonicConsultationService {
         existing.setExtraDocumentation(dto.extraDocumentation());
 
         try {
+            reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
             TelephonicConsultation updated = repository.saveAndFlush(existing);
             entityManager.refresh(updated);
-            amendmentAudit.changed(ownedEncounterId, AmendmentMedicalSheet.TELEPHONIC_CONSULTATION, updated.getId(), before, updated);
             return updated;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
@@ -260,7 +258,6 @@ public class TelephonicConsultationService {
                 );
 
         Long ownedEncounterId = existing.getEncounter() == null ? null : existing.getEncounter().getId();
-        var before = amendmentAudit.capture(existing);
         if (existing.getStatus() == DiagnosticStatus.CANCELLED) {
             throw new BadRequestAlertException(
                     "Telephonic consultation already cancelled",
@@ -277,9 +274,9 @@ public class TelephonicConsultationService {
         LOG.debug("[CANCEL] cancelledBy={}", existing.getCancelledBy());
 
         try {
+            reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
             TelephonicConsultation cancelled = repository.saveAndFlush(existing);
             entityManager.refresh(cancelled);
-            amendmentAudit.cancelled(ownedEncounterId, AmendmentMedicalSheet.TELEPHONIC_CONSULTATION, cancelled.getId(), before, cancelled);
             return cancelled;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);

@@ -1,7 +1,6 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.BodyMeasurements;
-import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.repository.BodyMeasurementsRepository;
@@ -37,7 +36,7 @@ public class BodyMeasurementsService {
     private final BodyMeasurementsRepository bodyMeasurementsRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
-    private final EncounterAmendmentAuditService amendmentAudit;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public BodyMeasurements create(BodyMeasurementsCreateDTO dto) {
         LOG.info("[CREATE] BodyMeasurements payload={}", dto);
@@ -62,8 +61,8 @@ public class BodyMeasurementsService {
                     .isActive(true)
                     .build();
 
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
             BodyMeasurements saved = bodyMeasurementsRepository.saveAndFlush(bodyMeasurements);
-            amendmentAudit.added(encounter.getId(), AmendmentMedicalSheet.BODY_MEASUREMENTS, saved.getId(), saved);
             return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
@@ -78,7 +77,6 @@ public class BodyMeasurementsService {
 
         return bodyMeasurementsRepository.findById(targetId).map(bodyMeasurements -> {
             Long ownedEncounterId = bodyMeasurements.getEncounterId();
-            var before = amendmentAudit.capture(bodyMeasurements);
 
             Patient patient = patientRepository.findById(dto.patientId())
                     .orElseThrow(() -> new NotFoundAlertException(
@@ -96,8 +94,8 @@ public class BodyMeasurementsService {
             bodyMeasurements.setIsActive(dto.isActive());
 
             try {
+                reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
                 BodyMeasurements saved = bodyMeasurementsRepository.saveAndFlush(bodyMeasurements);
-                amendmentAudit.changed(ownedEncounterId, AmendmentMedicalSheet.BODY_MEASUREMENTS, saved.getId(), before, saved);
                 return saved;
             } catch (DataIntegrityViolationException | JpaSystemException ex) {
                 throw handleConstraintViolation(ex);
@@ -179,14 +177,9 @@ public class BodyMeasurementsService {
                 )
                 .ifPresentOrElse(bodyMeasurements -> {
                     Long ownedEncounterId = bodyMeasurements.getEncounterId();
-                    var before = amendmentAudit.capture(bodyMeasurements);
                     bodyMeasurements.setIsActive(false);
+                    reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
                     bodyMeasurementsRepository.flush();
-                    amendmentAudit.deactivated(ownedEncounterId,
-                            AmendmentMedicalSheet.BODY_MEASUREMENTS,
-                            bodyMeasurements.getId(),
-                            before
-                    );
                     LOG.debug(
                             "[RESET ACTIVE] Reset done. bodyMeasurementsId={} encounterId={}",
                             bodyMeasurements.getId(),

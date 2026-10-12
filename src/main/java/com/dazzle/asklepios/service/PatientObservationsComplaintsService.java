@@ -1,7 +1,6 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
-import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientObservationsComplaints;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
@@ -36,7 +35,7 @@ public class PatientObservationsComplaintsService {
     private final PatientObservationsComplaintsRepository patientObservationsComplaintsRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
-    private final EncounterAmendmentAuditService amendmentAudit;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public PatientObservationsComplaints create(PatientObservationsComplaintsCreateDTO dto) {
         LOG.info("[CREATE] PatientObservationsComplaints payload={}", dto);
@@ -74,6 +73,7 @@ public class PatientObservationsComplaintsService {
                 .build();
 
         try {
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
             PatientObservationsComplaints saved =
                     patientObservationsComplaintsRepository.saveAndFlush(entity);
 
@@ -83,12 +83,6 @@ public class PatientObservationsComplaintsService {
 
             patient.setPatientConditions(dto.patientConditions());
             patientRepository.save(patient);
-
-            amendmentAudit.added(encounter.getId(),
-                    AmendmentMedicalSheet.OBSERVATIONS_COMPLAINTS,
-                    saved.getId(),
-                    saved
-            );
 
             return saved;
 
@@ -111,7 +105,6 @@ public class PatientObservationsComplaintsService {
 
         return patientObservationsComplaintsRepository.findById(targetId).map(entity -> {
             Long ownedEncounterId = entity.getEncounterId();
-            var before = amendmentAudit.capture(entity);
 
             Patient patient = patientRepository.findById(dto.patientId())
                     .orElseThrow(() -> new NotFoundAlertException(
@@ -139,6 +132,7 @@ public class PatientObservationsComplaintsService {
             entity.setIsActive(dto.isActive());
 
             try {
+                reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
                 PatientObservationsComplaints updated =
                         patientObservationsComplaintsRepository.saveAndFlush(entity);
 
@@ -148,13 +142,6 @@ public class PatientObservationsComplaintsService {
 
                 patient.setPatientConditions(dto.patientConditions());
                 patientRepository.save(patient);
-
-                amendmentAudit.changed(ownedEncounterId,
-                        AmendmentMedicalSheet.OBSERVATIONS_COMPLAINTS,
-                        updated.getId(),
-                        before,
-                        updated
-                );
 
                 return updated;
 

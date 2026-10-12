@@ -3,7 +3,6 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.GeneralAssessment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
-import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.repository.GeneralAssessmentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -25,30 +24,26 @@ public class GeneralAssessmentService {
     private final GeneralAssessmentRepository generalAssessmentRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
-    private final EncounterAmendmentAuditService amendmentAudit;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public GeneralAssessmentService(
             GeneralAssessmentRepository generalAssessmentRepository,
             PatientRepository patientRepository,
             PatientEncounterRepository patientEncounterRepository,
-            EncounterAmendmentAuditService amendmentAudit
+            ReopenSessionAuditContext reopenSessionAuditContext
     ) {
         this.generalAssessmentRepository = generalAssessmentRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
-        this.amendmentAudit = amendmentAudit;
+        this.reopenSessionAuditContext = reopenSessionAuditContext;
     }
 
     public GeneralAssessment create(GeneralAssessmentCreateDTO generalAssessmentCreateDTO) {
         LOG.debug("create general assessment {}", generalAssessmentCreateDTO);
         GeneralAssessment entity = toEntityForCreate(generalAssessmentCreateDTO);
+        reopenSessionAuditContext.applyOpenSession(encounterId(entity));
         GeneralAssessment saved = generalAssessmentRepository.save(entity);
         LOG.debug("create: saved id={}", saved.getId());
-        amendmentAudit.added(encounterId(saved),
-                AmendmentMedicalSheet.GENERAL_ASSESSMENT,
-                saved.getId(),
-                saved
-        );
         return saved;
     }
 
@@ -56,15 +51,9 @@ public class GeneralAssessmentService {
         LOG.debug("update general assessment {}", generalAssessmentUpdateDTO);
         GeneralAssessment entity = getRequired(generalAssessmentUpdateDTO.id());
         Long encounterId = encounterId(entity);
-        var before = amendmentAudit.capture(entity);
         applyUpdate(entity, generalAssessmentUpdateDTO);
+        reopenSessionAuditContext.applyOpenSession(encounterId);
         GeneralAssessment saved = generalAssessmentRepository.save(entity);
-        amendmentAudit.changed(encounterId,
-                AmendmentMedicalSheet.GENERAL_ASSESSMENT,
-                saved.getId(),
-                before,
-                saved
-        );
         LOG.debug("update: saved id={}", saved.getId());
         return saved;
     }
@@ -97,11 +86,7 @@ public class GeneralAssessmentService {
     public void hardDelete(Long id) {
         LOG.debug("hard delete GeneralAssessment id={}", id);
         GeneralAssessment entity = getRequired(id);
-        amendmentAudit.removed(encounterId(entity),
-                AmendmentMedicalSheet.GENERAL_ASSESSMENT,
-                entity.getId(),
-                entity
-        );
+        reopenSessionAuditContext.applyOpenSession(encounterId(entity));
         generalAssessmentRepository.delete(entity);
     }
     // Helpers

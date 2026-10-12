@@ -5,7 +5,6 @@ import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientWarnings;
-import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.domain.enumeration.PatientWarningStatus;
 import com.dazzle.asklepios.domain.enumeration.Severity;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
@@ -48,15 +47,15 @@ public class PatientWarningsService {
     private final PatientEncounterRepository patientEncounterRepository;
     private final DepartmentHelper departmentHelper;
     private final NotificationHelper notificationHelper;
-    private final EncounterAmendmentAuditService amendmentAudit;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
-    public PatientWarningsService(PatientWarningsRepository patientWarningsRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository, DepartmentHelper departmentHelper, NotificationHelper notificationHelper, EncounterAmendmentAuditService amendmentAudit) {
+    public PatientWarningsService(PatientWarningsRepository patientWarningsRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository, DepartmentHelper departmentHelper, NotificationHelper notificationHelper, ReopenSessionAuditContext reopenSessionAuditContext) {
         this.patientWarningsRepository = patientWarningsRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
         this.departmentHelper = departmentHelper;
         this.notificationHelper = notificationHelper;
-        this.amendmentAudit = amendmentAudit;
+        this.reopenSessionAuditContext = reopenSessionAuditContext;
     }
 
     public PatientWarnings create(PatientWarningCreateDTO patientWarningCreateDTO) {
@@ -144,8 +143,8 @@ public class PatientWarningsService {
                 .build();
 
         try {
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
             PatientWarnings saved = patientWarningsRepository.save(entity);
-            amendmentAudit.added(encounter.getId(), AmendmentMedicalSheet.MEDICAL_WARNINGS, saved.getId(), saved);
 
             notificationForSevereCriticalWarning(saved, patient, encounter);
 
@@ -194,12 +193,11 @@ public class PatientWarningsService {
                 ));
 
         Long encounterId = entity.getEncounterId();
-        var before = amendmentAudit.capture(entity);
         entity.setStatus(PatientWarningStatus.CANCELLED);
         entity.setCancelledBy(login);
         entity.setCancelledDate(Instant.now());
         entity.setCancellationReason(reason);
-        amendmentAudit.cancelled(encounterId, AmendmentMedicalSheet.MEDICAL_WARNINGS, entity.getId(), before, entity);
+        reopenSessionAuditContext.applyOpenSession(encounterId);
 
         LOG.debug("Patient Warning cancelled: id={}, cancelledBy={}", id, login);
         return entity;
@@ -217,14 +215,13 @@ public class PatientWarningsService {
                 ));
 
         Long encounterId = entity.getEncounterId();
-        var before = amendmentAudit.capture(entity);
         String login = SecurityUtils.getCurrentUserLogin()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated."));
 
         entity.setStatus(PatientWarningStatus.RESOLVED);
         entity.setResolvedBy(login);
         entity.setResolvedDate(Instant.now());
-        amendmentAudit.changed(encounterId, AmendmentMedicalSheet.MEDICAL_WARNINGS, entity.getId(), before, entity);
+        reopenSessionAuditContext.applyOpenSession(encounterId);
 
         LOG.debug("Patient Warning resolved: id={}, resolvedBy={}", id, login);
         return entity;
@@ -250,9 +247,8 @@ public class PatientWarningsService {
         }
 
         Long encounterId = entity.getEncounterId();
-        var before = amendmentAudit.capture(entity);
         entity.setStatus(PatientWarningStatus.ACTIVE);
-        amendmentAudit.changed(encounterId, AmendmentMedicalSheet.MEDICAL_WARNINGS, entity.getId(), before, entity);
+        reopenSessionAuditContext.applyOpenSession(encounterId);
 
         LOG.debug("Patient Warning undo-resolved: id={}", id);
         return entity;
@@ -271,7 +267,6 @@ public class PatientWarningsService {
                 ));
 
         Long encounterId = patientWarningObj.getEncounterId();
-        var before = amendmentAudit.capture(patientWarningObj);
 
         // Only active warnings can be updated
         if (!(patientWarningObj.getStatus() == PatientWarningStatus.ACTIVE)) {
@@ -353,8 +348,8 @@ public class PatientWarningsService {
         patientWarningObj.setActionTaken(patientWarningUpdateDTO.actionTaken());
 
         try {
+            reopenSessionAuditContext.applyOpenSession(encounterId);
             PatientWarnings updated = patientWarningsRepository.saveAndFlush(patientWarningObj);
-            amendmentAudit.changed(encounterId, AmendmentMedicalSheet.MEDICAL_WARNINGS, updated.getId(), before, updated);
             Patient patient = patientRepository.findById(updated.getPatientId())
                     .orElseThrow(() ->
                             new NotFoundAlertException(

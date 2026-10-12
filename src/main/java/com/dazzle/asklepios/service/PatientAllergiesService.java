@@ -3,7 +3,6 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.PatientAllergies;
 import com.dazzle.asklepios.domain.PatientAllergiesActiveIngredient;
 import com.dazzle.asklepios.domain.enumeration.AllergenTypes;
-import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.domain.enumeration.PatientAllergyStatus;
 import com.dazzle.asklepios.repository.PatientAllergiesActiveIngredientsRepository;
 import com.dazzle.asklepios.repository.PatientAllergiesRepository;
@@ -30,9 +29,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -49,7 +46,7 @@ public class PatientAllergiesService {
     private final MedicationCategoryClassHelper medicationCategoryClassHelper;
     private final AllergenHelper allergenHelper;
     private final ActiveIngredientHelper activeIngredientHelper;
-    private final EncounterAmendmentAuditService amendmentAudit;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public PatientAllergiesService(
             PatientAllergiesRepository patientAllergiesRepository,
@@ -59,7 +56,7 @@ public class PatientAllergiesService {
             MedicationCategoryClassHelper medicationCategoryClassHelper,
             AllergenHelper allergenHelper,
             ActiveIngredientHelper activeIngredientHelper,
-            EncounterAmendmentAuditService amendmentAudit
+            ReopenSessionAuditContext reopenSessionAuditContext
     ) {
         this.patientAllergiesRepository = patientAllergiesRepository;
         this.patientAllergiesActiveIngredientRepository = patientAllergiesActiveIngredientRepository;
@@ -68,7 +65,7 @@ public class PatientAllergiesService {
         this.medicationCategoryClassHelper = medicationCategoryClassHelper;
         this.allergenHelper = allergenHelper;
         this.activeIngredientHelper = activeIngredientHelper;
-        this.amendmentAudit = amendmentAudit;
+        this.reopenSessionAuditContext = reopenSessionAuditContext;
     }
 
     public PatientAllergies create(PatientAllergiesCreateDTO patientAllergyCreateDto) {
@@ -209,6 +206,7 @@ public class PatientAllergiesService {
                 .build();
 
         try {
+            reopenSessionAuditContext.applyOpenSession(entity.getEncounterId());
             PatientAllergies saved = patientAllergiesRepository.save(entity);
             if (patientAllergyCreateDto.allergenType() == AllergenTypes.MEDICATION &&
                     patientAllergyCreateDto.activeIngredients() != null &&
@@ -223,11 +221,6 @@ public class PatientAllergiesService {
             }
 
             LOG.debug("Created PatientAllergies: {}", saved);
-            amendmentAudit.added(saved.getEncounterId(),
-                    AmendmentMedicalSheet.ALLERGIES,
-                    saved.getId(),
-                    allergySnapshot(saved, patientAllergyCreateDto.activeIngredients())
-            );
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException constraintException) {
             throw handleConstraintViolation(constraintException);
@@ -278,19 +271,13 @@ public class PatientAllergiesService {
                 ));
 
         Long encounterId = entity.getEncounterId();
-        var before = amendmentAudit.capture(entity);
 
         entity.setStatus(PatientAllergyStatus.CANCELLED);
         entity.setCancelledBy(login);
         entity.setCancelledDate(Instant.now());
         entity.setCancellationReason(reason);
 
-        amendmentAudit.cancelled(encounterId,
-                AmendmentMedicalSheet.ALLERGIES,
-                entity.getId(),
-                before,
-                entity
-        );
+        reopenSessionAuditContext.applyOpenSession(encounterId);
 
         return PatientAllergiesResponseVM.ofEntity(
                 entity,
@@ -310,7 +297,6 @@ public class PatientAllergiesService {
                 ));
 
         Long encounterId = entity.getEncounterId();
-        var before = amendmentAudit.capture(entity);
 
         String login = SecurityUtils.getCurrentUserLogin()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated."));
@@ -319,12 +305,7 @@ public class PatientAllergiesService {
         entity.setResolvedBy(login);
         entity.setResolvedDate(Instant.now());
 
-        amendmentAudit.changed(encounterId,
-                AmendmentMedicalSheet.ALLERGIES,
-                entity.getId(),
-                before,
-                entity
-        );
+        reopenSessionAuditContext.applyOpenSession(encounterId);
 
         return PatientAllergiesResponseVM.ofEntity(
                 entity,
@@ -352,16 +333,10 @@ public class PatientAllergiesService {
         }
 
         Long encounterId = entity.getEncounterId();
-        var before = amendmentAudit.capture(entity);
 
         entity.setStatus(PatientAllergyStatus.ACTIVE);
 
-        amendmentAudit.changed(encounterId,
-                AmendmentMedicalSheet.ALLERGIES,
-                entity.getId(),
-                before,
-                entity
-        );
+        reopenSessionAuditContext.applyOpenSession(encounterId);
 
         return PatientAllergiesResponseVM.ofEntity(
                 entity,
@@ -503,12 +478,7 @@ public class PatientAllergiesService {
         }
 
         Long encounterId = entity.getEncounterId();
-        List<Long> beforeIngredientIds = patientAllergiesActiveIngredientRepository
-                .findByPatientAllergy(entity)
-                .stream()
-                .map(PatientAllergiesActiveIngredient::getActiveIngredientId)
-                .toList();
-        Map<String, Object> before = allergySnapshot(entity, beforeIngredientIds);
+        reopenSessionAuditContext.applyOpenSession(encounterId);
 
         entity.setAllergenType(patientAllergiesUpdateDTO.allergenType());
         entity.setAllergenId(patientAllergiesUpdateDTO.allergenId());
@@ -559,33 +529,12 @@ public class PatientAllergiesService {
             PatientAllergies updated =
                     patientAllergiesRepository.saveAndFlush(entity);
 
-            List<Long> afterIngredientIds = updated.getAllergenType() == AllergenTypes.MEDICATION
-                    ? patientAllergiesUpdateDTO.activeIngredients()
-                    : List.of();
-            amendmentAudit.changed(encounterId,
-                    AmendmentMedicalSheet.ALLERGIES,
-                    updated.getId(),
-                    before,
-                    allergySnapshot(updated, afterIngredientIds)
-            );
-
             LOG.debug("Updated PatientAllergies: {}", updated);
             return updated;
         } catch (DataIntegrityViolationException | JpaSystemException constraintException) {
             LOG.debug("Constraint violation caught during update");
             throw handleConstraintViolation(constraintException);
         }
-    }
-
-    private Map<String, Object> allergySnapshot(PatientAllergies entity, List<Long> activeIngredientIds) {
-        Map<String, Object> values = new LinkedHashMap<>(
-                amendmentAudit.capture(entity)
-        );
-        List<Map<String, Object>> ingredients = EncounterAmendmentAuditService.activeIngredients(activeIngredientIds);
-        if (!ingredients.isEmpty()) {
-            values.put("activeIngredients", ingredients);
-        }
-        return values;
     }
 
     private BadRequestAlertException handleConstraintViolation(

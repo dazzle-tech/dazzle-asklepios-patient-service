@@ -4,7 +4,6 @@ import com.dazzle.asklepios.client.setup.VaccineClient;
 import com.dazzle.asklepios.domain.EncounterVaccination;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
-import com.dazzle.asklepios.domain.enumeration.AmendmentMedicalSheet;
 import com.dazzle.asklepios.domain.enumeration.EncounterVaccinationStatus;
 import com.dazzle.asklepios.repository.EncounterVaccinationRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
@@ -51,7 +50,7 @@ public class EncounterVaccinationService {
     private final VaccineHelper vaccineHelper;
     private final VaccineBrandHelper vaccineBrandHelper;
     private final VaccineDosesHelper vaccineDosesHelper;
-    private final EncounterAmendmentAuditService amendmentAudit;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public EncounterVaccination create(EncounterVaccinationCreateDTO createRequest) {
         LOG.info("[CREATE] EncounterVaccination payload={}", createRequest);
@@ -93,8 +92,8 @@ public class EncounterVaccinationService {
                 .build();
 
         try {
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
             EncounterVaccination savedEncounterVaccination = encounterVaccinationRepository.saveAndFlush(encounterVaccination);
-            amendmentAudit.added(encounter.getId(), AmendmentMedicalSheet.VACCINATION, savedEncounterVaccination.getId(), savedEncounterVaccination);
             LOG.info("[CREATE] EncounterVaccination success id={} patientId={} encounterId={} vaccineId={} doseId={} status={}",
                     savedEncounterVaccination.getId(),
                     createRequest.patientId(),
@@ -119,7 +118,6 @@ public class EncounterVaccinationService {
         return encounterVaccinationRepository.findById(encounterVaccinationId)
                 .map(encounterVaccination -> {
                     Long ownedEncounterId = encounterVaccination.getEncounterId();
-                    var before = amendmentAudit.capture(encounterVaccination);
 
                     Patient patient = patientRepository.findById(updateRequest.patientId())
                             .orElseThrow(() -> {
@@ -157,9 +155,9 @@ public class EncounterVaccinationService {
                     encounterVaccination.setNotes(updateRequest.notes());
 
                     try {
+                        reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
                         EncounterVaccination savedEncounterVaccination =
                                 encounterVaccinationRepository.saveAndFlush(encounterVaccination);
-                        amendmentAudit.changed(ownedEncounterId, AmendmentMedicalSheet.VACCINATION, savedEncounterVaccination.getId(), before, savedEncounterVaccination);
 
                         LOG.info(
                                 "[UPDATE] EncounterVaccination success id={} patientId={} encounterId={} vaccineId={} doseId={} status={}",
@@ -221,15 +219,14 @@ public class EncounterVaccinationService {
                 });
 
         Long encounterId = encounterVaccination.getEncounterId();
-        var before = amendmentAudit.capture(encounterVaccination);
         encounterVaccination.setStatus(EncounterVaccinationStatus.CANCELLED);
         encounterVaccination.setCancellationReason(cancelRequest.cancellationReason());
         encounterVaccination.setCancelledAt(Instant.now());
         encounterVaccination.setCancelledBy(currentUser);
 
         try {
+            reopenSessionAuditContext.applyOpenSession(encounterId);
             EncounterVaccination savedEncounterVaccination = encounterVaccinationRepository.saveAndFlush(encounterVaccination);
-            amendmentAudit.cancelled(encounterId, AmendmentMedicalSheet.VACCINATION, savedEncounterVaccination.getId(), before, savedEncounterVaccination);
             LOG.info("[CANCEL] EncounterVaccination success id={} cancelledBy={}",
                     cancelRequest.id(), currentUser);
             return savedEncounterVaccination;
@@ -265,14 +262,13 @@ public class EncounterVaccinationService {
                 });
 
         Long encounterId = encounterVaccination.getEncounterId();
-        var before = amendmentAudit.capture(encounterVaccination);
         encounterVaccination.setStatus(EncounterVaccinationStatus.REVIEW);
         encounterVaccination.setReviewedById(currentUser);
         encounterVaccination.setReviewedAt(Instant.now());
 
         try {
+            reopenSessionAuditContext.applyOpenSession(encounterId);
             EncounterVaccination savedEncounterVaccination = encounterVaccinationRepository.saveAndFlush(encounterVaccination);
-            amendmentAudit.changed(encounterId, AmendmentMedicalSheet.VACCINATION, savedEncounterVaccination.getId(), before, savedEncounterVaccination);
             LOG.info("[REVIEW] EncounterVaccination success id={} reviewedBy={}",
                     reviewRequest.id(), currentUser);
             return savedEncounterVaccination;
