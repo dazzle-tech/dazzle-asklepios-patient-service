@@ -3,6 +3,16 @@ package com.dazzle.asklepios.integration.waseel.service.mapper;
 import com.dazzle.asklepios.domain.ApLovValue;
 import com.dazzle.asklepios.domain.BodyMeasurements;
 import com.dazzle.asklepios.domain.ChiefComplain;
+import com.dazzle.asklepios.domain.ClaimEncounterCopy;
+import com.dazzle.asklepios.domain.ClaimEncounterProgressNote;
+import com.dazzle.asklepios.domain.ClaimEncounterCopyCurrentMedication;
+import com.dazzle.asklepios.domain.ClaimEncounterCopyDiagnosticOrderTestReport;
+import com.dazzle.asklepios.domain.ClaimEncounterCopyDiagnosticOrderTestResult;
+import com.dazzle.asklepios.domain.ClaimEncounterCopyFamilyHistory;
+import com.dazzle.asklepios.domain.ClaimEncounterCopyHospitalization;
+import com.dazzle.asklepios.domain.ClaimEncounterCopyPatientProblem;
+import com.dazzle.asklepios.domain.ClaimEncounterCopySocialHistory;
+import com.dazzle.asklepios.domain.ClaimEncounterCopySurgicalHistory;
 import com.dazzle.asklepios.domain.Department;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
@@ -24,6 +34,7 @@ import com.dazzle.asklepios.client.setup.dto.NormalRangeMatchDTO;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.NormalRangeType;
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.domain.enumeration.Severity;
 import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.TestType;
@@ -35,6 +46,16 @@ import com.dazzle.asklepios.integration.waseel.service.pdf.InvestigationResultsR
 import com.dazzle.asklepios.repository.ApLovValueRepository;
 import com.dazzle.asklepios.repository.BodyMeasurementsRepository;
 import com.dazzle.asklepios.repository.ChiefComplainRepository;
+import com.dazzle.asklepios.repository.ClaimEncounterCopyCurrentMedicationRepository;
+import com.dazzle.asklepios.repository.ClaimEncounterProgressNoteRepository;
+import com.dazzle.asklepios.repository.ClaimEncounterCopyDiagnosticOrderTestReportRepository;
+import com.dazzle.asklepios.repository.ClaimEncounterCopyDiagnosticOrderTestResultRepository;
+import com.dazzle.asklepios.repository.ClaimEncounterCopyFamilyHistoryRepository;
+import com.dazzle.asklepios.repository.ClaimEncounterCopyHospitalizationRepository;
+import com.dazzle.asklepios.repository.ClaimEncounterCopyPatientProblemRepository;
+import com.dazzle.asklepios.repository.ClaimEncounterCopyRepository;
+import com.dazzle.asklepios.repository.ClaimEncounterCopySocialHistoryRepository;
+import com.dazzle.asklepios.repository.ClaimEncounterCopySurgicalHistoryRepository;
 import com.dazzle.asklepios.repository.DepartmentRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
@@ -57,6 +78,7 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -64,11 +86,13 @@ import java.util.Base64;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.regex.Pattern;
@@ -91,6 +115,16 @@ public class ApprovalSupportingInfoMapper {
     private final Pattern htmlMarkup = Pattern.compile("(?i)</?(p|br|div|span|li|ul|ol|b|i|u|strong|em|h[1-6]|table|tr|td)\\b[^>]*>");
 
     private final ChiefComplainRepository chiefComplainRepository;
+    private final ClaimEncounterCopyRepository claimEncounterCopyRepository;
+    private final ClaimEncounterProgressNoteRepository claimEncounterProgressNoteRepository;
+    private final ClaimEncounterCopyPatientProblemRepository claimEncounterCopyPatientProblemRepository;
+    private final ClaimEncounterCopySurgicalHistoryRepository claimEncounterCopySurgicalHistoryRepository;
+    private final ClaimEncounterCopySocialHistoryRepository claimEncounterCopySocialHistoryRepository;
+    private final ClaimEncounterCopyFamilyHistoryRepository claimEncounterCopyFamilyHistoryRepository;
+    private final ClaimEncounterCopyHospitalizationRepository claimEncounterCopyHospitalizationRepository;
+    private final ClaimEncounterCopyCurrentMedicationRepository claimEncounterCopyCurrentMedicationRepository;
+    private final ClaimEncounterCopyDiagnosticOrderTestResultRepository claimEncounterCopyDiagnosticOrderTestResultRepository;
+    private final ClaimEncounterCopyDiagnosticOrderTestReportRepository claimEncounterCopyDiagnosticOrderTestReportRepository;
     private final VitalSignsRepository vitalSignsRepository;
     private final BodyMeasurementsRepository bodyMeasurementsRepository;
     private final PatientObservationsComplaintsRepository patientObservationsComplaintsRepository;
@@ -116,8 +150,8 @@ public class ApprovalSupportingInfoMapper {
     }
 
     /**
-     * Same as {@link #toSupportingInfo(PatientEncounter)}, but the investigation-result attachment is a
-     * readable PDF report of the encounter's lab and radiology results.
+     * Same as {@link #toSupportingInfo(PatientEncounter)}, but history and the investigation-result
+     * attachment are read from the claim encounter copy when one exists for the encounter.
      */
     public List<WaseelApprovalSupportingInfo> toClaimSupportingInfo(PatientEncounter encounter) {
         return toSupportingInfo(encounter, true);
@@ -133,14 +167,21 @@ public class ApprovalSupportingInfoMapper {
 
         Long encounterId = encounter.getId();
         Long patientId = encounter.getPatient() == null ? null : encounter.getPatient().getId();
+        ClaimEncounterCopy claimCopy = attachPdfReport
+                ? claimEncounterCopyRepository.findByEncounterId(encounterId).orElse(null)
+                : null;
 
-        ChiefComplain chief = chiefComplainRepository
-                .findTopByEncounter_IdOrderByIdDesc(encounterId)
-                .orElse(null);
+        ChiefComplain chief = claimCopy == null
+                ? chiefComplainRepository.findTopByEncounter_IdOrderByIdDesc(encounterId).orElse(null)
+                : null;
 
-        addClinicalTextIfExists(result, sequence, encounter, chief, encounterId, patientId, attachPdfReport);
-        addVitalSignsIfExists(result, sequence, encounter);
-        addBodyMeasurementsIfExists(result, sequence, encounter);
+        addClinicalTextIfExists(result, sequence, encounter, chief, encounterId, patientId, attachPdfReport, claimCopy);
+        if (claimCopy != null) {
+            addClaimCopyMeasurements(result, sequence, encounter, claimCopy);
+        } else {
+            addVitalSignsIfExists(result, sequence, encounter);
+            addBodyMeasurementsIfExists(result, sequence, encounter);
+        }
 
         return result;
     }
@@ -152,8 +193,14 @@ public class ApprovalSupportingInfoMapper {
             ChiefComplain chief,
             Long encounterId,
             Long patientId,
-            boolean attachPdfReport
+            boolean attachPdfReport,
+            ClaimEncounterCopy claimCopy
     ) {
+        if (claimCopy != null) {
+            addClaimCopyClinicalText(result, sequence, encounter, claimCopy, attachPdfReport);
+            return;
+        }
+
         String reasonOfVisit = patientObservationsComplaintsRepository
                 .findFirstByEncounterIdAndIsActiveTrueOrderByCreatedDateDesc(encounterId)
                 .map(PatientObservationsComplaints::getReasonOfVisit)
@@ -177,41 +224,9 @@ public class ApprovalSupportingInfoMapper {
                 .map(String::trim)
                 .orElse(null);
 
-        String patientProblems = patientId == null
-                ? null
-                : patientProblemRepository
-                .findAllByPatientId(patientId, PageRequest.of(0, 100))
-                .stream()
-                .filter(problem -> problem.getStatus() != null)
-                .filter(problem -> ACTIVE.equalsIgnoreCase(problem.getStatus().name()))
-                .map(PatientProblem::getCondition)
-                .filter(this::isNotBlank)
-                .map(String::trim)
-                .collect(Collectors.joining(", "));
-
-        String surgicalHistory = patientId == null
-                ? null
-                : surgicalHistoryRepository
-                .findAllByPatientId(patientId, PageRequest.of(0, 100))
-                .stream()
-                .map(SurgicalHistory::getSurgery)
-                .filter(this::isNotBlank)
-                .map(String::trim)
-                .collect(Collectors.joining(", "));
-
-        String socialHistory = patientId == null
-                ? null
-                : socialHistoryRepository
-                .findAllByPatientId(patientId, PageRequest.of(0, 1))
-                .stream()
-                .map(this::mapSocialHistory)
-                .filter(this::isNotBlank)
-                .map(String::trim)
-                .findFirst()
-                .orElse(null);
-
-        patientProblems = blankToNull(patientProblems);
-        surgicalHistory = blankToNull(surgicalHistory);
+        String patientProblems = blankToNull(livePatientProblems(patientId));
+        String surgicalHistory = blankToNull(liveSurgicalHistory(patientId));
+        String socialHistory = liveSocialHistory(patientId);
 
         addTextIfExists(
                 result,
@@ -258,7 +273,7 @@ public class ApprovalSupportingInfoMapper {
                 )
         );
 
-        addInvestigationResult(result, sequence, encounter, attachPdfReport);
+        addInvestigationResult(result, sequence, encounter, attachPdfReport, null);
 
         addTextIfExists(
                 result,
@@ -271,24 +286,105 @@ public class ApprovalSupportingInfoMapper {
         );
     }
 
+    /**
+     * Claim supporting info uses the edited encounter copy: supportive-info fields, progress notes,
+     * and patient-history tables. Live visit text is not mixed in.
+     */
+    private void addClaimCopyClinicalText(
+            List<WaseelApprovalSupportingInfo> result,
+            AtomicInteger sequence,
+            PatientEncounter encounter,
+            ClaimEncounterCopy claimCopy,
+            boolean attachPdfReport
+    ) {
+        Long claimCopyId = claimCopy.getId();
+        String progressNotes = copyProgressNotes(claimCopyId);
+
+        addTextIfExists(result, sequence, "chief-complaint", clean(claimCopy.getChiefComplaint()));
+        addTextIfExists(
+                result,
+                sequence,
+                "history-of-present-illness",
+                joinDistinctNonBlank("; ", clean(claimCopy.getHistoryOfPresentIllness()), progressNotes)
+        );
+        addTextIfExists(
+                result,
+                sequence,
+                "patient-history",
+                joinDistinctNonBlank(
+                        "; ",
+                        copyPatientProblems(claimCopyId),
+                        copySocialHistory(claimCopyId),
+                        copySurgicalHistory(claimCopyId),
+                        copyFamilyHistory(claimCopyId),
+                        copyHospitalizations(claimCopyId),
+                        copyCurrentMedications(claimCopyId)
+                )
+        );
+        addTextIfExists(
+                result,
+                sequence,
+                "physical-examination",
+                joinDistinctNonBlank("; ", clean(claimCopy.getPhysicalExamination()), clean(claimCopy.getAssessment()))
+        );
+
+        addInvestigationResult(result, sequence, encounter, attachPdfReport, claimCopyId);
+
+        addTextIfExists(
+                result,
+                sequence,
+                "treatment-plan",
+                firstNonBlank(clean(claimCopy.getTreatmentPlan()), clean(claimCopy.getAssessment()), progressNotes)
+        );
+    }
+
+    private void addClaimCopyMeasurements(
+            List<WaseelApprovalSupportingInfo> result,
+            AtomicInteger sequence,
+            PatientEncounter encounter,
+            ClaimEncounterCopy claimCopy
+    ) {
+        LocalDate date = resolveDate(encounter);
+        addNumberIfExists(result, sequence, "pulse", claimCopy.getPulse(), "/min", date);
+        addNumberIfExists(result, sequence, "temperature", claimCopy.getTemperature(), "Cel", date);
+        addNumberIfExists(result, sequence, "respiratory-rate", claimCopy.getRespiratoryRate(), "/min", date);
+        addNumberIfExists(result, sequence, "oxygen-saturation", claimCopy.getOxygenSaturation(), "%", date);
+        addNumberIfExists(result, sequence, "vital-sign-systolic", claimCopy.getBloodPressureSystolic(), "mm[Hg]", date);
+        addNumberIfExists(result, sequence, "vital-sign-diastolic", claimCopy.getBloodPressureDiastolic(), "mm[Hg]", date);
+        addNumberIfExists(result, sequence, "vital-sign-height", claimCopy.getHeight(), "cm", date);
+        addNumberIfExists(result, sequence, "vital-sign-weight", claimCopy.getWeight(), "kg", date);
+    }
+
+    private String copyProgressNotes(Long claimCopyId) {
+        return joinDistinctNonBlank(
+                "; ",
+                claimEncounterProgressNoteRepository
+                        .findByClaimEncounterCopyIdAndCancelledDateIsNull(claimCopyId)
+                        .stream()
+                        .map(ClaimEncounterProgressNote::getNoteText)
+                        .toArray(String[]::new)
+        );
+    }
+
     private void addInvestigationResult(
             List<WaseelApprovalSupportingInfo> result,
             AtomicInteger sequence,
             PatientEncounter encounter,
-            boolean attachPdfReport
+            boolean attachPdfReport,
+            Long claimCopyId
     ) {
         Long encounterId = encounter == null ? null : encounter.getId();
         List<DiagnosticOrderTest> tests = findActiveInvestigationTests(encounterId);
 
         if (attachPdfReport) {
-            WaseelApprovalSupportingInfo pdfInfo = investigationResultPdfAttached(sequence, encounter, tests);
+            WaseelApprovalSupportingInfo pdfInfo = investigationResultPdfAttached(sequence, encounter, tests, claimCopyId);
             if (pdfInfo != null) {
                 result.add(pdfInfo);
                 return;
             }
         }
 
-        String investigationValue = collectLabInvestigationResultValue(tests);
+        String investigationValue = collectLabInvestigationResultValue(tests, claimCopyId);
 
         if (isNotBlank(investigationValue)) {
             result.add(investigationResultAttached(sequence, investigationValue, resolveDate(encounter)));
@@ -335,15 +431,17 @@ public class ApprovalSupportingInfoMapper {
     private WaseelApprovalSupportingInfo investigationResultPdfAttached(
             AtomicInteger sequence,
             PatientEncounter encounter,
-            List<DiagnosticOrderTest> tests
+            List<DiagnosticOrderTest> tests,
+            Long claimCopyId
     ) {
         if (tests.isEmpty()) {
             return null;
         }
 
         try {
-            List<DiagnosticOrderTestResult> labResults = findUsableLabResults(tests);
-            InvestigationResultsReport report = buildInvestigationReport(encounter, tests, labResults);
+            List<LabResultSource> labResults = findUsableLabResults(tests, claimCopyId);
+            List<RadiologyReportSource> radiologyReports = findRadiologyReports(tests, claimCopyId);
+            InvestigationResultsReport report = buildInvestigationReport(encounter, tests, labResults, radiologyReports);
             if (!report.hasResults()) {
                 return null;
             }
@@ -390,7 +488,8 @@ public class ApprovalSupportingInfoMapper {
     private InvestigationResultsReport buildInvestigationReport(
             PatientEncounter encounter,
             List<DiagnosticOrderTest> tests,
-            List<DiagnosticOrderTestResult> labResults
+            List<LabResultSource> labResults,
+            List<RadiologyReportSource> radiologyReports
     ) {
         Map<Long, DiagnosticOrderTest> testsById = tests.stream()
                 .filter(test -> test.getId() != null)
@@ -409,22 +508,22 @@ public class ApprovalSupportingInfoMapper {
 
         Map<Long, List<InvestigationResultsReport.LabResultRow>> labRowsByOrderTest = labResults.stream()
                 .filter(source -> isNotBlank(formatLabResultValue(source)))
-                .filter(source -> source.getOrderTestId() != null)
+                .filter(source -> source.orderTestId() != null)
                 .sorted(Comparator
-                        .comparing(DiagnosticOrderTestResult::getOrderTestId)
-                        .thenComparing(DiagnosticOrderTestResult::getId, Comparator.nullsLast(Comparator.naturalOrder())))
+                        .comparing(LabResultSource::orderTestId)
+                        .thenComparing(LabResultSource::id, Comparator.nullsLast(Comparator.naturalOrder())))
                 .collect(Collectors.groupingBy(
-                        DiagnosticOrderTestResult::getOrderTestId,
+                        LabResultSource::orderTestId,
                         LinkedHashMap::new,
                         Collectors.mapping(source -> {
-                            DiagnosticOrderTest test = testsById.get(source.getOrderTestId());
-                            DiagnosticTestProfile profile = source.getProfileTestId() == null
+                            DiagnosticOrderTest test = testsById.get(source.orderTestId());
+                            DiagnosticTestProfile profile = source.profileTestId() == null
                                     ? null
-                                    : profiles.get(source.getProfileTestId());
+                                    : profiles.get(source.profileTestId());
                             TestResultType resultType = resolveResultType(source, profile);
-                            NormalRangeMatchDTO normalRange = source.getProfileTestId() == null
+                            NormalRangeMatchDTO normalRange = source.profileTestId() == null
                                     ? null
-                                    : normalRanges.get(source.getProfileTestId());
+                                    : normalRanges.get(source.profileTestId());
                             String unit = resolveUnitLabel(profile, resultType, lovLabels);
                             return new InvestigationResultsReport.LabResultRow(
                                     firstNonBlank(
@@ -435,43 +534,32 @@ public class ApprovalSupportingInfoMapper {
                                     formatLabResultValue(source),
                                     unit,
                                     formatDisplayedNormalRange(source, resultType, normalRange, lovLabels, unit),
-                                    markerLabel(source.getMarker()),
-                                    isAbnormalMarker(source.getMarker()),
-                                    firstNonNull(source.getApprovedDate(), source.getReviewDate(), source.getCreatedDate())
+                                    markerLabel(source.marker()),
+                                    isAbnormalMarker(source.marker()),
+                                    firstNonNull(source.approvedDate(), source.reviewDate(), source.createdDate())
                             );
                         }, Collectors.toList())
                 ));
 
-        List<Long> radiologyOrderTestIds = tests.stream()
-                .filter(test -> test.getOrderType() == TestType.RADIOLOGY)
-                .map(DiagnosticOrderTest::getId)
-                .filter(Objects::nonNull)
-                .toList();
-
-        Map<Long, List<InvestigationResultsReport.RadiologyResult>> radiologyByOrderTest = radiologyOrderTestIds.isEmpty()
-                ? Map.of()
-                : diagnosticOrderTestReportRepository.findByOrderTestIdIn(radiologyOrderTestIds).stream()
-                .filter(Objects::nonNull)
-                .filter(source -> source.getOrderTestId() != null)
-                .filter(source -> !isExcludedRadiologyStatus(source.getProcessingStatus()))
-                .filter(this::hasRadiologyReportContent)
+        Map<Long, List<InvestigationResultsReport.RadiologyResult>> radiologyByOrderTest = radiologyReports.stream()
+                .filter(source -> source.orderTestId() != null)
                 .sorted(Comparator
-                        .comparing(DiagnosticOrderTestReport::getOrderTestId)
-                        .thenComparing(DiagnosticOrderTestReport::getId, Comparator.nullsLast(Comparator.naturalOrder())))
+                        .comparing(RadiologyReportSource::orderTestId)
+                        .thenComparing(RadiologyReportSource::id, Comparator.nullsLast(Comparator.naturalOrder())))
                 .collect(Collectors.groupingBy(
-                        DiagnosticOrderTestReport::getOrderTestId,
+                        RadiologyReportSource::orderTestId,
                         LinkedHashMap::new,
                         Collectors.mapping(source -> new InvestigationResultsReport.RadiologyResult(
-                                humanize(source.getProcessingStatus()),
-                                severityLabel(source.getSeverity()),
-                                firstNonNull(source.getApprovedDate(), source.getSecondApprovedDate(),
-                                        source.getReviewDate(), source.getCreatedDate()),
-                                toPlainText(source.getReport()),
-                                toPlainText(source.getCriticalFindings()),
-                                toPlainText(source.getRadiologistComments()),
-                                toPlainText(source.getRadiologistInformation()),
-                                clean(source.getReviewBy()),
-                                firstNonBlank(clean(source.getApprovedBy()), clean(source.getSecondApprovedBy()))
+                                humanize(source.processingStatus()),
+                                severityLabel(source.severity()),
+                                firstNonNull(source.approvedDate(), source.secondApprovedDate(),
+                                        source.reviewDate(), source.createdDate()),
+                                toPlainText(source.report()),
+                                toPlainText(source.criticalFindings()),
+                                toPlainText(source.radiologistComments()),
+                                toPlainText(source.radiologistInformation()),
+                                clean(source.reviewBy()),
+                                firstNonBlank(clean(source.approvedBy()), clean(source.secondApprovedBy()))
                         ), Collectors.toList())
                 ));
 
@@ -540,9 +628,9 @@ public class ApprovalSupportingInfoMapper {
         );
     }
 
-    private Map<Long, DiagnosticTestProfile> findProfiles(List<DiagnosticOrderTestResult> labResults) {
+    private Map<Long, DiagnosticTestProfile> findProfiles(List<LabResultSource> labResults) {
         List<Long> profileIds = labResults.stream()
-                .map(DiagnosticOrderTestResult::getProfileTestId)
+                .map(LabResultSource::profileTestId)
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
@@ -559,7 +647,7 @@ public class ApprovalSupportingInfoMapper {
      */
     private Map<Long, NormalRangeMatchDTO> findNormalRanges(
             PatientEncounter encounter,
-            List<DiagnosticOrderTestResult> labResults
+            List<LabResultSource> labResults
     ) {
         Patient patient = encounter.getPatient();
         if (patient == null) {
@@ -568,7 +656,7 @@ public class ApprovalSupportingInfoMapper {
 
         Map<Long, NormalRangeMatchDTO> ranges = new HashMap<>();
         for (Long profileId : labResults.stream()
-                .map(DiagnosticOrderTestResult::getProfileTestId)
+                .map(LabResultSource::profileTestId)
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList()) {
@@ -589,7 +677,7 @@ public class ApprovalSupportingInfoMapper {
      */
     private Map<String, String> findInvestigationLovLabels(
             Collection<DiagnosticTestProfile> profiles,
-            List<DiagnosticOrderTestResult> labResults,
+            List<LabResultSource> labResults,
             Map<Long, NormalRangeMatchDTO> normalRanges
     ) {
         List<String> keys = new ArrayList<>();
@@ -598,11 +686,11 @@ public class ApprovalSupportingInfoMapper {
                 keys.add(profile.getResultUnit().trim());
             }
         }
-        for (DiagnosticOrderTestResult result : labResults) {
-            addLovKeys(keys, result.getNormalRangeValue());
-            NormalRangeMatchDTO match = result.getProfileTestId() == null
+        for (LabResultSource result : labResults) {
+            addLovKeys(keys, result.normalRangeValue());
+            NormalRangeMatchDTO match = result.profileTestId() == null
                     ? null
-                    : normalRanges.get(result.getProfileTestId());
+                    : normalRanges.get(result.profileTestId());
             if (match != null && match.lovKeys() != null) {
                 match.lovKeys().stream().filter(this::isNotBlank).map(String::trim).forEach(keys::add);
             }
@@ -628,9 +716,9 @@ public class ApprovalSupportingInfoMapper {
         }
     }
 
-    private TestResultType resolveResultType(DiagnosticOrderTestResult result, DiagnosticTestProfile profile) {
-        if (result != null && result.getResultTypeAtEntry() != null) {
-            return result.getResultTypeAtEntry();
+    private TestResultType resolveResultType(LabResultSource result, DiagnosticTestProfile profile) {
+        if (result != null && result.resultTypeAtEntry() != null) {
+            return result.resultTypeAtEntry();
         }
         return profile == null ? null : profile.getResultType();
     }
@@ -654,7 +742,7 @@ public class ApprovalSupportingInfoMapper {
      * Bound shape follows the test normal-range type (range, less than, more than).
      */
     private String formatDisplayedNormalRange(
-            DiagnosticOrderTestResult result,
+            LabResultSource result,
             TestResultType resultType,
             NormalRangeMatchDTO match,
             Map<String, String> lovLabels,
@@ -666,7 +754,7 @@ public class ApprovalSupportingInfoMapper {
 
         String view = formatViewNormalRange(match, resultType);
         if (!isNotBlank(view)) {
-            view = clean(result.getNormalRangeValue());
+            view = clean(result.normalRangeValue());
         }
         if (!isNotBlank(view)) {
             return null;
@@ -788,7 +876,7 @@ public class ApprovalSupportingInfoMapper {
                 .collect(Collectors.joining(" "));
     }
 
-    private List<DiagnosticOrderTestResult> findUsableLabResults(List<DiagnosticOrderTest> tests) {
+    private List<LabResultSource> findUsableLabResults(List<DiagnosticOrderTest> tests, Long claimCopyId) {
         List<Long> labOrderTestIds = tests.stream()
                 .filter(this::isLabInvestigationTest)
                 .map(DiagnosticOrderTest::getId)
@@ -799,16 +887,97 @@ public class ApprovalSupportingInfoMapper {
             return List.of();
         }
 
+        if (claimCopyId != null) {
+            Set<Long> laboratoryOrderTestIds = tests.stream()
+                    .filter(test -> test != null && test.getOrderType() == TestType.LABORATORY)
+                    .map(DiagnosticOrderTest::getId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+            List<Long> otherLabOrderTestIds = labOrderTestIds.stream()
+                    .filter(id -> !laboratoryOrderTestIds.contains(id))
+                    .toList();
+
+            List<LabResultSource> results = new ArrayList<>(claimEncounterCopyDiagnosticOrderTestResultRepository
+                    .findByClaimEncounterCopyId(claimCopyId)
+                    .stream()
+                    .filter(source -> source.getOrderTestId() != null && laboratoryOrderTestIds.contains(source.getOrderTestId()))
+                    .map(this::toLabResultSource)
+                    .toList());
+
+            if (!otherLabOrderTestIds.isEmpty()) {
+                diagnosticOrderTestResultRepository.findByOrderTestIdIn(otherLabOrderTestIds).stream()
+                        .filter(this::isUsableInvestigationResult)
+                        .map(this::toLabResultSource)
+                        .forEach(results::add);
+            }
+            return results;
+        }
+
         return diagnosticOrderTestResultRepository.findByOrderTestIdIn(labOrderTestIds).stream()
                 .filter(this::isUsableInvestigationResult)
+                .map(this::toLabResultSource)
+                .toList();
+    }
+
+    private List<RadiologyReportSource> findRadiologyReports(List<DiagnosticOrderTest> tests, Long claimCopyId) {
+        List<Long> radiologyOrderTestIds = tests.stream()
+                .filter(test -> test.getOrderType() == TestType.RADIOLOGY)
+                .map(DiagnosticOrderTest::getId)
+                .filter(Objects::nonNull)
+                .toList();
+
+        if (radiologyOrderTestIds.isEmpty()) {
+            return List.of();
+        }
+
+        Set<Long> radiologyOrderTestIdSet = new HashSet<>(radiologyOrderTestIds);
+        if (claimCopyId != null) {
+            return claimEncounterCopyDiagnosticOrderTestReportRepository
+                    .findByClaimEncounterCopyId(claimCopyId)
+                    .stream()
+                    .filter(source -> source.getOrderTestId() != null && radiologyOrderTestIdSet.contains(source.getOrderTestId()))
+                    .map(this::toRadiologyReportSource)
+                    .filter(this::hasRadiologyReportContent)
+                    .toList();
+        }
+
+        return diagnosticOrderTestReportRepository.findByOrderTestIdIn(radiologyOrderTestIds).stream()
+                .filter(Objects::nonNull)
+                .filter(source -> source.getOrderTestId() != null)
+                .filter(source -> !isExcludedRadiologyStatus(source.getProcessingStatus()))
+                .filter(this::hasRadiologyReportContent)
+                .map(this::toRadiologyReportSource)
                 .toList();
     }
 
     private boolean hasRadiologyReportContent(DiagnosticOrderTestReport source) {
-        return isNotBlank(source.getReport())
-                || isNotBlank(source.getCriticalFindings())
-                || isNotBlank(source.getRadiologistComments())
-                || isNotBlank(source.getRadiologistInformation());
+        return source != null && hasRadiologyReportContent(
+                source.getReport(),
+                source.getCriticalFindings(),
+                source.getRadiologistComments(),
+                source.getRadiologistInformation()
+        );
+    }
+
+    private boolean hasRadiologyReportContent(RadiologyReportSource source) {
+        return source != null && hasRadiologyReportContent(
+                source.report(),
+                source.criticalFindings(),
+                source.radiologistComments(),
+                source.radiologistInformation()
+        );
+    }
+
+    private boolean hasRadiologyReportContent(
+            String report,
+            String criticalFindings,
+            String radiologistComments,
+            String radiologistInformation
+    ) {
+        return isNotBlank(report)
+                || isNotBlank(criticalFindings)
+                || isNotBlank(radiologistComments)
+                || isNotBlank(radiologistInformation);
     }
 
     private boolean isExcludedRadiologyStatus(DiagnosticStatus status) {
@@ -955,19 +1124,8 @@ public class ApprovalSupportingInfoMapper {
         );
     }
 
-    private String collectLabInvestigationResultValue(List<DiagnosticOrderTest> tests) {
-        List<Long> labOrderTestIds = tests.stream()
-                .filter(this::isLabInvestigationTest)
-                .map(DiagnosticOrderTest::getId)
-                .filter(Objects::nonNull)
-                .toList();
-
-        if (labOrderTestIds.isEmpty()) {
-            return null;
-        }
-
-        List<String> values = diagnosticOrderTestResultRepository.findByOrderTestIdIn(labOrderTestIds).stream()
-                .filter(this::isUsableInvestigationResult)
+    private String collectLabInvestigationResultValue(List<DiagnosticOrderTest> tests, Long claimCopyId) {
+        List<String> values = findUsableLabResults(tests, claimCopyId).stream()
                 .map(this::formatLabResultValue)
                 .filter(this::isNotBlank)
                 .toList();
@@ -993,13 +1151,13 @@ public class ApprovalSupportingInfoMapper {
         return status == DiagnosticStatus.CANCELLED || status == DiagnosticStatus.RESULT_REJECTED;
     }
 
-    private String formatLabResultValue(DiagnosticOrderTestResult source) {
+    private String formatLabResultValue(LabResultSource source) {
         if (source == null) {
             return null;
         }
 
-        String number = cleanNumber(source.getResultValueNumber());
-        String text = clean(source.getResultValueText());
+        String number = cleanNumber(source.resultValueNumber());
+        String text = clean(source.resultValueText());
 
         if (isNotBlank(number) && isNotBlank(text)) {
             return number + " " + text;
@@ -1119,6 +1277,261 @@ public class ApprovalSupportingInfoMapper {
                 date,
                 date
         ));
+    }
+
+    private String livePatientProblems(Long patientId) {
+        if (patientId == null) {
+            return null;
+        }
+        return patientProblemRepository
+                .findAllByPatientId(patientId, PageRequest.of(0, 100))
+                .stream()
+                .filter(problem -> problem.getStatus() != null)
+                .filter(problem -> ACTIVE.equalsIgnoreCase(problem.getStatus().name()))
+                .map(PatientProblem::getCondition)
+                .filter(this::isNotBlank)
+                .map(String::trim)
+                .collect(Collectors.joining(", "));
+    }
+
+    private String liveSurgicalHistory(Long patientId) {
+        if (patientId == null) {
+            return null;
+        }
+        return surgicalHistoryRepository
+                .findAllByPatientId(patientId, PageRequest.of(0, 100))
+                .stream()
+                .map(SurgicalHistory::getSurgery)
+                .filter(this::isNotBlank)
+                .map(String::trim)
+                .collect(Collectors.joining(", "));
+    }
+
+    private String liveSocialHistory(Long patientId) {
+        if (patientId == null) {
+            return null;
+        }
+        return socialHistoryRepository
+                .findAllByPatientId(patientId, PageRequest.of(0, 1))
+                .stream()
+                .map(this::mapSocialHistory)
+                .filter(this::isNotBlank)
+                .map(String::trim)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String copyPatientProblems(Long claimCopyId) {
+        return claimEncounterCopyPatientProblemRepository
+                .findByClaimEncounterCopyIdAndStatusNot(claimCopyId, PatientHistoryStatus.CANCELLED)
+                .stream()
+                .map(ClaimEncounterCopyPatientProblem::getCondition)
+                .filter(this::isNotBlank)
+                .map(String::trim)
+                .collect(Collectors.joining(", "));
+    }
+
+    private String copySurgicalHistory(Long claimCopyId) {
+        return claimEncounterCopySurgicalHistoryRepository
+                .findByClaimEncounterCopyIdAndStatusNot(claimCopyId, PatientHistoryStatus.CANCELLED)
+                .stream()
+                .map(ClaimEncounterCopySurgicalHistory::getSurgery)
+                .filter(this::isNotBlank)
+                .map(String::trim)
+                .collect(Collectors.joining(", "));
+    }
+
+    private String copySocialHistory(Long claimCopyId) {
+        return claimEncounterCopySocialHistoryRepository
+                .findByClaimEncounterCopyIdAndStatusNot(claimCopyId, PatientHistoryStatus.CANCELLED)
+                .stream()
+                .sorted(Comparator.comparing(
+                        ClaimEncounterCopySocialHistory::getId,
+                        Comparator.nullsLast(Comparator.naturalOrder())
+                ))
+                .map(this::mapCopySocialHistory)
+                .filter(this::isNotBlank)
+                .map(String::trim)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String copyFamilyHistory(Long claimCopyId) {
+        return joinHistory(claimEncounterCopyFamilyHistoryRepository
+                .findByClaimEncounterCopyIdAndStatusNot(claimCopyId, PatientHistoryStatus.CANCELLED)
+                .stream()
+                .map(this::mapCopyFamilyHistory));
+    }
+
+    private String copyHospitalizations(Long claimCopyId) {
+        return joinHistory(claimEncounterCopyHospitalizationRepository
+                .findByClaimEncounterCopyIdAndStatusNot(claimCopyId, PatientHistoryStatus.CANCELLED)
+                .stream()
+                .map(this::mapCopyHospitalization));
+    }
+
+    private String copyCurrentMedications(Long claimCopyId) {
+        return joinHistory(claimEncounterCopyCurrentMedicationRepository
+                .findByClaimEncounterCopyIdAndStatusNot(claimCopyId, PatientHistoryStatus.CANCELLED)
+                .stream()
+                .map(this::mapCopyMedication));
+    }
+
+    private String joinHistory(Stream<String> values) {
+        return blankToNull(values
+                .filter(this::isNotBlank)
+                .map(String::trim)
+                .collect(Collectors.joining(", ")));
+    }
+
+    private String mapCopySocialHistory(ClaimEncounterCopySocialHistory source) {
+        if (source == null) {
+            return null;
+        }
+
+        List<String> values = new ArrayList<>();
+        if (Boolean.TRUE.equals(source.getIsCurrentSmoker())) {
+            values.add("Current smoker");
+        }
+        if (Boolean.TRUE.equals(source.getIsPreviousSmoker())) {
+            values.add("Previous smoker");
+        }
+        if (Boolean.TRUE.equals(source.getAlcoholConsumption())) {
+            values.add("Alcohol consumption");
+        }
+        if (Boolean.TRUE.equals(source.getSubstanceUse())) {
+            values.add("Substance use");
+        }
+        if (isNotBlank(source.getPhysicalLimitation())) {
+            values.add(source.getPhysicalLimitation().trim());
+        }
+        if (isNotBlank(source.getDiagnosedEatingDisorders())) {
+            values.add(source.getDiagnosedEatingDisorders().trim());
+        }
+        if (isNotBlank(source.getFreeText())) {
+            values.add(source.getFreeText().trim());
+        }
+        return values.isEmpty() ? null : String.join(", ", values);
+    }
+
+    private String mapCopyFamilyHistory(ClaimEncounterCopyFamilyHistory source) {
+        if (source == null) {
+            return null;
+        }
+        String condition = firstNonBlank(source.getCondition(), source.getFreeText());
+        if (condition == null) {
+            return null;
+        }
+        if (source.getRelation() == null) {
+            return condition;
+        }
+        return condition + " (" + humanize(source.getRelation()) + ")";
+    }
+
+    private String mapCopyHospitalization(ClaimEncounterCopyHospitalization source) {
+        if (source == null) {
+            return null;
+        }
+        String reason = firstNonBlank(source.getReason(), source.getFreeText());
+        String facility = clean(source.getFacility());
+        if (reason != null && facility != null) {
+            return reason + " at " + facility;
+        }
+        return firstNonBlank(reason, facility);
+    }
+
+    private String mapCopyMedication(ClaimEncounterCopyCurrentMedication source) {
+        if (source == null) {
+            return null;
+        }
+        if (isNotBlank(source.getFreeText())) {
+            return source.getFreeText().trim();
+        }
+
+        List<String> parts = new ArrayList<>();
+        String dosage = cleanNumber(source.getDosage());
+        if (isNotBlank(dosage)) {
+            parts.add(dosage);
+        }
+        if (source.getUnit() != null) {
+            parts.add(humanize(source.getUnit()));
+        }
+        if (source.getFrequency() != null) {
+            parts.add(humanize(source.getFrequency()));
+        }
+        return parts.isEmpty() ? null : String.join(" ", parts);
+    }
+
+    private LabResultSource toLabResultSource(DiagnosticOrderTestResult source) {
+        return new LabResultSource(
+                source.getId(),
+                source.getOrderTestId(),
+                source.getProfileTestId(),
+                source.getResultValueNumber(),
+                source.getResultValueText(),
+                source.getMarker(),
+                source.getNormalRangeValue(),
+                source.getResultTypeAtEntry(),
+                source.getApprovedDate(),
+                source.getReviewDate(),
+                source.getCreatedDate()
+        );
+    }
+
+    private LabResultSource toLabResultSource(ClaimEncounterCopyDiagnosticOrderTestResult source) {
+        return new LabResultSource(
+                source.getId(),
+                source.getOrderTestId(),
+                source.getProfileTestId(),
+                source.getResultValueNumber(),
+                source.getResultValueText(),
+                source.getMarker(),
+                source.getNormalRangeValue(),
+                source.getResultTypeAtEntry(),
+                null,
+                null,
+                source.getCreatedDate()
+        );
+    }
+
+    private RadiologyReportSource toRadiologyReportSource(DiagnosticOrderTestReport source) {
+        return new RadiologyReportSource(
+                source.getId(),
+                source.getOrderTestId(),
+                source.getProcessingStatus(),
+                source.getSeverity(),
+                source.getApprovedDate(),
+                source.getSecondApprovedDate(),
+                source.getReviewDate(),
+                source.getCreatedDate(),
+                source.getReport(),
+                source.getCriticalFindings(),
+                source.getRadiologistComments(),
+                source.getRadiologistInformation(),
+                source.getReviewBy(),
+                source.getApprovedBy(),
+                source.getSecondApprovedBy()
+        );
+    }
+
+    private RadiologyReportSource toRadiologyReportSource(ClaimEncounterCopyDiagnosticOrderTestReport source) {
+        return new RadiologyReportSource(
+                source.getId(),
+                source.getOrderTestId(),
+                null,
+                source.getSeverity(),
+                null,
+                null,
+                null,
+                source.getCreatedDate(),
+                source.getReport(),
+                source.getCriticalFindings(),
+                source.getRadiologistComments(),
+                source.getRadiologistInformation(),
+                null,
+                null,
+                null
+        );
     }
 
     private String mapSocialHistory(SocialHistory source) {
@@ -1263,6 +1676,35 @@ public class ApprovalSupportingInfoMapper {
         return null;
     }
 
+    private String joinNonBlank(String separator, String... values) {
+        if (values == null) {
+            return null;
+        }
+        String joined = Stream.of(values)
+                .filter(this::isNotBlank)
+                .map(String::trim)
+                .collect(Collectors.joining(separator));
+        return blankToNull(joined);
+    }
+
+    private String joinDistinctNonBlank(String separator, String... values) {
+        if (values == null) {
+            return null;
+        }
+        List<String> parts = new ArrayList<>();
+        for (String value : values) {
+            if (!isNotBlank(value)) {
+                continue;
+            }
+            String trimmed = value.trim();
+            boolean alreadyPresent = parts.stream().anyMatch(trimmed::equalsIgnoreCase);
+            if (!alreadyPresent) {
+                parts.add(trimmed);
+            }
+        }
+        return parts.isEmpty() ? null : String.join(separator, parts);
+    }
+
     private String blankToNull(String value) {
         return isNotBlank(value) ? value.trim() : null;
     }
@@ -1274,4 +1716,36 @@ public class ApprovalSupportingInfoMapper {
     private String clean(String value) {
         return value == null || value.isBlank() ? null : value.trim();
     }
+
+    private record LabResultSource(
+            Long id,
+            Long orderTestId,
+            Long profileTestId,
+            BigDecimal resultValueNumber,
+            String resultValueText,
+            TestResultMarker marker,
+            String normalRangeValue,
+            TestResultType resultTypeAtEntry,
+            Instant approvedDate,
+            Instant reviewDate,
+            Instant createdDate
+    ) {}
+
+    private record RadiologyReportSource(
+            Long id,
+            Long orderTestId,
+            DiagnosticStatus processingStatus,
+            Severity severity,
+            Instant approvedDate,
+            Instant secondApprovedDate,
+            Instant reviewDate,
+            Instant createdDate,
+            String report,
+            String criticalFindings,
+            String radiologistComments,
+            String radiologistInformation,
+            String reviewBy,
+            String approvedBy,
+            String secondApprovedBy
+    ) {}
 }

@@ -2,6 +2,7 @@ package com.dazzle.asklepios.integration.waseel.service.mapper;
 
 import com.dazzle.asklepios.client.setup.ICDTreeClient;
 import com.dazzle.asklepios.client.setup.dto.ICDDiagnosisDTO;
+import com.dazzle.asklepios.domain.ClaimEncounterDiagnosis;
 import com.dazzle.asklepios.domain.PatientDiagnosis;
 import com.dazzle.asklepios.domain.enumeration.DiagnosisType;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalDiagnosis;
@@ -26,17 +27,29 @@ public class ApprovalDiagnosisMapper {
         AtomicInteger sequence = new AtomicInteger(1);
 
         return diagnoses.stream()
-                .map(diagnosis -> toWaseelDiagnosis(diagnosis, sequence.getAndIncrement()))
+                .map(diagnosis -> toWaseelDiagnosis(diagnosis.getDiagnosisId(), diagnosis.getType(), sequence.getAndIncrement()))
                 .toList();
     }
 
-    private WaseelApprovalDiagnosis toWaseelDiagnosis(PatientDiagnosis patientDiagnosis, Integer sequence) {
-        ICDDiagnosisDTO icd = getIcdDiagnosis(patientDiagnosis.getDiagnosisId());
+    public List<WaseelApprovalDiagnosis> toWaseelClaimDiagnosisList(List<ClaimEncounterDiagnosis> diagnoses) {
+        if (diagnoses == null || diagnoses.isEmpty()) {
+            return List.of();
+        }
+
+        AtomicInteger sequence = new AtomicInteger(1);
+
+        return diagnoses.stream()
+                .map(diagnosis -> toWaseelDiagnosis(diagnosis.getDiagnosisId(), diagnosis.getType(), sequence.getAndIncrement()))
+                .toList();
+    }
+
+    private WaseelApprovalDiagnosis toWaseelDiagnosis(Long diagnosisId, DiagnosisType type, Integer sequence) {
+        ICDDiagnosisDTO icd = getIcdDiagnosis(diagnosisId);
 
         return new WaseelApprovalDiagnosis(
                 sequence,
                 firstNonBlank(icd.icdFullDescription(), icd.icdShortDescription()),
-                mapDiagnosisType(patientDiagnosis.getType()),
+                mapDiagnosisType(type),
                 safe(icd.icdCode())
         );
     }
