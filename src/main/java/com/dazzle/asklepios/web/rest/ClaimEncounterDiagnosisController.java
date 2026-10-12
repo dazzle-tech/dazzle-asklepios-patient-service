@@ -1,4 +1,5 @@
-package com.dazzle.asklepios.web.rest.billing;
+
+package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.service.ClaimEncounterDiagnosisService;
 import com.dazzle.asklepios.service.dto.billing.ClaimEncounterDiagnosisRequest;
@@ -30,16 +31,46 @@ public class ClaimEncounterDiagnosisController {
         );
     }
 
-    @PutMapping("/encounters/{encounterId}")
-    public ResponseEntity<List<ClaimEncounterDiagnosisResponse>> update(
+    @PostMapping("/encounters/{encounterId}")
+    public ResponseEntity<ClaimEncounterDiagnosisResponse> create(
             @PathVariable("encounterId") @NotNull Long encounterId,
-            @Valid @RequestBody List<ClaimEncounterDiagnosisRequest> requests
+            @Valid @RequestBody ClaimEncounterDiagnosisRequest request
     ) {
-        return ResponseEntity.ok(
-                claimEncounterDiagnosisService.update(
-                        encounterId,
-                        requests
-                )
-        );
+        ClaimEncounterDiagnosisResponse response =
+                claimEncounterDiagnosisService.create(encounterId, request);
+
+        if (response == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<ClaimEncounterDiagnosisResponse> update(
+            @PathVariable("id") @NotNull Long id,
+            @Valid @RequestBody ClaimEncounterDiagnosisRequest request
+    ) {
+        ClaimEncounterDiagnosisResponse response =
+                claimEncounterDiagnosisService.update(id, request);
+
+        if (response == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(
+            @PathVariable("id") @NotNull Long id
+    ) {
+        boolean deleted = claimEncounterDiagnosisService.delete(id);
+
+        if (!deleted) {
+            return ResponseEntity.notFound().build();
+        }
+
+        return ResponseEntity.noContent().build();
     }
 }
