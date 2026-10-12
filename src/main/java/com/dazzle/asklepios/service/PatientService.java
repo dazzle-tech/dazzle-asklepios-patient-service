@@ -13,7 +13,9 @@ import com.dazzle.asklepios.repository.DuplicationCandidateRepository;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.patient.ExternalPatientCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.FacilityPatientFilterDTO;
+import com.dazzle.asklepios.service.dto.patientDocuments.PatientDocumentCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientConditionsDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientDuplicationLookupDTO;
@@ -74,6 +76,7 @@ public class PatientService {
     private final SystemConfigurationClient systemConfigurationClient;
     private final NotificationHelper notificationHelper;
     private final CchiPatientLookupService cchiPatientLookupService;
+    private final PatientDocumentService patientDocumentService;
 
     public PatientService(
             PatientRepository patientRepository,
@@ -82,7 +85,8 @@ public class PatientService {
             PasswordEncoder passwordEncoder,
             SystemConfigurationClient systemConfigurationClient,
             NotificationHelper notificationHelper,
-            CchiPatientLookupService cchiPatientLookupService
+            CchiPatientLookupService cchiPatientLookupService,
+            PatientDocumentService patientDocumentService
     ) {
         this.patientRepository = patientRepository;
         this.patientDocumentRepository = patientDocumentRepository;
@@ -91,6 +95,7 @@ public class PatientService {
         this.systemConfigurationClient = systemConfigurationClient;
         this.notificationHelper = notificationHelper;
         this.cchiPatientLookupService = cchiPatientLookupService;
+        this.patientDocumentService = patientDocumentService;
     }
 
     @Value("${application.asklepios-application-url}")
@@ -171,6 +176,29 @@ public class PatientService {
             handleConstraintsOnCreateOrUpdate(ex);
             throw ex;
         }
+    }
+
+    public Patient createExternal(ExternalPatientCreateDTO dto) {
+        LOG.info("[CREATE EXTERNAL] Request to create Patient payload={}", dto);
+
+        if (dto.primaryDocumentType() == DocumentType.NO_DOCUMENT) {
+            throw new BadRequestAlertException(
+                    "A primary document requires a document type other than NO_DOCUMENT",
+                    "patientDocument",
+                    "invalidType"
+            );
+        }
+
+        Patient created = create(dto.toPatientCreateDTO());
+        patientDocumentService.create(
+                new PatientDocumentCreateDTO(
+                        created.getId(),
+                        dto.countryId(),
+                        dto.primaryDocumentType(),
+                        dto.primaryDocumentNumber().trim()
+                )
+        );
+        return patientRepository.findById(created.getId()).orElse(created);
     }
 
     public Patient createUnknown(UnknownPatientCreateDTO dto) {

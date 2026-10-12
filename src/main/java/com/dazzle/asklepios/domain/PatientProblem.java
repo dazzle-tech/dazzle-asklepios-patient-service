@@ -1,6 +1,5 @@
 package com.dazzle.asklepios.domain;
 
-import com.dazzle.asklepios.domain.enumeration.EncounterVaccinationStatus;
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -13,7 +12,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -65,8 +63,7 @@ public class PatientProblem extends AbstractAuditingEntity<Long>
     @Column(name = "date_of_resolution")
     private Date dateOfResolution;
 
-    @NotNull
-    @Column(name = "by_patient", nullable = false)
+    @Column(name = "by_patient")
     private Boolean byPatient;
 
     @Column(name = "source_of_information")
@@ -88,4 +85,7 @@ public class PatientProblem extends AbstractAuditingEntity<Long>
     @Column(name = "patient_is_free", nullable = false)
     @Builder.Default
     private Boolean patientIsFree = Boolean.FALSE;
+
+    @Column(name = "free_text", columnDefinition = "text")
+    private String freeText;
 }

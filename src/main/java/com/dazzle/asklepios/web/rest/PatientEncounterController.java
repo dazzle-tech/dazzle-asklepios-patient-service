@@ -2,31 +2,27 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientEncounterFieldAudit;
+import com.dazzle.asklepios.domain.User;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
-import com.dazzle.asklepios.domain.EncounterReopenSession;
+import com.dazzle.asklepios.repository.UserRepository;
 import com.dazzle.asklepios.service.DiagnosticOrderService;
-import com.dazzle.asklepios.service.EncounterAmendmentHistoryService;
-import com.dazzle.asklepios.service.EncounterAmendmentService;
 import com.dazzle.asklepios.service.EncounterCoverageService;
 import com.dazzle.asklepios.service.PatientEncounterService;
 import com.dazzle.asklepios.service.PatientPrescriptionService;
-import com.dazzle.asklepios.service.dto.patientEncounter.EncounterAmendmentDTO;
-import com.dazzle.asklepios.service.dto.patientEncounter.ReassignPractitionerDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.EncounterHistoryOfPresentIllnessDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.EncounterListFilterDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCancelDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCompletionValidationDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.ReassignPractitionerDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
-import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCompletionValidationDTO;
 import com.dazzle.asklepios.service.dto.billing.EncounterCoverageDTO;
 import com.dazzle.asklepios.service.dto.billing.UpdateEncounterCoverageRequest;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import com.dazzle.asklepios.web.rest.vm.patientEncounter.AmendmentHistorySessionVM;
-import com.dazzle.asklepios.web.rest.vm.patientEncounter.EncounterAmendmentSummaryVM;
-import com.dazzle.asklepios.web.rest.vm.patientEncounter.EncounterReopenSessionVM;
 import com.dazzle.asklepios.web.rest.vm.patientEncounter.PatientEncounterVM;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -49,12 +45,14 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import com.dazzle.asklepios.service.EncounterListService;
-import com.dazzle.asklepios.service.dto.patientEncounter.EncounterListFilterDTO;
 import com.dazzle.asklepios.web.rest.vm.EncounterListVM;
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/patient")
@@ -63,32 +61,29 @@ public class PatientEncounterController {
     private static final Logger LOG = LoggerFactory.getLogger(PatientEncounterController.class);
 
     private final PatientEncounterService patientEncounterService;
-    private final EncounterAmendmentService encounterAmendmentService;
-    private final EncounterAmendmentHistoryService encounterAmendmentHistoryService;
     private final DiagnosticOrderService diagnosticOrderService;
     private final PatientPrescriptionService patientPrescriptionService;
     private final EncounterCoverageService encounterCoverageService;
     private final PatientDocumentRepository patientDocumentRepository;
     private final EncounterListService encounterListService;
+    private final UserRepository userRepository;
 
     public PatientEncounterController(
             PatientEncounterService patientEncounterService,
-            EncounterAmendmentService encounterAmendmentService,
-            EncounterAmendmentHistoryService encounterAmendmentHistoryService,
             DiagnosticOrderService diagnosticOrderService,
             PatientPrescriptionService patientPrescriptionService,
             EncounterCoverageService encounterCoverageService,
             PatientDocumentRepository patientDocumentRepository,
-            EncounterListService encounterListService
+            EncounterListService encounterListService,
+            UserRepository userRepository
     ) {
         this.patientEncounterService = patientEncounterService;
-        this.encounterAmendmentService = encounterAmendmentService;
-        this.encounterAmendmentHistoryService = encounterAmendmentHistoryService;
         this.diagnosticOrderService = diagnosticOrderService;
         this.patientPrescriptionService = patientPrescriptionService;
         this.encounterCoverageService = encounterCoverageService;
         this.patientDocumentRepository = patientDocumentRepository;
         this.encounterListService = encounterListService;
+        this.userRepository = userRepository;
     }
 
     @PostMapping("/encounter")
@@ -232,13 +227,25 @@ public class PatientEncounterController {
         Set<Long> orderEncounterIds = diagnosticOrderService.findEncounterIdsWithOrders(encounterIds);
         Set<Long> prescriptionEncounterIds = patientPrescriptionService.findEncounterIdsWithOrders(encounterIds);
         Set<Long> observasionEncounterIds = patientEncounterService.findEncounterIdsWithObservation(encounterIds);
+        List<Long> nurseIds = page.getContent().stream()
+                .map(PatientEncounter::getAssignedNurseId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        Map<Long, String> nurseNames = userRepository.findAllById(nurseIds).stream()
+                .collect(Collectors.toMap(
+                        User::getId,
+                        user -> (user.getFirstName() + " " + user.getLastName()).trim()
+                ));
         List<PatientEncounterVM> vmList = page.getContent().stream()
                 .map(encounter -> PatientEncounterVM.ofEntity(
                                 encounter,
                                 orderEncounterIds.contains(encounter.getId()),
                                 prescriptionEncounterIds.contains(encounter.getId()),
                                 observasionEncounterIds.contains(encounter.getId()),
-                                null
+                                null,
+                                nurseNames.get(encounter.getAssignedNurseId())
                         ))
                 .toList();
 
@@ -292,7 +299,17 @@ public class PatientEncounterController {
                 patientEncounterService.findEncounterIdsWithObservation(
                         encounterIds
                 );
+        List<Long> nurseIds = page.getContent().stream()
+                .map(PatientEncounter::getAssignedNurseId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
 
+        Map<Long, String> nurseNames = userRepository.findAllById(nurseIds).stream()
+                .collect(Collectors.toMap(
+                        User::getId,
+                        user -> (user.getFirstName() + " " + user.getLastName()).trim()
+                ));
         List<PatientEncounterVM> vmList =
                 page.getContent()
                         .stream()
@@ -308,7 +325,8 @@ public class PatientEncounterController {
                                         observationEncounterIds.contains(
                                                 encounter.getId()
                                         ),
-                                        null
+                                        null,
+                                        nurseNames.get(encounter.getAssignedNurseId())
                                 )
                         )
                         .toList();
@@ -326,7 +344,7 @@ public class PatientEncounterController {
         );
     }
 
-    
+
     @GetMapping("/encounter/department/{departmentId}/count/today/total-patients")
     public ResponseEntity<Long> countTodayDepartmentTotalPatients(
             @PathVariable @NotNull Long departmentId
@@ -370,7 +388,17 @@ public class PatientEncounterController {
 
         Set<Long> observationEncounterIds =
                 patientEncounterService.findEncounterIdsWithObservation(encounterIds);
+        List<Long> nurseIds = page.getContent().stream()
+                .map(PatientEncounter::getAssignedNurseId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
 
+        Map<Long, String> nurseNames = userRepository.findAllById(nurseIds).stream()
+                .collect(Collectors.toMap(
+                        User::getId,
+                        user -> (user.getFirstName() + " " + user.getLastName()).trim()
+                ));
         List<PatientEncounterVM> vmList =
                 page.getContent().stream()
                         .map(encounter -> {
@@ -388,7 +416,8 @@ public class PatientEncounterController {
                                     orderEncounterIds.contains(encounter.getId()),
                                     prescriptionEncounterIds.contains(encounter.getId()),
                                     observationEncounterIds.contains(encounter.getId()),
-                                    documentType
+                                    documentType,
+                                    nurseNames.get(encounter.getAssignedNurseId())
                             );
                         })
                         .toList();
@@ -469,7 +498,17 @@ public class PatientEncounterController {
 
         Set<Long> observationEncounterIds =
                 patientEncounterService.findEncounterIdsWithObservation(encounterIds);
+        List<Long> nurseIds = page.getContent().stream()
+                .map(PatientEncounter::getAssignedNurseId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
 
+        Map<Long, String> nurseNames = userRepository.findAllById(nurseIds).stream()
+                .collect(Collectors.toMap(
+                        User::getId,
+                        user -> (user.getFirstName() + " " + user.getLastName()).trim()
+                ));
         List<PatientEncounterVM> vmList =
                 page.getContent().stream()
                         .map(encounter ->
@@ -478,7 +517,8 @@ public class PatientEncounterController {
                                         orderEncounterIds.contains(encounter.getId()),
                                         prescriptionEncounterIds.contains(encounter.getId()),
                                         observationEncounterIds.contains(encounter.getId()),
-                                        null
+                                        null,
+                                        nurseNames.get(encounter.getAssignedNurseId())
                                 )
                         )
                         .toList();
@@ -564,10 +604,21 @@ public class PatientEncounterController {
             @PathVariable("id") @NotNull Long encounterId,
             @RequestBody(required = false) PatientEncounterCancelDTO cancelDTO
     ) {
-        LOG.debug("REST cancel PatientEncounter id={} payload={}", encounterId, cancelDTO);
+        LOG.debug(
+                "REST cancel PatientEncounter id={} payload={}",
+                encounterId,
+                cancelDTO
+        );
 
-        String cancellationReason = cancelDTO != null ? cancelDTO.cancellationReason() : null;
-        PatientEncounter cancelled = patientEncounterService.cancelEncounter(encounterId, cancellationReason);
+        String cancellationReason =
+                cancelDTO != null ? cancelDTO.cancellationReason() : null;
+
+        PatientEncounter cancelled =
+                patientEncounterService.cancelEncounter(
+                        encounterId,
+                        cancellationReason
+                );
+
         return ResponseEntity.ok(cancelled);
     }
 
@@ -820,67 +871,6 @@ public class PatientEncounterController {
         return ResponseEntity.ok(reopened);
     }
 
-    @PostMapping("/encounter/{id}/amendments")
-    public ResponseEntity<EncounterReopenSessionVM> startAmendment(
-            @PathVariable("id") @NotNull Long encounterId,
-            @Valid @RequestBody @NotNull EncounterAmendmentDTO amendmentDTO
-    ) {
-        LOG.debug("REST start encounter amendment id={} payload={}", encounterId, amendmentDTO);
-
-        EncounterReopenSession session =
-                encounterAmendmentService.startAmendment(encounterId, amendmentDTO);
-
-        return ResponseEntity.ok(EncounterReopenSessionVM.ofEntity(session));
-    }
-
-    @PostMapping("/encounter/{encounterId}/amendments/{sessionId}/finish")
-    public ResponseEntity<EncounterReopenSessionVM> finishAmendment(
-            @PathVariable @NotNull Long encounterId,
-            @PathVariable @NotNull Long sessionId
-    ) {
-        LOG.debug("REST finish encounter amendment encounterId={} sessionId={}", encounterId, sessionId);
-
-        EncounterReopenSession session = encounterAmendmentService.finishAmendment(encounterId, sessionId);
-        return ResponseEntity.ok(EncounterReopenSessionVM.ofEntity(session));
-    }
-
-    @GetMapping("/encounter/{id}/amendments")
-    public ResponseEntity<List<EncounterReopenSessionVM>> findAmendments(
-            @PathVariable("id") @NotNull Long encounterId
-    ) {
-        LOG.debug("REST list encounter amendments encounterId={}", encounterId);
-
-        List<EncounterReopenSessionVM> amendments =
-                encounterAmendmentService.findAmendments(encounterId)
-                        .stream()
-                        .map(EncounterReopenSessionVM::ofEntity)
-                        .toList();
-
-        return ResponseEntity.ok(amendments);
-    }
-
-    @GetMapping("/encounter/amendment-summaries")
-    public ResponseEntity<List<EncounterAmendmentSummaryVM>> findAmendmentSummaries(
-            @RequestParam(name = "encounterIds", required = false) List<Long> encounterIds
-    ) {
-        return ResponseEntity.ok(encounterAmendmentService.findSummaries(encounterIds));
-    }
-
-    @GetMapping("/encounter/{encounterId}/amendment-history")
-    public ResponseEntity<List<AmendmentHistorySessionVM>> findAmendmentHistory(
-            @PathVariable @NotNull Long encounterId,
-            @ParameterObject Pageable pageable
-    ) {
-        LOG.debug("REST encounter amendment history encounterId={}", encounterId);
-        Page<AmendmentHistorySessionVM> page =
-                encounterAmendmentHistoryService.findHistory(encounterId, pageable);
-        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
-                ServletUriComponentsBuilder.fromCurrentRequest(),
-                page
-        );
-        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
-    }
-
     @GetMapping("/encounter/{id}/audit")
     public ResponseEntity<List<PatientEncounterFieldAudit>> getEncounterAudit(
             @PathVariable("id") @NotNull Long encounterId
@@ -890,5 +880,14 @@ public class PatientEncounterController {
         return ResponseEntity.ok(
                 patientEncounterService.getAuditHistory(encounterId)
         );
+    }
+
+    @PutMapping("/encounter/{encounterId}/assigned-nurse/{nurseId}")
+    public ResponseEntity<Void> assignNurse(
+            @PathVariable Long encounterId,
+            @PathVariable Long nurseId
+    ) {
+        patientEncounterService.assignNurse(encounterId, nurseId);
+        return ResponseEntity.ok().build();
     }
 }

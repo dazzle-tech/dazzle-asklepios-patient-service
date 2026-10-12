@@ -64,4 +64,7 @@ public class AvailabilityGenerationBatch extends  AbstractAuditingEntity<Long> i
 
     @Column(name = "interval_ended_notification_sent_at")
     private Instant intervalEndedNotificationSentAt;
+
+    @Column(name = "interval_ending_soon_notification_sent_at")
+    private Instant intervalEndingSoonNotificationSentAt;
 }

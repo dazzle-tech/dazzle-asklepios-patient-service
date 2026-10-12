@@ -2,9 +2,11 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.SurgicalHistory;
+import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.SurgicalHistoryRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryCancelDTO;
 import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryCreateDTO;
 import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -20,12 +22,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.dazzle.asklepios.service.dto.surgicalHistory.SurgicalHistoryCancelDTO;
 
 import java.time.Instant;
 import java.util.Date;
+
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
-import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 
 @Service
 @RequiredArgsConstructor
@@ -59,32 +60,39 @@ public class SurgicalHistoryService {
                 ));
     }
 
-    public SurgicalHistory create(
-            SurgicalHistoryCreateDTO surgicalHistoryCreateDTO
-    ) {
-        LOG.info("[CREATE] SurgicalHistory payload={}", surgicalHistoryCreateDTO);
-        validateRequiredFields(surgicalHistoryCreateDTO);
+    public SurgicalHistory create(SurgicalHistoryCreateDTO dto) {
+        LOG.info("[CREATE] SurgicalHistory payload={}", dto);
+
+        validate(
+                dto.patientIsFree(),
+                dto.freeText(),
+                dto.surgery(),
+                dto.dateOfSurgery(),
+                dto.facility(),
+                dto.anesthesiaType()
+        );
+
+        boolean isFree = Boolean.TRUE.equals(dto.patientIsFree());
+
         SurgicalHistory entity = SurgicalHistory.builder()
-                .patient(refPatient(surgicalHistoryCreateDTO.patientId()))
-                .surgery(surgicalHistoryCreateDTO.surgery())
-                .dateOfSurgery(surgicalHistoryCreateDTO.dateOfSurgery())
-                .facility(surgicalHistoryCreateDTO.facility())
-                .anesthesiaType(surgicalHistoryCreateDTO.anesthesiaType())
-                .complications(surgicalHistoryCreateDTO.complications())
-                .patientIsFree(surgicalHistoryCreateDTO.patientIsFree())
+                .patient(refPatient(dto.patientId()))
+                .surgery(isFree ? null : dto.surgery())
+                .dateOfSurgery(isFree ? null : dto.dateOfSurgery())
+                .facility(isFree ? null : dto.facility())
+                .anesthesiaType(isFree ? null : dto.anesthesiaType())
+                .complications(isFree ? null : dto.complications())
                 .adverseReactionsToAnesthesia(
-                        surgicalHistoryCreateDTO.adverseReactionsToAnesthesia()
+                        isFree ? null : dto.adverseReactionsToAnesthesia()
                 )
                 .hasImplantsOrDevices(
-                        surgicalHistoryCreateDTO.hasImplantsOrDevices()
+                        isFree ? null : dto.hasImplantsOrDevices()
                 )
                 .implantsOrDevicesDescription(
-                        surgicalHistoryCreateDTO.implantsOrDevicesDescription()
+                        isFree ? null : dto.implantsOrDevicesDescription()
                 )
-
-                // Default status for new records
+                .patientIsFree(isFree)
+                .freeText(isFree ? dto.freeText().trim() : null)
                 .status(PatientHistoryStatus.ACTIVE)
-
                 .build();
 
         try {
@@ -92,6 +100,7 @@ public class SurgicalHistoryService {
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
+
             throw new BadRequestAlertException(
                     "Database constraint violated while saving surgical history.",
                     "surgicalHistory",
@@ -102,7 +111,15 @@ public class SurgicalHistoryService {
 
     public SurgicalHistory update(SurgicalHistoryUpdateDTO dto) {
         LOG.info("[UPDATE] SurgicalHistory payload={}", dto);
-        validateRequiredFields(dto);
+
+        validate(
+                dto.patientIsFree(),
+                dto.freeText(),
+                dto.surgery(),
+                dto.dateOfSurgery(),
+                dto.facility(),
+                dto.anesthesiaType()
+        );
 
         SurgicalHistory entity = repository.findById(dto.id())
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -111,16 +128,25 @@ public class SurgicalHistoryService {
                         "notfound"
                 ));
 
+        boolean isFree = Boolean.TRUE.equals(dto.patientIsFree());
+
         entity.setPatient(refPatient(dto.patientId()));
-        entity.setSurgery(dto.surgery());
-        entity.setDateOfSurgery(dto.dateOfSurgery());
-        entity.setFacility(dto.facility());
-        entity.setAnesthesiaType(dto.anesthesiaType());
-        entity.setComplications(dto.complications());
-        entity.setAdverseReactionsToAnesthesia(dto.adverseReactionsToAnesthesia());
-        entity.setHasImplantsOrDevices(dto.hasImplantsOrDevices());
-        entity.setImplantsOrDevicesDescription(dto.implantsOrDevicesDescription());
-        entity.setPatientIsFree(dto.patientIsFree());
+        entity.setSurgery(isFree ? null : dto.surgery());
+        entity.setDateOfSurgery(isFree ? null : dto.dateOfSurgery());
+        entity.setFacility(isFree ? null : dto.facility());
+        entity.setAnesthesiaType(isFree ? null : dto.anesthesiaType());
+        entity.setComplications(isFree ? null : dto.complications());
+        entity.setAdverseReactionsToAnesthesia(
+                isFree ? null : dto.adverseReactionsToAnesthesia()
+        );
+        entity.setHasImplantsOrDevices(
+                isFree ? null : dto.hasImplantsOrDevices()
+        );
+        entity.setImplantsOrDevicesDescription(
+                isFree ? null : dto.implantsOrDevicesDescription()
+        );
+        entity.setPatientIsFree(isFree);
+        entity.setFreeText(isFree ? dto.freeText().trim() : null);
 
         try {
             SurgicalHistory updated = repository.saveAndFlush(entity);
@@ -129,6 +155,7 @@ public class SurgicalHistoryService {
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
+
             throw new BadRequestAlertException(
                     "Database constraint violated while updating surgical history.",
                     "surgicalHistory",
@@ -159,6 +186,7 @@ public class SurgicalHistoryService {
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
+
             throw new BadRequestAlertException(
                     "Database constraint violated while cancelling surgical history.",
                     "surgicalHistory",
@@ -179,7 +207,6 @@ public class SurgicalHistoryService {
 
         repository.delete(entity);
     }
-
 
     @Transactional(readOnly = true)
     public Page<SurgicalHistory> findByPatientId(
@@ -208,16 +235,28 @@ public class SurgicalHistoryService {
         );
     }
 
-
     private void handleConstraints(RuntimeException exception) {
         Throwable root = getRootCause(exception);
-        String message = (root != null ? root.getMessage() : exception.getMessage());
+        String message =
+                root != null
+                        ? root.getMessage()
+                        : exception.getMessage();
 
         LOG.error("DB ROOT CAUSE: {}", message, exception);
 
-        String lower = (message != null ? message.toLowerCase() : "");
+        String lower =
+                message != null
+                        ? message.toLowerCase()
+                        : "";
 
-        if (lower.contains("ux_surgical_history_patient_surgery_date_facility")) {
+        if (
+                lower.contains(
+                        "ux_surgical_history_patient_surgery_date_facility"
+                ) ||
+                        lower.contains(
+                                "ux_surgical_history_patient_surgery_date_ci"
+                        )
+        ) {
             throw new BadRequestAlertException(
                     "Surgical history already exists for this patient, surgery, date and facility.",
                     "surgicalHistory",
@@ -225,7 +264,10 @@ public class SurgicalHistoryService {
             );
         }
 
-        if (lower.contains("foreign key") && lower.contains("patient")) {
+        if (
+                lower.contains("foreign key") &&
+                        lower.contains("patient")
+        ) {
             throw new BadRequestAlertException(
                     "Invalid patient reference.",
                     "surgicalHistory",
@@ -233,23 +275,36 @@ public class SurgicalHistoryService {
             );
         }
 
-
-
-
         throw new BadRequestAlertException(
                 "Database constraint violated while saving surgical history.",
                 "surgicalHistory",
                 "db.constraint"
         );
-
     }
-    private void validateRequiredFields(SurgicalHistoryCreateDTO dto) {
 
-        if (Boolean.TRUE.equals(dto.patientIsFree())) {
+    private void validate(
+            Boolean patientIsFree,
+            String freeText,
+            String surgery,
+            Date dateOfSurgery,
+            String facility,
+            String anesthesiaType
+    ) {
+        boolean isFree = Boolean.TRUE.equals(patientIsFree);
+
+        if (isFree) {
+            if (freeText == null || freeText.trim().isEmpty()) {
+                throw new BadRequestAlertException(
+                        "Free text is required.",
+                        "surgicalHistory",
+                        "freeText.required"
+                );
+            }
+
             return;
         }
 
-        if (dto.surgery() == null || dto.surgery().isBlank()) {
+        if (surgery == null || surgery.trim().isEmpty()) {
             throw new BadRequestAlertException(
                     "Surgery is required.",
                     "surgicalHistory",
@@ -257,7 +312,7 @@ public class SurgicalHistoryService {
             );
         }
 
-        if (dto.dateOfSurgery() == null) {
+        if (dateOfSurgery == null) {
             throw new BadRequestAlertException(
                     "Date of surgery is required.",
                     "surgicalHistory",
@@ -265,7 +320,15 @@ public class SurgicalHistoryService {
             );
         }
 
-        if (dto.facility() == null || dto.facility().isBlank()) {
+        if (dateOfSurgery.after(new Date())) {
+            throw new BadRequestAlertException(
+                    "Date of surgery must be in the past or present.",
+                    "surgicalHistory",
+                    "dateOfSurgery.future"
+            );
+        }
+
+        if (facility == null || facility.trim().isEmpty()) {
             throw new BadRequestAlertException(
                     "Facility is required.",
                     "surgicalHistory",
@@ -273,45 +336,10 @@ public class SurgicalHistoryService {
             );
         }
 
-        if (dto.anesthesiaType() == null || dto.anesthesiaType().isBlank()) {
-            throw new BadRequestAlertException(
-                    "Anesthesia type is required.",
-                    "surgicalHistory",
-                    "anesthesia.required"
-            );
-        }
-    }
-    private void validateRequiredFields(SurgicalHistoryUpdateDTO dto) {
-
-        if (Boolean.TRUE.equals(dto.patientIsFree())) {
-            return;
-        }
-
-        if (dto.surgery() == null || dto.surgery().isBlank()) {
-            throw new BadRequestAlertException(
-                    "Surgery is required.",
-                    "surgicalHistory",
-                    "surgery.required"
-            );
-        }
-
-        if (dto.dateOfSurgery() == null) {
-            throw new BadRequestAlertException(
-                    "Date of surgery is required.",
-                    "surgicalHistory",
-                    "dateOfSurgery.required"
-            );
-        }
-
-        if (dto.facility() == null || dto.facility().isBlank()) {
-            throw new BadRequestAlertException(
-                    "Facility is required.",
-                    "surgicalHistory",
-                    "facility.required"
-            );
-        }
-
-        if (dto.anesthesiaType() == null || dto.anesthesiaType().isBlank()) {
+        if (
+                anesthesiaType == null ||
+                        anesthesiaType.trim().isEmpty()
+        ) {
             throw new BadRequestAlertException(
                     "Anesthesia type is required.",
                     "surgicalHistory",

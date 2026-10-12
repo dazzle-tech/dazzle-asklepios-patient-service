@@ -134,30 +134,41 @@ public class NotificationHelper {
 
     public Map<String, List<NotificationResolvedRecipientDTO>> resolveRecipients(Long departmentId, String login, String createdByLogin, Patient patient, PractitionerDTO practitionerDTO, Boolean isScheduleNotification) {
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
-        List<OrganizationDefinitionDTO> organizationDefinitionList = organizationClient.getOrganization();
+        List<OrganizationDefinitionDTO> organizationDefinitionList = Boolean.TRUE.equals(isScheduleNotification)
+                ? organizationClient.getOrganizationInternal()
+                : organizationClient.getOrganization();
         OrganizationDefinitionDTO organizationDefinitionDTO = organizationDefinitionList.stream().findFirst().orElse(null);
 
         // Department users
         if (departmentId != null) {
-            List<NotificationResolvedRecipientDTO> departmentUsers =
-                    !isScheduleNotification ? buildDepartmentUserRecipients(departmentId, organizationDefinitionDTO) : buildDepartmentUserRecipientsForScheduledNotification(departmentId, organizationDefinitionDTO);
+            if (Boolean.TRUE.equals(isScheduleNotification)) {
+                List<NotificationResolvedRecipientDTO> departmentUsers =
+                        buildDepartmentUserRecipientsForScheduledNotification(departmentId, organizationDefinitionDTO);
 
-            if (!departmentUsers.isEmpty()) {
-                recipientsByRule.put("DEPARTMENT_USERS", departmentUsers);
-            }
+                if (!departmentUsers.isEmpty()) {
+                    recipientsByRule.put("DEPARTMENT_USERS", departmentUsers);
+                }
+            } else {
+                List<NotificationResolvedRecipientDTO> departmentUsers =
+                        buildDepartmentUserRecipients(departmentId, organizationDefinitionDTO);
 
-            List<NotificationResolvedRecipientDTO> physicianDepartmentUsers =
-                    buildPhysicianDepartmentUserRecipients(departmentId, organizationDefinitionDTO);
+                if (!departmentUsers.isEmpty()) {
+                    recipientsByRule.put("DEPARTMENT_USERS", departmentUsers);
+                }
 
-            if (!departmentUsers.isEmpty()) {
-                recipientsByRule.put("PHYSICIAN_DEPARTMENT_USERS", physicianDepartmentUsers);
-            }
+                List<NotificationResolvedRecipientDTO> physicianDepartmentUsers =
+                        buildPhysicianDepartmentUserRecipients(departmentId, organizationDefinitionDTO);
 
-            List<NotificationResolvedRecipientDTO> nurseDepartmentUsers =
-                    buildNurseDepartmentUserRecipients(departmentId, organizationDefinitionDTO);
+                if (!departmentUsers.isEmpty()) {
+                    recipientsByRule.put("PHYSICIAN_DEPARTMENT_USERS", physicianDepartmentUsers);
+                }
 
-            if (!departmentUsers.isEmpty()) {
-                recipientsByRule.put("NURSE_DEPARTMENT_USERS", nurseDepartmentUsers);
+                List<NotificationResolvedRecipientDTO> nurseDepartmentUsers =
+                        buildNurseDepartmentUserRecipients(departmentId, organizationDefinitionDTO);
+
+                if (!departmentUsers.isEmpty()) {
+                    recipientsByRule.put("NURSE_DEPARTMENT_USERS", nurseDepartmentUsers);
+                }
             }
         }
 
@@ -178,8 +189,8 @@ public class NotificationHelper {
             }
         }
 
-        // Created by user
-        if (createdByLogin != null && !createdByLogin.isBlank()) {
+        // Created by user. Scheduled jobs have no user token, so this authenticated lookup is skipped.
+        if (!Boolean.TRUE.equals(isScheduleNotification) && createdByLogin != null && !createdByLogin.isBlank()) {
             NotificationResolvedRecipientDTO createdByUser =
                     buildCreatedByUserRecipient(createdByLogin, organizationDefinitionDTO);
 

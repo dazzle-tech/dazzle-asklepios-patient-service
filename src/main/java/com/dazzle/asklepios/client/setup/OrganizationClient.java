@@ -11,4 +11,7 @@ import java.util.List;
 public interface OrganizationClient {
     @GetMapping("/api/setup/organization-definition")
     List<OrganizationDefinitionDTO> getOrganization();
+
+    @GetMapping("/api/setup/organization-definition/internalJob")
+    List<OrganizationDefinitionDTO> getOrganizationInternal();
 }

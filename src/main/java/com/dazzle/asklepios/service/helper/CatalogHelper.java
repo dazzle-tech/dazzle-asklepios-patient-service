@@ -41,4 +41,12 @@ public class CatalogHelper {
             );
         }
     }
+
+    public CatalogDTO getCatalogInternal(Long catalogId) {
+        try {
+            return catalogClient.getCatalogInternal(catalogId);
+        } catch (feign.FeignException.NotFound ex) {
+            return null;
+        }
+    }
 }
