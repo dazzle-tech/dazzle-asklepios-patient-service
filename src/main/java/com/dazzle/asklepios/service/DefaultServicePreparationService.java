@@ -80,6 +80,7 @@ public class DefaultServicePreparationService {
     private final PatientItemPricingApplicationService patientItemPricingApplicationService;
     private final InsurancePriceListCoverageService insurancePriceListCoverageService;
     private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
+    private final InsuranceVisitEligibilityGuard insuranceVisitEligibilityGuard;
 
     /**
      * Creates/reuses selected default-service PSP records and sends each one
@@ -139,6 +140,13 @@ public class DefaultServicePreparationService {
                 coverageType = BillingCoverageType.INSURANCE;
                 insurance = linkedInsurance;
             }
+        }
+
+        if (coverageType == BillingCoverageType.INSURANCE) {
+            insuranceVisitEligibilityGuard.requireFreshInForce(
+                    insurance,
+                    request.patientId()
+            );
         }
 
         encounterCoverageService.applyCoverage(
