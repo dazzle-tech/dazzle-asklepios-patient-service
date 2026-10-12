@@ -58,9 +58,8 @@ public class ClaimEncounterCopyDiagnosticOrderTestResultService {
         }
 
         return claimEncounterCopyDiagnosticOrderTestResultRepository
-                .findByClaimEncounterCopyIdAndStatusNot(
-                        claimEncounterCopyId,
-                        PatientHistoryStatus.CANCELLED
+                .findByClaimEncounterCopyId(
+                        claimEncounterCopyId
                 );
     }
 

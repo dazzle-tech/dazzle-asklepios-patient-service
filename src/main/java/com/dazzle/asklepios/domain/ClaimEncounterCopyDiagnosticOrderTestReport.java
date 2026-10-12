@@ -1,6 +1,5 @@
 package com.dazzle.asklepios.domain;
 
-import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.domain.enumeration.Severity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -19,7 +18,6 @@ import lombok.Setter;
 
 import java.io.Serial;
 import java.io.Serializable;
-import java.time.Instant;
 
 @Entity
 @Getter
@@ -65,17 +63,4 @@ public class ClaimEncounterCopyDiagnosticOrderTestReport
     @Column(name = "severity", length = 50)
     private Severity severity;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 50)
-    @Builder.Default
-    private PatientHistoryStatus status = PatientHistoryStatus.ACTIVE;
-
-    @Column(name = "cancelled_by", length = 50)
-    private String cancelledBy;
-
-    @Column(name = "cancelled_date")
-    private Instant cancelledDate;
-
-    @Column(name = "cancellation_reason", columnDefinition = "text")
-    private String cancellationReason;
 }

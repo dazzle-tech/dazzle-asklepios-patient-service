@@ -1,7 +1,6 @@
 package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.ClaimEncounterCopyDiagnosticOrderTestResult;
-import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -15,8 +14,7 @@ public interface ClaimEncounterCopyDiagnosticOrderTestResultRepository
     );
 
     List<ClaimEncounterCopyDiagnosticOrderTestResult>
-    findByClaimEncounterCopyIdAndStatusNot(
-            Long claimEncounterCopyId,
-            PatientHistoryStatus status
+    findByClaimEncounterCopyId(
+            Long claimEncounterCopyId
     );
 }

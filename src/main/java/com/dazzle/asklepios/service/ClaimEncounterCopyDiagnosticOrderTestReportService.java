@@ -4,7 +4,6 @@ import com.dazzle.asklepios.domain.ClaimEncounterCopy;
 import com.dazzle.asklepios.domain.ClaimEncounterCopyDiagnosticOrderTestReport;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
-import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.repository.ClaimEncounterCopyDiagnosticOrderTestReportRepository;
 import com.dazzle.asklepios.repository.ClaimEncounterCopyRepository;
@@ -58,9 +57,8 @@ public class ClaimEncounterCopyDiagnosticOrderTestReportService {
         }
 
         return claimEncounterCopyDiagnosticOrderTestReportRepository
-                .findByClaimEncounterCopyIdAndStatusNot(
-                        claimEncounterCopyId,
-                        PatientHistoryStatus.CANCELLED
+                .findByClaimEncounterCopyId(
+                        claimEncounterCopyId
                 );
     }
 
