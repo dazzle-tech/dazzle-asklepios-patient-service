@@ -122,6 +122,9 @@ public class EncounterBillingSummaryService {
     private final BillingEngineService
             billingEngineService;
 
+    private final DiagnosticChargeTimingService
+            diagnosticChargeTimingService;
+
     /**
      * Returns an empty summary when the encounter does not yet have a
      * financial charge. This prevents the billing screen from receiving
@@ -549,7 +552,7 @@ public class EncounterBillingSummaryService {
             return false;
         }
 
-        return true;
+        return !diagnosticChargeTimingService.isChargeDeferred(item);
     }
 
     private EncounterBillingItemSummary buildUnbilledItemSummary(

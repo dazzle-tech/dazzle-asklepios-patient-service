@@ -258,7 +258,8 @@ public class SetupBillingRuleService {
                 parseBillingItemType(
                         response.billingItemType()
                 ),
-                response.billingTrigger()
+                response.billingTrigger(),
+                response.paymentType()
         );
     }
 

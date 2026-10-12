@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.client.setup.dto;
 
+import com.dazzle.asklepios.domain.enumeration.billing.BillingRulePaymentType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingTrigger;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
@@ -15,6 +16,8 @@ public record BillingRuleResponse(
         String billingItemType,
 
         BillingTrigger billingTrigger,
+
+        BillingRulePaymentType paymentType,
 
         Boolean isDefault
 

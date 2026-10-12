@@ -110,11 +110,12 @@ public class DiagnosticOrderTestReportController {
             @RequestParam(name = "mrn", required = false) String mrn,
             @RequestParam(name = "patientIdIn", required = false) List<Long> patientIdIn,
             @RequestParam(name = "orderNumber", required = false) String orderNumber,
+            @RequestParam(name = "encounterNumber", required = false) String encounterNumber,
 
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("[RadiologyReport] FILTER orderIdIn={} orderTestId={} fromDepartmentIn={} patientName={} mrn={} patientIdIn={} orderNumber={}",
-                orderIdIn, orderTestId, fromDepartmentIn, patientName, mrn, patientIdIn, orderNumber);
+        LOG.debug("[RadiologyReport] FILTER orderIdIn={} orderTestId={} fromDepartmentIn={} patientName={} mrn={} patientIdIn={} orderNumber={} encounterNumber={}",
+                orderIdIn, orderTestId, fromDepartmentIn, patientName, mrn, patientIdIn, orderNumber, encounterNumber);
 
         Page<DiagnosticOrderTestReportResponseVM> page = reportService.filterReports(
                 id,
@@ -144,6 +145,7 @@ public class DiagnosticOrderTestReportController {
                 mrn,
                 patientIdIn,
                 orderNumber,
+                encounterNumber,
                 pageable
         );
 
@@ -415,7 +417,10 @@ public class DiagnosticOrderTestReportController {
             List<Long> patientIdIn,
 
             @RequestParam(name = "orderNumber", required = false)
-            String orderNumber
+            String orderNumber,
+
+            @RequestParam(name = "encounterNumber", required = false)
+            String encounterNumber
     ) {
 
         return ResponseEntity.ok(
@@ -446,7 +451,8 @@ public class DiagnosticOrderTestReportController {
                         patientName,
                         mrn,
                         patientIdIn,
-                        orderNumber
+                        orderNumber,
+                        encounterNumber
                 )
         );
     }
