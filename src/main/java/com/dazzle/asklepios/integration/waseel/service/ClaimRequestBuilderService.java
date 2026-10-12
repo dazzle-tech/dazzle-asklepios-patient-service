@@ -1,12 +1,12 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
+import com.dazzle.asklepios.domain.ClaimEncounterCopy;
 import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingPayment;
 import com.dazzle.asklepios.domain.EmergencyTriage;
 import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
 import com.dazzle.asklepios.domain.Patient;
-import com.dazzle.asklepios.domain.PatientDiagnosis;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientRelation;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
@@ -17,6 +17,7 @@ import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimSubT
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimType;
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalEncounterMapper;
+import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalDiagnosis;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalEligibilitySnapshot;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalItem;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalSubscriber;
@@ -30,6 +31,8 @@ import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalDiagnosisM
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalItemMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalSubscriberMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalSupportingInfoMapper;
+import com.dazzle.asklepios.repository.ClaimEncounterCopyRepository;
+import com.dazzle.asklepios.repository.ClaimEncounterDiagnosisRepository;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingPaymentRepository;
 import com.dazzle.asklepios.repository.EmergencyTriageRepository;
@@ -78,6 +81,8 @@ public class ClaimRequestBuilderService {
 
     private final PatientEncounterRepository encounterRepository;
     private final PatientDiagnosisRepository patientDiagnosisRepository;
+    private final ClaimEncounterCopyRepository claimEncounterCopyRepository;
+    private final ClaimEncounterDiagnosisRepository claimEncounterDiagnosisRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final PatientRelationRepository patientRelationRepository;
     private final FinancialDocumentItemRepository financialDocumentItemRepository;
@@ -225,10 +230,9 @@ public class ClaimRequestBuilderService {
                         ? buildSubscriber(encounter)
                         : null;
 
-        List<PatientDiagnosis> diagnoses =
-                patientDiagnosisRepository.findByEncounterId(encounterId);
+        List<WaseelApprovalDiagnosis> diagnoses = resolveClaimDiagnoses(encounterId);
 
-        if (diagnoses == null || diagnoses.isEmpty()) {
+        if (diagnoses.isEmpty()) {
             throw new BadRequestAlertException(
                     "Diagnosis is required before submitting a claim",
                     "claim",
@@ -258,9 +262,7 @@ public class ClaimRequestBuilderService {
                 mappedItems
         );
 
-        List<Integer> diagnosisSequences = approvalDiagnosisMapper
-                .toWaseelDiagnosisList(diagnoses)
-                .stream()
+        List<Integer> diagnosisSequences = diagnoses.stream()
                 .map(d -> d.sequence())
                 .filter(Objects::nonNull)
                 .toList();
@@ -385,7 +387,7 @@ public class ClaimRequestBuilderService {
                 snapshot.insurancePlan(),
                 preAuthInfo,
                 supportingInfo,
-                approvalDiagnosisMapper.toWaseelDiagnosisList(diagnoses),
+                diagnoses,
                 approvalCareTeamMapper.toWaseelCareTeam(encounter),
                 null,
                 null,
@@ -633,6 +635,17 @@ public class ClaimRequestBuilderService {
             return today.minusDays(1);
         }
         return candidate;
+    }
+
+    private List<WaseelApprovalDiagnosis> resolveClaimDiagnoses(Long encounterId) {
+        return claimEncounterCopyRepository.findByEncounterId(encounterId)
+                .map(ClaimEncounterCopy::getId)
+                .map(copyId -> approvalDiagnosisMapper.toWaseelClaimDiagnosisList(
+                        claimEncounterDiagnosisRepository.findByClaimEncounterCopyId(copyId)
+                ))
+                .orElseGet(() -> approvalDiagnosisMapper.toWaseelDiagnosisList(
+                        patientDiagnosisRepository.findByEncounterId(encounterId)
+                ));
     }
 
     private WaseelClaimEncounter buildClaimEncounter(
