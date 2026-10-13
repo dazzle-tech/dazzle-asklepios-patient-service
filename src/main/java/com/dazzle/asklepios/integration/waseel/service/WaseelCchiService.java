@@ -149,12 +149,13 @@ public class WaseelCchiService {
 
         String documentId = cchiPatientLookupService.resolveInsuranceFetchDocumentId(patient, selectedDocumentId);
 
-        cchiPatientLookupService.markAsCchiPatient(patient, documentId);
-        patient = patientRepository.findById(patientId).orElse(patient);
-
         CchiMappedPatientResponse mapped = fetchMappedPatientByDocumentId(documentId);
         if (mapped == null) {
             return new CchiMappedPatientResponse(patient, null, null, List.of());
+        }
+
+        if (hasReturnedDocument(mapped.document())) {
+            patient = cchiPatientLookupService.markAsCchiPatient(patient, documentId);
         }
 
         List<PatientInsurance> insurances = mapped.insurances() == null
@@ -188,12 +189,14 @@ public class WaseelCchiService {
             );
         }
 
-        cchiPatientLookupService.markAsCchiPatient(patient);
-        patient = patientRepository.findById(patientId).orElse(patient);
-
         CchiMappedPatientResponse mapped = fetchMappedPatientByDocumentId(documentId);
         if (mapped == null) {
             return new CchiMappedPatientResponse(patient, null, null, List.of());
+        }
+
+        boolean documentReturned = hasReturnedDocument(mapped.document());
+        if (documentReturned) {
+            patient = cchiPatientLookupService.markAsCchiPatient(patient, documentId);
         }
 
         Patient refreshedPatient = mapped.patient();
@@ -201,7 +204,9 @@ public class WaseelCchiService {
             refreshedPatient.setId(patient.getId());
             refreshedPatient.setMedicalRecordNumber(patient.getMedicalRecordNumber());
             refreshedPatient.setDocumentId(patient.getDocumentId());
-            refreshedPatient.setIsCchiPatient(true);
+            refreshedPatient.setIsCchiPatient(
+                    documentReturned || Boolean.TRUE.equals(patient.getIsCchiPatient())
+            );
             refreshedPatient.setIsVerified(patient.getIsVerified());
             refreshedPatient.setIsCompletedPatient(patient.getIsCompletedPatient());
             refreshedPatient.setActivated(patient.isActivated());
@@ -337,6 +342,12 @@ public class WaseelCchiService {
     public CchiMappedPatientResponse fetchMappedPatientByDocumentId(String documentId) {
         CchiInquiryResponse response = fetchBeneficiaryByDocumentId(documentId);
         return mapInquiryResponse(response);
+    }
+
+    private boolean hasReturnedDocument(PatientDocument document) {
+        return document != null
+                && document.getNumber() != null
+                && !document.getNumber().isBlank();
     }
 
     private CchiMappedPatientResponse mapInquiryResponse(CchiInquiryResponse response) {
