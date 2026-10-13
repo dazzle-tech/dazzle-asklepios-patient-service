@@ -310,6 +310,13 @@ public class ToothActionService {
         List<CdtServiceMappingDTO> mappings = cdtServiceMappingHelper.getServiceMappingsForCdt(dto.cdtCodeId());
         for (CdtServiceMappingDTO mapping : mappings) {
             ServiceSetupDTO setupService = serviceHelper.getService(mapping.serviceId());
+            if (setupService.price() == null) {
+                throw new BadRequestAlertException(
+                        "Service '" + setupService.name() + "' has no price configured",
+                        "toothService",
+                        "priceRequired"
+                );
+            }
 
             ToothService toothServiceRow = ToothService.builder()
                     .toothId(tooth.getId())

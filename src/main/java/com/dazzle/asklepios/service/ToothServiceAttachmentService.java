@@ -90,6 +90,13 @@ public class ToothServiceAttachmentService {
         DentalChart chart = getChart(tooth.getChartId());
 
         ServiceSetupDTO setupService = serviceHelper.getService(dto.serviceId());
+        if (setupService.price() == null) {
+            throw new BadRequestAlertException(
+                    "Service '" + setupService.name() + "' has no price configured",
+                    "toothService",
+                    "priceRequired"
+            );
+        }
 
         ToothService toothServiceRow = ToothService.builder()
                 .toothId(tooth.getId())
