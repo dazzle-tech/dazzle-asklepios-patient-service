@@ -60,6 +60,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -69,6 +70,7 @@ import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -398,6 +400,14 @@ public class PatientEncounterService {
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             LOG.warn("[UPDATE] PatientEncounter failed (constraint) id={} payload={}", patientEncounterId, updateDTO, ex);
             throw handleConstraintViolation(ex);
+        } catch (UncategorizedSQLException ex) {
+            BadRequestAlertException ongoingEmergency = ongoingEmergencyEncounterViolation(ex);
+            if (ongoingEmergency != null) {
+                LOG.warn("[UPDATE] PatientEncounter failed (constraint) id={} payload={}", patientEncounterId, updateDTO, ex);
+                throw ongoingEmergency;
+            }
+            LOG.error("[UPDATE] PatientEncounter failed (unexpected) id={} payload={}", patientEncounterId, updateDTO, ex);
+            throw ex;
         } catch (RuntimeException ex) {
             LOG.error("[UPDATE] PatientEncounter failed (unexpected) id={} payload={}", patientEncounterId, updateDTO, ex);
             throw ex;
@@ -907,6 +917,13 @@ public class PatientEncounterService {
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             LOG.warn("[START] failed (constraint) id={}", encounterId, ex);
             throw handleConstraintViolation(ex);
+        } catch (UncategorizedSQLException ex) {
+            BadRequestAlertException ongoingEmergency = ongoingEmergencyEncounterViolation(ex);
+            if (ongoingEmergency != null) {
+                LOG.warn("[START] failed (constraint) id={}", encounterId, ex);
+                throw ongoingEmergency;
+            }
+            throw ex;
         }
     }
 
@@ -1344,7 +1361,7 @@ public class PatientEncounterService {
             missing.add("Social History");
         }
 
-        if (!progressNotes) {
+        if (!progressNotes && encounter.getEncounterType() != EncounterType.CLINIC) {
             missing.add("Progress Notes");
         }
 
@@ -1458,8 +1475,20 @@ public class PatientEncounterService {
         encounter.setDischargeAt(null);
         encounter.setDischargeType(null);
 
-        PatientEncounter saved =
-                patientEncounterRepository.saveAndFlush(encounter);
+        PatientEncounter saved;
+        try {
+            saved = patientEncounterRepository.saveAndFlush(encounter);
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            LOG.warn("[REOPEN] failed (constraint) id={}", encounterId, ex);
+            throw handleConstraintViolation(ex);
+        } catch (UncategorizedSQLException ex) {
+            BadRequestAlertException ongoingEmergency = ongoingEmergencyEncounterViolation(ex);
+            if (ongoingEmergency != null) {
+                LOG.warn("[REOPEN] failed (constraint) id={}", encounterId, ex);
+                throw ongoingEmergency;
+            }
+            throw ex;
+        }
 
         LOG.info(
                 "[REOPEN] success id={} fromStatus={} toStatus={}",
@@ -2220,6 +2249,11 @@ public class PatientEncounterService {
 
         LOG.warn("[DB_CONSTRAINT] PatientEncounter constraint violated rootMessage={}", message, exception);
 
+        BadRequestAlertException ongoingEmergency = ongoingEmergencyEncounterViolation(exception);
+        if (ongoingEmergency != null) {
+            return ongoingEmergency;
+        }
+
         if (messageLower.contains("ck_patient_encounters_follow_up_required")) {
             return new BadRequestAlertException(
                     "Follow-up encounter is required when reason is FOLLOW_UP (and must be empty otherwise).",
@@ -2281,6 +2315,44 @@ public class PatientEncounterService {
                 "patientEncounter",
                 "db.constraint"
         );
+    }
+
+    private BadRequestAlertException ongoingEmergencyEncounterViolation(Throwable exception) {
+        if (!mentionsOngoingEmergencyEncounter(exception)) {
+            return null;
+        }
+        return new BadRequestAlertException(
+                "Patient already has an ongoing emergency encounter. Cannot create another ongoing emergency encounter.",
+                "patientEncounter",
+                "patient.emergency.ongoingEncounter"
+        );
+    }
+
+    private boolean mentionsOngoingEmergencyEncounter(Throwable exception) {
+        Throwable current = exception;
+        int depth = 0;
+        while (current != null && depth++ < 20) {
+            if (containsOngoingEmergencyText(current.getMessage())) {
+                return true;
+            }
+            if (current instanceof SQLException sqlException) {
+                SQLException next = sqlException.getNextException();
+                int nextDepth = 0;
+                while (next != null && nextDepth++ < 20) {
+                    if (containsOngoingEmergencyText(next.getMessage())) {
+                        return true;
+                    }
+                    next = next.getNextException();
+                }
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private boolean containsOngoingEmergencyText(String message) {
+        return message != null
+                && message.toLowerCase().contains("patient already has an ongoing emergency encounter");
     }
 
     @Transactional(readOnly = true)

@@ -18,10 +18,12 @@ import com.dazzle.asklepios.web.rest.vm.patientEncounter.EncounterAmendmentSumma
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.SQLException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -147,7 +149,7 @@ public class EncounterAmendmentService {
                     currentStatus
             );
             return savedSession;
-        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+        } catch (DataIntegrityViolationException | JpaSystemException | UncategorizedSQLException ex) {
             throw mapPersistenceFailure(ex);
         }
     }
@@ -288,6 +290,14 @@ public class EncounterAmendmentService {
     }
 
     private RuntimeException mapPersistenceFailure(RuntimeException ex) {
+        if (mentionsOngoingEmergencyEncounter(ex)) {
+            return new BadRequestAlertException(
+                    "Patient already has an ongoing emergency encounter. Cannot create another ongoing emergency encounter.",
+                    "patientEncounter",
+                    "patient.emergency.ongoingEncounter"
+            );
+        }
+
         Throwable root = getRootCause(ex);
         String details = ((ex.getMessage() == null ? "" : ex.getMessage()) + " "
                 + (root == null || root.getMessage() == null ? "" : root.getMessage())).toLowerCase();
@@ -307,6 +317,33 @@ public class EncounterAmendmentService {
             );
         }
         return ex;
+    }
+
+    private boolean mentionsOngoingEmergencyEncounter(Throwable exception) {
+        Throwable current = exception;
+        int depth = 0;
+        while (current != null && depth++ < 20) {
+            if (containsOngoingEmergencyText(current.getMessage())) {
+                return true;
+            }
+            if (current instanceof SQLException sqlException) {
+                SQLException next = sqlException.getNextException();
+                int nextDepth = 0;
+                while (next != null && nextDepth++ < 20) {
+                    if (containsOngoingEmergencyText(next.getMessage())) {
+                        return true;
+                    }
+                    next = next.getNextException();
+                }
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private boolean containsOngoingEmergencyText(String message) {
+        return message != null
+                && message.toLowerCase().contains("patient already has an ongoing emergency encounter");
     }
 
     private String currentUsername() {
