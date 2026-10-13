@@ -572,17 +572,20 @@ public class EncounterListService {
                 ? resolvePaymentStatus(products)
                 : resolveInvoicePaymentStatus(invoiceItems);
 
-        String paymentType =
-                encounter.getCoverageType() != null
-                        ? encounter.getCoverageType().name()
-                        : defaultService != null
-                        ? defaultService.getPaymentType()
-                        : null;
-
         PatientInsurance insurance =
                 patientId != null
                         ? insuranceMap.get(patientId)
                         : null;
+
+        String paymentType = selfPayOrInsurance(
+                encounter.getCoverageType(),
+                defaultService != null
+                        ? defaultService.getPaymentType()
+                        : null,
+                insurance != null
+                        ? insurance.getCoverageType()
+                        : null
+        );
 
         String insuranceName =
                 insurance != null
@@ -811,6 +814,56 @@ public class EncounterListService {
 
                 false
         );
+    }
+
+    private String selfPayOrInsurance(
+            BillingCoverageType encounterCoverage,
+            String servicePaymentType,
+            String insuranceCoverageType
+    ) {
+        if (encounterCoverage == BillingCoverageType.INSURANCE) {
+            return BillingCoverageType.INSURANCE.name();
+        }
+
+        if (encounterCoverage == BillingCoverageType.SELF_PAY) {
+            return BillingCoverageType.SELF_PAY.name();
+        }
+
+        if (isInsurancePayment(servicePaymentType)) {
+            return BillingCoverageType.INSURANCE.name();
+        }
+
+        if (isSelfPayPayment(servicePaymentType)) {
+            return BillingCoverageType.SELF_PAY.name();
+        }
+
+        if (insuranceCoverageType != null
+                && !insuranceCoverageType.isBlank()
+                && !isSelfPayPayment(insuranceCoverageType)) {
+            return BillingCoverageType.INSURANCE.name();
+        }
+
+        return null;
+    }
+
+    private boolean isInsurancePayment(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+
+        String normalized = value.trim().toUpperCase();
+        return normalized.equals(BillingCoverageType.INSURANCE.name())
+                || normalized.equals("INSURANCE_PLAN");
+    }
+
+    private boolean isSelfPayPayment(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+
+        String normalized = value.trim().toUpperCase();
+        return normalized.equals(BillingCoverageType.SELF_PAY.name())
+                || normalized.equals("CASH");
     }
 
     private boolean isInsuranceCoverage(String coverageType) {
