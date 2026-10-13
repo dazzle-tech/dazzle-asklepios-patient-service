@@ -1,0 +1,19 @@
+package com.dazzle.asklepios.client.setup;
+
+import com.dazzle.asklepios.client.setup.dto.DentalActionSetupDTO;
+import com.dazzle.asklepios.config.SetupServiceFeignConfig;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+
+@FeignClient(
+        name = "setupServiceClient",
+        contextId = "dentalActionClient",
+        url = "${service.asklepios-setup-service-url}",
+        configuration = SetupServiceFeignConfig.class
+)
+public interface DentalActionClient {
+
+    @GetMapping("/api/setup/dental-actions/{id}")
+    DentalActionSetupDTO getDentalAction(@PathVariable("id") Long id);
+}
