@@ -54,6 +54,12 @@ public class ToothAction extends AbstractAuditingEntity<Long> implements Seriali
     @Column(name = "image_name")
     private String imageName;
 
+    @Column(name = "anesthesia_used")
+    private String anesthesiaUsed;
+
+    @Column(name = "dose")
+    private String dose;
+
     // Plain string (see DentalChartTooth.toothNumber) -- denormalized from the
     // parent tooth at save time.
     @NotNull

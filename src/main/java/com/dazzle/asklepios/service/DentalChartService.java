@@ -178,6 +178,8 @@ public class DentalChartService {
                         .existing(sourceAction.isExisting())
                         .imageName(sourceAction.getImageName())
                         .toothNumber(sourceAction.getToothNumber())
+                        .anesthesiaUsed(sourceAction.getAnesthesiaUsed())
+                        .dose(sourceAction.getDose())
                         .cancelled(false)
                         .build();
                 toothActionRepository.save(clonedAction);

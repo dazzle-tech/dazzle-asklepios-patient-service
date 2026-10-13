@@ -177,6 +177,8 @@ public class ToothActionService {
             toothAction.setExisting(dto.existing());
             toothAction.setImageName(action.imageName());
             toothAction.setToothNumber(tooth.getToothNumber());
+            toothAction.setAnesthesiaUsed(dto.anesthesiaUsed());
+            toothAction.setDose(dto.dose());
         } else {
             toothAction = ToothAction.builder()
                     .toothId(tooth.getId())
@@ -186,6 +188,8 @@ public class ToothActionService {
                     .existing(dto.existing())
                     .imageName(action.imageName())
                     .toothNumber(tooth.getToothNumber())
+                    .anesthesiaUsed(dto.anesthesiaUsed())
+                    .dose(dto.dose())
                     .cancelled(false)
                     .build();
         }
@@ -337,9 +341,7 @@ public class ToothActionService {
                 .toothId(tooth.getId())
                 .note(savedToothAction.getNote())
                 .surface(dto.surface())
-                .fees(BigDecimal.ZERO)
                 .insurance(BigDecimal.ZERO)
-                .discount(BigDecimal.ZERO)
                 .source(ServiceSource.DENTAL_CHART_CDT_TREATMENT)
                 .toothActionId(savedToothAction.getId())
                 .cancelled(false)

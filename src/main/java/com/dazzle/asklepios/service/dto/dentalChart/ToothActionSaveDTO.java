@@ -12,5 +12,7 @@ public record ToothActionSaveDTO(
         String note,
         @NotNull ToothSurface surface,
         Long cdtCodeId,
-        boolean existing
+        boolean existing,
+        String anesthesiaUsed,
+        String dose
 ) implements Serializable {}

@@ -65,17 +65,9 @@ public class DentalPlannedTreatment extends AbstractAuditingEntity<Long> impleme
     @Column(name = "surface")
     private ToothSurface surface;
 
-    @Column(name = "fees", nullable = false, precision = 10, scale = 2)
-    @Builder.Default
-    private BigDecimal fees = BigDecimal.ZERO;
-
     @Column(name = "insurance", nullable = false, precision = 10, scale = 2)
     @Builder.Default
     private BigDecimal insurance = BigDecimal.ZERO;
-
-    @Column(name = "discount", nullable = false, precision = 10, scale = 2)
-    @Builder.Default
-    private BigDecimal discount = BigDecimal.ZERO;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "source")
