@@ -9,6 +9,7 @@ import com.dazzle.asklepios.domain.ToothAction;
 import com.dazzle.asklepios.domain.ToothActionLog;
 import com.dazzle.asklepios.domain.enumeration.DentalChartStatus;
 import com.dazzle.asklepios.domain.enumeration.DentalChartType;
+import com.dazzle.asklepios.domain.enumeration.PrimaryToothNumber;
 import com.dazzle.asklepios.domain.enumeration.ToothNumber;
 import com.dazzle.asklepios.repository.DentalChartProgressNoteRepository;
 import com.dazzle.asklepios.repository.DentalChartRepository;
@@ -35,7 +36,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 @Service
@@ -43,6 +47,12 @@ import java.util.List;
 public class DentalChartService {
 
     private static final Logger LOG = LoggerFactory.getLogger(DentalChartService.class);
+
+    // Patients younger than this get a primary (deciduous/"baby") tooth set
+    // instead of the permanent 32-tooth set. Mixed dentition (roughly ages
+    // 6-12, where both sets are partially present) is not modeled yet --
+    // this is a simple binary split pending a real clinical requirement.
+    private static final int CHILD_AGE_THRESHOLD = 13;
 
     private final DentalChartRepository dentalChartRepository;
     private final DentalChartToothRepository dentalChartToothRepository;
@@ -101,11 +111,12 @@ public class DentalChartService {
 
     private DentalChartResponseDTO createChartForEncounter(PatientEncounter encounter) {
         Patient patient = encounter.getPatient();
+        DentalChartType chartType = resolveChartType(patient);
 
         DentalChart newChart = DentalChart.builder()
                 .patient(patient)
                 .encounter(encounter)
-                .chartType(DentalChartType.ADULT)
+                .chartType(chartType)
                 .status(DentalChartStatus.NEW)
                 .chartDate(Instant.now())
                 .build();
@@ -113,7 +124,7 @@ public class DentalChartService {
         newChart = dentalChartRepository.saveAndFlush(newChart);
 
         List<DentalChartTooth> teeth = new ArrayList<>();
-        for (ToothNumber toothNumber : ToothNumber.values()) {
+        for (String toothNumber : toothIdentifiersFor(chartType)) {
             teeth.add(
                     DentalChartTooth.builder()
                             .chartId(newChart.getId())
@@ -242,6 +253,22 @@ public class DentalChartService {
                 chartActions,
                 historyCharts
         );
+    }
+
+    private DentalChartType resolveChartType(Patient patient) {
+        LocalDate dob = patient.getDateOfBirth();
+        if (dob == null) {
+            return DentalChartType.ADULT;
+        }
+        int age = Period.between(dob, LocalDate.now()).getYears();
+        return age < CHILD_AGE_THRESHOLD ? DentalChartType.CHILD : DentalChartType.ADULT;
+    }
+
+    private List<String> toothIdentifiersFor(DentalChartType chartType) {
+        if (chartType == DentalChartType.CHILD) {
+            return Arrays.stream(PrimaryToothNumber.values()).map(Enum::name).toList();
+        }
+        return Arrays.stream(ToothNumber.values()).map(Enum::name).toList();
     }
 
     private PatientEncounter getEncounter(Long encounterId) {

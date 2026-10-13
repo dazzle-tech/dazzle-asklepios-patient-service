@@ -1,7 +1,6 @@
 package com.dazzle.asklepios.service.dto.dentalChart;
 
 import com.dazzle.asklepios.domain.ToothAction;
-import com.dazzle.asklepios.domain.enumeration.ToothNumber;
 import com.dazzle.asklepios.domain.enumeration.ToothSurface;
 
 import java.io.Serializable;
@@ -15,7 +14,7 @@ public record ToothActionDTO(
         ToothSurface surface,
         boolean existing,
         String imageName,
-        ToothNumber toothNumber,
+        String toothNumber,
         boolean cancelled,
         String cancelledBy,
         Instant cancelledDate,

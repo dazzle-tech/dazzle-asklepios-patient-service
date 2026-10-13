@@ -1,14 +1,13 @@
 package com.dazzle.asklepios.service.dto.dentalChart;
 
 import com.dazzle.asklepios.domain.DentalChartTooth;
-import com.dazzle.asklepios.domain.enumeration.ToothNumber;
 
 import java.io.Serializable;
 
 public record DentalChartToothSummaryDTO(
         Long id,
         Long chartId,
-        ToothNumber toothNumber,
+        String toothNumber,
         boolean missing
 ) implements Serializable {
 

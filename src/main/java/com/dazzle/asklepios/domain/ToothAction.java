@@ -1,6 +1,5 @@
 package com.dazzle.asklepios.domain;
 
-import com.dazzle.asklepios.domain.enumeration.ToothNumber;
 import com.dazzle.asklepios.domain.enumeration.ToothSurface;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -55,10 +54,11 @@ public class ToothAction extends AbstractAuditingEntity<Long> implements Seriali
     @Column(name = "image_name")
     private String imageName;
 
+    // Plain string (see DentalChartTooth.toothNumber) -- denormalized from the
+    // parent tooth at save time.
     @NotNull
-    @Enumerated(EnumType.STRING)
     @Column(name = "tooth_number", nullable = false)
-    private ToothNumber toothNumber;
+    private String toothNumber;
 
     @Column(name = "is_cancelled", nullable = false)
     private boolean cancelled = false;

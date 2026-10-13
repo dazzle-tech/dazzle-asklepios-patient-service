@@ -1,7 +1,6 @@
 package com.dazzle.asklepios.service.dto.dentalChart;
 
 import com.dazzle.asklepios.domain.DentalChartTooth;
-import com.dazzle.asklepios.domain.enumeration.ToothNumber;
 
 import java.io.Serializable;
 import java.util.List;
@@ -9,7 +8,7 @@ import java.util.List;
 public record DentalChartToothDTO(
         Long id,
         Long chartId,
-        ToothNumber toothNumber,
+        String toothNumber,
         boolean missing,
         List<ToothActionDTO> actions,
         List<ToothActionLogDTO> history,
