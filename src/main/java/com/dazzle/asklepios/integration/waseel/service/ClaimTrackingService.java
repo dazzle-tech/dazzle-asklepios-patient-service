@@ -3,11 +3,13 @@ package com.dazzle.asklepios.integration.waseel.service;
 import com.dazzle.asklepios.domain.ClaimItem;
 import com.dazzle.asklepios.domain.ClaimRequest;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
+import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimTrackingCriteria;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimTrackingItemResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimTrackingResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimValidationError;
 import com.dazzle.asklepios.repository.ClaimItemRepository;
 import com.dazzle.asklepios.repository.ClaimRequestRepository;
+import com.dazzle.asklepios.repository.ClaimTrackingSpecification;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -30,7 +32,13 @@ public class ClaimTrackingService {
     private final ObjectMapper objectMapper;
 
     public Page<ClaimTrackingResponse> findAll(Pageable pageable) {
-        return claimRequestRepository.findAll(pageable).map(this::toResponse);
+        return findAll(null, pageable);
+    }
+
+    public Page<ClaimTrackingResponse> findAll(ClaimTrackingCriteria criteria, Pageable pageable) {
+        return claimRequestRepository
+                .findAll(ClaimTrackingSpecification.of(criteria), pageable)
+                .map(this::toResponse);
     }
 
     public ClaimTrackingResponse findById(Long id) {
