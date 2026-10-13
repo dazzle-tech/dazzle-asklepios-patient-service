@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.BillingCharge;
 import com.dazzle.asklepios.domain.BillingChargeLine;
+import com.dazzle.asklepios.domain.FinancialDocumentItem;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
@@ -48,19 +49,22 @@ public class EncounterExecutedServicesService {
     private final BillingChargeRepository billingChargeRepository;
     private final BillingChargeLineRepository billingChargeLineRepository;
     private final BillingItemDisplayNameService billingItemDisplayNameService;
+    private final EncounterInvoicePaymentReader encounterInvoicePaymentReader;
 
     public EncounterExecutedServicesService(
             PatientEncounterRepository patientEncounterRepository,
             PatientServiceAndProductRepository patientServiceAndProductRepository,
             BillingChargeRepository billingChargeRepository,
             BillingChargeLineRepository billingChargeLineRepository,
-            BillingItemDisplayNameService billingItemDisplayNameService
+            BillingItemDisplayNameService billingItemDisplayNameService,
+            EncounterInvoicePaymentReader encounterInvoicePaymentReader
     ) {
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.billingChargeRepository = billingChargeRepository;
         this.billingChargeLineRepository = billingChargeLineRepository;
         this.billingItemDisplayNameService = billingItemDisplayNameService;
+        this.encounterInvoicePaymentReader = encounterInvoicePaymentReader;
     }
 
     public EncounterExecutedServicesVM getByEncounterId(Long encounterId) {
@@ -76,6 +80,8 @@ public class EncounterExecutedServicesService {
                 patientServiceAndProductRepository.findByEncounterId(encounterId);
 
         List<BillingChargeLine> chargeLines = chargeLines(encounterId);
+        Map<Long, BigDecimal> invoicePaidByService =
+                invoicePaidByService(encounterId);
         Map<String, String> displayNames = new HashMap<>();
         Set<Long> billedItemIds = new HashSet<>();
         List<EncounterExecutedServiceLineVM> lines = new ArrayList<>();
@@ -85,14 +91,14 @@ public class EncounterExecutedServicesService {
             if (item != null && item.getId() != null) {
                 billedItemIds.add(item.getId());
             }
-            lines.add(fromChargeLine(chargeLine, item, displayNames));
+            lines.add(fromChargeLine(chargeLine, item, displayNames, invoicePaidByService));
         }
 
         for (PatientServiceAndProduct item : items) {
             if (item.getId() != null && billedItemIds.contains(item.getId())) {
                 continue;
             }
-            lines.add(fromItem(item, displayNames));
+            lines.add(fromItem(item, displayNames, invoicePaidByService));
         }
 
         String coverageType = encounter.getCoverageType() == null
@@ -138,10 +144,48 @@ public class EncounterExecutedServicesService {
                 .toList();
     }
 
+    private Map<Long, BigDecimal> invoicePaidByService(Long encounterId) {
+        Map<Long, BigDecimal> paidByService = new HashMap<>();
+        List<FinancialDocumentItem> invoiceItems =
+                encounterInvoicePaymentReader
+                        .patientInvoiceItems(List.of(encounterId))
+                        .getOrDefault(encounterId, List.of());
+
+        for (FinancialDocumentItem invoiceItem : invoiceItems) {
+            if (invoiceItem.getPatientServiceProductId() == null) {
+                continue;
+            }
+
+            paidByService.merge(
+                    invoiceItem.getPatientServiceProductId(),
+                    ExecutedServiceAmounts.zeroIfNull(invoiceItem.getPaidAmount()),
+                    BigDecimal::add
+            );
+        }
+
+        return paidByService;
+    }
+
+    private BigDecimal patientPaid(
+            PatientServiceAndProduct item,
+            Map<Long, BigDecimal> invoicePaidByService
+    ) {
+        if (item != null
+                && item.getId() != null
+                && invoicePaidByService.containsKey(item.getId())) {
+            return invoicePaidByService.get(item.getId());
+        }
+
+        return ExecutedServiceAmounts.zeroIfNull(
+                item == null ? null : item.getPaidAmount()
+        );
+    }
+
     private EncounterExecutedServiceLineVM fromChargeLine(
             BillingChargeLine line,
             PatientServiceAndProduct item,
-            Map<String, String> displayNames
+            Map<String, String> displayNames,
+            Map<Long, BigDecimal> invoicePaidByService
     ) {
         BigDecimal net = ExecutedServiceAmounts.net(
                 line.getNetAmount(),
@@ -187,15 +231,14 @@ public class EncounterExecutedServicesService {
                 ),
                 line.getCurrency() == null ? null : line.getCurrency().name(),
                 gross(line.getGrossAmount(), line.getUnitPrice(), line.getQuantity()),
-                ExecutedServiceAmounts.zeroIfNull(
-                        item == null ? null : item.getPaidAmount()
-                )
+                patientPaid(item, invoicePaidByService)
         );
     }
 
     private EncounterExecutedServiceLineVM fromItem(
             PatientServiceAndProduct item,
-            Map<String, String> displayNames
+            Map<String, String> displayNames,
+            Map<Long, BigDecimal> invoicePaidByService
     ) {
         BigDecimal quantity = item.getQuantity() == null
                 ? BigDecimal.ONE
@@ -240,7 +283,7 @@ public class EncounterExecutedServicesService {
                 ExecutedServiceAmounts.insuranceShare(item.getInsuranceShareAmount()),
                 item.getCurrency() == null ? null : item.getCurrency().name(),
                 gross(item.getGrossAmount(), item.getUnitPrice(), quantity),
-                ExecutedServiceAmounts.zeroIfNull(item.getPaidAmount())
+                patientPaid(item, invoicePaidByService)
         );
     }
 

@@ -62,6 +62,13 @@ public interface FinancialDocumentRepository extends JpaRepository<FinancialDocu
             Collection<FinancialDocumentStatus> statuses
     );
 
+    List<FinancialDocument> findAllByEncounterIdInAndDocumentTypeAndDocumentSubtypeAndStatusIn(
+            Collection<Long> encounterIds,
+            FinancialDocumentType documentType,
+            FinancialDocumentSubtype documentSubtype,
+            Collection<FinancialDocumentStatus> statuses
+    );
+
     Optional<FinancialDocument> findFirstByEncounterIdAndDocumentTypeAndDocumentSubtypeOrderByIdDesc(
             Long encounterId,
             FinancialDocumentType documentType,

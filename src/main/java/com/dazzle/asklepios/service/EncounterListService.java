@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
 import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
+import com.dazzle.asklepios.domain.FinancialDocumentItem;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
@@ -60,6 +61,7 @@ public class EncounterListService {
     private final DepartmentHelper departmentHelper;
     private final PractitionerHelper practitionerHelper;
     private final ServiceHelper serviceHelper;
+    private final EncounterInvoicePaymentReader encounterInvoicePaymentReader;
 
     public EncounterListService(
             EncounterListRepository encounterListRepository,
@@ -73,7 +75,8 @@ public class EncounterListService {
             PatientObservationsComplaintsRepository patientObservationsComplaintsRepository,
             DepartmentHelper departmentHelper,
             PractitionerHelper practitionerHelper,
-            ServiceHelper serviceHelper
+            ServiceHelper serviceHelper,
+            EncounterInvoicePaymentReader encounterInvoicePaymentReader
     ) {
         this.encounterListRepository = encounterListRepository;
         this.patientInsuranceRepository = patientInsuranceRepository;
@@ -89,6 +92,7 @@ public class EncounterListService {
         this.departmentHelper = departmentHelper;
         this.practitionerHelper = practitionerHelper;
         this.serviceHelper = serviceHelper;
+        this.encounterInvoicePaymentReader = encounterInvoicePaymentReader;
     }
 
     public Page<EncounterListVM> search(
@@ -305,6 +309,9 @@ public class EncounterListService {
                                 PatientServiceAndProduct::getEncounterId
                         ));
 
+        Map<Long, List<FinancialDocumentItem>> invoiceItemsByEncounter =
+                encounterInvoicePaymentReader.patientInvoiceItems(encounterIds);
+
         Set<Long> observedEncounterIds = new HashSet<>();
 
         if (!encounterIds.isEmpty()) {
@@ -459,6 +466,7 @@ public class EncounterListService {
                         encounter,
                         insuranceMap,
                         serviceMap,
+                        invoiceItemsByEncounter,
                         practitionerNames,
                         serviceNames,
                         departmentNames,
@@ -471,6 +479,7 @@ public class EncounterListService {
             PatientEncounter encounter,
             Map<Long, PatientInsurance> insuranceMap,
             Map<Long, List<PatientServiceAndProduct>> serviceMap,
+            Map<Long, List<FinancialDocumentItem>> invoiceItemsByEncounter,
             Map<Long, String> practitionerNames,
             Map<Long, String> serviceNames,
             Map<Long, String> departmentNames,
@@ -550,10 +559,18 @@ public class EncounterListService {
 
         BigDecimal calculatedTotal = executedTotal(executed);
         BigDecimal patientTotal = patientTotal(executed);
-        BigDecimal patientPaidTotal = sumPatientPaid(executed);
+        List<FinancialDocumentItem> invoiceItems =
+                invoiceItemsByEncounter.getOrDefault(
+                        encounter.getId(),
+                        List.of()
+                );
+        BigDecimal patientPaidTotal = invoiceItems.isEmpty()
+                ? sumPatientPaid(executed)
+                : sumInvoicePaid(invoiceItems);
 
-        String paymentStatus =
-                resolvePaymentStatus(products);
+        String paymentStatus = invoiceItems.isEmpty()
+                ? resolvePaymentStatus(products)
+                : resolveInvoicePaymentStatus(invoiceItems);
 
         String paymentType =
                 encounter.getCoverageType() != null
@@ -861,6 +878,45 @@ public class EncounterListService {
                 item.getUnitPrice(),
                 quantity
         );
+    }
+
+    private BigDecimal sumInvoicePaid(
+            List<FinancialDocumentItem> items
+    ) {
+        return items.stream()
+                .map(item ->
+                        ExecutedServiceAmounts.zeroIfNull(
+                                item.getPaidAmount()
+                        )
+                )
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private String resolveInvoicePaymentStatus(
+            List<FinancialDocumentItem> items
+    ) {
+        BigDecimal paid = sumInvoicePaid(items);
+        BigDecimal remaining = items.stream()
+                .map(item ->
+                        ExecutedServiceAmounts.zeroIfNull(
+                                item.getRemainingAmount()
+                        )
+                )
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        if (remaining.signum() > 0 && paid.signum() > 0) {
+            return PaymentStatus.PARTIALLY_PAID.name();
+        }
+
+        if (remaining.signum() > 0) {
+            return "REMAINING_TO_PAY";
+        }
+
+        if (paid.signum() > 0) {
+            return PaymentStatus.PAID.name();
+        }
+
+        return null;
     }
 
     private String resolvePaymentStatus(
