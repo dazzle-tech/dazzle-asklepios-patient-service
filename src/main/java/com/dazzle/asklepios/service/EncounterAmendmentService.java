@@ -11,7 +11,6 @@ import com.dazzle.asklepios.repository.EncounterReopenSessionRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.UserRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
-import com.dazzle.asklepios.service.dto.billing.EncounterHasInvoiceResponse;
 import com.dazzle.asklepios.service.dto.patientEncounter.EncounterAmendmentDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
@@ -42,18 +41,15 @@ public class EncounterAmendmentService {
     private final PatientEncounterRepository patientEncounterRepository;
     private final EncounterReopenSessionRepository encounterReopenSessionRepository;
     private final UserRepository userRepository;
-    private final InvoiceGenerationService invoiceGenerationService;
 
     public EncounterAmendmentService(
             PatientEncounterRepository patientEncounterRepository,
             EncounterReopenSessionRepository encounterReopenSessionRepository,
-            UserRepository userRepository,
-            InvoiceGenerationService invoiceGenerationService
+            UserRepository userRepository
     ) {
         this.patientEncounterRepository = patientEncounterRepository;
         this.encounterReopenSessionRepository = encounterReopenSessionRepository;
         this.userRepository = userRepository;
-        this.invoiceGenerationService = invoiceGenerationService;
     }
 
     public EncounterReopenSession startAmendment(Long encounterId, EncounterAmendmentDTO amendmentDTO) {
@@ -97,15 +93,6 @@ public class EncounterAmendmentService {
                     "Only completed or discharged encounters can be amended.",
                     ENTITY,
                     "amendment.notAllowed"
-            );
-        }
-
-        EncounterHasInvoiceResponse invoiceResponse = invoiceGenerationService.hasInvoice(encounterId);
-        if (invoiceResponse != null && invoiceResponse.hasInvoice()) {
-            throw new BadRequestAlertException(
-                    "Cannot amend encounter because an invoice has already been generated.",
-                    ENTITY,
-                    "amendment.invoiceExists"
             );
         }
 
