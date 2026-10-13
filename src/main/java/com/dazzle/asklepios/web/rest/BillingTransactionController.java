@@ -8,6 +8,7 @@ import com.dazzle.asklepios.service.dto.billing.BillingCancellationResult;
 import com.dazzle.asklepios.service.dto.billing.BillingCheckoutRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingCheckoutResult;
 import com.dazzle.asklepios.service.dto.billing.BillingPaymentResult;
+import com.dazzle.asklepios.service.dto.billing.BillingPaymentSummaryDTO;
 import com.dazzle.asklepios.service.dto.billing.BillingRefundRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingRefundResult;
 import com.dazzle.asklepios.service.dto.billing.BillingRefundReversalRequest;
@@ -29,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
+import java.util.List;
 
 @RestController
 @RequiredArgsConstructor
@@ -143,6 +145,52 @@ public class BillingTransactionController {
 
         return ResponseEntity.ok(
                 result
+        );
+    }
+
+    /*
+     * ============================================================
+     * PAYMENTS BY ENCOUNTER
+     * ============================================================
+     */
+
+    @GetMapping("/payments/by-encounter/{encounterId}")
+    public ResponseEntity<List<BillingPaymentSummaryDTO>>
+    getPaymentsByEncounter(
+            @PathVariable("encounterId")
+            @NotNull
+            Long encounterId
+    ) {
+        LOG.debug(
+                "REST request to list billing payments for encounterId={}",
+                encounterId
+        );
+
+        return ResponseEntity.ok(
+                billingPaymentService
+                        .findAllByEncounterId(
+                                encounterId
+                        )
+        );
+    }
+
+    @GetMapping("/payments/by-patient/{patientId}")
+    public ResponseEntity<List<BillingPaymentSummaryDTO>>
+    getPaymentsByPatient(
+            @PathVariable("patientId")
+            @NotNull
+            Long patientId
+    ) {
+        LOG.debug(
+                "REST request to list billing payments for patientId={}",
+                patientId
+        );
+
+        return ResponseEntity.ok(
+                billingPaymentService
+                        .findAllByPatientId(
+                                patientId
+                        )
         );
     }
 

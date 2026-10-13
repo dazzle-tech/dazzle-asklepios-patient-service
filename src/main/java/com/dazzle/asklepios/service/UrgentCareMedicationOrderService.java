@@ -50,11 +50,13 @@ public class UrgentCareMedicationOrderService {
     private final DepartmentHelper departmentHelper;
     private final FacilityHelper facilityHelper;
     private final NotificationHelper notificationHelper;
+    private final EncounterReopenGuard encounterReopenGuard;
 
     public UrgentCareMedicationOrderService(
             UrgentCareMedicationOrderRepository urgentCareMedicationOrderRepository,
             PatientRepository patientRepository,
-            PatientEncounterRepository patientEncounterRepository, ActiveIngredientHelper activeIngredientHelper, DepartmentHelper departmentHelper, FacilityHelper facilityHelper, NotificationHelper notificationHelper) {
+            PatientEncounterRepository patientEncounterRepository, ActiveIngredientHelper activeIngredientHelper, DepartmentHelper departmentHelper, FacilityHelper facilityHelper, NotificationHelper notificationHelper,
+            EncounterReopenGuard encounterReopenGuard) {
         this.urgentCareMedicationOrderRepository = urgentCareMedicationOrderRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
@@ -62,6 +64,19 @@ public class UrgentCareMedicationOrderService {
         this.departmentHelper = departmentHelper;
         this.facilityHelper = facilityHelper;
         this.notificationHelper = notificationHelper;
+        this.encounterReopenGuard = encounterReopenGuard;
+    }
+
+    private void rejectIfAmendmentOpen(PatientEncounter encounter) {
+        if (encounterReopenGuard != null && encounter != null) {
+            encounterReopenGuard.rejectIfOpenReopenSession(encounter.getId());
+        }
+    }
+
+    private void rejectIfAmendmentOpen(UrgentCareMedicationOrder order) {
+        if (order != null) {
+            rejectIfAmendmentOpen(order.getEncounter());
+        }
     }
 
     public List<UrgentCareMedicationOrder> create(UrgentCareMedicationOrderCreateDTO dto) {
@@ -85,6 +100,7 @@ public class UrgentCareMedicationOrderService {
                                 "encounter.notfound"
                         )
                 );
+        rejectIfAmendmentOpen(encounter);
 
         activeIngredientHelper.validateActiveIngredientExists(dto.activeIngredientId());
 
@@ -235,6 +251,7 @@ public class UrgentCareMedicationOrderService {
     }
     public UrgentCareMedicationOrder update(UrgentCareMedicationOrder existing, UrgentCareMedicationOrderUpdateDTO dto) {
         LOG.debug("[SERVICE][UPDATE] request -> existingId={} payload={}", existing.getId(), dto);
+        rejectIfAmendmentOpen(existing);
         activeIngredientHelper.validateActiveIngredientExists(dto.activeIngredientId());
         existing.setActiveIngredientId(dto.activeIngredientId());
         existing.setInstructionType(dto.instructionType());
@@ -275,6 +292,7 @@ public class UrgentCareMedicationOrderService {
                     "No medication orders found for orderGroupId " + orderGroupId
             );
         }
+        orders.forEach(this::rejectIfAmendmentOpen);
 
         for (UrgentCareMedicationOrder order : orders) {
 
@@ -498,6 +516,7 @@ public class UrgentCareMedicationOrderService {
         LOG.debug("[STATUS][SUBMIT] request -> orderId={} username={} isHighAlert={}", orderId, username, isHighAlert);
 
         UrgentCareMedicationOrder order = getOrder(orderId);
+        rejectIfAmendmentOpen(order);
 
         ensureTransition(order, MedicationOrderStatus.SUBMITTED);
 
@@ -536,6 +555,7 @@ public class UrgentCareMedicationOrderService {
                     "No medication orders found for orderGroupId " + orderGroupId
             );
         }
+        orders.forEach(this::rejectIfAmendmentOpen);
 
         Instant submittedDate = Instant.now();
 
@@ -573,6 +593,7 @@ public class UrgentCareMedicationOrderService {
         );
 
         UrgentCareMedicationOrder order = getOrder(orderId);
+        rejectIfAmendmentOpen(order);
 
         if (order.getStatus() != MedicationOrderStatus.SUBMITTED) {
             throw new BadRequestAlertException(
@@ -604,6 +625,7 @@ public class UrgentCareMedicationOrderService {
         );
 
         UrgentCareMedicationOrder order = getOrder(orderId);
+        rejectIfAmendmentOpen(order);
 
         if (order.getStatus() != MedicationOrderStatus.WAITING_DOUBLE_CHECK) {
             LOG.error(
@@ -654,6 +676,7 @@ public class UrgentCareMedicationOrderService {
         LOG.debug("[STATUS][DISCARD] request -> orderId={} username={} reason={}", orderId, username, discardReason);
 
         UrgentCareMedicationOrder order = getOrder(orderId);
+        rejectIfAmendmentOpen(order);
 
         ensureTransition(order, MedicationOrderStatus.DISCARDED);
 
@@ -674,6 +697,7 @@ public class UrgentCareMedicationOrderService {
         LOG.debug("[STATUS][CANCEL] request -> orderId={} username={} reason={}", orderId, username, cancellationReason);
 
         UrgentCareMedicationOrder order = getOrder(orderId);
+        rejectIfAmendmentOpen(order);
 
         ensureTransition(order, MedicationOrderStatus.CANCELLED);
 
@@ -824,6 +848,7 @@ public class UrgentCareMedicationOrderService {
         );
 
         UrgentCareMedicationOrder order = getOrder(orderId);
+        rejectIfAmendmentOpen(order);
 
         order.setActualAdministerTime(actualAdministerTime);
 

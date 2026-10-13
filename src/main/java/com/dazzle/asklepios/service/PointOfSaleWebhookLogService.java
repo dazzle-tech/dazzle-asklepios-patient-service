@@ -1,13 +1,17 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PointOfSaleTransaction;
 import com.dazzle.asklepios.domain.PointOfSaleWebhookLog;
+import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleSourceType;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PointOfSaleWebhookLogRepository;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleWebhookDTO;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleWebhookLogDTO;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleWebhookLogFilterDTO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +26,10 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -32,6 +40,9 @@ public class PointOfSaleWebhookLogService {
 
     private final PointOfSaleWebhookLogRepository
             pointOfSaleWebhookLogRepository;
+
+    private final PatientEncounterRepository
+            patientEncounterRepository;
 
     private final ObjectMapper objectMapper;
 
@@ -247,6 +258,53 @@ public class PointOfSaleWebhookLogService {
 
                     if (
                             StringUtils.hasText(
+                                    filter.encounterNumber()
+                            )
+                    ) {
+
+                        List<Long> matchingEncounterIds =
+                                patientEncounterRepository
+                                        .findByEncounterNumberContainingIgnoreCase(
+                                                filter.encounterNumber()
+                                        )
+                                        .stream()
+                                        .map(
+                                                encounter -> encounter.getId()
+                                        )
+                                        .toList();
+
+                        if (matchingEncounterIds.isEmpty()) {
+
+                            predicates.add(
+                                    cb.disjunction()
+                            );
+
+                        } else {
+
+                            Join<PointOfSaleWebhookLog, PointOfSaleTransaction>
+                                    transactionJoin =
+                                    root.join("transaction");
+
+                            predicates.add(
+                                    cb.and(
+                                            cb.equal(
+                                                    transactionJoin.get(
+                                                            "sourceType"
+                                                    ),
+                                                    PointOfSaleSourceType.ENCOUNTER
+                                            ),
+                                            transactionJoin
+                                                    .get("sourceReferenceId")
+                                                    .in(
+                                                            matchingEncounterIds
+                                                    )
+                                    )
+                            );
+                        }
+                    }
+
+                    if (
+                            StringUtils.hasText(
                                     filter.processingStatus()
                             )
                     ) {
@@ -304,27 +362,92 @@ public class PointOfSaleWebhookLogService {
                     );
                 };
 
-        return pointOfSaleWebhookLogRepository
-                .findAll(
-                        specification,
-                        pageable
+        Page<PointOfSaleWebhookLog> page =
+                pointOfSaleWebhookLogRepository
+                        .findAll(
+                                specification,
+                                pageable
+                        );
+
+        Set<Long> encounterIds =
+                page.getContent()
+                        .stream()
+                        .map(this::resolveEncounterId)
+                        .filter(Objects::nonNull)
+                        .collect(
+                                Collectors.toSet()
+                        );
+
+        Map<Long, String> encounterNumberById =
+                encounterIds.isEmpty()
+                        ? Map.of()
+                        : patientEncounterRepository
+                                .findAllById(encounterIds)
+                                .stream()
+                                .collect(
+                                        Collectors.toMap(
+                                                PatientEncounter::getId,
+                                                PatientEncounter::getEncounterNumber
+                                        )
+                                );
+
+        return page.map(
+                entity -> toDto(
+                        entity,
+                        encounterNumberById
                 )
-                .map(
-                        this::toDto
-                );
+        );
+    }
+
+    private Long resolveEncounterId(
+            PointOfSaleWebhookLog entity
+    ) {
+
+        PointOfSaleTransaction transaction =
+                entity.getTransaction();
+
+        return transaction != null &&
+                transaction.getSourceType() ==
+                        PointOfSaleSourceType.ENCOUNTER
+                ? transaction.getSourceReferenceId()
+                : null;
     }
 
     private PointOfSaleWebhookLogDTO toDto(
-            PointOfSaleWebhookLog entity
+            PointOfSaleWebhookLog entity,
+            Map<Long, String> encounterNumberById
     ) {
+
+        PointOfSaleTransaction transaction =
+                entity.getTransaction();
+
+        Long encounterId =
+                resolveEncounterId(entity);
+
+        String encounterNumber =
+                encounterId != null
+                        ? encounterNumberById.get(encounterId)
+                        : null;
 
         return new PointOfSaleWebhookLogDTO(
 
                 entity.getId(),
 
-                entity.getTransaction() != null
-                        ? entity.getTransaction().getId()
+                transaction != null
+                        ? transaction.getId()
                         : null,
+
+                transaction != null && transaction.getSourceType() != null
+                        ? transaction.getSourceType().name()
+                        : null,
+
+                transaction != null && transaction.getPatient() != null
+                        ? transaction.getPatient().getId()
+                        : null,
+
+                encounterId,
+
+                encounterNumber,
 
                 entity.getOrderId(),
 

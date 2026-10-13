@@ -11,5 +11,6 @@ public record ProgressNoteLogVM(
         Instant lastModifiedDate,
         String payload,
         String oldNoteText,
-        String newNoteText
+        String newNoteText,
+        Long reopenSessionId
 ) {}

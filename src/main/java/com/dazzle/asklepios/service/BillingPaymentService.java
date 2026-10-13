@@ -15,6 +15,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryDirecti
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerScope;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerSourceChannel;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerTransactionType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.PaymentCategory;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.BillingAllocationRepository;
@@ -27,6 +28,7 @@ import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingLedgerEntryRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingPaymentReservationResult;
 import com.dazzle.asklepios.service.dto.billing.BillingPaymentResult;
+import com.dazzle.asklepios.service.dto.billing.BillingPaymentSummaryDTO;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
 import com.dazzle.asklepios.service.dto.billing.CreateAdvancePaymentRequest;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -46,6 +48,7 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -468,6 +471,72 @@ public class BillingPaymentService {
                         );
 
         return loadExistingResult(payment);
+    }
+
+    @Transactional(readOnly = true)
+    public List<BillingPaymentSummaryDTO> findAllByEncounterId(
+            Long encounterId
+    ) {
+        if (encounterId == null) {
+            throw new BadRequestAlertException(
+                    "Encounter ID is required.",
+                    ENTITY_NAME,
+                    "encounterId.required"
+            );
+        }
+
+        return billingPaymentRepository
+                .findAllByEncounter_IdOrderByIdAsc(
+                        encounterId
+                )
+                .stream()
+                .map(this::toSummaryDto)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<BillingPaymentSummaryDTO> findAllByPatientId(
+            Long patientId
+    ) {
+        if (patientId == null) {
+            throw new BadRequestAlertException(
+                    "Patient ID is required.",
+                    ENTITY_NAME,
+                    "patientId.required"
+            );
+        }
+
+        return billingPaymentRepository
+                .findAllByPatient_IdAndStatusInOrderByPaymentDateDescIdDesc(
+                        patientId,
+                        EnumSet.of(
+                                BillingPaymentStatus.COMPLETED
+                        )
+                )
+                .stream()
+                .map(this::toSummaryDto)
+                .toList();
+    }
+
+    private BillingPaymentSummaryDTO toSummaryDto(
+            BillingPayment payment
+    ) {
+        return new BillingPaymentSummaryDTO(
+                payment.getId(),
+                payment.getPaymentNumber(),
+                payment.getEncounter() != null
+                        ? payment.getEncounter().getId()
+                        : null,
+                payment.getPaymentCategory(),
+                payment.getPayerType(),
+                payment.getAmount(),
+                payment.getCurrency(),
+                payment.getStatus(),
+                payment.getPaymentDate(),
+                payment.getReceiptNumber(),
+                payment.getExternalReference(),
+                payment.getNotes()
+        );
     }
 
     private BillingPayment createPayment(

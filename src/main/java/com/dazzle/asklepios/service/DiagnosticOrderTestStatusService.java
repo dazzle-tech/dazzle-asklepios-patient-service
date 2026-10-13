@@ -63,6 +63,7 @@ public class DiagnosticOrderTestStatusService {
     private final PatientItemPricingApplicationService patientItemPricingApplicationService;
 
     private final InsurancePriceListCoverageService insurancePriceListCoverageService;
+    private final EncounterReopenGuard encounterReopenGuard;
 
     private final DiagnosticChargeTimingService diagnosticChargeTimingService;
 
@@ -80,6 +81,7 @@ public class DiagnosticOrderTestStatusService {
             @Lazy PatientServiceAndProductService patientServiceAndProductService,
             PatientItemPricingApplicationService patientItemPricingApplicationService,
             InsurancePriceListCoverageService insurancePriceListCoverageService,
+            EncounterReopenGuard encounterReopenGuard,
             DiagnosticChargeTimingService diagnosticChargeTimingService
     ) {
         this.diagnosticOrderRepository = diagnosticOrderRepository;
@@ -95,6 +97,7 @@ public class DiagnosticOrderTestStatusService {
         this.patientServiceAndProductService = patientServiceAndProductService;
         this.patientItemPricingApplicationService = patientItemPricingApplicationService;
         this.insurancePriceListCoverageService = insurancePriceListCoverageService;
+        this.encounterReopenGuard = encounterReopenGuard;
         this.diagnosticChargeTimingService = diagnosticChargeTimingService;
     }
 
@@ -188,7 +191,7 @@ public class DiagnosticOrderTestStatusService {
 
         if (Boolean.TRUE.equals(savedBillingItem.getIsBilled())
                 && savedBillingItem.getPreAuthorizationStatus()
-                        == PreAuthorizationStatus.PENDING_APPROVAL) {
+                == PreAuthorizationStatus.PENDING_APPROVAL) {
             throw new BadRequestAlertException(
                     "Diagnostic item requires pre-authorization but was already billed.",
                     "diagnostic_order_tests",
@@ -313,6 +316,7 @@ public class DiagnosticOrderTestStatusService {
 
     public DiagnosticOrderTest cancel(Long testId, String cancelledBy, String cancellationReason) {
         DiagnosticOrderTest test = getTest(testId);
+        rejectIfOrderEncounterReopened(test.getOrderId());
 
         DiagnosticOrderTestStatus current = test.getStatus() == null ? DiagnosticOrderTestStatus.NEW : test.getStatus();
 
@@ -464,6 +468,11 @@ public class DiagnosticOrderTestStatusService {
                         "diagnostic_order_tests",
                         "DiagnosticOrderTest not found with id " + testId
                 ));
+    }
+
+    private void rejectIfOrderEncounterReopened(Long orderId) {
+        DiagnosticOrder order = getOrder(orderId);
+        encounterReopenGuard.rejectIfOpenReopenSession(order.getEncounterId());
     }
 
     private DiagnosticOrder getOrder(Long orderId) {
@@ -749,10 +758,10 @@ public class DiagnosticOrderTestStatusService {
         boolean dueNow =
                 rule.get().billingTrigger() == stage
                         || diagnosticChargeTimingService.triggerReached(
-                                order,
-                                test,
-                                rule.get().billingTrigger()
-                        );
+                        order,
+                        test,
+                        rule.get().billingTrigger()
+                );
 
         if (!dueNow) {
             return;
@@ -790,10 +799,10 @@ public class DiagnosticOrderTestStatusService {
 
         if (rule.isPresent()
                 && !diagnosticChargeTimingService.triggerReached(
-                        order,
-                        test,
-                        rule.get().billingTrigger()
-                )) {
+                order,
+                test,
+                rule.get().billingTrigger()
+        )) {
             LOG.info(
                     "[BILLING_RULE] Charge deferred pspId={} trigger={}",
                     billingItem.getId(),
@@ -869,20 +878,20 @@ public class DiagnosticOrderTestStatusService {
         BillingOperationResult result =
                 rule == null
                         ? billingEngineService.onItemOrdered(
-                                billingItem.getId(),
-                                facilityId,
-                                "DIAG-ORDER:" + billingItem.getId()
-                        )
+                        billingItem.getId(),
+                        facilityId,
+                        "DIAG-ORDER:" + billingItem.getId()
+                )
                         : billingEngineService.onSelectedBillingRule(
-                                billingItem.getId(),
-                                facilityId,
-                                "DIAG-RULE:"
-                                        + rule.billingTrigger()
-                                        + ":"
-                                        + rule.billingRuleId()
-                                        + ":"
-                                        + billingItem.getId()
-                        );
+                        billingItem.getId(),
+                        facilityId,
+                        "DIAG-RULE:"
+                                + rule.billingTrigger()
+                                + ":"
+                                + rule.billingRuleId()
+                                + ":"
+                                + billingItem.getId()
+                );
 
         if (rule != null && result.chargeLineId() != null) {
             billingChargeService.recordChargeLineWorkflow(
@@ -1017,7 +1026,7 @@ public class DiagnosticOrderTestStatusService {
             if (!(from == DiagnosticStatus.RESULT_READY
                     || from == DiagnosticStatus.EXAM_DONE
                     || from == DiagnosticStatus.PARTIALLY)) {
-               throw invalid(from, to);
+                throw invalid(from, to);
             }
             return;
         }

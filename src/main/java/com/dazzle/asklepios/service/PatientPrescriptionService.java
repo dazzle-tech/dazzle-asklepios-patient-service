@@ -64,6 +64,7 @@ public class PatientPrescriptionService {
     private final BrandMedicationClient brandMedicationClient;
     private final NotificationHelper notificationHelper;
     private final PatientServiceAndProductService patientServiceAndProductService;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     private String currentUsername() {
         String username = SecurityUtils.getCurrentUserLogin().orElse(null);
@@ -104,7 +105,9 @@ public class PatientPrescriptionService {
                 .toDepartmentId(prescriptionCreateDto.toDepartmentId)
                 .build();
 
-        return toDto(prescriptionRepository.save(entity));
+        reopenSessionAuditContext.applyOpenSession(encounter.getId());
+        PatientPrescription saved = prescriptionRepository.save(entity);
+        return toDto(saved);
     }
 
     public PatientPrescription update(Long id, PatientPrescriptionUpdateDTO patientPrescriptionUpdateDTO) {
@@ -113,6 +116,7 @@ public class PatientPrescriptionService {
         PatientPrescription entity = prescriptionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
 
+        Long encounterId = entity.getEncounterId();
         if (patientPrescriptionUpdateDTO.prescriptionDate != null)
             entity.setPrescriptionDate(patientPrescriptionUpdateDTO.prescriptionDate);
         if (patientPrescriptionUpdateDTO.urgencyLevel != null)
@@ -126,7 +130,9 @@ public class PatientPrescriptionService {
             entity.setToDepartmentId(patientPrescriptionUpdateDTO.toDepartmentId);
         }
 
-        return toDto(prescriptionRepository.save(entity));
+        reopenSessionAuditContext.applyOpenSession(encounterId);
+        PatientPrescription saved = prescriptionRepository.save(entity);
+        return toDto(saved);
     }
 
     /**
@@ -145,10 +151,11 @@ public class PatientPrescriptionService {
         return patientPrescriptionRepository
                 .findTopByEncounterIdAndStatusOrderByCreatedDateDesc(patientPrescriptionCreateDto.getEncounterId(), PrescriptionStatus.DRAFT)
                 .orElseGet(() -> {
+                    PatientEncounter encounter = getEncounter(patientPrescriptionCreateDto.getEncounterId());
                     Patient patient = getPatient(patientPrescriptionCreateDto.getPatientId());
                     PatientPrescription entity = PatientPrescription.builder()
                             .patient(patient)
-                            .encounterId(patientPrescriptionCreateDto.getEncounterId())
+                            .encounterId(encounter.getId())
                             .prescriptionDate(
                                     patientPrescriptionCreateDto.getPrescriptionDate() != null
                                             ? patientPrescriptionCreateDto.getPrescriptionDate()
@@ -158,7 +165,9 @@ public class PatientPrescriptionService {
                             .fromFacilityId(patientPrescriptionCreateDto.getFromFacilityId())
                             .fromDepartmentId(patientPrescriptionCreateDto.getFromDepartmentId())
                             .build();
-                    return patientPrescriptionRepository.save(entity);
+                    reopenSessionAuditContext.applyOpenSession(encounter.getId());
+                    PatientPrescription saved = patientPrescriptionRepository.save(entity);
+                    return saved;
                 });
 
     }
@@ -227,6 +236,8 @@ public class PatientPrescriptionService {
         PatientPrescription entity = prescriptionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
 
+        Long encounterId = entity.getEncounterId();
+        reopenSessionAuditContext.applyOpenSession(encounterId);
         String username = currentUsername();
         Instant now = Instant.now();
 
@@ -265,6 +276,8 @@ public class PatientPrescriptionService {
         PatientPrescription entity = prescriptionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
 
+        Long encounterId = entity.getEncounterId();
+        reopenSessionAuditContext.applyOpenSession(encounterId);
         entity.setStatus(PrescriptionStatus.CANCELLED);
 
         Instant now = Instant.now();

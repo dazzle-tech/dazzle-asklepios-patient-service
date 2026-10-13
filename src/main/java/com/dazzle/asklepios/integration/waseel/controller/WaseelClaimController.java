@@ -1,10 +1,14 @@
 package com.dazzle.asklepios.integration.waseel.controller;
 
 import com.dazzle.asklepios.domain.ClaimRequest;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimSubType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimType;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimBatchSubmitRequest;
+import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimTrackingCriteria;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimBatchSubmitResponse;
+import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimReturnForResubmitRequest;
+import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimReturnForResubmitResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimSubmissionResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimTrackingResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.PendingClaimInvoiceResponse;
@@ -13,6 +17,7 @@ import com.dazzle.asklepios.integration.waseel.service.ClaimStatusRefreshService
 import com.dazzle.asklepios.integration.waseel.service.ClaimSubmissionService;
 import com.dazzle.asklepios.integration.waseel.service.ClaimTrackingService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelClaimService;
+import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
@@ -20,7 +25,11 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -43,8 +52,37 @@ public class WaseelClaimController {
     private final WaseelClaimService waseelClaimService;
 
     @GetMapping("/internal/waseel/claims/tracking")
-    public Page<ClaimTrackingResponse> getAll(Pageable pageable) {
-        return claimTrackingService.findAll(pageable);
+    public ResponseEntity<Page<ClaimTrackingResponse>> getAll(
+            @RequestParam(required = false) ClaimStatus status,
+            @RequestParam(required = false) WaseelClaimType claimType,
+            @RequestParam(required = false) WaseelClaimSubType claimSubType,
+            @RequestParam(required = false) String claimReference,
+            @RequestParam(required = false) String provClaimNo,
+            @RequestParam(required = false) String uploadName,
+            @RequestParam(required = false) String preAuthRefNo,
+            @RequestParam(required = false) String encounterId,
+            @RequestParam(required = false) String patientId,
+            @ParameterObject Pageable pageable
+    ) {
+        Page<ClaimTrackingResponse> page = claimTrackingService.findAll(
+                new ClaimTrackingCriteria(
+                        status,
+                        claimType,
+                        claimSubType,
+                        claimReference,
+                        provClaimNo,
+                        uploadName,
+                        preAuthRefNo,
+                        encounterId,
+                        patientId
+                ),
+                pageable
+        );
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                page
+        );
+        return new ResponseEntity<>(page, headers, HttpStatus.OK);
     }
 
     @GetMapping("/internal/waseel/claims/tracking/{id}")
@@ -107,6 +145,13 @@ public class WaseelClaimController {
                 claimType,
                 claimSubType,
                 pageable
+        );
+    }
+
+    @PostMapping("/internal/waseel/claims/return-for-resubmit")
+    public ClaimReturnForResubmitResponse returnForResubmit(@RequestBody ClaimReturnForResubmitRequest request) {
+        return claimSubmissionService.returnClaimsForResubmit(
+                request == null ? List.of() : request.claimIds()
         );
     }
 
