@@ -4,15 +4,26 @@ import com.dazzle.asklepios.client.NamiCloud.NamiCloudClient;
 import com.dazzle.asklepios.client.NamiCloud.dto.NamiPurchaseResponse;
 import com.dazzle.asklepios.client.NamiCloud.dto.NamiTransactionResponse;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PointOfSaleCheckIn;
 import com.dazzle.asklepios.domain.PointOfSaleConfiguration;
 import com.dazzle.asklepios.domain.PointOfSaleTransaction;
+import com.dazzle.asklepios.domain.enumeration.Currency;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentTransactionStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentTransactionType;
+import com.dazzle.asklepios.domain.enumeration.billing.PayerType;
+import com.dazzle.asklepios.domain.enumeration.billing.PaymentCategory;
+import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleSourceType;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleTransactionStatus;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleTransactionType;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PointOfSaleCheckInRepository;
 import com.dazzle.asklepios.repository.PointOfSaleTransactionRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.billing.BillingPaymentResult;
+import com.dazzle.asklepios.service.dto.billing.CreateAdvancePaymentRequest;
 import com.dazzle.asklepios.service.dto.pointOfSale.CreatePointOfSaleTransactionDTO;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleTransactionDTO;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleWebhookDTO;
@@ -28,6 +39,7 @@ import org.springframework.web.client.HttpClientErrorException;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 @Transactional
@@ -39,8 +51,10 @@ public class PointOfSaleTransactionService {
     private final PointOfSaleTransactionRepository pointOfSaleTransactionRepository;
     private final PointOfSaleCheckInRepository pointOfSaleCheckInRepository;
     private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
     private final PointOfSaleWebhookLogService pointOfSaleWebhookLogService;
     private final NamiCloudClient namiCloudClient;
+    private final BillingPaymentService billingPaymentService;
 
     public PointOfSaleTransactionDTO purchase(
             CreatePointOfSaleTransactionDTO request
@@ -701,6 +715,135 @@ public class PointOfSaleTransactionService {
             String responseCode
     ) {
         return "000".equals(responseCode);
+    }
+
+    /*
+     * Manual completion step, triggered by the payment staff from the
+     * webhook logs page once they confirm (by reviewing existing
+     * billing_payment records for the encounter) that this approved
+     * POS transaction has not already been settled another way.
+     */
+    public BillingPaymentResult completePayment(
+            Long pointOfSaleTransactionId
+    ) {
+
+        PointOfSaleTransaction transaction =
+                pointOfSaleTransactionRepository
+                        .findById(pointOfSaleTransactionId)
+                        .orElseThrow(() ->
+                                new BadRequestAlertException(
+                                        "Transaction not found",
+                                        "pointOfSaleTransaction",
+                                        "notFound"
+                                )
+                        );
+
+        if (
+                transaction.getTransactionStatus() !=
+                        PointOfSaleTransactionStatus.APPROVED
+        ) {
+
+            throw new BadRequestAlertException(
+                    "Only approved transactions can be completed",
+                    "pointOfSaleTransaction",
+                    "notApproved"
+            );
+        }
+
+        Long encounterId =
+                transaction.getSourceType() ==
+                        PointOfSaleSourceType.ENCOUNTER
+                        ? transaction.getSourceReferenceId()
+                        : null;
+
+        Long facilityId = null;
+
+        if (encounterId != null) {
+
+            PatientEncounter encounter =
+                    patientEncounterRepository
+                            .findById(encounterId)
+                            .orElseThrow(() ->
+                                    new BadRequestAlertException(
+                                            "Encounter not found",
+                                            "pointOfSaleTransaction",
+                                            "encounterNotFound"
+                                    )
+                            );
+
+            facilityId = encounter.getFacilityId();
+        }
+
+        /*
+         * Wallet top-ups have no encounter and therefore no facility to
+         * derive an official sequential receipt number from, so a
+         * receipt number is assigned explicitly instead.
+         */
+        String receiptNumber =
+                encounterId == null
+                        ? "POS-" + transaction.getOrderId()
+                        : null;
+
+        CreateAdvancePaymentRequest request =
+                new CreateAdvancePaymentRequest(
+                        transaction.getPatient().getId(),
+                        encounterId,
+                        facilityId,
+                        PaymentCategory.CARD,
+                        PayerType.PATIENT,
+                        null,
+                        transaction.getAmount(),
+                        Currency.valueOf(
+                                transaction.getCurrencyCode()
+                        ),
+                        0L,
+                        "CREDIT_CARD",
+                        BillingPaymentStatus.COMPLETED,
+                        BillingPaymentTransactionType.PAYMENT,
+                        BillingPaymentTransactionStatus.SUCCESS,
+                        receiptNumber,
+                        transaction.getExternalTransactionId(),
+                        transaction.getAuthCode(),
+                        transaction.getExternalTransactionId(),
+                        extractCardLastFour(
+                                transaction.getPanNumber()
+                        ),
+                        null,
+                        null,
+                        "POS terminal payment completed from webhook log",
+                        List.of(),
+                        "POS-TXN-" + transaction.getId()
+                );
+
+        LOG.info(
+                "Completing POS Payment. InternalId={}, EncounterId={}, Amount={}",
+                transaction.getId(),
+                encounterId,
+                transaction.getAmount()
+        );
+
+        return billingPaymentService.createAdvancePayment(
+                request
+        );
+    }
+
+    private String extractCardLastFour(
+            String panNumber
+    ) {
+
+        if (panNumber == null) {
+            return null;
+        }
+
+        String digits =
+                panNumber.replaceAll(
+                        "\\D",
+                        ""
+                );
+
+        return digits.length() >= 4
+                ? digits.substring(digits.length() - 4)
+                : null;
     }
 
     private PointOfSaleConfiguration getCurrentUserConfiguration() {

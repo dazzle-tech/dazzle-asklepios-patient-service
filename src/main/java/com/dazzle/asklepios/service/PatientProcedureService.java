@@ -63,6 +63,7 @@ public class PatientProcedureService {
     private final PatientServiceAndProductService patientServiceAndProductService;
     private final PatientItemPricingApplicationService patientItemPricingApplicationService;
     private final InsurancePriceListCoverageService insurancePriceListCoverageService;
+    private final EncounterReopenGuard encounterReopenGuard;
 
     public PatientProcedureService(
             PatientProcedureRepository procedureRepository,
@@ -78,7 +79,8 @@ public class PatientProcedureService {
             @Lazy BillingEngineService billingEngineService,
             @Lazy PatientServiceAndProductService patientServiceAndProductService,
             PatientItemPricingApplicationService patientItemPricingApplicationService,
-            InsurancePriceListCoverageService insurancePriceListCoverageService
+            InsurancePriceListCoverageService insurancePriceListCoverageService,
+            EncounterReopenGuard encounterReopenGuard
     ) {
         this.procedureRepository = procedureRepository;
         this.patientRepository = patientRepository;
@@ -94,6 +96,14 @@ public class PatientProcedureService {
         this.billingEngineService = billingEngineService;
         this.patientServiceAndProductService = patientServiceAndProductService;
         this.insurancePriceListCoverageService = insurancePriceListCoverageService;
+        this.encounterReopenGuard = encounterReopenGuard;
+    }
+
+    private Long encounterIdOf(PatientProcedure procedure) {
+        if (procedure == null || procedure.getEncounter() == null) {
+            return null;
+        }
+        return procedure.getEncounter().getId();
     }
 
     private String currentUsername() {
@@ -109,6 +119,8 @@ public class PatientProcedureService {
     }
 
     public PatientProcedure create(PatientProcedureCreateDTO procedureCreateDTO) {
+        encounterReopenGuard.rejectIfOpenReopenSession(procedureCreateDTO.encounterId());
+
         Patient patient = patientRepository.findById(procedureCreateDTO.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Patient not found with id " + procedureCreateDTO.patientId(),
@@ -211,6 +223,8 @@ public class PatientProcedureService {
                         "notfound"
                 ));
 
+        encounterReopenGuard.rejectIfOpenReopenSession(encounterIdOf(procedureEntity));
+
         facilityHelper.validateFacilityExists(procedureUpdateDTO.toFacilityId());
         departmentHelper.validateDepartmentExists(procedureUpdateDTO.toDepartmentId());
 
@@ -245,6 +259,8 @@ public class PatientProcedureService {
                         "procedure",
                         "notfound"
                 ));
+
+        encounterReopenGuard.rejectIfOpenReopenSession(encounterIdOf(procedureEntity));
 
         String cancelReason =
                 reason == null || reason.isBlank()

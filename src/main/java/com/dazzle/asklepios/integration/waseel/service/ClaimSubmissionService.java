@@ -21,6 +21,7 @@ import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimSubT
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimType;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalItem;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimBatchSubmitResponse;
+import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimReturnForResubmitResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimSubmissionResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimValidationError;
 import com.dazzle.asklepios.integration.waseel.dto.claim.PendingClaimInvoiceResponse;
@@ -515,6 +516,45 @@ public class ClaimSubmissionService {
         );
     }
 
+    /**
+     * Submitted and accepted claims stay off the monthly batch.
+     * Moving them back to draft uses that same rule so the invoice can be resubmitted.
+     */
+    @Transactional
+    public ClaimReturnForResubmitResponse returnClaimsForResubmit(List<Long> claimIds) {
+        List<Long> ids = claimIds == null
+                ? List.of()
+                : claimIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "Select at least one claim",
+                    "claim",
+                    "claim.ids.required"
+            );
+        }
+
+        List<ClaimRequest> returnable = new ArrayList<>();
+        for (ClaimRequest claim : claimRequestRepository.findAllById(ids)) {
+            if (claim.getStatus() != null && ACTIVE_STATUSES.contains(claim.getStatus())) {
+                claim.setStatus(ClaimStatus.DRAFT);
+                claim.setSettlementNo(null);
+                claim.setMessage("Returned to the monthly claim batch for resubmit");
+                returnable.add(claim);
+            }
+        }
+
+        if (returnable.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "Only submitting, submitted, or accepted claims can be returned for resubmit",
+                    "claim",
+                    "claim.notReturnable"
+            );
+        }
+
+        claimRequestRepository.saveAll(returnable);
+        return new ClaimReturnForResubmitResponse(returnable.size(), ids.size() - returnable.size());
+    }
+
     private FinancialDocument loadClaimableInsuranceInvoice(Long financialDocumentId) {
         FinancialDocument invoice = financialDocumentRepository.findById(financialDocumentId)
                 .orElseThrow(() -> new BadRequestAlertException(
@@ -934,7 +974,40 @@ public class ClaimSubmissionService {
                 ? null
                 : String.join(",", claimModel.preAuthRefNo());
 
-           ClaimRequest claimRequest = ClaimRequest.builder()
+           ClaimRequest claimRequest = ClaimRequest.builder
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                           ()
                 .patientId(invoice.getPatientId())
                 .encounterId(invoice.getEncounterId())
                 .financialDocumentId(invoice.getId())

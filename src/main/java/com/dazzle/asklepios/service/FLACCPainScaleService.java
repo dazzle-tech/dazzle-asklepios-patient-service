@@ -35,6 +35,7 @@ public class FLACCPainScaleService {
     private final ApLovValueRepository apLovValueRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public FLACCPainScale create(FLACCPainScaleCreateDTO dto) {
         LOG.info("[CREATE] FLACCPainScale payload={}", dto);
@@ -76,6 +77,7 @@ public class FLACCPainScaleService {
                 .status(FLACCPainScaleStatus.ACTIVE)
                 .build();
 
+        reopenSessionAuditContext.applyOpenSession(flaccPainScale.getEncounterId());
         FLACCPainScale saved =
                 flaccPainScaleRepository.save(flaccPainScale);
 
@@ -133,6 +135,7 @@ public class FLACCPainScaleService {
                             );
                         });
 
+        Long ownedEncounterId = existing.getEncounterId();
         if (existing.getStatus() == FLACCPainScaleStatus.CANCELLED) {
             LOG.warn(
                     "[UPDATE] Cannot update cancelled FLACCPainScale id={}",
@@ -168,6 +171,7 @@ public class FLACCPainScaleService {
                 calculatePainLevel(totalScore)
         );
 
+        reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
         FLACCPainScale updated =
                 flaccPainScaleRepository.save(existing);
 
@@ -513,6 +517,7 @@ public class FLACCPainScaleService {
                             );
                         });
 
+        Long ownedEncounterId = existing.getEncounterId();
         if (existing.getStatus() == FLACCPainScaleStatus.CANCELLED) {
             LOG.warn(
                     "[CANCEL] FLACCPainScale already cancelled id={}",
@@ -533,6 +538,7 @@ public class FLACCPainScaleService {
         existing.setCancelledAt(Instant.now());
         existing.setCancelledBy(currentUsername);
 
+        reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
         FLACCPainScale cancelled =
                 flaccPainScaleRepository.save(existing);
 

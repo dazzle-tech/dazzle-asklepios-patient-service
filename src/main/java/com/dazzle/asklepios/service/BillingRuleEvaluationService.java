@@ -284,6 +284,10 @@ public class BillingRuleEvaluationService {
             case CHECKOUT -> "checkout";
             case MANUAL -> "manual billing";
             case DEBIT_NOTE -> "debit note";
+            case SUBMIT_ORDER -> "order submission";
+            case COLLECT_SAMPLE -> "sample collection";
+            case ACCEPT_ORDER -> "order acceptance";
+            case APPROVED -> "result approval";
         };
     }
 
@@ -301,6 +305,10 @@ public class BillingRuleEvaluationService {
             case CHECKOUT -> "checkout";
             case MANUAL -> "manual billing";
             case DEBIT_NOTE -> "debit note";
+            case SUBMIT_ORDER -> "order submission";
+            case COLLECT_SAMPLE -> "sample collection";
+            case ACCEPT_ORDER -> "order acceptance";
+            case APPROVED -> "result approval";
             case ITEM_UPDATED -> "item update";
             case ITEM_CANCELLED -> "item cancellation";
             case ENCOUNTER_CANCELLED -> "encounter cancellation";

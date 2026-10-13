@@ -50,6 +50,7 @@ public class EncounterVaccinationService {
     private final VaccineHelper vaccineHelper;
     private final VaccineBrandHelper vaccineBrandHelper;
     private final VaccineDosesHelper vaccineDosesHelper;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public EncounterVaccination create(EncounterVaccinationCreateDTO createRequest) {
         LOG.info("[CREATE] EncounterVaccination payload={}", createRequest);
@@ -64,7 +65,7 @@ public class EncounterVaccinationService {
                     );
                 });
 
-        loadEncounter(createRequest.encounterId());
+        PatientEncounter encounter = loadEncounter(createRequest.encounterId());
         vaccineHelper.validateVaccineExists(createRequest.vaccineId());
         vaccineBrandHelper.validateVaccineBrandExists(createRequest.vaccineBrandId());
         vaccineDosesHelper.validateVaccineDosesExists(createRequest.vaccineDoseId());
@@ -75,7 +76,7 @@ public class EncounterVaccinationService {
 
         EncounterVaccination encounterVaccination = EncounterVaccination.builder()
                 .patient(patient)
-                .encounterId(createRequest.encounterId())
+                .encounterId(encounter.getId())
                 .vaccineId(createRequest.vaccineId())
                 .vaccineBrandId(createRequest.vaccineBrandId())
                 .vaccineDoseId(createRequest.vaccineDoseId())
@@ -91,6 +92,7 @@ public class EncounterVaccinationService {
                 .build();
 
         try {
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
             EncounterVaccination savedEncounterVaccination = encounterVaccinationRepository.saveAndFlush(encounterVaccination);
             LOG.info("[CREATE] EncounterVaccination success id={} patientId={} encounterId={} vaccineId={} doseId={} status={}",
                     savedEncounterVaccination.getId(),
@@ -115,6 +117,7 @@ public class EncounterVaccinationService {
 
         return encounterVaccinationRepository.findById(encounterVaccinationId)
                 .map(encounterVaccination -> {
+                    Long ownedEncounterId = encounterVaccination.getEncounterId();
 
                     Patient patient = patientRepository.findById(updateRequest.patientId())
                             .orElseThrow(() -> {
@@ -152,6 +155,7 @@ public class EncounterVaccinationService {
                     encounterVaccination.setNotes(updateRequest.notes());
 
                     try {
+                        reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
                         EncounterVaccination savedEncounterVaccination =
                                 encounterVaccinationRepository.saveAndFlush(encounterVaccination);
 
@@ -214,12 +218,14 @@ public class EncounterVaccinationService {
                     );
                 });
 
+        Long encounterId = encounterVaccination.getEncounterId();
         encounterVaccination.setStatus(EncounterVaccinationStatus.CANCELLED);
         encounterVaccination.setCancellationReason(cancelRequest.cancellationReason());
         encounterVaccination.setCancelledAt(Instant.now());
         encounterVaccination.setCancelledBy(currentUser);
 
         try {
+            reopenSessionAuditContext.applyOpenSession(encounterId);
             EncounterVaccination savedEncounterVaccination = encounterVaccinationRepository.saveAndFlush(encounterVaccination);
             LOG.info("[CANCEL] EncounterVaccination success id={} cancelledBy={}",
                     cancelRequest.id(), currentUser);
@@ -255,11 +261,13 @@ public class EncounterVaccinationService {
                     );
                 });
 
+        Long encounterId = encounterVaccination.getEncounterId();
         encounterVaccination.setStatus(EncounterVaccinationStatus.REVIEW);
         encounterVaccination.setReviewedById(currentUser);
         encounterVaccination.setReviewedAt(Instant.now());
 
         try {
+            reopenSessionAuditContext.applyOpenSession(encounterId);
             EncounterVaccination savedEncounterVaccination = encounterVaccinationRepository.saveAndFlush(encounterVaccination);
             LOG.info("[REVIEW] EncounterVaccination success id={} reviewedBy={}",
                     reviewRequest.id(), currentUser);

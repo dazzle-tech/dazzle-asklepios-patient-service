@@ -68,7 +68,6 @@ public class DentalPlannedTreatment extends AbstractAuditingEntity<Long> impleme
     @Column(name = "insurance", nullable = false, precision = 10, scale = 2)
     @Builder.Default
     private BigDecimal insurance = BigDecimal.ZERO;
-
     @Enumerated(EnumType.STRING)
     @Column(name = "source")
     private ServiceSource source;

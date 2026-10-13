@@ -58,6 +58,7 @@ public class ConsultationService {
     private final DepartmentHelper departmentHelper;
     private final PractitionerHelper practitionerHelper;
     private final NotificationHelper notificationHelper;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
 
     private String currentUsername() {
@@ -127,6 +128,8 @@ public class ConsultationService {
 
         LOG.debug("[CREATE] Consultation entity built with destinationType={}", entity.getDestinationType());
 
+        reopenSessionAuditContext.applyOpenSession(encounter.getId());
+
         try {
             Consultation saved = consultationRepository.saveAndFlush(entity);
 
@@ -165,6 +168,9 @@ public class ConsultationService {
 
 
         LOG.debug("[UPDATE] Existing consultation found with status={}", existing.getStatus());
+
+        Long encounterId = existing.getEncounter().getId();
+        reopenSessionAuditContext.applyOpenSession(encounterId);
 
         existing.setDestinationType(
                 dto.destinationType() != null
@@ -217,6 +223,9 @@ public class ConsultationService {
                 );
 
         LOG.debug("[CANCEL] Current consultation status={}", existing.getStatus());
+
+        Long encounterId = existing.getEncounter().getId();
+        reopenSessionAuditContext.applyOpenSession(encounterId);
 
         existing.setStatus(ConsultationStatus.CANCELLED);
         existing.setCancellationReason(cancellationReason);

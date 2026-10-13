@@ -54,4 +54,7 @@ public class PatientEncounterFieldAudit implements Serializable {
 
     @Column(name = "log_by", length = 50, nullable = false)
     private String logBy;
+
+    @Column(name = "reopen_session_id")
+    private Long reopenSessionId;
 }

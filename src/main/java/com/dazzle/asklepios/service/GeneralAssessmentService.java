@@ -24,16 +24,24 @@ public class GeneralAssessmentService {
     private final GeneralAssessmentRepository generalAssessmentRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
-    public GeneralAssessmentService(GeneralAssessmentRepository generalAssessmentRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository) {
+    public GeneralAssessmentService(
+            GeneralAssessmentRepository generalAssessmentRepository,
+            PatientRepository patientRepository,
+            PatientEncounterRepository patientEncounterRepository,
+            ReopenSessionAuditContext reopenSessionAuditContext
+    ) {
         this.generalAssessmentRepository = generalAssessmentRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
+        this.reopenSessionAuditContext = reopenSessionAuditContext;
     }
 
     public GeneralAssessment create(GeneralAssessmentCreateDTO generalAssessmentCreateDTO) {
         LOG.debug("create general assessment {}", generalAssessmentCreateDTO);
         GeneralAssessment entity = toEntityForCreate(generalAssessmentCreateDTO);
+        reopenSessionAuditContext.applyOpenSession(encounterId(entity));
         GeneralAssessment saved = generalAssessmentRepository.save(entity);
         LOG.debug("create: saved id={}", saved.getId());
         return saved;
@@ -42,7 +50,9 @@ public class GeneralAssessmentService {
     public GeneralAssessment update(GeneralAssessmentUpdateDTO generalAssessmentUpdateDTO) {
         LOG.debug("update general assessment {}", generalAssessmentUpdateDTO);
         GeneralAssessment entity = getRequired(generalAssessmentUpdateDTO.id());
+        Long encounterId = encounterId(entity);
         applyUpdate(entity, generalAssessmentUpdateDTO);
+        reopenSessionAuditContext.applyOpenSession(encounterId);
         GeneralAssessment saved = generalAssessmentRepository.save(entity);
         LOG.debug("update: saved id={}", saved.getId());
         return saved;
@@ -75,9 +85,9 @@ public class GeneralAssessmentService {
     @Transactional
     public void hardDelete(Long id) {
         LOG.debug("hard delete GeneralAssessment id={}", id);
-        if (!generalAssessmentRepository.existsById(id)) { throw new NotFoundAlertException("GeneralAssessment not found: " + id, ENTITY_NAME, "notfound");
-        }
-        generalAssessmentRepository.deleteById(id);
+        GeneralAssessment entity = getRequired(id);
+        reopenSessionAuditContext.applyOpenSession(encounterId(entity));
+        generalAssessmentRepository.delete(entity);
     }
     // Helpers
 
@@ -131,6 +141,10 @@ public class GeneralAssessmentService {
                 .findById(id)
                 .orElseThrow(() -> new NotFoundAlertException("Patient not found: " + id, "Patient", "notfound"));
     }
+    private static Long encounterId(GeneralAssessment entity) {
+        return entity.getEncounter() == null ? null : entity.getEncounter().getId();
+    }
+
     private PatientEncounter getEncounter(Long id) {
         return patientEncounterRepository.findById(id).orElseThrow(() -> new NotFoundAlertException("Patient Encounter not found: " + id, "PatientEncounter", "notfound"));
     }

@@ -58,6 +58,8 @@ public class DiagnosticOrderService {
     private final FacilityHelper facilityHelper;
     private final DepartmentHelper departmentHelper;
     private final NotificationHelper notificationHelper;
+    private final EncounterReopenGuard encounterReopenGuard;
+    private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
 
 
     /**
@@ -75,6 +77,7 @@ public class DiagnosticOrderService {
      */
     public DiagnosticOrder create(DiagnosticOrderCreateDTO dto) {
         LOG.debug("[DiagnosticOrderService] CREATE - start. payload={}", dto);
+        encounterReopenGuard.rejectIfOpenReopenSession(dto.encounterId());
         Patient patient = patientRepository.findById(dto.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Patient not found with id " + dto.patientId(),
@@ -123,6 +126,7 @@ public class DiagnosticOrderService {
 
     public DiagnosticOrder update(DiagnosticOrder existing, DiagnosticOrderUpdateDTO dto) {
         LOG.debug("[DiagnosticOrderService] UPDATE - start. id={} payload={}", existing.getId(), dto);
+        encounterReopenGuard.rejectIfOpenReopenSession(existing.getEncounterId());
 
         if (dto.isUrgent() != null) {
             existing.setIsUrgent(dto.isUrgent());
@@ -237,6 +241,7 @@ public class DiagnosticOrderService {
      */
     @Transactional
     public DiagnosticOrder submit(DiagnosticOrder existing, String submittedBy) {
+        encounterReopenGuard.rejectIfOpenReopenSession(existing.getEncounterId());
         LOG.debug("[DiagnosticOrderService] SUBMIT - start. orderId={} currentSaveDraft={} currentStatus={} submittedBy={}",
                 existing.getId(), existing.getSaveDraft(), existing.getStatus(), submittedBy);
 
@@ -256,6 +261,7 @@ public class DiagnosticOrderService {
                 saved.getId(), saved.getSaveDraft(), saved.getStatus(), saved.getSubmittedDate(), updatedTests);
 
         notificationForUrgentDiagnosticOrder(saved);
+        diagnosticOrderTestStatusService.chargeSubmittedOrder(saved.getId());
 
         return saved;
     }
@@ -263,6 +269,7 @@ public class DiagnosticOrderService {
     @Transactional
     public DiagnosticOrder submit(Long orderId, String submittedBy) {
         DiagnosticOrder order = findById(orderId);
+        encounterReopenGuard.rejectIfOpenReopenSession(order.getEncounterId());
         if (Boolean.FALSE.equals(order.getSaveDraft())) {
             throw new BadRequestAlertException(
                     "already_submitted",
@@ -282,6 +289,8 @@ public class DiagnosticOrderService {
      */
     public void delete(Long id) {
         LOG.debug("[DiagnosticOrderService] DELETE - start. id={}", id);
+        DiagnosticOrder existing = findById(id);
+        encounterReopenGuard.rejectIfOpenReopenSession(existing.getEncounterId());
         diagnosticOrderRepository.deleteById(id);
         LOG.debug("[DiagnosticOrderService] DELETE - done. id={}", id);
     }

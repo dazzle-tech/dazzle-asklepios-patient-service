@@ -47,6 +47,7 @@ import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import feign.FeignException;
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
+import com.dazzle.asklepios.service.dto.patientEncounter.DiagnosticCheckoutApproval;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCompletionValidationDTO;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaQuery;
@@ -138,6 +139,10 @@ public class PatientEncounterService {
     private final EncounterDischargeLogRepository encounterDischargeLogRepository;
     private final PatientEncounterFieldAuditRepository auditRepository;
     private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
+    private final EncounterReopenGuard encounterReopenGuard;
+    private final EncounterAmendmentService encounterAmendmentService;
+    private final InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService;
 
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
@@ -168,12 +173,16 @@ public class PatientEncounterService {
             PractitionerClient practitionerClient,
             @Lazy BillingEngineService billingEngineService,
             NotificationHelper notificationHelper, InvoiceGenerationService invoiceGenerationService, UserRepository userRepository, EncounterDischargeLogRepository encounterDischargeLogRepository, PatientEncounterFieldAuditRepository auditRepository,
-            FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy) {
+            FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy,
+            ReopenSessionAuditContext reopenSessionAuditContext,
+            EncounterReopenGuard encounterReopenGuard,
+            EncounterAmendmentService encounterAmendmentService,
+            InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService) {
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.entityManager = entityManager;
-        
-        
+
+
         this.encounterAssignToBedService = encounterAssignToBedService;
         this.additionalMeasurementsRepository = additionalMeasurementsRepository;
         this.painAssessmentRepository = painAssessmentRepository;
@@ -206,6 +215,10 @@ public class PatientEncounterService {
         this.encounterDischargeLogRepository = encounterDischargeLogRepository;
         this.auditRepository = auditRepository;
         this.followUpReviewDefaultServicePolicy = followUpReviewDefaultServicePolicy;
+        this.reopenSessionAuditContext = reopenSessionAuditContext;
+        this.encounterReopenGuard = encounterReopenGuard;
+        this.encounterAmendmentService = encounterAmendmentService;
+        this.insuranceCheckoutDiagnosticApprovalService = insuranceCheckoutDiagnosticApprovalService;
     }
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
@@ -323,6 +336,8 @@ public class PatientEncounterService {
                             "id.notfound"
                     );
                 });
+
+        reopenSessionAuditContext.applyOpenSession(existingPatientEncounter.getId());
 
         Patient patient = patientRepository.findById(updateDTO.patientId())
                 .orElseThrow(() -> {
@@ -948,89 +963,89 @@ public class PatientEncounterService {
         return value == null || value.isBlank();
     }
 
-public PatientEncounter cancelEncounter(Long encounterId, String cancellationReason) {
-    LOG.info(
-            "[CANCEL] PatientEncounter id={} cancellationReason={}",
-            encounterId,
-            cancellationReason
-    );
-
-    PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
-            .orElseThrow(() -> new NotFoundAlertException(
-                    "id.notfound",
-                    "patientEncounter",
-                    "PatientEncounter not found with id " + encounterId
-            ));
-
-    if (!Set.of(
-            TreatmentStatus.NEW,
-            TreatmentStatus.WAITING_TRIAGE,
-            TreatmentStatus.PENDING_PAYMENT
-    ).contains(encounter.getStatus())) {
-
-        throw new BadRequestAlertException(
-                "cancel.notAllowed.rule",
-                "patientEncounter",
-                "Cancel is allowed only when status is NEW, WAITING_TRIAGE, or PENDING_PAYMENT."
-        );
-    }
-
-    boolean hasObservation =
-            !findEncounterIdsWithObservation(List.of(encounterId)).isEmpty();
-
-    if (hasObservation) {
-        throw new BadRequestAlertException(
-                "cancel.notAllowed.hasObservation",
-                "patientEncounter",
-                "Cannot cancel encounter with observations."
-        );
-    }
-
-    String cancellationReasonText =
-            isBlank(cancellationReason)
-                    ? null
-                    : cancellationReason.trim();
-
-    billingEngineService.cancelEncounter(
-            encounterId,
-            cancellationReasonText,
-            "ENCOUNTER-CANCEL:" + encounterId
-    );
-
-    encounter.setStatus(TreatmentStatus.CANCELLED);
-    encounter.setCancellationReason(cancellationReasonText);
-    encounter.setCancelledBy(currentUsername());
-    encounter.setCancelledAt(Instant.now());
-
-    try {
-        PatientEncounter saved =
-                patientEncounterRepository.saveAndFlush(encounter);
-
-        encounterAssignToBedService
-                .dischargeActiveAssignmentByEncounterId(saved.getId());
-
+    public PatientEncounter cancelEncounter(Long encounterId, String cancellationReason) {
         LOG.info(
-                "[CANCEL] success id={} status={} cancellationReason={} cancelledBy={} cancelledAt={}",
-                saved.getId(),
-                saved.getStatus(),
-                saved.getCancellationReason(),
-                saved.getCancelledBy(),
-                saved.getCancelledAt()
-        );
-
-        return saved;
-
-    } catch (DataIntegrityViolationException | JpaSystemException ex) {
-
-        LOG.warn(
-                "[CANCEL] failed (constraint) id={}",
+                "[CANCEL] PatientEncounter id={} cancellationReason={}",
                 encounterId,
-                ex
+                cancellationReason
         );
 
-        throw handleConstraintViolation(ex);
+        PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "id.notfound",
+                        "patientEncounter",
+                        "PatientEncounter not found with id " + encounterId
+                ));
+
+        if (!Set.of(
+                TreatmentStatus.NEW,
+                TreatmentStatus.WAITING_TRIAGE,
+                TreatmentStatus.PENDING_PAYMENT
+        ).contains(encounter.getStatus())) {
+
+            throw new BadRequestAlertException(
+                    "cancel.notAllowed.rule",
+                    "patientEncounter",
+                    "Cancel is allowed only when status is NEW, WAITING_TRIAGE, or PENDING_PAYMENT."
+            );
+        }
+
+        boolean hasObservation =
+                !findEncounterIdsWithObservation(List.of(encounterId)).isEmpty();
+
+        if (hasObservation) {
+            throw new BadRequestAlertException(
+                    "cancel.notAllowed.hasObservation",
+                    "patientEncounter",
+                    "Cannot cancel encounter with observations."
+            );
+        }
+
+        String cancellationReasonText =
+                isBlank(cancellationReason)
+                        ? null
+                        : cancellationReason.trim();
+
+        billingEngineService.cancelEncounter(
+                encounterId,
+                cancellationReasonText,
+                "ENCOUNTER-CANCEL:" + encounterId
+        );
+
+        encounter.setStatus(TreatmentStatus.CANCELLED);
+        encounter.setCancellationReason(cancellationReasonText);
+        encounter.setCancelledBy(currentUsername());
+        encounter.setCancelledAt(Instant.now());
+
+        try {
+            PatientEncounter saved =
+                    patientEncounterRepository.saveAndFlush(encounter);
+
+            encounterAssignToBedService
+                    .dischargeActiveAssignmentByEncounterId(saved.getId());
+
+            LOG.info(
+                    "[CANCEL] success id={} status={} cancellationReason={} cancelledBy={} cancelledAt={}",
+                    saved.getId(),
+                    saved.getStatus(),
+                    saved.getCancellationReason(),
+                    saved.getCancelledBy(),
+                    saved.getCancelledAt()
+            );
+
+            return saved;
+
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+
+            LOG.warn(
+                    "[CANCEL] failed (constraint) id={}",
+                    encounterId,
+                    ex
+            );
+
+            throw handleConstraintViolation(ex);
+        }
     }
-}
     public PatientEncounter dischargeEncounter(Long encounterId) {
         LOG.info("[DISCHARGE] PatientEncounter id={}", encounterId);
 
@@ -1067,6 +1082,17 @@ public PatientEncounter cancelEncounter(Long encounterId, String cancellationRea
                         "patientEncounter",
                         "id.notfound"
                 ));
+
+        var openAmendmentId = encounterReopenGuard.findOpenReopenSessionId(encounter.getId());
+        if (openAmendmentId.isPresent()) {
+            LOG.info(
+                    "[COMPLETE] open amendment encounterId={} sessionId={} -> finish amendment",
+                    encounterId,
+                    openAmendmentId.get()
+            );
+            encounterAmendmentService.finishAmendment(encounter.getId(), openAmendmentId.get());
+            return patientEncounterRepository.findById(encounter.getId()).orElse(encounter);
+        }
 
         if (encounter.getStatus() != TreatmentStatus.NEW
                 && encounter.getStatus() != TreatmentStatus.ONGOING
@@ -1157,7 +1183,10 @@ public PatientEncounter cancelEncounter(Long encounterId, String cancellationRea
     }
 
     @Transactional(readOnly = true)
-    public PatientEncounterCompletionValidationDTO validateCompletion(Long encounterId) {
+    public PatientEncounterCompletionValidationDTO validateCompletion(
+            Long encounterId,
+            boolean includeDiagnostics
+    ) {
 
         PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -1189,6 +1218,7 @@ public PatientEncounter cancelEncounter(Long encounterId, String cancellationRea
                     true, // vitalSigns
                     true, // bodyMeasurements
                     true, // canComplete
+                    Collections.emptyList(),
                     Collections.emptyList()
             );
         }
@@ -1328,6 +1358,10 @@ public PatientEncounter cancelEncounter(Long encounterId, String cancellationRea
 
         boolean canComplete = missing.isEmpty();
 
+        List<DiagnosticCheckoutApproval> diagnosticApprovals = includeDiagnostics
+                ? insuranceCheckoutDiagnosticApprovalService.findUnapproved(encounterId)
+                : List.of();
+
         return new PatientEncounterCompletionValidationDTO(
                 encounterId,
                 encounter.getCoverageType(),
@@ -1346,7 +1380,8 @@ public PatientEncounter cancelEncounter(Long encounterId, String cancellationRea
                 bodyMeasurements,
                 vitalSigns,
                 canComplete,
-                missing
+                missing,
+                diagnosticApprovals
         );
     }
 
@@ -1382,16 +1417,16 @@ public PatientEncounter cancelEncounter(Long encounterId, String cancellationRea
             );
         }
 
-       EncounterHasInvoiceResponse invoiceResponse =
-          invoiceGenerationService.hasInvoice(encounterId);
+        EncounterHasInvoiceResponse invoiceResponse =
+                invoiceGenerationService.hasInvoice(encounterId);
 
-         if (invoiceResponse != null && invoiceResponse.hasInvoice()) {
-             throw new BadRequestAlertException(
-                     "Cannot reopen encounter because an invoice has already been generated.",
-                     "patientEncounter",
-                     "reopen.invoiceExists"
-             );
-         }
+        if (invoiceResponse != null && invoiceResponse.hasInvoice()) {
+            throw new BadRequestAlertException(
+                    "Cannot reopen encounter because an invoice has already been generated.",
+                    "patientEncounter",
+                    "reopen.invoiceExists"
+            );
+        }
 
 
 
@@ -2674,6 +2709,7 @@ public PatientEncounter cancelEncounter(Long encounterId, String cancellationRea
                         "idnotfound"
                 ));
 
+        reopenSessionAuditContext.applyOpenSession(encounter.getId());
         encounter.setHistoryOfPresentIllness(historyOfPresentIllness);
 
         PatientEncounter saved = patientEncounterRepository.save(encounter);

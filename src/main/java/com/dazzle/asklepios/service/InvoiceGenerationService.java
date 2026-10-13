@@ -124,6 +124,7 @@ public class InvoiceGenerationService {
 
     private final EncounterChargeLineEnsuringService encounterChargeLineEnsuringService;
     private final EncounterBillingGuardService encounterBillingGuardService;
+    private final ClaimEncounterCopyService claimEncounterCopyService;
 
     @Transactional(readOnly = true)
     public List<BillableVisitResponse> findBillableVisits(Long patientId) {
@@ -565,6 +566,8 @@ public class InvoiceGenerationService {
 
         encounter.setBillingStatus(EncounterBillingStatus.INVOICED);
         patientEncounterRepository.save(encounter);
+
+        claimEncounterCopyService.createFromEncounterIfNotExists(encounter);
 
         return new GenerateInvoiceResult(
                 encounterId,
