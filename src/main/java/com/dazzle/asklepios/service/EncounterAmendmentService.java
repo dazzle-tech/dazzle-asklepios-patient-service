@@ -285,13 +285,6 @@ public class EncounterAmendmentService {
                     "amendment.permissionDenied"
             );
         }
-        if (encounter.getEncounterType() == EncounterType.EMERGENCY && !user.isCanUnDischargeUrgentCare()) {
-            throw new BadRequestAlertException(
-                    "You do not have permission to amend emergency encounters.",
-                    ENTITY,
-                    "amendment.permissionDenied"
-            );
-        }
     }
 
     private RuntimeException mapPersistenceFailure(RuntimeException ex) {
