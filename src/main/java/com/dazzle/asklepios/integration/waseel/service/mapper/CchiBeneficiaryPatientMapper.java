@@ -60,7 +60,7 @@ public class CchiBeneficiaryPatientMapper {
         patient.setDetails("");
 
         patient.setIsUnknown(false);
-        patient.setIsCchiPatient(true);
+        patient.setIsCchiPatient(!isBlank(b.documentId()));
         patient.setIsVerified(true);
         patient.setIsCompletedPatient(false);
 

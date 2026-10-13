@@ -51,7 +51,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+import com.dazzle.asklepios.service.EncounterExecutedServicesService;
 import com.dazzle.asklepios.service.EncounterListService;
+import com.dazzle.asklepios.web.rest.vm.EncounterExecutedServicesVM;
 import com.dazzle.asklepios.web.rest.vm.EncounterListVM;
 import java.net.URI;
 import java.time.LocalDate;
@@ -75,6 +77,7 @@ public class PatientEncounterController {
     private final EncounterCoverageService encounterCoverageService;
     private final PatientDocumentRepository patientDocumentRepository;
     private final EncounterListService encounterListService;
+    private final EncounterExecutedServicesService encounterExecutedServicesService;
     private final UserRepository userRepository;
 
     public PatientEncounterController(
@@ -86,6 +89,7 @@ public class PatientEncounterController {
             EncounterCoverageService encounterCoverageService,
             PatientDocumentRepository patientDocumentRepository,
             EncounterListService encounterListService,
+            EncounterExecutedServicesService encounterExecutedServicesService,
             UserRepository userRepository
     ) {
         this.patientEncounterService = patientEncounterService;
@@ -96,6 +100,7 @@ public class PatientEncounterController {
         this.encounterCoverageService = encounterCoverageService;
         this.patientDocumentRepository = patientDocumentRepository;
         this.encounterListService = encounterListService;
+        this.encounterExecutedServicesService = encounterExecutedServicesService;
         this.userRepository = userRepository;
     }
 
@@ -448,6 +453,16 @@ public class PatientEncounterController {
         );
     }
 
+
+    @GetMapping("/encounter/{id}/executed-services")
+    public ResponseEntity<EncounterExecutedServicesVM> getExecutedServices(
+            @PathVariable("id") @NotNull Long id
+    ) {
+        LOG.debug("REST get executed services for encounter id={}", id);
+        return ResponseEntity.ok(
+                encounterExecutedServicesService.getByEncounterId(id)
+        );
+    }
 
     @GetMapping("/encounter/list")
     public ResponseEntity<List<EncounterListVM>> getEncounterList(

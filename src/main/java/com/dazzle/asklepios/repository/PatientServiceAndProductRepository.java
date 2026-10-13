@@ -10,9 +10,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
-import java.util.Collection;
+
 @Repository
 public interface PatientServiceAndProductRepository
         extends JpaRepository<PatientServiceAndProduct, Long> {
@@ -67,6 +68,8 @@ public interface PatientServiceAndProductRepository
     );
 
     List<PatientServiceAndProduct> findByEncounterId(Long encounterId);
+
+    List<PatientServiceAndProduct> findByEncounterIdIn(Collection<Long> encounterIds);
 
     long countByEncounterId(Long encounterId);
 

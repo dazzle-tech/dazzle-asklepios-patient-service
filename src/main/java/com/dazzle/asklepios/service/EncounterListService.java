@@ -289,37 +289,21 @@ public class EncounterListService {
             }
         }
 
-        Map<Long, List<PatientServiceAndProduct>> serviceMap = new HashMap<>();
-
-        for (PatientEncounter encounter : encounters) {
-
-            if (encounter.getId() == null) {
-                continue;
-            }
-
-            try {
-                List<PatientServiceAndProduct> products =
-                        patientServiceAndProductRepository
-                                .findByEncounterId(encounter.getId());
-
-                serviceMap.put(
-                        encounter.getId(),
-                        products != null ? products : List.of()
-                );
-
-            } catch (Exception ignored) {
-                serviceMap.put(
-                        encounter.getId(),
-                        List.of()
-                );
-            }
-        }
-
-
         List<Long> encounterIds = encounters.stream()
                 .map(PatientEncounter::getId)
                 .filter(id -> id != null)
                 .toList();
+
+        Map<Long, List<PatientServiceAndProduct>> serviceMap =
+                encounterIds.isEmpty()
+                        ? Map.of()
+                        : patientServiceAndProductRepository
+                        .findByEncounterIdIn(encounterIds)
+                        .stream()
+                        .filter(item -> item.getEncounterId() != null)
+                        .collect(Collectors.groupingBy(
+                                PatientServiceAndProduct::getEncounterId
+                        ));
 
         Set<Long> observedEncounterIds = new HashSet<>();
 
@@ -555,6 +539,19 @@ public class EncounterListService {
                                 BigDecimal::add
                         );
 
+        List<PatientServiceAndProduct> executed =
+                products.stream()
+                        .filter(item ->
+                                !ExecutedServiceAmounts.isCancelled(
+                                        item.getPaymentStatus()
+                                )
+                        )
+                        .toList();
+
+        BigDecimal calculatedTotal = executedTotal(executed);
+        BigDecimal patientTotal = patientTotal(executed);
+        BigDecimal patientPaidTotal = sumPatientPaid(executed);
+
         String paymentStatus =
                 resolvePaymentStatus(products);
 
@@ -580,6 +577,11 @@ public class EncounterListService {
                         ? encounter.getCoverageType().name()
                         : insurance != null
                         ? insurance.getCoverageType()
+                        : null;
+
+        BigDecimal insuranceTotal =
+                isInsuranceCoverage(coverageType)
+                        ? sumInsuranceShare(executed)
                         : null;
 
         String defaultServiceName =
@@ -663,6 +665,14 @@ public class EncounterListService {
                 defaultServiceName,
 
                 amount,
+
+                calculatedTotal,
+
+                patientTotal,
+
+                insuranceTotal,
+
+                patientPaidTotal,
 
                 paymentStatus,
 
@@ -750,6 +760,16 @@ public class EncounterListService {
 
                 BigDecimal.ZERO,
 
+                BigDecimal.ZERO,
+
+                BigDecimal.ZERO,
+
+                encounter.getCoverageType() == BillingCoverageType.INSURANCE
+                        ? BigDecimal.ZERO
+                        : null,
+
+                BigDecimal.ZERO,
+
                 null,
 
                 encounter.getCoverageType() != null
@@ -773,6 +793,73 @@ public class EncounterListService {
                 encounter.getStatus(),
 
                 false
+        );
+    }
+
+    private boolean isInsuranceCoverage(String coverageType) {
+        return coverageType != null
+                && BillingCoverageType.INSURANCE.name()
+                .equalsIgnoreCase(coverageType.trim());
+    }
+
+    private BigDecimal executedTotal(
+            List<PatientServiceAndProduct> items
+    ) {
+        return items.stream()
+                .map(this::executedNet)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal patientTotal(
+            List<PatientServiceAndProduct> items
+    ) {
+        return items.stream()
+                .map(item ->
+                        ExecutedServiceAmounts.patientShare(
+                                item.getPatientShareAmount(),
+                                item.getInsuranceShareAmount(),
+                                executedNet(item)
+                        )
+                )
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal sumPatientPaid(
+            List<PatientServiceAndProduct> items
+    ) {
+        return items.stream()
+                .map(item ->
+                        ExecutedServiceAmounts.zeroIfNull(
+                                item.getPaidAmount()
+                        )
+                )
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal sumInsuranceShare(
+            List<PatientServiceAndProduct> items
+    ) {
+        return items.stream()
+                .map(item ->
+                        ExecutedServiceAmounts.insuranceShare(
+                                item.getInsuranceShareAmount()
+                        )
+                )
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal executedNet(
+            PatientServiceAndProduct item
+    ) {
+        BigDecimal quantity =
+                item.getQuantity() == null
+                        ? BigDecimal.ONE
+                        : BigDecimal.valueOf(item.getQuantity());
+
+        return ExecutedServiceAmounts.net(
+                item.getNetAmount(),
+                item.getUnitPrice(),
+                quantity
         );
     }
 
