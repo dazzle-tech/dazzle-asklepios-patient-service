@@ -76,9 +76,7 @@ public class DentalPlannedTreatmentService {
                 .toothId(dto.toothId())
                 .note(dto.note())
                 .surface(dto.surface())
-                .fees(dto.fees() != null ? dto.fees() : java.math.BigDecimal.ZERO)
                 .insurance(dto.insurance() != null ? dto.insurance() : java.math.BigDecimal.ZERO)
-                .discount(dto.discount() != null ? dto.discount() : java.math.BigDecimal.ZERO)
                 .cancelled(false)
                 .build();
 
@@ -99,9 +97,7 @@ public class DentalPlannedTreatmentService {
         entity.setToothId(dto.toothId());
         entity.setNote(dto.note());
         entity.setSurface(dto.surface());
-        entity.setFees(dto.fees() != null ? dto.fees() : java.math.BigDecimal.ZERO);
         entity.setInsurance(dto.insurance() != null ? dto.insurance() : java.math.BigDecimal.ZERO);
-        entity.setDiscount(dto.discount() != null ? dto.discount() : java.math.BigDecimal.ZERO);
 
         DentalPlannedTreatment saved = dentalPlannedTreatmentRepository.save(entity);
         return toDTO(saved);

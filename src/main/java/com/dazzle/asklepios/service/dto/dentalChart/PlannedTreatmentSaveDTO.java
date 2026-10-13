@@ -16,7 +16,5 @@ public record PlannedTreatmentSaveDTO(
         Long toothId,
         String note,
         ToothSurface surface,
-        BigDecimal fees,
-        BigDecimal insurance,
-        BigDecimal discount
+        BigDecimal insurance
 ) implements Serializable {}
