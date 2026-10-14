@@ -2230,6 +2230,34 @@ public class PatientEncounterService {
                 });
     }
 
+    @Transactional(readOnly = true)
+    public PatientEncounter getByEncounterNumber(String encounterNumber) {
+        String normalized =
+                encounterNumber == null ? "" : encounterNumber.trim();
+        LOG.debug("[GET_BY_ENCOUNTER_NUMBER] encounterNumber={}", normalized);
+
+        if (normalized.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "Encounter number is required",
+                    "patientEncounter",
+                    "encounterNumber.required"
+            );
+        }
+
+        return patientEncounterRepository.findByEncounterNumber(normalized)
+                .orElseThrow(() -> {
+                    LOG.warn(
+                            "[GET_BY_ENCOUNTER_NUMBER] PatientEncounter not found encounterNumber={}",
+                            normalized
+                    );
+                    return new NotFoundAlertException(
+                            "PatientEncounter not found with encounterNumber " + normalized,
+                            "patientEncounter",
+                            "encounterNumber.notfound"
+                    );
+                });
+    }
+
     private void validateEmergencyEncounterCreation(Long patientId, Object encounterType) {
         if (encounterType == null || !"EMERGENCY".equals(encounterType.toString())) {
             return;
