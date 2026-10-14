@@ -61,6 +61,7 @@ import com.dazzle.asklepios.service.helper.ServiceHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentDetailsVM;
+import com.dazzle.asklepios.web.rest.vm.appointment.PatientAppointmentOptionVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentLogResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentQuickAppointmentResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentTransferVM;
@@ -428,6 +429,22 @@ public class AppointmentService {
         );
 
         return result.map(this::toAppointmentDetailsVM);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<PatientAppointmentOptionVM> findByPatientId(Long patientId, Pageable pageable) {
+        LOG.debug("Service list appointments by patientId={}", patientId);
+
+        if (patientId == null || patientId <= 0) {
+            throw new BadRequestAlertException("Patient id is required.", ENTITY_NAME, "patient.id.invalid");
+        }
+        if (!patientRepository.existsById(patientId)) {
+            throw new BadRequestAlertException("Patient not found.", ENTITY_NAME, "patient.notFound");
+        }
+
+        return appointmentRepository
+                .findByPatient_IdOrderByStartDatetimeDesc(patientId, pageable)
+                .map(PatientAppointmentOptionVM::from);
     }
 
     @Transactional(readOnly = true)
