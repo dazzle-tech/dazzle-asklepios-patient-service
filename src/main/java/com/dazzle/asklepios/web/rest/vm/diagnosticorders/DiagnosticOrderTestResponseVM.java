@@ -52,7 +52,7 @@ public record DiagnosticOrderTestResponseVM(
         String confirmedBy,
         Instant confirmedAt,
 
-        Integer printNumber
+        String printNumber
 
 ) implements Serializable {
 

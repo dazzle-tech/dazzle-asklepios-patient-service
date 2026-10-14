@@ -16,7 +16,7 @@ DiagnosticOrderTestUpdateDTO(
         String reason,
         String notes,
         Long icdDiagnosisId,
-        Integer printNumber
+        String printNumber
 
 
 ) implements Serializable { }

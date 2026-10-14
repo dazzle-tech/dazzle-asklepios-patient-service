@@ -131,6 +131,6 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
     @Column(name = "confirmed_at")
     private Instant confirmedAt;
 
-    @Column(name = "print_number")
-    private Integer printNumber;
+    @Column(name = "print_number", length = 100)
+    private String printNumber;
 }
