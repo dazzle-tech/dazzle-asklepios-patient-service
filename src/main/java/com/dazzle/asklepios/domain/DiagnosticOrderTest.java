@@ -130,4 +130,7 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
 
     @Column(name = "confirmed_at")
     private Instant confirmedAt;
+
+    @Column(name = "print_number")
+    private Integer printNumber;
 }

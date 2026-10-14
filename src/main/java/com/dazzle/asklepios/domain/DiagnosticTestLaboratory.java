@@ -37,5 +37,8 @@ public class DiagnosticTestLaboratory {
     @Column(name = "category")
     private String category;
 
+    @Column(name = "analyzer_id")
+    private Long analyzerId;
+
 }
 
