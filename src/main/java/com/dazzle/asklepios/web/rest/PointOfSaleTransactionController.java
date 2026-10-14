@@ -2,6 +2,7 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.service.PointOfSaleTransactionService;
 import com.dazzle.asklepios.service.dto.billing.BillingPaymentResult;
+import com.dazzle.asklepios.service.dto.pointOfSale.CreateManualPointOfSaleTransactionDTO;
 import com.dazzle.asklepios.service.dto.pointOfSale.CreatePointOfSaleTransactionDTO;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleTransactionDTO;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleWebhookDTO;
@@ -46,6 +47,31 @@ public class PointOfSaleTransactionController {
                 result.id(),
                 result.orderId(),
                 result.transactionStatus()
+        );
+
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/point-of-sale-transactions/manual")
+    public ResponseEntity<PointOfSaleTransactionDTO> recordManualEntry(
+            @Valid @RequestBody CreateManualPointOfSaleTransactionDTO request
+    ) {
+
+        LOG.info(
+                "Manual entry API called. PatientId={}, Amount={}, SourceType={}, SourceReferenceId={}",
+                request.patientId(),
+                request.amount(),
+                request.sourceType(),
+                request.sourceReferenceId()
+        );
+
+        PointOfSaleTransactionDTO result =
+                pointOfSaleTransactionService.recordManualEntry(request);
+
+        LOG.info(
+                "Manual entry API completed. TransactionId={}, OrderId={}",
+                result.id(),
+                result.orderId()
         );
 
         return ResponseEntity.ok(result);
