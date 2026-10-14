@@ -39,7 +39,6 @@ public class DiagnosticTestLaboratory {
 
     @Column(name = "analyzer_id")
     private Long analyzerId;
-
     @Column(name = "tube_color")
     private String tubeColor;
 
