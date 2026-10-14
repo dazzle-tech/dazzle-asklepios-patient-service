@@ -50,7 +50,9 @@ public record DiagnosticOrderTestResponseVM(
         Long icdDiagnosisId,
 
         String confirmedBy,
-        Instant confirmedAt
+        Instant confirmedAt,
+
+        String printNumber
 
 ) implements Serializable {
 
@@ -98,7 +100,9 @@ public record DiagnosticOrderTestResponseVM(
                 orderTest.getIcdDiagnosisId(),
 
                 orderTest.getConfirmedBy(),
-                orderTest.getConfirmedAt()
+                orderTest.getConfirmedAt(),
+
+                orderTest.getPrintNumber()
         );
     }
 
@@ -146,7 +150,9 @@ public record DiagnosticOrderTestResponseVM(
                 orderTest.getIcdDiagnosisId(),
 
                 orderTest.getConfirmedBy(),
-                orderTest.getConfirmedAt()
+                orderTest.getConfirmedAt(),
+
+                orderTest.getPrintNumber()
         );
     }
 }
