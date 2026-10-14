@@ -14,6 +14,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentTransaction
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentTransactionType;
 import com.dazzle.asklepios.domain.enumeration.billing.PayerType;
 import com.dazzle.asklepios.domain.enumeration.billing.PaymentCategory;
+import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleEntryMode;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleSourceType;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleTransactionStatus;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleTransactionType;
@@ -24,6 +25,7 @@ import com.dazzle.asklepios.repository.PointOfSaleTransactionRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.BillingPaymentResult;
 import com.dazzle.asklepios.service.dto.billing.CreateAdvancePaymentRequest;
+import com.dazzle.asklepios.service.dto.pointOfSale.CreateManualPointOfSaleTransactionDTO;
 import com.dazzle.asklepios.service.dto.pointOfSale.CreatePointOfSaleTransactionDTO;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleTransactionDTO;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleWebhookDTO;
@@ -243,13 +245,22 @@ public class PointOfSaleTransactionService {
                 transaction.getExternalTransactionId()
         );
 
+        return toDto(transaction);
+    }
+
+    private PointOfSaleTransactionDTO toDto(
+            PointOfSaleTransaction transaction
+    ) {
+
         return new PointOfSaleTransactionDTO(
                 transaction.getId(),
                 transaction.getPatient().getId(),
                 transaction.getPatientPayment() != null
                         ? transaction.getPatientPayment().getId()
                         : null,
-                transaction.getConfiguration().getId(),
+                transaction.getConfiguration() != null
+                        ? transaction.getConfiguration().getId()
+                        : null,
                 transaction.getSourceType(),
                 transaction.getSourceReferenceId(),
                 transaction.getOrderId(),
@@ -268,6 +279,7 @@ public class PointOfSaleTransactionService {
                 transaction.getPaymentMethod(),
                 transaction.getSchemeLabel(),
                 transaction.getPanNumber(),
+                transaction.getEntryMode(),
                 transaction.getTransactionDate(),
                 transaction.getWebhookReceived(),
                 transaction.getStanNo(),
@@ -534,40 +546,7 @@ public class PointOfSaleTransactionService {
                             transaction
                     );
 
-            return new PointOfSaleTransactionDTO(
-                    transaction.getId(),
-                    transaction.getPatient().getId(),
-                    transaction.getPatientPayment() != null
-                            ? transaction.getPatientPayment().getId()
-                            : null,
-                    transaction.getConfiguration().getId(),
-                    transaction.getSourceType(),
-                    transaction.getSourceReferenceId(),
-                    transaction.getOrderId(),
-                    transaction.getExternalTransactionId(),
-                    transaction.getTransactionType(),
-                    transaction.getTransactionStatus(),
-                    transaction.getAmount(),
-                    transaction.getCurrencyCode(),
-                    transaction.getResponseCode(),
-                    transaction.getResponseMessage(),
-                    transaction.getRrn(),
-                    transaction.getAuthCode(),
-                    transaction.getTerminalId(),
-                    transaction.getMerchantId(),
-                    transaction.getBatchNo(),
-                    transaction.getPaymentMethod(),
-                    transaction.getSchemeLabel(),
-                transaction.getPanNumber(),
-                    transaction.getTransactionDate(),
-                    transaction.getWebhookReceived(),
-                    transaction.getStanNo(),
-                    transaction.getProductInfo(),
-                    transaction.getMerchantName(),
-                    transaction.getMerchantAddress(),
-                    transaction.getEcrTransactionReferenceNumber(),
-                    transaction.getApplicationVersion()
-            );
+            return toDto(transaction);
         }
 
         LOG.info(
@@ -675,40 +654,7 @@ public class PointOfSaleTransactionService {
                 transaction.getRrn()
         );
 
-        return new PointOfSaleTransactionDTO(
-                transaction.getId(),
-                transaction.getPatient().getId(),
-                transaction.getPatientPayment() != null
-                        ? transaction.getPatientPayment().getId()
-                        : null,
-                transaction.getConfiguration().getId(),
-                transaction.getSourceType(),
-                transaction.getSourceReferenceId(),
-                transaction.getOrderId(),
-                transaction.getExternalTransactionId(),
-                transaction.getTransactionType(),
-                transaction.getTransactionStatus(),
-                transaction.getAmount(),
-                transaction.getCurrencyCode(),
-                transaction.getResponseCode(),
-                transaction.getResponseMessage(),
-                transaction.getRrn(),
-                transaction.getAuthCode(),
-                transaction.getTerminalId(),
-                transaction.getMerchantId(),
-                transaction.getBatchNo(),
-                transaction.getPaymentMethod(),
-                transaction.getSchemeLabel(),
-                transaction.getPanNumber(),
-                transaction.getTransactionDate(),
-                transaction.getWebhookReceived(),
-                transaction.getStanNo(),
-                transaction.getProductInfo(),
-                transaction.getMerchantName(),
-                transaction.getMerchantAddress(),
-                transaction.getEcrTransactionReferenceNumber(),
-                transaction.getApplicationVersion()
-        );
+        return toDto(transaction);
     }
 
     private boolean isApproved(
@@ -872,5 +818,111 @@ public class PointOfSaleTransactionService {
                         );
 
         return checkIn.getConfiguration();
+    }
+
+    /*
+     * The card was charged on a separate, unintegrated terminal by staff.
+     * No Nami purchase/webhook ever happens for this transaction, so it is
+     * recorded as already APPROVED from the manually entered PAN and
+     * processor transaction id, for the same audit trail the automated
+     * terminal flow produces.
+     */
+    public PointOfSaleTransactionDTO recordManualEntry(
+            CreateManualPointOfSaleTransactionDTO request
+    ) {
+
+        LOG.info(
+                "Manual POS entry started. PatientId={}, Amount={}, SourceType={}, SourceReferenceId={}",
+                request.patientId(),
+                request.amount(),
+                request.sourceType(),
+                request.sourceReferenceId()
+        );
+
+        Patient patient =
+                patientRepository.findById(
+                                request.patientId()
+                        )
+                        .orElseThrow(() ->
+                                new BadRequestAlertException(
+                                        "Patient not found",
+                                        "patient",
+                                        "notFound"
+                                )
+                        );
+
+        PointOfSaleTransaction transaction =
+                new PointOfSaleTransaction();
+
+        transaction.setOrderId(
+                generateOrderId()
+        );
+
+        transaction.setPatient(patient);
+
+        transaction.setConfiguration(
+                getCurrentUserConfiguration()
+        );
+
+        transaction.setSourceType(
+                request.sourceType()
+        );
+
+        transaction.setSourceReferenceId(
+                request.sourceReferenceId()
+        );
+
+        transaction.setAmount(
+                request.amount()
+        );
+
+        transaction.setCurrencyCode(
+                "SAR"
+        );
+
+        transaction.setTransactionType(
+                PointOfSaleTransactionType.PURCHASE
+        );
+
+        transaction.setTransactionStatus(
+                PointOfSaleTransactionStatus.APPROVED
+        );
+
+        transaction.setEntryMode(
+                PointOfSaleEntryMode.MANUAL
+        );
+
+        transaction.setPanNumber(
+                request.panNumber()
+        );
+
+        transaction.setRrn(
+                request.transactionId()
+        );
+
+        transaction.setResponseCode(
+                "000"
+        );
+
+        transaction.setResponseMessage(
+                "Manually entered by staff"
+        );
+
+        transaction.setWebhookReceived(
+                Boolean.FALSE
+        );
+
+        transaction =
+                pointOfSaleTransactionRepository.save(
+                        transaction
+                );
+
+        LOG.info(
+                "Manual POS entry saved. InternalId={}, ExternalTransactionId={}",
+                transaction.getId(),
+                transaction.getExternalTransactionId()
+        );
+
+        return toDto(transaction);
     }
 }
