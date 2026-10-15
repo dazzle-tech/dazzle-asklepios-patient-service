@@ -62,6 +62,7 @@ public class DiagnosticOrderService {
     private final EncounterReopenGuard encounterReopenGuard;
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
     private final PatientActivityService patientActivityService;
+    private final PrintNumberService printNumberService;
 
 
     /**
@@ -265,6 +266,20 @@ public class DiagnosticOrderService {
         notificationForUrgentDiagnosticOrder(saved);
         diagnosticOrderTestStatusService.chargeSubmittedOrder(saved.getId());
         recordSubmittedOrderActivities(saved);
+
+        // Fixes each test's print group (by analyzer/tube) once at submit time, so
+        // "Print Selected" never has to (re)compute it. Best-effort: a failure here
+        // shouldn't block order submission - affected tests just show as "missing
+        // definition" when printed, and can be retried by re-submitting.
+        try {
+            printNumberService.assignPrintNumbersForOrder(saved.getId());
+        } catch (Exception ex) {
+            LOG.warn(
+                    "[DiagnosticOrderService] SUBMIT - failed to assign print numbers for orderId={}: {}",
+                    saved.getId(),
+                    ex.getMessage()
+            );
+        }
 
         return saved;
     }

@@ -217,6 +217,7 @@ public class DiagnosticOrderTestService {
         existing.setReason(dto.reason());
         existing.setNotes(dto.notes());
         existing.setIcdDiagnosisId(dto.icdDiagnosisId());
+        existing.setPrintNumber(dto.printNumber());
 
 
         // Persist the updated entity

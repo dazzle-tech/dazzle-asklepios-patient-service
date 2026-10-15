@@ -37,5 +37,13 @@ public class DiagnosticTestLaboratory {
     @Column(name = "category")
     private String category;
 
+    @Column(name = "analyzer_id")
+    private Long analyzerId;
+    @Column(name = "tube_color")
+    private String tubeColor;
+
+    @Column(name = "tube_type")
+    private String tubeType;
+
 }
 

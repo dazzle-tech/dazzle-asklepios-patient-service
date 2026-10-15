@@ -109,6 +109,14 @@ public class DiagnosticOrderTestResultStatusService {
         result.setMarker(approveResultDTO.marker());
         result.setNormalRangeValue(approveResultDTO.normalRange());
 
+        // Normal results need no manual review: mark them reviewed by the approver.
+        if (approveResultDTO.marker() == TestResultMarker.NORMAL_MARKER && result.getReviewDate() == null) {
+            result.setReviewBy(approveResultDTO.approvedBy());
+            result.setReviewDate(result.getApprovedDate());
+            LOG.debug("[ResultApprove] auto-reviewed normal result resultId={} reviewBy={}",
+                    result.getId(), result.getReviewBy());
+        }
+
         DiagnosticOrderTestResult saved = resultRepository.save(result);
 
         diagnosticOrderTestStatusService.approve(saved.getOrderTestId());

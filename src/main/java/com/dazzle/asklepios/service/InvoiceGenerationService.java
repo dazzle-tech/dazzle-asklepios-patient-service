@@ -64,6 +64,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -960,11 +961,16 @@ public class InvoiceGenerationService {
             Patient patient
     ) {
         String fullName =
-                String.join(
-                        " ",
-                        Objects.toString(patient.getFirstName(), "").trim(),
-                        Objects.toString(patient.getLastName(), "").trim()
-                ).trim();
+                Stream.of(
+                        patient.getFirstName(),
+                        patient.getSecondName(),
+                        patient.getThirdName(),
+                        patient.getLastName()
+                )
+                        .filter(Objects::nonNull)
+                        .map(String::trim)
+                        .filter(part -> !part.isEmpty())
+                        .collect(Collectors.joining(" "));
 
         return new EncounterInvoiceDetailsResponse.PatientInvoiceHeader(
                 patient.getId(),
