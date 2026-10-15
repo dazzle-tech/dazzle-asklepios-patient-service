@@ -16,6 +16,7 @@ import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.BookingMode;
 import com.dazzle.asklepios.domain.enumeration.DayOfWeek;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
@@ -61,6 +62,7 @@ import com.dazzle.asklepios.service.helper.ServiceHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentDetailsVM;
+import com.dazzle.asklepios.web.rest.vm.appointment.PatientAppointmentOptionVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentLogResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentQuickAppointmentResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentTransferVM;
@@ -140,6 +142,7 @@ public class AppointmentService {
     private final PractitionerHelper practitionerHelper;
     private final NotificationHelper notificationHelper;
     private final EncounterReopenGuard encounterReopenGuard;
+    private final PatientActivityService patientActivityService;
 
     public List<AppointmentLogResponseVM> getAppointmentLogs(Long appointmentId) {
         LOG.debug("Request to get Appointment Log id={}", appointmentId);
@@ -336,6 +339,12 @@ public class AppointmentService {
                     NotificationCode.APPOINTMENT_BOOKED,
                     null
             );
+            recordAppointmentActivity(
+                    savedAppointment,
+                    null,
+                    PatientActivityType.APPOINTMENT_SCHEDULED,
+                    "Appointment scheduled"
+            );
         }
 
         return savedAppointment;
@@ -428,6 +437,22 @@ public class AppointmentService {
         );
 
         return result.map(this::toAppointmentDetailsVM);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<PatientAppointmentOptionVM> findByPatientId(Long patientId, Pageable pageable) {
+        LOG.debug("Service list appointments by patientId={}", patientId);
+
+        if (patientId == null || patientId <= 0) {
+            throw new BadRequestAlertException("Patient id is required.", ENTITY_NAME, "patient.id.invalid");
+        }
+        if (!patientRepository.existsById(patientId)) {
+            throw new BadRequestAlertException("Patient not found.", ENTITY_NAME, "patient.notFound");
+        }
+
+        return appointmentRepository
+                .findByPatient_IdOrderByStartDatetimeDesc(patientId, pageable)
+                .map(PatientAppointmentOptionVM::from);
     }
 
     @Transactional(readOnly = true)
@@ -610,6 +635,8 @@ public class AppointmentService {
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
                 notificationHelper.resolveRecipients(appointment.getDepartmentId(), login, appointment.getCreatedBy(), appointment.getPatient(), practitioner, false);
 
+        Long patientId = appointment.getPatient() == null ? null : appointment.getPatient().getId();
+
         appointment.setStatus(AppointmentStatus.CANCELLED);
         appointment.setCancelReason(dto.cancelReason());
         appointment.setCancelledBy(currentUsername());
@@ -631,9 +658,17 @@ public class AppointmentService {
                 recipientsByRule
         );
 
+        recordAppointmentActivity(
+                patientId,
+                savedAppointment.getId(),
+                PatientActivityType.APPOINTMENT_CANCELLED,
+                "Appointment cancelled"
+        );
+
         return savedAppointment;
     }
 
+    @Transactional
     public Appointment noShow(AppointmentNoShowDTO dto) {
         Appointment appointment = getAppointment(dto.id());
 
@@ -641,7 +676,14 @@ public class AppointmentService {
 
         appointment.setStatus(AppointmentStatus.NO_SHOW);
         appointment.setNoShowReason(dto.noShowReason());
-        return appointmentRepository.save(appointment);
+        Appointment savedAppointment = appointmentRepository.save(appointment);
+        recordAppointmentActivity(
+                savedAppointment,
+                null,
+                PatientActivityType.NO_SHOW_FOLLOW_UP,
+                "No-show follow-up"
+        );
+        return savedAppointment;
     }
 
     @Transactional
@@ -658,6 +700,12 @@ public class AppointmentService {
         Appointment savedAppointment = appointmentRepository.save(appointment);
 
         notifyAppointmentEvent(savedAppointment, NotificationCode.APPOINTMENT_CONFIRMED, null);
+        recordAppointmentActivity(
+                savedAppointment,
+                null,
+                PatientActivityType.APPOINTMENT_CONFIRMED,
+                "Appointment confirmed"
+        );
 
         return savedAppointment;
     }
@@ -708,9 +756,17 @@ public class AppointmentService {
             createAndSubmitCatalogOrderFlow(savedAppointment, encounter);
         }
 
+        recordAppointmentActivity(
+                savedAppointment,
+                encounter.getId(),
+                PatientActivityType.PATIENT_CHECK_IN_FOLLOW_UP,
+                "Patient checked in"
+        );
+
         return savedAppointment;
     }
 
+    @Transactional
     public AppointmentQuickAppointmentResponseVM createQuickAppointment(AppointmentQuickAppointmentDTO appointmentDTO) {
         LOG.info("[CREATE QUICK APPOINTMENT] facilityId={}, departmentId={}, resourceType={}, resourceId={}, patientId={}",
                 appointmentDTO.facilityId(),
@@ -777,6 +833,18 @@ public class AppointmentService {
         PatientEncounter encounter = createEncounter(quickAppointment, department);
 
         notifyAppointmentEvent(quickAppointment, NotificationCode.QUICK_APPOINTMENT_CREATED, Map.of("quick_appointment", true));
+        recordAppointmentActivity(
+                quickAppointment,
+                encounter.getId(),
+                PatientActivityType.APPOINTMENT_SCHEDULED,
+                "Appointment scheduled"
+        );
+        recordAppointmentActivity(
+                quickAppointment,
+                encounter.getId(),
+                PatientActivityType.PATIENT_CHECK_IN_FOLLOW_UP,
+                "Patient checked in"
+        );
 
         return new AppointmentQuickAppointmentResponseVM(quickAppointment, encounter);
     }
@@ -986,6 +1054,18 @@ public class AppointmentService {
         }
 
         appointmentRepository.saveAll(appointmentsToCancel);
+
+        for (Appointment appointment : appointmentsToCancel) {
+            if (appointment.getPatient() == null) {
+                continue;
+            }
+            recordAppointmentActivity(
+                    appointment,
+                    null,
+                    PatientActivityType.APPOINTMENT_CANCELLED,
+                    "Appointment cancelled"
+            );
+        }
 
         LOG.info("[BULK_RESCHEDULE_CANCEL] cancelledCount={}", appointmentsToCancel.size());
     }
@@ -1197,7 +1277,12 @@ public class AppointmentService {
                 NotificationCode.APPOINTMENT_BOOKED,
                 null
         );
-
+        recordAppointmentActivity(
+                savedAppointment,
+                null,
+                PatientActivityType.APPOINTMENT_SCHEDULED,
+                "Appointment scheduled"
+        );
 
         return savedAppointment;
     }
@@ -1612,6 +1697,12 @@ public class AppointmentService {
          */
         appointmentRepository.save(oldAppointment);
         appointmentRepository.save(newAppointment);
+        recordAppointmentActivity(
+                newAppointment,
+                null,
+                PatientActivityType.APPOINTMENT_RESCHEDULED,
+                "Appointment rescheduled"
+        );
 
         /*
          * ============================================================
@@ -1953,6 +2044,46 @@ public class AppointmentService {
         }
     }
 
+    private void recordAppointmentActivity(
+            Appointment appointment,
+            Long encounterId,
+            PatientActivityType activityType,
+            String note
+    ) {
+        if (appointment == null || appointment.getId() == null) {
+            return;
+        }
+        Long patientId = appointment.getPatient() == null ? null : appointment.getPatient().getId();
+        recordAppointmentActivity(patientId, encounterId, appointment.getId(), activityType, note);
+    }
+
+    private void recordAppointmentActivity(
+            Long patientId,
+            Long appointmentId,
+            PatientActivityType activityType,
+            String note
+    ) {
+        recordAppointmentActivity(patientId, null, appointmentId, activityType, note);
+    }
+
+    private void recordAppointmentActivity(
+            Long patientId,
+            Long encounterId,
+            Long appointmentId,
+            PatientActivityType activityType,
+            String note
+    ) {
+        patientActivityService.recordOccurred(
+                patientId,
+                encounterId,
+                appointmentId,
+                activityType,
+                PatientActivityService.SOURCE_APPOINTMENT,
+                appointmentId,
+                note
+        );
+    }
+
     private Appointment executeSingleReschedule(Appointment oldAppointment, Appointment newAppointment, String rescheduleReason) {
         if (oldAppointment.getId().equals(newAppointment.getId())) {
             throw new BadRequestAlertException(
@@ -2013,6 +2144,12 @@ public class AppointmentService {
                         "new_appointment_end_date", savedNewAppointment.getEndDatetime() != null ? formatter.format(savedNewAppointment.getEndDatetime()) : "",
                         "reschedule_reason", rescheduleReason != null ? rescheduleReason : ""
                 )
+        );
+        recordAppointmentActivity(
+                savedNewAppointment,
+                null,
+                PatientActivityType.APPOINTMENT_RESCHEDULED,
+                "Appointment rescheduled"
         );
         return savedNewAppointment;
     }

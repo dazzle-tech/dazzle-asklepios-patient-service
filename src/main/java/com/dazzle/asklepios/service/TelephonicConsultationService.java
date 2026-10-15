@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.TelephonicConsultation;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.TelephonicConsultationRepository;
@@ -39,6 +40,7 @@ public class TelephonicConsultationService {
     private final PatientEncounterRepository patientEncounterRepository;
     private final PractitionerHelper practitionerHelper;
     private final ReopenSessionAuditContext reopenSessionAuditContext;
+    private final PatientActivityService patientActivityService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -48,12 +50,14 @@ public class TelephonicConsultationService {
             PatientRepository patientRepository,
             PatientEncounterRepository patientEncounterRepository,
             PractitionerHelper practitionerHelper,
-            ReopenSessionAuditContext reopenSessionAuditContext) {
+            ReopenSessionAuditContext reopenSessionAuditContext,
+            PatientActivityService patientActivityService) {
         this.repository = repository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
         this.practitionerHelper = practitionerHelper;
         this.reopenSessionAuditContext = reopenSessionAuditContext;
+        this.patientActivityService = patientActivityService;
     }
 
     private String currentUsername() {
@@ -104,6 +108,16 @@ public class TelephonicConsultationService {
         try {
             reopenSessionAuditContext.applyOpenSession(encounter.getId());
             TelephonicConsultation saved = repository.saveAndFlush(entity);
+            Long appointmentId = encounter.getAppointment() == null ? null : encounter.getAppointment().getId();
+            patientActivityService.recordOccurred(
+                    patient.getId(),
+                    encounter.getId(),
+                    appointmentId,
+                    PatientActivityType.PHONE_CALL,
+                    PatientActivityService.SOURCE_TELEPHONIC_CONSULTATION,
+                    saved.getId(),
+                    "Phone call"
+            );
             entityManager.refresh(saved);
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {

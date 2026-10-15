@@ -41,6 +41,7 @@ import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.ClaimSettlementNumberService;
+import com.dazzle.asklepios.service.PatientActivityService;
 import com.dazzle.asklepios.service.helper.NphiesPayerHelper;
 import com.dazzle.asklepios.service.helper.PayorHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -112,6 +113,7 @@ public class ClaimSubmissionService {
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
     private final WaseelClaimClassification waseelClaimClassification;
+    private final PatientActivityService patientActivityService;
 
     public ClaimSubmissionService(
             ClaimRequestBuilderService claimRequestBuilderService,
@@ -133,7 +135,8 @@ public class ClaimSubmissionService {
             FinancialDocumentItemRepository financialDocumentItemRepository,
             PatientServiceAndProductRepository patientServiceAndProductRepository,
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
-            WaseelClaimClassification waseelClaimClassification
+            WaseelClaimClassification waseelClaimClassification,
+            PatientActivityService patientActivityService
     ) {
         this.claimRequestBuilderService = claimRequestBuilderService;
         this.waseelClaimService = waseelClaimService;
@@ -155,6 +158,7 @@ public class ClaimSubmissionService {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
         this.waseelClaimClassification = waseelClaimClassification;
+        this.patientActivityService = patientActivityService;
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -283,7 +287,9 @@ public class ClaimSubmissionService {
             claimRequest.setStatus(ClaimStatus.REJECTED);
             claimRequest.setOutcome("NOT_ACCEPTED");
             claimRequest.setMessage(buildValidationFailureMessage(validationErrors));
-            return claimRequestRepository.save(claimRequest);
+            ClaimRequest rejected = claimRequestRepository.save(claimRequest);
+            patientActivityService.recordClaimStatus(rejected);
+            return rejected;
         }
 
         try {
@@ -1094,7 +1100,9 @@ public class ClaimSubmissionService {
         claimRequest.setRequestJson(requestJson);
         claimRequest.setMessage(details);
         log.error("[CLAIM_SUBMIT] Claim upload failed claimId={} details={}", claimRequest.getId(), details);
-        return claimRequestRepository.save(claimRequest);
+        ClaimRequest failed = claimRequestRepository.save(claimRequest);
+        patientActivityService.recordClaimStatus(failed);
+        return failed;
     }
 
     private String resolveOutcome(WaseelClaimUploadResponse response) {

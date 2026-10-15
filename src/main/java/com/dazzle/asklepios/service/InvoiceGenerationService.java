@@ -14,6 +14,7 @@ import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.EncounterBillingStatus;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
@@ -126,6 +127,7 @@ public class InvoiceGenerationService {
     private final EncounterChargeLineEnsuringService encounterChargeLineEnsuringService;
     private final EncounterBillingGuardService encounterBillingGuardService;
     private final ClaimEncounterCopyService claimEncounterCopyService;
+    private final PatientActivityService patientActivityService;
 
     @Transactional(readOnly = true)
     public List<BillableVisitResponse> findBillableVisits(Long patientId) {
@@ -651,7 +653,39 @@ public class InvoiceGenerationService {
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         document.setTotalAmount(totalAmount);
-        return financialDocumentRepository.save(document);
+        document = financialDocumentRepository.save(document);
+        recordPatientPaymentFollowUp(encounter, patient, document, items, subtype);
+        return document;
+    }
+
+    private void recordPatientPaymentFollowUp(
+            PatientEncounter encounter,
+            Patient patient,
+            FinancialDocument document,
+            List<FinancialDocumentItem> items,
+            FinancialDocumentSubtype subtype
+    ) {
+        if (subtype != FinancialDocumentSubtype.PATIENT || document.getId() == null || patient == null) {
+            return;
+        }
+
+        BigDecimal outstanding = items.stream()
+                .map(item -> money(item.getNetAmount()).subtract(money(item.getPaidAmount())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (outstanding.signum() <= 0) {
+            return;
+        }
+
+        Long appointmentId = encounter.getAppointment() == null ? null : encounter.getAppointment().getId();
+        patientActivityService.recordOccurred(
+                patient.getId(),
+                encounter.getId(),
+                appointmentId,
+                PatientActivityType.PATIENT_PAYMENT_FOLLOW_UP,
+                PatientActivityService.SOURCE_FINANCIAL_DOCUMENT,
+                document.getId(),
+                "Patient payment follow-up"
+        );
     }
 
     private List<FinancialDocumentItem> buildInvoiceItems(

@@ -8,6 +8,7 @@ import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingTrigger;
@@ -66,6 +67,7 @@ public class DiagnosticOrderTestStatusService {
     private final EncounterReopenGuard encounterReopenGuard;
 
     private final DiagnosticChargeTimingService diagnosticChargeTimingService;
+    private final PatientActivityService patientActivityService;
 
     public DiagnosticOrderTestStatusService(
             DiagnosticOrderRepository diagnosticOrderRepository,
@@ -82,7 +84,8 @@ public class DiagnosticOrderTestStatusService {
             PatientItemPricingApplicationService patientItemPricingApplicationService,
             InsurancePriceListCoverageService insurancePriceListCoverageService,
             EncounterReopenGuard encounterReopenGuard,
-            DiagnosticChargeTimingService diagnosticChargeTimingService
+            DiagnosticChargeTimingService diagnosticChargeTimingService,
+            PatientActivityService patientActivityService
     ) {
         this.diagnosticOrderRepository = diagnosticOrderRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
@@ -99,6 +102,7 @@ public class DiagnosticOrderTestStatusService {
         this.insurancePriceListCoverageService = insurancePriceListCoverageService;
         this.encounterReopenGuard = encounterReopenGuard;
         this.diagnosticChargeTimingService = diagnosticChargeTimingService;
+        this.patientActivityService = patientActivityService;
     }
 
     public DiagnosticOrderTest collectSample(Long testId) {
@@ -278,6 +282,11 @@ public class DiagnosticOrderTestStatusService {
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         chargeForWorkflowStage(saved, BillingTrigger.APPROVED);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
+
+        PatientActivityType followUp = saved.getOrderType() == TestType.RADIOLOGY
+                ? PatientActivityType.IMAGING_RESULT_FOLLOW_UP
+                : PatientActivityType.LAB_RESULT_FOLLOW_UP;
+        patientActivityService.recordDiagnosticTestActivity(saved.getId(), followUp, "Result approved");
 
         return saved;
     }

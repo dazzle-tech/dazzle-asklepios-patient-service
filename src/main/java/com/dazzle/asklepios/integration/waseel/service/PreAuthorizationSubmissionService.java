@@ -8,7 +8,9 @@ import com.dazzle.asklepios.domain.PreAuthorizationItem;
 import com.dazzle.asklepios.domain.PreAuthorizationRequest;
 import com.dazzle.asklepios.domain.PreAuthorizationSupportingInfo;
 import com.dazzle.asklepios.domain.PreAuthorizationTrack;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.service.PatientActivityService;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.integration.waseel.event.PreAuthorizationApprovedEvent;
@@ -68,6 +70,7 @@ public class PreAuthorizationSubmissionService {
     private final WaseelApiProperties waseelApiProperties;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final PatientActivityService patientActivityService;
 
     @Transactional(
             propagation = Propagation.REQUIRES_NEW,
@@ -180,6 +183,7 @@ public class PreAuthorizationSubmissionService {
             updatePreAuthorizationSuccess(preAuthorization, response, responseJson);
             saveTrack(preAuthorization, "SUBMIT", requestJson, responseJson, response);
             updateItemsAfterResponse(pendingItems, preAuthorization, response);
+            recordPreAuthorizationActivities(encounter, preAuthorization, response);
 
             return response;
 
@@ -499,6 +503,40 @@ public class PreAuthorizationSubmissionService {
         }
 
         return null;
+    }
+
+    private void recordPreAuthorizationActivities(
+            PatientEncounter encounter,
+            PreAuthorizationRequest preAuthorization,
+            ApprovalResponse response
+    ) {
+        if (encounter == null || encounter.getPatient() == null || preAuthorization.getId() == null) {
+            return;
+        }
+
+        Long appointmentId = encounter.getAppointment() == null ? null : encounter.getAppointment().getId();
+        patientActivityService.recordOccurred(
+                encounter.getPatient().getId(),
+                encounter.getId(),
+                appointmentId,
+                PatientActivityType.PRIOR_AUTHORIZATION_REQUEST,
+                PatientActivityService.SOURCE_PRE_AUTHORIZATION,
+                preAuthorization.getId(),
+                "Prior authorization requested"
+        );
+
+        PreAuthorizationStatus status = mapResponseStatus(response);
+        if (status == PreAuthorizationStatus.PENDING_APPROVAL || status == PreAuthorizationStatus.REJECTED) {
+            patientActivityService.recordOccurred(
+                    encounter.getPatient().getId(),
+                    encounter.getId(),
+                    appointmentId,
+                    PatientActivityType.AUTHORIZATION_FOLLOW_UP,
+                    PatientActivityService.SOURCE_PRE_AUTHORIZATION,
+                    preAuthorization.getId(),
+                    "Authorization follow-up"
+            );
+        }
     }
 
     private void updatePreAuthorizationSuccess(

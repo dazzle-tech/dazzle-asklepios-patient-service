@@ -7,6 +7,7 @@ import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.ReferralRequest;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.ReferralStatus;
 import com.dazzle.asklepios.domain.enumeration.ReferralType;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
@@ -55,6 +56,7 @@ public class ReferralRequestService {
     private final AppointmentRepository appointmentRepository;
     private final NotificationHelper notificationHelper;
     private final ReopenSessionAuditContext reopenSessionAuditContext;
+    private final PatientActivityService patientActivityService;
 
     public ReferralRequest createReferralRequest(ReferralRequestCreateDTO createDto) {
         LOG.info("[CREATE] ReferralRequest payload={}", createDto);
@@ -93,6 +95,17 @@ public class ReferralRequestService {
                     savedReferralRequest,
                     patient,
                     encounter
+            );
+
+            Long appointmentId = encounter.getAppointment() == null ? null : encounter.getAppointment().getId();
+            patientActivityService.recordOccurred(
+                    patient.getId(),
+                    encounter.getId(),
+                    appointmentId,
+                    PatientActivityType.REFERRAL_COORDINATION,
+                    PatientActivityService.SOURCE_REFERRAL,
+                    savedReferralRequest.getId(),
+                    "Referral coordination"
             );
 
             LOG.info("[CREATE] Successfully created ReferralRequest id={}", savedReferralRequest.getId());
