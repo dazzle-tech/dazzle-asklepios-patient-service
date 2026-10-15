@@ -19,6 +19,7 @@ import com.dazzle.asklepios.domain.VitalSigns;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.AdditionalMeasurementsRepository;
@@ -145,6 +146,7 @@ public class PatientEncounterService {
     private final EncounterReopenGuard encounterReopenGuard;
     private final EncounterAmendmentService encounterAmendmentService;
     private final InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService;
+    private final PatientActivityService patientActivityService;
 
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
@@ -179,7 +181,8 @@ public class PatientEncounterService {
             ReopenSessionAuditContext reopenSessionAuditContext,
             EncounterReopenGuard encounterReopenGuard,
             EncounterAmendmentService encounterAmendmentService,
-            InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService) {
+            InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService,
+            @Lazy PatientActivityService patientActivityService) {
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.entityManager = entityManager;
@@ -221,6 +224,7 @@ public class PatientEncounterService {
         this.encounterReopenGuard = encounterReopenGuard;
         this.encounterAmendmentService = encounterAmendmentService;
         this.insuranceCheckoutDiagnosticApprovalService = insuranceCheckoutDiagnosticApprovalService;
+        this.patientActivityService = patientActivityService;
     }
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
@@ -1085,6 +1089,7 @@ public class PatientEncounterService {
 
         PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
         encounterAssignToBedService.dischargeActiveAssignmentByEncounterId(saved.getId());
+        recordPostVisitFollowUp(saved);
         LOG.info("[DISCHARGE] success id={} status={}", saved.getId(), saved.getStatus());
         return saved;
     }
@@ -1178,6 +1183,8 @@ public class PatientEncounterService {
                     NotificationCode.ENCOUNTER_CLOSED,
                     null
             );
+
+            recordPostVisitFollowUp(saved);
 
             LOG.info(
                     "[COMPLETE] success id={} status={} completedAt={} completedBy={}",
@@ -2568,6 +2575,8 @@ public class PatientEncounterService {
                     null
             );
 
+            recordPostVisitFollowUp(saved);
+
             LOG.info(
                     "[DISCHARGE] success id={} status={} dischargeType={} dischargeAt={} dischargedBy={}",
                     saved.getId(),
@@ -2895,6 +2904,23 @@ public class PatientEncounterService {
         );
 
         return saved;
+    }
+
+    private void recordPostVisitFollowUp(PatientEncounter encounter) {
+        if (encounter == null || encounter.getId() == null) {
+            return;
+        }
+        Long patientId = encounter.getPatient() == null ? null : encounter.getPatient().getId();
+        Long appointmentId = encounter.getAppointment() == null ? null : encounter.getAppointment().getId();
+        patientActivityService.recordOccurred(
+                patientId,
+                encounter.getId(),
+                appointmentId,
+                PatientActivityType.POST_VISIT_FOLLOW_UP,
+                PatientActivityService.SOURCE_ENCOUNTER,
+                encounter.getId(),
+                "Post-visit follow-up"
+        );
     }
 
     private void notifyEncounterEvent(PatientEncounter encounter, NotificationCode notificationCode, Map<String, Object> extraData) {

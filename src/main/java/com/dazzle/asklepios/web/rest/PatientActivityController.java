@@ -4,10 +4,10 @@ import com.dazzle.asklepios.domain.PatientActivity;
 import com.dazzle.asklepios.domain.enumeration.PatientActivityCategory;
 import com.dazzle.asklepios.domain.enumeration.PatientActivityStatus;
 import com.dazzle.asklepios.service.PatientActivityService;
-import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityCatalogVM;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityCancelDTO;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityCompleteDTO;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityCreateDTO;
+import com.dazzle.asklepios.service.dto.patientActivity.PatientActivitySummaryVM;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import jakarta.validation.Valid;
@@ -41,12 +41,6 @@ public class PatientActivityController {
 
     public PatientActivityController(PatientActivityService patientActivityService) {
         this.patientActivityService = patientActivityService;
-    }
-
-    @GetMapping("/activities/catalog")
-    public ResponseEntity<PatientActivityCatalogVM> catalog() {
-        LOG.debug("REST get PatientActivity catalog");
-        return ResponseEntity.ok(patientActivityService.catalog());
     }
 
     @PostMapping("/activities")
@@ -88,16 +82,23 @@ public class PatientActivityController {
         return ResponseEntity.ok(patientActivityService.findById(id));
     }
 
+    @GetMapping("/activities/patient/{patientId}/summary")
+    public ResponseEntity<PatientActivitySummaryVM> summarize(@PathVariable Long patientId) {
+        LOG.debug("REST summarize PatientActivity patientId={}", patientId);
+        return ResponseEntity.ok(patientActivityService.summarize(patientId));
+    }
+
     @GetMapping("/activities/patient/{patientId}")
     public ResponseEntity<List<PatientActivity>> findByPatient(
             @PathVariable Long patientId,
             @RequestParam(required = false) PatientActivityCategory category,
             @RequestParam(required = false) PatientActivityStatus status,
+            @RequestParam(required = false) String search,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST list PatientActivity patientId={} category={} status={}", patientId, category, status);
+        LOG.debug("REST list PatientActivity patientId={} category={} status={} search={}", patientId, category, status, search);
 
-        Page<PatientActivity> page = patientActivityService.findByPatient(patientId, category, status, pageable);
+        Page<PatientActivity> page = patientActivityService.findByPatient(patientId, category, status, search, pageable);
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(),
                 page

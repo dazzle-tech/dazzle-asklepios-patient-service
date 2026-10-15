@@ -8,6 +8,7 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
@@ -60,6 +61,7 @@ public class DiagnosticOrderService {
     private final NotificationHelper notificationHelper;
     private final EncounterReopenGuard encounterReopenGuard;
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
+    private final PatientActivityService patientActivityService;
 
 
     /**
@@ -262,6 +264,7 @@ public class DiagnosticOrderService {
 
         notificationForUrgentDiagnosticOrder(saved);
         diagnosticOrderTestStatusService.chargeSubmittedOrder(saved.getId());
+        recordSubmittedOrderActivities(saved);
 
         return saved;
     }
@@ -278,6 +281,55 @@ public class DiagnosticOrderService {
             );
         }
         return submit(order, submittedBy);
+    }
+
+    private void recordSubmittedOrderActivities(DiagnosticOrder order) {
+        if (order == null || order.getId() == null || order.getPatientId() == null) {
+            return;
+        }
+
+        List<DiagnosticOrderTest> tests = diagnosticOrderTestRepository.findByOrderIdInAndStatusNot(
+                List.of(order.getId()),
+                DiagnosticOrderTestStatus.CANCELLED
+        );
+
+        boolean laboratory = false;
+        boolean radiology = false;
+        for (DiagnosticOrderTest test : tests) {
+            if (test.getOrderType() == TestType.RADIOLOGY) {
+                radiology = true;
+            } else if (test.getOrderType() != null) {
+                laboratory = true;
+            }
+        }
+
+        Long appointmentId = patientEncounterRepository.findById(order.getEncounterId())
+                .map(PatientEncounter::getAppointment)
+                .map(appointment -> appointment.getId())
+                .orElse(null);
+
+        if (laboratory) {
+            patientActivityService.recordOccurred(
+                    order.getPatientId(),
+                    order.getEncounterId(),
+                    appointmentId,
+                    PatientActivityType.LAB_TEST_PENDING,
+                    PatientActivityService.SOURCE_DIAGNOSTIC_ORDER,
+                    order.getId(),
+                    "Lab test pending"
+            );
+        }
+        if (radiology) {
+            patientActivityService.recordOccurred(
+                    order.getPatientId(),
+                    order.getEncounterId(),
+                    appointmentId,
+                    PatientActivityType.RADIOLOGY_APPOINTMENT_COORDINATION,
+                    PatientActivityService.SOURCE_DIAGNOSTIC_ORDER,
+                    order.getId(),
+                    "Radiology appointment coordination"
+            );
+        }
     }
 
     /**
