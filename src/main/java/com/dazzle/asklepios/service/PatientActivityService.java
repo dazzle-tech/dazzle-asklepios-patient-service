@@ -67,6 +67,7 @@ public class PatientActivityService {
     public static final String SOURCE_CLAIM = "CLAIM";
     public static final String SOURCE_BILLING_REFUND = "BILLING_REFUND";
     public static final String SOURCE_TELEPHONIC_CONSULTATION = "TELEPHONIC_CONSULTATION";
+    public static final String SOURCE_NOTIFICATION = "NOTIFICATION";
 
     private final PatientActivityRepository patientActivityRepository;
     private final PatientRepository patientRepository;
