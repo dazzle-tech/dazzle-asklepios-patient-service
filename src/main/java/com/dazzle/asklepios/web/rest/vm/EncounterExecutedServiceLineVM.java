@@ -20,6 +20,9 @@ public record EncounterExecutedServiceLineVM(
         BigDecimal insuranceShareAmount,
         String currency,
         BigDecimal grossAmount,
-        BigDecimal patientPaidAmount
+        BigDecimal patientPaidAmount,
+        BigDecimal setupUnitPrice,
+        BigDecimal discountPercentage,
+        String coverageStatus
 ) {
 }

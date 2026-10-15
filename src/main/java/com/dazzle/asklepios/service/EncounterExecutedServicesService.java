@@ -2,25 +2,31 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.BillingCharge;
 import com.dazzle.asklepios.domain.BillingChargeLine;
+import com.dazzle.asklepios.domain.BillingPricingSnapshot;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPricingSnapshotStatus;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingChargeRepository;
+import com.dazzle.asklepios.repository.BillingPricingSnapshotRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.EncounterExecutedServiceLineVM;
 import com.dazzle.asklepios.web.rest.vm.EncounterExecutedServicesVM;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -48,6 +54,7 @@ public class EncounterExecutedServicesService {
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final BillingChargeRepository billingChargeRepository;
     private final BillingChargeLineRepository billingChargeLineRepository;
+    private final BillingPricingSnapshotRepository billingPricingSnapshotRepository;
     private final BillingItemDisplayNameService billingItemDisplayNameService;
     private final EncounterInvoicePaymentReader encounterInvoicePaymentReader;
 
@@ -56,6 +63,7 @@ public class EncounterExecutedServicesService {
             PatientServiceAndProductRepository patientServiceAndProductRepository,
             BillingChargeRepository billingChargeRepository,
             BillingChargeLineRepository billingChargeLineRepository,
+            BillingPricingSnapshotRepository billingPricingSnapshotRepository,
             BillingItemDisplayNameService billingItemDisplayNameService,
             EncounterInvoicePaymentReader encounterInvoicePaymentReader
     ) {
@@ -63,6 +71,7 @@ public class EncounterExecutedServicesService {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.billingChargeRepository = billingChargeRepository;
         this.billingChargeLineRepository = billingChargeLineRepository;
+        this.billingPricingSnapshotRepository = billingPricingSnapshotRepository;
         this.billingItemDisplayNameService = billingItemDisplayNameService;
         this.encounterInvoicePaymentReader = encounterInvoicePaymentReader;
     }
@@ -85,13 +94,23 @@ public class EncounterExecutedServicesService {
         Map<String, String> displayNames = new HashMap<>();
         Set<Long> billedItemIds = new HashSet<>();
         List<EncounterExecutedServiceLineVM> lines = new ArrayList<>();
+        String coverageType = encounter.getCoverageType() == null
+                ? null
+                : encounter.getCoverageType().name();
+        Map<Long, BigDecimal> cashPriceByChargeLine = cashPrices(chargeLines);
 
         for (BillingChargeLine chargeLine : chargeLines) {
             PatientServiceAndProduct item = chargeLine.getPatientServiceProduct();
             if (item != null && item.getId() != null) {
                 billedItemIds.add(item.getId());
             }
-            lines.add(fromChargeLine(chargeLine, item, displayNames, invoicePaidByService));
+            lines.add(fromChargeLine(
+                    chargeLine,
+                    item,
+                    displayNames,
+                    invoicePaidByService,
+                    cashPriceByChargeLine.get(chargeLine.getId())
+            ));
         }
 
         for (PatientServiceAndProduct item : items) {
@@ -100,10 +119,6 @@ public class EncounterExecutedServicesService {
             }
             lines.add(fromItem(item, displayNames, invoicePaidByService));
         }
-
-        String coverageType = encounter.getCoverageType() == null
-                ? null
-                : encounter.getCoverageType().name();
 
         return new EncounterExecutedServicesVM(
                 encounter.getId(),
@@ -185,7 +200,8 @@ public class EncounterExecutedServicesService {
             BillingChargeLine line,
             PatientServiceAndProduct item,
             Map<String, String> displayNames,
-            Map<Long, BigDecimal> invoicePaidByService
+            Map<Long, BigDecimal> invoicePaidByService,
+            BigDecimal setupUnitPrice
     ) {
         BigDecimal net = ExecutedServiceAmounts.net(
                 line.getNetAmount(),
@@ -194,6 +210,14 @@ public class EncounterExecutedServicesService {
         );
         boolean cancelled = ExecutedServiceAmounts.isCancelled(line.getStatus())
                 || (item != null && ExecutedServiceAmounts.isCancelled(item.getPaymentStatus()));
+        BigDecimal insuranceShare = ExecutedServiceAmounts.insuranceShare(
+                line.getInsuranceResponsibilityAmount()
+        );
+        BigDecimal lineGross = gross(
+                line.getGrossAmount(),
+                line.getUnitPrice(),
+                line.getQuantity()
+        );
 
         return new EncounterExecutedServiceLineVM(
                 line.getId(),
@@ -226,12 +250,13 @@ public class EncounterExecutedServicesService {
                         line.getInsuranceResponsibilityAmount(),
                         net
                 ),
-                ExecutedServiceAmounts.insuranceShare(
-                        line.getInsuranceResponsibilityAmount()
-                ),
+                insuranceShare,
                 line.getCurrency() == null ? null : line.getCurrency().name(),
-                gross(line.getGrossAmount(), line.getUnitPrice(), line.getQuantity()),
-                patientPaid(item, invoicePaidByService)
+                lineGross,
+                patientPaid(item, invoicePaidByService),
+                setupUnitPrice,
+                discountPercentage(line.getDiscountAmount(), lineGross),
+                coverageStatus(item, insuranceShare)
         );
     }
 
@@ -245,6 +270,14 @@ public class EncounterExecutedServicesService {
                 : BigDecimal.valueOf(item.getQuantity());
         BigDecimal net = ExecutedServiceAmounts.net(
                 item.getNetAmount(),
+                item.getUnitPrice(),
+                quantity
+        );
+        BigDecimal insuranceShare = ExecutedServiceAmounts.insuranceShare(
+                item.getInsuranceShareAmount()
+        );
+        BigDecimal itemGross = gross(
+                item.getGrossAmount(),
                 item.getUnitPrice(),
                 quantity
         );
@@ -280,11 +313,81 @@ public class EncounterExecutedServicesService {
                         item.getInsuranceShareAmount(),
                         net
                 ),
-                ExecutedServiceAmounts.insuranceShare(item.getInsuranceShareAmount()),
+                insuranceShare,
                 item.getCurrency() == null ? null : item.getCurrency().name(),
-                gross(item.getGrossAmount(), item.getUnitPrice(), quantity),
-                patientPaid(item, invoicePaidByService)
+                itemGross,
+                patientPaid(item, invoicePaidByService),
+                null,
+                discountPercentage(item.getDiscountAmount(), itemGross),
+                coverageStatus(item, insuranceShare)
         );
+    }
+
+    private Map<Long, BigDecimal> cashPrices(List<BillingChargeLine> lines) {
+        List<Long> chargeLineIds = lines.stream()
+                .map(BillingChargeLine::getId)
+                .filter(id -> id != null)
+                .toList();
+        if (chargeLineIds.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<Long, BigDecimal> prices = new HashMap<>();
+        for (BillingPricingSnapshot snapshot : billingPricingSnapshotRepository
+                .findAllByChargeLine_IdInAndStatusOrderByIdDesc(
+                        chargeLineIds,
+                        BillingPricingSnapshotStatus.ACTIVE
+                )) {
+            if (snapshot.getChargeLine() == null || snapshot.getChargeLine().getId() == null) {
+                continue;
+            }
+            prices.putIfAbsent(snapshot.getChargeLine().getId(), readSetupUnitPrice(snapshot));
+        }
+        return prices;
+    }
+
+    private BigDecimal discountPercentage(
+            BigDecimal discountAmount,
+            BigDecimal grossAmount
+    ) {
+        BigDecimal gross = ExecutedServiceAmounts.zeroIfNull(grossAmount);
+        BigDecimal discount = ExecutedServiceAmounts.zeroIfNull(discountAmount);
+        if (gross.signum() <= 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        return discount
+                .multiply(BigDecimal.valueOf(100))
+                .divide(gross, 2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal readSetupUnitPrice(BillingPricingSnapshot snapshot) {
+        JsonNode payload = snapshot.getCalculationPayload();
+        if (payload == null || !payload.hasNonNull("setupUnitPrice")) {
+            return null;
+        }
+        return payload.get("setupUnitPrice").decimalValue();
+    }
+
+    private String coverageStatus(
+            PatientServiceAndProduct item,
+            BigDecimal insuranceShare
+    ) {
+        CoverageStatus status = item == null ? null : item.getCoverageStatus();
+        if (status == CoverageStatus.COVERED
+                || status == CoverageStatus.PARTIALLY_COVERED
+                || status == CoverageStatus.NOT_COVERED
+                || status == CoverageStatus.REJECTED) {
+            return status.name();
+        }
+        if (insuranceShare != null && insuranceShare.signum() > 0) {
+            return CoverageStatus.COVERED.name();
+        }
+        if (item != null && item.isUncoveredCashItem()) {
+            return CoverageStatus.NOT_COVERED.name();
+        }
+
+        return status == null ? null : status.name();
     }
 
     private BigDecimal gross(
