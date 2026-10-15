@@ -5,6 +5,7 @@ import com.dazzle.asklepios.client.setup.DiagnosticTestProfileClient;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.ApproveResultDTO;
@@ -102,6 +103,14 @@ public class DiagnosticOrderTestResultStatusService {
         result.setApprovedDate(Instant.now());
         result.setMarker(approveResultDTO.marker());
         result.setNormalRangeValue(approveResultDTO.normalRange());
+
+        // Normal results need no manual review: mark them reviewed by the approver.
+        if (approveResultDTO.marker() == TestResultMarker.NORMAL_MARKER && result.getReviewDate() == null) {
+            result.setReviewBy(approveResultDTO.approvedBy());
+            result.setReviewDate(result.getApprovedDate());
+            LOG.debug("[ResultApprove] auto-reviewed normal result resultId={} reviewBy={}",
+                    result.getId(), result.getReviewBy());
+        }
 
         DiagnosticOrderTestResult saved = resultRepository.save(result);
 
