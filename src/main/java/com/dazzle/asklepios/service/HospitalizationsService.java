@@ -3,12 +3,14 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.Hospitalization;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
+import com.dazzle.asklepios.domain.enumeration.Unit;
 import com.dazzle.asklepios.repository.HospitalizationRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationCancelDTO;
 import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationsCreateDTO;
 import com.dazzle.asklepios.service.dto.Hospitalizations.HospitalizationsUpdateDTO;
+import com.dazzle.asklepios.service.helper.DurationDateHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +23,9 @@ import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Date;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -35,6 +39,7 @@ public class HospitalizationsService {
 
     private final HospitalizationRepository hospitalizationRepository;
     private final PatientRepository patientRepository;
+    private final DurationDateHelper durationDateHelper;
 
     private Patient refPatient(Long patientId) {
         return patientRepository.findById(patientId)
@@ -63,7 +68,9 @@ public class HospitalizationsService {
                 dto.facility(),
                 dto.reason(),
                 dto.admissionType(),
-                dto.dateOfAdmission()
+                dto.dateOfAdmission(),
+                dto.admissionDurationType(),
+                dto.admissionDuration()
         );
 
         boolean isFree = Boolean.TRUE.equals(dto.patientIsFree());
@@ -73,7 +80,6 @@ public class HospitalizationsService {
                 .facility(isFree ? null : dto.facility())
                 .reason(isFree ? null : dto.reason())
                 .admissionType(isFree ? null : dto.admissionType())
-                .dateOfAdmission(isFree ? null : dto.dateOfAdmission())
                 .lengthOfStayDays(isFree ? null : dto.lengthOfStayDays())
                 .outcomes(isFree ? null : dto.outcomes())
                 .medicalInterventionsPerformed(
@@ -83,6 +89,14 @@ public class HospitalizationsService {
                 .freeText(isFree ? dto.freeText().trim() : null)
                 .status(PatientHistoryStatus.ACTIVE)
                 .build();
+
+        applyAdmissionDate(
+                entity,
+                isFree,
+                dto.dateOfAdmission(),
+                dto.admissionDurationType(),
+                dto.admissionDuration()
+        );
 
         try {
             return hospitalizationRepository.saveAndFlush(entity);
@@ -105,7 +119,9 @@ public class HospitalizationsService {
                 dto.facility(),
                 dto.reason(),
                 dto.admissionType(),
-                dto.dateOfAdmission()
+                dto.dateOfAdmission(),
+                dto.admissionDurationType(),
+                dto.admissionDuration()
         );
 
         Hospitalization entity = hospitalizationRepository.findById(dto.id())
@@ -121,7 +137,13 @@ public class HospitalizationsService {
         entity.setFacility(isFree ? null : dto.facility());
         entity.setReason(isFree ? null : dto.reason());
         entity.setAdmissionType(isFree ? null : dto.admissionType());
-        entity.setDateOfAdmission(isFree ? null : dto.dateOfAdmission());
+        applyAdmissionDate(
+                entity,
+                isFree,
+                dto.dateOfAdmission(),
+                dto.admissionDurationType(),
+                dto.admissionDuration()
+        );
         entity.setLengthOfStayDays(isFree ? null : dto.lengthOfStayDays());
         entity.setOutcomes(isFree ? null : dto.outcomes());
         entity.setMedicalInterventionsPerformed(
@@ -215,7 +237,9 @@ public class HospitalizationsService {
             String facility,
             String reason,
             String admissionType,
-            java.util.Date dateOfAdmission
+            Date dateOfAdmission,
+            Unit admissionDurationType,
+            BigDecimal admissionDuration
     ) {
         boolean isFree = Boolean.TRUE.equals(patientIsFree);
 
@@ -255,13 +279,50 @@ public class HospitalizationsService {
             );
         }
 
-        if (dateOfAdmission == null) {
+        durationDateHelper.requireComplete(
+                admissionDurationType,
+                admissionDuration,
+                "hospitalization",
+                "admissionDuration"
+        );
+
+        if (dateOfAdmission == null && admissionDurationType == null) {
             throw new BadRequestAlertException(
                     "Date of admission is required.",
                     "hospitalization",
                     "dateOfAdmission.required"
             );
         }
+    }
+
+    private void applyAdmissionDate(
+            Hospitalization entity,
+            boolean isFree,
+            Date dateOfAdmission,
+            Unit admissionDurationType,
+            BigDecimal admissionDuration
+    ) {
+        if (isFree) {
+            entity.setAdmissionDurationType(null);
+            entity.setAdmissionDuration(null);
+            entity.setDateOfAdmission(null);
+            return;
+        }
+
+        DurationDateHelper.DurationDate resolved = durationDateHelper.resolve(
+                dateOfAdmission,
+                admissionDurationType,
+                admissionDuration,
+                entity.getAdmissionDurationType(),
+                entity.getAdmissionDuration(),
+                entity.getDateOfAdmission(),
+                "hospitalization",
+                "admissionDuration"
+        );
+
+        entity.setAdmissionDurationType(resolved.durationType());
+        entity.setAdmissionDuration(resolved.duration());
+        entity.setDateOfAdmission(resolved.date());
     }
 
     private void handleConstraints(RuntimeException exception) {
