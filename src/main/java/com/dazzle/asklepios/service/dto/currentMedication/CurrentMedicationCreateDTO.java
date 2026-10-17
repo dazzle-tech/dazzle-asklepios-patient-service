@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service.dto.currentMedication;
 
 import com.dazzle.asklepios.domain.enumeration.MedFrequency;
 import com.dazzle.asklepios.domain.enumeration.UOM;
+import com.dazzle.asklepios.domain.enumeration.Unit;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.NotNull;
 
@@ -24,6 +25,11 @@ public record CurrentMedicationCreateDTO(
         MedFrequency frequency,
 
         Date startDate,
+
+        Unit startDurationType,
+
+        // BigDecimal so fractional input is rejected instead of being truncated by Jackson.
+        BigDecimal startDuration,
 
         @NotNull
         Boolean patientIsFree,

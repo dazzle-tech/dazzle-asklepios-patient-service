@@ -3,6 +3,7 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.CurrentMedication;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
+import com.dazzle.asklepios.domain.enumeration.Unit;
 import com.dazzle.asklepios.repository.CurrentMedicationRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
@@ -10,6 +11,7 @@ import com.dazzle.asklepios.service.dto.currentMedication.CurrentMedicationCance
 import com.dazzle.asklepios.service.dto.currentMedication.CurrentMedicationCreateDTO;
 import com.dazzle.asklepios.service.dto.currentMedication.CurrentMedicationUpdateDTO;
 import com.dazzle.asklepios.service.helper.ActiveIngredientHelper;
+import com.dazzle.asklepios.service.helper.DurationDateHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +24,7 @@ import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Date;
 
@@ -38,6 +41,7 @@ public class CurrentMedicationService {
     private final CurrentMedicationRepository currentMedicationRepository;
     private final PatientRepository patientRepository;
     private final ActiveIngredientHelper activeIngredientHelper;
+    private final DurationDateHelper durationDateHelper;
 
     private Patient getPatientOrThrow(Long patientId) {
         return patientRepository.findById(patientId)
@@ -64,7 +68,9 @@ public class CurrentMedicationService {
                 dto.patientIsFree(),
                 dto.freeText(),
                 dto.activeIngredientId(),
-                dto.startDate()
+                dto.startDate(),
+                dto.startDurationType(),
+                dto.startDuration()
         );
 
         boolean isFree = Boolean.TRUE.equals(dto.patientIsFree());
@@ -83,11 +89,18 @@ public class CurrentMedicationService {
                 .dosage(isFree ? null : dto.dosage())
                 .unit(isFree ? null : dto.unit())
                 .frequency(isFree ? null : dto.frequency())
-                .startDate(isFree ? null : dto.startDate())
                 .patientIsFree(isFree)
                 .freeText(isFree ? dto.freeText().trim() : null)
                 .status(PatientHistoryStatus.ACTIVE)
                 .build();
+
+        applyStartDate(
+                entity,
+                isFree,
+                dto.startDate(),
+                dto.startDurationType(),
+                dto.startDuration()
+        );
 
         try {
             CurrentMedication saved =
@@ -115,7 +128,9 @@ public class CurrentMedicationService {
                 dto.patientIsFree(),
                 dto.freeText(),
                 dto.activeIngredientId(),
-                dto.startDate()
+                dto.startDate(),
+                dto.startDurationType(),
+                dto.startDuration()
         );
 
         CurrentMedication entity =
@@ -141,7 +156,13 @@ public class CurrentMedicationService {
         entity.setDosage(isFree ? null : dto.dosage());
         entity.setUnit(isFree ? null : dto.unit());
         entity.setFrequency(isFree ? null : dto.frequency());
-        entity.setStartDate(isFree ? null : dto.startDate());
+        applyStartDate(
+                entity,
+                isFree,
+                dto.startDate(),
+                dto.startDurationType(),
+                dto.startDuration()
+        );
         entity.setPatientIsFree(isFree);
         entity.setFreeText(isFree ? dto.freeText().trim() : null);
 
@@ -256,7 +277,9 @@ public class CurrentMedicationService {
             Boolean patientIsFree,
             String freeText,
             Long activeIngredientId,
-            Date startDate
+            Date startDate,
+            Unit startDurationType,
+            BigDecimal startDuration
     ) {
         boolean isFree = Boolean.TRUE.equals(patientIsFree);
 
@@ -280,6 +303,18 @@ public class CurrentMedicationService {
             );
         }
 
+        durationDateHelper.requireComplete(
+                startDurationType,
+                startDuration,
+                "currentMedication",
+                "startDuration"
+        );
+
+        // A duration-derived date is bounded by the helper; these checks apply to manual dates.
+        if (startDurationType != null) {
+            return;
+        }
+
         if (startDate == null) {
             throw new BadRequestAlertException(
                     "Start date is required.",
@@ -295,6 +330,36 @@ public class CurrentMedicationService {
                     "startDate.future"
             );
         }
+    }
+
+    private void applyStartDate(
+            CurrentMedication entity,
+            boolean isFree,
+            Date startDate,
+            Unit startDurationType,
+            BigDecimal startDuration
+    ) {
+        if (isFree) {
+            entity.setStartDurationType(null);
+            entity.setStartDuration(null);
+            entity.setStartDate(null);
+            return;
+        }
+
+        DurationDateHelper.DurationDate resolved = durationDateHelper.resolve(
+                startDate,
+                startDurationType,
+                startDuration,
+                entity.getStartDurationType(),
+                entity.getStartDuration(),
+                entity.getStartDate(),
+                "currentMedication",
+                "startDuration"
+        );
+
+        entity.setStartDurationType(resolved.durationType());
+        entity.setStartDuration(resolved.duration());
+        entity.setStartDate(resolved.date());
     }
 
     private void handleConstraints(RuntimeException exception) {
