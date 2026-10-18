@@ -3,12 +3,14 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientProblem;
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
+import com.dazzle.asklepios.domain.enumeration.Unit;
 import com.dazzle.asklepios.repository.PatientProblemRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemCancelDTO;
 import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemCreateDTO;
 import com.dazzle.asklepios.service.dto.PatientProblems.PatientProblemUpdateDTO;
+import com.dazzle.asklepios.service.helper.DurationDateHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +23,9 @@ import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Date;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -35,6 +39,7 @@ public class PatientProblemService {
 
     private final PatientProblemRepository patientProblemRepository;
     private final PatientRepository patientRepository;
+    private final DurationDateHelper durationDateHelper;
 
     private Patient resolvePatient(Long patientId) {
         if (patientId == null) {
@@ -70,7 +75,6 @@ public class PatientProblemService {
                 // Use the existing resolvePatient method (not refPatient)
                 .patient(resolvePatient(patientProblemCreateDTO.patientId()))
                 .condition(patientProblemCreateDTO.condition())
-                .dateOfDiagnosis(patientProblemCreateDTO.dateOfDiagnosis())
                 .conditionStatus(patientProblemCreateDTO.conditionStatus())
                 .type(patientProblemCreateDTO.type())
                 .dateOfResolution(patientProblemCreateDTO.dateOfResolution())
@@ -82,6 +86,14 @@ public class PatientProblemService {
                 .status(PatientHistoryStatus.ACTIVE)
 
                 .build();
+
+        applyDiagnosisDate(
+                entity,
+                Boolean.TRUE.equals(patientProblemCreateDTO.patientIsFree()),
+                patientProblemCreateDTO.dateOfDiagnosis(),
+                patientProblemCreateDTO.diagnosisDurationType(),
+                patientProblemCreateDTO.diagnosisDuration()
+        );
 
         try {
             return patientProblemRepository.saveAndFlush(entity);
@@ -108,7 +120,13 @@ public class PatientProblemService {
 
         entity.setPatient(resolvePatient(patientProblemUpdateDTO.patientId()));
         entity.setCondition(patientProblemUpdateDTO.condition());
-        entity.setDateOfDiagnosis(patientProblemUpdateDTO.dateOfDiagnosis());
+        applyDiagnosisDate(
+                entity,
+                Boolean.TRUE.equals(patientProblemUpdateDTO.patientIsFree()),
+                patientProblemUpdateDTO.dateOfDiagnosis(),
+                patientProblemUpdateDTO.diagnosisDurationType(),
+                patientProblemUpdateDTO.diagnosisDuration()
+        );
         entity.setConditionStatus(patientProblemUpdateDTO.conditionStatus());
         entity.setType(patientProblemUpdateDTO.type());
         entity.setDateOfResolution(patientProblemUpdateDTO.dateOfResolution());
@@ -278,6 +296,57 @@ public class PatientProblemService {
         );
     }
 
+    private void validateDiagnosisDateInput(
+            Date dateOfDiagnosis,
+            Unit diagnosisDurationType,
+            BigDecimal diagnosisDuration
+    ) {
+        durationDateHelper.requireComplete(
+                diagnosisDurationType,
+                diagnosisDuration,
+                "patientProblem",
+                "diagnosisDuration"
+        );
+
+        if (diagnosisDurationType == null && dateOfDiagnosis == null) {
+            throw new BadRequestAlertException(
+                    "Date of diagnosis is required.",
+                    "patientProblem",
+                    "dateOfDiagnosis.required"
+            );
+        }
+    }
+
+    private void applyDiagnosisDate(
+            PatientProblem entity,
+            boolean patientIsFree,
+            Date dateOfDiagnosis,
+            Unit diagnosisDurationType,
+            BigDecimal diagnosisDuration
+    ) {
+        if (patientIsFree) {
+            entity.setDiagnosisDurationType(null);
+            entity.setDiagnosisDuration(null);
+            entity.setDateOfDiagnosis(null);
+            return;
+        }
+
+        DurationDateHelper.DurationDate resolved = durationDateHelper.resolve(
+                dateOfDiagnosis,
+                diagnosisDurationType,
+                diagnosisDuration,
+                entity.getDiagnosisDurationType(),
+                entity.getDiagnosisDuration(),
+                entity.getDateOfDiagnosis(),
+                "patientProblem",
+                "diagnosisDuration"
+        );
+
+        entity.setDiagnosisDurationType(resolved.durationType());
+        entity.setDiagnosisDuration(resolved.duration());
+        entity.setDateOfDiagnosis(resolved.date());
+    }
+
     private void validateRequiredFields(PatientProblemCreateDTO dto) {
 
         if (dto.patientIsFree() == null) {
@@ -307,13 +376,11 @@ public class PatientProblemService {
             );
         }
 
-        if (dto.dateOfDiagnosis() == null) {
-            throw new BadRequestAlertException(
-                    "Date of diagnosis is required.",
-                    "patientProblem",
-                    "dateOfDiagnosis.required"
-            );
-        }
+        validateDiagnosisDateInput(
+                dto.dateOfDiagnosis(),
+                dto.diagnosisDurationType(),
+                dto.diagnosisDuration()
+        );
 
         if (dto.conditionStatus() == null || dto.conditionStatus().isBlank()) {
             throw new BadRequestAlertException(
@@ -372,13 +439,11 @@ public class PatientProblemService {
             );
         }
 
-        if (dto.dateOfDiagnosis() == null) {
-            throw new BadRequestAlertException(
-                    "Date of diagnosis is required.",
-                    "patientProblem",
-                    "dateOfDiagnosis.required"
-            );
-        }
+        validateDiagnosisDateInput(
+                dto.dateOfDiagnosis(),
+                dto.diagnosisDurationType(),
+                dto.diagnosisDuration()
+        );
 
         if (dto.conditionStatus() == null || dto.conditionStatus().isBlank()) {
             throw new BadRequestAlertException(

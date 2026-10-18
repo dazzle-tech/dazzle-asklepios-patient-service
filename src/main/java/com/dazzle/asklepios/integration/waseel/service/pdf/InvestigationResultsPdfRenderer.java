@@ -8,6 +8,8 @@ import com.dazzle.asklepios.integration.waseel.service.pdf.SimplePdfWriter.Color
 import com.dazzle.asklepios.integration.waseel.service.pdf.SimplePdfWriter.Font;
 import org.springframework.stereotype.Component;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -15,6 +17,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.zip.Deflater;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /**
  * Renders lab / radiology investigation results as a readable PDF attachment for Waseel claims.
@@ -26,6 +31,10 @@ public class InvestigationResultsPdfRenderer {
 
     private final int maxPdfBytes = 1_000_000;
     private final int initialMaxPages = 200;
+    private final String pdfFilename = "investigation-results.pdf";
+    private final String pdfContentType = "application/pdf";
+    private final String zipFilename = "investigation-results.zip";
+    private final String zipContentType = "application/zip";
     private final ZoneId reportZone = ZoneId.of("Asia/Riyadh");
     private final DateTimeFormatter dateFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ENGLISH);
     private final DateTimeFormatter dateTimeFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy hh:mm a", Locale.ENGLISH);
@@ -72,15 +81,34 @@ public class InvestigationResultsPdfRenderer {
         return pdf != null && pdf.length <= maxPdfBytes;
     }
 
-    public byte[] render(InvestigationResultsReport report) {
-        int maxPages = initialMaxPages;
-        while (true) {
-            byte[] bytes = new Layout(report, maxPages, Instant.now()).render();
-            if (withinSizeLimit(bytes) || maxPages == 1) {
-                return bytes;
-            }
-            maxPages = Math.max(1, maxPages / 2);
+    /**
+     * Keeps a PDF at or under 1 MB as {@code application/pdf}. A larger PDF is sent as a zip
+     * that contains the same file.
+     */
+    public Attachment attachmentFor(byte[] pdf) {
+        if (withinSizeLimit(pdf)) {
+            return new Attachment(pdf, pdfFilename, pdfContentType);
         }
+        return new Attachment(zip(pdf), zipFilename, zipContentType);
+    }
+
+    public byte[] render(InvestigationResultsReport report) {
+        return new Layout(report, initialMaxPages, Instant.now()).render();
+    }
+
+    public record Attachment(byte[] content, String filename, String contentType) {}
+
+    private byte[] zip(byte[] pdf) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(out)) {
+            zip.setLevel(Deflater.BEST_COMPRESSION);
+            zip.putNextEntry(new ZipEntry(pdfFilename));
+            zip.write(pdf);
+            zip.closeEntry();
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to compress investigation results PDF", e);
+        }
+        return out.toByteArray();
     }
 
     private float[] labColumnWidths() {
@@ -495,7 +523,7 @@ public class InvestigationResultsPdfRenderer {
 
                 if (truncated && i == total - 1) {
                     pdf.text(margin, 19, Font.BOLD, 7.5f, abnormalColor,
-                            "Report truncated to respect the attachment size limit.");
+                            "Report truncated to the maximum number of pages.");
                 }
             }
         }
