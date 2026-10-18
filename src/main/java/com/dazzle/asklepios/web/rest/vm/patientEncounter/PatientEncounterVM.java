@@ -32,6 +32,8 @@ public record PatientEncounterVM(
         EncounterStatus encounterStatus,
         String originType,
         String originName,
+        String promotionName,
+        String promotionCode,
         String notes,
 
         Integer departmentDailySequenceNumber,
@@ -85,6 +87,8 @@ public record PatientEncounterVM(
                 encounter.getEncounterStatus(),
                 encounter.getOriginType(),
                 encounter.getOriginName(),
+                encounter.getPromotionName(),
+                encounter.getPromotionCode(),
                 encounter.getNotes(),
 
                 encounter.getDepartmentDailySequenceNumber(),

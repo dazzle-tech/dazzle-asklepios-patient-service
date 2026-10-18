@@ -114,6 +114,12 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "origin_name", length = 255)
     private String originName;
 
+    @Column(name = "promotion_name", length = 255)
+    private String promotionName;
+
+    @Column(name = "promotion_code", length = 255)
+    private String promotionCode;
+
     @Column(name = "notes", columnDefinition = "text")
     private String notes;
 
