@@ -141,7 +141,9 @@ public class DiagnosticOrderTestCollectedSampleService {
 
         DiagnosticOrderTestCollectedSample saved = repository.save(sample);
 
-        diagnosticOrderTestStatusService.returnToNew(sample.getOrderTestId());
+        if (!repository.existsByOrderTestIdAndRejectedFalse(saved.getOrderTestId())) {
+            diagnosticOrderTestStatusService.returnToNew(saved.getOrderTestId());
+        }
 
         LOG.debug(
                 "[CollectedSampleService] REJECT - done. sampleId={} orderTestId={}",
