@@ -6,6 +6,7 @@ import jakarta.validation.constraints.FutureOrPresent;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -24,7 +25,7 @@ public class PrescriptionMedicationCreateDTO {
     public Long activeIngredientId;
     public String otherMedicationName;
     public Boolean chronicMedication;
-    public Double duration;
+    public BigDecimal duration;
     public String durationType;
 
     public Long maximumDose;

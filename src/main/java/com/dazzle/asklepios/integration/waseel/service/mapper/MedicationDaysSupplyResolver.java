@@ -3,6 +3,9 @@ package com.dazzle.asklepios.integration.waseel.service.mapper;
 import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
 @Component
 public class MedicationDaysSupplyResolver {
 
@@ -18,8 +21,8 @@ public class MedicationDaysSupplyResolver {
             return CHRONIC_DAYS_SUPPLY;
         }
 
-        Double duration = medication.getDuration();
-        if (duration == null || duration <= 0) {
+        BigDecimal duration = medication.getDuration();
+        if (duration == null || duration.compareTo(BigDecimal.ZERO) <= 0) {
             return DEFAULT_DAYS_SUPPLY;
         }
 
@@ -30,23 +33,23 @@ public class MedicationDaysSupplyResolver {
 
         String normalized = durationType.trim().toLowerCase();
         if (normalized.contains("week")) {
-            return safeInt(duration * 7);
+            return safeInt(duration.multiply(BigDecimal.valueOf(7)));
         }
         if (normalized.contains("month")) {
-            return safeInt(duration * 30);
+            return safeInt(duration.multiply(BigDecimal.valueOf(30)));
         }
         if (normalized.contains("year")) {
-            return safeInt(duration * 365);
+            return safeInt(duration.multiply(BigDecimal.valueOf(365)));
         }
 
         return safeInt(duration);
     }
 
-    private int safeInt(double value) {
-        if (value <= 0) {
+    private int safeInt(BigDecimal value) {
+        if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
             return DEFAULT_DAYS_SUPPLY;
         }
-        long rounded = Math.round(value);
+        long rounded = value.setScale(0, RoundingMode.HALF_UP).longValue();
         return (int) Math.min(rounded, Integer.MAX_VALUE);
     }
 }
