@@ -45,7 +45,7 @@ public class PatientPrescriptionMedicationService {
         PatientPrescription header = patientPrescriptionRepository.findById(prescriptionMedicationCreateDTO.prescriptionHeaderId)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + prescriptionMedicationCreateDTO.prescriptionHeaderId));
 
-        validateChronicVsDuration(prescriptionMedicationCreateDTO.chronicMedication, prescriptionMedicationCreateDTO.duration);
+        //validateChronicVsDuration(prescriptionMedicationCreateDTO.chronicMedication, prescriptionMedicationCreateDTO.duration);
         validateMedicationSelection(
                 prescriptionMedicationCreateDTO.activeIngredientId,
                 prescriptionMedicationCreateDTO.medicationsId,
@@ -118,7 +118,7 @@ public class PatientPrescriptionMedicationService {
         if (prescriptionMedicationUpdateDTO.chronicMedication != null || prescriptionMedicationUpdateDTO.duration != null) {
             Boolean chronic = prescriptionMedicationUpdateDTO.chronicMedication != null ? prescriptionMedicationUpdateDTO.chronicMedication : entity.getChronicMedication();
             Long duration = prescriptionMedicationUpdateDTO.duration != null ? prescriptionMedicationUpdateDTO.duration : entity.getDuration();
-            validateChronicVsDuration(chronic, duration);
+         //   validateChronicVsDuration(chronic, duration);
 
             if (prescriptionMedicationUpdateDTO.chronicMedication != null)
                 entity.setChronicMedication(prescriptionMedicationUpdateDTO.chronicMedication);
