@@ -4,6 +4,7 @@ import com.dazzle.asklepios.client.setup.dto.BillingPricingResolveRequest;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingTrigger;
@@ -96,6 +97,8 @@ public class BillingEngineService {
 
     private final EncounterPreAuthorizationSyncService
             encounterPreAuthorizationSyncService;
+
+    private final PatientActivityService patientActivityService;
 
     /*
      * ============================================================
@@ -1066,6 +1069,18 @@ public class BillingEngineService {
                 result.status(),
                 result.walletAvailableBalance()
         );
+
+        if (result.refundId() != null) {
+            patientActivityService.recordOccurred(
+                    request.patientId(),
+                    request.encounterId(),
+                    null,
+                    PatientActivityType.REFUND_OR_BILLING_INQUIRY,
+                    PatientActivityService.SOURCE_BILLING_REFUND,
+                    result.refundId(),
+                    "Refund issued"
+            );
+        }
 
         return result;
     }

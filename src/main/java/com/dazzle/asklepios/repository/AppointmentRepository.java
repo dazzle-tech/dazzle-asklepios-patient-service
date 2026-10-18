@@ -149,5 +149,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
             Instant startDatetimeFrom,
             Instant startDatetimeTo
     );
+
+    Page<Appointment> findByPatient_IdOrderByStartDatetimeDesc(Long patientId, Pageable pageable);
 }
 

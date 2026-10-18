@@ -8,6 +8,7 @@ import com.dazzle.asklepios.domain.Consultation;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.ConsultationLevel;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.ConsultationStatus;
 import com.dazzle.asklepios.domain.enumeration.ConsultationType;
 import com.dazzle.asklepios.domain.enumeration.DestinationType;
@@ -59,6 +60,7 @@ public class ConsultationService {
     private final PractitionerHelper practitionerHelper;
     private final NotificationHelper notificationHelper;
     private final ReopenSessionAuditContext reopenSessionAuditContext;
+    private final PatientActivityService patientActivityService;
 
 
     private String currentUsername() {
@@ -137,6 +139,17 @@ public class ConsultationService {
                     saved,
                     patient,
                     encounter
+            );
+
+            Long appointmentId = encounter.getAppointment() == null ? null : encounter.getAppointment().getId();
+            patientActivityService.recordOccurred(
+                    patient.getId(),
+                    encounter.getId(),
+                    appointmentId,
+                    PatientActivityType.SPECIALIST_CONSULTATION_COORDINATION,
+                    PatientActivityService.SOURCE_CONSULTATION,
+                    saved.getId(),
+                    "Specialist consultation requested"
             );
 
             LOG.info("[CREATE] Consultation successfully created with id={}", saved.getId());

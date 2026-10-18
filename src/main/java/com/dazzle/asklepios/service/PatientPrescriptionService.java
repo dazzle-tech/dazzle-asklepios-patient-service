@@ -12,6 +12,7 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientPrescription;
 import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionUrgencyLevel;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
@@ -65,6 +66,7 @@ public class PatientPrescriptionService {
     private final NotificationHelper notificationHelper;
     private final PatientServiceAndProductService patientServiceAndProductService;
     private final ReopenSessionAuditContext reopenSessionAuditContext;
+    private final PatientActivityService patientActivityService;
 
     private String currentUsername() {
         String username = SecurityUtils.getCurrentUserLogin().orElse(null);
@@ -264,6 +266,21 @@ public class PatientPrescriptionService {
         patientServiceAndProductService.syncPrescriptionMedicationsForPreAuthorization(
                 saved,
                 acceptUncoveredAsCash
+        );
+
+        Long patientId = saved.getPatient() == null ? null : saved.getPatient().getId();
+        Long appointmentId = patientEncounterRepository.findById(saved.getEncounterId())
+                .map(PatientEncounter::getAppointment)
+                .map(appointment -> appointment.getId())
+                .orElse(null);
+        patientActivityService.recordOccurred(
+                patientId,
+                saved.getEncounterId(),
+                appointmentId,
+                PatientActivityType.MEDICATION_RELATED_FOLLOW_UP,
+                PatientActivityService.SOURCE_PRESCRIPTION,
+                saved.getId(),
+                "Medication follow-up"
         );
 
         return toDto(saved);

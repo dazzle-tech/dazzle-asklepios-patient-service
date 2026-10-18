@@ -5,6 +5,7 @@ import com.dazzle.asklepios.client.setup.DiagnosticTestProfileClient;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
@@ -65,6 +66,7 @@ public class DiagnosticOrderTestResultStatusService {
      */
     private final DiagnosticTestClient diagnosticTestClient;
     private final DiagnosticTestProfileClient diagnosticTestProfileClient;
+    private final PatientActivityService patientActivityService;
 
     public DiagnosticOrderTestResultStatusService(
             DiagnosticOrderTestResultRepository resultRepository,
@@ -72,7 +74,9 @@ public class DiagnosticOrderTestResultStatusService {
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
             DiagnosticOrderStatusService diagnosticOrderStatusService,
             NormalRangeMatcherService normalRangeMatcherService,
-            DiagnosticTestClient diagnosticTestClient, DiagnosticTestProfileClient diagnosticTestProfileClient) {
+            DiagnosticTestClient diagnosticTestClient,
+            DiagnosticTestProfileClient diagnosticTestProfileClient,
+            PatientActivityService patientActivityService) {
         this.resultRepository = resultRepository;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
@@ -80,6 +84,7 @@ public class DiagnosticOrderTestResultStatusService {
         this.normalRangeMatcherService = normalRangeMatcherService;
         this.diagnosticTestClient = diagnosticTestClient;
         this.diagnosticTestProfileClient = diagnosticTestProfileClient;
+        this.patientActivityService = patientActivityService;
     }
 
     /**
@@ -116,6 +121,7 @@ public class DiagnosticOrderTestResultStatusService {
 
         diagnosticOrderTestStatusService.approve(saved.getOrderTestId());
         recomputeTestProcessingStatusFromResults(saved.getOrderTestId());
+        recordMarkerActivity(saved);
 
         return saved;
     }
@@ -301,6 +307,29 @@ public class DiagnosticOrderTestResultStatusService {
         LOG.debug("[TestRecompute] recompute order statuses done orderId={}", savedOrderTest.getOrderId());
 
         return savedOrderTest;
+    }
+
+    private void recordMarkerActivity(DiagnosticOrderTestResult result) {
+        if (result == null || result.getOrderTestId() == null) {
+            return;
+        }
+
+        TestResultMarker marker = result.getMarker();
+        if (marker == TestResultMarker.CRITICAL_UPPER || marker == TestResultMarker.CRITICAL_LOWER) {
+            patientActivityService.recordDiagnosticTestActivity(
+                    result.getOrderTestId(),
+                    PatientActivityType.CRITICAL_RESULT_ESCALATION,
+                    "Critical result approved"
+            );
+            return;
+        }
+        if (marker == TestResultMarker.ABNORMAL_MARKER) {
+            patientActivityService.recordDiagnosticTestActivity(
+                    result.getOrderTestId(),
+                    PatientActivityType.FOLLOW_UP_ON_ABNORMAL_RESULTS,
+                    "Abnormal result approved"
+            );
+        }
     }
 
     private DiagnosticOrderTestResult getResult(Long id) {

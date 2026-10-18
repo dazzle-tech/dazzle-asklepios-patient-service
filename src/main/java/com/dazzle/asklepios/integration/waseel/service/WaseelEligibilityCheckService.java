@@ -4,6 +4,8 @@ import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
+import com.dazzle.asklepios.service.PatientActivityService;
 import com.dazzle.asklepios.domain.enumeration.Gender;
 import com.dazzle.asklepios.service.helper.PayorHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -52,6 +54,7 @@ public class WaseelEligibilityCheckService {
     private final EligibilityPatientInsuranceSyncService eligibilityPatientInsuranceSyncService;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final PayorHelper payorHelper;
+    private final PatientActivityService patientActivityService;
 
     @Transactional
     public EligibilityCheckResponse checkEligibility(EligibilityCheckRequest request) {
@@ -123,6 +126,20 @@ public class WaseelEligibilityCheckService {
             }
 
             triggerBackendPreAuthorizationSubmission(request);
+
+            String siteEligibility = response == null ? null : response.siteEligibility();
+            String eligibilityNote = siteEligibility == null || siteEligibility.isBlank()
+                    ? "Insurance eligibility checked"
+                    : "Insurance eligibility checked: " + siteEligibility;
+            patientActivityService.recordOccurred(
+                    patient.getId(),
+                    request.encounterId(),
+                    null,
+                    PatientActivityType.INSURANCE_ELIGIBILITY_VERIFICATION,
+                    PatientActivityService.SOURCE_ELIGIBILITY_REQUEST,
+                    saved.getId(),
+                    eligibilityNote
+            );
 
             return toResult(saved);
 
