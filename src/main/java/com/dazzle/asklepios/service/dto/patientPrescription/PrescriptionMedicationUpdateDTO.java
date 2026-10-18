@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.FutureOrPresent;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -20,7 +21,7 @@ public class PrescriptionMedicationUpdateDTO {
     public String frequency;
 
     public Boolean chronicMedication;
-    public Long duration;
+    public BigDecimal duration;
     public String durationType;
 
     public Long maximumDose;
