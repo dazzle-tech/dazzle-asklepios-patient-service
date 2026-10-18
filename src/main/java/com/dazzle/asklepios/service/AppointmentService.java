@@ -830,7 +830,12 @@ public class AppointmentService {
         }
         appointment.setCapacityIndex(1);
         Appointment quickAppointment = appointmentRepository.save(appointment);
-        PatientEncounter encounter = createEncounter(quickAppointment, department);
+        PatientEncounter encounter = createEncounter(
+                quickAppointment,
+                department,
+                appointmentDTO.promotionName(),
+                appointmentDTO.promotionCode()
+        );
 
         notifyAppointmentEvent(quickAppointment, NotificationCode.QUICK_APPOINTMENT_CREATED, Map.of("quick_appointment", true));
         recordAppointmentActivity(
@@ -2292,6 +2297,15 @@ public class AppointmentService {
     }
 
     private PatientEncounter createEncounter(Appointment savedAppointment, DepartmentDTO department) {
+        return createEncounter(savedAppointment, department, null, null);
+    }
+
+    private PatientEncounter createEncounter(
+            Appointment savedAppointment,
+            DepartmentDTO department,
+            String promotionName,
+            String promotionCode
+    ) {
 
         PatientEncounterCreateDTO encounterCreateDTO =
                 new PatientEncounterCreateDTO(
@@ -2320,6 +2334,10 @@ public class AppointmentService {
                         savedAppointment.getOriginType(),
 
                         savedAppointment.getOriginName(),
+
+                        promotionName,
+
+                        promotionCode,
 
                         savedAppointment.getNote(),
 
