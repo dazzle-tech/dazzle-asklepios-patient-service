@@ -117,7 +117,7 @@ public class PatientPrescriptionMedicationService {
 
         if (prescriptionMedicationUpdateDTO.chronicMedication != null || prescriptionMedicationUpdateDTO.duration != null) {
             Boolean chronic = prescriptionMedicationUpdateDTO.chronicMedication != null ? prescriptionMedicationUpdateDTO.chronicMedication : entity.getChronicMedication();
-            Long duration = prescriptionMedicationUpdateDTO.duration != null ? prescriptionMedicationUpdateDTO.duration : entity.getDuration();
+            Double duration = prescriptionMedicationUpdateDTO.duration != null ? prescriptionMedicationUpdateDTO.duration : entity.getDuration();
             validateChronicVsDuration(chronic, duration);
 
             if (prescriptionMedicationUpdateDTO.chronicMedication != null)
@@ -241,7 +241,7 @@ public class PatientPrescriptionMedicationService {
         return saved;
     }
 
-    private void validateChronicVsDuration(Boolean chronic, Long duration) {
+    private void validateChronicVsDuration(Boolean chronic, Double duration) {
         if (Boolean.TRUE.equals(chronic) && duration != null) {
             throw new BadRequestAlertException(
                     "Cannot set chronic medication and duration together.",

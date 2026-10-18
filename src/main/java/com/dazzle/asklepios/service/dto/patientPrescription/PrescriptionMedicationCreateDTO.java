@@ -24,7 +24,7 @@ public class PrescriptionMedicationCreateDTO {
     public Long activeIngredientId;
     public String otherMedicationName;
     public Boolean chronicMedication;
-    public Long duration;
+    public Double duration;
     public String durationType;
 
     public Long maximumDose;

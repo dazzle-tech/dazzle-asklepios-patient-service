@@ -20,7 +20,7 @@ public class PrescriptionMedicationUpdateDTO {
     public String frequency;
 
     public Boolean chronicMedication;
-    public Long duration;
+    public Double duration;
     public String durationType;
 
     public Long maximumDose;

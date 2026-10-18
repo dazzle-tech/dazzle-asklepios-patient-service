@@ -71,7 +71,7 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
     private String frequency;
 
     @Column(name = "duration")
-    private Long duration;
+    private Double duration;
 
     @Column(name = "duration_type", length = 50)
     private String durationType;

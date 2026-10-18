@@ -18,7 +18,7 @@ public class MedicationDaysSupplyResolver {
             return CHRONIC_DAYS_SUPPLY;
         }
 
-        Long duration = medication.getDuration();
+        Double duration = medication.getDuration();
         if (duration == null || duration <= 0) {
             return DEFAULT_DAYS_SUPPLY;
         }
@@ -42,10 +42,11 @@ public class MedicationDaysSupplyResolver {
         return safeInt(duration);
     }
 
-    private int safeInt(long value) {
+    private int safeInt(double value) {
         if (value <= 0) {
             return DEFAULT_DAYS_SUPPLY;
         }
-        return (int) Math.min(value, Integer.MAX_VALUE);
+        long rounded = Math.round(value);
+        return (int) Math.min(rounded, Integer.MAX_VALUE);
     }
 }
