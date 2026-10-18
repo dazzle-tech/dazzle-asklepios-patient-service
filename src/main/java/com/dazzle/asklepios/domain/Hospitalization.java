@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
+import com.dazzle.asklepios.domain.enumeration.Unit;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -59,6 +60,13 @@ public class Hospitalization extends AbstractAuditingEntity<Long>
 
     @Column(name = "date_of_admission")
     private Date dateOfAdmission;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "admission_duration_type", length = 50)
+    private Unit admissionDurationType;
+
+    @Column(name = "admission_duration")
+    private Integer admissionDuration;
 
     @Column(name = "length_of_stay_days")
     private Integer lengthOfStayDays;

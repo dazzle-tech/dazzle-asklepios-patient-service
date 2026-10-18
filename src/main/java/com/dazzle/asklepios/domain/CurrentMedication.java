@@ -3,6 +3,7 @@ package com.dazzle.asklepios.domain;
 import com.dazzle.asklepios.domain.enumeration.MedFrequency;
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.domain.enumeration.UOM;
+import com.dazzle.asklepios.domain.enumeration.Unit;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -70,6 +71,13 @@ public class CurrentMedication extends AbstractAuditingEntity<Long>
     @Column(name = "start_date")
     @Temporal(TemporalType.DATE)
     private Date startDate;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "start_duration_type", length = 50)
+    private Unit startDurationType;
+
+    @Column(name = "start_duration")
+    private Integer startDuration;
 
     @Column(name = "patient_is_free", nullable = false)
     @Builder.Default
