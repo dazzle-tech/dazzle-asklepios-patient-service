@@ -203,7 +203,11 @@ public class GlasgowComaScaleAssessmentService {
 
     private GCSScoreInterpretation resolveScoreInterpretation(Integer totalScore) {
 
-        if (totalScore >= 13 && totalScore <= 15) {
+        if (totalScore == 15) {
+            return GCSScoreInterpretation.NORMAL;
+        }
+
+        if (totalScore >= 13 && totalScore <= 14) {
             return GCSScoreInterpretation.MILD_TRAUMATIC_BRAIN_INJURY;
         }
 
