@@ -3,20 +3,25 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.EncounterDashboardPreference;
 import com.dazzle.asklepios.domain.EncounterDashboardPreferenceWidget;
 import com.dazzle.asklepios.domain.User;
+import com.dazzle.asklepios.domain.enumeration.EncounterDashboardWidgetKey;
 import com.dazzle.asklepios.repository.EncounterDashboardPreferenceRepository;
+import com.dazzle.asklepios.repository.EncounterDashboardPreferenceWidgetRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.UserRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.patientDashboard.EncounterDashboardPreferenceVM;
-import jakarta.persistence.EntityManager;
+import java.time.Instant;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -28,40 +33,21 @@ public class EncounterDashboardPreferenceService {
     private static final Logger LOG = LoggerFactory.getLogger(EncounterDashboardPreferenceService.class);
     private static final String ENTITY = "encounterDashboardPreference";
 
-    /**
-     * Canonical widget order. Stored selections are returned in this order.
-     */
-    static final List<String> WIDGET_KEYS = List.of(
-        "c2",
-        "c3",
-        "c4",
-        "c5",
-        "c7",
-        "c8",
-        "c9",
-        "c11",
-        "c12",
-        "c13",
-        "c14"
-    );
-
-    private static final Set<String> ALLOWED_KEYS = Set.copyOf(WIDGET_KEYS);
-
     private final EncounterDashboardPreferenceRepository preferenceRepository;
+    private final EncounterDashboardPreferenceWidgetRepository widgetRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final UserRepository userRepository;
-    private final EntityManager entityManager;
 
     public EncounterDashboardPreferenceService(
         EncounterDashboardPreferenceRepository preferenceRepository,
+        EncounterDashboardPreferenceWidgetRepository widgetRepository,
         PatientEncounterRepository patientEncounterRepository,
-        UserRepository userRepository,
-        EntityManager entityManager
+        UserRepository userRepository
     ) {
         this.preferenceRepository = preferenceRepository;
+        this.widgetRepository = widgetRepository;
         this.patientEncounterRepository = patientEncounterRepository;
         this.userRepository = userRepository;
-        this.entityManager = entityManager;
     }
 
     @Transactional(readOnly = true)
@@ -80,8 +66,8 @@ public class EncounterDashboardPreferenceService {
         assertEncounterExists(encounterId);
         List<String> keys = normalize(requestedKeys);
 
-        Long preferenceId = upsertPreference(user.getId(), encounterId);
-        replaceWidgets(preferenceId, keys);
+        EncounterDashboardPreference preference = upsertPreference(user.getId(), encounterId);
+        replaceWidgets(preference, keys);
 
         LOG.debug(
             "Saved encounter dashboard preference userId={} encounterId={} widgets={}",
@@ -92,58 +78,55 @@ public class EncounterDashboardPreferenceService {
         return toVm(user.getId(), encounterId, true, keys);
     }
 
-    private Long upsertPreference(Long userId, Long encounterId) {
-        String actor = currentActor();
-        entityManager
-            .createNativeQuery(
-                """
-                INSERT INTO encounter_dashboard_preference
-                    (user_id, encounter_id, created_by, created_date, last_modified_by, last_modified_date)
-                VALUES
-                    (:userId, :encounterId, :actor, CURRENT_TIMESTAMP, :actor, CURRENT_TIMESTAMP)
-                ON CONFLICT (user_id, encounter_id)
-                DO UPDATE SET
-                    last_modified_by = EXCLUDED.last_modified_by,
-                    last_modified_date = CURRENT_TIMESTAMP
-                """
-            )
-            .setParameter("userId", userId)
-            .setParameter("encounterId", encounterId)
-            .setParameter("actor", actor)
-            .executeUpdate();
+    private EncounterDashboardPreference upsertPreference(Long userId, Long encounterId) {
+        EncounterDashboardPreference existing = preferenceRepository
+            .findByUserIdAndEncounterIdForUpdate(userId, encounterId)
+            .orElse(null);
 
-        Number id = (Number) entityManager
-            .createNativeQuery(
-                """
-                SELECT id FROM encounter_dashboard_preference
-                WHERE user_id = :userId AND encounter_id = :encounterId
-                """
-            )
-            .setParameter("userId", userId)
-            .setParameter("encounterId", encounterId)
-            .getSingleResult();
-        return id.longValue();
+        if (existing != null) {
+            existing.setLastModifiedDate(Instant.now());
+            return preferenceRepository.saveAndFlush(existing);
+        }
+
+        EncounterDashboardPreference created = EncounterDashboardPreference.builder()
+            .userId(userId)
+            .encounterId(encounterId)
+            .build();
+
+        try {
+            return preferenceRepository.saveAndFlush(created);
+        } catch (DataIntegrityViolationException | JpaSystemException conflict) {
+            EncounterDashboardPreference recovered = preferenceRepository
+                .findByUserIdAndEncounterIdForUpdate(userId, encounterId)
+                .orElseThrow(() ->
+                    new IllegalStateException(
+                        "Preference row is missing after conflict for userId=" +
+                        userId +
+                        " encounterId=" +
+                        encounterId,
+                        conflict
+                    )
+                );
+            recovered.setLastModifiedDate(Instant.now());
+            return preferenceRepository.saveAndFlush(recovered);
+        }
     }
 
-    private void replaceWidgets(Long preferenceId, List<String> keys) {
-        entityManager
-            .createNativeQuery("DELETE FROM encounter_dashboard_preference_widget WHERE preference_id = :preferenceId")
-            .setParameter("preferenceId", preferenceId)
-            .executeUpdate();
-        entityManager.flush();
+    private void replaceWidgets(EncounterDashboardPreference preference, List<String> keys) {
+        widgetRepository.deleteByPreference_Id(preference.getId());
+        widgetRepository.flush();
 
-        for (String key : keys) {
-            entityManager
-                .createNativeQuery(
-                    """
-                    INSERT INTO encounter_dashboard_preference_widget (preference_id, widget_key)
-                    VALUES (:preferenceId, :widgetKey)
-                    """
-                )
-                .setParameter("preferenceId", preferenceId)
-                .setParameter("widgetKey", key)
-                .executeUpdate();
+        if (keys.isEmpty()) {
+            return;
         }
+
+        List<EncounterDashboardPreferenceWidget> widgets = keys
+            .stream()
+            .map(key ->
+                EncounterDashboardPreferenceWidget.builder().preference(preference).widgetKey(key).build()
+            )
+            .toList();
+        widgetRepository.saveAllAndFlush(widgets);
     }
 
     private List<String> normalize(List<String> requestedKeys) {
@@ -152,7 +135,16 @@ public class EncounterDashboardPreferenceService {
         }
         LinkedHashSet<String> selected = new LinkedHashSet<>();
         for (String key : requestedKeys) {
-            if (key == null || !ALLOWED_KEYS.contains(key)) {
+            if (key == null) {
+                throw new BadRequestAlertException(
+                    "Unknown dashboard widget: " + key,
+                    ENTITY,
+                    "widget.invalid"
+                );
+            }
+            try {
+                EncounterDashboardWidgetKey.valueOf(key);
+            } catch (IllegalArgumentException ex) {
                 throw new BadRequestAlertException(
                     "Unknown dashboard widget: " + key,
                     ENTITY,
@@ -161,19 +153,25 @@ public class EncounterDashboardPreferenceService {
             }
             selected.add(key);
         }
-        return WIDGET_KEYS.stream().filter(selected::contains).toList();
+        return Arrays.stream(EncounterDashboardWidgetKey.values())
+            .map(Enum::name)
+            .filter(selected::contains)
+            .toList();
     }
 
     private List<String> keysOf(EncounterDashboardPreference preference) {
         Set<String> selected = new LinkedHashSet<>();
         if (preference.getWidgets() != null) {
             for (EncounterDashboardPreferenceWidget widget : preference.getWidgets()) {
-                if (widget.getWidgetKey() != null && ALLOWED_KEYS.contains(widget.getWidgetKey())) {
+                if (widget.getWidgetKey() != null) {
                     selected.add(widget.getWidgetKey());
                 }
             }
         }
-        return WIDGET_KEYS.stream().filter(selected::contains).toList();
+        return Arrays.stream(EncounterDashboardWidgetKey.values())
+            .map(Enum::name)
+            .filter(selected::contains)
+            .toList();
     }
 
     private void assertEncounterExists(Long encounterId) {
@@ -193,11 +191,6 @@ public class EncounterDashboardPreferenceService {
         return userRepository
             .findByLogin(login)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated."));
-    }
-
-    private String currentActor() {
-        String login = SecurityUtils.getCurrentUserLogin().orElse("system");
-        return login.length() > 50 ? login.substring(0, 50) : login;
     }
 
     private EncounterDashboardPreferenceVM toVm(Long userId, Long encounterId, boolean customized, List<String> keys) {

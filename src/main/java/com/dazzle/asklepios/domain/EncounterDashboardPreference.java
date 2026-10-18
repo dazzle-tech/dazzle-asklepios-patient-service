@@ -8,7 +8,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 import jakarta.validation.constraints.NotNull;
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -30,13 +29,7 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Table(
-    name = "encounter_dashboard_preference",
-    uniqueConstraints = @UniqueConstraint(
-        name = "uk_encounter_dashboard_pref_user_encounter",
-        columnNames = {"user_id", "encounter_id"}
-    )
-)
+@Table(name = "encounter_dashboard_preference")
 public class EncounterDashboardPreference extends AbstractAuditingEntity<Long> implements Serializable {
 
     @Id

@@ -9,7 +9,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.io.Serializable;
@@ -25,13 +24,7 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Table(
-    name = "encounter_dashboard_preference_widget",
-    uniqueConstraints = @UniqueConstraint(
-        name = "uk_encounter_dashboard_pref_widget",
-        columnNames = {"preference_id", "widget_key"}
-    )
-)
+@Table(name = "encounter_dashboard_preference_widget")
 public class EncounterDashboardPreferenceWidget implements Serializable {
 
     @Id
