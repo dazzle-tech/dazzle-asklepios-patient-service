@@ -123,6 +123,16 @@ public class DiagnosticOrderTestStatusService {
         LOG.debug("[DiagnosticOrderTestStatus] RETURN_TO_NEW - start. testId={}", testId);
 
         DiagnosticOrderTest test = getTest(testId);
+        DiagnosticStatus current = normalize(test.getProcessingStatus());
+
+        if (current != DiagnosticStatus.SAMPLE_COLLECTED && current != DiagnosticStatus.NEW) {
+            LOG.debug(
+                    "[DiagnosticOrderTestStatus] RETURN_TO_NEW - skipped. testId={} status={}",
+                    testId,
+                    current
+            );
+            return test;
+        }
 
         test.setProcessingStatus(DiagnosticStatus.NEW);
 

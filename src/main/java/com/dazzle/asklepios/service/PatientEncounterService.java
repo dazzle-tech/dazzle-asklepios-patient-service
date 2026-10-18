@@ -277,6 +277,8 @@ public class PatientEncounterService {
                 .priorityLevel(createDTO.priorityLevel())
                 .originType(createDTO.originType())
                 .originName(createDTO.originName())
+                .promotionName(createDTO.promotionName())
+                .promotionCode(createDTO.promotionCode())
                 .notes(createDTO.notes())
                 .chiefComplaint(createDTO.chiefComplaint())
                 .encounterDate(createDTO.encounterDate())
@@ -370,6 +372,8 @@ public class PatientEncounterService {
         existingPatientEncounter.setPriorityLevel(updateDTO.priorityLevel());
         existingPatientEncounter.setOriginType(updateDTO.originType());
         existingPatientEncounter.setOriginName(updateDTO.originName());
+        existingPatientEncounter.setPromotionName(updateDTO.promotionName());
+        existingPatientEncounter.setPromotionCode(updateDTO.promotionCode());
         existingPatientEncounter.setNotes(updateDTO.notes());
         existingPatientEncounter.setChiefComplaint(updateDTO.chiefComplaint());
         existingPatientEncounter.setPhysicalExaminationSummery(updateDTO.physicalExaminationSummery());

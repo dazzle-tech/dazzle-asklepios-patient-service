@@ -15,4 +15,6 @@ public interface DiagnosticOrderTestCollectedSampleRepository
     Page<DiagnosticOrderTestCollectedSample> findByOrderId(Long orderId, Pageable pageable);
     Optional<DiagnosticOrderTestCollectedSample>
     findTopByOrderTestIdOrderByCreatedDateDescIdDesc(Long orderTestId);
+
+    boolean existsByOrderTestIdAndRejectedFalse(Long orderTestId);
 }
