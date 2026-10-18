@@ -109,8 +109,6 @@ public class ApprovalSupportingInfoMapper {
     private static final String INVESTIGATION_NOT_PERFORMED = "INP";
     private static final String INVESTIGATION_RESULTS_PENDING = "IRP";
     private static final String INVESTIGATION_RESULTS_ATTACHED = "IRA";
-    private final String investigationPdfName = "investigation-results.pdf";
-    private final String investigationPdfType = "application/pdf";
     private final int maxReportTextLength = 8000;
     private final Pattern htmlMarkup = Pattern.compile("(?i)</?(p|br|div|span|li|ul|ol|b|i|u|strong|em|h[1-6]|table|tr|td)\\b[^>]*>");
 
@@ -427,6 +425,7 @@ public class ApprovalSupportingInfoMapper {
     /**
      * Returns {@code null} when there are no results to report or the PDF cannot be produced,
      * so the caller keeps the existing investigation-result behaviour.
+     * A PDF larger than 1 MB is attached as a zip of the same file.
      */
     private WaseelApprovalSupportingInfo investigationResultPdfAttached(
             AtomicInteger sequence,
@@ -447,10 +446,10 @@ public class ApprovalSupportingInfoMapper {
             }
 
             byte[] pdf = investigationResultsPdfRenderer.render(report);
+            InvestigationResultsPdfRenderer.Attachment attachment = investigationResultsPdfRenderer.attachmentFor(pdf);
             if (!investigationResultsPdfRenderer.withinSizeLimit(pdf)) {
-                log.warn("Investigation results PDF exceeds size limit. encounterId={} bytes={}",
-                        encounter.getId(), pdf.length);
-                return null;
+                log.info("Investigation results PDF exceeds 1MB and will be sent as a zip. encounterId={} pdfBytes={} zipBytes={}",
+                        encounter.getId(), pdf.length, attachment.content().length);
             }
 
             String labValue = labResults.stream()
@@ -473,9 +472,9 @@ public class ApprovalSupportingInfoMapper {
                     null,
                     firstNonBlank(labValue, radiologyValue),
                     null,
-                    Base64.getEncoder().encodeToString(pdf),
-                    investigationPdfName,
-                    investigationPdfType,
+                    Base64.getEncoder().encodeToString(attachment.content()),
+                    attachment.filename(),
+                    attachment.contentType(),
                     null,
                     attachmentDate.toString()
             );
