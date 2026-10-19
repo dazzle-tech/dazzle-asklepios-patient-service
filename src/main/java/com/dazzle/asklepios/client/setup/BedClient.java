@@ -8,6 +8,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+
+import java.util.List;
 
 @FeignClient(
         name = "setupServiceClient",
@@ -19,6 +22,9 @@ public interface BedClient {
 
     @GetMapping("/api/setup/bed/{id}")
     ResponseEntity<Void> existsBed(@PathVariable("id") @NotNull Long bedId);
+
+    @PostMapping("/api/setup/bed/by-ids")
+    List<BedDTO> findBedsByIds(@RequestBody @NotNull List<Long> ids);
 
     @PostMapping("/api/setup/bed/{id}/mark-in-cleaning")
     BedDTO markAsInCleaning(@PathVariable("id") @NotNull Long bedId);

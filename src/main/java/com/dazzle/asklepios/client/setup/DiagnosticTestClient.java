@@ -5,6 +5,9 @@ import com.dazzle.asklepios.config.SetupServiceFeignConfig;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import java.util.List;
 
 @FeignClient(
         name = "setupServiceClient",
@@ -22,5 +25,10 @@ public interface DiagnosticTestClient {
     @GetMapping("/api/setup/diagnostic-test/internalJob/{id}")
     DiagnosticTestSetupDTO getDiagnosticTestInternal(
             @PathVariable("id") Long id
+    );
+
+    @GetMapping("/api/setup/diagnostic-test/by-ids")
+    List<DiagnosticTestSetupDTO> getDiagnosticTestsByIds(
+            @RequestParam("ids") List<Long> ids
     );
 }
