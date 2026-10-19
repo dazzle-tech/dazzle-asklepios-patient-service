@@ -106,42 +106,6 @@ public class UrgentCareMedicationOrderService {
 
         List<UrgentCareMedicationOrder> orders = new java.util.ArrayList<>();
 
-        if (Boolean.TRUE.equals(dto.isStat())) {
-
-            UrgentCareMedicationOrder order = new UrgentCareMedicationOrder();
-
-            order.setActiveIngredientId(dto.activeIngredientId());
-            order.setInstructionType(dto.instructionType());
-            order.setInstructionText("STAT");
-            order.setIsStat(true);
-
-            order.setDose(null);
-            order.setDoseUnit(null);
-            order.setRoute(null);
-            order.setFrequencyNumber(null);
-            order.setFrequencyUnit(null);
-            order.setDuration(null);
-            order.setStartTime(null);
-            order.setDoseTime(null);
-
-            order.setStatus(MedicationOrderStatus.NEW);
-            order.setPatient(patient);
-            order.setEncounter(encounter);
-
-            UrgentCareMedicationOrder saved =
-                    urgentCareMedicationOrderRepository.save(order);
-
-            saved.setOrderGroupId(saved.getId());
-
-            saved = urgentCareMedicationOrderRepository.save(saved);
-
-            notificationForUCCMedicationOrderCreated(saved, patient, encounter);
-
-            orders.add(saved);
-
-            return orders;
-        }
-
         if (dto.instructionType() ==
                 com.dazzle.asklepios.domain.enumeration.MedicationInstructionType.MANUAL_INSTRUCTIONS) {
 
@@ -150,7 +114,6 @@ public class UrgentCareMedicationOrderService {
             order.setActiveIngredientId(dto.activeIngredientId());
             order.setInstructionType(dto.instructionType());
             order.setInstructionText(dto.instructionText());
-            order.setIsStat(Boolean.TRUE.equals(dto.isStat()));
             order.setDose(dto.dose());
             order.setDoseUnit(dto.doseUnit());
             order.setRoute(dto.route());
@@ -179,76 +142,50 @@ public class UrgentCareMedicationOrderService {
             return orders;
         }
 
-        java.time.LocalDateTime doseTime =
-                java.time.LocalDateTime.of(
-                        java.time.LocalDate.now(),
-                        dto.startTime()
-                );
+        // Custom instructions: one order with Dose / Unit / ROA / Frequency (MedFrequency, STAT included).
+        // No dose schedule is generated any more (duration, start time and frequency number/unit were removed).
+        UrgentCareMedicationOrder order = new UrgentCareMedicationOrder();
 
-        for (int i = 0; i < dto.duration(); i++) {
+        order.setActiveIngredientId(dto.activeIngredientId());
+        order.setInstructionType(dto.instructionType());
+        order.setInstructionText(dto.instructionText());
+        order.setDose(dto.dose());
+        order.setDoseUnit(dto.doseUnit());
+        order.setRoute(dto.route());
+        order.setFrequency(dto.frequency());
 
-            UrgentCareMedicationOrder order = new UrgentCareMedicationOrder();
+        order.setFrequencyNumber(null);
+        order.setFrequencyUnit(null);
+        order.setDuration(null);
+        order.setStartTime(null);
+        order.setDoseTime(null);
 
-            order.setActiveIngredientId(dto.activeIngredientId());
-            order.setInstructionType(dto.instructionType());
-            order.setInstructionText(dto.instructionText());
-            order.setIsStat(Boolean.TRUE.equals(dto.isStat()));
-            order.setDose(dto.dose());
-            order.setDoseUnit(dto.doseUnit());
-            order.setRoute(dto.route());
+        order.setStatus(MedicationOrderStatus.NEW);
+        order.setPatient(patient);
+        order.setEncounter(encounter);
 
-            order.setFrequencyNumber(dto.frequencyNumber());
-            order.setFrequencyUnit(dto.frequencyUnit());
-            order.setDuration(dto.duration());
-            order.setStartTime(dto.startTime());
+        UrgentCareMedicationOrder saved =
+                urgentCareMedicationOrderRepository.save(order);
 
-            order.setDoseTime(doseTime);
+        saved.setOrderGroupId(saved.getId());
 
-            order.setStatus(MedicationOrderStatus.NEW);
-            order.setPatient(patient);
-            order.setEncounter(encounter);
+        saved = urgentCareMedicationOrderRepository.save(saved);
 
-            orders.add(order);
+        notificationForUCCMedicationOrderCreated(saved, patient, encounter);
 
-            if (dto.frequencyUnit() ==
-                    com.dazzle.asklepios.domain.enumeration.FrequencyList.MINUTES) {
-
-                doseTime = doseTime.plusMinutes(dto.frequencyNumber());
-
-            } else if (dto.frequencyUnit() ==
-                    com.dazzle.asklepios.domain.enumeration.FrequencyList.HOURS) {
-
-                doseTime = doseTime.plusHours(dto.frequencyNumber());
-            }
-        }
-
-        /*
-         * Save all doses first so the database generates their IDs.
-         */
-        List<UrgentCareMedicationOrder> savedOrders =
-                urgentCareMedicationOrderRepository.saveAll(orders);
-
-        Long orderGroupId = savedOrders.get(0).getId();
-
-        savedOrders.forEach(order -> order.setOrderGroupId(orderGroupId));
-
-        savedOrders =
-                urgentCareMedicationOrderRepository.saveAll(savedOrders);
-
-        for (UrgentCareMedicationOrder saved : savedOrders) {
-            notificationForUCCMedicationOrderCreated(saved, patient, encounter);
-        }
+        orders.add(saved);
 
         LOG.debug(
-                "[SERVICE][CREATE] created {} medication dose records for patientId={} encounterId={} orderGroupId={}",
-                savedOrders.size(),
+                "[SERVICE][CREATE] created custom medication order id={} frequency={} for patientId={} encounterId={}",
+                saved.getId(),
+                saved.getFrequency(),
                 dto.patientId(),
-                dto.encounterId(),
-                orderGroupId
+                dto.encounterId()
         );
 
-        return savedOrders;
+        return orders;
     }
+
     public UrgentCareMedicationOrder update(UrgentCareMedicationOrder existing, UrgentCareMedicationOrderUpdateDTO dto) {
         LOG.debug("[SERVICE][UPDATE] request -> existingId={} payload={}", existing.getId(), dto);
         rejectIfAmendmentOpen(existing);
@@ -256,14 +193,15 @@ public class UrgentCareMedicationOrderService {
         existing.setActiveIngredientId(dto.activeIngredientId());
         existing.setInstructionType(dto.instructionType());
         existing.setInstructionText(dto.instructionText());
-        existing.setIsStat(Boolean.TRUE.equals(dto.isStat()));
         existing.setDose(dto.dose());
         existing.setDoseUnit(dto.doseUnit());
         existing.setRoute(dto.route());
-        existing.setFrequencyNumber(dto.frequencyNumber());
-        existing.setFrequencyUnit(dto.frequencyUnit());
-        existing.setDuration(dto.duration());
-        existing.setStartTime(dto.startTime());
+        existing.setFrequency(dto.frequency());
+        // Replaced by frequency: cleared when an order is edited
+        existing.setFrequencyNumber(null);
+        existing.setFrequencyUnit(null);
+        existing.setDuration(null);
+        existing.setStartTime(null);
         UrgentCareMedicationOrder saved = urgentCareMedicationOrderRepository.save(existing);
 
         LOG.debug("[SERVICE][UPDATE] saved -> id={} status={}", saved.getId(), saved.getStatus());
@@ -307,14 +245,15 @@ public class UrgentCareMedicationOrderService {
             order.setActiveIngredientId(dto.activeIngredientId());
             order.setInstructionType(dto.instructionType());
             order.setInstructionText(dto.instructionText());
-            order.setIsStat(Boolean.TRUE.equals(dto.isStat()));
             order.setDose(dto.dose());
             order.setDoseUnit(dto.doseUnit());
             order.setRoute(dto.route());
-            order.setFrequencyNumber(dto.frequencyNumber());
-            order.setFrequencyUnit(dto.frequencyUnit());
-            order.setDuration(dto.duration());
-            order.setStartTime(dto.startTime());
+            order.setFrequency(dto.frequency());
+            // Replaced by frequency: cleared when an order is edited
+            order.setFrequencyNumber(null);
+            order.setFrequencyUnit(null);
+            order.setDuration(null);
+            order.setStartTime(null);
         }
 
         List<UrgentCareMedicationOrder> savedOrders =
@@ -498,7 +437,6 @@ public class UrgentCareMedicationOrderService {
                 first.getActiveIngredientId(),
                 first.getInstructionType(),
                 first.getInstructionText(),
-                first.getIsStat(),
                 first.getDose(),
                 first.getDoseUnit(),
                 first.getRoute(),
@@ -508,7 +446,8 @@ public class UrgentCareMedicationOrderService {
                 first.getStartTime(),
                 orders.size(),
                 first.getStatus(),
-                isHighAlert
+                isHighAlert,
+                first.getFrequency()
         );
     }
 
@@ -822,6 +761,7 @@ public class UrgentCareMedicationOrderService {
         data.put("frequencyNumber", urgentCareMedicationOrder.getFrequencyNumber() != null ? urgentCareMedicationOrder.getFrequencyNumber() : "");
         data.put("frequencyUnit", urgentCareMedicationOrder.getFrequencyUnit() != null ? urgentCareMedicationOrder.getFrequencyUnit().toString() : "");
         data.put("duration", urgentCareMedicationOrder.getDuration() != null ? urgentCareMedicationOrder.getDuration() : "");
+        data.put("frequency", urgentCareMedicationOrder.getFrequency() != null ? urgentCareMedicationOrder.getFrequency().toString() : "");
         data.put("startTime", urgentCareMedicationOrder.getStartTime() != null ? urgentCareMedicationOrder.getStartTime().toString() : "");
         data.put("isHighAlert", urgentCareMedicationOrder.getIsHighAlert() != null ? urgentCareMedicationOrder.getIsHighAlert() : "");
         data.put("status", urgentCareMedicationOrder.getStatus() != null ? urgentCareMedicationOrder.getStatus().toString() : "");

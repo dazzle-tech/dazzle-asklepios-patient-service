@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.FrequencyList;
+import com.dazzle.asklepios.domain.enumeration.MedFrequency;
 import com.dazzle.asklepios.domain.enumeration.MedicationInstructionType;
 import com.dazzle.asklepios.domain.enumeration.MedicationOrderStatus;
 import com.dazzle.asklepios.domain.enumeration.Unit;
@@ -71,8 +72,6 @@ public class UrgentCareMedicationOrder extends AbstractAuditingEntity implements
     @Column(name = "instruction_text", columnDefinition = "text")
     private String instructionText;
 
-    @Column(name = "is_stat", nullable = false)
-    private Boolean isStat = false;
 
     @Column(name = "dose")
     private Long dose;
@@ -95,6 +94,10 @@ public class UrgentCareMedicationOrder extends AbstractAuditingEntity implements
 
     @Column(name = "start_time")
     private LocalTime startTime;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "frequency", length = 100)
+    private MedFrequency frequency;
 
     @Column(name = "dose_time")
     private LocalDateTime doseTime;
