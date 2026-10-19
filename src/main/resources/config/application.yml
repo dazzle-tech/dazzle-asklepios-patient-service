@@ -214,3 +214,22 @@ patient:
     # Callers send it in the X-Portal-Secret header. Set PATIENT_PORTAL_SECRET in each environment.
     secret: ${PATIENT_PORTAL_SECRET:}
   security:
+
+# Nahdi pharmacy integration (prescriptions are sent to Nahdi on submit)
+nahdi:
+  enabled: ${NAHDI_ENABLED:true}
+  base-url: ${NAHDI_BASE_URL:https://m2.nahdi.sa/ProvidersIntegration/Home}
+  provider-id: ${NAHDI_PROVIDER_ID:9999}
+  provider-token: ${NAHDI_PROVIDER_TOKEN:56a84e8e04b411ec9a0er30242ac130003}
+  timeout-seconds: ${NAHDI_TIMEOUT_SECONDS:30}
+  send-prescription-endpoint: ${NAHDI_SEND_PRESCRIPTION_ENDPOINT:/SendPrescription_clinics}
+  # Fixed codes sent in the SendPrescription payload (values from the Nahdi sample)
+  prescription:
+    # A submitted HIS prescription (SUBMITTED) is sent to Nahdi as "Approved"
+    status: ${NAHDI_PRESCRIPTION_STATUS:Approved}
+    # pres_TYPE by the encounter coverage type: cash (SELF_PAY) or insurance
+    type-cash: ${NAHDI_PRESCRIPTION_TYPE_CASH:1}
+    type-insurance: ${NAHDI_PRESCRIPTION_TYPE_INSURANCE:2}
+    item-approval-status: ${NAHDI_ITEM_APPROVAL_STATUS:A}
+    # Item code sent first: SFDA or NPHIES; the other one is used when it is missing
+    item-code-priority: ${NAHDI_ITEM_CODE_PRIORITY:SFDA}

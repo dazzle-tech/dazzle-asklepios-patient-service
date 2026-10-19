@@ -28,6 +28,7 @@ public class PrescriptionMedicationUpdateDTO {
     public Boolean allowedSubstitute;
     public Long activeIngredientId;
     public Long medicationsId;
+    public Long pharmaceuticalId;
     public String otherMedicationName;
     public String indicationManually;
     public String indicationUse;

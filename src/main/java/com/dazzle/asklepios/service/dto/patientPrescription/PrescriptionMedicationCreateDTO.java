@@ -15,6 +15,7 @@ public class PrescriptionMedicationCreateDTO {
 
     @NotNull public Long prescriptionHeaderId;
      public Long medicationsId;
+    public Long pharmaceuticalId;
     @NotNull public PrescriptionInstructionsType instructionsType;
     public String instructions;
     public Long dose;
