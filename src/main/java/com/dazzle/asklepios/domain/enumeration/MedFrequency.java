@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.domain.enumeration;
 
 public enum MedFrequency {
+    STAT,
     OTHER,
     TWICE_DAILY,
     FOUR_TIMES_DAILY,

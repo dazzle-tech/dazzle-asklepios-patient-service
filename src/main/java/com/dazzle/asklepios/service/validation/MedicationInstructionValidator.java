@@ -1,7 +1,7 @@
 package com.dazzle.asklepios.service.validation;
 
 import com.dazzle.asklepios.domain.enumeration.MedicationInstructionType;
-import com.dazzle.asklepios.domain.enumeration.FrequencyList;
+import com.dazzle.asklepios.domain.enumeration.MedFrequency;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderUpdateDTO;
 import jakarta.validation.ConstraintValidator;
@@ -18,47 +18,31 @@ public class MedicationInstructionValidator
 
         MedicationInstructionType instructionType = null;
         String instructionText = null;
-        Boolean isStat = false;
         Long dose = null;
         String doseUnit = null;
         String route = null;
 
-        Integer frequencyNumber = null;
-        FrequencyList frequencyUnit = null;
-        Integer duration = null;
-        java.time.LocalTime startTime = null;
+        MedFrequency frequency = null;
 
         if (value instanceof UrgentCareMedicationOrderCreateDTO dto) {
 
             instructionType = dto.instructionType();
             instructionText = dto.instructionText();
-            isStat = dto.isStat();
             dose = dto.dose();
             doseUnit = dto.doseUnit();
             route = dto.route();
 
-            frequencyNumber = dto.frequencyNumber();
-            frequencyUnit = dto.frequencyUnit();
-            duration = dto.duration();
-            startTime = dto.startTime();
+            frequency = dto.frequency();
 
         } else if (value instanceof UrgentCareMedicationOrderUpdateDTO dto) {
 
             instructionType = dto.instructionType();
             instructionText = dto.instructionText();
-            isStat = dto.isStat();
             dose = dto.dose();
             doseUnit = dto.doseUnit();
             route = dto.route();
 
-            frequencyNumber = dto.frequencyNumber();
-            frequencyUnit = dto.frequencyUnit();
-            duration = dto.duration();
-            startTime = dto.startTime();
-        }
-
-        if (Boolean.TRUE.equals(isStat)) {
-            return true;
+            frequency = dto.frequency();
         }
 
         if (instructionType == null) {
@@ -122,69 +106,11 @@ public class MedicationInstructionValidator
                 valid = false;
             }
 
-            if (frequencyNumber == null) {
+            if (frequency == null) {
 
                 context.buildConstraintViolationWithTemplate(
-                                "frequencyNumber is mandatory when instructionType is CUSTOM_INSTRUCTIONS")
-                        .addPropertyNode("frequencyNumber")
-                        .addConstraintViolation();
-
-                valid = false;
-
-            } else if (frequencyNumber <= 0) {
-
-                context.buildConstraintViolationWithTemplate(
-                                "frequencyNumber must be greater than 0")
-                        .addPropertyNode("frequencyNumber")
-                        .addConstraintViolation();
-
-                valid = false;
-            }
-
-            if (frequencyUnit == null) {
-
-                context.buildConstraintViolationWithTemplate(
-                                "frequencyUnit is mandatory when instructionType is CUSTOM_INSTRUCTIONS")
-                        .addPropertyNode("frequencyUnit")
-                        .addConstraintViolation();
-
-                valid = false;
-
-            } else if (frequencyUnit != FrequencyList.MINUTES
-                    && frequencyUnit != FrequencyList.HOURS) {
-
-                context.buildConstraintViolationWithTemplate(
-                                "frequencyUnit must be MINUTES or HOURS")
-                        .addPropertyNode("frequencyUnit")
-                        .addConstraintViolation();
-
-                valid = false;
-            }
-
-            if (duration == null) {
-
-                context.buildConstraintViolationWithTemplate(
-                                "duration is mandatory when instructionType is CUSTOM_INSTRUCTIONS")
-                        .addPropertyNode("duration")
-                        .addConstraintViolation();
-
-                valid = false;
-
-            } else if (duration <= 0) {
-
-                context.buildConstraintViolationWithTemplate(
-                                "duration must be greater than 0")
-                        .addPropertyNode("duration")
-                        .addConstraintViolation();
-
-                valid = false;
-            }
-
-            if (startTime == null) {
-
-                context.buildConstraintViolationWithTemplate(
-                                "startTime is mandatory when instructionType is CUSTOM_INSTRUCTIONS")
-                        .addPropertyNode("startTime")
+                                "frequency is mandatory when instructionType is CUSTOM_INSTRUCTIONS")
+                        .addPropertyNode("frequency")
                         .addConstraintViolation();
 
                 valid = false;
