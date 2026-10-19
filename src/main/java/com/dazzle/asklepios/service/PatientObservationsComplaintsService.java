@@ -3,6 +3,7 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientObservationsComplaints;
+import com.dazzle.asklepios.domain.enumeration.Gender;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientObservationsComplaintsRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -69,6 +70,8 @@ public class PatientObservationsComplaintsService {
                 .cognitiveCheck(dto.cognitiveCheck())
                 .patientConditions(dto.patientConditions())
                 .bloodGroup(dto.bloodGroup())
+                .isPregnant(femaleOnly(patient, dto.isPregnant()))
+                .isLactating(femaleOnly(patient, dto.isLactating()))
                 .isActive(dto.isActive())
                 .build();
 
@@ -129,6 +132,8 @@ public class PatientObservationsComplaintsService {
             entity.setCognitiveCheck(dto.cognitiveCheck());
             entity.setPatientConditions(dto.patientConditions());
             entity.setBloodGroup(dto.bloodGroup());
+            entity.setIsPregnant(femaleOnly(patient, dto.isPregnant()));
+            entity.setIsLactating(femaleOnly(patient, dto.isLactating()));
             entity.setIsActive(dto.isActive());
 
             try {
@@ -190,5 +195,12 @@ public class PatientObservationsComplaintsService {
                 "patientObservationsComplaints",
                 "db.constraint"
         );
+    }
+
+    /**
+     * Pregnancy and lactation apply to female patients only.
+     */
+    private static Boolean femaleOnly(Patient patient, Boolean value) {
+        return patient != null && Gender.FEMALE.equals(patient.getSexAtBirth()) ? value : null;
     }
 }

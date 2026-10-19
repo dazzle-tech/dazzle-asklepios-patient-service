@@ -46,6 +46,9 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
     @Column(name = "medications_id")
     private Long medicationsId;
 
+    @Column(name = "pharmaceutical_id")
+    private Long pharmaceuticalId;
+
     @Column(name = "other_medication_name", length = 255)
     private String otherMedicationName;
 

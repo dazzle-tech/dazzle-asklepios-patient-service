@@ -34,6 +34,8 @@ public record PatientObservationsComplaintsCreateDTO(
         String cognitiveCheck,
 
         BloodGroup bloodGroup,
+        Boolean isPregnant,
+        Boolean isLactating,
 
         @NotNull
         Boolean isActive

@@ -13,6 +13,21 @@ waseel:
     system-type: ${WASEEL_SYSTEM_TYPE:1}
     timeout-seconds: 90
 
+# Nahdi pharmacy integration (prescriptions are sent to Nahdi on submit)
+nahdi:
+  enabled: ${NAHDI_ENABLED:false}
+  base-url: ${NAHDI_BASE_URL:https://m2.nahdi.sa/ProvidersIntegration/Home}
+  provider-id: ${NAHDI_PROVIDER_ID:}
+  provider-token: ${NAHDI_PROVIDER_TOKEN:}
+  timeout-seconds: ${NAHDI_TIMEOUT_SECONDS:30}
+  send-prescription-endpoint: ${NAHDI_SEND_PRESCRIPTION_ENDPOINT:/SendPrescription_clinics}
+  prescription:
+    status: ${NAHDI_PRESCRIPTION_STATUS:Approved}
+    type-cash: ${NAHDI_PRESCRIPTION_TYPE_CASH:1}
+    type-insurance: ${NAHDI_PRESCRIPTION_TYPE_INSURANCE:2}
+    item-approval-status: ${NAHDI_ITEM_APPROVAL_STATUS:A}
+    item-code-priority: ${NAHDI_ITEM_CODE_PRIORITY:SFDA}
+
 management:
   prometheus:
     metrics:

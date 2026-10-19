@@ -1,6 +1,8 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.ActiveIngredientClient;
+import com.dazzle.asklepios.client.setup.PharmaceuticalClient;
+import com.dazzle.asklepios.client.setup.dto.PharmaceuticalDTO;
 import com.dazzle.asklepios.domain.PatientPrescription;
 import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
@@ -14,6 +16,7 @@ import com.dazzle.asklepios.service.dto.patientPrescription.PrescriptionMedicati
 import com.dazzle.asklepios.service.helper.BrandMedicationHelper;
 import com.dazzle.asklepios.service.helper.ICDTreeHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import feign.FeignException;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -35,6 +38,7 @@ public class PatientPrescriptionMedicationService {
     private final PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository;
     private final PatientPrescriptionRepository patientPrescriptionRepository;
     private final ActiveIngredientClient activeIngredientClient;
+    private final PharmaceuticalClient pharmaceuticalClient;
     private final BrandMedicationHelper brandMedicationHelper;
     private final ICDTreeHelper icdTreeHelper;
     private final PatientServiceAndProductService patientServiceAndProductService;
@@ -52,10 +56,17 @@ public class PatientPrescriptionMedicationService {
                 prescriptionMedicationCreateDTO.medicationsId,
                 prescriptionMedicationCreateDTO.otherMedicationName
         );
+        validatePharmaceutical(
+                prescriptionMedicationCreateDTO.pharmaceuticalId,
+                prescriptionMedicationCreateDTO.activeIngredientId
+        );
         PatientPrescriptionMedication entity = PatientPrescriptionMedication.builder()
                 .prescriptionHeader(header)
                 .medicationsId(
                         prescriptionMedicationCreateDTO.medicationsId
+                )
+                .pharmaceuticalId(
+                        prescriptionMedicationCreateDTO.pharmaceuticalId
                 )
                 .otherMedicationName(
                         prescriptionMedicationCreateDTO.otherMedicationName != null
@@ -176,6 +187,16 @@ public class PatientPrescriptionMedicationService {
             );
         }
 
+        if (prescriptionMedicationUpdateDTO.pharmaceuticalId != null) {
+            validatePharmaceutical(
+                    prescriptionMedicationUpdateDTO.pharmaceuticalId,
+                    entity.getActiveIngredientId()
+            );
+            entity.setPharmaceuticalId(
+                    prescriptionMedicationUpdateDTO.pharmaceuticalId
+            );
+        }
+
         if (prescriptionMedicationUpdateDTO.otherMedicationName != null) {
             String otherMedicationName =
                     prescriptionMedicationUpdateDTO.otherMedicationName.trim();
@@ -280,6 +301,33 @@ public class PatientPrescriptionMedicationService {
         }
     }
 
+
+    private void validatePharmaceutical(Long pharmaceuticalId, Long activeIngredientId) {
+        if (pharmaceuticalId == null) {
+            return;
+        }
+
+        PharmaceuticalDTO pharmaceutical;
+        try {
+            pharmaceutical = pharmaceuticalClient.getPharmaceutical(pharmaceuticalId);
+        } catch (FeignException.NotFound e) {
+            throw new BadRequestAlertException(
+                    "Pharmaceutical not found: " + pharmaceuticalId,
+                    "patientPrescriptionMedication",
+                    "pharmaceuticalNotFound"
+            );
+        }
+
+        if (pharmaceutical.activeIngredientId() != null
+                && activeIngredientId != null
+                && !pharmaceutical.activeIngredientId().equals(activeIngredientId)) {
+            throw new BadRequestAlertException(
+                    "Pharmaceutical does not belong to the selected Active Ingredient.",
+                    "patientPrescriptionMedication",
+                    "pharmaceuticalMismatch"
+            );
+        }
+    }
 
     private <T> T required(T value, String field) {
         if (value == null)
