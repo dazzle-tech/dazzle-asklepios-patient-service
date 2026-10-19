@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.dto.BillingPricingResolveRequest;
+import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
@@ -12,6 +13,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.DiscountApplicableOn;
 import com.dazzle.asklepios.domain.enumeration.billing.TaxApplicableOn;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationRequest;
@@ -59,6 +61,8 @@ public class BillingEngineService {
     private final PatientInsuranceRepository patientInsuranceRepository;
 
     private final PatientEncounterRepository patientEncounterRepository;
+
+    private final PatientRepository patientRepository;
 
     private final SetupBillingRuleService
             setupBillingRuleService;
@@ -251,6 +255,7 @@ public class BillingEngineService {
                         facilityId,
                         sourceId,
                         payerId,
+                        null,
                         null
                 );
 
@@ -344,7 +349,7 @@ public class BillingEngineService {
             PatientServiceAndProduct item,
             Long facilityId
     ) {
-        return resolvePricing(item, facilityId, null);
+        return resolvePricing(item, facilityId, null, null);
     }
 
     /**
@@ -355,6 +360,15 @@ public class BillingEngineService {
             PatientServiceAndProduct item,
             Long facilityId,
             BillingCoverageType coverageOverride
+    ) {
+        return resolvePricing(item, facilityId, coverageOverride, null);
+    }
+
+    public ResolvedBillingPrice resolvePricing(
+            PatientServiceAndProduct item,
+            Long facilityId,
+            BillingCoverageType coverageOverride,
+            Boolean patientCitizen
     ) {
         validatePatientItem(item);
 
@@ -369,7 +383,8 @@ public class BillingEngineService {
                         facilityId,
                         sourceId,
                         payerId,
-                        coverageOverride
+                        coverageOverride,
+                        patientCitizen
                 );
 
         ResolvedBillingPrice resolvedPrice =
@@ -854,6 +869,7 @@ public class BillingEngineService {
                         facilityId,
                         sourceId,
                         payerId,
+                        null,
                         null
                 );
 
@@ -1188,7 +1204,8 @@ public class BillingEngineService {
             Long facilityId,
             Long sourceId,
             Long payerId,
-            BillingCoverageType coverageOverride
+            BillingCoverageType coverageOverride,
+            Boolean patientCitizen
     ) {
         BillingCoverageType coverage = coverageOverride != null
                 ? coverageOverride
@@ -1218,8 +1235,21 @@ public class BillingEngineService {
                 resolveDiscountApplicableOn(
                         item
                 ),
-                LocalDate.now()
+                LocalDate.now(),
+                patientCitizen != null
+                        ? patientCitizen
+                        : findIsCitizen(item.getPatientId())
         );
+    }
+
+    private Boolean findIsCitizen(Long patientId) {
+        if (patientId == null) {
+            return null;
+        }
+
+        return patientRepository.findById(patientId)
+                .map(Patient::getIsCitizen)
+                .orElse(null);
     }
 
     private Long resolvePatientInsuranceId(
@@ -1646,13 +1676,9 @@ public class BillingEngineService {
      * ============================================================
      * TAX AND DISCOUNT APPLICABILITY
      *
-     * Charge-line pricing resolves setup rules with:
-     *   SERVICE  -> services, procedures, labs, etc.
-     *   PRODUCT  -> medications
-     *
-     * Invoice-time rules use Applicable On at invoice generation:
-     *   INVOICE_LINE -> per invoice line
-     *   INVOICE      -> whole invoice total
+     * Charge-line pricing resolves the tax for the item category.
+     * A Charge Line tax applies when no category tax matches.
+     * Invoice tax is applied later to the whole invoice.
      * ============================================================
      */
 
@@ -1660,16 +1686,12 @@ public class BillingEngineService {
             PatientServiceAndProduct item
     ) {
         return switch (item.getBillingItemType()) {
-
-            case SERVICE,
-                 PROCEDURE,
-                 LABORATORY,
-                 RADIOLOGY,
-                 PATHOLOGY ->
-                    TaxApplicableOn.SERVICE;
-
-            case MEDICATION ->
-                    TaxApplicableOn.PRODUCT;
+            case SERVICE -> TaxApplicableOn.SERVICE;
+            case PROCEDURE -> TaxApplicableOn.PROCEDURE;
+            case MEDICATION -> TaxApplicableOn.MEDICATION;
+            case LABORATORY -> TaxApplicableOn.LABORATORY;
+            case RADIOLOGY -> TaxApplicableOn.RADIOLOGY;
+            case PATHOLOGY -> TaxApplicableOn.PATHOLOGY;
         };
     }
 

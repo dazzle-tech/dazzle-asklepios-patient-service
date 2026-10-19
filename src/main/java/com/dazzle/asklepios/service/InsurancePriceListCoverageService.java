@@ -197,6 +197,7 @@ public class InsurancePriceListCoverageService {
                 .paymentStatus(PaymentStatus.PENDING)
                 .build();
 
+        Boolean patientCitizen = encounter.getPatient().getIsCitizen();
         PatientInsurance insurance = loadInsurance(coverage.patientInsuranceId());
         if (!insurancePatientShareCalculator.isLatestCoverageInForce(insurance)) {
             LOG.warn(
@@ -216,7 +217,8 @@ public class InsurancePriceListCoverageService {
                     effectiveCurrency,
                     coverage.patientInsuranceId(),
                     ELIGIBILITY_NOT_IN_FORCE,
-                    null
+                    null,
+                    patientCitizen
             );
         }
 
@@ -224,7 +226,8 @@ public class InsurancePriceListCoverageService {
                 billingEngineService.resolvePricing(
                         previewItem,
                         encounter.getFacilityId(),
-                        BillingCoverageType.INSURANCE
+                        BillingCoverageType.INSURANCE,
+                        patientCitizen
                 );
 
         if (insurancePrice.resolvedFromPriceList()) {
@@ -270,7 +273,8 @@ public class InsurancePriceListCoverageService {
                 effectiveCurrency,
                 coverage.patientInsuranceId(),
                 NOT_IN_INSURANCE_PRICE_LIST,
-                insurancePrice
+                insurancePrice,
+                patientCitizen
         );
     }
 
@@ -373,13 +377,15 @@ public class InsurancePriceListCoverageService {
             Currency effectiveCurrency,
             Long patientInsuranceId,
             String notCoveredReason,
-            ResolvedBillingPrice insurancePrice
+            ResolvedBillingPrice insurancePrice,
+            Boolean patientCitizen
     ) {
         ResolvedBillingPrice cashPrice =
                 billingEngineService.resolvePricing(
                         previewItem,
                         facilityId,
-                        BillingCoverageType.SELF_PAY
+                        BillingCoverageType.SELF_PAY,
+                        patientCitizen
                 );
 
         String itemName = firstNonBlank(

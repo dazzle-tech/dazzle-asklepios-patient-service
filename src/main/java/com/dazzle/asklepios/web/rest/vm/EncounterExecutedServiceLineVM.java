@@ -23,6 +23,8 @@ public record EncounterExecutedServiceLineVM(
         BigDecimal patientPaidAmount,
         BigDecimal setupUnitPrice,
         BigDecimal discountPercentage,
+        BigDecimal taxAmount,
+        BigDecimal taxRate,
         String coverageStatus
 ) {
 }

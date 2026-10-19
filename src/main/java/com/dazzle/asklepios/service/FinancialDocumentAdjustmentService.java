@@ -1486,7 +1486,8 @@ public class FinancialDocumentAdjustmentService {
                 invoice.getId(),
                 facilityId,
                 invoice.getCurrency(),
-                pricingDate
+                pricingDate,
+                invoice.getPatientId()
         );
     }
 

@@ -97,7 +97,7 @@ public class EncounterExecutedServicesService {
         String coverageType = encounter.getCoverageType() == null
                 ? null
                 : encounter.getCoverageType().name();
-        Map<Long, BigDecimal> cashPriceByChargeLine = cashPrices(chargeLines);
+        Map<Long, ChargeLinePricing> pricingByChargeLine = chargeLinePricing(chargeLines);
 
         for (BillingChargeLine chargeLine : chargeLines) {
             PatientServiceAndProduct item = chargeLine.getPatientServiceProduct();
@@ -109,7 +109,7 @@ public class EncounterExecutedServicesService {
                     item,
                     displayNames,
                     invoicePaidByService,
-                    cashPriceByChargeLine.get(chargeLine.getId())
+                    pricingByChargeLine.get(chargeLine.getId())
             ));
         }
 
@@ -201,7 +201,7 @@ public class EncounterExecutedServicesService {
             PatientServiceAndProduct item,
             Map<String, String> displayNames,
             Map<Long, BigDecimal> invoicePaidByService,
-            BigDecimal setupUnitPrice
+            ChargeLinePricing pricing
     ) {
         BigDecimal net = ExecutedServiceAmounts.net(
                 line.getNetAmount(),
@@ -254,8 +254,10 @@ public class EncounterExecutedServicesService {
                 line.getCurrency() == null ? null : line.getCurrency().name(),
                 lineGross,
                 patientPaid(item, invoicePaidByService),
-                setupUnitPrice,
+                pricing == null ? null : pricing.cashPrice(),
                 discountPercentage(line.getDiscountAmount(), lineGross),
+                ExecutedServiceAmounts.zeroIfNull(line.getTaxAmount()),
+                pricing == null ? null : pricing.taxRate(),
                 coverageStatus(item, insuranceShare)
         );
     }
@@ -319,11 +321,19 @@ public class EncounterExecutedServicesService {
                 patientPaid(item, invoicePaidByService),
                 null,
                 discountPercentage(item.getDiscountAmount(), itemGross),
+                ExecutedServiceAmounts.zeroIfNull(item.getTaxAmount()),
+                null,
                 coverageStatus(item, insuranceShare)
         );
     }
 
-    private Map<Long, BigDecimal> cashPrices(List<BillingChargeLine> lines) {
+    private record ChargeLinePricing(
+            BigDecimal cashPrice,
+            BigDecimal taxRate
+    ) {
+    }
+
+    private Map<Long, ChargeLinePricing> chargeLinePricing(List<BillingChargeLine> lines) {
         List<Long> chargeLineIds = lines.stream()
                 .map(BillingChargeLine::getId)
                 .filter(id -> id != null)
@@ -332,7 +342,7 @@ public class EncounterExecutedServicesService {
             return Map.of();
         }
 
-        Map<Long, BigDecimal> prices = new HashMap<>();
+        Map<Long, ChargeLinePricing> prices = new HashMap<>();
         for (BillingPricingSnapshot snapshot : billingPricingSnapshotRepository
                 .findAllByChargeLine_IdInAndStatusOrderByIdDesc(
                         chargeLineIds,
@@ -341,7 +351,13 @@ public class EncounterExecutedServicesService {
             if (snapshot.getChargeLine() == null || snapshot.getChargeLine().getId() == null) {
                 continue;
             }
-            prices.putIfAbsent(snapshot.getChargeLine().getId(), readSetupUnitPrice(snapshot));
+            prices.putIfAbsent(
+                    snapshot.getChargeLine().getId(),
+                    new ChargeLinePricing(
+                            readSetupUnitPrice(snapshot),
+                            snapshot.getTaxRate()
+                    )
+            );
         }
         return prices;
     }

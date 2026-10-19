@@ -257,7 +257,8 @@ public class PatientPaymentsService {
                                 paymentTypes
                         ),
                         encounter.getFacilityId(),
-                        pricingCoverage
+                        pricingCoverage,
+                        encounter.getPatient().getIsCitizen()
                 );
 
         LOG.info(

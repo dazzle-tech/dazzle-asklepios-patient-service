@@ -11,6 +11,7 @@ import com.dazzle.asklepios.service.dto.patientDocuments.PatientDocumentUpdateDT
 import com.dazzle.asklepios.service.dto.patientDocuments.PatientNoDocumentCreateDTO;
 import com.dazzle.asklepios.integration.waseel.service.CchiPatientLookupService;
 import com.dazzle.asklepios.service.helper.CountryHelper;
+import com.dazzle.asklepios.service.helper.PatientCitizenFlag;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.EntityManager;
@@ -24,6 +25,7 @@ import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Objects;
 import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -74,6 +76,7 @@ public class PatientDocumentService {
         try {
             PatientDocument saved = patientDocumentRepository.saveAndFlush(entity);
             syncPatientDocumentId(saved);
+            syncCitizenFlag(saved, dto.isCitizen());
 
             LOG.info(
                     "Successfully created PatientDocument id={} for patientId={} isPrimary={}",
@@ -101,6 +104,7 @@ public class PatientDocumentService {
 
         try {
             PatientDocument saved = patientDocumentRepository.saveAndFlush(entity);
+            syncCitizenFlag(saved, dto.isCitizen());
             LOG.info(
                     "Successfully created NO_DOCUMENT PatientDocument id={} for patientId={}",
                     saved.getId(),
@@ -136,6 +140,7 @@ public class PatientDocumentService {
         try {
             PatientDocument updated = patientDocumentRepository.saveAndFlush(existing);
             syncPatientDocumentId(updated);
+            syncCitizenFlag(updated, dto.isCitizen());
             LOG.info("Successfully updated PatientDocument id={}", updated.getId());
             return updated;
 
@@ -283,6 +288,33 @@ public class PatientDocumentService {
                 "Database constraint violated while saving patient document.",
                 "patientDocument",
                 "db.constraint"
+        );
+    }
+
+    private void syncCitizenFlag(PatientDocument document, Boolean requested) {
+        if (document == null || !Boolean.TRUE.equals(document.getIsPrimary())) {
+            return;
+        }
+
+        Patient patient = document.getPatient();
+        if (patient == null || patient.getId() == null) {
+            return;
+        }
+
+        boolean citizen = requested != null
+                ? requested
+                : PatientCitizenFlag.fromDocumentType(document.getType());
+        if (Objects.equals(patient.getIsCitizen(), citizen)) {
+            return;
+        }
+
+        patient.setIsCitizen(citizen);
+        patientRepository.saveAndFlush(patient);
+        LOG.info(
+                "[PATIENT_DOCUMENT] Set patient.isCitizen={} for patientId={} from documentType={}",
+                citizen,
+                patient.getId(),
+                document.getType()
         );
     }
 

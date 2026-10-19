@@ -17,6 +17,7 @@ import com.dazzle.asklepios.integration.waseel.service.mapper.CchiBeneficiaryPat
 import com.dazzle.asklepios.integration.waseel.service.mapper.CchiBeneficiaryPatientMapper;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.service.helper.PatientCitizenFlag;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -360,6 +361,12 @@ public class WaseelCchiService {
         Patient patient = patientMapper.toPatient(beneficiary);
         Address address = addressMapper.toAddress(beneficiary);
         PatientDocument document = patientDocumentMapper.toPatientDocument(beneficiary);
+
+        if (patient != null) {
+            patient.setIsCitizen(
+                    PatientCitizenFlag.fromDocumentType(document != null ? document.getType() : null)
+            );
+        }
 
         List<PatientInsurance> insurances = mapPatientInsurances(
                 patient,

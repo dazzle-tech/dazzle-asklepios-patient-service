@@ -105,11 +105,14 @@ public class CatalogItemPricingPreviewService {
                         coverageType
                 );
 
+        Boolean patientCitizen = patient.getIsCitizen();
+
         ResolvedBillingPrice resolvedPrice =
                 billingEngineService.resolvePricing(
                         previewItem,
                         request.facilityId(),
-                        coverageType
+                        coverageType,
+                        patientCitizen
                 );
 
         boolean coveredByInsurance =
@@ -128,7 +131,8 @@ public class CatalogItemPricingPreviewService {
                 resolvedPrice = billingEngineService.resolvePricing(
                         previewItem,
                         request.facilityId(),
-                        BillingCoverageType.SELF_PAY
+                        BillingCoverageType.SELF_PAY,
+                        patientCitizen
                 );
             }
         }
@@ -169,7 +173,8 @@ public class CatalogItemPricingPreviewService {
                 draftItem,
                 request,
                 itemDiscount,
-                itemTax
+                itemTax,
+                patientCitizen
         );
 
         BigDecimal totalDiscount = money(draftItem.getDiscountAmount());
@@ -260,7 +265,8 @@ public class CatalogItemPricingPreviewService {
             Long invoiceId,
             Long facilityId,
             Currency currency,
-            LocalDate pricingDate
+            LocalDate pricingDate,
+            Long patientId
     ) {
         if (items == null || items.isEmpty()) {
             return;
@@ -277,7 +283,8 @@ public class CatalogItemPricingPreviewService {
                 items,
                 facilityId,
                 currency,
-                pricingDate
+                pricingDate,
+                findIsCitizen(patientId)
         );
 
         if (invoiceId == null) {
@@ -308,7 +315,8 @@ public class CatalogItemPricingPreviewService {
             FinancialDocumentItem draftItem,
             PreviewCatalogItemPricingRequest request,
             BigDecimal itemDiscount,
-            BigDecimal itemTax
+            BigDecimal itemTax,
+            Boolean patientCitizen
     ) {
         List<FinancialDocumentItem> adjustmentItems =
                 new ArrayList<>(List.of(draftItem));
@@ -317,7 +325,8 @@ public class CatalogItemPricingPreviewService {
                 adjustmentItems,
                 request.facilityId(),
                 request.currency(),
-                resolvePricingDate(request.invoiceId())
+                resolvePricingDate(request.invoiceId()),
+                patientCitizen
         );
 
         BigDecimal invoiceDiscount =
@@ -821,6 +830,16 @@ public class CatalogItemPricingPreviewService {
         }
 
         return quantity.longValue();
+    }
+
+    private Boolean findIsCitizen(Long patientId) {
+        if (patientId == null) {
+            return null;
+        }
+
+        return patientRepository.findById(patientId)
+                .map(Patient::getIsCitizen)
+                .orElse(null);
     }
 
     private Patient loadPatient(Long patientId) {

@@ -418,7 +418,8 @@ public class EncounterBillingSummaryService {
                 line.getCreatedDate(),
                 responsibilities.stream()
                         .map(this::buildResponsibilitySummary)
-                        .toList()
+                        .toList(),
+                pricingDisplay.taxRate()
         );
     }
 
@@ -533,7 +534,8 @@ public class EncounterBillingSummaryService {
                         buildUnbilledItemSummary(
                                 encounter,
                                 item,
-                                displayNameCache
+                                displayNameCache,
+                                encounter.getPatient().getIsCitizen()
                         )
                 )
                 .filter(Objects::nonNull)
@@ -558,7 +560,8 @@ public class EncounterBillingSummaryService {
     private EncounterBillingItemSummary buildUnbilledItemSummary(
             PatientEncounter encounter,
             PatientServiceAndProduct item,
-            Map<String, String> displayNameCache
+            Map<String, String> displayNameCache,
+            Boolean patientCitizen
     ) {
         ResolvedBillingPrice resolvedPrice;
 
@@ -566,7 +569,9 @@ public class EncounterBillingSummaryService {
             resolvedPrice =
                     billingEngineService.resolvePricing(
                             item,
-                            encounter.getFacilityId()
+                            encounter.getFacilityId(),
+                            null,
+                            patientCitizen
                     );
         } catch (RuntimeException exception) {
             LOG.debug(
@@ -674,7 +679,10 @@ public class EncounterBillingSummaryService {
                 item.getCurrency(),
                 BillingChargeLineStatus.DRAFT,
                 item.getCreatedDate(),
-                List.of()
+                List.of(),
+                pricingResponse == null
+                        ? null
+                        : pricingResponse.taxRate()
         );
     }
 
@@ -829,7 +837,8 @@ public class EncounterBillingSummaryService {
                 item.currency(),
                 item.status(),
                 item.chargedAt(),
-                item.responsibilities()
+                item.responsibilities(),
+                item.taxRate()
         );
     }
 
@@ -1095,12 +1104,14 @@ public class EncounterBillingSummaryService {
                             setupUnitPrice,
                             resolvedUnitPrice,
                             priceSource,
-                            priceListItemCode
+                            priceListItemCode,
+                            snapshot.getTaxRate()
                     );
                 })
                 .orElseGet(
                         () ->
                                 new PricingDisplayFields(
+                                        null,
                                         null,
                                         null,
                                         null,
@@ -1159,7 +1170,9 @@ public class EncounterBillingSummaryService {
                 ResolvedBillingPrice resolvedPrice =
                         billingEngineService.resolvePricing(
                                 item,
-                                line.getEncounter().getFacilityId()
+                                line.getEncounter().getFacilityId(),
+                                null,
+                                line.getEncounter().getPatient().getIsCitizen()
                         );
 
                 if (
@@ -1246,7 +1259,8 @@ public class EncounterBillingSummaryService {
             BigDecimal setupUnitPrice,
             BigDecimal resolvedUnitPrice,
             String priceSource,
-            String priceListItemCode
+            String priceListItemCode,
+            BigDecimal taxRate
     ) {
     }
 
