@@ -61,7 +61,9 @@ public record EncounterBillingItemSummary(
 
         java.time.Instant chargedAt,
 
-        List<BillingResponsibilitySummary> responsibilities
+        List<BillingResponsibilitySummary> responsibilities,
+
+        BigDecimal taxRate
 
 ) implements Serializable {
 }

@@ -17,7 +17,9 @@ public record PatientNoDocumentCreateDTO(
         DocumentType type,
 
         @NotNull
-        Boolean isPrimary
+        Boolean isPrimary,
+
+        Boolean isCitizen
 
 ) implements Serializable {
 
@@ -25,7 +27,8 @@ public record PatientNoDocumentCreateDTO(
         return new PatientNoDocumentCreateDTO(
                 doc.getPatient() != null ? doc.getPatient().getId() : null,
                 doc.getType(),
-                doc.getIsPrimary()
+                doc.getIsPrimary(),
+                null
         );
     }
 }

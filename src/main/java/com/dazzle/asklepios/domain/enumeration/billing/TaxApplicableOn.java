@@ -2,7 +2,11 @@ package com.dazzle.asklepios.domain.enumeration.billing;
 
 public enum TaxApplicableOn {
     INVOICE,
-    INVOICE_LINE,
+    CHARGE_LINE,
     SERVICE,
-    PRODUCT
+    PROCEDURE,
+    MEDICATION,
+    LABORATORY,
+    RADIOLOGY,
+    PATHOLOGY
 }

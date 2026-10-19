@@ -152,6 +152,7 @@ public class PatientService {
                 .responsibleParty(dto.responsibleParty())
                 .educationalLevel(dto.educationalLevel())
                 .isCchiPatient(cchiPatient)
+                .isCitizen(Boolean.TRUE.equals(dto.isCitizen()))
                 .documentId(documentId)
                 .previousId(dto.previousId())
                 .archivingNumber(dto.archivingNumber())
@@ -195,7 +196,8 @@ public class PatientService {
                         created.getId(),
                         dto.countryId(),
                         dto.primaryDocumentType(),
-                        dto.primaryDocumentNumber().trim()
+                        dto.primaryDocumentNumber().trim(),
+                        null
                 )
         );
         return patientRepository.findById(created.getId()).orElse(created);
@@ -206,6 +208,7 @@ public class PatientService {
                 .isUnknown(true)
                 .isVerified(Boolean.TRUE.equals(dto.isVerified()))
                 .isCompletedPatient(Boolean.TRUE.equals(dto.isCompletedPatient()))
+                .isCitizen(false)
                 .activated(false)
                 .build();
 
@@ -287,6 +290,7 @@ public class PatientService {
         if (dto.isCchiPatient() != null) {
             existing.setIsCchiPatient(Boolean.TRUE.equals(dto.isCchiPatient()));
         }
+        applyCitizenFlag(existing, dto.isCitizen());
         if (dto.documentId() != null) {
             String normalizedDocumentId = normalizeDocumentId(dto.documentId());
             if (normalizedDocumentId != null) {
@@ -873,11 +877,30 @@ public class PatientService {
             );
         }
 
+        if (lower.contains("is_citizen")
+                && (lower.contains("null value") || lower.contains("not-null") || lower.contains("not null"))) {
+            throw new BadRequestAlertException(
+                    "Citizen flag is required.",
+                    "patient",
+                    "is_citizen.required"
+            );
+        }
+
         throw new BadRequestAlertException(
                 "Database constraint violated while saving patient.",
                 "patient",
                 "db.constraint"
         );
+    }
+
+    private void applyCitizenFlag(Patient patient, Boolean requested) {
+        if (requested != null) {
+            patient.setIsCitizen(requested);
+            return;
+        }
+        if (patient.getIsCitizen() == null) {
+            patient.setIsCitizen(false);
+        }
     }
 
     private Specification<Patient> buildDuplicationSpec(Map<String, Boolean> fields, PatientDuplicationLookupDTO duplicationLookupDTO) {

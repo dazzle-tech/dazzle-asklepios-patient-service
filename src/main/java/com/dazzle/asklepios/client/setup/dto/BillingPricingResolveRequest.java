@@ -33,7 +33,9 @@ public record BillingPricingResolveRequest(
 
         DiscountApplicableOn discountApplicableOn,
 
-        LocalDate pricingDate
+        LocalDate pricingDate,
+
+        Boolean patientCitizen
 
 ) implements Serializable {
 }

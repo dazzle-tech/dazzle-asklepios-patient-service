@@ -180,6 +180,11 @@ public class Patient extends AbstractAuditingEntity<Long> implements Serializabl
     @Builder.Default
     private Boolean isCchiPatient = false;
 
+    @NotNull
+    @Column(name = "is_citizen", nullable = false)
+    @Builder.Default
+    private Boolean isCitizen = false;
+
     @Column(name = "document_id", unique = true, length = 100)
     private String documentId;
 

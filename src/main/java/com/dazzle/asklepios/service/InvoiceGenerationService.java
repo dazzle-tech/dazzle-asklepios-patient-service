@@ -639,7 +639,8 @@ public class InvoiceGenerationService {
                 items,
                 encounter.getFacilityId(),
                 document.getCurrency(),
-                LocalDate.now()
+                LocalDate.now(),
+                patient.getIsCitizen()
         );
 
         invoiceChargePaymentSyncService.syncPreInvoicePayments(items);

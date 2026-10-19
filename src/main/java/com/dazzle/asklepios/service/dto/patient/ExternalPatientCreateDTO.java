@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.enumeration.DocumentType;
 import com.dazzle.asklepios.domain.enumeration.Gender;
 import com.dazzle.asklepios.domain.enumeration.PreferredWayOfContact;
 import com.dazzle.asklepios.domain.enumeration.SecurityLevel;
+import com.dazzle.asklepios.service.helper.PatientCitizenFlag;
 import com.dazzle.asklepios.util.MinDate;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.Email;
@@ -145,7 +146,8 @@ public record ExternalPatientCreateDTO(
                 resolvedDocumentId,
                 securityAccessLevel,
                 bloodGroup,
-                patientConditions
+                patientConditions,
+                PatientCitizenFlag.fromDocumentType(primaryDocumentType)
         );
     }
 }

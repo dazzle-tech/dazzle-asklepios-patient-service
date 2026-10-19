@@ -185,7 +185,8 @@ public class DefaultServicePricingPreviewService {
                             requestedItem,
                             insurance,
                             service.category(),
-                            visitMaxLimitTracker
+                            visitMaxLimitTracker,
+                            patient.getIsCitizen()
                     );
 
             itemResults.add(itemResult);
@@ -232,7 +233,8 @@ public class DefaultServicePricingPreviewService {
             PrepareDefaultServiceItem requestedItem,
             PatientInsurance insurance,
             String serviceCategory,
-            VisitMaxLimitTracker visitMaxLimitTracker
+            VisitMaxLimitTracker visitMaxLimitTracker,
+            Boolean patientCitizen
     ) {
         ResolvedBillingPrice resolvedPrice;
         boolean insuranceVisit = insurance != null;
@@ -249,7 +251,8 @@ public class DefaultServicePricingPreviewService {
         resolvedPrice = billingEngineService.resolvePricing(
                 previewItem,
                 facilityId,
-                pricingCoverage
+                pricingCoverage,
+                patientCitizen
         );
 
         boolean coveredByInsurance =
@@ -268,7 +271,8 @@ public class DefaultServicePricingPreviewService {
                 resolvedPrice = billingEngineService.resolvePricing(
                         previewItem,
                         facilityId,
-                        BillingCoverageType.SELF_PAY
+                        BillingCoverageType.SELF_PAY,
+                        patientCitizen
                 );
             }
 

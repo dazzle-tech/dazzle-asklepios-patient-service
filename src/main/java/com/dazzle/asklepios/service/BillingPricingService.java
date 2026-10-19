@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.TaxCalculationType;
 import com.dazzle.asklepios.domain.enumeration.billing.CalculationOrder;
 import com.dazzle.asklepios.domain.enumeration.billing.DiscountType;
 import com.dazzle.asklepios.domain.enumeration.billing.RoundingModeType;
@@ -101,6 +102,9 @@ public class BillingPricingService {
         BigDecimal taxableAmount;
         BigDecimal taxAmount;
         BigDecimal netAmount;
+        boolean taxIncludedInPrice =
+                input.taxCalculationType()
+                        == TaxCalculationType.INCLUSIVE;
 
         if (input.calculationOrder()
                 == CalculationOrder.TAX_THEN_DISCOUNT) {
@@ -110,6 +114,7 @@ public class BillingPricingService {
                             grossAmount,
                             input.taxType(),
                             input.taxRate(),
+                            input.taxCalculationType(),
                             scale,
                             roundingMode
                     );
@@ -125,13 +130,17 @@ public class BillingPricingService {
             )
                     : taxBeforeDiscount;
 
-            netAmount =
-                    grossAmount
-                            .add(taxAmount)
-                            .subtract(discountAmount)
-                            .subtract(exemptionAmount)
-                            .max(BigDecimal.ZERO)
-                            .setScale(scale, roundingMode);
+            netAmount = grossAmount
+                    .subtract(discountAmount)
+                    .subtract(exemptionAmount);
+
+            if (!taxIncludedInPrice) {
+                netAmount = netAmount.add(taxAmount);
+            }
+
+            netAmount = netAmount
+                    .max(BigDecimal.ZERO)
+                    .setScale(scale, roundingMode);
 
         } else {
 
@@ -143,15 +152,18 @@ public class BillingPricingService {
                             taxableAmount,
                             input.taxType(),
                             input.taxRate(),
+                            input.taxCalculationType(),
                             scale,
                             roundingMode
                     );
 
-            netAmount =
-                    taxableAmount
-                            .add(taxAmount)
-                            .max(BigDecimal.ZERO)
-                            .setScale(scale, roundingMode);
+            netAmount = taxIncludedInPrice
+                    ? taxableAmount
+                    : taxableAmount.add(taxAmount);
+
+            netAmount = netAmount
+                    .max(BigDecimal.ZERO)
+                    .setScale(scale, roundingMode);
         }
 
         PriceCalculationResult result =
@@ -269,6 +281,7 @@ public class BillingPricingService {
             BigDecimal taxableAmount,
             TaxType taxType,
             BigDecimal taxRate,
+            TaxCalculationType calculationType,
             int scale,
             RoundingMode roundingMode
     ) {
@@ -285,18 +298,33 @@ public class BillingPricingService {
 
         return switch (taxType) {
 
-            case PERCENTAGE ->
-                    taxableAmount
-                            .multiply(rate)
-                            .divide(
-                                    BigDecimal.valueOf(100),
-                                    scale,
-                                    roundingMode
-                            )
-                            .setScale(scale, roundingMode);
+            case PERCENTAGE -> {
+                BigDecimal divisor =
+                        calculationType == TaxCalculationType.INCLUSIVE
+                                ? BigDecimal.valueOf(100).add(rate)
+                                : BigDecimal.valueOf(100);
 
-            case FIXED_AMOUNT ->
-                    rate.setScale(scale, roundingMode);
+                yield taxableAmount
+                        .multiply(rate)
+                        .divide(
+                                divisor,
+                                scale,
+                                roundingMode
+                        )
+                        .setScale(scale, roundingMode);
+            }
+
+            case FIXED_AMOUNT -> {
+                BigDecimal fixedAmount =
+                        rate.setScale(scale, roundingMode);
+
+                if (calculationType == TaxCalculationType.INCLUSIVE
+                        && fixedAmount.compareTo(taxableAmount) > 0) {
+                    yield taxableAmount.setScale(scale, roundingMode);
+                }
+
+                yield fixedAmount;
+            }
             default -> throw new IllegalStateException("Unexpected value: " + taxType);
         };
     }
