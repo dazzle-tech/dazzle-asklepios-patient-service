@@ -140,9 +140,12 @@ PatientDiagnosisController {
     @GetMapping("/patient-diagnoses/patient/{patientId}")
     public ResponseEntity<List<PatientDiagnosis>> listByPatientId(
             @PathVariable Long patientId,
+            @RequestParam(required = false) Long encounterId,
+            @RequestParam(required = false, defaultValue = "true") boolean currentEncounter,
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("REST list PatientDiagnoses by patientId={} pageable={}", patientId, pageable);
+        LOG.debug("REST list PatientDiagnoses by patientId={} encounterId={} currentEncounter={} pageable={}",
+                patientId, encounterId, currentEncounter, pageable);
 
         if (patientId == null) {
             throw new BadRequestAlertException(
@@ -152,7 +155,9 @@ PatientDiagnosisController {
             );
         }
 
-        Page<PatientDiagnosis> page = patientDiagnosisService.findByPatientId(patientId, pageable);
+        Page<PatientDiagnosis> page = encounterId == null
+                ? patientDiagnosisService.findByPatientId(patientId, pageable)
+                : patientDiagnosisService.findByPatientIdAndEncounter(patientId, encounterId, currentEncounter, pageable);
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(),

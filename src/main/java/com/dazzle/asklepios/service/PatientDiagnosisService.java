@@ -156,6 +156,24 @@ public class PatientDiagnosisService {
         return patientDiagnosisRepository.findByPatient_IdOrderByCreatedDateDesc(patientId, pageable);
     }
 
+    /**
+     * Lists a patient's diagnoses split by visit: {@code currentEncounter=true} returns those added in
+     * {@code encounterId}, {@code false} returns those added in the patient's other (previous) encounters.
+     */
+    @Transactional(readOnly = true)
+    public Page<PatientDiagnosis> findByPatientIdAndEncounter(
+            Long patientId,
+            Long encounterId,
+            boolean currentEncounter,
+            Pageable pageable
+    ) {
+        LOG.debug("[FIND PAGE] patientId={} encounterId={} currentEncounter={} pageable={}",
+                patientId, encounterId, currentEncounter, pageable);
+        return currentEncounter
+                ? patientDiagnosisRepository.findByPatient_IdAndEncounterIdOrderByCreatedDateDesc(patientId, encounterId, pageable)
+                : patientDiagnosisRepository.findByPatient_IdAndEncounterIdNotOrderByCreatedDateDesc(patientId, encounterId, pageable);
+    }
+
 
     @Transactional(readOnly = true)
     public List<PatientDiagnosis> getByEncounterId(Long encounterId) {
