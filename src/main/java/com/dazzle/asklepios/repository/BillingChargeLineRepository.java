@@ -75,5 +75,9 @@ public interface BillingChargeLineRepository
             Collection<BillingChargeLineStatus> excludedStatuses
     );
 
-
+    List<BillingChargeLine>
+    findAllByPatientServiceProduct_IdInAndStatusNotInOrderByIdAsc(
+            Collection<Long> patientServiceProductIds,
+            Collection<BillingChargeLineStatus> excludedStatuses
+    );
 }

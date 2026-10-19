@@ -8,6 +8,7 @@ import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizatio
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
@@ -16,7 +17,8 @@ import java.util.Optional;
 
 @Repository
 public interface PatientServiceAndProductRepository
-        extends JpaRepository<PatientServiceAndProduct, Long> {
+        extends JpaRepository<PatientServiceAndProduct, Long>,
+        JpaSpecificationExecutor<PatientServiceAndProduct> {
 
     Page<PatientServiceAndProduct> findAllByEncounterId(Long encounterId, Pageable pageable);
 

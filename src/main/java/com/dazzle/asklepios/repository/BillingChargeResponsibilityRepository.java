@@ -75,6 +75,13 @@ public interface BillingChargeResponsibilityRepository
             Collection<BillingResponsibilityStatus> excludedStatuses
     );
 
+    List<BillingChargeResponsibility>
+    findAllByPatientServiceProduct_IdInAndResponsiblePartyTypeAndStatusNotInOrderByIdAsc(
+            Collection<Long> patientServiceProductIds,
+            ResponsiblePartyType responsiblePartyType,
+            Collection<BillingResponsibilityStatus> excludedStatuses
+    );
+
     @Query("""
             SELECT r.payerId, r.currency,
                    COALESCE(SUM(r.responsibilityAmount), 0),
