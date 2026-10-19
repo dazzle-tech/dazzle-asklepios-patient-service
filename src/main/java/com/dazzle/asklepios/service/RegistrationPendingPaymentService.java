@@ -31,14 +31,6 @@ import com.dazzle.asklepios.service.dto.billing.RegistrationPendingPaymentChange
 import com.dazzle.asklepios.service.dto.billing.RegistrationPendingPaymentEncounterDTO;
 import com.dazzle.asklepios.service.dto.billing.RegistrationPendingPaymentItemDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.Tuple;
-import jakarta.persistence.criteria.CriteriaBuilder;
-import jakarta.persistence.criteria.CriteriaQuery;
-import jakarta.persistence.criteria.Expression;
-import jakarta.persistence.criteria.Path;
-import jakarta.persistence.criteria.Predicate;
-import jakarta.persistence.criteria.Root;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -53,7 +45,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
@@ -93,7 +84,6 @@ public class RegistrationPendingPaymentService {
             );
 
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
-    private final EntityManager entityManager;
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientRepository patientRepository;
     private final EncounterAssignToBedRepository encounterAssignToBedRepository;
@@ -108,7 +98,6 @@ public class RegistrationPendingPaymentService {
 
     public RegistrationPendingPaymentService(
             PatientServiceAndProductRepository patientServiceAndProductRepository,
-            EntityManager entityManager,
             PatientEncounterRepository patientEncounterRepository,
             PatientRepository patientRepository,
             EncounterAssignToBedRepository encounterAssignToBedRepository,
@@ -122,7 +111,6 @@ public class RegistrationPendingPaymentService {
             ServiceClient serviceClient
     ) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
-        this.entityManager = entityManager;
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.encounterAssignToBedRepository = encounterAssignToBedRepository;
@@ -146,12 +134,17 @@ public class RegistrationPendingPaymentService {
         Specification<PatientServiceAndProduct> specification =
                 pendingItemSpecification(facilityId, patientName);
 
-        long totalEncounters = countDistinctEncounters(specification);
+        long totalEncounters =
+                patientServiceAndProductRepository.countDistinctEncounters(specification);
         if (totalEncounters == 0L) {
             return new PageImpl<>(List.of(), safePageable, 0);
         }
 
-        List<Long> encounterIds = findEncounterIdsPage(specification, safePageable);
+        List<Long> encounterIds =
+                patientServiceAndProductRepository.findDistinctEncounterIds(
+                        specification,
+                        safePageable
+                );
         if (encounterIds.isEmpty()) {
             return new PageImpl<>(List.of(), safePageable, totalEncounters);
         }
@@ -258,69 +251,6 @@ public class RegistrationPendingPaymentService {
             Collection<Long> encounterIds
     ) {
         return (root, query, cb) -> root.get("encounterId").in(encounterIds);
-    }
-
-    private long countDistinctEncounters(
-            Specification<PatientServiceAndProduct> specification
-    ) {
-        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
-        CriteriaQuery<Long> query = cb.createQuery(Long.class);
-        Root<PatientServiceAndProduct> root = query.from(PatientServiceAndProduct.class);
-        query.select(cb.countDistinct(root.get("encounterId")));
-        applySpecification(specification, root, query, cb);
-        Long total = entityManager.createQuery(query).getSingleResult();
-        return total == null ? 0L : total;
-    }
-
-    private List<Long> findEncounterIdsPage(
-            Specification<PatientServiceAndProduct> specification,
-            Pageable pageable
-    ) {
-        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
-        CriteriaQuery<Tuple> query = cb.createTupleQuery();
-        Root<PatientServiceAndProduct> root = query.from(PatientServiceAndProduct.class);
-        Path<Long> encounterId = root.get("encounterId");
-        Expression<Instant> newestCreatedDate =
-                cb.greatest(root.<Instant>get("createdDate"));
-        Expression<Long> newestItemId = cb.max(root.<Long>get("id"));
-
-        query.multiselect(encounterId, newestCreatedDate, newestItemId);
-        applySpecification(specification, root, query, cb);
-        query.groupBy(encounterId);
-        query.orderBy(
-                cb.desc(newestCreatedDate),
-                cb.desc(newestItemId),
-                cb.desc(encounterId)
-        );
-
-        long offset = pageable.getOffset();
-        List<Tuple> page = entityManager.createQuery(query)
-                .setFirstResult(offset > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) offset)
-                .setMaxResults(pageable.getPageSize())
-                .getResultList();
-
-        List<Long> encounterIds = new ArrayList<>(page.size());
-        for (Tuple tuple : page) {
-            Object value = tuple.get(0);
-            if (value instanceof Number number) {
-                encounterIds.add(number.longValue());
-            }
-        }
-        return encounterIds;
-    }
-
-    private static void applySpecification(
-            Specification<PatientServiceAndProduct> specification,
-            Root<PatientServiceAndProduct> root,
-            CriteriaQuery<?> query,
-            CriteriaBuilder cb
-    ) {
-        Predicate predicate = specification == null
-                ? null
-                : specification.toPredicate(root, query, cb);
-        if (predicate != null) {
-            query.where(predicate);
-        }
     }
 
     private RegistrationPendingPaymentEncounterDTO toEncounterDto(

@@ -18,7 +18,8 @@ import java.util.Optional;
 @Repository
 public interface PatientServiceAndProductRepository
         extends JpaRepository<PatientServiceAndProduct, Long>,
-        JpaSpecificationExecutor<PatientServiceAndProduct> {
+        JpaSpecificationExecutor<PatientServiceAndProduct>,
+        PatientServiceAndProductRepositoryCustom {
 
     Page<PatientServiceAndProduct> findAllByEncounterId(Long encounterId, Pageable pageable);
 
