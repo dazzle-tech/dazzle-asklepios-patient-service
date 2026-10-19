@@ -185,6 +185,10 @@ public class BillingItemDisplayNameService {
 
         String upper = value.trim().toUpperCase();
 
+        if (isInternalTechnicalDescription(upper)) {
+            return false;
+        }
+
         if (billingItemType != null
                 && upper.equals(billingItemType.name())) {
             return false;
@@ -197,6 +201,12 @@ public class BillingItemDisplayNameService {
         return !TECHNICAL_LABEL.matcher(upper).matches();
     }
 
+    private boolean isInternalTechnicalDescription(String upperValue) {
+        return upperValue.startsWith("CREATED WHEN")
+                || upperValue.contains("ORDERID=")
+                || upperValue.contains("ORDERTESTID=");
+    }
+
     private String readName(String name) {
         if (name == null || name.isBlank()) {
             return "-";
@@ -207,7 +217,8 @@ public class BillingItemDisplayNameService {
 
     private String fallbackLabel(String storedDescription) {
         if (storedDescription != null
-                && !storedDescription.isBlank()) {
+                && !storedDescription.isBlank()
+                && isHumanReadable(storedDescription, null)) {
             return storedDescription.trim();
         }
 

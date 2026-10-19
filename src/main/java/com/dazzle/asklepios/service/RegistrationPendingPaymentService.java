@@ -8,6 +8,7 @@ import com.dazzle.asklepios.client.setup.dto.DiagnosticTestSetupDTO;
 import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
 import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingChargeResponsibility;
+import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.EncounterAssignToBed;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
@@ -19,6 +20,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStat
 import com.dazzle.asklepios.domain.enumeration.billing.ResponsiblePartyType;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
+import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.EncounterAssignToBedRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -97,6 +99,7 @@ public class RegistrationPendingPaymentService {
     private final EncounterAssignToBedRepository encounterAssignToBedRepository;
     private final BillingChargeLineRepository billingChargeLineRepository;
     private final BillingChargeResponsibilityRepository billingChargeResponsibilityRepository;
+    private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
     private final DiagnosticChargeTimingService diagnosticChargeTimingService;
     private final BillingItemDisplayNameService billingItemDisplayNameService;
     private final BedClient bedClient;
@@ -111,6 +114,7 @@ public class RegistrationPendingPaymentService {
             EncounterAssignToBedRepository encounterAssignToBedRepository,
             BillingChargeLineRepository billingChargeLineRepository,
             BillingChargeResponsibilityRepository billingChargeResponsibilityRepository,
+            DiagnosticOrderTestRepository diagnosticOrderTestRepository,
             DiagnosticChargeTimingService diagnosticChargeTimingService,
             BillingItemDisplayNameService billingItemDisplayNameService,
             BedClient bedClient,
@@ -124,6 +128,7 @@ public class RegistrationPendingPaymentService {
         this.encounterAssignToBedRepository = encounterAssignToBedRepository;
         this.billingChargeLineRepository = billingChargeLineRepository;
         this.billingChargeResponsibilityRepository = billingChargeResponsibilityRepository;
+        this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
         this.diagnosticChargeTimingService = diagnosticChargeTimingService;
         this.billingItemDisplayNameService = billingItemDisplayNameService;
         this.bedClient = bedClient;
@@ -398,7 +403,10 @@ public class RegistrationPendingPaymentService {
         Map<Long, BillingChargeResponsibility> patientResponsibilityByPspId =
                 loadPatientResponsibilities(pspIds);
 
-        Map<String, String> displayNameCache = preloadDisplayNames(items);
+        Map<Long, Long> diagnosticCatalogIdByOrderTestId =
+                loadDiagnosticCatalogIdsByOrderTestId(items);
+        Map<String, String> displayNameCache =
+                preloadDisplayNames(items, diagnosticCatalogIdByOrderTestId);
 
         List<RegistrationPendingPaymentItemDTO> result = new ArrayList<>(items.size());
         for (PatientServiceAndProduct item : items) {
@@ -411,7 +419,8 @@ public class RegistrationPendingPaymentService {
                             bedNamesById,
                             chargeLineByPspId.get(item.getId()),
                             patientResponsibilityByPspId.get(item.getId()),
-                            displayNameCache
+                            displayNameCache,
+                            diagnosticCatalogIdByOrderTestId
                     )
             );
         }
@@ -426,7 +435,8 @@ public class RegistrationPendingPaymentService {
             Map<Long, String> bedNamesById,
             BillingChargeLine chargeLine,
             BillingChargeResponsibility patientResponsibility,
-            Map<String, String> displayNameCache
+            Map<String, String> displayNameCache,
+            Map<Long, Long> diagnosticCatalogIdByOrderTestId
     ) {
         boolean unknownAmounts =
                 isUnknownFinancialAmounts(item);
@@ -480,12 +490,14 @@ public class RegistrationPendingPaymentService {
                 ? PaymentStatus.PENDING.name()
                 : item.getPaymentStatus().name());
 
+        Long catalogId =
+                resolveCatalogId(item, diagnosticCatalogIdByOrderTestId);
         String itemName =
                 billingItemDisplayNameService.resolveDisplayName(
                         item.getBillingItemType(),
                         item,
-                        resolveCatalogId(item),
-                        item.getNotes(),
+                        catalogId,
+                        null,
                         displayNameCache
                 );
 
@@ -559,19 +571,48 @@ public class RegistrationPendingPaymentService {
         return byPspId;
     }
 
-    private Map<String, String> preloadDisplayNames(List<PatientServiceAndProduct> items) {
+    private Map<Long, Long> loadDiagnosticCatalogIdsByOrderTestId(
+            List<PatientServiceAndProduct> items
+    ) {
+        List<Long> orderTestIds = items.stream()
+                .filter(item -> isDiagnosticType(item.getBillingItemType()))
+                .filter(item -> item.getDiagnosticTestId() == null)
+                .map(PatientServiceAndProduct::getSourceId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (orderTestIds.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<Long, Long> catalogIdByOrderTestId = new HashMap<>();
+        for (DiagnosticOrderTest orderTest :
+                diagnosticOrderTestRepository.findAllById(orderTestIds)) {
+            if (orderTest == null || orderTest.getId() == null || orderTest.getTestId() == null) {
+                continue;
+            }
+            catalogIdByOrderTestId.put(orderTest.getId(), orderTest.getTestId());
+        }
+        return catalogIdByOrderTestId;
+    }
+
+    private Map<String, String> preloadDisplayNames(
+            List<PatientServiceAndProduct> items,
+            Map<Long, Long> diagnosticCatalogIdByOrderTestId
+    ) {
         Map<String, String> cache = new HashMap<>();
 
         List<Long> diagnosticIds = items.stream()
                 .filter(item -> isDiagnosticType(item.getBillingItemType()))
-                .map(this::resolveCatalogId)
+                .map(item -> resolveCatalogId(item, diagnosticCatalogIdByOrderTestId))
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
 
         List<Long> serviceIds = items.stream()
                 .filter(item -> item.getBillingItemType() == BillingItemTypes.SERVICE)
-                .map(this::resolveCatalogId)
+                .map(item -> resolveCatalogId(item, diagnosticCatalogIdByOrderTestId))
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
@@ -646,17 +687,39 @@ public class RegistrationPendingPaymentService {
         }
     }
 
-    private Long resolveCatalogId(PatientServiceAndProduct item) {
+    private Long resolveCatalogId(
+            PatientServiceAndProduct item,
+            Map<Long, Long> diagnosticCatalogIdByOrderTestId
+    ) {
         if (item == null) {
             return null;
+        }
+
+        if (isDiagnosticType(item.getBillingItemType())) {
+            if (item.getDiagnosticTestId() != null) {
+                return item.getDiagnosticTestId();
+            }
+            if (item.getSourceId() == null || diagnosticCatalogIdByOrderTestId == null) {
+                return null;
+            }
+            // sourceId for lab/rad PSP rows is DiagnosticOrderTest.id, not setup test id.
+            return diagnosticCatalogIdByOrderTestId.get(item.getSourceId());
+        }
+
+        if (item.getBillingItemType() == BillingItemTypes.SERVICE) {
+            if (item.getServiceId() != null) {
+                return item.getServiceId();
+            }
+            return item.getSourceId();
+        }
+
+        if (item.getServiceId() != null) {
+            return item.getServiceId();
         }
         if (item.getDiagnosticTestId() != null) {
             return item.getDiagnosticTestId();
         }
-        if (item.getServiceId() != null) {
-            return item.getServiceId();
-        }
-        return item.getSourceId();
+        return null;
     }
 
     private boolean isDiagnosticType(BillingItemTypes type) {

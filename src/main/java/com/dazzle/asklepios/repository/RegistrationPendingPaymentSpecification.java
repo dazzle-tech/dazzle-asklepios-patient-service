@@ -3,6 +3,7 @@ package com.dazzle.asklepios.repository;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import jakarta.persistence.criteria.Expression;
@@ -36,6 +37,7 @@ public final class RegistrationPendingPaymentSpecification {
     public static Specification<PatientServiceAndProduct> forFacility(Long facilityId) {
         return Specification
                 .where(facilityIdEquals(facilityId))
+                .and(encounterTypeEquals(EncounterType.EMERGENCY))
                 .and(serviceSourceIn(INCLUDED_SOURCES))
                 .and(paymentStatusNotIn(EXCLUDED_STATUSES))
                 .and(notConfirmedFullyInsuredZeroPatient())
@@ -48,6 +50,18 @@ public final class RegistrationPendingPaymentSpecification {
             var encounter = subquery.from(PatientEncounter.class);
             subquery.select(encounter.get("id"));
             subquery.where(cb.equal(encounter.get("facilityId"), facilityId));
+            return root.get("encounterId").in(subquery);
+        };
+    }
+
+    public static Specification<PatientServiceAndProduct> encounterTypeEquals(
+            EncounterType encounterType
+    ) {
+        return (root, query, cb) -> {
+            var subquery = query.subquery(Long.class);
+            var encounter = subquery.from(PatientEncounter.class);
+            subquery.select(encounter.get("id"));
+            subquery.where(cb.equal(encounter.get("encounterType"), encounterType));
             return root.get("encounterId").in(subquery);
         };
     }
