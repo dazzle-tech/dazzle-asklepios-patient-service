@@ -125,7 +125,7 @@ public class SetupBillingPricingService {
                         + "Using Setup fallback facilityId={} encounterId={} "
                         + "coverageType={} itemType={} sourceId={} "
                         + "patientInsuranceId={} payerId={} currency={} "
-                        + "setupUnitPrice={}",
+                        + "setupUnitPrice={} taxId={} discountId={}",
                 request.facilityId(),
                 request.encounterId(),
                 request.coverageType(),
@@ -134,11 +134,18 @@ public class SetupBillingPricingService {
                 request.patientInsuranceId(),
                 request.payerId(),
                 request.currency(),
-                setupUnitPrice
+                setupUnitPrice,
+                priceListResponse == null
+                        ? null
+                        : priceListResponse.taxId(),
+                priceListResponse == null
+                        ? null
+                        : priceListResponse.discountId()
         );
 
-        return resolveFromSetupFallback(
-                request
+        return attachResolvedAdjustments(
+                resolveFromSetupFallback(request),
+                priceListResponse
         );
     }
 
@@ -190,12 +197,15 @@ public class SetupBillingPricingService {
             )) {
                 LOG.info(
                         "[PRICE_LIST] Resolver returned no usable "
-                                + "Price List item itemType={} sourceId={}",
+                                + "Price List item itemType={} sourceId={} "
+                                + "taxId={} discountId={}",
                         request.billingItemType(),
-                        request.sourceId()
+                        request.sourceId(),
+                        response == null ? null : response.taxId(),
+                        response == null ? null : response.discountId()
                 );
 
-                return null;
+                return response;
             }
 
             return response;
@@ -553,6 +563,58 @@ public class SetupBillingPricingService {
 
                 blankToNull(setupItemName)
         );
+    }
+
+    /**
+     * Catalog fallback has no price-list item, but the pricing resolver
+     * still selects the facility tax and discount for this item category.
+     * Those rules must stay on the result so a service tax is calculated
+     * on the setup price.
+     */
+    private ResolvedBillingPrice attachResolvedAdjustments(
+            ResolvedBillingPrice fallback,
+            BillingPricingResolveResponse resolverResponse
+    ) {
+        if (fallback == null || !hasTaxOrDiscount(resolverResponse)) {
+            return fallback;
+        }
+
+        LOG.info(
+                "[SETUP_FALLBACK] Applying facility tax/discount "
+                        + "on catalog price sourceId={} taxId={} taxType={} "
+                        + "taxRate={} discountId={}",
+                fallback.setupSourceId(),
+                resolverResponse.taxId(),
+                resolverResponse.taxType(),
+                resolverResponse.taxRate(),
+                resolverResponse.discountId()
+        );
+
+        return new ResolvedBillingPrice(
+                fallback.unitPrice(),
+                fallback.currency(),
+                BillingPriceSource.SETUP_FALLBACK,
+                fallback.setupSourceId(),
+                null,
+                null,
+                resolverResponse,
+                fallback.setupUnitPrice(),
+                fallback.setupItemCode(),
+                fallback.setupItemName()
+        );
+    }
+
+    private boolean hasTaxOrDiscount(
+            BillingPricingResolveResponse response
+    ) {
+        if (response == null) {
+            return false;
+        }
+
+        return response.taxId() != null
+                || response.taxType() != null
+                || response.discountId() != null
+                || response.discountType() != null;
     }
 
     private String blankToNull(String value) {

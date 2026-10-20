@@ -115,18 +115,13 @@ public class BillingPricingInputFactory {
             ResolvedBillingPrice resolvedPrice
     ) {
         /*
-         * Setup fallback provides only the base item price.
-         *
-         * No price-list discount or price-list tax metadata exists.
-         * Therefore:
-         *
-         * - discount is zero
-         * - tax is zero
-         * - default calculation and rounding settings are used
-         *
-         * Later, if tax and discount are resolved independently from
-         * Setup configuration, they can be injected here.
+         * The catalog price is used when no price-list item matches.
+         * Tax and discount still come from the facility rules resolved
+         * with that same pricing request (for example a 15% service tax).
          */
+        BillingPricingResolveResponse adjustments =
+                resolvedPrice.pricingResponse();
+
         return new BillingPricingInput(
                 null,
                 null,
@@ -144,23 +139,52 @@ public class BillingPricingInputFactory {
                 resolvedPrice.unitPrice(),
                 resolvedPrice.setupUnitPrice(),
 
-                null,
-                null,
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
+                adjustments == null ? null : adjustments.discountId(),
+                adjustments == null ? null : adjustments.discountType(),
+                defaultZero(
+                        adjustments == null
+                                ? null
+                                : adjustments.discountRate()
+                ),
+                defaultZero(
+                        adjustments == null
+                                ? null
+                                : adjustments.discountFixedAmount()
+                ),
 
-                null,
-                null,
-                null,
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
+                adjustments == null ? null : adjustments.taxId(),
+                adjustments == null ? null : adjustments.taxType(),
+                adjustments == null
+                        ? null
+                        : adjustments.taxCalculationType(),
+                defaultZero(
+                        adjustments == null
+                                ? null
+                                : adjustments.taxRate()
+                ),
+                defaultZero(
+                        adjustments == null
+                                ? null
+                                : adjustments.taxFixedAmount()
+                ),
 
                 resolvedPrice.currency(),
                 resolveFallbackPricingSource(),
 
-                CalculationOrder.DISCOUNT_THEN_TAX,
-                RoundingModeType.HALF_UP,
-                4,
+                adjustments == null
+                        ? CalculationOrder.DISCOUNT_THEN_TAX
+                        : resolveCalculationOrder(
+                                adjustments.calculationOrder()
+                        ),
+                adjustments == null
+                        ? RoundingModeType.HALF_UP
+                        : resolveRoundingMode(
+                                adjustments.roundingMode()
+                        ),
+                adjustments == null
+                        || adjustments.roundingScale() == null
+                        ? 4
+                        : adjustments.roundingScale(),
 
                 resolveFallbackItemCode(
                         item,
