@@ -238,6 +238,16 @@ public class PatientPrescriptionService {
         PatientPrescription entity = prescriptionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
 
+        // A prescription is submitted (and sent to external pharmacies) only once.
+        if (PrescriptionStatus.SUBMITTED.equals(entity.getStatus())) {
+            LOG.warn("submit rejected: prescription already submitted, id={}", id);
+            throw new BadRequestAlertException(
+                    "Prescription is already submitted",
+                    "prescription",
+                    "alreadySubmitted"
+            );
+        }
+
         Long encounterId = entity.getEncounterId();
         reopenSessionAuditContext.applyOpenSession(encounterId);
         String username = currentUsername();
