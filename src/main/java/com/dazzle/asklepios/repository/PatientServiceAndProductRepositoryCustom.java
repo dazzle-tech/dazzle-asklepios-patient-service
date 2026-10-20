@@ -10,6 +10,8 @@ public interface PatientServiceAndProductRepositoryCustom {
 
     long countDistinctEncounters(Specification<PatientServiceAndProduct> specification);
 
+    long countDistinctPatients(Specification<PatientServiceAndProduct> specification);
+
     List<Long> findDistinctEncounterIds(
             Specification<PatientServiceAndProduct> specification,
             Pageable pageable
