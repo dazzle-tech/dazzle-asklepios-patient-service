@@ -6,6 +6,7 @@ import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
@@ -38,6 +39,7 @@ public final class RegistrationPendingPaymentSpecification {
         return Specification
                 .where(facilityIdEquals(facilityId))
                 .and(encounterTypeEquals(EncounterType.EMERGENCY))
+                .and(encounterTreatmentStatusEquals(TreatmentStatus.ONGOING))
                 .and(serviceSourceIn(INCLUDED_SOURCES))
                 .and(paymentStatusNotIn(EXCLUDED_STATUSES))
                 .and(notConfirmedFullyInsuredZeroPatient())
@@ -62,6 +64,22 @@ public final class RegistrationPendingPaymentSpecification {
             var encounter = subquery.from(PatientEncounter.class);
             subquery.select(encounter.get("id"));
             subquery.where(cb.equal(encounter.get("encounterType"), encounterType));
+            return root.get("encounterId").in(subquery);
+        };
+    }
+
+    /**
+     * Treatment status is {@code PatientEncounter.status} ({@link TreatmentStatus}).
+     * {@code encounterStatus} is the derived lifecycle and is not used here.
+     */
+    public static Specification<PatientServiceAndProduct> encounterTreatmentStatusEquals(
+            TreatmentStatus treatmentStatus
+    ) {
+        return (root, query, cb) -> {
+            var subquery = query.subquery(Long.class);
+            var encounter = subquery.from(PatientEncounter.class);
+            subquery.select(encounter.get("id"));
+            subquery.where(cb.equal(encounter.get("status"), treatmentStatus));
             return root.get("encounterId").in(subquery);
         };
     }

@@ -191,7 +191,8 @@ public class RegistrationPendingPaymentService {
         Specification<PatientServiceAndProduct> specification =
                 pendingItemSpecification(facilityId, null);
 
-        long totalCount = patientServiceAndProductRepository.count(specification);
+        long totalCount =
+                patientServiceAndProductRepository.countDistinctPatients(specification);
 
         Page<PatientServiceAndProduct> latestPage =
                 patientServiceAndProductRepository.findAll(

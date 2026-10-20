@@ -39,6 +39,19 @@ public class PatientServiceAndProductRepositoryImpl
     }
 
     @Override
+    public long countDistinctPatients(
+            Specification<PatientServiceAndProduct> specification
+    ) {
+        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+        CriteriaQuery<Long> query = cb.createQuery(Long.class);
+        Root<PatientServiceAndProduct> root = query.from(PatientServiceAndProduct.class);
+        query.select(cb.countDistinct(root.get("patientId")));
+        applySpecification(specification, root, query, cb);
+        Long total = entityManager.createQuery(query).getSingleResult();
+        return total == null ? 0L : total;
+    }
+
+    @Override
     public List<Long> findDistinctEncounterIds(
             Specification<PatientServiceAndProduct> specification,
             Pageable pageable
