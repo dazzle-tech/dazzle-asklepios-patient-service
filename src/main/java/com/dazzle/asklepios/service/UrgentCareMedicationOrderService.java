@@ -5,6 +5,8 @@ import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.enumeration.FrequencyList;
+import com.dazzle.asklepios.domain.enumeration.MedFrequency;
 import com.dazzle.asklepios.domain.UrgentCareMedicationOrder;
 import com.dazzle.asklepios.domain.enumeration.MedicationOrderStatus;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
@@ -17,6 +19,8 @@ import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders
 import com.dazzle.asklepios.service.helper.ActiveIngredientHelper;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
+import com.dazzle.asklepios.domain.MedFrequencySetup;
+import com.dazzle.asklepios.repository.MedFrequencySetupRepository;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
@@ -31,7 +35,9 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,12 +57,14 @@ public class UrgentCareMedicationOrderService {
     private final FacilityHelper facilityHelper;
     private final NotificationHelper notificationHelper;
     private final EncounterReopenGuard encounterReopenGuard;
+    private final MedFrequencySetupRepository medFrequencySetupRepository;
 
     public UrgentCareMedicationOrderService(
             UrgentCareMedicationOrderRepository urgentCareMedicationOrderRepository,
             PatientRepository patientRepository,
             PatientEncounterRepository patientEncounterRepository, ActiveIngredientHelper activeIngredientHelper, DepartmentHelper departmentHelper, FacilityHelper facilityHelper, NotificationHelper notificationHelper,
-            EncounterReopenGuard encounterReopenGuard) {
+            EncounterReopenGuard encounterReopenGuard, MedFrequencySetupRepository medFrequencySetupRepository) {
+        this.medFrequencySetupRepository = medFrequencySetupRepository;
         this.urgentCareMedicationOrderRepository = urgentCareMedicationOrderRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
@@ -268,6 +276,146 @@ public class UrgentCareMedicationOrderService {
         return savedOrders;
     }
 
+    public List<UrgentCareMedicationOrder> createPlan(Long orderGroupId) {
+        LOG.debug("[SERVICE][CREATE_PLAN] request -> orderGroupId={}", orderGroupId);
+
+        List<UrgentCareMedicationOrder> group =
+                urgentCareMedicationOrderRepository.findByOrderGroupId(orderGroupId);
+
+        if (group.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "No medication orders found for orderGroupId " + orderGroupId,
+                    "patient_ucc_medication_order",
+                    "notfound"
+            );
+        }
+        group.forEach(this::rejectIfAmendmentOpen);
+
+        UrgentCareMedicationOrder first = group.get(0);
+
+        if (group.size() > 1 || first.getDoseTime() != null) {
+            throw new BadRequestAlertException(
+                    "The doses of this medication order were already split",
+                    "patient_ucc_medication_order",
+                    "plan_exists"
+            );
+        }
+
+        // Once administered (or discarded / cancelled) the order is no longer split
+        if (first.getStatus() != MedicationOrderStatus.SUBMITTED) {
+            throw new BadRequestAlertException(
+                    "A plan can only be created for a submitted medication that was not administered",
+                    "patient_ucc_medication_order",
+                    "invalid_status"
+            );
+        }
+
+        if (first.getFrequency() == null || first.getFrequency() == MedFrequency.STAT) {
+            throw new BadRequestAlertException(
+                    "A STAT medication (or one without a frequency) is a single dose and cannot be split",
+                    "patient_ucc_medication_order",
+                    "stat_no_plan"
+            );
+        }
+
+        if (medFrequencySetupRepository.findByFrequencyAndIsActiveTrue(first.getFrequency()).isEmpty()) {
+            throw new BadRequestAlertException(
+                    "This frequency has no active frequency setup",
+                    "patient_ucc_medication_order",
+                    "no_setup"
+            );
+        }
+
+        List<UrgentCareMedicationOrder> doses = splitDosesOnSubmit(first);
+
+        LOG.debug("[SERVICE][CREATE_PLAN] saved -> orderGroupId={} doses={}", orderGroupId, doses.size());
+        return doses;
+    }
+
+    private List<UrgentCareMedicationOrder> splitDosesOnSubmit(UrgentCareMedicationOrder first) {
+        List<UrgentCareMedicationOrder> group =
+                urgentCareMedicationOrderRepository.findByOrderGroupId(first.getOrderGroupId());
+
+        // Already split: keep the doses as they are
+        if (group.size() > 1 || first.getDoseTime() != null) {
+            return group;
+        }
+
+        // STAT is a single immediate dose; manual instructions have no frequency
+        if (first.getFrequency() == null || first.getFrequency() == MedFrequency.STAT) {
+            return List.of(first);
+        }
+
+        MedFrequencySetup setup = medFrequencySetupRepository
+                .findByFrequencyAndIsActiveTrue(first.getFrequency())
+                .orElse(null);
+        if (setup == null || setup.getFrequencyNumber() == null || setup.getFrequencyNumber() < 1
+                || setup.getFrequencyUnit() == null) {
+            return List.of(first);
+        }
+
+        LocalDateTime start = LocalDateTime.ofInstant(first.getSubmittedDate(), ZoneId.systemDefault());
+        LocalDateTime end = start.plusHours(24);
+
+        List<UrgentCareMedicationOrder> doses = new java.util.ArrayList<>();
+        for (LocalDateTime doseTime = start; doseTime.isBefore(end);
+             doseTime = addInterval(doseTime, setup.getFrequencyNumber(), setup.getFrequencyUnit())) {
+            doses.add(doses.isEmpty() ? first : copyDose(first));
+            doses.get(doses.size() - 1).setDoseTime(doseTime);
+        }
+
+        List<UrgentCareMedicationOrder> saved = urgentCareMedicationOrderRepository.saveAll(doses);
+
+        // The first dose already notified when the order was created; notify the new ones
+        Patient patient = first.getPatient();
+        PatientEncounter encounter = first.getEncounter();
+        saved.stream()
+                .filter(dose -> !dose.getId().equals(first.getId()))
+                .forEach(dose -> notificationForUCCMedicationOrderCreated(dose, patient, encounter));
+
+        LOG.debug(
+                "[STATUS][SUBMIT] split -> orderGroupId={} frequency={} every {} {} doses={}",
+                first.getOrderGroupId(),
+                first.getFrequency(),
+                setup.getFrequencyNumber(),
+                setup.getFrequencyUnit(),
+                saved.size()
+        );
+
+        return saved;
+    }
+
+    /** A new dose of the same group, with the same medication and state as the given order */
+    private static UrgentCareMedicationOrder copyDose(UrgentCareMedicationOrder first) {
+        UrgentCareMedicationOrder dose = new UrgentCareMedicationOrder();
+        dose.setOrderGroupId(first.getOrderGroupId());
+        dose.setPatient(first.getPatient());
+        dose.setEncounter(first.getEncounter());
+        dose.setActiveIngredientId(first.getActiveIngredientId());
+        dose.setInstructionType(first.getInstructionType());
+        dose.setInstructionText(first.getInstructionText());
+        dose.setDose(first.getDose());
+        dose.setDoseUnit(first.getDoseUnit());
+        dose.setRoute(first.getRoute());
+        dose.setFrequency(first.getFrequency());
+        dose.setIsHighAlert(first.getIsHighAlert());
+        // Same state as the original order, so a SUBMITTED order's doses are ready to administer
+        dose.setStatus(first.getStatus());
+        dose.setSubmittedBy(first.getSubmittedBy());
+        dose.setSubmittedDate(first.getSubmittedDate());
+        return dose;
+    }
+
+    /** Next dose time: adds the interval in the given unit (minutes, hours, days, weeks or months) */
+    private static LocalDateTime addInterval(LocalDateTime time, int amount, FrequencyList unit) {
+        return switch (unit) {
+            case MINUTES -> time.plusMinutes(amount);
+            case HOURS -> time.plusHours(amount);
+            case DAYS -> time.plusDays(amount);
+            case WEEKS -> time.plusWeeks(amount);
+            case MONTHS -> time.plusMonths(amount);
+        };
+    }
 
     @Transactional(readOnly = true)
     public UrgentCareMedicationOrder findOne(Long id) {
@@ -469,6 +617,9 @@ public class UrgentCareMedicationOrderService {
         LOG.debug("[STATUS][SUBMIT] saved -> id={} status={} submittedBy={}",
                 saved.getId(), saved.getStatus(), saved.getSubmittedBy());
 
+        // The submitted order stays the first dose of its split
+        splitDosesOnSubmit(saved);
+
         return saved;
     }
 
@@ -509,6 +660,11 @@ public class UrgentCareMedicationOrderService {
 
         List<UrgentCareMedicationOrder> savedOrders =
                 urgentCareMedicationOrderRepository.saveAll(orders);
+
+        // A single order is split into its doses; an already split group is kept as it is
+        if (savedOrders.size() == 1) {
+            savedOrders = splitDosesOnSubmit(savedOrders.get(0));
+        }
 
         LOG.debug(
                 "[STATUS][SUBMIT_GROUP] saved -> orderGroupId={} size={}",
