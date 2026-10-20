@@ -11,7 +11,6 @@ import com.dazzle.asklepios.service.dto.patientDocuments.PatientDocumentUpdateDT
 import com.dazzle.asklepios.service.dto.patientDocuments.PatientNoDocumentCreateDTO;
 import com.dazzle.asklepios.integration.waseel.service.CchiPatientLookupService;
 import com.dazzle.asklepios.service.helper.CountryHelper;
-import com.dazzle.asklepios.service.helper.PatientCitizenFlag;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.EntityManager;
@@ -25,7 +24,6 @@ import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Objects;
 import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -76,7 +74,7 @@ public class PatientDocumentService {
         try {
             PatientDocument saved = patientDocumentRepository.saveAndFlush(entity);
             syncPatientDocumentId(saved);
-            syncCitizenFlag(saved, dto.isCitizen());
+            setCitizenTrueIfSaudiNationalId(saved);
 
             LOG.info(
                     "Successfully created PatientDocument id={} for patientId={} isPrimary={}",
@@ -104,7 +102,6 @@ public class PatientDocumentService {
 
         try {
             PatientDocument saved = patientDocumentRepository.saveAndFlush(entity);
-            syncCitizenFlag(saved, dto.isCitizen());
             LOG.info(
                     "Successfully created NO_DOCUMENT PatientDocument id={} for patientId={}",
                     saved.getId(),
@@ -140,7 +137,7 @@ public class PatientDocumentService {
         try {
             PatientDocument updated = patientDocumentRepository.saveAndFlush(existing);
             syncPatientDocumentId(updated);
-            syncCitizenFlag(updated, dto.isCitizen());
+            setCitizenTrueIfSaudiNationalId(updated);
             LOG.info("Successfully updated PatientDocument id={}", updated.getId());
             return updated;
 
@@ -197,6 +194,34 @@ public class PatientDocumentService {
             LOG.error("Error deleting PatientDocument id={}", id, ex);
             return false;
         }
+    }
+
+
+    /**
+     * Saudi Arabia + NATIONAL_ID + trimmed number starting with "1" → set isCitizen=true.
+     * Non-matching documents leave Citizen unchanged. Never clears Citizen.
+     */
+    public void setCitizenTrueIfSaudiNationalId(PatientDocument document) {
+        if (!matchesSaudiNationalIdCitizenRule(document)) {
+            return;
+        }
+
+        Patient patient = document.getPatient();
+        if (patient == null || patient.getId() == null) {
+            return;
+        }
+
+        if (Boolean.TRUE.equals(patient.getIsCitizen())) {
+            return;
+        }
+
+        patient.setIsCitizen(true);
+        patientRepository.saveAndFlush(patient);
+        LOG.info(
+                "[PATIENT_DOCUMENT] Set patient.isCitizen=true for patientId={} from Saudi NATIONAL_ID documentId={}",
+                patient.getId(),
+                document.getId()
+        );
     }
 
     // ─── Private Helpers ───────────────────────────────────────────────────────
@@ -291,31 +316,18 @@ public class PatientDocumentService {
         );
     }
 
-    private void syncCitizenFlag(PatientDocument document, Boolean requested) {
-        if (document == null || !Boolean.TRUE.equals(document.getIsPrimary())) {
-            return;
+    private boolean matchesSaudiNationalIdCitizenRule(PatientDocument document) {
+        if (document == null || document.getCountryId() == null) {
+            return false;
         }
-
-        Patient patient = document.getPatient();
-        if (patient == null || patient.getId() == null) {
-            return;
+        if (document.getType() != DocumentType.NATIONAL_ID) {
+            return false;
         }
-
-        boolean citizen = requested != null
-                ? requested
-                : PatientCitizenFlag.fromDocumentType(document.getType());
-        if (Objects.equals(patient.getIsCitizen(), citizen)) {
-            return;
+        String number = document.getNumber() == null ? "" : document.getNumber().trim();
+        if (!number.startsWith("1")) {
+            return false;
         }
-
-        patient.setIsCitizen(citizen);
-        patientRepository.saveAndFlush(patient);
-        LOG.info(
-                "[PATIENT_DOCUMENT] Set patient.isCitizen={} for patientId={} from documentType={}",
-                citizen,
-                patient.getId(),
-                document.getType()
-        );
+        return countryHelper.getCountryName(document.getCountryId()) == CountryName.SAUDI_ARABIA;
     }
 
     private void syncPatientDocumentId(PatientDocument document) {
