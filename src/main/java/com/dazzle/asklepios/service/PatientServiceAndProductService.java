@@ -1098,11 +1098,20 @@ public class PatientServiceAndProductService {
             );
         }
 
-        BillingOperationResult result = billingEngineService.onItemOrdered(
-                item.getId(),
-                facilityId,
-                "PSP-CREATE:" + item.getId()
-        );
+        // A UCC medication is charged when administered, whatever trigger its billing rule has
+        BillingOperationResult result =
+                item.getServiceSource() == ServiceSource.URGENT_CARE_MEDICATION_ORDER
+                        ? billingEngineService.processWithEventFallback(
+                                item.getId(),
+                                item.getEncounterId(),
+                                facilityId,
+                                "PSP-CREATE:" + item.getId()
+                        )
+                        : billingEngineService.onItemOrdered(
+                                item.getId(),
+                                facilityId,
+                                "PSP-CREATE:" + item.getId()
+                        );
 
         LOG.info(
                 "[PSP_CREATE] Billed item. pspId={} type={} processed={} message={}",
