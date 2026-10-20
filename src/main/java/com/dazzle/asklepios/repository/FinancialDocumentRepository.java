@@ -101,9 +101,11 @@ public interface FinancialDocumentRepository extends JpaRepository<FinancialDocu
                   AND fd.document_subtype = 'INSURANCE_CLAIM'
                   AND fd.status IN (:statuses)
                   AND (
-                        (:useNphiesFilter = 1 AND LOWER(pi.payer_nphies_id) IN (:payerNphiesIds))
-                        OR
-                        (:useNphiesFilter = 0 AND pi.payor_id = :payorId)
+                        pi.payor_id = :payorId
+                        OR (
+                             :useNphiesFilter = 1
+                             AND LOWER(pi.payer_nphies_id) IN (:payerNphiesIds)
+                           )
                       )
                   AND fd.created_date >= :fromDate
                   AND fd.created_date < :toDate

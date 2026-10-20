@@ -1,6 +1,5 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.setup.PayorClient;
 import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientInsuranceBenefitRule;
@@ -9,6 +8,7 @@ import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.EligibilityCoverageDTO;
 import com.dazzle.asklepios.integration.waseel.service.WaseelCoverageExtractionService;
 import com.dazzle.asklepios.repository.PatientInsuranceBenefitRuleRepository;
+import com.dazzle.asklepios.service.helper.PayorHelper;
 import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
 import com.dazzle.asklepios.service.dto.InsuranceBenefitRule;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -41,7 +41,7 @@ public class InsuranceBenefitRuleService {
     private final WaseelEligibilityRequestRepository waseelEligibilityRequestRepository;
     private final InsuranceBenefitRuleMatcher benefitRuleMatcher;
     private final ObjectMapper objectMapper;
-    private final PayorClient payorClient;
+    private final PayorHelper payorHelper;
 
     @Transactional
     public void syncFromCoverage(
@@ -196,12 +196,13 @@ public class InsuranceBenefitRuleService {
     }
 
     private boolean isWaseelCoverage(PatientInsurance insurance) {
-        if (insurance.getPayorId() == null) {
+        if (insurance.getPayorId() == null
+                && (insurance.getPayerNphiesId() == null || insurance.getPayerNphiesId().isBlank())) {
             return false;
         }
 
         try {
-            PayorDTO payor = payorClient.getPayorById(insurance.getPayorId());
+            PayorDTO payor = payorHelper.findPayor(insurance.getPayorId(), insurance.getPayerNphiesId());
             return payor != null && Boolean.TRUE.equals(payor.isWaseelEnabled());
         } catch (FeignException exception) {
             LOG.warn(

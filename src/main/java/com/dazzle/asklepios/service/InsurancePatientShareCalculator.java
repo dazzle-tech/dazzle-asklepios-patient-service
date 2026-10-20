@@ -1,6 +1,5 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.setup.PayorClient;
 import com.dazzle.asklepios.client.setup.ServiceClient;
 import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
@@ -13,6 +12,7 @@ import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.repository.PatientInsuranceCoverageRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.service.helper.PayorHelper;
 import com.dazzle.asklepios.service.dto.InsuranceBenefitRule;
 import com.dazzle.asklepios.service.dto.InsuranceSplit;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -40,7 +40,7 @@ public class InsurancePatientShareCalculator {
     private final PatientInsuranceCoverageRepository patientInsuranceCoverageRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final ServiceClient serviceClient;
-    private final PayorClient payorClient;
+    private final PayorHelper payorHelper;
     private final CoverageContractShareService coverageContractShareService;
 
     public InsuranceSplit calculateSplit(
@@ -528,12 +528,14 @@ public class InsurancePatientShareCalculator {
     }
 
     public boolean isWaseelCoverage(PatientInsurance insurance) {
-        if (insurance == null || insurance.getPayorId() == null) {
+        if (insurance == null
+                || (insurance.getPayorId() == null
+                && (insurance.getPayerNphiesId() == null || insurance.getPayerNphiesId().isBlank()))) {
             return false;
         }
 
         try {
-            PayorDTO payor = payorClient.getPayorById(insurance.getPayorId());
+            PayorDTO payor = payorHelper.findPayor(insurance.getPayorId(), insurance.getPayerNphiesId());
             return payor != null && Boolean.TRUE.equals(payor.isWaseelEnabled());
         } catch (FeignException exception) {
             LOG.warn(

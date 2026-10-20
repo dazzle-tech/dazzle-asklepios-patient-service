@@ -148,7 +148,15 @@ public class PatientInsuranceService {
                 ));
 
         existing.setPatient(refPatient(dto.patientId()));
-        existing.setPayorId(dto.payorId());
+        Long payorId = payorHelper.resolvePayorId(dto.payorId(), dto.payerNphiesId());
+        if (payorId == null) {
+            throw new BadRequestAlertException(
+                    "Payor could not be resolved from the provided payor or payer NPHIES ID.",
+                    "patientInsurance",
+                    "payor.unresolved"
+            );
+        }
+        existing.setPayorId(payorId);
         existing.setPlanId(dto.planId());
 //        existing.setPolicyHolderId(dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId()).getId());
         Patient policyHolder = dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId());
@@ -166,7 +174,7 @@ public class PatientInsuranceService {
         existing.setRemainingDeductibles(dto.remainingDeductibles());
         existing.setMemberCardId(dto.memberCardId());
 
-        PayorDTO payor = payorHelper.findPayor(dto.payorId(), dto.payerNphiesId());
+        PayorDTO payor = payorHelper.findPayor(payorId, dto.payerNphiesId());
         existing.setPayerNphiesId(firstNonBlank(
                 dto.payerNphiesId(),
                 payor == null ? null : payor.nphiesId(),

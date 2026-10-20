@@ -44,19 +44,23 @@ public class PayorHelper {
     }
 
     public Long resolvePayorId(Long payorId, String payerNphiesId) {
+        String nphiesId = firstNonBlank(payerNphiesId);
+        if (nphiesId == null && !isExistingPayor(payorId)) {
+            nphiesId = nphiesIdFromPayerRow(payorId);
+        }
+
+        if (nphiesId != null) {
+            PayorDTO payor = findPayorByNphiesId(nphiesId);
+            if (!hasId(payor)) {
+                payor = ensurePayorFromNphiesId(nphiesId);
+            }
+            if (hasId(payor)) {
+                return payor.id();
+            }
+        }
+
         if (isExistingPayor(payorId)) {
             return payorId;
-        }
-
-        String nphiesId = firstNonBlank(payerNphiesId, nphiesIdFromPayerRow(payorId));
-        PayorDTO payor = findPayorByNphiesId(nphiesId);
-        if (hasId(payor)) {
-            return payor.id();
-        }
-
-        payor = ensurePayorFromNphiesId(nphiesId);
-        if (hasId(payor)) {
-            return payor.id();
         }
 
         if (payorId != null && payorId > 0) {

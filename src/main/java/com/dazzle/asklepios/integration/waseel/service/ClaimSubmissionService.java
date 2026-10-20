@@ -349,9 +349,15 @@ public class ClaimSubmissionService {
 
         Instant from = fromDate != null ? fromDate : Instant.EPOCH;
         Instant to = toDate != null ? toDate : Instant.parse("9999-12-31T00:00:00Z");
-        List<String> nphiesIds = resolvePayerNphiesIds(payorId, payerNphiesId);
-        boolean useNphiesFilter = nphiesIds.stream().anyMatch(this::isNphiesCode);
-        Long resolvedPayorId = payorId != null ? payorId : -1L;
+        Long linkedPayorId = payorHelper.resolvePayorId(payorId, payerNphiesId);
+        Long resolvedPayorId = linkedPayorId != null
+                ? linkedPayorId
+                : (payorId != null && payorId > 0 ? payorId : -1L);
+        List<String> nphiesIds = resolvePayerNphiesIds(
+                linkedPayorId != null ? linkedPayorId : payorId,
+                payerNphiesId
+        );
+        boolean useNphiesFilter = nphiesIds.stream().anyMatch(id -> id != null && !id.isBlank());
 
         log.info(
                 "[CLAIM_BATCH] Listing pending invoices payorId={} payerNphiesId={} nphiesIds={} from={} to={} type={} subType={} encounterDateFrom={} encounterDateTo={}",
@@ -561,24 +567,21 @@ public class ClaimSubmissionService {
                 .map(PatientEncounter::getPatientInsuranceId)
                 .flatMap(patientInsuranceRepository::findById)
                 .map(insurance -> {
-                    if (useNphiesFilter) {
-                        String insuranceNphiesId = insurance.getPayerNphiesId();
-                        return insuranceNphiesId != null
-                                && nphiesIds.contains(insuranceNphiesId.toLowerCase(java.util.Locale.ROOT));
-                    }
-
-                    return selectedPayorId != null
+                    Long linkedPayorId = payorHelper.resolvePayorId(
+                            insurance.getPayorId(),
+                            insurance.getPayerNphiesId()
+                    );
+                    boolean samePayor = selectedPayorId != null
                             && selectedPayorId > 0
-                            && selectedPayorId.equals(insurance.getPayorId());
+                            && (selectedPayorId.equals(insurance.getPayorId())
+                            || selectedPayorId.equals(linkedPayorId));
+                    String insuranceNphiesId = insurance.getPayerNphiesId();
+                    boolean sameCompany = useNphiesFilter
+                            && insuranceNphiesId != null
+                            && nphiesIds.contains(insuranceNphiesId.toLowerCase(java.util.Locale.ROOT));
+                    return samePayor || sameCompany;
                 })
                 .orElse(false);
-    }
-
-    private boolean isNphiesCode(String value) {
-        if (value == null || value.isBlank()) {
-            return false;
-        }
-        return value.chars().anyMatch(ch -> !Character.isDigit(ch));
     }
 
     private String resolveEncounterPayerNphiesId(Long encounterId) {
@@ -595,15 +598,10 @@ public class ClaimSubmissionService {
         return patientEncounterRepository.findById(encounterId)
                 .map(PatientEncounter::getPatientInsuranceId)
                 .flatMap(patientInsuranceRepository::findById)
-                .map(insurance -> {
-                    if (insurance.getPayorId() != null) {
-                        return insurance.getPayorId();
-                    }
-
-                    NphiesPayerDTO nphiesPayer =
-                            nphiesPayerHelper.findByNphiesId(insurance.getPayerNphiesId());
-                    return nphiesPayer == null ? null : nphiesPayer.id();
-                })
+                .map(insurance -> payorHelper.resolvePayorId(
+                        insurance.getPayorId(),
+                        insurance.getPayerNphiesId()
+                ))
                 .orElse(null);
     }
 

@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.setup.SystemConfigurationClient;
+import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.domain.DuplicationCandidate;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
@@ -21,6 +22,7 @@ import com.dazzle.asklepios.service.dto.patient.PatientPinDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
+import com.dazzle.asklepios.service.helper.PayorHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.InvalidPasswordException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
@@ -74,6 +76,7 @@ public class PatientService {
     private final SystemConfigurationClient systemConfigurationClient;
     private final NotificationHelper notificationHelper;
     private final CchiPatientLookupService cchiPatientLookupService;
+    private final PayorHelper payorHelper;
 
     public PatientService(
             PatientRepository patientRepository,
@@ -82,7 +85,8 @@ public class PatientService {
             PasswordEncoder passwordEncoder,
             SystemConfigurationClient systemConfigurationClient,
             NotificationHelper notificationHelper,
-            CchiPatientLookupService cchiPatientLookupService
+            CchiPatientLookupService cchiPatientLookupService,
+            PayorHelper payorHelper
     ) {
         this.patientRepository = patientRepository;
         this.patientDocumentRepository = patientDocumentRepository;
@@ -91,6 +95,7 @@ public class PatientService {
         this.systemConfigurationClient = systemConfigurationClient;
         this.notificationHelper = notificationHelper;
         this.cchiPatientLookupService = cchiPatientLookupService;
+        this.payorHelper = payorHelper;
     }
 
     @Value("${application.asklepios-application-url}")
@@ -464,12 +469,27 @@ public class PatientService {
                         insuranceRoot.get("patient").get("id")
                 );
 
-                insuranceSubQuery.where(
-                        cb.equal(
-                                insuranceRoot.get("payorId"),
-                                filter.insuranceId()
-                        )
-                );
+                PayorDTO company = payorHelper.findPayor(filter.insuranceId(), null);
+                Long linkedPayorId = company != null && company.id() != null
+                        ? company.id()
+                        : filter.insuranceId();
+                String nphiesId = company == null || company.nphiesId() == null || company.nphiesId().isBlank()
+                        ? null
+                        : company.nphiesId().trim().toLowerCase();
+
+                List<Predicate> companyMatch = new ArrayList<>();
+                companyMatch.add(cb.equal(insuranceRoot.get("payorId"), linkedPayorId));
+                if (!linkedPayorId.equals(filter.insuranceId())) {
+                    companyMatch.add(cb.equal(insuranceRoot.get("payorId"), filter.insuranceId()));
+                }
+                if (nphiesId != null) {
+                    companyMatch.add(cb.equal(
+                            cb.lower(insuranceRoot.get("payerNphiesId")),
+                            nphiesId
+                    ));
+                }
+
+                insuranceSubQuery.where(cb.or(companyMatch.toArray(Predicate[]::new)));
 
                 predicates.add(
                         root.get("id").in(insuranceSubQuery)

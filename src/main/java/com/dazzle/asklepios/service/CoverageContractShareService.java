@@ -1,9 +1,9 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.CoverageContractClient;
-import com.dazzle.asklepios.client.setup.PayorClient;
 import com.dazzle.asklepios.client.setup.dto.CoverageContractResolveDtos;
 import com.dazzle.asklepios.client.setup.dto.PayorDTO;
+import com.dazzle.asklepios.service.helper.PayorHelper;
 import com.dazzle.asklepios.domain.PatientDiagnosis;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
@@ -37,7 +37,7 @@ public class CoverageContractShareService {
     static final String CONTRACT_EXCLUSION = "CONTRACT_EXCLUSION";
 
     private final CoverageContractClient coverageContractClient;
-    private final PayorClient payorClient;
+    private final PayorHelper payorHelper;
     private final InsuranceCalculationService insuranceCalculationService;
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientDiagnosisRepository patientDiagnosisRepository;
@@ -798,7 +798,7 @@ public class CoverageContractShareService {
             return nphiesId;
         }
         try {
-            PayorDTO payor = payorClient.getPayorById(insurance.getPayorId());
+            PayorDTO payor = payorHelper.findPayor(insurance.getPayorId(), insurance.getPayerNphiesId());
             return payor == null ? null : firstNonBlank(payor.nphiesId());
         } catch (RuntimeException exception) {
             LOG.warn(
