@@ -3,10 +3,12 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.Analyzer;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticTestLaboratory;
+import com.dazzle.asklepios.domain.TubeColorPrintCode;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.repository.AnalyzerRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.DiagnosticTestLaboratoryRepository;
+import com.dazzle.asklepios.repository.TubeColorPrintCodeRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,10 +38,19 @@ public class PrintNumberService {
     private final DiagnosticOrderTestRepository orderTestRepository;
     private final DiagnosticTestLaboratoryRepository laboratoryRepository;
     private final AnalyzerRepository analyzerRepository;
+    private final TubeColorPrintCodeRepository tubeColorPrintCodeRepository;
+
+    private static final String NO_TUBE_COLOR_CODE = "000";
 
     /**
      * Groups the order's (non-cancelled) tests by (analyzer, tubeColor, tubeType)
-     * and assigns each group a printNumber ({analyzerCode}{7-digit orderId}).
+     * and assigns each group a printNumber ({analyzerCode}{7-digit orderId}{3-digit
+     * tubeColor code}). The tubeColor code comes from the tube_color_print_code
+     * mapping table, filled in by hand (no admin screen) - a group whose tubeColor
+     * has no row there is left without a printNumber, same as a missing analyzer,
+     * so the print flow reports it as "missing definition" instead of guessing a
+     * code. A group with no tubeColor at all (incomplete tube info) still prints,
+     * using "000" as a placeholder since it was never meant to distinguish by color.
      * Tests with no analyzer assigned are left without a printNumber - the
      * print flow treats that as "missing definition" and skips them. A
      * printNumber already assigned on any member of a group is kept as-is
@@ -106,11 +117,32 @@ public class PrintNumberService {
                 continue;
             }
 
-            Long analyzerId = labByTestId.get(groupTests.get(0).getTestId()).getAnalyzerId();
+            DiagnosticTestLaboratory representativeLab = labByTestId.get(groupTests.get(0).getTestId());
+            Long analyzerId = representativeLab.getAnalyzerId();
             String analyzerCode = Optional.ofNullable(analyzerById.get(analyzerId))
                     .map(Analyzer::getCode)
                     .orElse("");
-            String printNumber = analyzerCode + String.format("%07d", orderId);
+
+            String tubeColor = representativeLab.getTubeColor();
+            String tubeColorCode;
+            if (tubeColor == null) {
+                tubeColorCode = NO_TUBE_COLOR_CODE;
+            } else {
+                Optional<TubeColorPrintCode> colorMapping =
+                        tubeColorPrintCodeRepository.findByTubeColorKey(tubeColor);
+                if (colorMapping.isEmpty()) {
+                    LOG.warn(
+                            "[PrintNumber] Skipping group for orderId={} analyzerId={} tubeColor={} - no print code mapped for this tube color",
+                            orderId,
+                            analyzerId,
+                            tubeColor
+                    );
+                    continue;
+                }
+                tubeColorCode = colorMapping.get().getCode();
+            }
+
+            String printNumber = analyzerCode + String.format("%07d", orderId) + tubeColorCode;
 
             groupTests.forEach(ot -> {
                 ot.setPrintNumber(printNumber);
