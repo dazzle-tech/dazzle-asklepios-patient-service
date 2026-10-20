@@ -24,9 +24,6 @@ import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -77,7 +74,7 @@ public class PatientDocumentService {
         try {
             PatientDocument saved = patientDocumentRepository.saveAndFlush(entity);
             syncPatientDocumentId(saved);
-            recalculateCitizenFromDocuments(dto.patientId());
+            setCitizenTrueIfSaudiNationalId(saved);
 
             LOG.info(
                     "Successfully created PatientDocument id={} for patientId={} isPrimary={}",
@@ -105,7 +102,6 @@ public class PatientDocumentService {
 
         try {
             PatientDocument saved = patientDocumentRepository.saveAndFlush(entity);
-            recalculateCitizenFromDocuments(dto.patientId());
             LOG.info(
                     "Successfully created NO_DOCUMENT PatientDocument id={} for patientId={}",
                     saved.getId(),
@@ -141,7 +137,7 @@ public class PatientDocumentService {
         try {
             PatientDocument updated = patientDocumentRepository.saveAndFlush(existing);
             syncPatientDocumentId(updated);
-            recalculateCitizenFromDocuments(dto.patientId());
+            setCitizenTrueIfSaudiNationalId(updated);
             LOG.info("Successfully updated PatientDocument id={}", updated.getId());
             return updated;
 
@@ -201,42 +197,31 @@ public class PatientDocumentService {
     }
 
 
-    public void recalculateCitizenFromDocuments(Long patientId) {
-        if (patientId == null) {
+    /**
+     * Saudi Arabia + NATIONAL_ID + trimmed number starting with "1" → set isCitizen=true.
+     * Non-matching documents leave Citizen unchanged. Never clears Citizen.
+     */
+    public void setCitizenTrueIfSaudiNationalId(PatientDocument document) {
+        if (!matchesSaudiNationalIdCitizenRule(document)) {
             return;
         }
 
-        Patient patient = patientRepository.findById(patientId).orElse(null);
-        if (patient == null) {
+        Patient patient = document.getPatient();
+        if (patient == null || patient.getId() == null) {
             return;
         }
 
-        boolean citizen = hasQualifyingSaudiCitizenDocument(patientId);
-        if (Objects.equals(patient.getIsCitizen(), citizen)) {
+        if (Boolean.TRUE.equals(patient.getIsCitizen())) {
             return;
         }
 
-        patient.setIsCitizen(citizen);
+        patient.setIsCitizen(true);
         patientRepository.saveAndFlush(patient);
         LOG.info(
-                "[PATIENT_DOCUMENT] Recalculated patient.isCitizen={} for patientId={}",
-                citizen,
-                patientId
+                "[PATIENT_DOCUMENT] Set patient.isCitizen=true for patientId={} from Saudi NATIONAL_ID documentId={}",
+                patient.getId(),
+                document.getId()
         );
-    }
-
-    public boolean hasQualifyingSaudiCitizenDocument(Long patientId) {
-        if (patientId == null) {
-            return false;
-        }
-
-        Map<Long, CountryName> countryNameById = new HashMap<>();
-        for (PatientDocument document : patientDocumentRepository.findByPatient_IdOrderByIsPrimaryDescIdAsc(patientId)) {
-            if (isQualifyingSaudiCitizenDocument(document, countryNameById)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     // ─── Private Helpers ───────────────────────────────────────────────────────
@@ -331,22 +316,18 @@ public class PatientDocumentService {
         );
     }
 
-    private boolean isQualifyingSaudiCitizenDocument(
-            PatientDocument document,
-            Map<Long, CountryName> countryNameById
-    ) {
+    private boolean matchesSaudiNationalIdCitizenRule(PatientDocument document) {
         if (document == null || document.getCountryId() == null) {
+            return false;
+        }
+        if (document.getType() != DocumentType.NATIONAL_ID) {
             return false;
         }
         String number = document.getNumber() == null ? "" : document.getNumber().trim();
         if (!number.startsWith("1")) {
             return false;
         }
-        CountryName countryName = countryNameById.computeIfAbsent(
-                document.getCountryId(),
-                countryHelper::getCountryName
-        );
-        return countryName == CountryName.SAUDI_ARABIA;
+        return countryHelper.getCountryName(document.getCountryId()) == CountryName.SAUDI_ARABIA;
     }
 
     private void syncPatientDocumentId(PatientDocument document) {
