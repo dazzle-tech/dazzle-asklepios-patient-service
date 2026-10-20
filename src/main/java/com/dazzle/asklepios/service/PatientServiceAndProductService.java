@@ -122,6 +122,50 @@ public class PatientServiceAndProductService {
     }
 
     public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
+        return createItem(dto, null, null);
+    }
+
+    /**
+     * Charges a UCC medication order administration: the brand the nurse gave,
+     * in the UOM unit she picked. {@code uomPriceFactor} converts the brand price
+     * (per price base unit) to that unit. Every administered dose is its own line,
+     * and an uncovered medication is billed as cash since it was already given.
+     */
+    public PatientServiceAndProduct createUrgentCareMedicationAdministration(
+            Long patientId,
+            Long encounterId,
+            Long orderId,
+            Long brandMedicationId,
+            Long quantity,
+            Long uomGroupUnitId,
+            BigDecimal uomPriceFactor,
+            Currency currency
+    ) {
+        PatientServiceProductCreateDTO dto = new PatientServiceProductCreateDTO(
+                patientId,
+                encounterId,
+                BillingItemTypes.MEDICATION,
+                brandMedicationId,
+                null,
+                null,
+                null,
+                quantity,
+                BigDecimal.ZERO,
+                currency,
+                ServiceSource.URGENT_CARE_MEDICATION_ORDER,
+                orderId,
+                null,
+                Boolean.TRUE
+        );
+
+        return createItem(dto, uomGroupUnitId, uomPriceFactor);
+    }
+
+    private PatientServiceAndProduct createItem(
+            PatientServiceProductCreateDTO dto,
+            Long uomGroupUnitId,
+            BigDecimal uomPriceFactor
+    ) {
         LOG.debug("Request to create Patient billing item : {}", dto);
 
         Patient patient = patientRepository.findById(dto.patientId())
@@ -148,7 +192,9 @@ public class PatientServiceAndProductService {
         PatientServiceAndProduct entity = buildEntityFromCreateDto(
                 dto,
                 patient.getId(),
-                encounter
+                encounter,
+                uomGroupUnitId,
+                uomPriceFactor
         );
 
         try {
@@ -360,7 +406,9 @@ public class PatientServiceAndProductService {
                         return buildEntityFromCreateDto(
                                 dto,
                                 patient.getId(),
-                                encounter
+                                encounter,
+                                null,
+                                null
                         );
                     })
                     .toList();
@@ -619,7 +667,9 @@ public class PatientServiceAndProductService {
     private PatientServiceAndProduct buildEntityFromCreateDto(
             PatientServiceProductCreateDTO dto,
             Long patientId,
-            PatientEncounter encounter
+            PatientEncounter encounter,
+            Long uomGroupUnitId,
+            BigDecimal uomPriceFactor
     ) {
         long quantity = dto.quantity() == null ? 1L : dto.quantity();
 
@@ -632,6 +682,8 @@ public class PatientServiceAndProductService {
                 .serviceId(dto.serviceId())
                 .procedureId(dto.procedureId())
                 .quantity(quantity)
+                .uomGroupUnitId(uomGroupUnitId)
+                .uomPriceFactor(uomPriceFactor)
                 .unitPrice(BigDecimal.ZERO)
                 .discountAmount(BigDecimal.ZERO)
                 .exemptionAmount(BigDecimal.ZERO)
@@ -837,8 +889,10 @@ public class PatientServiceAndProductService {
             return;
         }
 
+        // Each administered UCC dose is charged on its own line
         if (dto.billingItemType() == BillingItemTypes.MEDICATION
                 && dto.brandMedicationId() != null
+                && dto.serviceSource() != ServiceSource.URGENT_CARE_MEDICATION_ORDER
                 && patientServiceAndProductRepository
                         .existsByEncounterIdAndBillingItemTypeAndBrandMedicationId(
                                 encounterId,

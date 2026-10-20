@@ -37,6 +37,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -274,6 +276,8 @@ public class BillingEngineService {
                                 pricingRequest
                         );
 
+        resolvedPrice = applyUomPriceFactor(item, resolvedPrice);
+
         validateResolvedPricing(
                 item,
                 resolvedPrice
@@ -391,6 +395,8 @@ public class BillingEngineService {
                 setupBillingPricingService.resolveOrFallback(
                         pricingRequest
                 );
+
+        resolvedPrice = applyUomPriceFactor(item, resolvedPrice);
 
         validateResolvedPricing(item, resolvedPrice);
 
@@ -878,6 +884,8 @@ public class BillingEngineService {
                         .resolveOrFallback(
                                 pricingRequest
                         );
+
+        resolvedPrice = applyUomPriceFactor(item, resolvedPrice);
 
         validateResolvedPricing(
                 item,
@@ -1426,6 +1434,43 @@ public class BillingEngineService {
                     "billingRule.itemType.mismatch"
             );
         }
+    }
+
+    /**
+     * Prices resolve per price base UOM unit. A line charged in another unit
+     * (e.g. a UCC administration charged per BOX) keeps its factor, so every
+     * pricing and re-pricing of the line is in the charged unit.
+     */
+    private ResolvedBillingPrice applyUomPriceFactor(
+            PatientServiceAndProduct item,
+            ResolvedBillingPrice resolvedPrice
+    ) {
+        BigDecimal factor = item.getUomPriceFactor();
+
+        if (resolvedPrice == null
+                || factor == null
+                || factor.compareTo(BigDecimal.ONE) == 0) {
+            return resolvedPrice;
+        }
+
+        return new ResolvedBillingPrice(
+                scaleUnitPrice(resolvedPrice.unitPrice(), factor),
+                resolvedPrice.currency(),
+                resolvedPrice.priceSource(),
+                resolvedPrice.setupSourceId(),
+                resolvedPrice.priceListId(),
+                resolvedPrice.priceListItemId(),
+                resolvedPrice.pricingResponse(),
+                scaleUnitPrice(resolvedPrice.setupUnitPrice(), factor),
+                resolvedPrice.setupItemCode(),
+                resolvedPrice.setupItemName()
+        );
+    }
+
+    private BigDecimal scaleUnitPrice(BigDecimal unitPrice, BigDecimal factor) {
+        return unitPrice == null
+                ? null
+                : unitPrice.multiply(factor).setScale(4, RoundingMode.HALF_UP);
     }
 
     private void validateResolvedPricing(
