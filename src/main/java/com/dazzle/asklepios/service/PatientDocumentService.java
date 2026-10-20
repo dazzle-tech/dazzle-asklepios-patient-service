@@ -186,9 +186,7 @@ public class PatientDocumentService {
                 );
             }
 
-            Long patientId = document.getPatient() != null ? document.getPatient().getId() : null;
             patientDocumentRepository.delete(document);
-            recalculateCitizenFromDocuments(patientId);
 
             LOG.info("Successfully deleted PatientDocument id={}", id);
             return true;
