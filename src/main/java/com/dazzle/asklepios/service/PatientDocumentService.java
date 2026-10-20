@@ -11,7 +11,6 @@ import com.dazzle.asklepios.service.dto.patientDocuments.PatientDocumentUpdateDT
 import com.dazzle.asklepios.service.dto.patientDocuments.PatientNoDocumentCreateDTO;
 import com.dazzle.asklepios.integration.waseel.service.CchiPatientLookupService;
 import com.dazzle.asklepios.service.helper.CountryHelper;
-import com.dazzle.asklepios.service.helper.PatientCitizenFlag;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.EntityManager;
@@ -25,6 +24,8 @@ import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -76,7 +77,7 @@ public class PatientDocumentService {
         try {
             PatientDocument saved = patientDocumentRepository.saveAndFlush(entity);
             syncPatientDocumentId(saved);
-            syncCitizenFlag(saved, dto.isCitizen());
+            recalculateCitizenFromDocuments(dto.patientId());
 
             LOG.info(
                     "Successfully created PatientDocument id={} for patientId={} isPrimary={}",
@@ -104,7 +105,7 @@ public class PatientDocumentService {
 
         try {
             PatientDocument saved = patientDocumentRepository.saveAndFlush(entity);
-            syncCitizenFlag(saved, dto.isCitizen());
+            recalculateCitizenFromDocuments(dto.patientId());
             LOG.info(
                     "Successfully created NO_DOCUMENT PatientDocument id={} for patientId={}",
                     saved.getId(),
@@ -140,7 +141,7 @@ public class PatientDocumentService {
         try {
             PatientDocument updated = patientDocumentRepository.saveAndFlush(existing);
             syncPatientDocumentId(updated);
-            syncCitizenFlag(updated, dto.isCitizen());
+            recalculateCitizenFromDocuments(dto.patientId());
             LOG.info("Successfully updated PatientDocument id={}", updated.getId());
             return updated;
 
@@ -185,7 +186,9 @@ public class PatientDocumentService {
                 );
             }
 
+            Long patientId = document.getPatient() != null ? document.getPatient().getId() : null;
             patientDocumentRepository.delete(document);
+            recalculateCitizenFromDocuments(patientId);
 
             LOG.info("Successfully deleted PatientDocument id={}", id);
             return true;
@@ -197,6 +200,45 @@ public class PatientDocumentService {
             LOG.error("Error deleting PatientDocument id={}", id, ex);
             return false;
         }
+    }
+
+
+    public void recalculateCitizenFromDocuments(Long patientId) {
+        if (patientId == null) {
+            return;
+        }
+
+        Patient patient = patientRepository.findById(patientId).orElse(null);
+        if (patient == null) {
+            return;
+        }
+
+        boolean citizen = hasQualifyingSaudiCitizenDocument(patientId);
+        if (Objects.equals(patient.getIsCitizen(), citizen)) {
+            return;
+        }
+
+        patient.setIsCitizen(citizen);
+        patientRepository.saveAndFlush(patient);
+        LOG.info(
+                "[PATIENT_DOCUMENT] Recalculated patient.isCitizen={} for patientId={}",
+                citizen,
+                patientId
+        );
+    }
+
+    public boolean hasQualifyingSaudiCitizenDocument(Long patientId) {
+        if (patientId == null) {
+            return false;
+        }
+
+        Map<Long, CountryName> countryNameById = new HashMap<>();
+        for (PatientDocument document : patientDocumentRepository.findByPatient_IdOrderByIsPrimaryDescIdAsc(patientId)) {
+            if (isQualifyingSaudiCitizenDocument(document, countryNameById)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ─── Private Helpers ───────────────────────────────────────────────────────
@@ -291,31 +333,22 @@ public class PatientDocumentService {
         );
     }
 
-    private void syncCitizenFlag(PatientDocument document, Boolean requested) {
-        if (document == null || !Boolean.TRUE.equals(document.getIsPrimary())) {
-            return;
+    private boolean isQualifyingSaudiCitizenDocument(
+            PatientDocument document,
+            Map<Long, CountryName> countryNameById
+    ) {
+        if (document == null || document.getCountryId() == null) {
+            return false;
         }
-
-        Patient patient = document.getPatient();
-        if (patient == null || patient.getId() == null) {
-            return;
+        String number = document.getNumber() == null ? "" : document.getNumber().trim();
+        if (!number.startsWith("1")) {
+            return false;
         }
-
-        boolean citizen = requested != null
-                ? requested
-                : PatientCitizenFlag.fromDocumentType(document.getType());
-        if (Objects.equals(patient.getIsCitizen(), citizen)) {
-            return;
-        }
-
-        patient.setIsCitizen(citizen);
-        patientRepository.saveAndFlush(patient);
-        LOG.info(
-                "[PATIENT_DOCUMENT] Set patient.isCitizen={} for patientId={} from documentType={}",
-                citizen,
-                patient.getId(),
-                document.getType()
+        CountryName countryName = countryNameById.computeIfAbsent(
+                document.getCountryId(),
+                countryHelper::getCountryName
         );
+        return countryName == CountryName.SAUDI_ARABIA;
     }
 
     private void syncPatientDocumentId(PatientDocument document) {
