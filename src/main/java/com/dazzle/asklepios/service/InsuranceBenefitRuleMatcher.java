@@ -87,15 +87,71 @@ public class InsuranceBenefitRuleMatcher {
             return explicitGlobal;
         }
 
+        InsuranceBenefitRule policyDefault =
+                findPolicyLevelDefault(normalizedRules, preferInNetwork);
+        if (policyDefault != null) {
+            return policyDefault;
+        }
+
         InsuranceBenefitRule outpatientRule =
                 findBestOutpatientRule(normalizedRules, preferInNetwork);
         if (outpatientRule != null) {
             return outpatientRule;
         }
 
+        InsuranceBenefitRule generalRule =
+                highestGeneralRule(normalizedRules, preferInNetwork);
+        if (generalRule != null) {
+            return generalRule;
+        }
+
         return normalizedRules.stream()
                 .filter(rule -> !rule.globalDefault())
                 .filter(rule -> !isCostBeneficiaryRule(rule))
+                .filter(this::hasCopaymentValues)
+                .filter(rule -> matchesNetworkPreference(rule, preferInNetwork))
+                .max(ruleComparator())
+                .orElse(null);
+    }
+
+    /**
+     * Policy copaypct/maxcopay is the beneficiary share for services that do
+     * not match a narrower category. A medicine, dental, or vision percent
+     * must not win just because it is the first category in the payload.
+     */
+    private InsuranceBenefitRule findPolicyLevelDefault(
+            List<InsuranceBenefitRule> rules,
+            boolean preferInNetwork
+    ) {
+        InsuranceBenefitRule policyCopay =
+                rules.stream()
+                        .filter(rule -> !rule.globalDefault())
+                        .filter(this::isCostBeneficiaryRule)
+                        .filter(this::hasCopaymentPercent)
+                        .findFirst()
+                        .orElse(null);
+        if (policyCopay != null) {
+            return policyCopay;
+        }
+
+        return rules.stream()
+                .filter(rule -> !rule.globalDefault())
+                .filter(rule -> !isCostBeneficiaryRule(rule))
+                .filter(this::isGeneralHealthPlanRule)
+                .filter(this::hasCopaymentValues)
+                .filter(rule -> matchesNetworkPreference(rule, preferInNetwork))
+                .max(ruleComparator())
+                .orElse(null);
+    }
+
+    private InsuranceBenefitRule highestGeneralRule(
+            List<InsuranceBenefitRule> rules,
+            boolean preferInNetwork
+    ) {
+        return rules.stream()
+                .filter(rule -> !rule.globalDefault())
+                .filter(rule -> !isCostBeneficiaryRule(rule))
+                .filter(rule -> !isSpecialtyBenefitRule(rule))
                 .filter(this::hasCopaymentValues)
                 .filter(rule -> matchesNetworkPreference(rule, preferInNetwork))
                 .max(ruleComparator())
@@ -146,6 +202,31 @@ public class InsuranceBenefitRuleMatcher {
     private boolean isCostBeneficiaryRule(InsuranceBenefitRule rule) {
         return rule.benefitCategory() != null
                 && rule.benefitCategory().equalsIgnoreCase("Cost Beneficiary");
+    }
+
+    private boolean isGeneralHealthPlanRule(InsuranceBenefitRule rule) {
+        String text = ruleText(rule);
+        return text.contains("health benefit");
+    }
+
+    private boolean isSpecialtyBenefitRule(InsuranceBenefitRule rule) {
+        String text = ruleText(rule);
+        return text.contains("medicin")
+                || text.contains("medication")
+                || text.contains("drug")
+                || text.contains("prescribed")
+                || text.contains("dental")
+                || text.contains("vision")
+                || text.contains("optical")
+                || text.contains("room and board");
+    }
+
+    private String ruleText(InsuranceBenefitRule rule) {
+        return normalize(rule.benefitCategory())
+                + " "
+                + normalize(rule.itemName())
+                + " "
+                + normalize(rule.itemCode());
     }
 
     private boolean isOutpatientRule(InsuranceBenefitRule rule) {
