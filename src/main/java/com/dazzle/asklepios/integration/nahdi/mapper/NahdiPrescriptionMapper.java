@@ -19,6 +19,7 @@ import com.dazzle.asklepios.domain.ApLovValue;
 import com.dazzle.asklepios.domain.BodyMeasurements;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientAllergies;
+import com.dazzle.asklepios.domain.PatientDocument;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientObservationsComplaints;
@@ -27,6 +28,7 @@ import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.VitalSigns;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.DocumentType;
 import com.dazzle.asklepios.domain.enumeration.Gender;
 import com.dazzle.asklepios.domain.enumeration.AllergenTypes;
 import com.dazzle.asklepios.domain.enumeration.PatientAllergyStatus;
@@ -44,6 +46,7 @@ import com.dazzle.asklepios.repository.ApLovValueRepository;
 import com.dazzle.asklepios.repository.BodyMeasurementsRepository;
 import com.dazzle.asklepios.repository.ChiefComplainRepository;
 import com.dazzle.asklepios.repository.PatientAllergiesRepository;
+import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientObservationsComplaintsRepository;
@@ -96,6 +99,7 @@ public class NahdiPrescriptionMapper {
     private final NahdiProperties nahdiProperties;
     private final PatientPrescriptionRepository patientPrescriptionRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final PatientDocumentRepository patientDocumentRepository;
     private final PatientAllergiesRepository patientAllergiesRepository;
     private final BodyMeasurementsRepository bodyMeasurementsRepository;
     private final ApLovValueRepository apLovValueRepository;
@@ -162,14 +166,17 @@ public class NahdiPrescriptionMapper {
                 .presNote("")
                 .patientFileNo(patient == null ? "" : text(patient.getMedicalRecordNumber()))
                 .patientNameEn(patient == null ? "" : join(" ", patient.getFirstName(), patient.getSecondName(), patient.getThirdName(), patient.getLastName()))
-                .patientNameAr(patient == null ? "" : join(" ", patient.getFirstNameSecondaryLang(), patient.getSecondNameSecondaryLang(),
-                        patient.getThirdNameSecondaryLang(), patient.getLastNameSecondaryLang()))
+                // Second-language (Arabic) name; the primary name when it is not recorded.
+                .patientNameAr(patient == null ? "" : firstNonBlank(
+                        join(" ", patient.getFirstNameSecondaryLang(), patient.getSecondNameSecondaryLang(),
+                                patient.getThirdNameSecondaryLang(), patient.getLastNameSecondaryLang()),
+                        join(" ", patient.getFirstName(), patient.getSecondName(), patient.getThirdName(), patient.getLastName())))
                 .patientGender(patient == null ? "" : toGender(patient.getSexAtBirth()))
                 .patientDob(patient == null || patient.getDateOfBirth() == null ? "" : patient.getDateOfBirth().format(DATE_FORMAT))
                 .patientAge(patient == null ? "" : toAge(patient.getDateOfBirth()))
                 .patientAllergy(patient == null ? NO_ALLERGY : toAllergies(patient.getId()))
                 .patientMobileNo(patient == null ? "" : text(patient.getPrimaryMobileNumber()))
-                .patientNationalId(patient == null ? "" : text(patient.getDocumentId()))
+                .patientNationalId(patient == null ? "" : toDocumentNumber(patient))
                 .patientInsExpDate(insurance == null || insurance.getExpirationDate() == null ? "" : insurance.getExpirationDate().format(DATE_FORMAT))
                 .patientInsCardNo(insurance == null ? "" : text(insurance.getMemberCardId()))
                 .patientInsPolicyNo(insurance == null ? "" : text(insurance.getPolicyNumber()))
@@ -439,6 +446,24 @@ public class NahdiPrescriptionMapper {
             return "";
         }
         return value ? YES : NO;
+    }
+
+    /**
+     * Patient identity number of any document type (national ID, iqama, passport, ...):
+     * patient.documentId, otherwise the primary (then oldest) recorded document.
+     */
+    private String toDocumentNumber(Patient patient) {
+        if (patient.getDocumentId() != null && !patient.getDocumentId().isBlank()) {
+            return patient.getDocumentId().trim();
+        }
+        return patientDocumentRepository.findByPatient_IdOrderByIsPrimaryDescIdAsc(patient.getId())
+                .stream()
+                .filter(document -> !DocumentType.NO_DOCUMENT.equals(document.getType()))
+                .map(PatientDocument::getNumber)
+                .filter(number -> number != null && !number.isBlank())
+                .map(String::trim)
+                .findFirst()
+                .orElse("");
     }
 
     private static String toGender(Gender gender) {
