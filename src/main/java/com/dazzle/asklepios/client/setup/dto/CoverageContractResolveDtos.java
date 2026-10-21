@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.client.setup.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.math.BigDecimal;
@@ -166,8 +167,49 @@ public final class CoverageContractResolveDtos {
             LocalDate endDate,
             Long classId,
             String className,
-            Boolean isActive
-    ) {}
+            Boolean isActive,
+            String approvalCoverageCompany
+    ) {
+        @JsonIgnore
+        public ContractSnapshot(
+                Long id,
+                String guarantorType,
+                Long companyId,
+                String companyName,
+                String code,
+                String policyNumber,
+                String coverageBasis,
+                Long insurancePayerId,
+                String insurancePayerName,
+                Long priceListSetupId,
+                String priceListName,
+                LocalDate startDate,
+                LocalDate endDate,
+                Long classId,
+                String className,
+                Boolean isActive
+        ) {
+            this(
+                    id,
+                    guarantorType,
+                    companyId,
+                    companyName,
+                    code,
+                    policyNumber,
+                    coverageBasis,
+                    insurancePayerId,
+                    insurancePayerName,
+                    priceListSetupId,
+                    priceListName,
+                    startDate,
+                    endDate,
+                    classId,
+                    className,
+                    isActive,
+                    null
+            );
+        }
+    }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record CopaymentSnapshot(

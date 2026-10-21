@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 
 @Service
 @RequiredArgsConstructor
@@ -133,7 +134,7 @@ public class InsurancePatientShareCalculator {
             return cashSplit(normalizedNet);
         }
 
-        if (!insuranceBenefitRuleService.isLatestCoverageInForce(insurance)) {
+        if (!isLatestCoverageInForce(insurance)) {
             LOG.warn(
                     "[INSURANCE] Coverage is not in-force; billing as cash "
                             + "patientInsuranceId={} net={}",
@@ -191,7 +192,23 @@ public class InsurancePatientShareCalculator {
         );
     }
 
+    public boolean usesNphiesContractRules(PatientInsurance insurance) {
+        return coverageContractShareService.usesNphiesApprovalCoverage(insurance);
+    }
+
     public boolean isLatestCoverageInForce(PatientInsurance insurance) {
+        if (insurance != null && usesNphiesContractRules(insurance)) {
+            boolean inForce = insurance.getExpirationDate() != null
+                    && !insurance.getExpirationDate().isBefore(LocalDate.now());
+            LOG.info(
+                    "[INSURANCE] NPHIES approval coverage uses the coverage contract on the visit "
+                            + "patientInsuranceId={} expirationInForce={}",
+                    insurance.getId(),
+                    inForce
+            );
+            return inForce;
+        }
+
         return insuranceBenefitRuleService.isLatestCoverageInForce(insurance);
     }
 
@@ -220,7 +237,10 @@ public class InsurancePatientShareCalculator {
             serviceCategory = resolveServiceCategory(item);
         }
 
-        if (isWaseelCoverage(insurance)) {
+        boolean nphiesContractRules =
+                coverageContractShareService.usesNphiesApprovalCoverage(insurance, item);
+
+        if (isWaseelCoverage(insurance) && !nphiesContractRules) {
             InsuranceSplit waseelSplit = calculateSplitFromRules(
                     insurance,
                     serviceCategory,
@@ -245,6 +265,23 @@ public class InsurancePatientShareCalculator {
                         .orElse(null);
         if (contractSplit != null) {
             return contractSplit;
+        }
+
+        if (nphiesContractRules) {
+            LOG.info(
+                    "[INSURANCE] NPHIES coverage contract has no copayment or coverage reading "
+                            + "for this item. Wasel benefit rules are not used. patientInsuranceId={}",
+                    insurance.getId()
+            );
+            return coverageContractShareService.applyLimit(
+                    insurance,
+                    item,
+                    normalizedNet,
+                    new InsuranceSplit(
+                            normalizedNet,
+                            BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP)
+                    )
+            );
         }
 
         return coverageContractShareService.applyLimit(

@@ -112,10 +112,14 @@ public class CatalogItemPricingPreviewService {
                         coverageType
                 );
 
+        boolean contractRulesCoverVisit =
+                insuranceVisit
+                        && eligibilityInForce
+                        && insurancePatientShareCalculator.usesNphiesContractRules(insurance);
         boolean coveredByInsurance =
                 insuranceVisit
                         && eligibilityInForce
-                        && resolvedPrice.resolvedFromPriceList();
+                        && (contractRulesCoverVisit || resolvedPrice.resolvedFromPriceList());
         boolean requiresCashConfirmation = insuranceVisit && !coveredByInsurance;
         String notCoveredReason = null;
 

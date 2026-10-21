@@ -480,6 +480,12 @@ public class DefaultServicePreparationService {
                 insurancePriceListCoverageService.applyUncoveredCash(existing, coverageCheck);
                 existing = patientServiceAndProductRepository.saveAndFlush(existing);
             } else if (insurance != null) {
+                if (existing.getCoverageStatus() == CoverageStatus.NOT_COVERED
+                        && (InsurancePriceListCoverageService.ELIGIBILITY_NOT_IN_FORCE.equals(existing.getNotCoveredReason())
+                        || InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST.equals(existing.getNotCoveredReason()))) {
+                    existing.setCoverageStatus(CoverageStatus.COVERED);
+                    existing.setNotCoveredReason(null);
+                }
                 PreAuthorizationResolutionService.Resolution preAuthorizationResolution =
                         preAuthorizationResolutionService.resolve(
                                 encounter.getId(),

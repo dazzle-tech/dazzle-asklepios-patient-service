@@ -140,8 +140,7 @@ public class BillingEligibilitySnapshotService {
                 );
 
         PatientInsurance insurance = resolveInsurance(encounter, encounter.getPatientInsuranceId());
-        if (insurance != null
-                && !insurancePatientShareCalculator.isWaseelCoverage(insurance)) {
+        if (insurance != null && !requiresWaseelEligibilityFreeze(insurance)) {
             if (!insurancePatientShareCalculator.isLatestCoverageInForce(insurance)) {
                 throw new BadRequestAlertException(
                         "The patient's insurance coverage is not in-force.",
@@ -187,7 +186,12 @@ public class BillingEligibilitySnapshotService {
             return true;
         }
 
-        return insurancePatientShareCalculator.isWaseelCoverage(insurance);
+        return requiresWaseelEligibilityFreeze(insurance);
+    }
+
+    private boolean requiresWaseelEligibilityFreeze(PatientInsurance insurance) {
+        return insurancePatientShareCalculator.isWaseelCoverage(insurance)
+                && !insurancePatientShareCalculator.usesNphiesContractRules(insurance);
     }
 
     private PatientInsurance resolveInsurance(

@@ -199,6 +199,40 @@ public class InsurancePriceListCoverageService {
                 .build();
 
         PatientInsurance insurance = loadInsurance(coverage.patientInsuranceId());
+        if (insurancePatientShareCalculator.usesNphiesContractRules(insurance)
+                && insurancePatientShareCalculator.isLatestCoverageInForce(insurance)) {
+            LOG.info(
+                    "[INSURANCE_PL] NPHIES coverage contract rules apply on this visit. "
+                            + "Price-list cash-out is not used. encounterId={} type={} sourceId={} patientInsuranceId={}",
+                    encounterId,
+                    billingItemType,
+                    sourceId,
+                    coverage.patientInsuranceId()
+            );
+            ResolvedBillingPrice contractPrice =
+                    billingEngineService.resolvePricing(
+                            previewItem,
+                            encounter.getFacilityId(),
+                            BillingCoverageType.INSURANCE
+                    );
+            return new InsurancePriceListCoverageCheckResult(
+                    true,
+                    true,
+                    false,
+                    null,
+                    billingItemType,
+                    sourceId,
+                    contractPrice.setupItemName(),
+                    contractPrice.setupItemCode(),
+                    contractPrice.unitPrice(),
+                    contractPrice.currency() != null
+                            ? contractPrice.currency()
+                            : effectiveCurrency,
+                    coverage.patientInsuranceId(),
+                    null
+            );
+        }
+
         if (!insurancePatientShareCalculator.isLatestCoverageInForce(insurance)) {
             LOG.warn(
                     "[INSURANCE_PL] Eligibility is not in-force. "

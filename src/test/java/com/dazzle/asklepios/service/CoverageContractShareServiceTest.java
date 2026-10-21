@@ -977,6 +977,37 @@ class CoverageContractShareServiceTest {
         assertThat(coverageContractShareService.requiresPreApproval(insurance(), item())).isFalse();
     }
 
+    @Test
+    void usesNphiesApprovalCoverage_trueWhenMatchedContractIsNphies() {
+        when(coverageContractClient.resolve(any())).thenReturn(new CoverageContractResolveDtos.Response(
+                true,
+                "matched",
+                contract("NPHIES"),
+                copayment("PERCENTAGE", "20")
+        ));
+
+        assertThat(coverageContractShareService.usesNphiesApprovalCoverage(insurance(), item())).isTrue();
+    }
+
+    @Test
+    void usesNphiesApprovalCoverage_falseForWaselOrUnmatchedContract() {
+        when(coverageContractClient.resolve(any())).thenReturn(new CoverageContractResolveDtos.Response(
+                true,
+                "matched",
+                contract("WASEEL"),
+                copayment("PERCENTAGE", "20")
+        ));
+        assertThat(coverageContractShareService.usesNphiesApprovalCoverage(insurance(), item())).isFalse();
+
+        when(coverageContractClient.resolve(any())).thenReturn(new CoverageContractResolveDtos.Response(
+                false,
+                "none",
+                null,
+                null
+        ));
+        assertThat(coverageContractShareService.usesNphiesApprovalCoverage(insurance(), item())).isFalse();
+    }
+
     private PatientInsurance insurance() {
         return PatientInsurance.builder()
                 .id(8L)
@@ -1021,9 +1052,14 @@ class CoverageContractShareServiceTest {
     }
 
     private CoverageContractResolveDtos.ContractSnapshot contract() {
+        return contract(null);
+    }
+
+    private CoverageContractResolveDtos.ContractSnapshot contract(String approvalCoverageCompany) {
         return new CoverageContractResolveDtos.ContractSnapshot(
                 21L, "INSURANCE", 9L, "Tawuniya", "C-1", "POL-100", "GROSS",
-                9L, "Tawuniya", 4L, "PL", null, null, 21L, "A", true
+                9L, "Tawuniya", 4L, "PL", null, null, 21L, "A", true,
+                approvalCoverageCompany
         );
     }
 

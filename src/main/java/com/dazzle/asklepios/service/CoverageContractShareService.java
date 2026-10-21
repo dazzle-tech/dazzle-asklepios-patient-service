@@ -201,6 +201,30 @@ public class CoverageContractShareService {
         return applyPeriodLimits(split, resolved, insurance, item, billedNet, false);
     }
 
+    /**
+     * Coverage Management with Approval Coverage Company = NPHIES is the visit rule.
+     * Wasel eligibility and benefit rules stay in place for every other contract.
+     */
+    public boolean usesNphiesApprovalCoverage(PatientInsurance insurance) {
+        return usesNphiesApprovalCoverage(insurance, null);
+    }
+
+    public boolean usesNphiesApprovalCoverage(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item
+    ) {
+        if (insurance == null || insurance.getId() == null) {
+            return false;
+        }
+
+        CoverageContractResolveDtos.Response resolved = resolve(insurance, item);
+        if (resolved == null || !resolved.matched() || resolved.contract() == null) {
+            return false;
+        }
+
+        return "NPHIES".equalsIgnoreCase(resolved.contract().approvalCoverageCompany());
+    }
+
     public boolean requiresPreApproval(PatientInsurance insurance, PatientServiceAndProduct item) {
         if (insurance == null) {
             return false;

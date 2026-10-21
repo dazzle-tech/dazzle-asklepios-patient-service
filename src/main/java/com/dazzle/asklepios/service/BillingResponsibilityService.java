@@ -8,6 +8,7 @@ import com.dazzle.asklepios.domain.BillingChargeResponsibility;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
@@ -167,7 +168,10 @@ public class BillingResponsibilityService {
             return;
         }
 
-        if (item.getPatientInsuranceId() == null || item.isUncoveredCashItem()) {
+        boolean contractOverridesPriceListCash =
+                item.isUncoveredCashItem() && nphiesContractOverridesPriceListCash(item);
+        if (item.getPatientInsuranceId() == null
+                || (item.isUncoveredCashItem() && !contractOverridesPriceListCash)) {
             applyCashResponsibility(
                     context,
                     item,
@@ -176,6 +180,11 @@ public class BillingResponsibilityService {
             );
 
             return;
+        }
+
+        if (contractOverridesPriceListCash) {
+            item.setCoverageStatus(CoverageStatus.COVERED);
+            item.setNotCoveredReason(null);
         }
 
         if (item.getPreAuthorizationStatus() == PreAuthorizationStatus.REJECTED) {
@@ -833,6 +842,24 @@ public class BillingResponsibilityService {
             );
             return null;
         }
+    }
+
+    private boolean nphiesContractOverridesPriceListCash(PatientServiceAndProduct item) {
+        if (item == null || item.getPatientInsuranceId() == null || item.getPatientId() == null) {
+            return false;
+        }
+
+        String reason = item.getNotCoveredReason();
+        if (!InsurancePriceListCoverageService.ELIGIBILITY_NOT_IN_FORCE.equals(reason)
+                && !InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST.equals(reason)) {
+            return false;
+        }
+
+        return patientInsuranceRepository
+                .findByIdAndPatient_Id(item.getPatientInsuranceId(), item.getPatientId())
+                .filter(insurancePatientShareCalculator::usesNphiesContractRules)
+                .filter(insurancePatientShareCalculator::isLatestCoverageInForce)
+                .isPresent();
     }
 
     private PatientInsurance loadAndValidateInsurance(
