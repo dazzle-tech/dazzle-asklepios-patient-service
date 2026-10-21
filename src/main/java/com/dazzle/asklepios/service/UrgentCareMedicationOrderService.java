@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
+import com.dazzle.asklepios.client.setup.dto.BrandMedicationSetupDTO;
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
 import com.dazzle.asklepios.domain.Patient;
@@ -8,7 +9,10 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.FrequencyList;
 import com.dazzle.asklepios.domain.enumeration.MedFrequency;
 import com.dazzle.asklepios.domain.UrgentCareMedicationOrder;
+import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.MedicationOrderStatus;
+import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -17,11 +21,13 @@ import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderUpdateDTO;
 import com.dazzle.asklepios.service.helper.ActiveIngredientHelper;
+import com.dazzle.asklepios.service.helper.BrandMedicationHelper;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
 import com.dazzle.asklepios.domain.MedFrequencySetup;
 import com.dazzle.asklepios.repository.MedFrequencySetupRepository;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
+import com.dazzle.asklepios.service.helper.UomPriceFactorHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.uccmedicationorders.PatientUccMedicationOrderGroupVM;
@@ -35,6 +41,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -58,13 +65,21 @@ public class UrgentCareMedicationOrderService {
     private final NotificationHelper notificationHelper;
     private final EncounterReopenGuard encounterReopenGuard;
     private final MedFrequencySetupRepository medFrequencySetupRepository;
+    private final BrandMedicationHelper brandMedicationHelper;
+    private final UomPriceFactorHelper uomPriceFactorHelper;
+    private final PatientServiceAndProductService patientServiceAndProductService;
 
     public UrgentCareMedicationOrderService(
             UrgentCareMedicationOrderRepository urgentCareMedicationOrderRepository,
             PatientRepository patientRepository,
             PatientEncounterRepository patientEncounterRepository, ActiveIngredientHelper activeIngredientHelper, DepartmentHelper departmentHelper, FacilityHelper facilityHelper, NotificationHelper notificationHelper,
-            EncounterReopenGuard encounterReopenGuard, MedFrequencySetupRepository medFrequencySetupRepository) {
+            EncounterReopenGuard encounterReopenGuard, MedFrequencySetupRepository medFrequencySetupRepository,
+            BrandMedicationHelper brandMedicationHelper, UomPriceFactorHelper uomPriceFactorHelper,
+            PatientServiceAndProductService patientServiceAndProductService) {
         this.medFrequencySetupRepository = medFrequencySetupRepository;
+        this.brandMedicationHelper = brandMedicationHelper;
+        this.uomPriceFactorHelper = uomPriceFactorHelper;
+        this.patientServiceAndProductService = patientServiceAndProductService;
         this.urgentCareMedicationOrderRepository = urgentCareMedicationOrderRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
@@ -678,7 +693,10 @@ public class UrgentCareMedicationOrderService {
     public UrgentCareMedicationOrder administer(
             Long orderId,
             String username,
-            Instant actualAdministerTime
+            Instant actualAdministerTime,
+            Long brandMedicationId,
+            Long uomGroupUnitId,
+            Long quantity
     ) {
 
         LOG.debug(
@@ -709,7 +727,90 @@ public class UrgentCareMedicationOrderService {
         order.setAdministeredBy(username);
         order.setAdministeredDate(Instant.now());
 
+        chargeAdministration(order, brandMedicationId, uomGroupUnitId, quantity);
+
         return urgentCareMedicationOrderRepository.save(order);
+    }
+
+    /**
+     * Puts the administered brand on the patient's services and products, in the
+     * UOM unit the nurse charges in. The brand price is per its price base unit,
+     * so the unit price is converted with the UOM group relations.
+     */
+    private void chargeAdministration(
+            UrgentCareMedicationOrder order,
+            Long brandMedicationId,
+            Long uomGroupUnitId,
+            Long quantity
+    ) {
+        if (brandMedicationId == null || uomGroupUnitId == null) {
+            throw new BadRequestAlertException(
+                    "Brand and UOM are required to administer the medication",
+                    "patient_ucc_medication_order",
+                    "administer.brandAndUomRequired"
+            );
+        }
+
+        if (quantity == null || quantity <= 0) {
+            throw new BadRequestAlertException(
+                    "Quantity must be a whole number greater than zero",
+                    "patient_ucc_medication_order",
+                    "administer.quantityInvalid"
+            );
+        }
+
+        BrandMedicationSetupDTO brand = brandMedicationHelper.getActiveBrandOfActiveIngredient(
+                brandMedicationId,
+                order.getActiveIngredientId()
+        );
+
+        BigDecimal uomPriceFactor = uomPriceFactorHelper.resolveFactor(
+                brand.uomGroupId(),
+                uomGroupUnitId,
+                brand.priceBaseUomId()
+        );
+
+        patientServiceAndProductService.createUrgentCareMedicationAdministration(
+                order.getPatient().getId(),
+                order.getEncounter().getId(),
+                order.getId(),
+                brandMedicationId,
+                quantity,
+                uomGroupUnitId,
+                uomPriceFactor,
+                resolveCurrency(brand.currency())
+        );
+
+        LOG.debug(
+                "[STATUS][ADMINISTER] charged -> orderId={} brandId={} uomUnitId={} quantity={} uomPriceFactor={}",
+                order.getId(),
+                brandMedicationId,
+                uomGroupUnitId,
+                quantity,
+                uomPriceFactor
+        );
+    }
+
+    private static Currency resolveCurrency(String currency) {
+        if (currency == null || currency.isBlank()) {
+            return Currency.SAR;
+        }
+
+        try {
+            return Currency.valueOf(currency.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            return Currency.SAR;
+        }
+    }
+
+    /** A dose waiting for double check was already charged on administer; no line means nothing to cancel */
+    private void cancelAdministrationCharge(UrgentCareMedicationOrder order, String reason) {
+        patientServiceAndProductService.cancelBySource(
+                ServiceSource.URGENT_CARE_MEDICATION_ORDER,
+                order.getId(),
+                BillingItemTypes.MEDICATION,
+                reason
+        );
     }
 
     public UrgentCareMedicationOrder doubleCheck(Long orderId, String username) {
@@ -774,6 +875,7 @@ public class UrgentCareMedicationOrderService {
         rejectIfAmendmentOpen(order);
 
         ensureTransition(order, MedicationOrderStatus.DISCARDED);
+        cancelAdministrationCharge(order, "UCC medication order discarded");
 
         order.setStatus(MedicationOrderStatus.DISCARDED);
         order.setDiscardedBy(username);
@@ -795,6 +897,7 @@ public class UrgentCareMedicationOrderService {
         rejectIfAmendmentOpen(order);
 
         ensureTransition(order, MedicationOrderStatus.CANCELLED);
+        cancelAdministrationCharge(order, "UCC medication order cancelled");
 
         order.setStatus(MedicationOrderStatus.CANCELLED);
         order.setCancelledBy(username);

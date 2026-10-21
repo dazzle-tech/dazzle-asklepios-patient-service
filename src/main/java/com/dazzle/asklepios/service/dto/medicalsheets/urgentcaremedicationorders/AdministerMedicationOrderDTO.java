@@ -3,6 +3,9 @@ package com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorder
 import java.time.Instant;
 
 public record AdministerMedicationOrderDTO(
-        Instant actualAdministerTime
+        Instant actualAdministerTime,
+        Long brandMedicationId,
+        Long uomGroupUnitId,
+        Long quantity
 ) {
 }

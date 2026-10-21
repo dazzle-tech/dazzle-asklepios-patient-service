@@ -436,7 +436,14 @@ public class UrgentCareMedicationOrderController {
         LOG.debug("[ADMINISTER] request -> id={}", id);
 
         UrgentCareMedicationOrder result =
-                UrgentCareMedicationOrderService.administer(id, currentUsername(),dto.actualAdministerTime());
+                UrgentCareMedicationOrderService.administer(
+                        id,
+                        currentUsername(),
+                        dto.actualAdministerTime(),
+                        dto.brandMedicationId(),
+                        dto.uomGroupUnitId(),
+                        dto.quantity()
+                );
 
         LOG.debug("[ADMINISTER] response -> id={} status={}", result.getId(), result.getStatus());
         return ResponseEntity.ok(result);
