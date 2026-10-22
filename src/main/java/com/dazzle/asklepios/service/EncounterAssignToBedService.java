@@ -107,6 +107,7 @@ public class EncounterAssignToBedService {
                     false,
                     BedTransactionType.ASSIGN
             ));
+            bedHelper.markAsOccupied(createDTO.bedId());
 
             LOG.info("[CREATE] EncounterAssignToBed success id={} encounterId={} patientId={} roomId={} bedId={}",
                     createdEncounterAssignToBed.getId(),
@@ -235,6 +236,7 @@ public class EncounterAssignToBedService {
                     isExternal,
                     BedTransactionType.TRANSFER
             ));
+            bedHelper.markAsOccupied(updateDTO.bedId());
             bedHelper.markAsInCleaning(previousBedId);
 
             LOG.info("[UPDATE] EncounterAssignToBed success oldId={} newId={} encounterId={} patientId={} roomId={} bedId={}",
