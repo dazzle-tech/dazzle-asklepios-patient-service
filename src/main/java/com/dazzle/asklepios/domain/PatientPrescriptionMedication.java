@@ -83,8 +83,8 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
     @Column(name = "chronic_medication", nullable = false)
     private Boolean chronicMedication = false;
 
-    @Column(name = "maximum_dose")
-    private Long maximumDose;
+    @Column(name = "maximum_dose", precision = 10, scale = 2)
+    private BigDecimal maximumDose;
 
 
 

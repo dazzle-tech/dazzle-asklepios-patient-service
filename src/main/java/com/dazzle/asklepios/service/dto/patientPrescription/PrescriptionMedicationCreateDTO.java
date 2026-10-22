@@ -29,7 +29,7 @@ public class PrescriptionMedicationCreateDTO {
     public BigDecimal duration;
     public String durationType;
 
-    public Long maximumDose;
+    public BigDecimal maximumDose;
     public Boolean allowedSubstitute;
 
     public String indicationManually;
