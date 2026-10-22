@@ -35,7 +35,9 @@ public record PatientEncounterCompletionValidationDTO(
 
         List<String> missing,
 
-        List<DiagnosticCheckoutApproval> diagnosticApprovals
+        List<DiagnosticCheckoutApproval> diagnosticApprovals,
+
+        List<MissingSupportiveDocumentRequirementDTO> missingRequirements
 
 ) implements Serializable {
 }
