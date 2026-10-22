@@ -35,6 +35,7 @@ import com.dazzle.asklepios.service.helper.BrandMedicationHelper;
 import com.dazzle.asklepios.service.helper.DiagnosticTestHelper;
 import com.dazzle.asklepios.service.helper.ProcedureHelper;
 import com.dazzle.asklepios.service.helper.ServiceHelper;
+import com.dazzle.asklepios.service.helper.UomPriceFactorHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
@@ -80,6 +81,7 @@ public class PatientServiceAndProductService {
     private final PatientItemPricingApplicationService patientItemPricingApplicationService;
     private final InsurancePriceListCoverageService insurancePriceListCoverageService;
     private final EncounterReopenGuard encounterReopenGuard;
+    private final UomPriceFactorHelper uomPriceFactorHelper;
 
     public PatientServiceAndProductService(
             PatientServiceAndProductRepository patientServiceAndProductRepository,
@@ -99,7 +101,8 @@ public class PatientServiceAndProductService {
             PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository,
             PatientItemPricingApplicationService patientItemPricingApplicationService,
             InsurancePriceListCoverageService insurancePriceListCoverageService,
-            EncounterReopenGuard encounterReopenGuard
+            EncounterReopenGuard encounterReopenGuard,
+            UomPriceFactorHelper uomPriceFactorHelper
     ) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.patientRepository = patientRepository;
@@ -119,10 +122,17 @@ public class PatientServiceAndProductService {
         this.patientItemPricingApplicationService = patientItemPricingApplicationService;
         this.insurancePriceListCoverageService = insurancePriceListCoverageService;
         this.encounterReopenGuard = encounterReopenGuard;
+        this.uomPriceFactorHelper = uomPriceFactorHelper;
     }
 
     public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
-        return createItem(dto, null, null);
+        Long uomGroupUnitId = medicationUomGroupUnitId(dto.billingItemType(), dto.uomGroupUnitId());
+
+        return createItem(
+                dto,
+                uomGroupUnitId,
+                uomPriceFactorHelper.resolveBrandFactor(dto.brandMedicationId(), uomGroupUnitId)
+        );
     }
 
     /**
@@ -155,7 +165,8 @@ public class PatientServiceAndProductService {
                 ServiceSource.URGENT_CARE_MEDICATION_ORDER,
                 orderId,
                 null,
-                Boolean.TRUE
+                Boolean.TRUE,
+                uomGroupUnitId
         );
 
         return createItem(dto, uomGroupUnitId, uomPriceFactor);
@@ -274,6 +285,13 @@ public class PatientServiceAndProductService {
             procedureHelper.validateProcedureExists(dto.procedureId());
             entity.setProcedureId(dto.procedureId());
         }
+
+        // The unit is part of the item: changing it (or the brand) re-prices the line
+        Long uomGroupUnitId = medicationUomGroupUnitId(dto.billingItemType(), dto.uomGroupUnitId());
+        entity.setUomGroupUnitId(uomGroupUnitId);
+        entity.setUomPriceFactor(
+                uomPriceFactorHelper.resolveBrandFactor(entity.getBrandMedicationId(), uomGroupUnitId)
+        );
 
         entity.setQuantity(dto.quantity());
         entity.setCurrency(dto.currency());
@@ -403,12 +421,15 @@ public class PatientServiceAndProductService {
                         validateReferences(dto);
                         validateNoDuplicateEncounterItem(dto, encounter.getId());
 
+                        Long uomGroupUnitId =
+                                medicationUomGroupUnitId(dto.billingItemType(), dto.uomGroupUnitId());
+
                         return buildEntityFromCreateDto(
                                 dto,
                                 patient.getId(),
                                 encounter,
-                                null,
-                                null
+                                uomGroupUnitId,
+                                uomPriceFactorHelper.resolveBrandFactor(dto.brandMedicationId(), uomGroupUnitId)
                         );
                     })
                     .toList();
@@ -861,6 +882,11 @@ public class PatientServiceAndProductService {
             long quantity
     ) {
         patientItemPricingApplicationService.applyToItem(item, encounter.getFacilityId());
+    }
+
+    /** A UOM unit only applies to medication lines */
+    private static Long medicationUomGroupUnitId(BillingItemTypes billingItemType, Long uomGroupUnitId) {
+        return billingItemType == BillingItemTypes.MEDICATION ? uomGroupUnitId : null;
     }
 
     private void validateReferences(PatientServiceProductCreateDTO dto) {
