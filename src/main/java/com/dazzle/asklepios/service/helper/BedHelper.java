@@ -31,6 +31,27 @@ public class BedHelper {
         }
     }
 
+    public void markAsOccupied(Long bedId) {
+        try {
+            bedClient.markAsOccupied(bedId);
+            LOG.info("[MARK_OCCUPIED] success bedId={}", bedId);
+        } catch (FeignException.NotFound ex) {
+            LOG.warn("[MARK_OCCUPIED] bed not found bedId={}", bedId);
+            throw new NotFoundAlertException(
+                    "Bed not found: " + bedId,
+                    "bed",
+                    "notfound"
+            );
+        } catch (FeignException ex) {
+            LOG.error("[MARK_OCCUPIED] failed bedId={} status={}", bedId, ex.status(), ex);
+            throw new BadRequestAlertException(
+                    "Bed is not available to be occupied: " + bedId,
+                    "bed",
+                    "bed.notAvailable"
+            );
+        }
+    }
+
     public void markAsInCleaning(Long bedId) {
         if (bedId == null) {
             return;
