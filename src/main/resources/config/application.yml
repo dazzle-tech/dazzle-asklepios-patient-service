@@ -126,6 +126,10 @@ spring:
       naming:
         physical-strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
         implicit-strategy: org.springframework.boot.orm.jpa.hibernate.SpringImplicitNamingStrategy
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 55MB
   messages:
     basename: i18n/messages
   main:
