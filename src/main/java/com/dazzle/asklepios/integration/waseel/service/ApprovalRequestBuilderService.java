@@ -13,9 +13,12 @@ import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizatio
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalEncounterMapper;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalEligibilitySnapshot;
+import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalEncounter;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalItem;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalRequest;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalSubscriber;
+import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalSupportingInfo;
+import com.dazzle.asklepios.integration.waseel.service.LaboratoryItemSupportingInfoLinker.LabTestSource;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalCareTeamMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalDiagnosisMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalItemMapper;
@@ -31,14 +34,21 @@ import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.PatientItemPricingApplicationService;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalEncounter;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -146,13 +156,19 @@ public class ApprovalRequestBuilderService {
         WaseelApprovalEncounter waseelEncounter =
                 encounterMapper.toWaseelEncounter(encounter, nphiesId);
 
-        var supportingInfo = approvalSupportingInfoMapper.toSupportingInfo(encounter);
+        Map<Integer, LabTestSource> labTestSources = new LinkedHashMap<>();
+        var supportingInfo = approvalSupportingInfoMapper.toSupportingInfo(encounter, labTestSources);
 
-        var waseelItems = approvalItemMapper.toWaseelItems(
+        var waseelItems = linkItemSupportingInfo(
                 pendingItems,
-                snapshot.insurancePlan() == null ? null : snapshot.insurancePlan().patientShare(),
-                encounter,
-                supportingInfo
+                approvalItemMapper.toWaseelItems(
+                        pendingItems,
+                        snapshot.insurancePlan() == null ? null : snapshot.insurancePlan().patientShare(),
+                        encounter,
+                        supportingInfo
+                ),
+                supportingInfo,
+                labTestSources
         );
 
         BigDecimal totalNet = calculateTotalNet(waseelItems);
@@ -180,6 +196,125 @@ public class ApprovalRequestBuilderService {
                 waseelItems,
                 totalNet
         );
+    }
+
+    private List<WaseelApprovalItem> linkItemSupportingInfo(
+            List<PatientServiceAndProduct> products,
+            List<WaseelApprovalItem> items,
+            List<WaseelApprovalSupportingInfo> supportingInfo,
+            Map<Integer, LabTestSource> labTestSources
+    ) {
+        List<Integer> allSequences = supportingInfo == null
+                ? List.of()
+                : supportingInfo.stream()
+                .map(WaseelApprovalSupportingInfo::sequence)
+                .filter(Objects::nonNull)
+                .toList();
+        Set<Integer> consumedLabTestSequences = new LinkedHashSet<>();
+        List<WaseelApprovalItem> linked = new ArrayList<>();
+        for (int index = 0; index < items.size(); index++) {
+            WaseelApprovalItem item = items.get(index);
+            PatientServiceAndProduct product = index < products.size() ? products.get(index) : null;
+            boolean laboratoryItem = isLaboratoryItem(item.type(), product);
+            LaboratoryItemSupportingInfoLinker.ItemSupportingInfoLink labLink =
+                    LaboratoryItemSupportingInfoLinker.sequencesForItem(
+                            laboratoryItem,
+                            product == null ? null : product.getDiagnosticTestId(),
+                            laboratoryOrderTestId(product),
+                            supportingInfo,
+                            allSequences,
+                            labTestSources,
+                            consumedLabTestSequences
+                    );
+            if (laboratoryItem && labLink.labTestsOnClaim() > 1 && !labLink.matchedByIdentity()) {
+                log.warn(
+                        "[PREAUTH_BUILD] Laboratory item {} code {} had no result match. Linked lab-test sequence {}.",
+                        item.sequence(),
+                        item.itemCode(),
+                        labLink.linkedLabTestSequence()
+                );
+            }
+            boolean medicationItem = isMedicationItem(item.type(), product);
+            MedicationDaysSupplyLinker.ItemDaysSupplyLink daysSupplyLink =
+                    MedicationDaysSupplyLinker.sequencesForItem(
+                            medicationItem,
+                            labLink.sequences(),
+                            item.supportingInfoSequence(),
+                            supportingInfo
+                    );
+            if (item.type() != null
+                    && "MEDICATION-CODES".equalsIgnoreCase(item.type().trim())
+                    && daysSupplyLink.daysSupplySequence() == null) {
+                log.warn(
+                        "[PREAUTH_BUILD] Medication item {} code {} has no days-supply link.",
+                        item.sequence(),
+                        item.itemCode()
+                );
+            }
+            linked.add(copyWithSupportingInfo(item, daysSupplyLink.sequences()));
+        }
+        return linked;
+    }
+
+    private WaseelApprovalItem copyWithSupportingInfo(
+            WaseelApprovalItem item,
+            List<Integer> supportingInfoSequences
+    ) {
+        return new WaseelApprovalItem(
+                item.sequence(),
+                item.type(),
+                item.itemCode(),
+                item.itemDescription(),
+                item.nonStandardCode(),
+                item.nonStandardDesc(),
+                item.isPackage(),
+                item.isMaternity(),
+                item.bodySite(),
+                item.subSite(),
+                item.quantity(),
+                item.quantityCode(),
+                item.unitPrice(),
+                item.discount(),
+                item.factor(),
+                item.taxPercent(),
+                item.patientSharePercent(),
+                item.net(),
+                item.tax(),
+                item.patientShare(),
+                item.payerShare(),
+                item.startDate(),
+                item.endDate(),
+                supportingInfoSequences,
+                item.careTeamSequence(),
+                item.diagnosisSequence(),
+                item.invoiceNo(),
+                item.itemDetails()
+        );
+    }
+
+    private boolean isLaboratoryItem(String waseelType, PatientServiceAndProduct product) {
+        if (waseelType != null && "LABORATORY".equalsIgnoreCase(waseelType.trim())) {
+            return true;
+        }
+        if (product == null || product.getBillingItemType() == null) {
+            return false;
+        }
+        BillingItemTypes billingType = product.getBillingItemType();
+        return billingType == BillingItemTypes.LABORATORY || billingType == BillingItemTypes.PATHOLOGY;
+    }
+
+    private boolean isMedicationItem(String waseelType, PatientServiceAndProduct product) {
+        if (waseelType != null && "MEDICATION-CODES".equalsIgnoreCase(waseelType.trim())) {
+            return true;
+        }
+        return product != null && product.getBillingItemType() == BillingItemTypes.MEDICATION;
+    }
+
+    private Long laboratoryOrderTestId(PatientServiceAndProduct product) {
+        if (product == null || product.getServiceSource() != ServiceSource.LABORATORY) {
+            return null;
+        }
+        return product.getSourceId();
     }
 
     private WaseelApprovalSubscriber buildSubscriber(PatientEncounter encounter) {

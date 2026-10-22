@@ -42,6 +42,7 @@ import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import com.dazzle.asklepios.service.NormalRangeMatcherService;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalSupportingInfo;
+import com.dazzle.asklepios.integration.waseel.service.LaboratoryItemSupportingInfoLinker.LabTestSource;
 import com.dazzle.asklepios.integration.waseel.service.pdf.InvestigationResultsPdfRenderer;
 import com.dazzle.asklepios.integration.waseel.service.pdf.InvestigationResultsReport;
 import com.dazzle.asklepios.repository.ApLovValueRepository;
@@ -155,7 +156,18 @@ public class ApprovalSupportingInfoMapper {
     private final DiagnosticTestClient diagnosticTestClient;
 
     public List<WaseelApprovalSupportingInfo> toSupportingInfo(PatientEncounter encounter) {
-        return toSupportingInfo(encounter, false);
+        return toSupportingInfo(encounter, null);
+    }
+
+    /**
+     * @param labTestSources when non-null, filled with each {@code lab-test}
+     *        sequence and the order test / diagnostic test that produced it
+     */
+    public List<WaseelApprovalSupportingInfo> toSupportingInfo(
+            PatientEncounter encounter,
+            Map<Integer, LabTestSource> labTestSources
+    ) {
+        return toSupportingInfo(encounter, false, labTestSources);
     }
 
     /**
@@ -163,10 +175,25 @@ public class ApprovalSupportingInfoMapper {
      * attachment are read from the claim encounter copy when one exists for the encounter.
      */
     public List<WaseelApprovalSupportingInfo> toClaimSupportingInfo(PatientEncounter encounter) {
-        return toSupportingInfo(encounter, true);
+        return toClaimSupportingInfo(encounter, null);
     }
 
-    private List<WaseelApprovalSupportingInfo> toSupportingInfo(PatientEncounter encounter, boolean attachPdfReport) {
+    /**
+     * @param labTestSources when non-null, filled with each {@code lab-test}
+     *        sequence and the order test / diagnostic test that produced it
+     */
+    public List<WaseelApprovalSupportingInfo> toClaimSupportingInfo(
+            PatientEncounter encounter,
+            Map<Integer, LabTestSource> labTestSources
+    ) {
+        return toSupportingInfo(encounter, true, labTestSources);
+    }
+
+    private List<WaseelApprovalSupportingInfo> toSupportingInfo(
+            PatientEncounter encounter,
+            boolean attachPdfReport,
+            Map<Integer, LabTestSource> labTestSources
+    ) {
         if (encounter == null || encounter.getId() == null) {
             return List.of();
         }
@@ -192,7 +219,13 @@ public class ApprovalSupportingInfoMapper {
             addBodyMeasurementsIfExists(result, sequence, encounter);
         }
         try {
-            addLabTestSupportingInfo(result, sequence, encounterId, claimCopy == null ? null : claimCopy.getId());
+            addLabTestSupportingInfo(
+                    result,
+                    sequence,
+                    encounterId,
+                    claimCopy == null ? null : claimCopy.getId(),
+                    labTestSources
+            );
         } catch (RuntimeException ex) {
             log.warn("Unable to add lab-test supporting info. encounterId={}", encounterId, ex);
         }
@@ -1163,7 +1196,8 @@ public class ApprovalSupportingInfoMapper {
             List<WaseelApprovalSupportingInfo> result,
             AtomicInteger sequence,
             Long encounterId,
-            Long claimCopyId
+            Long claimCopyId,
+            Map<Integer, LabTestSource> labTestSources
     ) {
         List<DiagnosticOrderTest> laboratoryTests = findActiveInvestigationTests(encounterId).stream()
                 .filter(test -> test != null
@@ -1210,8 +1244,9 @@ public class ApprovalSupportingInfoMapper {
                 continue;
             }
 
+            Integer labSequence = sequence.getAndIncrement();
             result.add(new WaseelApprovalSupportingInfo(
-                    sequence.getAndIncrement(),
+                    labSequence,
                     LAB_TEST,
                     loinc.trim(),
                     null,
@@ -1224,6 +1259,9 @@ public class ApprovalSupportingInfoMapper {
                     labTestUnit(sources, profiles, unitLabels),
                     null
             ));
+            if (labTestSources != null) {
+                labTestSources.put(labSequence, new LabTestSource(test.getId(), test.getTestId()));
+            }
         }
     }
 
