@@ -23,7 +23,6 @@ import com.dazzle.asklepios.integration.waseel.service.mapper.AsklepiosLovCodes;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -37,6 +36,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -108,12 +108,23 @@ public class WaseelEligibilityCheckService {
 
             log.setApiStatus(response == null ? null : response.status());
             log.setStatusCode(response == null ? null : response.outcome());
-            log.setMessage(response == null ? null : response.disposition());
             log.setEligibilityResponseId(response == null ? null : response.nphiesResponseId());
             log.setEligibilityResponseUrl(response == null ? null : response.eligibilityIdentifierUrl());
-            log.setRequestStatus("SUCCESS");
             log.setRespondedAt(Instant.now());
             log.setResponseJson(toJson(response));
+
+            Optional<WaseelEligibilityRejectionInterpreter.Rejection> rejection =
+                    WaseelEligibilityRejectionInterpreter.fromResponse(response, objectMapper);
+            if (rejection.isPresent()) {
+                throw new BadRequestAlertException(
+                        rejection.get().message(),
+                        ENTITY_NAME,
+                        rejection.get().errorKey()
+                );
+            }
+
+            log.setMessage(response.disposition());
+            log.setRequestStatus("SUCCESS");
 
             WaseelEligibilityRequest saved = eligibilityLogRepository.save(log);
 
@@ -174,7 +185,18 @@ public class WaseelEligibilityCheckService {
     }
 
     private BadRequestAlertException mapWaseelClientError(HttpClientErrorException ex) {
-        String waseelMessage = extractWaseelErrorMessage(ex.getResponseBodyAsString());
+        String responseBody = ex.getResponseBodyAsString();
+        Optional<WaseelEligibilityRejectionInterpreter.Rejection> notFound =
+                WaseelEligibilityRejectionInterpreter.insuranceNotFoundFromHttpBody(responseBody, objectMapper);
+        if (notFound.isPresent()) {
+            return new BadRequestAlertException(
+                    notFound.get().message(),
+                    ENTITY_NAME,
+                    notFound.get().errorKey()
+            );
+        }
+
+        String waseelMessage = extractWaseelErrorMessage(responseBody);
 
         if (waseelMessage != null && waseelMessage.toLowerCase().contains("failed to read request")) {
             return new BadRequestAlertException(
@@ -201,27 +223,7 @@ public class WaseelEligibilityCheckService {
     }
 
     private String extractWaseelErrorMessage(String responseBody) {
-        if (responseBody == null || responseBody.isBlank()) {
-            return null;
-        }
-
-        try {
-            JsonNode node = objectMapper.readTree(responseBody);
-
-            if (node.hasNonNull("detail")) {
-                return node.get("detail").asText();
-            }
-            if (node.hasNonNull("message")) {
-                return node.get("message").asText();
-            }
-            if (node.hasNonNull("error")) {
-                return node.get("error").asText();
-            }
-        } catch (Exception ignored) {
-            // ignore parsing error
-        }
-
-        return responseBody.trim();
+        return WaseelEligibilityRejectionInterpreter.describeHttpError(responseBody, objectMapper);
     }
 
     private void triggerBackendPreAuthorizationSubmission(EligibilityCheckRequest request) {
