@@ -30,6 +30,7 @@ import com.dazzle.asklepios.service.dto.billing.PreviewCatalogItemPricingRequest
 import com.dazzle.asklepios.service.dto.billing.PreviewCatalogItemPricingResult;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
 import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
+import com.dazzle.asklepios.service.helper.UomPriceFactorHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -70,6 +71,7 @@ public class CatalogItemPricingPreviewService {
     private final FinancialDocumentRepository financialDocumentRepository;
     private final FinancialDocumentItemRepository financialDocumentItemRepository;
     private final InvoiceItemPricingSnapshotService invoiceItemPricingSnapshotService;
+    private final UomPriceFactorHelper uomPriceFactorHelper;
 
     private static final int MONEY_SCALE = 4;
 
@@ -700,7 +702,20 @@ public class CatalogItemPricingPreviewService {
     ) {
         Long sourceId = resolveSourceId(request);
 
+        // Priced in the picked UOM unit, as the line will be once saved
+        Long uomGroupUnitId =
+                request.billingItemType() == BillingItemTypes.MEDICATION
+                        ? request.uomGroupUnitId()
+                        : null;
+
         return PatientServiceAndProduct.builder()
+                .uomGroupUnitId(uomGroupUnitId)
+                .uomPriceFactor(
+                        uomPriceFactorHelper.resolveBrandFactor(
+                                request.brandMedicationId(),
+                                uomGroupUnitId
+                        )
+                )
                 .patientId(request.patientId())
                 .encounterId(encounter.getId())
                 .billingItemType(request.billingItemType())

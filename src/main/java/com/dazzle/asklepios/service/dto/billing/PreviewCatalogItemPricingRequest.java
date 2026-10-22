@@ -39,7 +39,10 @@ public record PreviewCatalogItemPricingRequest(
 
         Long patientInsuranceId,
 
-        Long invoiceId
+        Long invoiceId,
+
+        /** MEDICATION only: UOM unit to price in; null = the brand's price base unit */
+        Long uomGroupUnitId
 
 ) implements Serializable {
 }
