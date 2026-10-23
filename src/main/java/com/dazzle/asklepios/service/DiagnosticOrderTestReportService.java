@@ -1,6 +1,8 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.radiologyImage.PacsIntegrationClient;
+import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
@@ -9,12 +11,15 @@ import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.RadiologyImageStatus;
 import com.dazzle.asklepios.domain.enumeration.Severity;
 import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportCommentsRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportCreateDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportRejectDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportReviewDTO;
@@ -39,7 +44,9 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -66,6 +73,8 @@ public class DiagnosticOrderTestReportService {
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
     private final DiagnosticOrderTestReportCommentsRepository diagnosticOrderTestReportCommentsRepository;
+    private final NotificationHelper notificationHelper;
+    private final DepartmentHelper departmentHelper;
 
     public DiagnosticOrderTestReportService(
             DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository,
@@ -75,7 +84,9 @@ public class DiagnosticOrderTestReportService {
             PacsIntegrationClient pacsIntegrationService, DiagnosticOrderTestService diagnosticOrderTestService,
             DiagnosticOrderStatusService diagnosticOrderStatusService,
             DiagnosticOrderTestStatusService diagnosticOrderTestStatusService,
-            DiagnosticOrderTestReportCommentsRepository diagnosticOrderTestReportCommentsRepository
+            DiagnosticOrderTestReportCommentsRepository diagnosticOrderTestReportCommentsRepository,
+            NotificationHelper notificationHelper,
+            DepartmentHelper departmentHelper
     ) {
         this.diagnosticOrderTestReportRepository = diagnosticOrderTestReportRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
@@ -86,6 +97,8 @@ public class DiagnosticOrderTestReportService {
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
         this.diagnosticOrderTestReportCommentsRepository = diagnosticOrderTestReportCommentsRepository;
+        this.notificationHelper = notificationHelper;
+        this.departmentHelper = departmentHelper;
     }
 
     private String currentUsername() {
@@ -276,6 +289,10 @@ public class DiagnosticOrderTestReportService {
 
         DiagnosticOrderTestReport saved =
                 diagnosticOrderTestReportRepository.save(report);
+
+        if (saved.getReviewDate() != null) {
+            notificationForRadiologyResultReviewed(saved);
+        }
 
         recomputeOrderStatusesByOrderTestId(saved.getOrderTestId());
 
@@ -1060,6 +1077,101 @@ public class DiagnosticOrderTestReportService {
         return ACCESSION_PREFIX + trimmed;
     }
 
+    private void notificationForRadiologyResultReviewed(DiagnosticOrderTestReport report) {
+        if (report == null || report.getOrderTestId() == null) {
+            return;
+        }
+
+        DiagnosticOrderTest orderTest = diagnosticOrderTestRepository.findById(report.getOrderTestId())
+                .orElse(null);
+
+        if (orderTest == null || orderTest.getOrderId() == null) {
+            LOG.warn(
+                    "Skip radiology result reviewed notification because order test/order is missing. reportId={}, orderTestId={}",
+                    report.getId(),
+                    report.getOrderTestId()
+            );
+            return;
+        }
+
+        DiagnosticOrder order = diagnosticOrderRepository.findById(orderTest.getOrderId())
+                .orElse(null);
+
+        if (order == null) {
+            LOG.warn(
+                    "Skip radiology result reviewed notification because order is missing. reportId={}, orderId={}",
+                    report.getId(),
+                    orderTest.getOrderId()
+            );
+            return;
+        }
+
+        Long departmentId = orderTest.getReceivedDepartmentId() != null
+                ? orderTest.getReceivedDepartmentId()
+                : order.getFromDepartmentId();
+        if (departmentId == null && order.getEncounter() != null) {
+            departmentId = order.getEncounter().getDepartmentId();
+        }
+
+        if (departmentId == null) {
+            LOG.warn(
+                    "Skip radiology result reviewed notification because department is missing. reportId={}, orderTestId={}, orderId={}",
+                    report.getId(),
+                    orderTest.getId(),
+                    order.getId()
+            );
+            return;
+        }
+
+        DepartmentDTO department = departmentHelper.getDepartment(departmentId);
+        String login = SecurityUtils.getCurrentUserLogin().orElse(null);
+        Patient patient = order.getPatientId() == null
+                ? null
+                : patientRepository.findById(order.getPatientId()).orElse(null);
+
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
+                notificationHelper.resolveRecipients(departmentId, login, report.getCreatedBy(), patient, null, false);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("report_id", report.getId());
+        data.put("order_test_id", orderTest.getId());
+        data.put("order_id", order.getId());
+        data.put("patient_id", order.getPatientId());
+        data.put("patient_name", notificationHelper.getPatientName(patient));
+        data.put("encounter_id", order.getEncounter() != null ? order.getEncounter().getId() : "");
+        data.put("department_id", departmentId);
+        data.put("department_name", department != null ? department.name() : "");
+        data.put("test_id", orderTest.getTestId());
+        data.put("test_type", orderTest.getOrderType() != null ? orderTest.getOrderType().toString() : "");
+        data.put("report_severity", report.getSeverity() != null ? report.getSeverity().toString() : "");
+        data.put("reviewed_by", report.getReviewBy() != null ? report.getReviewBy() : "");
+        data.put("reviewed_date", report.getReviewDate() != null ? report.getReviewDate().toString() : "");
+
+        try {
+            LOG.debug(
+                    "Creating radiology result reviewed notification. reportId={}, departmentId={}, recipientsByRule={}",
+                    report.getId(),
+                    departmentId,
+                    recipientsByRule
+            );
+
+            notificationHelper.sendNotification(
+                    null,
+                    NotificationCode.RADIOLOGY_RESULT_REVIEWED,
+                    recipientsByRule,
+                    data,
+                    "DIAGNOSTIC_ORDER_TEST_REPORT",
+                    report.getId()
+            );
+        } catch (Exception e) {
+            LOG.warn(
+                    "Failed to create radiology result reviewed notification. reportId={}, error={}",
+                    report.getId(),
+                    e.getMessage()
+            );
+        }
+    }
+
     @Transactional
     public void bulkToggleReview(
             List<Long> ids
@@ -1101,10 +1213,14 @@ public class DiagnosticOrderTestReportService {
                 );
             }
 
-            diagnosticOrderTestReportRepository.save(report);
+            DiagnosticOrderTestReport saved = diagnosticOrderTestReportRepository.save(report);
+
+            if (saved.getReviewDate() != null) {
+                notificationForRadiologyResultReviewed(saved);
+            }
 
             recomputeOrderStatusesByOrderTestId(
-                    report.getOrderTestId()
+                    saved.getOrderTestId()
             );
         });
     }

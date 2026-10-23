@@ -292,6 +292,23 @@ public class DiagnosticOrderTestResultService {
         return diagnosticOrderTestResultRepository.save(testResult);
     }
 
+    public DiagnosticOrderTestResult toggleReview(Long resultId, String username) {
+        DiagnosticOrderTestResult saved = orderTestResultStatusService.toggleReview(resultId, username);
+        if (saved.getReviewDate() != null) {
+            notificationForLaboratoryResultReviewed(saved);
+        }
+        return saved;
+    }
+
+    public void bulkToggleReview(List<Long> resultIds, String username) {
+        if (resultIds == null || resultIds.isEmpty()) {
+            return;
+        }
+        for (Long resultId : resultIds) {
+            toggleReview(resultId, username);
+        }
+    }
+
     /**
      * Approve a single result using full business logic.
      */
@@ -702,6 +719,100 @@ public class DiagnosticOrderTestResultService {
             TestResultMarker.CRITICAL_UPPER,
             TestResultMarker.CRITICAL_LOWER
     );
+
+    private void notificationForLaboratoryResultReviewed(DiagnosticOrderTestResult result) {
+        if (result == null || result.getOrderTestId() == null) {
+            return;
+        }
+
+        DiagnosticOrderTest orderTest = diagnosticOrderTestRepository.findById(result.getOrderTestId())
+                .orElse(null);
+
+        if (orderTest == null || orderTest.getOrderId() == null) {
+            LOG.warn(
+                    "Skip laboratory result reviewed notification because order test/order is missing. resultId={}, orderTestId={}",
+                    result.getId(),
+                    result.getOrderTestId()
+            );
+            return;
+        }
+
+        if (!isLaboratoryTest(orderTest)) {
+            return;
+        }
+
+        DiagnosticOrder order = diagnosticOrderRepository.findById(orderTest.getOrderId())
+                .orElse(null);
+
+        if (order == null) {
+            LOG.warn(
+                    "Skip laboratory result reviewed notification because order is missing. resultId={}, orderId={}",
+                    result.getId(),
+                    orderTest.getOrderId()
+            );
+            return;
+        }
+
+        Long departmentId = resolveDepartmentId(order, orderTest);
+        if (departmentId == null) {
+            LOG.warn(
+                    "Skip laboratory result reviewed notification because department is missing. resultId={}, orderTestId={}, orderId={}",
+                    result.getId(),
+                    orderTest.getId(),
+                    order.getId()
+            );
+            return;
+        }
+
+        DepartmentDTO department = departmentHelper.getDepartment(departmentId);
+        String login = SecurityUtils.getCurrentUserLogin().orElse(null);
+        Patient patient = resolvePatient(order.getPatientId()).orElse(null);
+
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
+                notificationHelper.resolveRecipients(departmentId, login, result.getCreatedBy(), patient, null, false);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("result_id", result.getId());
+        data.put("order_test_id", orderTest.getId());
+        data.put("order_id", order.getId());
+        data.put("patient_id", order.getPatientId());
+        data.put("patient_name", notificationHelper.getPatientName(patient));
+        data.put("encounter_id", order.getEncounter() != null ? order.getEncounter().getId() : "");
+        data.put("department_id", departmentId);
+        data.put("department_name", department != null ? department.name() : "");
+        data.put("test_id", orderTest.getTestId());
+        data.put("test_type", orderTest.getOrderType() != null ? orderTest.getOrderType().toString() : "");
+        data.put("marker", result.getMarker() != null ? result.getMarker().toString() : "");
+        data.put("normal_range", result.getNormalRangeValue() != null ? result.getNormalRangeValue() : "");
+        data.put("result_value_number", result.getResultValueNumber() != null ? result.getResultValueNumber() : "");
+        data.put("result_value_text", result.getResultValueText() != null ? result.getResultValueText() : "");
+        data.put("reviewed_by", result.getReviewBy() != null ? result.getReviewBy() : "");
+        data.put("reviewed_date", result.getReviewDate() != null ? result.getReviewDate().toString() : "");
+
+        try {
+            LOG.debug(
+                    "Creating laboratory result reviewed notification. resultId={}, departmentId={}, recipientsByRule={}",
+                    result.getId(),
+                    departmentId,
+                    recipientsByRule
+            );
+
+            notificationHelper.sendNotification(
+                    null,
+                    NotificationCode.LABORATORY_RESULT_REVIEWED,
+                    recipientsByRule,
+                    data,
+                    "DIAGNOSTIC_ORDER_TEST_RESULT",
+                    result.getId()
+            );
+        } catch (Exception e) {
+            LOG.warn(
+                    "Failed to create laboratory result reviewed notification. resultId={}, error={}",
+                    result.getId(),
+                    e.getMessage()
+            );
+        }
+    }
 
     private void notificationForResultReady(DiagnosticOrderTestResult result, TestResultMarker calculatedMarker) {
         if (result == null || result.getOrderTestId() == null) {
