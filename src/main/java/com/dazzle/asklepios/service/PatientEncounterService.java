@@ -1187,6 +1187,13 @@ public class PatientEncounterService {
                     NotificationCode.ENCOUNTER_CLOSED,
                     null
             );
+            if (saved.getEncounterType() == EncounterType.CLINIC) {
+                notifyEncounterEvent(
+                        saved,
+                        NotificationCode.OPD_REPORT_APPROVED,
+                        null
+                );
+            }
 
             recordPostVisitFollowUp(saved);
 
@@ -2604,6 +2611,11 @@ public class PatientEncounterService {
             notifyEncounterEvent(
                     saved,
                     NotificationCode.ENCOUNTER_CLOSED,
+                    null
+            );
+            notifyEncounterEvent(
+                    saved,
+                    NotificationCode.DISCHARGE_REPORT_APPROVED,
                     null
             );
 
