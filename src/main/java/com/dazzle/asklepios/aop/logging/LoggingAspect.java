@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.aop.logging;
 
 import com.dazzle.asklepios.config.Constants;
+import com.dazzle.asklepios.web.rest.errors.BusinessExceptions;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.AfterThrowing;
@@ -70,6 +71,10 @@ public class LoggingAspect {
      */
     @AfterThrowing(pointcut = "applicationPackagePointcut() && springBeanPointcut()", throwing = "e")
     public void logAfterThrowing(JoinPoint joinPoint, Throwable e) {
+        if (BusinessExceptions.isBusinessException(e)) {
+            logger(joinPoint).warn("Business exception in {}() : {}", joinPoint.getSignature().getName(), e.getMessage());
+            return;
+        }
         if (env.acceptsProfiles(Profiles.of(Constants.SPRING_PROFILE_DEVELOPMENT))) {
             logger(joinPoint).error(
                 "Exception in {}() with cause = '{}' and exception = '{}'",
