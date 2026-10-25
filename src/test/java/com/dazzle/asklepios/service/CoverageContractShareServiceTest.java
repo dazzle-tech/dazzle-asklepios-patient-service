@@ -946,6 +946,26 @@ class CoverageContractShareServiceTest {
     }
 
     @Test
+    void requiresPreApproval_limitIsDecidedWhenTheVisitIsBilled() {
+        when(coverageContractClient.resolve(any())).thenReturn(new CoverageContractResolveDtos.Response(
+                true,
+                "pre-approval",
+                contract(),
+                copayment("PERCENTAGE", "20"),
+                false,
+                false,
+                null,
+                null,
+                null,
+                null,
+                null,
+                preApprovalWithLimit("FIXED", "500")
+        ));
+
+        assertThat(coverageContractShareService.requiresPreApproval(insurance(), item())).isFalse();
+    }
+
+    @Test
     void requiresPreApproval_unmatchedReadingLeavesExistingFlow() {
         when(coverageContractClient.resolve(any())).thenReturn(new CoverageContractResolveDtos.Response(
                 true,
@@ -1167,6 +1187,24 @@ class CoverageContractShareServiceTest {
                 90L,
                 false,
                 null
+        );
+    }
+
+    private CoverageContractResolveDtos.PreApprovalSnapshot preApprovalWithLimit(String valueType, String limit) {
+        return new CoverageContractResolveDtos.PreApprovalSnapshot(
+                11L,
+                3L,
+                "FACILITY",
+                1L,
+                null,
+                "ALL",
+                "SERVICE",
+                null,
+                90L,
+                false,
+                null,
+                valueType,
+                new BigDecimal(limit)
         );
     }
 }

@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.client.setup.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.math.BigDecimal;
@@ -282,6 +283,42 @@ public final class CoverageContractResolveDtos {
             String serviceCategory,
             Long serviceId,
             Boolean allDiagnoses,
-            Long diagnosisId
-    ) {}
+            Long diagnosisId,
+            String valueType,
+            BigDecimal limitValue
+    ) {
+        @JsonCreator
+        public PreApprovalSnapshot {
+        }
+
+        public PreApprovalSnapshot(
+                Long preApprovalId,
+                Long itemId,
+                String approvalScope,
+                Long facilityId,
+                Long departmentId,
+                String encounterType,
+                String itemType,
+                String serviceCategory,
+                Long serviceId,
+                Boolean allDiagnoses,
+                Long diagnosisId
+        ) {
+            this(
+                    preApprovalId,
+                    itemId,
+                    approvalScope,
+                    facilityId,
+                    departmentId,
+                    encounterType,
+                    itemType,
+                    serviceCategory,
+                    serviceId,
+                    allDiagnoses,
+                    diagnosisId,
+                    null,
+                    null
+            );
+        }
+    }
 }

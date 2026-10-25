@@ -108,6 +108,9 @@ public class BillingTransactionService {
     private final PreAuthorizationResolutionService
             preAuthorizationResolutionService;
 
+    private final CoveragePreApprovalLimitService
+            coveragePreApprovalLimitService;
+
     private final EncounterTreatmentAdvanceService
             encounterTreatmentAdvanceService;
 
@@ -188,6 +191,14 @@ public class BillingTransactionService {
          * 1. Pricing calculation.
          */
         billingPricingService.calculate(
+                context
+        );
+
+        /*
+         * A coverage pre-approval limit is known only after the price exists.
+         * A line that crosses it stays pending and is not posted to the patient account.
+         */
+        coveragePreApprovalLimitService.applyIfExceeded(
                 context
         );
 

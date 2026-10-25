@@ -240,6 +240,16 @@ public class CoverageContractShareService {
             );
             return false;
         }
+        if (resolved.preApproval().limitValue() != null) {
+            LOG.info(
+                    "[COVERAGE_CONTRACT] Pre-approval limit is applied when the visit is billed patientInsuranceId={} preApprovalId={} valueType={} limit={}",
+                    insurance.getId(),
+                    resolved.preApproval().preApprovalId(),
+                    resolved.preApproval().valueType(),
+                    resolved.preApproval().limitValue()
+            );
+            return false;
+        }
         LOG.info(
                 "[COVERAGE_CONTRACT] Pre-approval required by contract terms patientInsuranceId={} contractId={} preApprovalId={}",
                 insurance.getId(),
@@ -247,6 +257,13 @@ public class CoverageContractShareService {
                 resolved.preApproval().preApprovalId()
         );
         return true;
+    }
+
+    public CoverageContractResolveDtos.Response resolveVisitContract(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item
+    ) {
+        return resolve(insurance, item);
     }
 
     private InsuranceSplit applyPeriodLimits(
