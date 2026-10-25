@@ -11,7 +11,9 @@ import java.util.Set;
 /**
  * Waseel accepts a {@code LABORATORY} item only when
  * {@code supportingInfoSequence} points at exactly one {@code lab-test} row.
- * Zero rows and many rows produce the same rejection.
+ * When several results are on the claim, the item is linked only to the row
+ * for its own order or diagnostic test. Another test's result is left for that test.
+ * A claim that has a single {@code lab-test} row keeps that row.
  */
 public final class LaboratoryItemSupportingInfoLinker {
 
@@ -108,16 +110,7 @@ public final class LaboratoryItemSupportingInfoLinker {
         if (byOrder != null) {
             return byOrder;
         }
-        Integer byTest = firstMatching(labSequences, labTests, consumedLabTestSequences, diagnosticTestId, false);
-        if (byTest != null) {
-            return byTest;
-        }
-        for (Integer sequence : labSequences) {
-            if (sequence != null && (consumedLabTestSequences == null || !consumedLabTestSequences.contains(sequence))) {
-                return sequence;
-            }
-        }
-        return labSequences.get(0);
+        return firstMatching(labSequences, labTests, consumedLabTestSequences, diagnosticTestId, false);
     }
 
     private static Integer firstMatching(

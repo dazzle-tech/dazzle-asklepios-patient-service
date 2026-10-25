@@ -354,10 +354,9 @@ public class ClaimRequestBuilderService {
             if (laboratoryItem) {
                 if (supportingInfoLink.labTestsOnClaim() > 1 && !supportingInfoLink.matchedByIdentity()) {
                     log.warn(
-                            "[CLAIM_BUILD] Laboratory item {} code {} had no result match. Linked lab-test sequence {} so Waseel receives exactly one. diagnosticTestId={} orderTestId={} encounterId={}",
+                            "[CLAIM_BUILD] Laboratory item {} code {} had no result match. Another test's lab result was not linked. diagnosticTestId={} orderTestId={} encounterId={}",
                             itemSequence,
                             base.itemCode(),
-                            supportingInfoLink.linkedLabTestSequence(),
                             invoiceProduct == null ? null : invoiceProduct.getDiagnosticTestId(),
                             laboratoryOrderTestId(invoiceProduct),
                             encounterId

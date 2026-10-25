@@ -2,6 +2,7 @@ package com.dazzle.asklepios.integration.waseel.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalSupportingInfo;
@@ -74,18 +75,21 @@ class LaboratoryItemSupportingInfoLinkerTest {
     }
 
     @Test
-    void unmatchedLaboratoryItemStillKeepsExactlyOneLabTest() {
+    void unmatchedLaboratoryItemDoesNotTakeAnotherTestsResult() {
         Set<Integer> consumed = new LinkedHashSet<>();
         List<WaseelApprovalSupportingInfo> supportingInfo = claimSupportingInfo();
 
-        ItemSupportingInfoLink first = link(true, 999L, null, supportingInfo, consumed);
-        ItemSupportingInfoLink second = link(true, 998L, null, supportingInfo, consumed);
+        ItemSupportingInfoLink withoutResult = link(true, 999L, null, supportingInfo, consumed);
+        ItemSupportingInfoLink owner = link(true, 22L, null, supportingInfo, consumed);
 
-        assertEquals(List.of(1, 2, 5, 7, 19), first.sequences());
-        assertEquals(1, first.labTestsOnItem());
-        assertFalse(first.matchedByIdentity());
-        assertEquals(List.of(1, 2, 5, 7, 22), second.sequences());
-        assertEquals(1, second.labTestsOnItem());
+        assertEquals(List.of(1, 2, 5, 7), withoutResult.sequences());
+        assertEquals(0, withoutResult.labTestsOnItem());
+        assertNull(withoutResult.linkedLabTestSequence());
+        assertFalse(withoutResult.matchedByIdentity());
+        assertEquals(List.of(1, 2, 5, 7, 22), owner.sequences());
+        assertEquals(22, owner.linkedLabTestSequence());
+        assertTrue(owner.matchedByIdentity());
+        assertEquals(Set.of(22), consumed);
     }
 
     @Test
