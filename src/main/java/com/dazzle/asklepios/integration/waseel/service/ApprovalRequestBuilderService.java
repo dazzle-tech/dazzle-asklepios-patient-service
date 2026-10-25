@@ -228,10 +228,9 @@ public class ApprovalRequestBuilderService {
                     );
             if (laboratoryItem && labLink.labTestsOnClaim() > 1 && !labLink.matchedByIdentity()) {
                 log.warn(
-                        "[PREAUTH_BUILD] Laboratory item {} code {} had no result match. Linked lab-test sequence {}.",
+                        "[PREAUTH_BUILD] Laboratory item {} code {} had no result match. Another test's lab result was not linked.",
                         item.sequence(),
-                        item.itemCode(),
-                        labLink.linkedLabTestSequence()
+                        item.itemCode()
                 );
             }
             boolean medicationItem = isMedicationItem(item.type(), product);
