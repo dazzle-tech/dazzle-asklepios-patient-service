@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.MessageSourceResolvable;
 import org.springframework.core.env.Environment;
@@ -65,12 +66,24 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
     }
 
     @ExceptionHandler
-    public ResponseEntity<Object> handleAnyException(Throwable ex, NativeWebRequest request) {
-        LOG.debug("Converting Exception to Problem Details:", ex);
-        ProblemDetailWithCause pdCause = wrapAndCustomizeProblem(ex, request);
-        return handleExceptionInternal((Exception) ex, pdCause, buildHeaders(ex), HttpStatusCode.valueOf(pdCause.getStatus()), request);
-    }
+    public ResponseEntity<Object> handleAnyException(
+            Throwable ex,
+            NativeWebRequest request
+    ) {
 
+        logException(ex);
+
+        ProblemDetailWithCause pdCause =
+                wrapAndCustomizeProblem(ex, request);
+
+        return handleExceptionInternal(
+                (Exception) ex,
+                pdCause,
+                buildHeaders(ex),
+                HttpStatusCode.valueOf(pdCause.getStatus()),
+                request
+        );
+    }
     @Nullable
     @Override
     protected ResponseEntity<Object> handleExceptionInternal(
@@ -109,6 +122,8 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
             .withProperty(FIELD_ERRORS_KEY, fieldErrors)
             .withProperty(PATH_KEY, "")
             .build();
+
+        addRequestId(problem);
 
         return handleExceptionInternal(ex, problem, headers, HttpStatus.BAD_REQUEST, request);
     }
@@ -167,7 +182,7 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
                 problem.setTitle("Validation failure");
             }
         }
-
+        addRequestId(problem);
         problem.setCause(buildCause(err.getCause(), null).orElse(null));
 
         return problem;
@@ -353,5 +368,44 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
             "de.",
             "com.dazzle.asklepios"
         );
+    }
+    private boolean isBusinessException(Throwable ex) {
+        return ex instanceof BadRequestAlertException
+                || ex instanceof NotFoundAlertException
+                || ex instanceof InsuranceItemNotCoveredException
+                || ex instanceof PatientAlreadyActiveException;
+    }
+
+
+    private void logException(Throwable ex) {
+
+        String requestId = MDC.get("requestId");
+
+        if (isBusinessException(ex)) {
+
+            LOG.warn(
+                    "[BUSINESS_EXCEPTION] requestId={} exceptionType={} message={}",
+                    requestId,
+                    ex.getClass().getSimpleName(),
+                    ex.getMessage()
+            );
+
+            return;
+        }
+
+        LOG.error(
+                "[SYSTEM_EXCEPTION] requestId={} exceptionType={} message={}",
+                requestId,
+                ex.getClass().getSimpleName(),
+                ex.getMessage(),
+                ex
+        );
+    }
+    private void addRequestId(ProblemDetailWithCause problem) {
+        String requestId = MDC.get("requestId");
+
+        if (StringUtils.isNotBlank(requestId)) {
+            problem.setProperty("requestId", requestId);
+        }
     }
 }

@@ -340,6 +340,10 @@ public class DiagnosticOrderTestStatusService {
         DiagnosticOrderTestStatus current = test.getStatus() == null ? DiagnosticOrderTestStatus.NEW : test.getStatus();
 
         if (current == DiagnosticOrderTestStatus.CANCELLED) {
+            LOG.warn(
+                    "[DiagnosticOrderTest] Cancel rejected. testId={} status=CANCELLED",
+                    testId
+            );
             throw new BadRequestAlertException(
                     "Already cancelled",
                     "diagnostic_order_tests",
@@ -350,6 +354,11 @@ public class DiagnosticOrderTestStatusService {
         DiagnosticStatus processingStatus = normalize(test.getProcessingStatus());
 
         if (processingStatus != DiagnosticStatus.NEW) {
+            LOG.warn(
+                    "[DiagnosticOrderTest] Cancel rejected. testId={} processingStatus={}",
+                    testId,
+                    processingStatus
+            );
             throw new BadRequestAlertException(
                     "Cannot cancel because this test has already started",
                     "test_already_started",
