@@ -8,6 +8,8 @@ import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
+import com.dazzle.asklepios.domain.DiagnosticTest;
+import com.dazzle.asklepios.domain.DiagnosticTestProfile;
 import com.dazzle.asklepios.domain.LabResultLog;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
@@ -22,6 +24,8 @@ import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestResultTechnicianNoteRepository;
+import com.dazzle.asklepios.repository.DiagnosticTestProfileRepository;
+import com.dazzle.asklepios.repository.DiagnosticTestRepository;
 import com.dazzle.asklepios.repository.LabResultLogRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
@@ -49,8 +53,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -76,6 +82,8 @@ public class DiagnosticOrderTestResultService {
     private final DepartmentHelper departmentHelper;
     private final NotificationHelper notificationHelper;
     private final DiagnosticOrderTestService diagnosticOrderTestService;
+    private final DiagnosticTestRepository diagnosticTestRepository;
+    private final DiagnosticTestProfileRepository diagnosticTestProfileRepository;
 
     private void validateResultValue(
             Long profileTestId,
@@ -394,6 +402,10 @@ public class DiagnosticOrderTestResultService {
         Page<DiagnosticOrderTestResult> page =
                 diagnosticOrderTestResultRepository.findAll(spec, pageable);
 
+        Map<Long, DiagnosticOrderTest> orderTestsById = loadOrderTests(page.getContent());
+        Map<Long, String> testNamesById = loadTestNames(orderTestsById);
+        Map<Long, String> profileNamesById = loadProfileNames(page.getContent());
+
         return page.map(result -> {
 
             Long patientId =
@@ -427,9 +439,86 @@ public class DiagnosticOrderTestResultService {
                             result.getId()
                     );
 
+            DiagnosticOrderTest orderTest = orderTestsById.get(result.getOrderTestId());
+            String testName = orderTest == null || orderTest.getTestId() == null
+                    ? null
+                    : blankToNull(testNamesById.get(orderTest.getTestId()));
+            String profileName = result.getProfileTestId() == null
+                    ? null
+                    : blankToNull(profileNamesById.get(result.getProfileTestId()));
+
             return DiagnosticOrderTestResultResponseVM
-                    .ofEntityWithViewNote(result, viewMarker, viewNormalRange, hasNote);
+                    .ofEntityWithViewNote(
+                            result,
+                            viewMarker,
+                            viewNormalRange,
+                            hasNote,
+                            testName,
+                            profileName,
+                            orderTest
+                    );
         });
+    }
+
+    private Map<Long, DiagnosticOrderTest> loadOrderTests(List<DiagnosticOrderTestResult> results) {
+        Set<Long> orderTestIds = results.stream()
+                .map(DiagnosticOrderTestResult::getOrderTestId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (orderTestIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return diagnosticOrderTestRepository.findAllById(orderTestIds).stream()
+                .filter(orderTest -> orderTest.getId() != null)
+                .collect(Collectors.toMap(
+                        DiagnosticOrderTest::getId,
+                        Function.identity(),
+                        (left, right) -> left
+                ));
+    }
+
+    private Map<Long, String> loadTestNames(Map<Long, DiagnosticOrderTest> orderTestsById) {
+        Set<Long> testIds = orderTestsById.values().stream()
+                .map(DiagnosticOrderTest::getTestId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (testIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return diagnosticTestRepository.findAllById(testIds).stream()
+                .filter(test -> test.getId() != null)
+                .collect(Collectors.toMap(
+                        DiagnosticTest::getId,
+                        test -> test.getName() == null ? "" : test.getName(),
+                        (left, right) -> left
+                ));
+    }
+
+    private Map<Long, String> loadProfileNames(List<DiagnosticOrderTestResult> results) {
+        Set<Long> profileIds = results.stream()
+                .map(DiagnosticOrderTestResult::getProfileTestId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (profileIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return diagnosticTestProfileRepository.findAllById(profileIds).stream()
+                .filter(profile -> profile.getId() != null)
+                .collect(Collectors.toMap(
+                        DiagnosticTestProfile::getId,
+                        profile -> profile.getName() == null ? "" : profile.getName(),
+                        (left, right) -> left
+                ));
+    }
+
+    private String blankToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
     @Transactional(readOnly = true)
