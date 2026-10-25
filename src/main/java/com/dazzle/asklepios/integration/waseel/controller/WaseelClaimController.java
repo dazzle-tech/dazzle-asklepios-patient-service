@@ -133,6 +133,8 @@ public class WaseelClaimController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate encounterDateTo,
             @RequestParam WaseelClaimType claimType,
             @RequestParam WaseelClaimSubType claimSubType,
+            @RequestParam(required = false) String medicalRecordNumber,
+            @RequestParam(required = false) String encounterNumber,
             @ParameterObject @PageableDefault(size = 20) Pageable pageable
     ) {
         return claimSubmissionService.listPendingInsuranceInvoices(
@@ -144,6 +146,8 @@ public class WaseelClaimController {
                 encounterDateTo,
                 claimType,
                 claimSubType,
+                medicalRecordNumber,
+                encounterNumber,
                 pageable
         );
     }

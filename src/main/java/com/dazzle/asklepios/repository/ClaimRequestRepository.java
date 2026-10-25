@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,6 +25,11 @@ public interface ClaimRequestRepository
     List<ClaimRequest> findByEncounterIdOrderByIdDesc(Long encounterId);
 
     Optional<ClaimRequest> findFirstByFinancialDocumentIdOrderByIdDesc(Long financialDocumentId);
+
+    List<ClaimRequest> findByFinancialDocumentIdInAndStatusOrderByIdDesc(
+            Collection<Long> financialDocumentIds,
+            ClaimStatus status
+    );
 
     boolean existsByFinancialDocumentIdAndStatusIn(Long financialDocumentId, List<ClaimStatus> statuses);
 

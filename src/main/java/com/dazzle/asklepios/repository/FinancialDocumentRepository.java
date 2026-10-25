@@ -102,6 +102,7 @@ public interface FinancialDocumentRepository extends JpaRepository<FinancialDocu
                 FROM financial_documents fd
                 INNER JOIN patient_encounters pe ON pe.id = fd.encounter_id
                 INNER JOIN patient_insurances pi ON pi.id = pe.patient_insurance_id
+                LEFT JOIN patients pt ON pt.id = fd.patient_id
                 WHERE fd.document_type = 'INVOICE'
                   AND fd.document_subtype = 'INSURANCE_CLAIM'
                   AND fd.status IN (:statuses)
@@ -133,6 +134,16 @@ public interface FinancialDocumentRepository extends JpaRepository<FinancialDocu
                                 )
                               )
                       )
+                  AND (
+                        :medicalRecordNumber = ''
+                        OR LOWER(COALESCE(pt.medical_record_number, ''))
+                           LIKE CONCAT('%', :medicalRecordNumber, '%') ESCAPE '\\'
+                      )
+                  AND (
+                        :encounterNumber = ''
+                        OR LOWER(COALESCE(pe.encounter_number, ''))
+                           LIKE CONCAT('%', :encounterNumber, '%') ESCAPE '\\'
+                      )
                 ORDER BY fd.created_date DESC
                 """,
             nativeQuery = true
@@ -147,6 +158,8 @@ public interface FinancialDocumentRepository extends JpaRepository<FinancialDocu
             @Param("encounterDateTo") LocalDate encounterDateTo,
             @Param("statuses") Collection<String> statuses,
             @Param("activeClaimStatuses") Collection<String> activeClaimStatuses,
-            @Param("claimType") String claimType
+            @Param("claimType") String claimType,
+            @Param("medicalRecordNumber") String medicalRecordNumber,
+            @Param("encounterNumber") String encounterNumber
     );
 }

@@ -26,5 +26,7 @@ public record PendingClaimInvoiceResponse(
         WaseelClaimSubType claimSubType,
         Integer matchingItemCount,
         BigDecimal matchingNetAmount,
-        boolean selectable
+        boolean selectable,
+        boolean rejectedClaim,
+        String rejectionMessage
 ) {}

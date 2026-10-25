@@ -3,10 +3,13 @@ package com.dazzle.asklepios.repository;
 import com.dazzle.asklepios.domain.BillingLedger;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerTransactionType;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -36,6 +39,13 @@ public interface BillingLedgerRepository
     List<BillingLedger>
     findAllByPatient_IdOrderByTransactionDateDescIdDesc(
             Long patientId
+    );
+
+    Page<BillingLedger>
+    findByPatient_IdAndAvailableChangeNotOrderByTransactionDateDescIdDesc(
+            Long patientId,
+            BigDecimal availableChange,
+            Pageable pageable
     );
 
     List<BillingLedger>

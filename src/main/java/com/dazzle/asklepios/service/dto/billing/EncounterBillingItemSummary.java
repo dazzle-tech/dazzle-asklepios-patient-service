@@ -63,7 +63,15 @@ public record EncounterBillingItemSummary(
 
         List<BillingResponsibilitySummary> responsibilities,
 
-        BigDecimal taxRate
+        BigDecimal taxRate,
+
+        String discountType,
+
+        BigDecimal discountRate,
+
+        String discountSource,
+
+        String discountReason
 
 ) implements Serializable {
 }
