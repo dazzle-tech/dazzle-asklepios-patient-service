@@ -6,6 +6,7 @@ import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
+import com.dazzle.asklepios.domain.DiagnosticTest;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.RadiologyImageStatus;
@@ -16,6 +17,7 @@ import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportCommentsRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
+import com.dazzle.asklepios.repository.DiagnosticTestRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
@@ -47,8 +49,10 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Service layer for managing {@link DiagnosticOrderTestReport}.
@@ -75,6 +79,7 @@ public class DiagnosticOrderTestReportService {
     private final DiagnosticOrderTestReportCommentsRepository diagnosticOrderTestReportCommentsRepository;
     private final NotificationHelper notificationHelper;
     private final DepartmentHelper departmentHelper;
+    private final DiagnosticTestRepository diagnosticTestRepository;
 
     public DiagnosticOrderTestReportService(
             DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository,
@@ -86,7 +91,8 @@ public class DiagnosticOrderTestReportService {
             DiagnosticOrderTestStatusService diagnosticOrderTestStatusService,
             DiagnosticOrderTestReportCommentsRepository diagnosticOrderTestReportCommentsRepository,
             NotificationHelper notificationHelper,
-            DepartmentHelper departmentHelper
+            DepartmentHelper departmentHelper,
+            DiagnosticTestRepository diagnosticTestRepository
     ) {
         this.diagnosticOrderTestReportRepository = diagnosticOrderTestReportRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
@@ -99,6 +105,7 @@ public class DiagnosticOrderTestReportService {
         this.diagnosticOrderTestReportCommentsRepository = diagnosticOrderTestReportCommentsRepository;
         this.notificationHelper = notificationHelper;
         this.departmentHelper = departmentHelper;
+        this.diagnosticTestRepository = diagnosticTestRepository;
     }
 
     private String currentUsername() {
@@ -814,8 +821,9 @@ public class DiagnosticOrderTestReportService {
         Page<DiagnosticOrderTestReport> page =
                 diagnosticOrderTestReportRepository.findAll(spec, pageable);
 
-        List<Long> reportIds = page.getContent()
-                .stream()
+        List<DiagnosticOrderTestReport> reports = page.getContent();
+
+        List<Long> reportIds = reports.stream()
                 .map(DiagnosticOrderTestReport::getId)
                 .toList();
 
@@ -824,10 +832,61 @@ public class DiagnosticOrderTestReportService {
                 : new HashSet<>(diagnosticOrderTestReportCommentsRepository
                 .findDistinctReportIdByReportIdIn(reportIds));
 
+        Map<Long, String> testNamesByOrderTestId = loadTestNamesByOrderTestId(reports);
+
         return page.map(report -> {
             boolean hasNote = reportIdsWithNotes.contains(report.getId());
-            return DiagnosticOrderTestReportResponseVM.ofEntityWithNote(report, hasNote);
+            return DiagnosticOrderTestReportResponseVM.ofEntityWithNote(
+                    report,
+                    hasNote,
+                    testNamesByOrderTestId.get(report.getOrderTestId())
+            );
         });
+    }
+
+    private Map<Long, String> loadTestNamesByOrderTestId(List<DiagnosticOrderTestReport> reports) {
+        Set<Long> orderTestIds = reports.stream()
+                .map(DiagnosticOrderTestReport::getOrderTestId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (orderTestIds.isEmpty()) {
+            return Map.of();
+        }
+
+        List<DiagnosticOrderTest> orderTests = diagnosticOrderTestRepository.findAllById(orderTestIds);
+        Set<Long> testIds = orderTests.stream()
+                .map(DiagnosticOrderTest::getTestId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Map<Long, String> testNamesById = new LinkedHashMap<>();
+        if (!testIds.isEmpty()) {
+            for (DiagnosticTest test : diagnosticTestRepository.findAllById(testIds)) {
+                String name = blankToNull(test.getName());
+                if (test.getId() != null && name != null) {
+                    testNamesById.put(test.getId(), name);
+                }
+            }
+        }
+
+        Map<Long, String> testNamesByOrderTestId = new LinkedHashMap<>();
+        for (DiagnosticOrderTest orderTest : orderTests) {
+            if (orderTest.getId() == null || orderTest.getTestId() == null) {
+                continue;
+            }
+            String name = testNamesById.get(orderTest.getTestId());
+            if (name != null) {
+                testNamesByOrderTestId.put(orderTest.getId(), name);
+            }
+        }
+        return testNamesByOrderTestId;
+    }
+
+    private String blankToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
 
