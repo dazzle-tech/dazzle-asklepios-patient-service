@@ -12,6 +12,8 @@ public interface ReviewOfSystemRepository extends JpaRepository<ReviewOfSystem, 
 
     List<ReviewOfSystem> findByEncounterId(Long encounterId);
 
+    boolean existsByEncounterId(Long encounterId);
+
     List<ReviewOfSystem> findByEncounterIdAndBodySystem(Long encounterId, String bodySystem);
 
     Optional<ReviewOfSystem> findByEncounterIdAndBodySystemAndSystemDetail(

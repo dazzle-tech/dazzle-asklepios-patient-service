@@ -147,6 +147,7 @@ public class PatientEncounterService {
     private final EncounterAmendmentService encounterAmendmentService;
     private final InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService;
     private final PatientActivityService patientActivityService;
+    private final EncounterSupportiveDocumentValidationService encounterSupportiveDocumentValidationService;
 
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
@@ -182,7 +183,8 @@ public class PatientEncounterService {
             EncounterReopenGuard encounterReopenGuard,
             EncounterAmendmentService encounterAmendmentService,
             InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService,
-            @Lazy PatientActivityService patientActivityService) {
+            @Lazy PatientActivityService patientActivityService,
+            EncounterSupportiveDocumentValidationService encounterSupportiveDocumentValidationService) {
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.entityManager = entityManager;
@@ -225,6 +227,7 @@ public class PatientEncounterService {
         this.encounterAmendmentService = encounterAmendmentService;
         this.insuranceCheckoutDiagnosticApprovalService = insuranceCheckoutDiagnosticApprovalService;
         this.patientActivityService = patientActivityService;
+        this.encounterSupportiveDocumentValidationService = encounterSupportiveDocumentValidationService;
     }
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
@@ -1135,6 +1138,8 @@ public class PatientEncounterService {
             );
         }
 
+        encounterSupportiveDocumentValidationService.requireDocumentationComplete(encounter);
+
         /*
          * Update encounter completion details
          */
@@ -1230,194 +1235,7 @@ public class PatientEncounterService {
                         "id.notfound"
                 ));
 
-        boolean insuranceVisit =
-                BillingCoverageType.INSURANCE.equals(encounter.getCoverageType());
-
-        // Non-insurance visits do not need the insurance completion validation.
-        if (!insuranceVisit) {
-            return new PatientEncounterCompletionValidationDTO(
-                    encounterId,
-                    encounter.getCoverageType(),
-                    encounter.getPatientInsuranceId(),
-                    false,
-                    true, // chiefComplaint
-                    true, // historyOfPresentIllness
-                    true, // physicalExaminationSummary
-                    true, // primaryDiagnosis
-                    true, // assessment
-                    true, // treatmentPlan
-                    true, // medicalHistory
-                    true, // surgicalHistory
-                    true, // socialHistory
-                    true, // progressNotes
-                    true, // vitalSigns
-                    true, // bodyMeasurements
-                    true, // canComplete
-                    Collections.emptyList(),
-                    Collections.emptyList()
-            );
-        }
-        Long patientId = encounter.getPatient().getId();
-
-        boolean chiefComplaint =
-                !isBlank(encounter.getChiefComplaint());
-
-        boolean historyOfPresentIllness =
-                !isBlank(encounter.getHistoryOfPresentIllness());
-
-        boolean physicalExaminationSummary =
-                !isBlank(encounter.getPhysicalExaminationSummery());
-
-        boolean primaryDiagnosis =
-                patientDiagnosisRepository.existsByEncounterId(encounterId);
-
-        boolean assessment =
-                encounterAssessmentRepository
-                        .findTopByEncounterIdOrderByCreatedDateDesc(encounterId)
-                        .isPresent();
-
-        boolean treatmentPlan =
-                encounterPlanRepository
-                        .findTopByEncounterIdOrderByCreatedDateDesc(encounterId)
-                        .isPresent();
-
-        boolean medicalHistory =
-                patientProblemRepository
-                        .findAllByPatientIdAndStatus(
-                                patientId,
-                                PatientHistoryStatus.ACTIVE,
-                                Pageable.unpaged()
-                        )
-                        .hasContent()
-                        ||
-                        familyHistoryRepository
-                                .findAllByPatientIdAndStatus(
-                                        patientId,
-                                        PatientHistoryStatus.ACTIVE,
-                                        Pageable.unpaged()
-                                )
-                                .hasContent()
-                        ||
-                        hospitalizationRepository
-                                .findAllByPatientIdAndStatusNot(
-                                        patientId,
-                                        PatientHistoryStatus.CANCELLED,
-                                        Pageable.unpaged()
-                                )
-                                .hasContent()
-                        ||
-                        currentMedicationRepository
-                                .findAllByPatientIdAndStatusNot(
-                                        patientId,
-                                        PatientHistoryStatus.CANCELLED,
-                                        Pageable.unpaged()
-                                )
-                                .hasContent();
-
-        boolean surgicalHistory =
-                !surgicalHistoryRepository
-                        .findAllByPatientIdAndStatusNot(
-                                patientId,
-                                PatientHistoryStatus.CANCELLED,
-                                Pageable.unpaged()
-                        )
-                        .isEmpty();
-
-        boolean socialHistory =
-                socialHistoryRepository
-                        .findTopByPatientIdOrderByCreatedDateDesc(patientId)
-                        .isPresent();
-
-        boolean progressNotes =
-                progressNoteRepository
-                        .findTopByEncounterIdAndCancelledDateIsNullOrderByCreatedDateDesc(encounterId)
-                        .isPresent();
-
-        boolean vitalSigns =
-                !findEncounterIdsWithObservation(List.of(encounterId)).isEmpty();
-
-        boolean bodyMeasurements =
-                bodyMeasurementsRepository
-                        .findFirstByEncounterIdAndIsActiveTrueOrderByCreatedDateDesc(encounterId)
-                        .isPresent();
-
-        List<String> missing = new ArrayList<>();
-
-        if (!chiefComplaint) {
-            missing.add("Chief Complaint");
-        }
-
-        if (!historyOfPresentIllness) {
-            missing.add("History Of Present Illness");
-        }
-
-        if (!physicalExaminationSummary) {
-            missing.add("Physical Examination Summary");
-        }
-
-        if (!primaryDiagnosis) {
-            missing.add("Primary Diagnosis");
-        }
-
-        if (!assessment) {
-            missing.add("Assessment");
-        }
-
-        if (!treatmentPlan) {
-            missing.add("Treatment Plan / Management");
-        }
-
-        if (!medicalHistory) {
-            missing.add("Medical History");
-        }
-
-        if (!surgicalHistory) {
-            missing.add("Surgical History");
-        }
-
-        if (!socialHistory) {
-            missing.add("Social History");
-        }
-
-        if (!progressNotes && encounter.getEncounterType() != EncounterType.CLINIC) {
-            missing.add("Progress Notes");
-        }
-
-        if (!vitalSigns) {
-            missing.add("Vital Signs & Measurements");
-        }
-
-        if (!bodyMeasurements) {
-            missing.add("Body Measurements");
-        }
-
-        boolean canComplete = missing.isEmpty();
-
-        List<DiagnosticCheckoutApproval> diagnosticApprovals = includeDiagnostics
-                ? insuranceCheckoutDiagnosticApprovalService.findUnapproved(encounterId)
-                : List.of();
-
-        return new PatientEncounterCompletionValidationDTO(
-                encounterId,
-                encounter.getCoverageType(),
-                encounter.getPatientInsuranceId(),
-                true,
-                chiefComplaint,
-                historyOfPresentIllness,
-                physicalExaminationSummary,
-                primaryDiagnosis,
-                assessment,
-                treatmentPlan,
-                medicalHistory,
-                surgicalHistory,
-                socialHistory,
-                progressNotes,
-                bodyMeasurements,
-                vitalSigns,
-                canComplete,
-                missing,
-                diagnosticApprovals
-        );
+        return encounterSupportiveDocumentValidationService.validate(encounter, includeDiagnostics);
     }
 
 
