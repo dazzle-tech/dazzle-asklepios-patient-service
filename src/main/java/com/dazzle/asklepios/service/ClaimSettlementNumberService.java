@@ -13,9 +13,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 /**
- * Settlement numbers are reserved only for accepted claims.
- * One invoice keeps its own number. A batch click shares one number across the claims it accepted.
- * Rejected and failed claims keep none.
+ * A statement number is chosen when invoices are grouped, before Waseel submission.
+ * Claims that were accepted before that flow still receive a number here, and their stored numbers are not cleared.
+ * Rejected claims that belong to a statement are released by {@link ClaimSettlementMembershipService}.
  */
 @Service
 @RequiredArgsConstructor
@@ -25,10 +25,34 @@ public class ClaimSettlementNumberService {
 
     private final EntityManager entityManager;
     private final ClaimRequestRepository claimRequestRepository;
+    private final ClaimSettlementMembershipService claimSettlementMembershipService;
+
+    /**
+     * Keeps a grouped claim on its statement, or applies the older accept-only numbering when the claim was never grouped.
+     */
+    public void applyAfterRefresh(ClaimRequest claim, boolean assignLegacyIfAccepted) {
+        if (claim == null) {
+            return;
+        }
+        if (claimSettlementMembershipService.reconcile(claim)) {
+            return;
+        }
+        if (!assignLegacyIfAccepted) {
+            if (claim.getStatus() != ClaimStatus.ACCEPTED) {
+                claim.setSettlementNo(null);
+            }
+            return;
+        }
+        syncSettlementNo(claim);
+    }
+
+    public void applyOutcome(ClaimRequest claim) {
+        applyAfterRefresh(claim, false);
+    }
 
     @Transactional
     public void syncSettlementNo(ClaimRequest claim) {
-        if (claim == null) {
+        if (claim == null || claimSettlementMembershipService.isOpenGroupClaim(claim)) {
             return;
         }
         if (claim.getStatus() != ClaimStatus.ACCEPTED) {
@@ -40,11 +64,12 @@ public class ClaimSettlementNumberService {
         }
 
         String shared = sharedSettlementNo(claim);
-        claim.setSettlementNo(shared != null ? shared : nextSettlementNo());
+        claim.setSettlementNo(shared != null ? shared : allocateSettlementNo());
     }
 
     /**
      * One settlement number for every accepted claim in this batch that does not already have one.
+     * Invoices already placed in a statement keep that statement number.
      */
     @Transactional
     public void assignSharedSettlement(List<ClaimRequest> claims) {
@@ -56,17 +81,20 @@ public class ClaimSettlementNumberService {
                 .filter(claim -> claim != null && claim.getId() != null)
                 .filter(claim -> claim.getStatus() == ClaimStatus.ACCEPTED)
                 .filter(claim -> !hasText(claim.getSettlementNo()))
+                .filter(claim -> !claimSettlementMembershipService.isOpenGroupClaim(claim))
                 .toList();
         if (needNumber.isEmpty()) {
             return;
         }
 
-        String settlementNo = nextSettlementNo();
+        String settlementNo = allocateSettlementNo();
         List<ClaimRequest> stored = claimRequestRepository.findAllById(
                 needNumber.stream().map(ClaimRequest::getId).toList()
         );
         for (ClaimRequest claim : stored) {
-            if (claim.getStatus() == ClaimStatus.ACCEPTED && !hasText(claim.getSettlementNo())) {
+            if (claim.getStatus() == ClaimStatus.ACCEPTED
+                    && !hasText(claim.getSettlementNo())
+                    && !claimSettlementMembershipService.isOpenGroupClaim(claim)) {
                 claim.setSettlementNo(settlementNo);
             }
         }
@@ -75,6 +103,16 @@ public class ClaimSettlementNumberService {
         for (ClaimRequest claim : needNumber) {
             claim.setSettlementNo(settlementNo);
         }
+    }
+
+    @Transactional
+    public String allocateSettlementNo() {
+        Number value = (Number) entityManager
+                .createNativeQuery("SELECT nextval('claim_settlement_seq')")
+                .getSingleResult();
+        String settlementNo = "SET-" + value.longValue();
+        LOG.info("[CLAIM_SETTLEMENT] Allocated settlementNo={}", settlementNo);
+        return settlementNo;
     }
 
     private String sharedSettlementNo(ClaimRequest claim) {
@@ -89,15 +127,6 @@ public class ClaimSettlementNumberService {
                 .filter(this::hasText)
                 .findFirst()
                 .orElse(null);
-    }
-
-    private String nextSettlementNo() {
-        Number value = (Number) entityManager
-                .createNativeQuery("SELECT nextval('claim_settlement_seq')")
-                .getSingleResult();
-        String settlementNo = "SET-" + value.longValue();
-        LOG.info("[CLAIM_SETTLEMENT] Allocated settlementNo={}", settlementNo);
-        return settlementNo;
     }
 
     private boolean hasText(String value) {

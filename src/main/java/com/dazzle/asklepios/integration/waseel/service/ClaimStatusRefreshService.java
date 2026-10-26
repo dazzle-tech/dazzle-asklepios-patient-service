@@ -111,11 +111,7 @@ public class ClaimStatusRefreshService {
 
         claim.setValidationErrorsJson(toJson(dedupeErrors(errors)));
         applyIndividualStatus(claim, claimSearch, errors, statusBeforeSummary, notAcceptedClaims);
-        if (assignSettlement) {
-            claimSettlementNumberService.syncSettlementNo(claim);
-        } else if (claim.getStatus() != ClaimStatus.ACCEPTED) {
-            claim.setSettlementNo(null);
-        }
+        claimSettlementNumberService.applyAfterRefresh(claim, assignSettlement);
 
         ClaimRequest saved = claimRequestRepository.save(claim);
         patientActivityService.recordClaimStatus(saved);

@@ -26,6 +26,8 @@ public interface ClaimRequestRepository
 
     Optional<ClaimRequest> findFirstByFinancialDocumentIdOrderByIdDesc(Long financialDocumentId);
 
+    List<ClaimRequest> findByFinancialDocumentIdIn(Collection<Long> financialDocumentIds);
+
     List<ClaimRequest> findByFinancialDocumentIdInAndStatusOrderByIdDesc(
             Collection<Long> financialDocumentIds,
             ClaimStatus status

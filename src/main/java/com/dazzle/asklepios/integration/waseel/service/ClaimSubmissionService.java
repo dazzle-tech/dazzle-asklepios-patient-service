@@ -40,6 +40,7 @@ import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.service.ClaimSettlementMembershipService;
 import com.dazzle.asklepios.service.ClaimSettlementNumberService;
 import com.dazzle.asklepios.service.PatientActivityService;
 import com.dazzle.asklepios.service.helper.NphiesPayerHelper;
@@ -105,6 +106,7 @@ public class ClaimSubmissionService {
     private final ClaimPayloadValidationService claimPayloadValidationService;
     private final ClaimStatusRefreshService claimStatusRefreshService;
     private final ClaimSettlementNumberService claimSettlementNumberService;
+    private final ClaimSettlementMembershipService claimSettlementMembershipService;
     private final NphiesPayerHelper nphiesPayerHelper;
     private final PayorHelper payorHelper;
     private final ClaimSubmissionService self;
@@ -128,6 +130,7 @@ public class ClaimSubmissionService {
             ClaimPayloadValidationService claimPayloadValidationService,
             ClaimStatusRefreshService claimStatusRefreshService,
             ClaimSettlementNumberService claimSettlementNumberService,
+            ClaimSettlementMembershipService claimSettlementMembershipService,
             NphiesPayerHelper nphiesPayerHelper,
             PayorHelper payorHelper,
             @Lazy ClaimSubmissionService self,
@@ -150,6 +153,7 @@ public class ClaimSubmissionService {
         this.claimPayloadValidationService = claimPayloadValidationService;
         this.claimStatusRefreshService = claimStatusRefreshService;
         this.claimSettlementNumberService = claimSettlementNumberService;
+        this.claimSettlementMembershipService = claimSettlementMembershipService;
         this.nphiesPayerHelper = nphiesPayerHelper;
         this.payorHelper = payorHelper;
         this.self = self;
@@ -287,6 +291,7 @@ public class ClaimSubmissionService {
             claimRequest.setStatus(ClaimStatus.REJECTED);
             claimRequest.setOutcome("NOT_ACCEPTED");
             claimRequest.setMessage(buildValidationFailureMessage(validationErrors));
+            claimSettlementNumberService.applyOutcome(claimRequest);
             ClaimRequest rejected = claimRequestRepository.save(claimRequest);
             patientActivityService.recordClaimStatus(rejected);
             return rejected;
@@ -338,18 +343,7 @@ public class ClaimSubmissionService {
             Instant fromDate,
             Instant toDate
     ) {
-        return listPendingInsuranceInvoices(
-                payorId,
-                payerNphiesId,
-                fromDate,
-                toDate,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
+        return listPendingInsuranceInvoices(payorId, payerNphiesId, fromDate, toDate, null, null, null, null, null, null);
     }
 
     @Transactional(readOnly = true)
@@ -408,6 +402,8 @@ public class ClaimSubmissionService {
                 .stream()
                 .filter(invoice -> belongsToSelectedPayor(invoice, resolvedPayorId, nphiesIds, useNphiesFilter))
                 .toList();
+
+        invoices = excludeActivelyGrouped(invoices);
 
         return toPendingClaimInvoiceResponses(invoices, claimType, claimSubType);
     }
@@ -481,6 +477,8 @@ public class ClaimSubmissionService {
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
+
+        claimSettlementMembershipService.assertNotInActiveSettlement(uniqueIds);
 
         Set<Long> payorIds = new LinkedHashSet<>();
         Set<String> nphiesKeys = new LinkedHashSet<>();
@@ -581,6 +579,10 @@ public class ClaimSubmissionService {
                 claim.setStatus(ClaimStatus.DRAFT);
                 claim.setSettlementNo(null);
                 claim.setMessage("Returned to the monthly claim batch for resubmit");
+                claimSettlementMembershipService.releaseClaim(
+                        claim,
+                        "Returned to the monthly claim batch for resubmit"
+                );
                 returnable.add(claim);
             }
         }
@@ -792,8 +794,7 @@ public class ClaimSubmissionService {
                 .collect(Collectors.toMap(Patient::getId, Function.identity()));
 
         Set<Long> unapprovedOrderTestIds = unapprovedDiagnosticOrderTestIds(productsById.values());
-        Map<Long, ClaimRequest> rejectedClaimsByInvoiceId =
-                latestRejectedClaims(invoiceIds, claimType);
+        Map<Long, ClaimRequest> latestClaims = latestClaimByInvoice(invoiceIds);
 
         List<PendingClaimInvoiceResponse> results = new ArrayList<>();
         for (FinancialDocument invoice : invoices) {
@@ -829,7 +830,6 @@ public class ClaimSubmissionService {
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
             }
 
-            ClaimRequest rejectedClaim = rejectedClaimsByInvoiceId.get(invoice.getId());
             results.add(new PendingClaimInvoiceResponse(
                     invoice.getId(),
                     invoice.getDocumentNumber(),
@@ -848,47 +848,12 @@ public class ClaimSubmissionService {
                     matchingItems.size(),
                     matchingNet.setScale(2, RoundingMode.HALF_UP),
                     !hasUnapprovedDiagnosticResult(matchingItems, productsById, unapprovedOrderTestIds),
-                    rejectedClaim != null,
-                    rejectionMessage(rejectedClaim)
+                    rejectedClaim(latestClaims.get(invoice.getId())),
+                    rejectionMessage(latestClaims.get(invoice.getId()))
             ));
         }
 
         return results;
-    }
-
-    private Map<Long, ClaimRequest> latestRejectedClaims(
-            List<Long> invoiceIds,
-            WaseelClaimType claimType
-    ) {
-        if (invoiceIds == null || invoiceIds.isEmpty()) {
-            return Map.of();
-        }
-
-        Map<Long, ClaimRequest> latestByInvoiceId = new LinkedHashMap<>();
-        for (ClaimRequest claim : claimRequestRepository.findByFinancialDocumentIdInAndStatusOrderByIdDesc(
-                invoiceIds,
-                ClaimStatus.REJECTED
-        )) {
-            if (claim.getFinancialDocumentId() == null || !matchesClaimType(claim, claimType)) {
-                continue;
-            }
-            latestByInvoiceId.putIfAbsent(claim.getFinancialDocumentId(), claim);
-        }
-        return latestByInvoiceId;
-    }
-
-    private boolean matchesClaimType(ClaimRequest claim, WaseelClaimType claimType) {
-        if (claim.getClaimType() == claimType) {
-            return true;
-        }
-        return claimType == WaseelClaimType.PROFESSIONAL && claim.getClaimType() == null;
-    }
-
-    private String rejectionMessage(ClaimRequest claim) {
-        if (claim == null || claim.getMessage() == null || claim.getMessage().isBlank()) {
-            return null;
-        }
-        return claim.getMessage().trim();
     }
 
     private Set<Long> unapprovedDiagnosticOrderTestIds(Collection<PatientServiceAndProduct> products) {
@@ -1108,6 +1073,7 @@ public class ClaimSubmissionService {
                 .build();
 
         claimRequest = claimRequestRepository.save(claimRequest);
+        claimSettlementMembershipService.bindNewClaim(claimRequest);
 
         List<ClaimItem> items = new ArrayList<>();
         List<WaseelApprovalItem> waseelItems = claimModel.items() == null
@@ -1176,6 +1142,7 @@ public class ClaimSubmissionService {
         claimRequest.setRequestJson(requestJson);
         claimRequest.setMessage(details);
         log.error("[CLAIM_SUBMIT] Claim upload failed claimId={} details={}", claimRequest.getId(), details);
+        claimSettlementNumberService.applyOutcome(claimRequest);
         ClaimRequest failed = claimRequestRepository.save(claimRequest);
         patientActivityService.recordClaimStatus(failed);
         return failed;
@@ -1260,5 +1227,49 @@ public class ClaimSubmissionService {
         } catch (JsonProcessingException ex) {
             throw new IllegalStateException("Failed to serialize claim payload", ex);
         }
+    }
+
+    private List<FinancialDocument> excludeActivelyGrouped(List<FinancialDocument> invoices) {
+        if (invoices == null || invoices.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> grouped = claimSettlementMembershipService.activeDocumentIds(
+                invoices.stream().map(FinancialDocument::getId).filter(Objects::nonNull).toList()
+        );
+        if (grouped.isEmpty()) {
+            return invoices;
+        }
+        return invoices.stream()
+                .filter(invoice -> invoice.getId() == null || !grouped.contains(invoice.getId()))
+                .toList();
+    }
+
+    private Map<Long, ClaimRequest> latestClaimByInvoice(List<Long> invoiceIds) {
+        Map<Long, ClaimRequest> latest = new LinkedHashMap<>();
+        if (invoiceIds == null || invoiceIds.isEmpty()) {
+            return latest;
+        }
+        for (ClaimRequest claim : claimRequestRepository.findByFinancialDocumentIdIn(invoiceIds)) {
+            if (claim.getFinancialDocumentId() == null || claim.getId() == null) {
+                continue;
+            }
+            ClaimRequest current = latest.get(claim.getFinancialDocumentId());
+            if (current == null || claim.getId() > current.getId()) {
+                latest.put(claim.getFinancialDocumentId(), claim);
+            }
+        }
+        return latest;
+    }
+
+    private boolean rejectedClaim(ClaimRequest claim) {
+        return claim != null
+                && (claim.getStatus() == ClaimStatus.REJECTED || claim.getStatus() == ClaimStatus.FAILED);
+    }
+
+    private String rejectionMessage(ClaimRequest claim) {
+        if (!rejectedClaim(claim) || claim.getMessage() == null || claim.getMessage().isBlank()) {
+            return null;
+        }
+        return claim.getMessage().trim();
     }
 }

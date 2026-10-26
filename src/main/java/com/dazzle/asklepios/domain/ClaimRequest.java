@@ -101,8 +101,10 @@ public class ClaimRequest extends AbstractAuditingEntity<Long> implements Serial
     private Instant submittedAt;
 
     /**
-     * Shared by every claim created in one submit action.
-     * Format: SET-{sequence}.
+     * Statement number, format SET-{sequence}.
+     * New invoices receive it when they are grouped, before submission.
+     * Older accepted claims keep the number assigned after Waseel accepted them.
+     * A rejected invoice is cleared so it can join a new statement.
      */
     @Column(name = "settlement_no", length = 50)
     private String settlementNo;

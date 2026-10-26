@@ -145,15 +145,25 @@ public class ApprovalItemMapper {
             );
         }
 
+        BigDecimal waseelUnitPrice = gross.signum() > 0 && qty != null && qty > 0
+                ? gross.divide(quantityValue, 2, RoundingMode.HALF_UP)
+                : safeUnitPrice;
+
+        // Factor is limited to 3 decimals, so keep the sent net on the same
+        // formula Waseel validates: (quantity x unitPrice) x factor + tax.
+        BigDecimal sentFactor = WaseelFactorFormatter.format(factor);
+        safeNet = quantityValue
+                .multiply(waseelUnitPrice)
+                .multiply(sentFactor)
+                .add(safeTax)
+                .setScale(2, RoundingMode.HALF_UP);
+        factor = sentFactor;
+
         if (safePatientShare.signum() == 0 && safePayerShare.signum() == 0 && safeNet.signum() > 0) {
             safePayerShare = safeNet;
         } else if (safePatientShare.add(safePayerShare).compareTo(safeNet) != 0 && safeNet.signum() > 0) {
             safePayerShare = safeNet.subtract(safePatientShare).setScale(2, RoundingMode.HALF_UP);
         }
-
-        BigDecimal waseelUnitPrice = gross.signum() > 0 && qty != null && qty > 0
-                ? gross.divide(quantityValue, 2, RoundingMode.HALF_UP)
-                : safeUnitPrice;
 
         return new WaseelApprovalItem(
                 item.sequence(),
