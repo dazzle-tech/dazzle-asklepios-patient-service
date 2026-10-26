@@ -355,14 +355,24 @@ public class DefaultServicePreparationService {
                                                 && result.billingResult().processed()
                                 );
 
-        if (orderedItems.isEmpty()) {
+        if (Boolean.TRUE.equals(request.payZeroNow())) {
+            encounterTreatmentAdvanceService
+                    .advanceFromPendingPaymentAfterRegistrationAcknowledged(
+                            encounterId
+                    );
+        } else if (orderedItems.isEmpty() || processed) {
+            /*
+             * Nothing left for the patient to pay — no services, or a
+             * fully covered insurance visit — opens the encounter.
+             * A remaining patient share keeps it in pending payment.
+             */
             encounterTreatmentAdvanceService
                     .advanceFromPendingPaymentWhenNothingToBill(
                             encounterId
                     );
-        } else if (Boolean.TRUE.equals(request.payZeroNow())) {
+        } else {
             encounterTreatmentAdvanceService
-                    .advanceFromPendingPaymentAfterRegistrationAcknowledged(
+                    .tryAdvanceFromPendingPayment(
                             encounterId
                     );
         }
