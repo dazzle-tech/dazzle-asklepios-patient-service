@@ -325,6 +325,11 @@ public class PatientServiceAndProductService {
             entity.setProcedureId(dto.procedureId());
         }
 
+        if (dto.vaccineBrandId() != null) {
+            vaccineBrandHelper.validateVaccineBrandExists(dto.vaccineBrandId());
+            entity.setVaccineBrandId(dto.vaccineBrandId());
+        }
+
         // The unit is part of the item: changing it (or the brand) re-prices the line
         Long uomGroupUnitId = medicationUomGroupUnitId(dto.billingItemType(), dto.uomGroupUnitId());
         entity.setUomGroupUnitId(uomGroupUnitId);
@@ -338,42 +343,45 @@ public class PatientServiceAndProductService {
         entity.setExemptionAmount(defaultZero(dto.exemptionAmount()));
         entity.setTaxAmount(defaultZero(dto.taxAmount()));
 
-        InsurancePriceListCoverageCheckResult coverageCheck =
-                insurancePriceListCoverageService.check(
-                        entity.getEncounterId(),
-                        dto.billingItemType(),
-                        dto.serviceId(),
-                        dto.procedureId(),
-                        dto.diagnosticTestId(),
-                        dto.brandMedicationId(),
-                        entity.getCurrency()
-                );
-        insurancePriceListCoverageService.requireCoveredOrAcknowledged(coverageCheck, null);
-
-        if (coverageCheck.requiresCashConfirmation()) {
-            insurancePriceListCoverageService.applyUncoveredCash(entity, coverageCheck);
-        } else {
-            preAuthorizationResolutionService.apply(
-                    entity,
-                    preAuthorizationResolutionService.resolve(
+        // Phase 1: vaccines are not on insurance price lists or pre-authorization yet, they are billed as cash
+        if (dto.billingItemType() != BillingItemTypes.VACCINE) {
+            InsurancePriceListCoverageCheckResult coverageCheck =
+                    insurancePriceListCoverageService.check(
                             entity.getEncounterId(),
                             dto.billingItemType(),
-                            dto.procedureId(),
                             dto.serviceId(),
+                            dto.procedureId(),
                             dto.diagnosticTestId(),
                             dto.brandMedicationId(),
-                            false,
                             entity.getCurrency()
-                    )
-            );
+                    );
+            insurancePriceListCoverageService.requireCoveredOrAcknowledged(coverageCheck, null);
 
-            if (encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(entity.getEncounterId())) {
-                entity.setPatientInsuranceId(
-                        encounterInsuranceEligibilityService.resolveEncounterPatientInsuranceId(
-                                entity.getEncounterId()
+            if (coverageCheck.requiresCashConfirmation()) {
+                insurancePriceListCoverageService.applyUncoveredCash(entity, coverageCheck);
+            } else {
+                preAuthorizationResolutionService.apply(
+                        entity,
+                        preAuthorizationResolutionService.resolve(
+                                entity.getEncounterId(),
+                                dto.billingItemType(),
+                                dto.procedureId(),
+                                dto.serviceId(),
+                                dto.diagnosticTestId(),
+                                dto.brandMedicationId(),
+                                false,
+                                entity.getCurrency()
                         )
                 );
-                entity.setCoverageStatus(CoverageStatus.COVERED);
+
+                if (encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(entity.getEncounterId())) {
+                    entity.setPatientInsuranceId(
+                            encounterInsuranceEligibilityService.resolveEncounterPatientInsuranceId(
+                                    entity.getEncounterId()
+                            )
+                    );
+                    entity.setCoverageStatus(CoverageStatus.COVERED);
+                }
             }
         }
 
@@ -421,6 +429,10 @@ public class PatientServiceAndProductService {
                     new ArrayList<>();
             Boolean acceptedCash = null;
             for (PatientServiceProductCreateDTO dto : dtos) {
+                // Phase 1: vaccines are billed as cash, they are not checked against insurance
+                if (dto.billingItemType() == BillingItemTypes.VACCINE) {
+                    continue;
+                }
                 coverageChecks.add(
                         insurancePriceListCoverageService.check(
                                 dto.encounterId(),

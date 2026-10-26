@@ -86,7 +86,11 @@ public class CatalogItemPricingPreviewService {
                 request,
                 patient
         );
-        PatientInsurance insurance = resolveInsurance(request, encounter);
+        // Phase 1: vaccines are billed as cash, they are not checked against insurance
+        PatientInsurance insurance =
+                request.billingItemType() == BillingItemTypes.VACCINE
+                        ? null
+                        : resolveInsurance(request, encounter);
 
         boolean insuranceVisit = insurance != null;
         boolean eligibilityInForce =
@@ -723,6 +727,7 @@ public class CatalogItemPricingPreviewService {
                 .diagnosticTestId(request.diagnosticTestId())
                 .serviceId(request.serviceId())
                 .procedureId(request.procedureId())
+                .vaccineBrandId(request.vaccineBrandId())
                 .sourceId(sourceId)
                 .serviceSource(ServiceSource.SERVICE_AND_PRODUCT)
                 .quantity(
@@ -817,6 +822,15 @@ public class CatalogItemPricingPreviewService {
                     );
                 }
             }
+            case VACCINE -> {
+                if (request.vaccineBrandId() == null) {
+                    throw new BadRequestAlertException(
+                            "Vaccine brand is required.",
+                            ENTITY_NAME,
+                            "vaccineBrand.required"
+                    );
+                }
+            }
             default -> throw new BadRequestAlertException(
                     "Unsupported catalog item type.",
                     ENTITY_NAME,
@@ -834,8 +848,7 @@ public class CatalogItemPricingPreviewService {
             case MEDICATION -> request.brandMedicationId();
             case LABORATORY, RADIOLOGY, PATHOLOGY ->
                     request.diagnosticTestId();
-            // Rejected by the catalog reference validation
-            case VACCINE -> null;
+            case VACCINE -> request.vaccineBrandId();
         };
     }
 
