@@ -36,6 +36,7 @@ import com.dazzle.asklepios.service.helper.DiagnosticTestHelper;
 import com.dazzle.asklepios.service.helper.ProcedureHelper;
 import com.dazzle.asklepios.service.helper.ServiceHelper;
 import com.dazzle.asklepios.service.helper.UomPriceFactorHelper;
+import com.dazzle.asklepios.service.helper.VaccineBrandHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
@@ -82,6 +83,7 @@ public class PatientServiceAndProductService {
     private final InsurancePriceListCoverageService insurancePriceListCoverageService;
     private final EncounterReopenGuard encounterReopenGuard;
     private final UomPriceFactorHelper uomPriceFactorHelper;
+    private final VaccineBrandHelper vaccineBrandHelper;
 
     public PatientServiceAndProductService(
             PatientServiceAndProductRepository patientServiceAndProductRepository,
@@ -102,7 +104,8 @@ public class PatientServiceAndProductService {
             PatientItemPricingApplicationService patientItemPricingApplicationService,
             InsurancePriceListCoverageService insurancePriceListCoverageService,
             EncounterReopenGuard encounterReopenGuard,
-            UomPriceFactorHelper uomPriceFactorHelper
+            UomPriceFactorHelper uomPriceFactorHelper,
+            VaccineBrandHelper vaccineBrandHelper
     ) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.patientRepository = patientRepository;
@@ -123,6 +126,7 @@ public class PatientServiceAndProductService {
         this.insurancePriceListCoverageService = insurancePriceListCoverageService;
         this.encounterReopenGuard = encounterReopenGuard;
         this.uomPriceFactorHelper = uomPriceFactorHelper;
+        this.vaccineBrandHelper = vaccineBrandHelper;
     }
 
     public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
@@ -166,10 +170,45 @@ public class PatientServiceAndProductService {
                 orderId,
                 null,
                 Boolean.TRUE,
-                uomGroupUnitId
+                uomGroupUnitId,
+                null
         );
 
         return createItem(dto, uomGroupUnitId, uomPriceFactor);
+    }
+
+    /**
+     * Charges an administered vaccination: the vaccine brand that was given,
+     * priced from the brand's setup price. Every vaccination is its own line.
+     * Phase 1: vaccines are not checked against insurance, so the line is billed as cash.
+     */
+    public PatientServiceAndProduct createVaccination(
+            Long patientId,
+            Long encounterId,
+            Long encounterVaccinationId,
+            Long vaccineBrandId,
+            Currency currency
+    ) {
+        PatientServiceProductCreateDTO dto = new PatientServiceProductCreateDTO(
+                patientId,
+                encounterId,
+                BillingItemTypes.VACCINE,
+                null,
+                null,
+                null,
+                null,
+                1L,
+                BigDecimal.ZERO,
+                currency,
+                ServiceSource.VACCINATION,
+                encounterVaccinationId,
+                null,
+                Boolean.TRUE,
+                null,
+                vaccineBrandId
+        );
+
+        return createItem(dto, null, null);
     }
 
     private PatientServiceAndProduct createItem(
@@ -702,6 +741,7 @@ public class PatientServiceAndProductService {
                 .diagnosticTestId(dto.diagnosticTestId())
                 .serviceId(dto.serviceId())
                 .procedureId(dto.procedureId())
+                .vaccineBrandId(dto.vaccineBrandId())
                 .quantity(quantity)
                 .uomGroupUnitId(uomGroupUnitId)
                 .uomPriceFactor(uomPriceFactor)
@@ -729,6 +769,13 @@ public class PatientServiceAndProductService {
                 .billingInvoiceItemId(null)
                 .isDefaultService(Boolean.FALSE)
                 .isExempted(Boolean.FALSE);
+
+        // Phase 1: vaccines are not on insurance price lists or pre-authorization yet, they are billed as cash
+        if (dto.billingItemType() == BillingItemTypes.VACCINE) {
+            PatientServiceAndProduct entity = builder.build();
+            applyResolvedPricing(entity, encounter, quantity);
+            return entity;
+        }
 
         InsurancePriceListCoverageCheckResult coverageCheck =
                 insurancePriceListCoverageService.check(
@@ -904,6 +951,17 @@ public class PatientServiceAndProductService {
 
         if (dto.brandMedicationId() != null) {
             brandMedicationHelper.validateBrandMedicationExists(dto.brandMedicationId());
+        }
+
+        if (dto.billingItemType() == BillingItemTypes.VACCINE) {
+            if (dto.vaccineBrandId() == null) {
+                throw new BadRequestAlertException(
+                        "Vaccine brand is required when billing item type is VACCINE",
+                        "patient_services_and_products",
+                        "vaccineBrand.required"
+                );
+            }
+            vaccineBrandHelper.validateVaccineBrandExists(dto.vaccineBrandId());
         }
     }
 

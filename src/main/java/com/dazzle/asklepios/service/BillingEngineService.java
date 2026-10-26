@@ -1699,6 +1699,12 @@ public class BillingEngineService {
                             item.getDiagnosticTestId(),
                             "diagnostic test"
                     );
+
+            case VACCINE ->
+                    requireSourceId(
+                            item.getVaccineBrandId(),
+                            "vaccine brand"
+                    );
         };
     }
 
@@ -1737,6 +1743,8 @@ public class BillingEngineService {
             case LABORATORY -> TaxApplicableOn.LABORATORY;
             case RADIOLOGY -> TaxApplicableOn.RADIOLOGY;
             case PATHOLOGY -> TaxApplicableOn.PATHOLOGY;
+            // A vaccine is a medicinal product: it is taxed like a medication
+            case VACCINE -> TaxApplicableOn.MEDICATION;
         };
     }
 
@@ -1752,7 +1760,8 @@ public class BillingEngineService {
                  PATHOLOGY ->
                     DiscountApplicableOn.SERVICE;
 
-            case MEDICATION ->
+            case MEDICATION,
+                 VACCINE ->
                     DiscountApplicableOn.PRODUCT;
         };
     }

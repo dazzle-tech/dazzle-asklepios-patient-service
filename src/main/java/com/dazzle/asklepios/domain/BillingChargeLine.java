@@ -87,6 +87,9 @@ public class BillingChargeLine extends AbstractAuditingEntity<Long>
     @Column(name = "procedure_id")
     private Long procedureId;
 
+    @Column(name = "vaccine_brand_id")
+    private Long vaccineBrandId;
+
     @Size(max = 100)
     @Column(name = "item_code", length = 100)
     private String itemCode;

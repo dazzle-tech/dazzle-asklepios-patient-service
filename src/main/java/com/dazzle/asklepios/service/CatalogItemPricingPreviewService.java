@@ -834,6 +834,8 @@ public class CatalogItemPricingPreviewService {
             case MEDICATION -> request.brandMedicationId();
             case LABORATORY, RADIOLOGY, PATHOLOGY ->
                     request.diagnosticTestId();
+            // Rejected by the catalog reference validation
+            case VACCINE -> null;
         };
     }
 

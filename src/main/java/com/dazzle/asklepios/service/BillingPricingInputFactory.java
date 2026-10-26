@@ -349,6 +349,7 @@ public class BillingPricingInputFactory {
             case LABORATORY,
                  RADIOLOGY,
                  PATHOLOGY -> item.getDiagnosticTestId();
+            case VACCINE -> item.getVaccineBrandId();
         };
     }
 
