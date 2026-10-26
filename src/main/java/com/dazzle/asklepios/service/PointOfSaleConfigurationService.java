@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.web.util.UriComponentsBuilder;
 import jakarta.persistence.criteria.Predicate;
 
 import java.util.ArrayList;
@@ -245,6 +246,15 @@ public class PointOfSaleConfigurationService {
                     "Generated callback URL is missing"
             );
         }
+
+        String webhookToken =
+                UriComponentsBuilder.fromUriString(callbackUrl)
+                        .build(true)
+                        .getQueryParams()
+                        .getFirst("token");
+
+        configuration.setWebhookToken(webhookToken);
+        pointOfSaleConfigurationRepository.save(configuration);
 
         NamiRegisterWebhookResponse registerWebhookResponse =
                 namiCloudClient.registerWebhook(
