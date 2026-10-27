@@ -15,6 +15,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPricingSnapshotStatus;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
@@ -300,6 +301,14 @@ public class DefaultServicePreparationService {
                                 request.facilityId(),
                                 itemRequestId
                         );
+                boolean heldByMessage = billingResult != null
+                        && billingResult.message() != null
+                        && billingResult.message().toLowerCase().contains("pre-authorization");
+                if (heldByMessage
+                        || item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
+                        || item.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH) {
+                    hasPendingPreAuth = true;
+                }
             }
 
             results.add(
@@ -388,7 +397,9 @@ public class DefaultServicePreparationService {
         );
 
         String message =
-                skipDefaultServices
+                hasPendingPreAuth
+                        ? "This service needs pre-authorization. It was sent to the pre-authorization page and shows as pending pre-authorization on the ledger account."
+                        : skipDefaultServices
                         ? "Follow-up review within 14 days. Default services were not billed."
                         : orderedItems.isEmpty()
                                 ? "Encounter billing completed. No default services to bill."

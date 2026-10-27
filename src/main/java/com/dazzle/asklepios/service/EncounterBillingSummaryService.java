@@ -558,8 +558,7 @@ public class EncounterBillingSummaryService {
 
         PaymentStatus paymentStatus = item.getPaymentStatus();
         if (paymentStatus == PaymentStatus.CANCELLED
-                || paymentStatus == PaymentStatus.EXEMPTED
-                || paymentStatus == PaymentStatus.SKIPPED_PENDING_PRE_AUTH) {
+                || paymentStatus == PaymentStatus.EXEMPTED) {
             return false;
         }
 

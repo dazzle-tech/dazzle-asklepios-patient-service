@@ -947,6 +947,12 @@ public class BillingTransactionService {
             return "Exempted billing charge created successfully";
         }
 
+        if (preAuthorizationResolutionService.isPendingPreAuthorization(
+                context.getPatientServiceProduct()
+        )) {
+            return "This service needs pre-authorization. It was sent to the pre-authorization page and shows as pending pre-authorization on the ledger account.";
+        }
+
         return "Billing charge created successfully";
     }
 

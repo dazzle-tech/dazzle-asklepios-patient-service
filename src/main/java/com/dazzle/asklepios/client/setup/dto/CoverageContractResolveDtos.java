@@ -69,15 +69,28 @@ public final class CoverageContractResolveDtos {
             CoverageReadingSnapshot cashLimit,
             DiscountSnapshot discount,
             ExclusionSnapshot exclusion,
-            PreApprovalSnapshot preApproval
+            PreApprovalSnapshot preApproval,
+            List<PreApprovalSnapshot> preApprovals
     ) {
+        public Response {
+            if (preApprovals == null) {
+                preApprovals = List.of();
+            }
+        }
+
+        public List<PreApprovalSnapshot> applicablePreApprovals() {
+            if (preApprovals != null && !preApprovals.isEmpty()) {
+                return preApprovals;
+            }
+            return preApproval == null ? List.of() : List.of(preApproval);
+        }
         public Response(
                 boolean matched,
                 String matchReason,
                 ContractSnapshot contract,
                 CopaymentSnapshot copayment
         ) {
-            this(matched, matchReason, contract, copayment, false, false, null, null, null, null, null, null);
+            this(matched, matchReason, contract, copayment, false, false, null, null, null, null, null, null, null);
         }
 
         public Response(
@@ -89,7 +102,7 @@ public final class CoverageContractResolveDtos {
                 Boolean uncovered,
                 CoverageReadingSnapshot coverage
         ) {
-            this(matched, matchReason, contract, copayment, coverageConfigured, uncovered, coverage, null, null, null, null, null);
+            this(matched, matchReason, contract, copayment, coverageConfigured, uncovered, coverage, null, null, null, null, null, null);
         }
 
         public Response(
@@ -102,7 +115,7 @@ public final class CoverageContractResolveDtos {
                 CoverageReadingSnapshot coverage,
                 CoverageReadingSnapshot limit
         ) {
-            this(matched, matchReason, contract, copayment, coverageConfigured, uncovered, coverage, limit, null, null, null, null);
+            this(matched, matchReason, contract, copayment, coverageConfigured, uncovered, coverage, limit, null, null, null, null, null);
         }
 
         public Response(
@@ -116,7 +129,7 @@ public final class CoverageContractResolveDtos {
                 CoverageReadingSnapshot limit,
                 CoverageReadingSnapshot cashLimit
         ) {
-            this(matched, matchReason, contract, copayment, coverageConfigured, uncovered, coverage, limit, cashLimit, null, null, null);
+            this(matched, matchReason, contract, copayment, coverageConfigured, uncovered, coverage, limit, cashLimit, null, null, null, null);
         }
 
         public Response(
@@ -131,7 +144,7 @@ public final class CoverageContractResolveDtos {
                 CoverageReadingSnapshot cashLimit,
                 DiscountSnapshot discount
         ) {
-            this(matched, matchReason, contract, copayment, coverageConfigured, uncovered, coverage, limit, cashLimit, discount, null, null);
+            this(matched, matchReason, contract, copayment, coverageConfigured, uncovered, coverage, limit, cashLimit, discount, null, null, null);
         }
 
         public Response(
@@ -147,7 +160,24 @@ public final class CoverageContractResolveDtos {
                 DiscountSnapshot discount,
                 ExclusionSnapshot exclusion
         ) {
-            this(matched, matchReason, contract, copayment, coverageConfigured, uncovered, coverage, limit, cashLimit, discount, exclusion, null);
+            this(matched, matchReason, contract, copayment, coverageConfigured, uncovered, coverage, limit, cashLimit, discount, exclusion, null, null);
+        }
+
+        public Response(
+                boolean matched,
+                String matchReason,
+                ContractSnapshot contract,
+                CopaymentSnapshot copayment,
+                Boolean coverageConfigured,
+                Boolean uncovered,
+                CoverageReadingSnapshot coverage,
+                CoverageReadingSnapshot limit,
+                CoverageReadingSnapshot cashLimit,
+                DiscountSnapshot discount,
+                ExclusionSnapshot exclusion,
+                PreApprovalSnapshot preApproval
+        ) {
+            this(matched, matchReason, contract, copayment, coverageConfigured, uncovered, coverage, limit, cashLimit, discount, exclusion, preApproval, null);
         }
     }
 

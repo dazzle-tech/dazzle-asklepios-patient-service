@@ -4,10 +4,13 @@ import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.Facility;
+import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
@@ -170,7 +173,13 @@ public class DiagnosticOrderTestService {
                 saved.getId(), saved.getOrderId(), saved.getTestId(), saved.getStatus(), saved.getProcessingStatus());
 
         // Create billing + submit pre-auth immediately when the test is added (not on accept).
-        diagnosticOrderTestStatusService.onTestAddedToOrder(saved, dto.acceptUncoveredAsCash());
+        PatientServiceAndProduct billed =
+                diagnosticOrderTestStatusService.onTestAddedToOrder(saved, dto.acceptUncoveredAsCash());
+        saved.setCoveragePreApprovalPending(
+                billed != null
+                        && (billed.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH
+                        || billed.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL)
+        );
 
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
         LOG.debug("[DiagnosticOrderTestService] CREATE - recompute status done. orderId={}", saved.getOrderId());

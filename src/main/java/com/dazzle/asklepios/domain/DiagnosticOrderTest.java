@@ -10,6 +10,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PastOrPresent;
 import lombok.AllArgsConstructor;
@@ -130,4 +131,8 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
 
     @Column(name = "confirmed_at")
     private Instant confirmedAt;
+
+    @Transient
+    @EqualsAndHashCode.Exclude
+    private Boolean coveragePreApprovalPending;
 }
