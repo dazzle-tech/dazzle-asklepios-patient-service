@@ -34,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -161,6 +162,25 @@ public class EncounterVaccinationService {
         return encounterVaccinationRepository.findById(encounterVaccinationId)
                 .map(encounterVaccination -> {
                     Long ownedEncounterId = encounterVaccination.getEncounterId();
+
+                    // A paid vaccination is final
+                    if (patientServiceAndProductService.isVaccinationChargePaid(encounterVaccinationId)) {
+                        throw new BadRequestAlertException(
+                                "This vaccination is already paid and cannot be edited.",
+                                "encounterVaccination",
+                                "vaccination.paid.edit"
+                        );
+                    }
+
+                    // The vaccine and the brand that was given (and charged) cannot change
+                    if (!Objects.equals(encounterVaccination.getVaccineId(), updateRequest.vaccineId())
+                            || !Objects.equals(encounterVaccination.getVaccineBrandId(), updateRequest.vaccineBrandId())) {
+                        throw new BadRequestAlertException(
+                                "The vaccine and the brand cannot be changed. Cancel the vaccination and add a new one.",
+                                "encounterVaccination",
+                                "vaccine.locked"
+                        );
+                    }
 
                     Patient patient = patientRepository.findById(updateRequest.patientId())
                             .orElseThrow(() -> {

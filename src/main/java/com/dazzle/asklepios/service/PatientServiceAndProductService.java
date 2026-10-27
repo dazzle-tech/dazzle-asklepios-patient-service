@@ -54,6 +54,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -1259,15 +1260,9 @@ public class PatientServiceAndProductService {
      * paid (or reserved / settled) cannot be cancelled; no charge means nothing to cancel.
      */
     public void cancelVaccinationCharge(Long encounterVaccinationId, String reason) {
-        patientServiceAndProductRepository
-                .findByServiceSourceAndSourceIdAndBillingItemType(
-                        ServiceSource.VACCINATION,
-                        encounterVaccinationId,
-                        BillingItemTypes.VACCINE
-                )
-                .filter(item -> item.getPaymentStatus() != PaymentStatus.CANCELLED)
+        findActiveVaccinationCharge(encounterVaccinationId)
                 .ifPresent(item -> {
-                    if (isPaymentStatusSettled(item) || hasFundsReservedOrAllocated(item)) {
+                    if (isPaymentStarted(item)) {
                         throw new BadRequestAlertException(
                                 "This vaccination is already paid and cannot be cancelled.",
                                 "encounterVaccination",
@@ -1277,6 +1272,28 @@ public class PatientServiceAndProductService {
 
                     cancel(item.getId(), reason);
                 });
+    }
+
+    /** True when the vaccination charge is paid (or reserved / settled) */
+    @Transactional(readOnly = true)
+    public boolean isVaccinationChargePaid(Long encounterVaccinationId) {
+        return findActiveVaccinationCharge(encounterVaccinationId)
+                .map(this::isPaymentStarted)
+                .orElse(false);
+    }
+
+    private Optional<PatientServiceAndProduct> findActiveVaccinationCharge(Long encounterVaccinationId) {
+        return patientServiceAndProductRepository
+                .findByServiceSourceAndSourceIdAndBillingItemType(
+                        ServiceSource.VACCINATION,
+                        encounterVaccinationId,
+                        BillingItemTypes.VACCINE
+                )
+                .filter(item -> item.getPaymentStatus() != PaymentStatus.CANCELLED);
+    }
+
+    private boolean isPaymentStarted(PatientServiceAndProduct item) {
+        return isPaymentStatusSettled(item) || hasFundsReservedOrAllocated(item);
     }
 
     /** Money movement started: reserved, paid, posted to debit or exempted */
