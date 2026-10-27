@@ -1,9 +1,11 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.VaccineClient;
+import com.dazzle.asklepios.client.setup.dto.VaccineBrandSetupDTO;
 import com.dazzle.asklepios.domain.EncounterVaccination;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.EncounterVaccinationStatus;
 import com.dazzle.asklepios.repository.EncounterVaccinationRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
@@ -32,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -51,6 +54,7 @@ public class EncounterVaccinationService {
     private final VaccineBrandHelper vaccineBrandHelper;
     private final VaccineDosesHelper vaccineDosesHelper;
     private final ReopenSessionAuditContext reopenSessionAuditContext;
+    private final PatientServiceAndProductService patientServiceAndProductService;
 
     public EncounterVaccination create(EncounterVaccinationCreateDTO createRequest) {
         LOG.info("[CREATE] EncounterVaccination payload={}", createRequest);
@@ -102,6 +106,7 @@ public class EncounterVaccinationService {
                     createRequest.vaccineDoseId(),
                     createRequest.status()
             );
+            chargeVaccination(savedEncounterVaccination);
             return savedEncounterVaccination;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             LOG.warn("[CREATE] EncounterVaccination failed (constraint) payload={}", createRequest, ex);
@@ -112,12 +117,70 @@ public class EncounterVaccinationService {
         }
     }
 
+    /**
+     * A vaccination given in this facility adds the vaccine brand to the encounter's services and products.
+     * A vaccination recorded from an external facility is not charged.
+     */
+    private void chargeVaccination(EncounterVaccination encounterVaccination) {
+        if (encounterVaccination.getStatus() != EncounterVaccinationStatus.ACTIVE
+                || Boolean.TRUE.equals(encounterVaccination.getIsExternalFacility())
+                || encounterVaccination.getVaccineBrandId() == null) {
+            return;
+        }
+
+        VaccineBrandSetupDTO vaccineBrand = vaccineBrandHelper.getVaccineBrand(encounterVaccination.getVaccineBrandId());
+
+        patientServiceAndProductService.createVaccination(
+                encounterVaccination.getPatient().getId(),
+                encounterVaccination.getEncounterId(),
+                encounterVaccination.getId(),
+                encounterVaccination.getVaccineBrandId(),
+                resolveCurrency(vaccineBrand.currency())
+        );
+
+        LOG.debug(
+                "[CREATE] EncounterVaccination charged id={} vaccineBrandId={}",
+                encounterVaccination.getId(),
+                encounterVaccination.getVaccineBrandId()
+        );
+    }
+
+    private static Currency resolveCurrency(String currency) {
+        if (currency == null || currency.isBlank()) {
+            throw new BadRequestAlertException(
+                    "Vaccine brand currency is missing",
+                    "encounterVaccination",
+                    "vaccineBrand.currencyMissing"
+            );
+        }
+        return Currency.valueOf(currency.trim().toUpperCase());
+    }
+
     public EncounterVaccination update(Long encounterVaccinationId, EncounterVaccinationUpdateDTO updateRequest) {
         LOG.info("[UPDATE] EncounterVaccination id={} payload={}", encounterVaccinationId, updateRequest);
 
         return encounterVaccinationRepository.findById(encounterVaccinationId)
                 .map(encounterVaccination -> {
                     Long ownedEncounterId = encounterVaccination.getEncounterId();
+
+                    // A paid vaccination is final
+                    if (patientServiceAndProductService.isVaccinationChargePaid(encounterVaccinationId)) {
+                        throw new BadRequestAlertException(
+                                "This vaccination is already paid and cannot be edited.",
+                                "encounterVaccination",
+                                "vaccination.paid.edit"
+                        );
+                    }
+
+                    // The vaccine and the brand that was given (and charged) cannot change
+                    if (!Objects.equals(encounterVaccination.getVaccineId(), updateRequest.vaccineId())
+                            || !Objects.equals(encounterVaccination.getVaccineBrandId(), updateRequest.vaccineBrandId())) {
+                        throw new BadRequestAlertException(
+                                "The vaccine and the brand cannot be changed. Cancel the vaccination and add a new one.",
+                                "encounterVaccination",
+                                "vaccine.locked"
+                        );
+                    }
 
                     Patient patient = patientRepository.findById(updateRequest.patientId())
                             .orElseThrow(() -> {
@@ -219,6 +282,13 @@ public class EncounterVaccinationService {
                 });
 
         Long encounterId = encounterVaccination.getEncounterId();
+
+        // Rejected when the vaccination charge is already paid; otherwise the charge is cancelled with it
+        patientServiceAndProductService.cancelVaccinationCharge(
+                encounterVaccination.getId(),
+                cancelRequest.cancellationReason()
+        );
+
         encounterVaccination.setStatus(EncounterVaccinationStatus.CANCELLED);
         encounterVaccination.setCancellationReason(cancelRequest.cancellationReason());
         encounterVaccination.setCancelledAt(Instant.now());

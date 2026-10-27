@@ -4,6 +4,7 @@ import com.dazzle.asklepios.client.setup.BrandMedicationClient;
 import com.dazzle.asklepios.client.setup.DiagnosticTestClient;
 import com.dazzle.asklepios.client.setup.ProcedureClient;
 import com.dazzle.asklepios.client.setup.ServiceClient;
+import com.dazzle.asklepios.client.setup.VaccineBrandClient;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import feign.FeignException;
@@ -29,6 +30,7 @@ public class BillingItemDisplayNameService {
     private final BrandMedicationClient brandMedicationClient;
     private final ProcedureClient procedureClient;
     private final DiagnosticTestClient diagnosticTestClient;
+    private final VaccineBrandClient vaccineBrandClient;
 
     public String resolveDisplayName(
             BillingItemTypes billingItemType,
@@ -120,6 +122,18 @@ public class BillingItemDisplayNameService {
                                 )
                                 .name()
                 );
+                case VACCINE -> readName(
+                        vaccineBrandClient
+                                .getVaccineBrand(
+                                        pickId(
+                                                item == null
+                                                        ? null
+                                                        : item.getVaccineBrandId(),
+                                                sourceId
+                                        )
+                                )
+                                .name()
+                );
             };
         } catch (FeignException ex) {
             LOG.debug(
@@ -170,6 +184,10 @@ public class BillingItemDisplayNameService {
 
         if (item.getDiagnosticTestId() != null) {
             return item.getDiagnosticTestId();
+        }
+
+        if (item.getVaccineBrandId() != null) {
+            return item.getVaccineBrandId();
         }
 
         return item.getSourceId();
