@@ -342,8 +342,8 @@ public class PreAuthorizationResolutionService {
     }
 
     /**
-     * Keeps Waseel decisions (approved / rejected / cancelled) after payer response.
-     * Price-list pre-auth flags must not reset submitted items back to pending.
+     * Keeps payer decisions and coverage holds that already opened a request.
+     * Price-list flags must not reset a pending coverage pre-approval back to not required.
      */
     private boolean shouldPreserveExistingPreAuthorizationDecision(
             PatientServiceAndProduct item
@@ -357,7 +357,9 @@ public class PreAuthorizationResolutionService {
         return status == PreAuthorizationStatus.APPROVED
                 || status == PreAuthorizationStatus.REJECTED
                 || status == PreAuthorizationStatus.CANCELLED
-                || status == PreAuthorizationStatus.PARTIAL;
+                || status == PreAuthorizationStatus.PARTIAL
+                || status == PreAuthorizationStatus.PENDING_APPROVAL
+                || item.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH;
     }
 
     private boolean isInsurancePreAuthorizationContext(

@@ -153,8 +153,10 @@ public class PatientServiceAndProductService {
 
             completeItemBillingFlow(saved);
 
-            LOG.debug("Created Patient billing item : {}", saved);
-            return saved;
+            PatientServiceAndProduct persisted = patientServiceAndProductRepository.findById(saved.getId())
+                    .orElse(saved);
+            LOG.debug("Created Patient billing item : {}", persisted);
+            return persisted;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);

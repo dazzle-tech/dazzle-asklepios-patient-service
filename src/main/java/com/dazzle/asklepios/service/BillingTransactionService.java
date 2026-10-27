@@ -202,6 +202,21 @@ public class BillingTransactionService {
                 context
         );
 
+        PatientServiceAndProduct billedItem = context.getPatientServiceProduct();
+        if (preAuthorizationResolutionService.isPendingPreAuthorization(billedItem)
+                && billedItem.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH) {
+            LOG.info(
+                    "[CREATE] Billing deferred — waiting for pre-authorization. pspId={} requestId={}",
+                    billedItem.getId(),
+                    billedItem.getPreAuthorizationRequestId()
+            );
+            return buildResult(
+                    context,
+                    true,
+                    resolveCreateMessage(context)
+            );
+        }
+
         /*
          * 2. Charge header.
          */
