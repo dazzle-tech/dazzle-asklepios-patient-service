@@ -4,12 +4,14 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 
 /**
- * Decides whether a visit line crosses the pre-approval ceiling.
+ * Decides whether one item reaches its own pre-approval limit.
+ * Earlier items on the visit are not added together.
  *
  * Fixed: the ceiling is the entered amount.
  * Percentage: the ceiling is that percent of the coverage-limit amount when the
- * contract has a fixed coverage limit. Without that base, the ceiling is the
- * same percent of the running visit total.
+ * contract has a fixed coverage limit. Without that base, the entered number is
+ * the item amount that must be reached.
+ * An item at the ceiling is included, not only an item above it.
  */
 public final class PreApprovalLimitEvaluator {
 
@@ -22,30 +24,26 @@ public final class PreApprovalLimitEvaluator {
     public static boolean exceeds(
             String valueType,
             BigDecimal limitValue,
-            BigDecimal consumed,
-            BigDecimal current,
+            BigDecimal itemAmount,
             BigDecimal percentageBase
     ) {
-        if (limitValue == null || current == null || current.signum() <= 0) {
+        if (limitValue == null || itemAmount == null || itemAmount.signum() <= 0) {
             return false;
         }
-        BigDecimal posted = money(consumed).add(money(current));
-        return posted.compareTo(ceiling(valueType, limitValue, posted, percentageBase)) > 0;
+        return money(itemAmount).compareTo(ceiling(valueType, limitValue, percentageBase)) >= 0;
     }
 
     public static BigDecimal ceiling(
             String valueType,
             BigDecimal limitValue,
-            BigDecimal runningTotal,
             BigDecimal percentageBase
     ) {
-        if (!"PERCENTAGE".equalsIgnoreCase(valueType)) {
+        if (!"PERCENTAGE".equalsIgnoreCase(valueType)
+                || percentageBase == null
+                || percentageBase.signum() <= 0) {
             return money(limitValue);
         }
-        BigDecimal base = percentageBase != null && percentageBase.signum() > 0
-                ? percentageBase
-                : runningTotal;
-        return money(base.multiply(limitValue).divide(ONE_HUNDRED, SCALE, RoundingMode.HALF_UP));
+        return money(percentageBase.multiply(limitValue).divide(ONE_HUNDRED, SCALE, RoundingMode.HALF_UP));
     }
 
     private static BigDecimal money(BigDecimal value) {

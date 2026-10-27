@@ -99,19 +99,16 @@ public class CoveragePreApprovalLimitService {
             return;
         }
 
-        BigDecimal consumed = consumedPostedAmount(encounter.getId(), item.getId(), insurance, preApproval.preApprovalId());
         if (!PreApprovalLimitEvaluator.exceeds(
                 preApproval.valueType(),
                 preApproval.limitValue(),
-                consumed,
                 current,
                 percentageBase(resolved.limit())
         )) {
             LOG.info(
-                    "[PREAUTH_LIMIT] Visit is still within the pre-approval limit. encounterId={} pspId={} consumed={} current={} limit={}",
+                    "[PREAUTH_LIMIT] Item is under its pre-approval limit. encounterId={} pspId={} amount={} limit={}",
                     encounter.getId(),
                     item.getId(),
-                    consumed,
                     current,
                     preApproval.limitValue()
             );
@@ -223,54 +220,6 @@ public class CoveragePreApprovalLimitService {
                 .brandMedicationId(item.getBrandMedicationId())
                 .itemDecision("pended")
                 .build();
-    }
-
-    private BigDecimal consumedPostedAmount(
-            Long encounterId,
-            Long currentItemId,
-            PatientInsurance insurance,
-            Long preApprovalId
-    ) {
-        BigDecimal consumed = BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP);
-        for (PatientServiceAndProduct previous : patientServiceAndProductRepository.findByEncounterId(encounterId)) {
-            if (!countsAsPosted(previous, currentItemId)) {
-                continue;
-            }
-            if (!matchesPreApproval(insurance, previous, preApprovalId)) {
-                continue;
-            }
-            consumed = consumed.add(money(previous.getNetAmount()));
-        }
-        return consumed;
-    }
-
-    private boolean countsAsPosted(PatientServiceAndProduct previous, Long currentItemId) {
-        if (previous == null || previous.getId() == null || previous.getId().equals(currentItemId)) {
-            return false;
-        }
-        if (previous.getPaymentStatus() == PaymentStatus.CANCELLED
-                || previous.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH
-                || previous.isUncoveredCashItem()) {
-            return false;
-        }
-        PreAuthorizationStatus status = previous.getPreAuthorizationStatus();
-        if (status == PreAuthorizationStatus.PENDING_APPROVAL || status == PreAuthorizationStatus.PARTIAL) {
-            return false;
-        }
-        return previous.getNetAmount() != null && previous.getNetAmount().signum() > 0;
-    }
-
-    private boolean matchesPreApproval(
-            PatientInsurance insurance,
-            PatientServiceAndProduct previous,
-            Long preApprovalId
-    ) {
-        CoverageContractResolveDtos.Response resolved = resolveQuietly(insurance, previous);
-        return resolved != null
-                && resolved.matched()
-                && !isExcluded(resolved)
-                && resolved.preApproval() != null
-                && preApprovalId.equals(resolved.preApproval().preApprovalId());
     }
 
     private CoverageContractResolveDtos.Response resolveQuietly(
