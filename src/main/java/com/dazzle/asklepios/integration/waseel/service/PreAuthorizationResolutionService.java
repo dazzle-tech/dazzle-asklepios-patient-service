@@ -192,6 +192,21 @@ public class PreAuthorizationResolutionService {
             return;
         }
 
+        /*
+         * A line that already has a pre-approval request keeps its hold or decision.
+         * Re-preparing the visit (walk-in confirm) must not reset it to not required,
+         * otherwise the line is charged and reserved before approval.
+         */
+        if (shouldPreserveExistingPreAuthorizationDecision(entity)) {
+            LOG.info(
+                    "[PREAUTH] Keeping existing pre-approval decision. pspId={} status={} requestId={}",
+                    entity.getId(),
+                    entity.getPreAuthorizationStatus(),
+                    entity.getPreAuthorizationRequestId()
+            );
+            return;
+        }
+
         entity.setPreAuthorizationStatus(resolution.status());
         entity.setPreAuthorizationRequired(resolution.required());
         entity.setPaymentStatus(
