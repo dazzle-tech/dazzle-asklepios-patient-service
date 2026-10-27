@@ -13,6 +13,7 @@ import com.dazzle.asklepios.integration.waseel.event.PreAuthorizationApprovedEve
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.repository.PreAuthorizationItemRepository;
 import com.dazzle.asklepios.repository.PreAuthorizationRequestRepository;
+import com.dazzle.asklepios.service.CoverageApprovalRoutingService;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -43,6 +44,7 @@ public class PreAuthorizationStatusRefreshService {
     private final ApplicationEventPublisher applicationEventPublisher;
     private final EncounterInsuranceResponsibilityRefreshService
             encounterInsuranceResponsibilityRefreshService;
+    private final CoverageApprovalRoutingService coverageApprovalRoutingService;
 
     @Transactional
     public EncounterPreAuthorizationRefreshResponse refreshEncounter(Long encounterId) {
@@ -62,10 +64,17 @@ public class PreAuthorizationStatusRefreshService {
             );
         }
 
+        /*
+         * NPHIES contracts keep their requests locally (no Waseel request id).
+         * Their decisions are read from the database instead of the Waseel search API.
+         */
+        boolean localApproval = coverageApprovalRoutingService.encounterUsesLocalApproval(encounterId);
+
         List<PreAuthorizationRequest> requests =
                 preAuthorizationRequestRepository.findByEncounterIdOrderByIdDesc(encounterId)
                         .stream()
-                        .filter(request -> request.getApprovalRequestId() != null)
+                        .filter(request -> request.getApprovalRequestId() != null
+                                || (localApproval && isActiveLocalRequest(request)))
                         .toList();
 
         if (requests.isEmpty()) {
@@ -83,16 +92,18 @@ public class PreAuthorizationStatusRefreshService {
         List<Long> approvedPatientItemIds = new ArrayList<>();
 
         for (PreAuthorizationRequest request : requests) {
-            PreAuthorizationSearchResponse searchResponse =
-                    waseelPreAuthorizationService.searchAndUpdate(
-                            request.getId(),
-                            request.getApprovalRequestId()
-                    );
-
             refreshedRequestCount++;
 
             PropagationResult propagationResult =
-                    propagateSearchResponse(request, searchResponse);
+                    request.getApprovalRequestId() == null
+                            ? propagateLocalRequest(request)
+                            : propagateSearchResponse(
+                                    request,
+                                    waseelPreAuthorizationService.searchAndUpdate(
+                                            request.getId(),
+                                            request.getApprovalRequestId()
+                                    )
+                            );
 
             approvedItemCount += propagationResult.approvedCount();
             rejectedItemCount += propagationResult.rejectedCount();
@@ -237,6 +248,15 @@ public class PreAuthorizationStatusRefreshService {
                 message,
                 refreshedItems
         );
+    }
+
+    /**
+     * A local request still linked to its billing line. A request replaced by a clone
+     * is skipped, so its old decision cannot overwrite the new request.
+     */
+    private boolean isActiveLocalRequest(PreAuthorizationRequest request) {
+        return isLocallyRefreshableRequest(request)
+                && !patientServiceAndProductRepository.findByPreAuthorizationRequestId(request.getId()).isEmpty();
     }
 
     private boolean isLocallyRefreshableRequest(PreAuthorizationRequest request) {

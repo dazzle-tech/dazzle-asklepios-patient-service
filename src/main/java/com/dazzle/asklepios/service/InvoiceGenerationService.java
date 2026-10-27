@@ -176,6 +176,7 @@ public class InvoiceGenerationService {
         boolean eligibilityFreezeRequired =
                 "INSURANCE".equals(coverageType)
                         && billingEligibilitySnapshotService.isEligibilityFreezeRequired(encounterId);
+        String displayCoverageType = resolveDisplayCoverageType(encounterId, coverageType);
 
         return new EncounterInvoiceDetailsResponse(
                 encounter.getId(),
@@ -186,7 +187,7 @@ public class InvoiceGenerationService {
                 resolveBillingStatus(encounter),
                 encounter.getFinanciallyClosedAt(),
                 encounter.getFinanciallyClosedBy(),
-                coverageType,
+                displayCoverageType,
                 encounter.getPatientInsuranceId(),
                 eligibilityReference,
                 eligibilitySnapshot,
@@ -985,6 +986,27 @@ public class InvoiceGenerationService {
                 encounterId,
                 FinancialDocumentSubtype.PATIENT
         );
+    }
+
+    /**
+     * An insurance visit whose lines are all held for pre-approval has no insurance
+     * responsibility yet. The billing screen still shows it as insurance so the
+     * pre-authorization actions stay available. Invoice logic keeps using
+     * {@link #resolveCoverageType(Long)}.
+     */
+    private String resolveDisplayCoverageType(Long encounterId, String coverageType) {
+        if ("INSURANCE".equals(coverageType)) {
+            return coverageType;
+        }
+
+        boolean hasLineAwaitingApproval =
+                patientServiceAndProductRepository
+                        .existsByEncounterIdAndPatientInsuranceIdIsNotNullAndPreAuthorizationStatus(
+                                encounterId,
+                                PreAuthorizationStatus.PENDING_APPROVAL
+                        );
+
+        return hasLineAwaitingApproval ? "INSURANCE" : coverageType;
     }
 
     private String resolveCoverageType(Long encounterId) {

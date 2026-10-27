@@ -4,11 +4,13 @@ package com.dazzle.asklepios.integration.waseel.controller;
 import com.dazzle.asklepios.integration.waseel.dto.PreAuthorizationCommunicationHistoryResponse;
 import com.dazzle.asklepios.integration.waseel.dto.PreAuthorizationTrackingResponse;
 import com.dazzle.asklepios.integration.waseel.dto.eligibility.response.EligibilityCheckResponse;
+import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.LocalPreAuthorizationDecisionRequest;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.PreAuthorizationCancelRequest;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.PreAuthorizationCommunicationRequest;
 import com.dazzle.asklepios.integration.waseel.dto.EncounterPreAuthorizationRefreshResponse;
 import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
+import com.dazzle.asklepios.integration.waseel.service.LocalPreAuthorizationDecisionService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationCommunicationHistoryService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationRejectedItemService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResubmissionService;
@@ -16,6 +18,7 @@ import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationStatusRef
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationTrackingService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelPreAuthorizationService;
 import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -42,6 +45,7 @@ public class WaseelPreAuthorizationController {
     private final PreAuthorizationStatusRefreshService preAuthorizationStatusRefreshService;
     private final PreAuthorizationRejectedItemService preAuthorizationRejectedItemService;
     private final PreAuthorizationResubmissionService preAuthorizationResubmissionService;
+    private final LocalPreAuthorizationDecisionService localPreAuthorizationDecisionService;
 
     @GetMapping("/internal/waseel/pre-authorizations/tracking")
     public Page<PreAuthorizationTrackingResponse> getAll(Pageable pageable) {
@@ -117,6 +121,14 @@ public class WaseelPreAuthorizationController {
                 encounterId,
                 patientServiceProductId
         );
+    }
+
+    @PostMapping("/internal/waseel/pre-authorizations/{preAuthorizationId}/local-decision")
+    public EncounterPreAuthorizationRefreshResponse decideLocalPreAuthorization(
+            @PathVariable Long preAuthorizationId,
+            @Valid @RequestBody LocalPreAuthorizationDecisionRequest request
+    ) {
+        return localPreAuthorizationDecisionService.decide(preAuthorizationId, request);
     }
 
     @PostMapping("/internal/waseel/pre-authorizations/{preAuthorizationId}/resubmit")

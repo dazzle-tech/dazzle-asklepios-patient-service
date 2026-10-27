@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingTrigger;
@@ -452,6 +453,23 @@ public class BillingEngineService {
                         patientServiceProductId,
                         eventType,
                         result.chargeLineId()
+                );
+
+                return result;
+            }
+
+            /*
+             * The rule matched but the line is held for pre-approval, so no charge
+             * line exists yet. Trying the remaining events would replace this result
+             * with a trigger mismatch and hide the pre-approval hold.
+             */
+            if (result.processed()
+                    && isHeldForPreAuthorization(patientServiceProductId)) {
+                LOG.info(
+                        "[PREPARE_FALLBACK] Billing deferred for pre-authorization "
+                                + "pspId={} eventType={}",
+                        patientServiceProductId,
+                        eventType
                 );
 
                 return result;
@@ -1225,6 +1243,14 @@ public class BillingEngineService {
      * ENTITY LOADERS
      * ============================================================
      */
+
+    private boolean isHeldForPreAuthorization(
+            Long patientServiceProductId
+    ) {
+        return findPatientServiceProduct(
+                patientServiceProductId
+        ).getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH;
+    }
 
     private PatientServiceAndProduct findPatientServiceProduct(
             Long id

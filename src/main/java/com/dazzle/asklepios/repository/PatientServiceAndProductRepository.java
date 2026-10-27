@@ -109,6 +109,11 @@ public interface PatientServiceAndProductRepository
 
     boolean existsByEncounterIdAndPatientInsuranceIdIsNotNull(Long encounterId);
 
+    boolean existsByEncounterIdAndPatientInsuranceIdIsNotNullAndPreAuthorizationStatus(
+            Long encounterId,
+            PreAuthorizationStatus preAuthorizationStatus
+    );
+
     Optional<PatientServiceAndProduct> findFirstByEncounterIdAndPatientInsuranceIdIsNotNullOrderByIdDesc(
             Long encounterId
     );
