@@ -16,6 +16,7 @@ import com.dazzle.asklepios.integration.waseel.client.WaseelItemMappingClient;
 import com.dazzle.asklepios.integration.waseel.client.dto.WaseelItemMappingSetupDTO;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
+import com.dazzle.asklepios.service.CoverageApprovalRoutingService;
 import com.dazzle.asklepios.service.CoverageContractShareService;
 import com.dazzle.asklepios.service.helper.NphiesPayerHelper;
 import feign.FeignException;
@@ -49,6 +50,8 @@ public class PreAuthorizationResolutionService {
     private final NphiesPayerHelper nphiesPayerHelper;
 
     private final CoverageContractShareService coverageContractShareService;
+
+    private final CoverageApprovalRoutingService coverageApprovalRoutingService;
 
     public record Resolution(
             PreAuthorizationStatus status,
@@ -642,6 +645,18 @@ public class PreAuthorizationResolutionService {
                 || billingItemType == null
                 || itemId == null) {
             return false;
+        }
+
+        /*
+         * NPHIES contracts: only the contract pre-approval decides.
+         * Price-list and payor-plan flags belong to the Waseel flow and are skipped.
+         */
+        if (coverageApprovalRoutingService.encounterUsesLocalApproval(encounterId)) {
+            return requiresPreAuthorizationFromCoverageContract(
+                    encounterId,
+                    billingItemType,
+                    itemId
+            );
         }
 
         if (requiresPreAuthorizationFromCoverageContract(

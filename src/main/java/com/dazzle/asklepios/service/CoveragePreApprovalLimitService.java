@@ -8,6 +8,7 @@ import com.dazzle.asklepios.domain.PreAuthorizationItem;
 import com.dazzle.asklepios.domain.PreAuthorizationRequest;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
@@ -23,16 +24,23 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.List;
 
 /**
- * Opens a local pre-approval request when a visit line crosses the coverage
- * pre-approval limit. No payer API is called; the charge stays off the patient
- * account until an approval decision exists.
+ * Opens a local pre-approval request when a visit line needs coverage pre-approval.
+ * No payer API is called; the charge stays off the patient ledger until an approval
+ * decision exists.
+ *
+ * Every contract: a line that crosses the contract pre-approval limit is held.
+ * NPHIES contracts (local approval flow) also hold a line when the contract
+ * pre-approval has no limit, so it never waits for a Waseel submission.
  */
 @Service
 public class CoveragePreApprovalLimitService {
 
     static final String REQUEST_STATUS = "Pending Approval";
+    static final String REASON_LIMIT = "Coverage pre-approval limit exceeded";
+    static final String REASON_CONTRACT = "Coverage contract requires pre-approval";
 
     private static final Logger LOG = LoggerFactory.getLogger(CoveragePreApprovalLimitService.class);
     private static final int MONEY_SCALE = 2;
@@ -43,6 +51,7 @@ public class CoveragePreApprovalLimitService {
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final PreAuthorizationRequestRepository preAuthorizationRequestRepository;
     private final PreAuthorizationItemRepository preAuthorizationItemRepository;
+    private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
 
     public CoveragePreApprovalLimitService(
             CoverageContractShareService coverageContractShareService,
@@ -50,7 +59,8 @@ public class CoveragePreApprovalLimitService {
             PatientInsuranceRepository patientInsuranceRepository,
             PatientServiceAndProductRepository patientServiceAndProductRepository,
             PreAuthorizationRequestRepository preAuthorizationRequestRepository,
-            PreAuthorizationItemRepository preAuthorizationItemRepository
+            PreAuthorizationItemRepository preAuthorizationItemRepository,
+            EncounterInsuranceEligibilityService encounterInsuranceEligibilityService
     ) {
         this.coverageContractShareService = coverageContractShareService;
         this.patientEncounterRepository = patientEncounterRepository;
@@ -58,6 +68,7 @@ public class CoveragePreApprovalLimitService {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.preAuthorizationRequestRepository = preAuthorizationRequestRepository;
         this.preAuthorizationItemRepository = preAuthorizationItemRepository;
+        this.encounterInsuranceEligibilityService = encounterInsuranceEligibilityService;
     }
 
     public void applyIfExceeded(BillingProcessingContext context) {
@@ -70,9 +81,6 @@ public class CoveragePreApprovalLimitService {
         }
 
         BigDecimal current = money(context.getNetAmount());
-        if (current.signum() <= 0) {
-            return;
-        }
 
         PatientEncounter encounter = patientEncounterRepository.findById(item.getEncounterId()).orElse(null);
         if (encounter == null || encounter.getPatient() == null) {
@@ -95,7 +103,26 @@ public class CoveragePreApprovalLimitService {
             return;
         }
         CoverageContractResolveDtos.PreApprovalSnapshot preApproval = resolved.preApproval();
-        if (preApproval.limitValue() == null || preApproval.preApprovalId() == null) {
+        if (preApproval.preApprovalId() == null) {
+            return;
+        }
+
+        boolean localApproval = CoverageApprovalRoutingService.usesLocalApproval(resolved);
+        boolean alreadyPending = item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL;
+        if (alreadyPending && !localApproval) {
+            // Waseel contract: the Waseel flow submits this item. Unchanged.
+            return;
+        }
+
+        if (preApproval.limitValue() == null) {
+            if (!localApproval) {
+                return;
+            }
+            holdForApproval(context, encounter, insurance, item, current, REASON_CONTRACT);
+            return;
+        }
+
+        if (current.signum() <= 0) {
             return;
         }
 
@@ -115,7 +142,53 @@ public class CoveragePreApprovalLimitService {
             return;
         }
 
-        holdForApproval(context, encounter, insurance, item, current);
+        holdForApproval(context, encounter, insurance, item, current, REASON_LIMIT);
+    }
+
+    /**
+     * NPHIES contracts: opens a local request for every line already marked
+     * PENDING_APPROVAL that has no request yet. Used instead of the Waseel
+     * submission, so no eligibility request is needed.
+     */
+    public int openLocalRequestsForEncounter(Long encounterId) {
+        if (encounterId == null) {
+            return 0;
+        }
+        PatientEncounter encounter = patientEncounterRepository.findById(encounterId).orElse(null);
+        if (encounter == null || encounter.getPatient() == null) {
+            return 0;
+        }
+        List<PatientServiceAndProduct> items = patientServiceAndProductRepository
+                .findByEncounterIdAndPreAuthorizationStatusAndPreAuthorizationRequestIdIsNull(
+                        encounterId,
+                        PreAuthorizationStatus.PENDING_APPROVAL
+                )
+                .stream()
+                .filter(item -> !Boolean.TRUE.equals(item.getIsBilled()))
+                .filter(item -> item.getPaymentStatus() != PaymentStatus.CANCELLED)
+                .filter(item -> !item.isUncoveredCashItem())
+                .toList();
+
+        int opened = 0;
+        for (PatientServiceAndProduct item : items) {
+            Long insuranceId = item.getPatientInsuranceId() != null
+                    ? item.getPatientInsuranceId()
+                    : encounterInsuranceEligibilityService.resolveEncounterPatientInsuranceId(encounterId);
+            PatientInsurance insurance = insuranceId == null
+                    ? null
+                    : patientInsuranceRepository.findById(insuranceId).orElse(null);
+            if (insurance == null) {
+                LOG.warn(
+                        "[PREAUTH_LIMIT] No insurance for pending item, request not opened. encounterId={} pspId={}",
+                        encounterId,
+                        item.getId()
+                );
+                continue;
+            }
+            holdForApproval(null, encounter, insurance, item, itemNet(item), REASON_CONTRACT);
+            opened++;
+        }
+        return opened;
     }
 
     private boolean canEvaluate(PatientServiceAndProduct item) {
@@ -129,7 +202,9 @@ public class CoveragePreApprovalLimitService {
             return false;
         }
         PreAuthorizationStatus status = item.getPreAuthorizationStatus();
-        return status == null || status == PreAuthorizationStatus.NOT_REQUIRED;
+        return status == null
+                || status == PreAuthorizationStatus.NOT_REQUIRED
+                || status == PreAuthorizationStatus.PENDING_APPROVAL;
     }
 
     private void holdForApproval(
@@ -137,7 +212,8 @@ public class CoveragePreApprovalLimitService {
             PatientEncounter encounter,
             PatientInsurance insurance,
             PatientServiceAndProduct item,
-            BigDecimal net
+            BigDecimal net,
+            String reason
     ) {
         PreAuthorizationRequest request = preAuthorizationRequestRepository.save(PreAuthorizationRequest.builder()
                 .patientId(encounter.getPatient().getId())
@@ -155,7 +231,7 @@ public class CoveragePreApprovalLimitService {
                 .isCancelled(false)
                 .totalNet(net.setScale(MONEY_SCALE, RoundingMode.HALF_UP))
                 .status(REQUEST_STATUS)
-                .statusReason("Coverage pre-approval limit exceeded")
+                .statusReason(reason)
                 .message("This request is waiting for pre-approval. It is not posted to the patient account.")
                 .build());
 
@@ -182,17 +258,17 @@ public class CoveragePreApprovalLimitService {
             PatientServiceAndProduct item,
             BigDecimal net
     ) {
-        PriceCalculationResult pricing = context.getPricingResult();
-        BillingPricingInput input = context.getPricingInput();
+        PriceCalculationResult pricing = context == null ? null : context.getPricingResult();
+        BillingPricingInput input = context == null ? null : context.getPricingInput();
         BigDecimal quantity = pricing != null && pricing.quantity() != null
                 ? pricing.quantity()
-                : BigDecimal.ONE;
+                : (item.getQuantity() == null ? BigDecimal.ONE : BigDecimal.valueOf(item.getQuantity()));
         BigDecimal unitPrice = pricing != null && pricing.unitPrice() != null
                 ? pricing.unitPrice()
-                : BigDecimal.ZERO;
+                : money(item.getUnitPrice());
         BigDecimal discount = pricing != null && pricing.discountAmount() != null
                 ? pricing.discountAmount()
-                : BigDecimal.ZERO;
+                : money(item.getDiscountAmount());
         String code = input != null && input.itemCode() != null && !input.itemCode().isBlank()
                 ? input.itemCode()
                 : (item.getBillingItemType() == null ? "ITEM-" : item.getBillingItemType().name() + "-") + item.getId();
@@ -210,7 +286,7 @@ public class CoveragePreApprovalLimitService {
                 .unitPrice(unitPrice.setScale(MONEY_SCALE, RoundingMode.HALF_UP))
                 .discount(discount.setScale(MONEY_SCALE, RoundingMode.HALF_UP))
                 .factor(BigDecimal.ONE.setScale(4, RoundingMode.HALF_UP))
-                .tax(money(pricing == null ? null : pricing.taxAmount()).setScale(MONEY_SCALE, RoundingMode.HALF_UP))
+                .tax(money(pricing == null ? item.getTaxAmount() : pricing.taxAmount()).setScale(MONEY_SCALE, RoundingMode.HALF_UP))
                 .patientShare(BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP))
                 .payerShare(BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP))
                 .net(net.setScale(MONEY_SCALE, RoundingMode.HALF_UP))
@@ -220,6 +296,17 @@ public class CoveragePreApprovalLimitService {
                 .brandMedicationId(item.getBrandMedicationId())
                 .itemDecision("pended")
                 .build();
+    }
+
+    private BigDecimal itemNet(PatientServiceAndProduct item) {
+        BigDecimal net = money(item.getNetAmount());
+        if (net.signum() > 0) {
+            return net;
+        }
+        BigDecimal quantity = item.getQuantity() == null ? BigDecimal.ONE : BigDecimal.valueOf(item.getQuantity());
+        return money(money(item.getUnitPrice()).multiply(quantity)
+                .subtract(money(item.getDiscountAmount()))
+                .add(money(item.getTaxAmount())));
     }
 
     private CoverageContractResolveDtos.Response resolveQuietly(
