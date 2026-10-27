@@ -17,6 +17,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.Optional;
 
 @Service
@@ -144,6 +146,39 @@ public class PatientRelationService {
                 savedRelation.getId(), sourcePatientId, relatedPatientId, requestedRelationType);
         return savedRelation;
     }
+
+    public PatientRelation createForPatientPortal(PatientRelation entity) {
+        Long relatedPatientId = entity.getRelativePatient().getId();
+        LOG.info("[CREATE] PatientRelation patient portal request patientId={} relativeId={} relationType={}",
+                entity.getPatient().getId(), relatedPatientId, entity.getRelationType());
+
+        Patient relatedPatient = patientRepository.findById(relatedPatientId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "Relative patient not found.",
+                        "patientRelation",
+                        "relativeNotFound"
+                ));
+
+        if (!isUnder18(relatedPatient)) {
+            LOG.warn("Reject create PatientRelation for patient portal: relative patient is not under 18. relativeId={}", relatedPatientId);
+            throw new BadRequestAlertException(
+                    "Only patients under 18 years old can be added.",
+                    "patientRelation",
+                    "patientNotUnder18"
+            );
+        }
+
+        return create(entity);
+    }
+
+    private boolean isUnder18(Patient patient) {
+        LocalDate dateOfBirth = patient.getDateOfBirth();
+        if (dateOfBirth == null) {
+            return false;
+        }
+        return Period.between(dateOfBirth, LocalDate.now()).getYears() < 18;
+    }
+
    //-----------------------------------------------
    public PatientRelation update(Long id, PatientRelation updatedEntity) {
        LOG.info("[UPDATE] PatientRelation request id={} patientId={} relativeId={} oldRelationType={}",
