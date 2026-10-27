@@ -55,6 +55,19 @@ public class PatientRelationController {
                 .body(body);
     }
 
+    @PostMapping("/patient-relations/patient-portal")
+    public ResponseEntity<PatientRelation> createForPatientPortal(
+            @Valid @RequestBody PatientRelationCreateDTO dto
+    ) {
+        LOG.debug("REST create PatientRelation for patient portal payload={}", dto);
+        PatientRelation body = service.createForPatientPortal(dto.toEntity());
+        LOG.debug("REST create PatientRelation for patient portal response={}", body);
+
+        return ResponseEntity
+                .created(URI.create("/api/patient/patient-relations/patient-portal/" + body.getId()))
+                .body(body);
+    }
+
     @PutMapping("/patient-relations/{id}")
     public ResponseEntity<PatientRelation> update(
             @PathVariable Long id,
