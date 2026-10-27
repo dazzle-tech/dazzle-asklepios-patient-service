@@ -212,6 +212,10 @@ patient:
       zone: Asia/Hebron
       springdoc:
       pre-loading-enabled: true
+  ambient-scribe:
+    audio-retention:
+      cron: "0 30 2 * * *"
+      zone: "Asia/Gaza"
   portal:
     # Shared secret for POST /api/patient/patient-portal/request-otp, verify-login-otp,
     # and POST /api/patient/external.

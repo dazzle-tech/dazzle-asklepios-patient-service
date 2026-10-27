@@ -123,3 +123,7 @@ patient:
       cron: "0 0 7 * * *"
       zone: "Asia/Gaza"
       lead-days: 7
+  ambient-scribe:
+    audio-retention:
+      cron: "0 30 2 * * *"
+      zone: "Asia/Gaza"
