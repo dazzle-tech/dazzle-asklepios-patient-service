@@ -38,6 +38,8 @@ public class SecurityConfiguration {
 
                                 .requestMatchers(mvc.pattern("/setup/api/**")).permitAll()
                                 .requestMatchers(HttpMethod.POST, "/api/patient/patient-satisfaction-survey/submit").permitAll()
+                                .requestMatchers(HttpMethod.POST, "/api/patient/patient-complaints/submit").permitAll()
+                                .requestMatchers(HttpMethod.POST, "/api/patient/patient-complaints/lookup-by-document").permitAll()
                                 .requestMatchers(HttpMethod.POST, "/api/patient/patient-portal/request-otp").permitAll()
                                 .requestMatchers(HttpMethod.POST, "/api/patient/patient-portal/verify-login-otp").permitAll()
                                 .requestMatchers(HttpMethod.POST, "/api/patient/external").permitAll()
