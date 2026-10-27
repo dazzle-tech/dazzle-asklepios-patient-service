@@ -1237,15 +1237,7 @@ public class PatientServiceAndProductService {
             return;
         }
 
-        PaymentStatus paymentStatus = item.getPaymentStatus();
-        if (paymentStatus == PaymentStatus.RESERVED
-                || paymentStatus == PaymentStatus.PARTIALLY_RESERVED
-                || paymentStatus == PaymentStatus.PAID
-                || paymentStatus == PaymentStatus.PARTIALLY_PAID
-                || paymentStatus == PaymentStatus.DEBIT
-                || paymentStatus == PaymentStatus.PARTIALLY_DEBIT
-                || paymentStatus == PaymentStatus.EXEMPTED
-                || paymentStatus == PaymentStatus.CANCELLED) {
+        if (item.getPaymentStatus() == PaymentStatus.CANCELLED || isPaymentStatusSettled(item)) {
             throw new BadRequestAlertException(
                     "This billing item is locked because payment calculation is already reserved or settled.",
                     "patientServicesAndProducts",
@@ -1253,20 +1245,58 @@ public class PatientServiceAndProductService {
             );
         }
 
-        billingChargeService
-                .findActiveChargeLine(item.getId(), item.getEncounterId())
-                .ifPresent(chargeLine -> {
-                    BigDecimal reserved = defaultZero(chargeLine.getReservedAmount());
-                    BigDecimal allocated = defaultZero(chargeLine.getAllocatedAmount());
+        if (hasFundsReservedOrAllocated(item)) {
+            throw new BadRequestAlertException(
+                    "This billing item is locked because funds are reserved or allocated.",
+                    "patientServicesAndProducts",
+                    "item.locked"
+            );
+        }
+    }
 
-                    if (reserved.signum() > 0 || allocated.signum() > 0) {
+    /**
+     * Cancels the charge of a cancelled vaccination. A vaccination whose charge is already
+     * paid (or reserved / settled) cannot be cancelled; no charge means nothing to cancel.
+     */
+    public void cancelVaccinationCharge(Long encounterVaccinationId, String reason) {
+        patientServiceAndProductRepository
+                .findByServiceSourceAndSourceIdAndBillingItemType(
+                        ServiceSource.VACCINATION,
+                        encounterVaccinationId,
+                        BillingItemTypes.VACCINE
+                )
+                .filter(item -> item.getPaymentStatus() != PaymentStatus.CANCELLED)
+                .ifPresent(item -> {
+                    if (isPaymentStatusSettled(item) || hasFundsReservedOrAllocated(item)) {
                         throw new BadRequestAlertException(
-                                "This billing item is locked because funds are reserved or allocated.",
-                                "patientServicesAndProducts",
-                                "item.locked"
+                                "This vaccination is already paid and cannot be cancelled.",
+                                "encounterVaccination",
+                                "vaccination.paid"
                         );
                     }
+
+                    cancel(item.getId(), reason);
                 });
+    }
+
+    /** Money movement started: reserved, paid, posted to debit or exempted */
+    private static boolean isPaymentStatusSettled(PatientServiceAndProduct item) {
+        PaymentStatus paymentStatus = item.getPaymentStatus();
+        return paymentStatus == PaymentStatus.RESERVED
+                || paymentStatus == PaymentStatus.PARTIALLY_RESERVED
+                || paymentStatus == PaymentStatus.PAID
+                || paymentStatus == PaymentStatus.PARTIALLY_PAID
+                || paymentStatus == PaymentStatus.DEBIT
+                || paymentStatus == PaymentStatus.PARTIALLY_DEBIT
+                || paymentStatus == PaymentStatus.EXEMPTED;
+    }
+
+    private boolean hasFundsReservedOrAllocated(PatientServiceAndProduct item) {
+        return billingChargeService
+                .findActiveChargeLine(item.getId(), item.getEncounterId())
+                .map(chargeLine -> defaultZero(chargeLine.getReservedAmount()).signum() > 0
+                        || defaultZero(chargeLine.getAllocatedAmount()).signum() > 0)
+                .orElse(false);
     }
 
     private BillingEventType resolveBillingEvent(

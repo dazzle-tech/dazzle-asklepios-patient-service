@@ -262,6 +262,13 @@ public class EncounterVaccinationService {
                 });
 
         Long encounterId = encounterVaccination.getEncounterId();
+
+        // Rejected when the vaccination charge is already paid; otherwise the charge is cancelled with it
+        patientServiceAndProductService.cancelVaccinationCharge(
+                encounterVaccination.getId(),
+                cancelRequest.cancellationReason()
+        );
+
         encounterVaccination.setStatus(EncounterVaccinationStatus.CANCELLED);
         encounterVaccination.setCancellationReason(cancelRequest.cancellationReason());
         encounterVaccination.setCancelledAt(Instant.now());
