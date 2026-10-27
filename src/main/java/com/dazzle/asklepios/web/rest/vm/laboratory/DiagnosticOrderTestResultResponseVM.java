@@ -16,6 +16,7 @@ public record DiagnosticOrderTestResultResponseVM(
         Long profileTestId,
         BigDecimal resultValueNumber,
         String resultValueText,
+        String resultValueTextDisplayValue,
 
         // persisted fields (DB)
         TestResultMarker marker,
@@ -59,6 +60,7 @@ public record DiagnosticOrderTestResultResponseVM(
                 diagnosticOrderTestResult.getProfileTestId(),
                 diagnosticOrderTestResult.getResultValueNumber(),
                 diagnosticOrderTestResult.getResultValueText(),
+                null,
                 diagnosticOrderTestResult.getMarker(),
 
                 // view-only defaults = persisted values
@@ -97,7 +99,8 @@ public record DiagnosticOrderTestResultResponseVM(
             Boolean hasNote,
             String testName,
             String profileName,
-            DiagnosticOrderTest orderTest
+            DiagnosticOrderTest orderTest,
+            String resultValueTextDisplayValue
     ) {
         return new DiagnosticOrderTestResultResponseVM(
                 diagnosticOrderTestResult.getId(),
@@ -105,6 +108,7 @@ public record DiagnosticOrderTestResultResponseVM(
                 diagnosticOrderTestResult.getProfileTestId(),
                 diagnosticOrderTestResult.getResultValueNumber(),
                 diagnosticOrderTestResult.getResultValueText(),
+                resultValueTextDisplayValue,
                 diagnosticOrderTestResult.getMarker(),
 
                 viewMarker,
