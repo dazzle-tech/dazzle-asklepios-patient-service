@@ -4,6 +4,9 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
 import com.dazzle.asklepios.domain.enumeration.DocumentType;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.security.AuthoritiesConstants;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintPublicLookupRequestDTO;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -23,9 +26,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Public complaint-form patient autofill by exact document type + number.
- * No shared gateway/patient-service rate limiter exists for public endpoints;
- * this in-memory window limit is scoped to this permitAll lookup only.
+ * Complaint-form patient autofill by exact document type + number.
+ * Anonymous callers must present a verified patient JWT (portal OTP login).
+ * Authenticated staff (USER/ADMIN) may look up without a patient token.
+ * Patient JWT lookups are restricted to the authenticated patient's identity.
  */
 @Service
 @RequiredArgsConstructor
@@ -38,6 +42,7 @@ public class PatientComplaintPublicLookupService {
     private static final long WINDOW_SECONDS = 60L;
 
     private final PatientDocumentRepository patientDocumentRepository;
+    private final PatientRepository patientRepository;
     private final NotificationHelper notificationHelper;
     private final ConcurrentHashMap<String, List<Long>> requestTimestampsByClient = new ConcurrentHashMap<>();
 
@@ -47,6 +52,25 @@ public class PatientComplaintPublicLookupService {
     ) {
         enforceRateLimit(clientKey);
 
+        Patient patient = resolveUniquePatient(request);
+
+        if (isAuthorizedStaffLookup()) {
+            return toLookupVm(patient);
+        }
+
+        Patient authenticatedPatient = requireAuthenticatedPatient();
+        if (!authenticatedPatient.getId().equals(patient.getId())) {
+            throw new BadRequestAlertException(
+                "Verified patient does not match this document",
+                ENTITY,
+                "otp.patient.mismatch"
+            );
+        }
+
+        return toLookupVm(patient);
+    }
+
+    private Patient resolveUniquePatient(PatientComplaintPublicLookupRequestDTO request) {
         if (request == null || request.documentType() == null) {
             throw new BadRequestAlertException("Document type is required", ENTITY, "documentType.required");
         }
@@ -65,8 +89,8 @@ public class PatientComplaintPublicLookupService {
         Map<Long, Patient> patientsById = matches
             .stream()
             .map(PatientDocument::getPatient)
-            .filter(patient -> patient != null && patient.getId() != null)
-            .collect(Collectors.toMap(Patient::getId, patient -> patient, (left, right) -> left));
+            .filter(matched -> matched != null && matched.getId() != null)
+            .collect(Collectors.toMap(Patient::getId, matched -> matched, (left, right) -> left));
 
         if (patientsById.isEmpty()) {
             throw new BadRequestAlertException(
@@ -89,7 +113,50 @@ public class PatientComplaintPublicLookupService {
             );
         }
 
-        Patient patient = patientsById.values().iterator().next();
+        return patientsById.values().iterator().next();
+    }
+
+    private Patient requireAuthenticatedPatient() {
+        if (!SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.PATIENT)) {
+            throw new ResponseStatusException(
+                HttpStatus.UNAUTHORIZED,
+                "Patient verification is required before loading patient details"
+            );
+        }
+
+        String mrn = SecurityUtils
+            .getCurrentUserLogin()
+            .map(String::trim)
+            .filter(value -> !value.isEmpty())
+            .orElseThrow(() ->
+                new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED,
+                    "Patient verification is required before loading patient details"
+                )
+            );
+
+        return patientRepository
+            .findByMedicalRecordNumber(mrn)
+            .orElseThrow(() ->
+                new BadRequestAlertException(
+                    "Authenticated patient was not found",
+                    ENTITY,
+                    "patient.notfound"
+                )
+            );
+    }
+
+    private static boolean isAuthorizedStaffLookup() {
+        return (
+            SecurityUtils.isAuthenticated() &&
+            SecurityUtils.hasCurrentUserAnyOfAuthorities(
+                AuthoritiesConstants.USER,
+                AuthoritiesConstants.ADMIN
+            )
+        );
+    }
+
+    private PatientComplaintPublicLookupVM toLookupVm(Patient patient) {
         PatientComplaintPublicLookupVM vm = new PatientComplaintPublicLookupVM();
         vm.setPatientName(blankToNull(notificationHelper.getPatientName(patient)));
         vm.setContactPhone(blankToNull(patient.getPrimaryMobileNumber()));

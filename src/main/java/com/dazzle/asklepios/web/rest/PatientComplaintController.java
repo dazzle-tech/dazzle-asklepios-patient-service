@@ -55,6 +55,10 @@ public class PatientComplaintController {
     private final PatientComplaintService patientComplaintService;
     private final PatientComplaintPublicLookupService patientComplaintPublicLookupService;
 
+    /**
+     * Web complaint form autofill by document.
+     * Patient JWT (portal OTP) is restricted to that patient; staff USER/ADMIN may look up without it.
+     */
     @PostMapping("/patient-complaints/lookup-by-document")
     public ResponseEntity<PatientComplaintPublicLookupVM> lookupByDocument(
         @Valid @RequestBody PatientComplaintPublicLookupRequestDTO request,

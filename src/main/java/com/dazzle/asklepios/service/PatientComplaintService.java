@@ -98,7 +98,22 @@ public class PatientComplaintService {
         validateVisitFields(dto);
         validateOptionalPhone(dto.getContactPhone());
 
-        return persistNewComplaint(dto, null, files);
+        // Optional patient JWT (portal OTP): link only the authenticated patient; never from client patientId.
+        return persistNewComplaint(dto, resolveOptionalLinkedPatientFromJwt(dto), files);
+    }
+
+    /**
+     * When a PATIENT JWT is present on the public web submit, persist that Patient relationship.
+     * Skip for anonymous or on-behalf submissions (verified identity must not attach to another person).
+     */
+    private Patient resolveOptionalLinkedPatientFromJwt(PatientComplaintSubmitDTO dto) {
+        if (Boolean.TRUE.equals(dto.getAnonymous()) || Boolean.TRUE.equals(dto.getOnBehalf())) {
+            return null;
+        }
+        if (!SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.PATIENT)) {
+            return null;
+        }
+        return requireAuthenticatedPatient();
     }
 
     public PatientComplaintSubmitResponseVM submitMobile(
