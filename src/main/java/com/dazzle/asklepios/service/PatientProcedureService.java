@@ -363,6 +363,32 @@ public class PatientProcedureService {
                 billingItem.getId()
         );
         billProcedureItem(billingItem, encounter);
+        markWaitingWhenHeldForPreAuthorization(procedure, billingItem);
+    }
+
+    /**
+     * Billing can hold the line for pre-approval (coverage contract limit).
+     * The procedure then waits for the approval, the same as a pre-approval known up front.
+     */
+    private void markWaitingWhenHeldForPreAuthorization(
+            PatientProcedure procedure,
+            PatientServiceAndProduct billingItem
+    ) {
+        boolean held = patientServiceAndProductRepository.findById(billingItem.getId())
+                .map(item -> item.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH)
+                .orElse(false);
+        if (!held) {
+            return;
+        }
+
+        procedure.setStatus(ProcStatus.WAITING_PRE_AUTHORIZATION);
+        procedureRepository.saveAndFlush(procedure);
+
+        LOG.info(
+                "[PROCEDURE_CREATE] Billing held for pre-authorization. procedureId={} pspId={}",
+                procedure.getId(),
+                billingItem.getId()
+        );
     }
 
     private void billProcedureItem(

@@ -12,6 +12,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -88,5 +89,12 @@ public class DentalProcedure extends AbstractAuditingEntity<Long> implements Ser
 
     @Column(name = "cancellation_reason", columnDefinition = "TEXT")
     private String cancellationReason;
+
+    /**
+     * Response only (not stored): true when a billing line of this procedure
+     * waits for pre-authorization, so the screen can show the alert.
+     */
+    @Transient
+    private boolean preAuthorizationPending;
 }
 
