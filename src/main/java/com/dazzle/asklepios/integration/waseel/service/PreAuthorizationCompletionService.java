@@ -20,6 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -81,7 +82,11 @@ public class PreAuthorizationCompletionService {
         self.completeApprovedItems(event.encounterId(), approvedItems);
     }
 
-    @Transactional
+    /**
+     * Runs after the decision transaction committed, so it needs its own transaction:
+     * joining the finished one would drop the charge lines without an error.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void completeApprovedItems(
             Long encounterId,
             List<PatientServiceAndProduct> approvedItems
@@ -181,7 +186,8 @@ public class PreAuthorizationCompletionService {
             return false;
         }
 
-        if (item.getPreAuthorizationStatus() != PreAuthorizationStatus.APPROVED) {
+        if (item.getPreAuthorizationStatus() != PreAuthorizationStatus.APPROVED
+                && !PreAuthorizationResolutionService.isPartiallyApprovedLocally(item)) {
             return false;
         }
 

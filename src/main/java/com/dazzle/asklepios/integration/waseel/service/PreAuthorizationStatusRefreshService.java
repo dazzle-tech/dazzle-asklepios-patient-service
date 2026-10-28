@@ -586,8 +586,8 @@ public class PreAuthorizationStatusRefreshService {
                 item.setPaymentStatus(PaymentStatus.PENDING);
             }
             case PARTIAL -> {
-                // A local (NPHIES contract) partial decision is final: the patient pays
-                // cash or the line is cancelled. A Waseel partial stays held for communication.
+                // A local (NPHIES contract) partial decision is final: the line is billed with
+                // the approved insurance amount. A Waseel partial stays held for communication.
                 boolean localDecision = request.getApprovalRequestId() == null;
                 item.setPreAuthorizationRequired(!localDecision);
                 item.setPaymentStatus(
@@ -613,9 +613,10 @@ public class PreAuthorizationStatusRefreshService {
                         status == PreAuthorizationStatus.REJECTED
                 );
 
-        boolean newlyApproved =
+        boolean billable =
                 status == PreAuthorizationStatus.APPROVED
-                        && previousStatus != PreAuthorizationStatus.APPROVED;
+                        || PreAuthorizationResolutionService.isPartiallyApprovedLocally(item);
+        boolean newlyApproved = billable && previousStatus != status;
 
         return new ItemRefreshOutcome(
                 newlyApproved,

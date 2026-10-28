@@ -8,6 +8,7 @@ import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.Loca
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.PreAuthorizationCancelRequest;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.PreAuthorizationCommunicationRequest;
 import com.dazzle.asklepios.integration.waseel.dto.EncounterPreAuthorizationRefreshResponse;
+import com.dazzle.asklepios.integration.waseel.dto.LocalPreAuthorizationCoverageResponse;
 import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.LocalPreAuthorizationDecisionService;
@@ -121,6 +122,13 @@ public class WaseelPreAuthorizationController {
                 encounterId,
                 patientServiceProductId
         );
+    }
+
+    @GetMapping("/internal/waseel/pre-authorizations/{preAuthorizationId}/local-coverage")
+    public LocalPreAuthorizationCoverageResponse getLocalPreAuthorizationCoverage(
+            @PathVariable Long preAuthorizationId
+    ) {
+        return localPreAuthorizationDecisionService.coverage(preAuthorizationId);
     }
 
     @PostMapping("/internal/waseel/pre-authorizations/{preAuthorizationId}/local-decision")

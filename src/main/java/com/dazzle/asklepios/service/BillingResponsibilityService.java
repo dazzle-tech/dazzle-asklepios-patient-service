@@ -7,6 +7,7 @@ import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingChargeResponsibility;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.PreAuthorizationItem;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
@@ -20,6 +21,7 @@ import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.repository.PreAuthorizationItemRepository;
 import com.dazzle.asklepios.service.dto.InsuranceSplit;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
@@ -80,6 +82,8 @@ public class BillingResponsibilityService {
     private final ServiceClient serviceClient;
 
     private final PreAuthorizationResolutionService preAuthorizationResolutionService;
+
+    private final PreAuthorizationItemRepository preAuthorizationItemRepository;
 
     private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
 
@@ -813,7 +817,43 @@ public class BillingResponsibilityService {
                         context.getVisitMaxLimitTracker()
                 );
 
-        return money(split.patientShare());
+        BigDecimal patientShare = money(split.patientShare());
+
+        /*
+         * Partial approval (NPHIES contract): insurance covers at most the approved
+         * amount; the patient pays the rest of the net amount.
+         */
+        BigDecimal approvedInsuranceAmount = partiallyApprovedInsuranceAmount(item);
+        if (approvedInsuranceAmount != null) {
+            patientShare = patientShare.max(money(netAmount.subtract(approvedInsuranceAmount)));
+            LOG.info(
+                    "[CALCULATE] Partial pre-approval applied pspId={} approvedInsurance={} patientShare={}",
+                    item.getId(),
+                    approvedInsuranceAmount,
+                    patientShare
+            );
+        }
+
+        return patientShare;
+    }
+
+    /**
+     * Insurance amount approved on a local partial pre-approval, stored as the payer share
+     * of the request line; {@code null} when the line is not partially approved.
+     */
+    private BigDecimal partiallyApprovedInsuranceAmount(PatientServiceAndProduct item) {
+        if (!PreAuthorizationResolutionService.isPartiallyApprovedLocally(item)
+                || item.getPreAuthorizationRequestId() == null) {
+            return null;
+        }
+
+        return preAuthorizationItemRepository
+                .findByPreAuthorizationIdOrderBySequenceAsc(item.getPreAuthorizationRequestId())
+                .stream()
+                .findFirst()
+                .map(PreAuthorizationItem::getPayerShare)
+                .map(this::money)
+                .orElse(null);
     }
 
     private String resolveServiceCategory(

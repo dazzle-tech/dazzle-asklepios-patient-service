@@ -37,7 +37,13 @@ public record PreviewDefaultServicePricingResult(
 
         String notCoveredReason,
 
-        BigDecimal cashUnitPrice
+        BigDecimal cashUnitPrice,
+
+        /*
+         * The coverage contract holds this service for pre-approval.
+         * Patient and insurance shares are zero until the payer decision.
+         */
+        boolean preAuthorizationRequired
 
 ) implements Serializable {
 }

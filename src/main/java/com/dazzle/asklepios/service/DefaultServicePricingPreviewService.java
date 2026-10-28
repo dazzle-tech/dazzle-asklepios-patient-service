@@ -61,6 +61,7 @@ public class DefaultServicePricingPreviewService {
     private final InsurancePatientShareCalculator insurancePatientShareCalculator;
     private final EncounterCoverageService encounterCoverageService;
     private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
+    private final CoveragePreApprovalLimitService coveragePreApprovalLimitService;
 
     @Transactional(readOnly = true)
     public PreviewDefaultServicesPricingResult preview(
@@ -334,7 +335,23 @@ public class DefaultServicePricingPreviewService {
         BigDecimal patientShareAmount = BigDecimal.ZERO;
         BigDecimal insuranceShareAmount = BigDecimal.ZERO;
 
-        if (insurance != null
+        boolean preAuthorizationRequired =
+                coveredByInsurance
+                        && !Boolean.TRUE.equals(previewItem.getIsExempted())
+                        && coveragePreApprovalLimitService.requiresApproval(
+                                insurance,
+                                previewItem,
+                                pricing.netAmount()
+                        );
+
+        if (preAuthorizationRequired) {
+            // Nothing is collected before the payer decision; shares are calculated after it.
+            LOG.info(
+                    "[PREVIEW_PRICING] Service needs pre-authorization. serviceId={} netAmount={}",
+                    requestedItem.serviceId(),
+                    pricing.netAmount()
+            );
+        } else if (insurance != null
                 && !requiresCashConfirmation
                 && !Boolean.TRUE.equals(previewItem.getIsExempted())) {
             InsuranceSplit split =
@@ -367,7 +384,8 @@ public class DefaultServicePricingPreviewService {
                 coveredByInsurance,
                 requiresCashConfirmation,
                 notCoveredReason,
-                requiresCashConfirmation ? resolvedPrice.unitPrice() : null
+                requiresCashConfirmation ? resolvedPrice.unitPrice() : null,
+                preAuthorizationRequired
         );
     }
 

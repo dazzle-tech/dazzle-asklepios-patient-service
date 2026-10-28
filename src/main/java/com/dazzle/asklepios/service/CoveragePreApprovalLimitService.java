@@ -99,50 +99,71 @@ public class CoveragePreApprovalLimitService {
         }
 
         CoverageContractResolveDtos.Response resolved = resolveQuietly(insurance, item);
-        if (resolved == null || !resolved.matched() || resolved.preApproval() == null || isExcluded(resolved)) {
-            return;
-        }
-        CoverageContractResolveDtos.PreApprovalSnapshot preApproval = resolved.preApproval();
-        if (preApproval.preApprovalId() == null) {
-            return;
-        }
-
-        boolean localApproval = CoverageApprovalRoutingService.usesLocalApproval(resolved);
         boolean alreadyPending = item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL;
-        if (alreadyPending && !localApproval) {
+        if (alreadyPending && !CoverageApprovalRoutingService.usesLocalApproval(resolved)) {
             // Waseel contract: the Waseel flow submits this item. Unchanged.
             return;
         }
 
-        if (preApproval.limitValue() == null) {
-            if (!localApproval) {
-                return;
-            }
-            holdForApproval(context, encounter, insurance, item, current, REASON_CONTRACT);
-            return;
-        }
-
-        if (current.signum() <= 0) {
-            return;
-        }
-
-        if (!PreApprovalLimitEvaluator.exceeds(
-                preApproval.valueType(),
-                preApproval.limitValue(),
-                current,
-                percentageBase(resolved.limit())
-        )) {
+        String reason = holdReason(resolved, current);
+        if (reason == null) {
             LOG.info(
-                    "[PREAUTH_LIMIT] Item is under its pre-approval limit. encounterId={} pspId={} amount={} limit={}",
+                    "[PREAUTH_LIMIT] No pre-approval hold. encounterId={} pspId={} amount={}",
                     encounter.getId(),
                     item.getId(),
-                    current,
-                    preApproval.limitValue()
+                    current
             );
             return;
         }
 
-        holdForApproval(context, encounter, insurance, item, current, REASON_LIMIT);
+        holdForApproval(context, encounter, insurance, item, current, reason);
+    }
+
+    /**
+     * Pricing preview: true when billing this line would hold it for pre-approval,
+     * so nothing is collected from the patient before the payer decision.
+     * Uses the same rule as {@link #applyIfExceeded(BillingProcessingContext)}.
+     */
+    public boolean requiresApproval(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            BigDecimal netAmount
+    ) {
+        if (insurance == null || item == null) {
+            return false;
+        }
+        return holdReason(resolveQuietly(insurance, item), money(netAmount)) != null;
+    }
+
+    /**
+     * Why the line must wait for pre-approval, or {@code null} when it can be billed.
+     * Every contract holds a line that reaches its pre-approval limit; NPHIES contracts
+     * also hold on a contract pre-approval that has no limit.
+     */
+    private String holdReason(CoverageContractResolveDtos.Response resolved, BigDecimal netAmount) {
+        if (resolved == null || !resolved.matched() || resolved.preApproval() == null || isExcluded(resolved)) {
+            return null;
+        }
+
+        CoverageContractResolveDtos.PreApprovalSnapshot preApproval = resolved.preApproval();
+        if (preApproval.preApprovalId() == null) {
+            return null;
+        }
+
+        if (preApproval.limitValue() == null) {
+            return CoverageApprovalRoutingService.usesLocalApproval(resolved) ? REASON_CONTRACT : null;
+        }
+
+        if (netAmount.signum() <= 0) {
+            return null;
+        }
+
+        return PreApprovalLimitEvaluator.exceeds(
+                preApproval.valueType(),
+                preApproval.limitValue(),
+                netAmount,
+                percentageBase(resolved.limit())
+        ) ? REASON_LIMIT : null;
     }
 
     /**

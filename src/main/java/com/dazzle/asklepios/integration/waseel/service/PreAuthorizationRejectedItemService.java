@@ -180,7 +180,7 @@ public class PreAuthorizationRejectedItemService {
 
         if (!PreAuthorizationResolutionService.isDeclinedByPayer(item)) {
             throw new BadRequestAlertException(
-                    "Only rejected or partially approved pre-authorization items can use this action.",
+                    "Only rejected pre-authorization items can use this action.",
                     "preAuthorization",
                     "item.notRejected"
             );
