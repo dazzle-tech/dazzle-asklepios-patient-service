@@ -7,6 +7,7 @@ import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizatio
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.service.dto.patientEncounter.EncounterPreAuthorizationLockResponse;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,8 +55,25 @@ public class EncounterPreAuthorizationGuardService {
     }
 
     public void requireNoPendingPreAuthorization(Long encounterId) {
-        if (encounterId == null) {
+        if (!isLocked(encounterId)) {
             return;
+        }
+
+        LOG.info("[VISIT_START] Blocked: default service waits on pre-authorization. encounterId={}", encounterId);
+        throw new BadRequestAlertException(MESSAGE, "patientEncounter", ERROR_KEY);
+    }
+
+    /**
+     * For screens that start work without calling a start endpoint (nurse station).
+     */
+    public EncounterPreAuthorizationLockResponse lockStatus(Long encounterId) {
+        boolean locked = isLocked(encounterId);
+        return new EncounterPreAuthorizationLockResponse(locked, locked ? MESSAGE : null);
+    }
+
+    private boolean isLocked(Long encounterId) {
+        if (encounterId == null) {
+            return false;
         }
 
         List<PatientServiceAndProduct> items = patientServiceAndProductRepository.findByEncounterId(encounterId);
@@ -63,12 +81,7 @@ public class EncounterPreAuthorizationGuardService {
         boolean waiting = items.stream().anyMatch(item -> blocksVisitStart(item, chargedItemIds));
 
         // The contract is read only when a line waits, so ordinary visits pay no extra call.
-        if (!waiting || !coverageApprovalRoutingService.encounterUsesLocalApproval(encounterId)) {
-            return;
-        }
-
-        LOG.info("[VISIT_START] Blocked: default service waits on pre-authorization. encounterId={}", encounterId);
-        throw new BadRequestAlertException(MESSAGE, "patientEncounter", ERROR_KEY);
+        return waiting && coverageApprovalRoutingService.encounterUsesLocalApproval(encounterId);
     }
 
     private boolean blocksVisitStart(PatientServiceAndProduct item, Set<Long> chargedItemIds) {

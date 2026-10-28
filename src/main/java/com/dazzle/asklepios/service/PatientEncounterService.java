@@ -34,6 +34,7 @@ import com.dazzle.asklepios.repository.UserRepository;
 import com.dazzle.asklepios.repository.VitalSignsRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.EncounterHasInvoiceResponse;
+import com.dazzle.asklepios.service.dto.patientEncounter.EncounterPreAuthorizationLockResponse;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
@@ -571,6 +572,11 @@ public class PatientEncounterService {
                 completedEncounterStatuses,
                 pageable
         );
+    }
+
+    @Transactional(readOnly = true)
+    public EncounterPreAuthorizationLockResponse getPreAuthorizationLock(Long encounterId) {
+        return encounterPreAuthorizationGuardService.lockStatus(encounterId);
     }
 
     public PatientEncounter startEncounter(Long encounterId) {
