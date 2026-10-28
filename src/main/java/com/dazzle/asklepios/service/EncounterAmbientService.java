@@ -150,6 +150,24 @@ public class EncounterAmbientService {
         return toVm(id);
     }
 
+    public boolean clearExpiredRecording(Long id) {
+        EncounterAmbient ambient = encounterAmbientRepository
+            .findById(id)
+            .orElse(null);
+        if (ambient == null || ambient.getSpaceKey() == null || ambient.getSpaceKey().isBlank()) {
+            return false;
+        }
+        String spaceKey = ambient.getSpaceKey();
+        attachmentStorageService.delete(spaceKey);
+        ambient.setSpaceKey(null);
+        ambient.setRecordingContentType(null);
+        ambient.setRecordingFileName(null);
+        ambient.setRecordingByteSize(null);
+        encounterAmbientRepository.save(ambient);
+        LOG.info("[AUDIO_RETENTION] cleared recording id={} key={}", id, spaceKey);
+        return true;
+    }
+
     @Transactional(readOnly = true)
     public RecordingFile getRecording(Long id) {
         EncounterAmbient ambient = encounterAmbientRepository
