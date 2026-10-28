@@ -39,6 +39,14 @@ public record BillingPricingInput(
         BigDecimal taxRate,
         BigDecimal taxFixedAmount,
 
+        /*
+         * Insurance visits: whether the tax applies on the
+         * patient share and/or the insurance (claim) share.
+         * Null means true.
+         */
+        Boolean taxOnPatientCopayment,
+        Boolean taxOnClaimShare,
+
         Currency currency,
         PricingSource pricingSource,
 

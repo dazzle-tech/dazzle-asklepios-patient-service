@@ -91,6 +91,8 @@ public class BillingPricingInputFactory {
                 defaultZero(
                         response.taxFixedAmount()
                 ),
+                response.taxOnPatientCopayment(),
+                response.taxOnClaimShare(),
 
                 resolvedPrice.currency(),
                 response.pricingSource(),
@@ -167,6 +169,12 @@ public class BillingPricingInputFactory {
                                 ? null
                                 : adjustments.taxFixedAmount()
                 ),
+                adjustments == null
+                        ? null
+                        : adjustments.taxOnPatientCopayment(),
+                adjustments == null
+                        ? null
+                        : adjustments.taxOnClaimShare(),
 
                 resolvedPrice.currency(),
                 resolveFallbackPricingSource(),

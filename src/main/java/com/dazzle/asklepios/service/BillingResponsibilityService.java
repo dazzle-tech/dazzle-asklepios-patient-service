@@ -5,21 +5,26 @@ import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
 import com.dazzle.asklepios.domain.BillingCharge;
 import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingChargeResponsibility;
+import com.dazzle.asklepios.domain.BillingPricingSnapshot;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPricingSnapshotStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.ResponsibilityRole;
 import com.dazzle.asklepios.domain.enumeration.billing.ResponsiblePartyType;
+import com.dazzle.asklepios.domain.enumeration.billing.TaxType;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
+import com.dazzle.asklepios.repository.BillingPricingSnapshotRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.InsuranceSplit;
+import com.dazzle.asklepios.service.dto.billing.BillingPricingInput;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -83,6 +88,9 @@ public class BillingResponsibilityService {
     private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
 
     private final BillingChargeService billingChargeService;
+
+    private final BillingPricingSnapshotRepository
+            billingPricingSnapshotRepository;
 
     /**
      * Calculates and persists responsibility rows.
@@ -299,6 +307,21 @@ public class BillingResponsibilityService {
             BillingChargeLine chargeLine,
             BigDecimal netAmount
     ) {
+        /*
+         * Cash keeps the full item tax (restores it on a refresh
+         * of a line that was previously billed to insurance).
+         */
+        netAmount =
+                syncLineTax(
+                        context,
+                        item,
+                        chargeLine,
+                        money(
+                                context.getPricingResult()
+                                        .taxAmount()
+                        )
+                );
+
         String idempotencyKey =
                 context.getIdempotencyKey()
                         + ":RESPONSIBILITY:PATIENT";
@@ -404,20 +427,27 @@ public class BillingResponsibilityService {
             PatientInsurance insurance,
             BigDecimal netAmount
     ) {
-        BigDecimal patientAmount =
-                calculatePatientInsuranceShare(
+        InsuranceShareAmounts shares =
+                calculateInsuranceShares(
                         context,
                         insurance,
                         item,
+                        chargeLine,
                         netAmount
                 );
 
+        BigDecimal patientAmount =
+                shares.patientAmount();
+
         BigDecimal insuranceAmount =
-                money(
-                        netAmount.subtract(
-                                patientAmount
-                        )
-                );
+                shares.insuranceAmount();
+
+        /*
+         * The line net changes when the tax is not applied
+         * on one of the shares (tax share flags).
+         */
+        netAmount =
+                shares.netAmount();
 
         validateResponsibilityBalance(
                 netAmount,
@@ -787,6 +817,288 @@ public class BillingResponsibilityService {
                     ENTITY_NAME,
                     "responsibility.create.failed"
             );
+        }
+    }
+
+    /**
+     * Splits an insurance line between patient and insurance.
+     *
+     * Tax applies on both shares (default): the tax-inclusive net
+     * is split as before.
+     *
+     * Otherwise the amount before tax is split, and the tax is added
+     * only on the shares flagged in the tax setup:
+     * Patient Copayment -> patient share, Claim Share -> insurance share.
+     * The tax of an unflagged share is not charged.
+     */
+    private InsuranceShareAmounts calculateInsuranceShares(
+            BillingProcessingContext context,
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            BillingChargeLine chargeLine,
+            BigDecimal netAmount
+    ) {
+        TaxShareRule taxShareRule =
+                resolveTaxShareRule(context);
+
+        BigDecimal taxAmount =
+                money(
+                        context.getPricingResult()
+                                .taxAmount()
+                );
+
+        if (taxShareRule.appliesToBothShares()
+                || taxAmount.signum() == 0) {
+            BigDecimal patientAmount =
+                    calculatePatientInsuranceShare(
+                            context,
+                            insurance,
+                            item,
+                            netAmount
+                    );
+
+            return new InsuranceShareAmounts(
+                    patientAmount,
+                    money(
+                            netAmount.subtract(
+                                    patientAmount
+                            )
+                    ),
+                    netAmount
+            );
+        }
+
+        BigDecimal baseAmount =
+                money(
+                        netAmount.subtract(
+                                taxAmount
+                        )
+                );
+
+        BigDecimal patientBase =
+                calculatePatientInsuranceShare(
+                        context,
+                        insurance,
+                        item,
+                        baseAmount
+                );
+
+        BigDecimal insuranceBase =
+                money(
+                        baseAmount.subtract(
+                                patientBase
+                        )
+                );
+
+        BigDecimal patientTax =
+                baseAmount.signum() == 0
+                        ? money(BigDecimal.ZERO)
+                        : taxAmount
+                        .multiply(patientBase)
+                        .divide(
+                                baseAmount,
+                                MONEY_SCALE,
+                                RoundingMode.HALF_UP
+                        );
+
+        BigDecimal insuranceTax =
+                money(
+                        taxAmount.subtract(
+                                patientTax
+                        )
+                );
+
+        BigDecimal appliedPatientTax =
+                taxShareRule.onPatientCopayment()
+                        ? patientTax
+                        : money(BigDecimal.ZERO);
+
+        BigDecimal appliedInsuranceTax =
+                taxShareRule.onClaimShare()
+                        ? insuranceTax
+                        : money(BigDecimal.ZERO);
+
+        BigDecimal lineNetAmount =
+                syncLineTax(
+                        context,
+                        item,
+                        chargeLine,
+                        appliedPatientTax.add(
+                                appliedInsuranceTax
+                        )
+                );
+
+        LOG.info(
+                "[CALCULATE] Tax share flags applied "
+                        + "pspId={} onPatientCopayment={} onClaimShare={} "
+                        + "itemTax={} patientTax={} insuranceTax={} net={}",
+                item.getId(),
+                taxShareRule.onPatientCopayment(),
+                taxShareRule.onClaimShare(),
+                taxAmount,
+                appliedPatientTax,
+                appliedInsuranceTax,
+                lineNetAmount
+        );
+
+        return new InsuranceShareAmounts(
+                money(
+                        patientBase.add(
+                                appliedPatientTax
+                        )
+                ),
+                money(
+                        insuranceBase.add(
+                                appliedInsuranceTax
+                        )
+                ),
+                lineNetAmount
+        );
+    }
+
+    /**
+     * Writes the tax actually charged on the line to the pricing
+     * result, charge line and item. Returns the resulting net amount.
+     * No-op when the tax is unchanged.
+     */
+    private BigDecimal syncLineTax(
+            BillingProcessingContext context,
+            PatientServiceAndProduct item,
+            BillingChargeLine chargeLine,
+            BigDecimal appliedTax
+    ) {
+        PriceCalculationResult pricing =
+                context.getPricingResult();
+
+        BigDecimal fullTax =
+                money(pricing.taxAmount());
+
+        BigDecimal taxAmount =
+                money(appliedTax);
+
+        BigDecimal netAmount =
+                money(
+                        money(pricing.netAmount())
+                                .subtract(fullTax)
+                                .add(taxAmount)
+                );
+
+        if (taxAmount.compareTo(fullTax) != 0) {
+            context.setPricingResult(
+                    new PriceCalculationResult(
+                            pricing.quantity(),
+                            pricing.unitPrice(),
+                            pricing.grossAmount(),
+                            pricing.discountAmount(),
+                            pricing.exemptionAmount(),
+                            pricing.taxableAmount(),
+                            taxAmount,
+                            netAmount
+                    )
+            );
+        }
+
+        if (money(chargeLine.getTaxAmount()).compareTo(taxAmount) != 0
+                || money(chargeLine.getNetAmount()).compareTo(netAmount) != 0) {
+            chargeLine.setTaxAmount(taxAmount);
+            chargeLine.setNetAmount(netAmount);
+
+            item.setTaxAmount(taxAmount);
+            item.setNetAmount(netAmount);
+            item.setTotalAmount(netAmount);
+        }
+
+        return netAmount;
+    }
+
+    private TaxShareRule resolveTaxShareRule(
+            BillingProcessingContext context
+    ) {
+        BillingPricingInput input =
+                context.getPricingInput();
+
+        if (input != null) {
+            return new TaxShareRule(
+                    !Boolean.FALSE.equals(
+                            input.taxOnPatientCopayment()
+                    ),
+                    !Boolean.FALSE.equals(
+                            input.taxOnClaimShare()
+                    )
+            );
+        }
+
+        BillingPricingSnapshot snapshot =
+                context.getPricingSnapshot();
+
+        if (snapshot != null) {
+            return TaxShareRule.of(snapshot);
+        }
+
+        return TaxShareRule.BOTH_SHARES;
+    }
+
+    /**
+     * Charge lines keep only the tax charged on the flagged shares.
+     * A refresh rebuilds the full item tax from the snapshot rate so the
+     * shares are re-allocated from the original amount.
+     */
+    private BigDecimal resolveFullLineTax(
+            BillingChargeLine chargeLine,
+            BillingPricingSnapshot snapshot
+    ) {
+        BigDecimal lineTax =
+                money(chargeLine.getTaxAmount());
+
+        if (snapshot == null
+                || TaxShareRule.of(snapshot).appliesToBothShares()
+                || snapshot.getTaxType() != TaxType.PERCENTAGE
+                || defaultZero(snapshot.getTaxRate()).signum() == 0) {
+            return lineTax;
+        }
+
+        BigDecimal baseAmount =
+                money(chargeLine.getNetAmount())
+                        .subtract(lineTax);
+
+        return baseAmount
+                .multiply(snapshot.getTaxRate())
+                .divide(
+                        BigDecimal.valueOf(100),
+                        MONEY_SCALE,
+                        RoundingMode.HALF_UP
+                );
+    }
+
+    private record InsuranceShareAmounts(
+            BigDecimal patientAmount,
+            BigDecimal insuranceAmount,
+            BigDecimal netAmount
+    ) {
+    }
+
+    private record TaxShareRule(
+            boolean onPatientCopayment,
+            boolean onClaimShare
+    ) {
+        private static final TaxShareRule BOTH_SHARES =
+                new TaxShareRule(true, true);
+
+        private static TaxShareRule of(
+                BillingPricingSnapshot snapshot
+        ) {
+            return new TaxShareRule(
+                    !Boolean.FALSE.equals(
+                            snapshot.getTaxOnPatientCopayment()
+                    ),
+                    !Boolean.FALSE.equals(
+                            snapshot.getTaxOnClaimShare()
+                    )
+            );
+        }
+
+        private boolean appliesToBothShares() {
+            return onPatientCopayment && onClaimShare;
         }
     }
 
@@ -1340,7 +1652,23 @@ public class BillingResponsibilityService {
             BillingChargeLine chargeLine,
             PatientServiceAndProduct item
     ) {
-        BigDecimal netAmount = money(chargeLine.getNetAmount());
+        BillingPricingSnapshot snapshot =
+                billingPricingSnapshotRepository
+                        .findTopByChargeLine_IdAndStatusOrderByIdDesc(
+                                chargeLine.getId(),
+                                BillingPricingSnapshotStatus.ACTIVE
+                        )
+                        .orElse(null);
+
+        BigDecimal taxAmount =
+                resolveFullLineTax(chargeLine, snapshot);
+
+        BigDecimal netAmount =
+                money(
+                        money(chargeLine.getNetAmount())
+                                .subtract(money(chargeLine.getTaxAmount()))
+                                .add(taxAmount)
+                );
 
         PriceCalculationResult pricingResult =
                 new PriceCalculationResult(
@@ -1350,7 +1678,7 @@ public class BillingResponsibilityService {
                         money(chargeLine.getDiscountAmount()),
                         money(chargeLine.getExemptionAmount()),
                         BigDecimal.ZERO,
-                        money(chargeLine.getTaxAmount()),
+                        taxAmount,
                         netAmount
                 );
 
@@ -1366,6 +1694,7 @@ public class BillingResponsibilityService {
                 .patientServiceProduct(item)
                 .charge(chargeLine.getCharge())
                 .chargeLine(chargeLine)
+                .pricingSnapshot(snapshot)
                 .pricingResult(pricingResult)
                 .build();
     }

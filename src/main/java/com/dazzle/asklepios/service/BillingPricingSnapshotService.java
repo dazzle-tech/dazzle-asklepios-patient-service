@@ -385,6 +385,18 @@ public class BillingPricingSnapshotService {
 
                 .taxAmount(result.taxAmount())
 
+                .taxOnPatientCopayment(
+                        !Boolean.FALSE.equals(
+                                input.taxOnPatientCopayment()
+                        )
+                )
+
+                .taxOnClaimShare(
+                        !Boolean.FALSE.equals(
+                                input.taxOnClaimShare()
+                        )
+                )
+
                 .netAmount(result.netAmount())
 
                 .currency(input.currency())

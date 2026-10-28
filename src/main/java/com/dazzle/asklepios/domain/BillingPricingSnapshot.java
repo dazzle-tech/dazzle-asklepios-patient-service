@@ -190,6 +190,19 @@ public class BillingPricingSnapshot extends AbstractAuditingEntity<Long>
     @Column(name = "tax_amount", nullable = false, precision = 19, scale = 4)
     private BigDecimal taxAmount = BigDecimal.ZERO;
 
+    /**
+     * Tax share flags captured from the tax setup at pricing time.
+     */
+    @NotNull
+    @Builder.Default
+    @Column(name = "tax_on_patient_copayment", nullable = false)
+    private Boolean taxOnPatientCopayment = true;
+
+    @NotNull
+    @Builder.Default
+    @Column(name = "tax_on_claim_share", nullable = false)
+    private Boolean taxOnClaimShare = true;
+
     @NotNull
     @DecimalMin(value = "0.0000")
     @Column(name = "net_amount", nullable = false, precision = 19, scale = 4)
