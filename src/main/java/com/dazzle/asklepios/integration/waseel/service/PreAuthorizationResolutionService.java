@@ -234,8 +234,24 @@ public class PreAuthorizationResolutionService {
                 );
     }
 
+    /**
+     * The payer did not cover the line: rejected, or partially approved on a local
+     * (NPHIES contract) request. The patient pays it as cash or the line is cancelled.
+     * A Waseel partial approval stays held (required = true) until communication ends.
+     */
+    public static boolean isDeclinedByPayer(PatientServiceAndProduct item) {
+        if (item == null) {
+            return false;
+        }
+
+        PreAuthorizationStatus status = item.getPreAuthorizationStatus();
+        return status == PreAuthorizationStatus.REJECTED
+                || (status == PreAuthorizationStatus.PARTIAL
+                        && !Boolean.TRUE.equals(item.getPreAuthorizationRequired()));
+    }
+
     public boolean isPendingPreAuthorization(PatientServiceAndProduct item) {
-        if (item == null || item.isUncoveredCashItem()) {
+        if (item == null || item.isUncoveredCashItem() || isDeclinedByPayer(item)) {
             return false;
         }
 
@@ -262,6 +278,10 @@ public class PreAuthorizationResolutionService {
 
         if (item.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH) {
             return true;
+        }
+
+        if (isDeclinedByPayer(item)) {
+            return false;
         }
 
         PreAuthorizationStatus status = item.getPreAuthorizationStatus();

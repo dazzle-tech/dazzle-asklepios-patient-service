@@ -2,6 +2,7 @@ package com.dazzle.asklepios.domain;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -135,4 +136,19 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
     @Transient
     @EqualsAndHashCode.Exclude
     private Boolean coveragePreApprovalPending;
+
+    /**
+     * Response only (not stored): pre-authorization status of the test's billing line,
+     * filled by DiagnosticPreAuthorizationService.
+     */
+    @Transient
+    @EqualsAndHashCode.Exclude
+    private PreAuthorizationStatus preAuthorizationStatus;
+
+    /**
+     * Response only (not stored): true when sample collection waits on pre-authorization.
+     */
+    @Transient
+    @EqualsAndHashCode.Exclude
+    private Boolean preAuthorizationBlocked;
 }

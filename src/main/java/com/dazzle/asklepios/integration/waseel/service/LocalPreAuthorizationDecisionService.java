@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Records the payer decision on a local pre-approval request (NPHIES contract)
@@ -55,9 +56,8 @@ public class LocalPreAuthorizationDecisionService {
 
         validateLocalPendingRequest(request);
 
-        boolean approved = decisionRequest.decision() == LocalPreAuthorizationDecisionRequest.Decision.APPROVED;
-        String status = approved ? "Approved" : "Rejected";
-        String itemDecision = approved ? "approved" : "rejected";
+        String status = statusText(decisionRequest.decision());
+        String itemDecision = status.toLowerCase(Locale.ROOT);
 
         request.setStatus(status);
         request.setOutcome(status);
@@ -80,6 +80,17 @@ public class LocalPreAuthorizationDecisionService {
         );
 
         return preAuthorizationStatusRefreshService.refreshEncounter(request.getEncounterId());
+    }
+
+    /**
+     * Stored as the request status; mapped back by PreAuthorizationWaseelStatusMapper.
+     */
+    private static String statusText(LocalPreAuthorizationDecisionRequest.Decision decision) {
+        return switch (decision) {
+            case APPROVED -> "Approved";
+            case PARTIAL -> "Partial";
+            case REJECTED -> "Rejected";
+        };
     }
 
     private void validateLocalPendingRequest(PreAuthorizationRequest request) {

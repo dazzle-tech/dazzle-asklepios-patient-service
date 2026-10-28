@@ -187,7 +187,7 @@ public class BillingResponsibilityService {
             item.setNotCoveredReason(null);
         }
 
-        if (item.getPreAuthorizationStatus() == PreAuthorizationStatus.REJECTED) {
+        if (PreAuthorizationResolutionService.isDeclinedByPayer(item)) {
             applyCashResponsibility(
                     context,
                     item,

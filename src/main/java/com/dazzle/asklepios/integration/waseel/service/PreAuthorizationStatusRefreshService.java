@@ -586,8 +586,15 @@ public class PreAuthorizationStatusRefreshService {
                 item.setPaymentStatus(PaymentStatus.PENDING);
             }
             case PARTIAL -> {
-                item.setPreAuthorizationRequired(true);
-                item.setPaymentStatus(PaymentStatus.SKIPPED_PENDING_PRE_AUTH);
+                // A local (NPHIES contract) partial decision is final: the patient pays
+                // cash or the line is cancelled. A Waseel partial stays held for communication.
+                boolean localDecision = request.getApprovalRequestId() == null;
+                item.setPreAuthorizationRequired(!localDecision);
+                item.setPaymentStatus(
+                        localDecision
+                                ? PaymentStatus.PENDING
+                                : PaymentStatus.SKIPPED_PENDING_PRE_AUTH
+                );
             }
             default -> {
                 item.setPreAuthorizationRequired(true);
@@ -613,7 +620,8 @@ public class PreAuthorizationStatusRefreshService {
         return new ItemRefreshOutcome(
                 newlyApproved,
                 status == PreAuthorizationStatus.REJECTED,
-                PreAuthorizationWaseelStatusMapper.isPendingStatus(status),
+                PreAuthorizationWaseelStatusMapper.isPendingStatus(status)
+                        && Boolean.TRUE.equals(item.getPreAuthorizationRequired()),
                 refreshedItem
         );
     }

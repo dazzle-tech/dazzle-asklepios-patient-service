@@ -113,9 +113,14 @@ public class PreAuthorizationCompletionService {
 
             item.setPaymentStatus(PaymentStatus.PENDING);
 
+            /*
+             * Bill with the event that matches the item's billing rule trigger.
+             * A default service whose rule is not ORDERED would otherwise be skipped.
+             */
             BillingOperationResult result =
-                    billingEngineService.onItemOrdered(
+                    billingEngineService.processWithEventFallback(
                             item.getId(),
+                            encounterId,
                             facilityId,
                             "PREAUTH-APPROVED:" + item.getId()
                     );

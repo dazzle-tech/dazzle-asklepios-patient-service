@@ -69,6 +69,11 @@ public interface PatientServiceAndProductRepository
             BillingItemTypes billingItemType
     );
 
+    List<PatientServiceAndProduct> findByServiceSourceInAndSourceIdIn(
+            Collection<ServiceSource> serviceSources,
+            Collection<Long> sourceIds
+    );
+
     List<PatientServiceAndProduct> findByEncounterId(Long encounterId);
 
     long countByEncounterId(Long encounterId);
@@ -109,9 +114,10 @@ public interface PatientServiceAndProductRepository
 
     boolean existsByEncounterIdAndPatientInsuranceIdIsNotNull(Long encounterId);
 
-    boolean existsByEncounterIdAndPatientInsuranceIdIsNotNullAndPreAuthorizationStatus(
+    boolean existsByEncounterIdAndPatientInsuranceIdIsNotNullAndPreAuthorizationStatusInAndPaymentStatusNot(
             Long encounterId,
-            PreAuthorizationStatus preAuthorizationStatus
+            Collection<PreAuthorizationStatus> preAuthorizationStatuses,
+            PaymentStatus paymentStatus
     );
 
     Optional<PatientServiceAndProduct> findFirstByEncounterIdAndPatientInsuranceIdIsNotNullOrderByIdDesc(

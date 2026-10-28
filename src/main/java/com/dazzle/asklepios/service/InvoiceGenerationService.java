@@ -989,10 +989,10 @@ public class InvoiceGenerationService {
     }
 
     /**
-     * An insurance visit whose lines are all held for pre-approval has no insurance
-     * responsibility yet. The billing screen still shows it as insurance so the
-     * pre-authorization actions stay available. Invoice logic keeps using
-     * {@link #resolveCoverageType(Long)}.
+     * An insurance visit whose lines wait for pre-approval, or for the patient's choice
+     * after a rejection / partial approval, has no insurance responsibility yet.
+     * The billing screen still shows it as insurance so the pre-authorization actions
+     * stay available. Invoice logic keeps using {@link #resolveCoverageType(Long)}.
      */
     private String resolveDisplayCoverageType(Long encounterId, String coverageType) {
         if ("INSURANCE".equals(coverageType)) {
@@ -1001,9 +1001,14 @@ public class InvoiceGenerationService {
 
         boolean hasLineAwaitingApproval =
                 patientServiceAndProductRepository
-                        .existsByEncounterIdAndPatientInsuranceIdIsNotNullAndPreAuthorizationStatus(
+                        .existsByEncounterIdAndPatientInsuranceIdIsNotNullAndPreAuthorizationStatusInAndPaymentStatusNot(
                                 encounterId,
-                                PreAuthorizationStatus.PENDING_APPROVAL
+                                EnumSet.of(
+                                        PreAuthorizationStatus.PENDING_APPROVAL,
+                                        PreAuthorizationStatus.PARTIAL,
+                                        PreAuthorizationStatus.REJECTED
+                                ),
+                                PaymentStatus.CANCELLED
                         );
 
         return hasLineAwaitingApproval ? "INSURANCE" : coverageType;

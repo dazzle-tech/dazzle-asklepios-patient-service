@@ -136,6 +136,7 @@ public class PatientEncounterService {
     private final EncounterDischargeLogRepository encounterDischargeLogRepository;
     private final PatientEncounterFieldAuditRepository auditRepository;
     private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
+    private final EncounterPreAuthorizationGuardService encounterPreAuthorizationGuardService;
 
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
@@ -166,7 +167,8 @@ public class PatientEncounterService {
             PractitionerClient practitionerClient,
             @Lazy BillingEngineService billingEngineService,
             NotificationHelper notificationHelper, InvoiceGenerationService invoiceGenerationService, UserRepository userRepository, EncounterDischargeLogRepository encounterDischargeLogRepository, PatientEncounterFieldAuditRepository auditRepository,
-            FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy) {
+            FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy,
+            EncounterPreAuthorizationGuardService encounterPreAuthorizationGuardService) {
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.entityManager = entityManager;
@@ -204,6 +206,7 @@ public class PatientEncounterService {
         this.encounterDischargeLogRepository = encounterDischargeLogRepository;
         this.auditRepository = auditRepository;
         this.followUpReviewDefaultServicePolicy = followUpReviewDefaultServicePolicy;
+        this.encounterPreAuthorizationGuardService = encounterPreAuthorizationGuardService;
     }
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
@@ -413,6 +416,7 @@ public class PatientEncounterService {
                     "Triage can only be started when status is WAITING_TRIAGE."
             );
         }
+        encounterPreAuthorizationGuardService.requireNoPendingPreAuthorization(patientEncounterId);
         existingPatientEncounter.setStatus(TreatmentStatus.TRIAGE_STARTED);
 
 
@@ -589,6 +593,7 @@ public class PatientEncounterService {
 
         String username = currentUsername();
         validateStartedByIsDoctor(username);
+        encounterPreAuthorizationGuardService.requireNoPendingPreAuthorization(encounterId);
         encounter.setStatus(TreatmentStatus.ONGOING);
         encounter.setStartedBy(currentUsername());
         encounter.setStartedDate(Instant.now());

@@ -39,6 +39,7 @@ public class DiagnosticOrderTestCollectedSampleService {
     private final DepartmentsRepository departmentRepository;
     private final DiagnosticOrderRepository diagnosticOrderRepository;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
+    private final DiagnosticPreAuthorizationService diagnosticPreAuthorizationService;
 
     public DiagnosticOrderTestCollectedSampleService(
             DiagnosticOrderTestCollectedSampleRepository repository,
@@ -49,7 +50,8 @@ public class DiagnosticOrderTestCollectedSampleService {
             PatientRepository patientRepository,
             DiagnosticTestRepository diagnosticTestRepository,
             DepartmentsRepository departmentRepository,
-            DiagnosticOrderRepository diagnosticOrderRepository, DiagnosticOrderTestRepository diagnosticOrderTestRepository) {
+            DiagnosticOrderRepository diagnosticOrderRepository, DiagnosticOrderTestRepository diagnosticOrderTestRepository,
+            DiagnosticPreAuthorizationService diagnosticPreAuthorizationService) {
         this.repository = repository;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
         this.orderTestRepository = orderTestRepository;
@@ -60,10 +62,12 @@ public class DiagnosticOrderTestCollectedSampleService {
         this.departmentRepository = departmentRepository;
         this.diagnosticOrderRepository = diagnosticOrderRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
+        this.diagnosticPreAuthorizationService = diagnosticPreAuthorizationService;
     }
 
     public DiagnosticOrderTestCollectedSample create(DiagnosticOrderTestCollectedSampleDTO dto) {
         LOG.debug("[CollectedSampleService] CREATE - start. payload={}", dto);
+        diagnosticPreAuthorizationService.requireCollectable(dto.orderTestId());
         DiagnosticOrder diagnosticOrder = getDiagnosticOrder(dto.orderId());
         DiagnosticOrderTest diagnosticOrderTest = getDiagnosticOrderTest(dto.orderTestId());
         DiagnosticOrderTestCollectedSample s = new DiagnosticOrderTestCollectedSample();
@@ -89,6 +93,7 @@ public class DiagnosticOrderTestCollectedSampleService {
     ) {
         LOG.debug("[CollectedSampleService] BULK_CREATE_SAME - start. orderId={} orderTestIdsCount={}",
                 dto.orderId(), dto.orderTestIds() == null ? 0 : dto.orderTestIds().size());
+        diagnosticPreAuthorizationService.requireCollectable(dto.orderTestIds());
         DiagnosticOrder diagnosticOrder = getDiagnosticOrder(dto.orderId());
         List<DiagnosticOrderTestCollectedSample> entities = dto.orderTestIds().stream().map(orderTestId -> {
 
@@ -155,6 +160,7 @@ public class DiagnosticOrderTestCollectedSampleService {
     public DiagnosticOrderTestSampleLabelDTO getSampleLabel(Long orderTestId) {
 
         LOG.debug("[SampleLabelService] GET_SAMPLE_LABEL - start. orderTestId={}", orderTestId);
+        diagnosticPreAuthorizationService.requireCollectable(orderTestId);
 
         DiagnosticOrderTest orderTest = orderTestRepository.findById(orderTestId)
                 .orElseThrow(() -> new BadRequestAlertException(

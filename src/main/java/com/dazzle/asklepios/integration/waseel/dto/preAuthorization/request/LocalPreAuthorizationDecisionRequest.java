@@ -12,6 +12,7 @@ public record LocalPreAuthorizationDecisionRequest(
 ) {
     public enum Decision {
         APPROVED,
+        PARTIAL,
         REJECTED
     }
 }

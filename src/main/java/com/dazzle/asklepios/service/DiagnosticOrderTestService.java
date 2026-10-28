@@ -79,6 +79,7 @@ public class DiagnosticOrderTestService {
 
     private final BillingRuleEvaluationService billingRuleEvaluationService;
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
+    private final DiagnosticPreAuthorizationService diagnosticPreAuthorizationService;
 
     /**
      * Creates the service with required dependencies.
@@ -95,7 +96,8 @@ public class DiagnosticOrderTestService {
             DepartmentHelper departmentHelper,
             ICDTreeHelper icdTreeHelper, FacilityHelper facilityHelper,
             BillingRuleEvaluationService billingRuleEvaluationService,
-            @org.springframework.context.annotation.Lazy DiagnosticOrderTestStatusService diagnosticOrderTestStatusService
+            @org.springframework.context.annotation.Lazy DiagnosticOrderTestStatusService diagnosticOrderTestStatusService,
+            DiagnosticPreAuthorizationService diagnosticPreAuthorizationService
     ) {
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
@@ -108,6 +110,7 @@ public class DiagnosticOrderTestService {
         this.facilityHelper = facilityHelper;
         this.billingRuleEvaluationService = billingRuleEvaluationService;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
+        this.diagnosticPreAuthorizationService = diagnosticPreAuthorizationService;
     }
 
     /**
@@ -175,10 +178,13 @@ public class DiagnosticOrderTestService {
         // Create billing + submit pre-auth immediately when the test is added (not on accept).
         PatientServiceAndProduct billed =
                 diagnosticOrderTestStatusService.onTestAddedToOrder(saved, dto.acceptUncoveredAsCash());
+        // Read the billing line again: billing may have held it for pre-approval.
+        diagnosticPreAuthorizationService.attachStatuses(List.of(saved));
         saved.setCoveragePreApprovalPending(
-                billed != null
+                saved.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
+                        || (billed != null
                         && (billed.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH
-                        || billed.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL)
+                        || billed.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL))
         );
 
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
@@ -293,6 +299,7 @@ public class DiagnosticOrderTestService {
 
         Page<DiagnosticOrderTest> page =
                 diagnosticOrderTestRepository.findAll(spec, pageable);
+        diagnosticPreAuthorizationService.attachStatuses(page.getContent());
 
         List<Long> orderTestIds = page.getContent()
                 .stream()
