@@ -24,7 +24,12 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Opens a local pre-approval request when a visit line needs coverage pre-approval.
@@ -41,6 +46,7 @@ public class CoveragePreApprovalLimitService {
     static final String REQUEST_STATUS = "Pending Approval";
     static final String REASON_LIMIT = "Coverage pre-approval limit exceeded";
     static final String REASON_CONTRACT = "Coverage contract requires pre-approval";
+    static final String REASON_COVERAGE_LIMIT = "Coverage limit exceeded";
 
     private static final Logger LOG = LoggerFactory.getLogger(CoveragePreApprovalLimitService.class);
     private static final int MONEY_SCALE = 2;
@@ -105,7 +111,7 @@ public class CoveragePreApprovalLimitService {
             return;
         }
 
-        String reason = holdReason(resolved, current);
+        String reason = holdReason(insurance, item, resolved, current);
         if (reason == null) {
             LOG.info(
                     "[PREAUTH_LIMIT] No pre-approval hold. encounterId={} pspId={} amount={}",
@@ -132,16 +138,31 @@ public class CoveragePreApprovalLimitService {
         if (insurance == null || item == null) {
             return false;
         }
-        return holdReason(resolveQuietly(insurance, item), money(netAmount)) != null;
+        return holdReason(insurance, item, resolveQuietly(insurance, item), money(netAmount)) != null;
     }
 
     /**
      * Why the line must wait for pre-approval, or {@code null} when it can be billed.
      * Every contract holds a line that reaches its pre-approval limit; NPHIES contracts
-     * also hold on a contract pre-approval that has no limit.
+     * also hold once the visit Coverage Limit is used, and on a contract pre-approval
+     * that has no limit.
      */
-    private String holdReason(CoverageContractResolveDtos.Response resolved, BigDecimal netAmount) {
-        if (resolved == null || !resolved.matched() || resolved.preApproval() == null || isExcluded(resolved)) {
+    private String holdReason(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            CoverageContractResolveDtos.Response resolved,
+            BigDecimal netAmount
+    ) {
+        if (resolved == null || !resolved.matched() || isExcluded(resolved)) {
+            return null;
+        }
+
+        if (CoverageApprovalRoutingService.usesLocalApproval(resolved)
+                && coverageContractShareService.exceedsCoverageLimit(insurance, item, resolved, netAmount)) {
+            return REASON_COVERAGE_LIMIT;
+        }
+
+        if (resolved.preApproval() == null) {
             return null;
         }
 
@@ -253,7 +274,7 @@ public class CoveragePreApprovalLimitService {
                 .totalNet(net.setScale(MONEY_SCALE, RoundingMode.HALF_UP))
                 .status(REQUEST_STATUS)
                 .statusReason(reason)
-                .message("This request is waiting for pre-approval. It is not posted to the patient account.")
+                .message(holdMessage(reason))
                 .build());
 
         preAuthorizationItemRepository.save(lineItem(context, request.getId(), item, net));
@@ -271,6 +292,40 @@ public class CoveragePreApprovalLimitService {
                 request.getId(),
                 net
         );
+    }
+
+    private static String holdMessage(String reason) {
+        if (REASON_COVERAGE_LIMIT.equals(reason)) {
+            return "The patient exceeded the visit coverage limit. This service needs pre-approval and is not posted to the patient account.";
+        }
+        return "This request is waiting for pre-approval. It is not posted to the patient account.";
+    }
+
+    /**
+     * List responses: puts the local pre-approval reason on held lines, so the ledger
+     * can show why a line waits (for example, coverage limit exceeded).
+     * Waseel requests are left as they are.
+     */
+    public void attachHoldReasons(List<PatientServiceAndProduct> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        Set<Long> requestIds = items.stream()
+                .map(PatientServiceAndProduct::getPreAuthorizationRequestId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (requestIds.isEmpty()) {
+            return;
+        }
+        Map<Long, String> reasons = new HashMap<>();
+        for (PreAuthorizationRequest request : preAuthorizationRequestRepository.findAllById(requestIds)) {
+            if (request.getApprovalRequestId() == null && request.getStatusReason() != null) {
+                reasons.put(request.getId(), request.getStatusReason());
+            }
+        }
+        for (PatientServiceAndProduct item : items) {
+            item.setPreAuthorizationReason(reasons.get(item.getPreAuthorizationRequestId()));
+        }
     }
 
     private PreAuthorizationItem lineItem(

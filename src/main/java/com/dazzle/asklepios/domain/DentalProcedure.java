@@ -12,7 +12,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.Transient;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -93,8 +92,9 @@ public class DentalProcedure extends AbstractAuditingEntity<Long> implements Ser
     /**
      * Response only (not stored): true when a billing line of this procedure
      * waits for pre-authorization, so the screen can show the alert.
+     * Java {@code transient}, not JPA {@code @Transient}: the Hibernate Jackson module
+     * drops {@code @Transient} fields from the JSON, so the screen would never see it.
      */
-    @Transient
-    private boolean preAuthorizationPending;
+    private transient boolean preAuthorizationPending;
 }
 

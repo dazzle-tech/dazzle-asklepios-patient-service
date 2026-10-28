@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.service.ClinicalFulfillmentStatusResolver;
+import com.dazzle.asklepios.service.CoveragePreApprovalLimitService;
 import com.dazzle.asklepios.service.PatientServiceAndProductService;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductUpdateDTO;
@@ -41,13 +42,16 @@ public class PatientServiceAndProductController {
 
     private final PatientServiceAndProductService patientServiceAndProductService;
     private final ClinicalFulfillmentStatusResolver clinicalFulfillmentStatusResolver;
+    private final CoveragePreApprovalLimitService coveragePreApprovalLimitService;
 
     public PatientServiceAndProductController(
             PatientServiceAndProductService patientServiceAndProductService,
-            ClinicalFulfillmentStatusResolver clinicalFulfillmentStatusResolver
+            ClinicalFulfillmentStatusResolver clinicalFulfillmentStatusResolver,
+            CoveragePreApprovalLimitService coveragePreApprovalLimitService
     ) {
         this.patientServiceAndProductService = patientServiceAndProductService;
         this.clinicalFulfillmentStatusResolver = clinicalFulfillmentStatusResolver;
+        this.coveragePreApprovalLimitService = coveragePreApprovalLimitService;
     }
 
     @PostMapping("/patient-services-products")
@@ -85,6 +89,7 @@ public class PatientServiceAndProductController {
         Page<PatientServiceAndProduct> page =
                 patientServiceAndProductService.findAllServicesAndProductsByEncounterId(pageable, encounterId);
         clinicalFulfillmentStatusResolver.attachToItems(page.getContent());
+        coveragePreApprovalLimitService.attachHoldReasons(page.getContent());
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page

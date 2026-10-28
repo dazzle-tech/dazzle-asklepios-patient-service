@@ -212,6 +212,13 @@ public class PatientServiceAndProduct extends AbstractAuditingEntity<Long> imple
     private String clinicalStatus;
 
     /**
+     * Why a local (NPHIES) pre-approval holds this line, e.g. "Coverage limit exceeded".
+     * Populated only on list responses. Java {@code transient}, not JPA {@code @Transient}:
+     * the Hibernate Jackson module drops {@code @Transient} fields from the JSON.
+     */
+    private transient String preAuthorizationReason;
+
+    /**
      * Insurance visit item that is not on the insurance price list and was
      * confirmed to bill as cash. Must not go to claims or insurance share.
      */

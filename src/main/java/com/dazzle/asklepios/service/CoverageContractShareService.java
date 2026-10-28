@@ -10,6 +10,7 @@ import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.repository.PatientDiagnosisRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
@@ -259,6 +260,32 @@ public class CoverageContractShareService {
         return true;
     }
 
+    /**
+     * NPHIES contracts: true when the visit has already used its Coverage Limit,
+     * or this line would take it past the limit, so the line needs pre-approval.
+     * Only a fixed ceiling is checked; a percentage limit is a share, not a ceiling.
+     */
+    public boolean exceedsCoverageLimit(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            CoverageContractResolveDtos.Response resolved,
+            BigDecimal netAmount
+    ) {
+        if (insurance == null || item == null || resolved == null || !resolved.matched()) {
+            return false;
+        }
+        CoverageContractResolveDtos.CoverageReadingSnapshot limit = resolved.limit();
+        if (limit == null || limit.limitValue() == null || !"FIXED".equalsIgnoreCase(limit.valueType())) {
+            return false;
+        }
+        BigDecimal currentBasis = basisAmount(item, limit, netAmount);
+        if (currentBasis.signum() <= 0) {
+            return false;
+        }
+        BigDecimal remaining = remainingRoom(item, insurance, limit, currentBasis);
+        return remaining != null && remaining.compareTo(currentBasis) < 0;
+    }
+
     public CoverageContractResolveDtos.Response resolveVisitContract(
             PatientInsurance insurance,
             PatientServiceAndProduct item
@@ -292,6 +319,15 @@ public class CoverageContractShareService {
         if (resolved.limit().limitValue() == null || item == null) {
             return split;
         }
+        if (isApprovedLocally(item, resolved)) {
+            LOG.info(
+                    "[COVERAGE_CONTRACT] Coverage Limit not applied; the line has a local pre-approval decision patientInsuranceId={} pspId={} status={}",
+                    insurance.getId(),
+                    item.getId(),
+                    item.getPreAuthorizationStatus()
+            );
+            return split;
+        }
 
         BigDecimal consumed = consumedBasis(item, insurance, resolved.limit(), false);
         BigDecimal currentBasis = basisAmount(item, resolved.limit(), normalizedNet);
@@ -321,6 +357,21 @@ public class CoverageContractShareService {
                 capped.insuranceShare()
         );
         return capped;
+    }
+
+    /**
+     * NPHIES: a line that went to pre-approval (for example after the Coverage Limit
+     * was used) and was approved is billed with the contract split; the payer decision
+     * replaces the ceiling for that line.
+     */
+    private boolean isApprovedLocally(
+            PatientServiceAndProduct item,
+            CoverageContractResolveDtos.Response resolved
+    ) {
+        PreAuthorizationStatus status = item.getPreAuthorizationStatus();
+        return item.getPreAuthorizationRequestId() != null
+                && (status == PreAuthorizationStatus.APPROVED || status == PreAuthorizationStatus.PARTIAL)
+                && CoverageApprovalRoutingService.usesLocalApproval(resolved);
     }
 
     private InsuranceSplit applyCashLimit(
