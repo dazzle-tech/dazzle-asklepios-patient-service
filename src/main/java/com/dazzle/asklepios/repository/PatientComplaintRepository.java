@@ -4,7 +4,9 @@ import com.dazzle.asklepios.domain.PatientComplaint;
 import com.dazzle.asklepios.domain.enumeration.PatientComplaintStatus;
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.Optional;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
@@ -25,14 +27,8 @@ public interface PatientComplaintRepository
     @Query("select c from PatientComplaint c where c.id = :id")
     Optional<PatientComplaint> findByIdForUpdate(@Param("id") Long id);
 
-    @Query(
-        """
-        select distinct c from PatientComplaint c
-        left join fetch c.actions
-        where c.id = :id
-        """
-    )
-    Optional<PatientComplaint> findByIdWithActions(@Param("id") Long id);
+    @EntityGraph(attributePaths = "actions")
+    Optional<PatientComplaint> findWithActionsById(Long id);
 
     long countByFacilityIdAndStatus(Long facilityId, PatientComplaintStatus status);
 
@@ -40,15 +36,9 @@ public interface PatientComplaintRepository
 
     long countByFacilityIdAndAssignedUserId(Long facilityId, Long assignedUserId);
 
-    @Query(
-        """
-        select count(c) from PatientComplaint c
-        where c.facilityId = :facilityId
-          and c.targetDeadline is not null
-          and c.targetDeadline < :now
-          and c.status not in (com.dazzle.asklepios.domain.enumeration.PatientComplaintStatus.RESOLVED,
-                               com.dazzle.asklepios.domain.enumeration.PatientComplaintStatus.CLOSED)
-        """
-    )
-    long countOverdueByFacilityId(@Param("facilityId") Long facilityId, @Param("now") Instant now);
+    long countByFacilityIdAndTargetDeadlineIsNotNullAndTargetDeadlineBeforeAndStatusNotIn(
+        Long facilityId,
+        Instant now,
+        Collection<PatientComplaintStatus> statuses
+    );
 }

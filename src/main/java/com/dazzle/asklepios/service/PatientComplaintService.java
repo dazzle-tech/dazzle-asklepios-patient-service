@@ -344,7 +344,13 @@ public class PatientComplaintService {
                 ? 0L
                 : patientComplaintRepository.countByFacilityIdAndAssignedUserId(facilityId, currentUserId)
         );
-        vm.setOverdueCount(patientComplaintRepository.countOverdueByFacilityId(facilityId, now));
+        vm.setOverdueCount(
+            patientComplaintRepository.countByFacilityIdAndTargetDeadlineIsNotNullAndTargetDeadlineBeforeAndStatusNotIn(
+                facilityId,
+                now,
+                List.of(PatientComplaintStatus.RESOLVED, PatientComplaintStatus.CLOSED)
+            )
+        );
         vm.setResolvedCount(
             patientComplaintRepository.countByFacilityIdAndStatus(facilityId, PatientComplaintStatus.RESOLVED)
         );
@@ -592,10 +598,10 @@ public class PatientComplaintService {
     private PatientComplaint getAccessibleComplaintWithActions(Long id) {
         Long facilityId = requireCurrentFacilityId();
         PatientComplaint complaint = patientComplaintRepository
-            .findByIdWithActions(id)
+            .findWithActionsById(id)
             .orElseThrow(() -> new NotFoundAlertException("Complaint not found: " + id, ENTITY_NAME, "notfound"));
         assertSameFacility(complaint, facilityId);
-        // Avoid MultipleBagFetchException: initialize attachments separately from JOIN FETCH actions.
+        // Avoid MultipleBagFetchException: initialize attachments separately from EntityGraph actions.
         complaint.getAttachments().size();
         return complaint;
     }
