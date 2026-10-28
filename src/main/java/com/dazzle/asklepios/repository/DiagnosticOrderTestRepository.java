@@ -46,6 +46,24 @@ public interface DiagnosticOrderTestRepository extends JpaRepository<DiagnosticO
 """)
     int bulkUpdateStatusForOrder(Long orderId, DiagnosticOrderTestStatus newStatus);
 
+    /**
+     * Same as {@link #bulkUpdateStatusForOrder} but leaves the given tests unchanged
+     * (radiology tests held for pre-authorization on submit).
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+    update DiagnosticOrderTest t
+       set t.status = :newStatus
+     where t.orderId = :orderId
+       and t.status <> com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus.CANCELLED
+       and t.id not in :excludedIds
+""")
+    int bulkUpdateStatusForOrderExcluding(
+            @Param("orderId") Long orderId,
+            @Param("newStatus") DiagnosticOrderTestStatus newStatus,
+            @Param("excludedIds") Collection<Long> excludedIds
+    );
+
 
     boolean existsByOrderIdAndTestIdAndStatusNot(Long orderId, Long testId, DiagnosticOrderTestStatus status);
 

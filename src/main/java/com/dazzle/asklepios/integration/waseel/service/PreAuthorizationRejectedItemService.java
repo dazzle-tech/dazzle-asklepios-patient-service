@@ -11,6 +11,7 @@ import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.service.BillingChargeService;
 import com.dazzle.asklepios.service.BillingEngineService;
 import com.dazzle.asklepios.service.BillingResponsibilityService;
+import com.dazzle.asklepios.service.DiagnosticPreAuthorizationService;
 import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,7 @@ public class PreAuthorizationRejectedItemService {
     private final BillingEngineService billingEngineService;
     private final BillingResponsibilityService billingResponsibilityService;
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
+    private final DiagnosticPreAuthorizationService diagnosticPreAuthorizationService;
 
     /**
      * Bills a rejected pre-authorization item with insurance price-list pricing
@@ -119,6 +121,8 @@ public class PreAuthorizationRejectedItemService {
                     "billing.rejectedCash.failed"
             );
         }
+
+        diagnosticPreAuthorizationService.releaseHeldTest(item);
 
         return result;
     }

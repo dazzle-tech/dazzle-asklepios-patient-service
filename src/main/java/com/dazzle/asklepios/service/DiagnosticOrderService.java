@@ -58,6 +58,7 @@ public class DiagnosticOrderService {
     private final FacilityHelper facilityHelper;
     private final DepartmentHelper departmentHelper;
     private final NotificationHelper notificationHelper;
+    private final DiagnosticPreAuthorizationService diagnosticPreAuthorizationService;
 
 
     /**
@@ -247,10 +248,23 @@ public class DiagnosticOrderService {
 
         DiagnosticOrder saved = diagnosticOrderRepository.save(existing);
 
-        int updatedTests = diagnosticOrderTestRepository.bulkUpdateStatusForOrder(
-                saved.getId(),
-                DiagnosticOrderTestStatus.SUBMITTED
+        // Radiology tests waiting on pre-authorization stay NEW; they are sent after the decision.
+        Set<Long> heldTestIds = diagnosticPreAuthorizationService.heldRadiologyTestIds(
+                diagnosticOrderTestRepository.findByOrderIdInAndStatusNot(
+                        List.of(saved.getId()),
+                        DiagnosticOrderTestStatus.CANCELLED
+                )
         );
+        int updatedTests = heldTestIds.isEmpty()
+                ? diagnosticOrderTestRepository.bulkUpdateStatusForOrder(
+                        saved.getId(),
+                        DiagnosticOrderTestStatus.SUBMITTED
+                )
+                : diagnosticOrderTestRepository.bulkUpdateStatusForOrderExcluding(
+                        saved.getId(),
+                        DiagnosticOrderTestStatus.SUBMITTED,
+                        heldTestIds
+                );
 
         LOG.debug("[DiagnosticOrderService] SUBMIT - done. orderId={} newSaveDraft={} newStatus={} submittedDate={} updatedTests={}",
                 saved.getId(), saved.getSaveDraft(), saved.getStatus(), saved.getSubmittedDate(), updatedTests);
