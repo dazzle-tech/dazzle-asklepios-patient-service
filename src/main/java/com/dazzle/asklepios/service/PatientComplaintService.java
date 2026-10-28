@@ -8,20 +8,27 @@ import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
 import com.dazzle.asklepios.client.setup.dto.FacilityUserDTO;
 import com.dazzle.asklepios.client.setup.dto.UserDTO;
+import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientComplaint;
 import com.dazzle.asklepios.domain.PatientComplaintAction;
 import com.dazzle.asklepios.domain.PatientComplaintAttachment;
+import com.dazzle.asklepios.domain.PatientDocument;
+import com.dazzle.asklepios.domain.enumeration.DocumentType;
 import com.dazzle.asklepios.domain.enumeration.PatientComplaintActionStatus;
 import com.dazzle.asklepios.domain.enumeration.PatientComplaintFeedbackType;
 import com.dazzle.asklepios.domain.enumeration.PatientComplaintPreferredContactMethod;
 import com.dazzle.asklepios.domain.enumeration.PatientComplaintStatus;
 import com.dazzle.asklepios.repository.PatientComplaintRepository;
 import com.dazzle.asklepios.repository.PatientComplaintSpecs;
+import com.dazzle.asklepios.repository.PatientDocumentRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.security.AuthoritiesConstants;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintActionCompleteDTO;
 import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintActionCreateDTO;
 import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintAssignDTO;
 import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintDeadlineDTO;
+import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintMobileSubmitDTO;
 import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintReopenDTO;
 import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintResolveDTO;
 import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintSubmitDTO;
@@ -73,6 +80,8 @@ public class PatientComplaintService {
     private static final DateTimeFormatter MM = DateTimeFormatter.ofPattern("MM").withZone(ZoneOffset.UTC);
 
     private final PatientComplaintRepository patientComplaintRepository;
+    private final PatientRepository patientRepository;
+    private final PatientDocumentRepository patientDocumentRepository;
     private final FacilityClient facilityClient;
     private final DepartmentHelper departmentHelper;
     private final UserClient userClient;
@@ -89,6 +98,30 @@ public class PatientComplaintService {
         validateVisitFields(dto);
         validateOptionalPhone(dto.getContactPhone());
 
+        return persistNewComplaint(dto, null, files);
+    }
+
+    public PatientComplaintSubmitResponseVM submitMobile(
+        PatientComplaintMobileSubmitDTO mobileDto,
+        List<MultipartFile> files
+    ) {
+        Patient patient = requireAuthenticatedPatient();
+        PatientComplaintSubmitDTO dto = toSubmitDtoFromAuthenticatedPatient(mobileDto, patient);
+
+        normalizeSubmitDto(dto);
+        validateConsent(dto);
+        validateSubmitIdentity(dto);
+        validateVisitFields(dto);
+        validateOptionalPhone(dto.getContactPhone());
+
+        return persistNewComplaint(dto, patient, files);
+    }
+
+    private PatientComplaintSubmitResponseVM persistNewComplaint(
+        PatientComplaintSubmitDTO dto,
+        Patient linkedPatient,
+        List<MultipartFile> files
+    ) {
         FacilityDTO facility = requireActiveFacility(dto.getFacilityId());
         String departmentName = requireActiveDepartmentForFacility(dto.getDepartmentId(), dto.getFacilityId());
 
@@ -97,6 +130,7 @@ public class PatientComplaintService {
         complaint.setComplaintReference(generateReference());
         complaint.setAnonymous(Boolean.TRUE.equals(dto.getAnonymous()));
         complaint.setConsentToContact(Boolean.TRUE.equals(dto.getConsentToContact()));
+        complaint.setPatient(linkedPatient);
         if (complaint.isAnonymous()) {
             complaint.setPatientName(null);
             complaint.setPatientIdentifier(null);
@@ -147,6 +181,86 @@ public class PatientComplaintService {
         response.setReference(persisted.getComplaintReference());
         response.setReceivedDate(persisted.getReceivedDate());
         return response;
+    }
+
+    private Patient requireAuthenticatedPatient() {
+        if (!SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.PATIENT)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Patient authority required");
+        }
+        String mrn = SecurityUtils
+            .getCurrentUserLogin()
+            .map(String::trim)
+            .filter(value -> !value.isEmpty())
+            .orElseThrow(() ->
+                new BadRequestAlertException(
+                    "Authenticated patient identity is required",
+                    ENTITY_NAME,
+                    "identity.required"
+                )
+            );
+        return patientRepository
+            .findByMedicalRecordNumber(mrn)
+            .orElseThrow(() ->
+                new NotFoundAlertException(
+                    "Patient not found for authenticated medical record number",
+                    "patient",
+                    "notfound"
+                )
+            );
+    }
+
+    private PatientComplaintSubmitDTO toSubmitDtoFromAuthenticatedPatient(
+        PatientComplaintMobileSubmitDTO mobileDto,
+        Patient patient
+    ) {
+        String patientName = formatPatientDisplayName(patient);
+        if (patientName == null) {
+            throw new BadRequestAlertException(
+                "Patient record is missing a display name",
+                ENTITY_NAME,
+                "patientName.required"
+            );
+        }
+        String contactPhone = blankToNull(patient.getPrimaryMobileNumber());
+        if (contactPhone == null) {
+            throw new BadRequestAlertException(
+                "Patient record is missing a contact phone number",
+                ENTITY_NAME,
+                "contactPhone.required"
+            );
+        }
+
+        PatientDocument primaryDocument = patientDocumentRepository
+            .findFirstByPatient_IdAndIsPrimaryTrue(patient.getId())
+            .or(() -> patientDocumentRepository.findFirstByPatient_IdOrderByIdAsc(patient.getId()))
+            .orElse(null);
+
+        DocumentType documentType = primaryDocument != null ? primaryDocument.getType() : null;
+        String documentNumber = primaryDocument != null
+            ? blankToNull(primaryDocument.getNumber())
+            : blankToNull(patient.getDocumentId());
+
+        PatientComplaintSubmitDTO dto = new PatientComplaintSubmitDTO();
+        dto.setAnonymous(false);
+        dto.setOnBehalf(false);
+        dto.setPatientName(patientName);
+        dto.setDocumentType(documentType);
+        dto.setDocumentNumber(documentNumber);
+        dto.setPatientIdentifier(documentNumber != null ? documentNumber : patient.getMedicalRecordNumber());
+        dto.setContactPhone(contactPhone);
+        dto.setContactEmail(blankToNull(patient.getEmail()));
+        dto.setPreferredContactMethod(mobileDto.getPreferredContactMethod());
+        dto.setConsentToContact(mobileDto.getConsentToContact());
+        dto.setFacilityId(mobileDto.getFacilityId());
+        dto.setDepartmentId(mobileDto.getDepartmentId());
+        dto.setFeedbackType(mobileDto.getFeedbackType());
+        dto.setComplaintType(mobileDto.getComplaintType());
+        dto.setIncidentDate(mobileDto.getIncidentDate());
+        dto.setIncidentTime(mobileDto.getIncidentTime());
+        dto.setDescription(mobileDto.getDescription());
+        dto.setInvolvedStaffNames(mobileDto.getInvolvedStaffNames());
+        dto.setDesiredResolution(mobileDto.getDesiredResolution());
+        return dto;
     }
 
     @Transactional(readOnly = true)
@@ -849,6 +963,24 @@ public class PatientComplaintService {
         if (dto.getDescription() == null || dto.getDescription().isBlank()) {
             throw new BadRequestAlertException("Details are required", ENTITY_NAME, "description.required");
         }
+    }
+
+    private static String formatPatientDisplayName(Patient patient) {
+        String joined = String
+            .join(
+                " ",
+                blankToEmpty(patient.getFirstName()),
+                blankToEmpty(patient.getSecondName()),
+                blankToEmpty(patient.getThirdName()),
+                blankToEmpty(patient.getLastName())
+            )
+            .trim()
+            .replaceAll(" +", " ");
+        return joined.isEmpty() ? null : joined;
+    }
+
+    private static String blankToEmpty(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private String requireActiveDepartmentForFacility(Long departmentId, Long facilityId) {

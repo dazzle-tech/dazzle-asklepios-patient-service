@@ -7,6 +7,8 @@ import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintActionC
 import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintActionCreateDTO;
 import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintAssignDTO;
 import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintDeadlineDTO;
+import com.dazzle.asklepios.security.AuthoritiesConstants;
+import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintMobileSubmitDTO;
 import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintPublicLookupRequestDTO;
 import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintReopenDTO;
 import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintResolveDTO;
@@ -31,6 +33,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -79,6 +82,28 @@ public class PatientComplaintController {
         return ResponseEntity
             .status(HttpStatus.CREATED)
             .body(patientComplaintService.submit(dto, files == null ? List.of() : files));
+    }
+
+    @PreAuthorize("hasAuthority('" + AuthoritiesConstants.PATIENT + "')")
+    @PostMapping(value = "/patient-complaints/mobile/submit", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<PatientComplaintSubmitResponseVM> submitMobileJson(
+        @Valid @RequestBody PatientComplaintMobileSubmitDTO dto
+    ) {
+        return ResponseEntity
+            .status(HttpStatus.CREATED)
+            .body(patientComplaintService.submitMobile(dto, List.of()));
+    }
+
+    /** Multipart mobile submit; part {@code complaint} + optional {@code files}. */
+    @PreAuthorize("hasAuthority('" + AuthoritiesConstants.PATIENT + "')")
+    @PostMapping(value = "/patient-complaints/mobile/submit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<PatientComplaintSubmitResponseVM> submitMobileMultipart(
+        @Valid @RequestPart("complaint") PatientComplaintMobileSubmitDTO dto,
+        @RequestPart(value = "files", required = false) List<MultipartFile> files
+    ) {
+        return ResponseEntity
+            .status(HttpStatus.CREATED)
+            .body(patientComplaintService.submitMobile(dto, files == null ? List.of() : files));
     }
 
     @GetMapping("/patient-complaints/{id}/attachments/{attachmentId}/download-url")
