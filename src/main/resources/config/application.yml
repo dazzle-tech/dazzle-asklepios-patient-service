@@ -212,6 +212,10 @@ patient:
       zone: Asia/Hebron
       springdoc:
       pre-loading-enabled: true
+  vaccination:
+    # Off until vaccine brand prices are configured: saving a vaccination does not add a
+    # services & products line for its brand. Set to true to charge vaccinations again.
+    auto-charge-enabled: false
   ambient-scribe:
     audio-retention:
       cron: "0 30 2 * * *"

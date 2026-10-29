@@ -25,6 +25,7 @@ import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -55,6 +56,13 @@ public class EncounterVaccinationService {
     private final VaccineDosesHelper vaccineDosesHelper;
     private final ReopenSessionAuditContext reopenSessionAuditContext;
     private final PatientServiceAndProductService patientServiceAndProductService;
+
+    /**
+     * Temporarily off until vaccine brand prices are configured: saving a vaccination does not
+     * add its brand to services and products. Turn it back on with patient.vaccination.auto-charge-enabled=true.
+     */
+    @Value("${patient.vaccination.auto-charge-enabled:false}")
+    private boolean autoChargeEnabled;
 
     public EncounterVaccination create(EncounterVaccinationCreateDTO createRequest) {
         LOG.info("[CREATE] EncounterVaccination payload={}", createRequest);
@@ -122,6 +130,11 @@ public class EncounterVaccinationService {
      * A vaccination recorded from an external facility is not charged.
      */
     private void chargeVaccination(EncounterVaccination encounterVaccination) {
+        if (!autoChargeEnabled) {
+            LOG.debug("[CREATE] EncounterVaccination auto-charge is disabled id={}", encounterVaccination.getId());
+            return;
+        }
+
         if (encounterVaccination.getStatus() != EncounterVaccinationStatus.ACTIVE
                 || Boolean.TRUE.equals(encounterVaccination.getIsExternalFacility())
                 || encounterVaccination.getVaccineBrandId() == null) {
