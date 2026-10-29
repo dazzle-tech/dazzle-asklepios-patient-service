@@ -46,6 +46,10 @@ public class PatientActivity extends AbstractAuditingEntity<Long> implements Ser
     @Column(name = "appointment_id")
     private Long appointmentId;
 
+    /** The facility the task was raised in; Team Tasks and All Tasks show one facility at a time. */
+    @Column(name = "facility_id")
+    private Long facilityId;
+
     /** Code of the activity_category row. */
     @Column(name = "category", nullable = false, length = 50)
     private String category;

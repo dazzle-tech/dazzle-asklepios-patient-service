@@ -131,6 +131,7 @@ public class PatientActivityService {
                 .patientId(dto.getPatientId())
                 .encounterId(dto.getEncounterId())
                 .appointmentId(dto.getAppointmentId())
+                .facilityId(facilityOf(dto.getEncounterId(), dto.getAppointmentId(), true))
                 .category(template.getCategoryCode())
                 .activityType(template.getCode())
                 .status(status)
@@ -178,6 +179,7 @@ public class PatientActivityService {
                 .map(ActivityPlanItem::getTemplateCode)
                 .collect(Collectors.toSet());
         String runId = UUID.randomUUID().toString();
+        Long planFacility = facilityOf(dto.getEncounterId(), dto.getAppointmentId(), true);
         List<PatientActivity> created = new ArrayList<>();
 
         for (PatientActivityApplyPlanItemDTO item : dto.getItems()) {
@@ -193,6 +195,7 @@ public class PatientActivityService {
                     .patientId(dto.getPatientId())
                     .encounterId(dto.getEncounterId())
                     .appointmentId(dto.getAppointmentId())
+                    .facilityId(planFacility)
                     .category(template.getCategoryCode())
                     .activityType(template.getCode())
                     .status(PatientActivityStatus.OPEN)
@@ -520,6 +523,7 @@ public class PatientActivityService {
                 .patientId(patientId)
                 .encounterId(encounterId)
                 .appointmentId(appointmentId)
+                .facilityId(facilityOf(encounterId, appointmentId, false))
                 .category(template.getCategoryCode())
                 .activityType(template.getCode())
                 .status(status)
@@ -607,6 +611,29 @@ public class PatientActivityService {
                     "Claim rejected"
             );
         }
+    }
+
+    /**
+     * The facility a new task belongs to. Staff work goes to the facility the user is signed in to;
+     * system events go to the facility of their encounter or appointment first.
+     */
+    private Long facilityOf(Long encounterId, Long appointmentId, boolean userFirst) {
+        Long userFacility = SecurityUtils.getCurrentUserFacility().orElse(null);
+        if (userFirst && userFacility != null) {
+            return userFacility;
+        }
+        Long recordFacility = null;
+        if (encounterId != null) {
+            recordFacility = patientEncounterRepository.findById(encounterId)
+                    .map(PatientEncounter::getFacilityId)
+                    .orElse(null);
+        }
+        if (recordFacility == null && appointmentId != null) {
+            recordFacility = appointmentRepository.findById(appointmentId)
+                    .map(Appointment::getFacilityId)
+                    .orElse(null);
+        }
+        return recordFacility != null ? recordFacility : userFacility;
     }
 
     /** The fields whose changes go into the history, as they were before an edit. */

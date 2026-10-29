@@ -91,12 +91,22 @@ public class PatientTaskService {
         );
     }
 
-    /** Tasks only, narrowed to the user, their job role, or nobody in particular. */
+    /**
+     * Tasks only, narrowed to the user, their job role, or nobody in particular. Team and all
+     * tasks stay in the facility the user is signed in to; tasks from before facilities were
+     * recorded have none and show everywhere. My tasks follow the user across facilities.
+     */
     private Specification<PatientActivity> inScope(TaskScope scope) {
+        Long facilityId = SecurityUtils.getCurrentUserFacility().orElse(null);
         return (root, query, cb) -> {
-            Predicate isTask = cb.isNotNull(root.get("dueAt"));
+            Predicate facilityTask = facilityId == null
+                    ? cb.isNotNull(root.get("dueAt"))
+                    : cb.and(
+                            cb.isNotNull(root.get("dueAt")),
+                            cb.or(cb.equal(root.get("facilityId"), facilityId), cb.isNull(root.get("facilityId")))
+                    );
             return switch (scope == null ? TaskScope.MINE : scope) {
-                case MINE -> cb.and(isTask, cb.equal(root.get("assignedTo"), currentUsername()));
+                case MINE -> cb.and(cb.isNotNull(root.get("dueAt")), cb.equal(root.get("assignedTo"), currentUsername()));
                 case TEAM -> {
                     String role = currentJobRole();
                     if (role == null) {
@@ -108,9 +118,9 @@ public class PatientTaskService {
                             root.get("assignedRoles"),
                             cb.literal(role)
                     );
-                    yield cb.and(isTask, cb.isTrue(inTeam));
+                    yield cb.and(facilityTask, cb.isTrue(inTeam));
                 }
-                case ALL -> isTask;
+                case ALL -> facilityTask;
             };
         };
     }

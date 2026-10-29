@@ -84,7 +84,9 @@ public class TaskNotificationService {
             data.put("assigned_by", event.assignedBy());
 
             notificationHelper.sendNotification(
-                    SecurityUtils.getCurrentUserFacility().orElse(null),
+                    task.getFacilityId() != null
+                            ? task.getFacilityId()
+                            : SecurityUtils.getCurrentUserFacility().orElse(null),
                     NotificationCode.TASK_ASSIGNED,
                     Map.of(RULE_TASK_USER, List.of(recipient(user))),
                     data,
@@ -154,30 +156,33 @@ public class TaskNotificationService {
         log.info("[TASK_DIGEST] tasks={} recipients={}", tasks.size(), sent);
     }
 
-    /** Assigned tasks go to their assignee; unassigned ones to every active user of their team. */
+    /**
+     * Assigned tasks go to their assignee; unassigned ones to the active users of their team who
+     * work in the task's facility. Tasks from before facilities were recorded go to the whole team.
+     */
     private Map<String, List<PatientActivity>> groupByRecipient(List<PatientActivity> tasks) {
-        Set<JobRole> roles = tasks.stream()
-                .filter(task -> task.getAssignedTo() == null)
-                .flatMap(task -> task.getAssignedRoles().stream())
-                .filter(JOB_ROLES::contains)
-                .map(JobRole::valueOf)
-                .collect(Collectors.toSet());
-        Map<String, List<String>> loginsByRole = roles.isEmpty()
-                ? Map.of()
-                : userRepository.findByActivatedTrueAndJobRoleIn(roles).stream()
-                        .collect(Collectors.groupingBy(
-                                user -> user.getJobRole().name(),
-                                Collectors.mapping(User::getLogin, Collectors.toList())
-                        ));
-
+        Map<String, List<String>> teamLogins = new HashMap<>();
         Map<String, List<PatientActivity>> result = new LinkedHashMap<>();
         for (PatientActivity task : tasks) {
             Stream<String> logins = task.getAssignedTo() != null
                     ? Stream.of(task.getAssignedTo())
-                    : task.getAssignedRoles().stream().flatMap(role -> loginsByRole.getOrDefault(role, List.of()).stream());
+                    : task.getAssignedRoles().stream()
+                            .filter(JOB_ROLES::contains)
+                            .flatMap(role -> teamLogins
+                                    .computeIfAbsent(task.getFacilityId() + "|" + role, key -> teamOf(task.getFacilityId(), role))
+                                    .stream());
             logins.distinct().forEach(login -> result.computeIfAbsent(login, key -> new ArrayList<>()).add(task));
         }
         return result;
+    }
+
+    private List<String> teamOf(Long facilityId, String role) {
+        if (facilityId != null) {
+            return userRepository.findActiveLoginsByFacilityAndJobRoles(facilityId, List.of(role));
+        }
+        return userRepository.findByActivatedTrueAndJobRoleIn(List.of(JobRole.valueOf(role))).stream()
+                .map(User::getLogin)
+                .toList();
     }
 
     private String digestLines(
