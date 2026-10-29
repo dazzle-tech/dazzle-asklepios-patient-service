@@ -1,10 +1,8 @@
 package com.dazzle.asklepios.domain;
 
-import com.dazzle.asklepios.domain.enumeration.PatientActivityCategory;
 import com.dazzle.asklepios.domain.enumeration.PatientActivityPriority;
 import com.dazzle.asklepios.domain.enumeration.PatientActivitySource;
 import com.dazzle.asklepios.domain.enumeration.PatientActivityStatus;
-import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -18,9 +16,13 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.io.Serializable;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "patient_activity")
@@ -44,13 +46,17 @@ public class PatientActivity extends AbstractAuditingEntity<Long> implements Ser
     @Column(name = "appointment_id")
     private Long appointmentId;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "category", nullable = false, length = 50)
-    private PatientActivityCategory category;
+    /** The facility the task was raised in; Team Tasks and All Tasks show one facility at a time. */
+    @Column(name = "facility_id")
+    private Long facilityId;
 
-    @Enumerated(EnumType.STRING)
+    /** Code of the activity_category row. */
+    @Column(name = "category", nullable = false, length = 50)
+    private String category;
+
+    /** Code of the activity_template row. */
     @Column(name = "activity_type", nullable = false, length = 80)
-    private PatientActivityType activityType;
+    private String activityType;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
@@ -82,8 +88,32 @@ public class PatientActivity extends AbstractAuditingEntity<Long> implements Ser
     @Column(name = "completed_by", length = 50)
     private String completedBy;
 
+    @Column(name = "outcome", length = 100)
+    private String outcome;
+
     @Column(name = "outcome_note", length = 2000)
     private String outcomeNote;
+
+    @Builder.Default
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "assigned_roles", columnDefinition = "jsonb", nullable = false)
+    private List<String> assignedRoles = new ArrayList<>();
+
+    @Column(name = "assigned_to", length = 50)
+    private String assignedTo;
+
+    /** Code of the activity plan this task came from, if any. */
+    @Column(name = "plan_code", length = 80)
+    private String planCode;
+
+    /** Shared by the tasks created by one application of a plan. */
+    @Column(name = "plan_run_id", length = 36)
+    private String planRunId;
+
+    @Builder.Default
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "checklist", columnDefinition = "jsonb", nullable = false)
+    private List<PatientActivityChecklistItem> checklist = new ArrayList<>();
 
     @Column(name = "cancellation_reason", length = 255)
     private String cancellationReason;

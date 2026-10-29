@@ -1,29 +1,48 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.ActivityPlan;
+import com.dazzle.asklepios.domain.ActivityPlanItem;
+import com.dazzle.asklepios.domain.ActivityTemplate;
 import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.ClaimRequest;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.PatientActivity;
+import com.dazzle.asklepios.domain.PatientActivityChecklistItem;
+import com.dazzle.asklepios.domain.PatientActivityComment;
+import com.dazzle.asklepios.domain.PatientActivityLog;
 import com.dazzle.asklepios.domain.PatientEncounter;
-import com.dazzle.asklepios.domain.enumeration.PatientActivityCategory;
+import com.dazzle.asklepios.domain.enumeration.ActivityTemplateKind;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityAction;
 import com.dazzle.asklepios.domain.enumeration.PatientActivityPriority;
 import com.dazzle.asklepios.domain.enumeration.PatientActivitySource;
 import com.dazzle.asklepios.domain.enumeration.PatientActivityStatus;
 import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
+import com.dazzle.asklepios.repository.ActivityTemplateRepository;
 import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
+import com.dazzle.asklepios.repository.PatientActivityCommentRepository;
+import com.dazzle.asklepios.repository.PatientActivityLogRepository;
 import com.dazzle.asklepios.repository.PatientActivityRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.repository.UserRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityApplyPlanDTO;
+import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityApplyPlanItemDTO;
+import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityAssignDTO;
+import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityBulkDTO;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityCancelDTO;
+import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityChecklistDTO;
+import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityCommentDTO;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityCompleteDTO;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityCreateDTO;
+import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityScheduleDTO;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivitySummaryVM;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityUpdateDTO;
+import com.dazzle.asklepios.service.dto.patientActivity.TaskAssignedEvent;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Expression;
@@ -32,6 +51,7 @@ import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -43,9 +63,14 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -75,72 +100,178 @@ public class PatientActivityService {
     private final AppointmentRepository appointmentRepository;
     private final DiagnosticOrderRepository diagnosticOrderRepository;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
+    private final ActivityTemplateRepository activityTemplateRepository;
+    private final ActivitySetupService activitySetupService;
+    private final UserRepository userRepository;
+    private final PatientActivityLogRepository patientActivityLogRepository;
+    private final PatientActivityCommentRepository patientActivityCommentRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public PatientActivity create(PatientActivityCreateDTO dto) {
         LOG.info("[CREATE] PatientActivity patientId={} type={}", dto.getPatientId(), dto.getActivityType());
 
         validatePatient(dto.getPatientId());
-        validateTypeMatchesCategory(dto.getActivityType(), dto.getCategory());
-        validateStatusOnCreate(dto.getStatus());
-        validateDueDate(dto.getStatus(), dto.getDueAt());
+        ActivityTemplate template = activeTemplate(dto.getActivityType());
+        validateCreatorRole(template);
+
+        PatientActivityStatus status = dto.getStatus() != null ? dto.getStatus() : defaultStatus(template);
+        validateStatusOnCreate(status);
+        Instant now = Instant.now();
+        Instant dueAt = dto.getDueAt();
+        if (status == PatientActivityStatus.OPEN && dueAt == null) {
+            dueAt = activitySetupService.resolveDueAt(template, now);
+        }
+        validateDueDate(status, dueAt);
         validateEncounter(dto.getPatientId(), dto.getEncounterId());
         validateAppointment(dto.getPatientId(), dto.getAppointmentId());
 
-        PatientActivityStatus status = dto.getStatus();
-        String currentUser = currentUsername();
+        String outcome = status == PatientActivityStatus.DONE ? validateOutcome(template, dto.getOutcome()) : null;
 
         PatientActivity activity = PatientActivity.builder()
                 .patientId(dto.getPatientId())
                 .encounterId(dto.getEncounterId())
                 .appointmentId(dto.getAppointmentId())
-                .category(dto.getCategory())
-                .activityType(dto.getActivityType())
+                .facilityId(facilityOf(dto.getEncounterId(), dto.getAppointmentId(), true))
+                .category(template.getCategoryCode())
+                .activityType(template.getCode())
                 .status(status)
                 .source(PatientActivitySource.STAFF)
-                .priority(resolvePriority(dto.getActivityType(), dto.getPriority()))
-                .note(dto.getNote().trim())
-                .dueAt(dto.getDueAt())
+                .priority(dto.getPriority() != null ? dto.getPriority() : template.getDefaultPriority())
+                .note(noteOrFallback(dto.getNote(), outcome))
+                .dueAt(dueAt)
+                .assignedRoles(dto.getAssignedRoles() != null
+                        ? activitySetupService.cleanRoles(dto.getAssignedRoles())
+                        : new ArrayList<>(template.getAssigneeRoles()))
+                .assignedTo(validateAssignee(dto.getAssignedTo()))
+                .checklist(status == PatientActivityStatus.OPEN ? checklistOf(template) : new ArrayList<>())
                 .build();
 
         if (status == PatientActivityStatus.DONE) {
-            activity.setCompletedAt(Instant.now());
-            activity.setCompletedBy(currentUser);
+            activity.setCompletedAt(now);
+            activity.setCompletedBy(currentUsername());
+            activity.setOutcome(outcome);
         }
 
         PatientActivity saved = patientActivityRepository.save(activity);
+        logChange(saved, PatientActivityAction.CREATED, null, saved.getActivityType());
+        announceAssignee(saved, null);
         LOG.info("[CREATE] PatientActivity id={} patientId={}", saved.getId(), saved.getPatientId());
         return saved;
+    }
+
+    /**
+     * Creates the tasks of a plan for one patient. Staff may drop items or change them in the
+     * preview, but every item must belong to the plan. The plan stands in for the creator-role
+     * check of each template, since the setup decided who works these tasks.
+     */
+    public List<PatientActivity> applyPlan(PatientActivityApplyPlanDTO dto) {
+        LOG.info("[APPLY_PLAN] patientId={} plan={} items={}", dto.getPatientId(), dto.getPlanCode(), dto.getItems().size());
+
+        validatePatient(dto.getPatientId());
+        ActivityPlan plan = activitySetupService.findPlanByCode(dto.getPlanCode());
+        if (!Boolean.TRUE.equals(plan.getIsActive())) {
+            throw bad("This plan is inactive.", "activityPlan.inactive");
+        }
+        validateEncounter(dto.getPatientId(), dto.getEncounterId());
+        validateAppointment(dto.getPatientId(), dto.getAppointmentId());
+
+        Set<String> planCodes = plan.getItems().stream()
+                .map(ActivityPlanItem::getTemplateCode)
+                .collect(Collectors.toSet());
+        String runId = UUID.randomUUID().toString();
+        Long planFacility = facilityOf(dto.getEncounterId(), dto.getAppointmentId(), true);
+        List<PatientActivity> created = new ArrayList<>();
+
+        for (PatientActivityApplyPlanItemDTO item : dto.getItems()) {
+            if (!planCodes.contains(item.getActivityType())) {
+                throw bad("Task is not part of this plan: " + item.getActivityType(), "activityPlan.item.notInPlan");
+            }
+            ActivityTemplate template = activeTemplate(item.getActivityType());
+            if (template.getKind() != ActivityTemplateKind.TASK) {
+                throw bad("Only tasks can be applied from a plan.", "activityPlan.item.notTask");
+            }
+
+            PatientActivity saved = patientActivityRepository.save(PatientActivity.builder()
+                    .patientId(dto.getPatientId())
+                    .encounterId(dto.getEncounterId())
+                    .appointmentId(dto.getAppointmentId())
+                    .facilityId(planFacility)
+                    .category(template.getCategoryCode())
+                    .activityType(template.getCode())
+                    .status(PatientActivityStatus.OPEN)
+                    .source(PatientActivitySource.STAFF)
+                    .priority(item.getPriority() != null ? item.getPriority() : template.getDefaultPriority())
+                    .note(noteOrDefault(template, item.getNote()))
+                    .dueAt(item.getDueAt())
+                    .assignedRoles(item.getAssignedRoles() != null
+                            ? activitySetupService.cleanRoles(item.getAssignedRoles())
+                            : new ArrayList<>(template.getAssigneeRoles()))
+                    .assignedTo(validateAssignee(item.getAssignedTo()))
+                    .checklist(checklistOf(template))
+                    .planCode(plan.getCode())
+                    .planRunId(runId)
+                    .build());
+            logChange(saved, PatientActivityAction.CREATED, null, plan.getCode());
+            announceAssignee(saved, null);
+            created.add(saved);
+        }
+
+        LOG.info("[APPLY_PLAN] created {} tasks run={}", created.size(), runId);
+        return created;
     }
 
     public PatientActivity update(Long id, PatientActivityUpdateDTO dto) {
         LOG.info("[UPDATE] PatientActivity id={}", id);
 
         PatientActivity existing = findOpenStaffActivity(id);
-        validateTypeMatchesCategory(dto.getActivityType(), dto.getCategory());
+        PatientActivity before = snapshot(existing);
+        boolean typeChanged = !existing.getActivityType().equals(dto.getActivityType());
+        ActivityTemplate template = typeChanged
+                ? activeTemplate(dto.getActivityType())
+                : activitySetupService.findTemplateByCode(dto.getActivityType());
         validateDueDate(PatientActivityStatus.OPEN, dto.getDueAt());
         validateEncounter(existing.getPatientId(), dto.getEncounterId());
         validateAppointment(existing.getPatientId(), dto.getAppointmentId());
 
         existing.setEncounterId(dto.getEncounterId());
         existing.setAppointmentId(dto.getAppointmentId());
-        existing.setCategory(dto.getCategory());
-        existing.setActivityType(dto.getActivityType());
-        existing.setPriority(resolvePriority(dto.getActivityType(), dto.getPriority()));
-        existing.setNote(dto.getNote().trim());
+        existing.setCategory(template.getCategoryCode());
+        existing.setActivityType(template.getCode());
+        existing.setPriority(dto.getPriority() != null ? dto.getPriority() : template.getDefaultPriority());
+        existing.setNote(noteOrFallback(dto.getNote(), null));
         existing.setDueAt(dto.getDueAt());
+        if (dto.getAssignedRoles() != null) {
+            existing.setAssignedRoles(activitySetupService.cleanRoles(dto.getAssignedRoles()));
+        }
+        existing.setAssignedTo(validateAssignee(dto.getAssignedTo()));
+        if (typeChanged) {
+            existing.setChecklist(checklistOf(template));
+        }
 
-        return patientActivityRepository.save(existing);
+        PatientActivity saved = patientActivityRepository.save(existing);
+        logDifferences(before, saved);
+        return saved;
     }
 
     public PatientActivity complete(Long id, PatientActivityCompleteDTO dto) {
         LOG.info("[COMPLETE] PatientActivity id={}", id);
 
         PatientActivity existing = findOpenActivity(id);
+        ActivityTemplate template = activityTemplateRepository.findByCode(existing.getActivityType()).orElse(null);
+        String outcome = validateOutcome(template, dto.getOutcome());
+        String outcomeNote = trimToNull(dto.getOutcomeNote());
+        if (outcome == null && outcomeNote == null) {
+            throw bad("Outcome note is required.", "patientActivity.outcome.required");
+        }
+
         existing.setStatus(PatientActivityStatus.DONE);
         existing.setCompletedAt(Instant.now());
         existing.setCompletedBy(currentUsername());
-        existing.setOutcomeNote(dto.getOutcomeNote().trim());
-        return patientActivityRepository.save(existing);
+        existing.setOutcome(outcome);
+        existing.setOutcomeNote(outcomeNote);
+        PatientActivity saved = patientActivityRepository.save(existing);
+        logChange(saved, PatientActivityAction.COMPLETED, null, outcome != null ? outcome : outcomeNote);
+        return saved;
     }
 
     public PatientActivity cancel(Long id, PatientActivityCancelDTO dto) {
@@ -151,7 +282,127 @@ public class PatientActivityService {
         existing.setCancelledAt(Instant.now());
         existing.setCancelledBy(currentUsername());
         existing.setCancellationReason(dto.getCancellationReason().trim());
-        return patientActivityRepository.save(existing);
+        PatientActivity saved = patientActivityRepository.save(existing);
+        logChange(saved, PatientActivityAction.CANCELLED, null, saved.getCancellationReason());
+        return saved;
+    }
+
+    public PatientActivity assign(Long id, PatientActivityAssignDTO dto) {
+        LOG.info("[ASSIGN] PatientActivity id={} to={}", id, dto.getAssignedTo());
+
+        PatientActivity existing = findOpenActivity(id);
+        PatientActivity before = snapshot(existing);
+        if (dto.getAssignedRoles() != null) {
+            existing.setAssignedRoles(activitySetupService.cleanRoles(dto.getAssignedRoles()));
+        }
+        existing.setAssignedTo(validateAssignee(dto.getAssignedTo()));
+        PatientActivity saved = patientActivityRepository.save(existing);
+        logDifferences(before, saved);
+        return saved;
+    }
+
+    /** Assigns an open task to the current user. */
+    public PatientActivity claim(Long id) {
+        LOG.info("[CLAIM] PatientActivity id={}", id);
+
+        PatientActivity existing = findOpenActivity(id);
+        PatientActivity before = snapshot(existing);
+        existing.setAssignedTo(currentUsername());
+        PatientActivity saved = patientActivityRepository.save(existing);
+        logDifferences(before, saved);
+        return saved;
+    }
+
+    public PatientActivity markChecklistItem(Long id, PatientActivityChecklistDTO dto) {
+        PatientActivity existing = findOpenActivity(id);
+        List<PatientActivityChecklistItem> checklist = new ArrayList<>(existing.getChecklist());
+        if (dto.getIndex() >= checklist.size()) {
+            throw bad("Checklist item not found.", "patientActivity.checklist.notFound");
+        }
+        PatientActivityChecklistItem item = checklist.get(dto.getIndex());
+        checklist.set(dto.getIndex(), new PatientActivityChecklistItem(item.getLabel(), dto.isDone()));
+        existing.setChecklist(checklist);
+        PatientActivity saved = patientActivityRepository.save(existing);
+        if (item.isDone() != dto.isDone()) {
+            logChange(
+                    saved,
+                    dto.isDone() ? PatientActivityAction.CHECKLIST_CHECKED : PatientActivityAction.CHECKLIST_UNCHECKED,
+                    null,
+                    item.getLabel()
+            );
+        }
+        return saved;
+    }
+
+    /** Moves the due date or changes the priority of an open task, system tasks included. */
+    public PatientActivity reschedule(Long id, PatientActivityScheduleDTO dto) {
+        LOG.info("[RESCHEDULE] PatientActivity id={} dueAt={} priority={}", id, dto.getDueAt(), dto.getPriority());
+
+        PatientActivity existing = findOpenActivity(id);
+        PatientActivity before = snapshot(existing);
+        if (dto.getDueAt() != null) {
+            existing.setDueAt(dto.getDueAt());
+        }
+        if (dto.getPriority() != null) {
+            existing.setPriority(dto.getPriority());
+        }
+        PatientActivity saved = patientActivityRepository.save(existing);
+        logDifferences(before, saved);
+        return saved;
+    }
+
+    /**
+     * Applies one assignment or priority change to several open tasks; tasks that are no longer
+     * open are skipped. Returns how many tasks changed.
+     */
+    public int bulkUpdate(PatientActivityBulkDTO dto) {
+        LOG.info("[BULK] PatientActivity ids={} assignedTo={} unassign={} priority={}",
+                dto.getIds(), dto.getAssignedTo(), dto.isUnassign(), dto.getPriority());
+
+        String assignee = dto.isUnassign() ? null : validateAssignee(dto.getAssignedTo());
+        boolean changesAssignee = dto.isUnassign() || assignee != null;
+        if (!changesAssignee && dto.getPriority() == null) {
+            throw bad("Pick an assignee or a priority.", "patientActivity.bulk.empty");
+        }
+
+        int changed = 0;
+        for (PatientActivity task : patientActivityRepository.findByIdIn(dto.getIds())) {
+            if (task.getStatus() != PatientActivityStatus.OPEN) {
+                continue;
+            }
+            PatientActivity before = snapshot(task);
+            if (changesAssignee) {
+                task.setAssignedTo(assignee);
+            }
+            if (dto.getPriority() != null) {
+                task.setPriority(dto.getPriority());
+            }
+            logDifferences(before, patientActivityRepository.save(task));
+            changed++;
+        }
+        return changed;
+    }
+
+    @Transactional(readOnly = true)
+    public List<PatientActivityLog> history(Long id) {
+        findById(id);
+        return patientActivityLogRepository.findByActivityIdOrderByCreatedDateDescIdDesc(id);
+    }
+
+    @Transactional(readOnly = true)
+    public List<PatientActivityComment> comments(Long id) {
+        findById(id);
+        return patientActivityCommentRepository.findByActivityIdOrderByCreatedDateAscIdAsc(id);
+    }
+
+    public PatientActivityComment addComment(Long id, PatientActivityCommentDTO dto) {
+        PatientActivity activity = findById(id);
+        PatientActivityComment comment = new PatientActivityComment();
+        comment.setActivityId(activity.getId());
+        comment.setBody(dto.getBody().trim());
+        PatientActivityComment saved = patientActivityCommentRepository.save(comment);
+        logChange(activity, PatientActivityAction.COMMENTED, null, saved.getBody());
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -164,8 +415,15 @@ public class PatientActivityService {
     public PatientActivitySummaryVM summarize(Long patientId) {
         validatePatient(patientId);
         Instant startOfToday = LocalDate.now(ZoneOffset.UTC).atStartOfDay().toInstant(ZoneOffset.UTC);
+        Instant startOfTomorrow = startOfToday.plus(1, ChronoUnit.DAYS);
         return new PatientActivitySummaryVM(
                 patientActivityRepository.countByPatientIdAndStatus(patientId, PatientActivityStatus.OPEN),
+                patientActivityRepository.countByPatientIdAndStatusAndDueAtGreaterThanEqualAndDueAtLessThan(
+                        patientId,
+                        PatientActivityStatus.OPEN,
+                        startOfToday,
+                        startOfTomorrow
+                ),
                 patientActivityRepository.countByPatientIdAndStatusAndDueAtBefore(
                         patientId,
                         PatientActivityStatus.OPEN,
@@ -178,8 +436,9 @@ public class PatientActivityService {
     @Transactional(readOnly = true)
     public Page<PatientActivity> findByPatient(
             Long patientId,
-            PatientActivityCategory category,
-            PatientActivityStatus status,
+            String category,
+            List<PatientActivityStatus> statuses,
+            PatientActivitySource source,
             String search,
             Pageable pageable
     ) {
@@ -188,16 +447,20 @@ public class PatientActivityService {
         Specification<PatientActivity> specification = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("patientId"), patientId));
-            if (category != null) {
+            if (category != null && !category.isBlank()) {
                 predicates.add(cb.equal(root.get("category"), category));
             }
-            if (status != null) {
-                predicates.add(cb.equal(root.get("status"), status));
+            if (statuses != null && !statuses.isEmpty()) {
+                predicates.add(root.get("status").in(statuses));
+            }
+            if (source != null) {
+                predicates.add(cb.equal(root.get("source"), source));
             }
             if (!term.isEmpty()) {
                 String like = "%" + term + "%";
                 predicates.add(cb.or(
                         cb.like(cb.lower(root.get("note")), like),
+                        cb.like(cb.lower(cb.coalesce(root.get("outcome"), "")), like),
                         cb.like(readableEnum(cb, root.get("activityType")), like),
                         cb.like(readableEnum(cb, root.get("category")), like),
                         cb.like(readableEnum(cb, root.get("status")), like),
@@ -220,8 +483,9 @@ public class PatientActivityService {
     }
 
     /**
-     * Writes one system activity for a source event. A repeated call for the same
-     * source type, source id, and activity type leaves the existing row in place.
+     * Writes one system activity for a source event, shaped by the template with the same code.
+     * Nothing is written when that template is missing or inactive, or when a repeated call for the
+     * same source type, source id, and activity type finds the existing row.
      */
     public void recordOccurred(
             Long patientId,
@@ -239,26 +503,38 @@ public class PatientActivityService {
             LOG.warn("[RECORD] skipped type={} because patient {} was not found", activityType, patientId);
             return;
         }
-        if (patientActivityRepository.existsBySourceTypeAndSourceIdAndActivityType(sourceType, sourceId, activityType)) {
+        ActivityTemplate template = activityTemplateRepository.findByCode(activityType.code()).orElse(null);
+        if (template == null || !Boolean.TRUE.equals(template.getIsActive())) {
+            LOG.debug("[RECORD] skipped type={} because its template is missing or inactive", activityType);
+            return;
+        }
+        if (patientActivityRepository.existsBySourceTypeAndSourceIdAndActivityType(sourceType, sourceId, template.getCode())) {
             return;
         }
 
-        PatientActivityStatus status = activityType.defaultStatus();
+        PatientActivityStatus status = defaultStatus(template);
         Instant now = Instant.now();
+        Instant dueAt = null;
+        if (status == PatientActivityStatus.OPEN) {
+            dueAt = Objects.requireNonNullElse(activitySetupService.resolveDueAt(template, now), now);
+        }
 
         PatientActivity activity = PatientActivity.builder()
                 .patientId(patientId)
                 .encounterId(encounterId)
                 .appointmentId(appointmentId)
-                .category(activityType.getCategory())
-                .activityType(activityType)
+                .facilityId(facilityOf(encounterId, appointmentId, false))
+                .category(template.getCategoryCode())
+                .activityType(template.getCode())
                 .status(status)
                 .source(PatientActivitySource.SYSTEM)
                 .sourceType(sourceType)
                 .sourceId(sourceId)
-                .priority(activityType.defaultPriority())
-                .note(noteOrDefault(activityType, note))
-                .dueAt(status == PatientActivityStatus.OPEN ? now : null)
+                .priority(template.getDefaultPriority())
+                .note(noteOrDefault(template, note))
+                .dueAt(dueAt)
+                .assignedRoles(new ArrayList<>(template.getAssigneeRoles()))
+                .checklist(status == PatientActivityStatus.OPEN ? checklistOf(template) : new ArrayList<>())
                 .build();
 
         if (status == PatientActivityStatus.DONE) {
@@ -267,6 +543,7 @@ public class PatientActivityService {
         }
 
         PatientActivity saved = patientActivityRepository.save(activity);
+        logChange(saved, PatientActivityAction.CREATED, null, sourceType);
         LOG.info(
                 "[RECORD] PatientActivity id={} patientId={} type={} source={}/{}",
                 saved.getId(),
@@ -336,6 +613,96 @@ public class PatientActivityService {
         }
     }
 
+    /**
+     * The facility a new task belongs to. Staff work goes to the facility the user is signed in to;
+     * system events go to the facility of their encounter or appointment first.
+     */
+    private Long facilityOf(Long encounterId, Long appointmentId, boolean userFirst) {
+        Long userFacility = SecurityUtils.getCurrentUserFacility().orElse(null);
+        if (userFirst && userFacility != null) {
+            return userFacility;
+        }
+        Long recordFacility = null;
+        if (encounterId != null) {
+            recordFacility = patientEncounterRepository.findById(encounterId)
+                    .map(PatientEncounter::getFacilityId)
+                    .orElse(null);
+        }
+        if (recordFacility == null && appointmentId != null) {
+            recordFacility = appointmentRepository.findById(appointmentId)
+                    .map(Appointment::getFacilityId)
+                    .orElse(null);
+        }
+        return recordFacility != null ? recordFacility : userFacility;
+    }
+
+    /** The fields whose changes go into the history, as they were before an edit. */
+    private PatientActivity snapshot(PatientActivity activity) {
+        return PatientActivity.builder()
+                .activityType(activity.getActivityType())
+                .note(activity.getNote())
+                .dueAt(activity.getDueAt())
+                .priority(activity.getPriority())
+                .assignedTo(activity.getAssignedTo())
+                .assignedRoles(new ArrayList<>(activity.getAssignedRoles()))
+                .build();
+    }
+
+    private void logDifferences(PatientActivity before, PatientActivity after) {
+        if (!Objects.equals(before.getAssignedTo(), after.getAssignedTo())) {
+            logChange(after, PatientActivityAction.ASSIGNED, before.getAssignedTo(), after.getAssignedTo());
+            announceAssignee(after, before.getAssignedTo());
+        }
+        if (!Objects.equals(before.getAssignedRoles(), after.getAssignedRoles())) {
+            logChange(
+                    after,
+                    PatientActivityAction.ASSIGNED,
+                    String.join(",", before.getAssignedRoles()),
+                    String.join(",", after.getAssignedRoles())
+            );
+        }
+        if (!Objects.equals(before.getDueAt(), after.getDueAt())) {
+            logChange(after, PatientActivityAction.DUE_CHANGED, Objects.toString(before.getDueAt(), null),
+                    Objects.toString(after.getDueAt(), null));
+        }
+        if (before.getPriority() != after.getPriority()) {
+            logChange(after, PatientActivityAction.PRIORITY_CHANGED, priorityName(before.getPriority()),
+                    priorityName(after.getPriority()));
+        }
+        if (!Objects.equals(before.getActivityType(), after.getActivityType())
+                || !Objects.equals(before.getNote(), after.getNote())) {
+            logChange(after, PatientActivityAction.UPDATED, before.getActivityType(), after.getActivityType());
+        }
+    }
+
+    private void logChange(PatientActivity activity, PatientActivityAction action, String oldValue, String newValue) {
+        patientActivityLogRepository.save(new PatientActivityLog(
+                activity.getId(),
+                action,
+                truncate(oldValue),
+                truncate(newValue)
+        ));
+    }
+
+    /** Lets the new assignee know once the change is committed; they don't hear about their own picks. */
+    private void announceAssignee(PatientActivity activity, String previousAssignee) {
+        String assignee = activity.getAssignedTo();
+        if (assignee != null && !assignee.equals(previousAssignee)) {
+            eventPublisher.publishEvent(new TaskAssignedEvent(activity.getId(), assignee, currentUsername()));
+        }
+    }
+
+    private String priorityName(PatientActivityPriority priority) {
+        return priority == null ? null : priority.name();
+    }
+
+    private String truncate(String value) {
+        if (value == null || value.length() <= 500) {
+            return value;
+        }
+        return value.substring(0, 497) + "...";
+    }
+
     private PatientActivity findOpenStaffActivity(Long id) {
         PatientActivity existing = findOpenActivity(id);
         if (existing.getSource() != PatientActivitySource.STAFF) {
@@ -367,10 +734,51 @@ public class PatientActivityService {
         }
     }
 
-    private void validateTypeMatchesCategory(PatientActivityType activityType, PatientActivityCategory category) {
-        if (activityType == null || category == null || !activityType.belongsTo(category)) {
-            throw bad("Activity type does not belong to the selected category.", "patientActivity.type.mismatch");
+    private ActivityTemplate activeTemplate(String code) {
+        ActivityTemplate template = activitySetupService.findTemplateByCode(code);
+        if (!Boolean.TRUE.equals(template.getIsActive())) {
+            throw bad("This activity type is inactive.", "activityTemplate.inactive");
         }
+        return template;
+    }
+
+    private void validateCreatorRole(ActivityTemplate template) {
+        if (template.getCreatorRoles() == null || template.getCreatorRoles().isEmpty()) {
+            return;
+        }
+        String role = userRepository.findByLogin(currentUsername())
+                .map(user -> user.getJobRole() == null ? null : user.getJobRole().name())
+                .orElse(null);
+        if (role == null || !template.getCreatorRoles().contains(role)) {
+            throw bad("Your job role can't create this activity type.", "patientActivity.creatorRole.denied");
+        }
+    }
+
+    private String validateAssignee(String login) {
+        String value = trimToNull(login);
+        if (value == null) {
+            return null;
+        }
+        if (userRepository.findByLogin(value).isEmpty()) {
+            throw bad("Assigned user not found.", "patientActivity.assignee.notFound");
+        }
+        return value;
+    }
+
+    /** Returns the trimmed outcome after checking it against the template options. */
+    private String validateOutcome(ActivityTemplate template, String outcome) {
+        String value = trimToNull(outcome);
+        if (template == null) {
+            return value;
+        }
+        List<String> options = template.getOutcomeOptions();
+        if (value == null && Boolean.TRUE.equals(template.getRequireOutcome())) {
+            throw bad("Select an outcome.", "patientActivity.outcome.required");
+        }
+        if (value != null && options != null && !options.isEmpty() && !options.contains(value)) {
+            throw bad("Outcome is not one of the configured options.", "patientActivity.outcome.invalid");
+        }
+        return value;
     }
 
     private void validateStatusOnCreate(PatientActivityStatus status) {
@@ -417,11 +825,18 @@ public class PatientActivityService {
         }
     }
 
-    private PatientActivityPriority resolvePriority(PatientActivityType activityType, PatientActivityPriority priority) {
-        if (priority != null) {
-            return priority;
+    private PatientActivityStatus defaultStatus(ActivityTemplate template) {
+        return template.getKind() == ActivityTemplateKind.ACTIVITY
+                ? PatientActivityStatus.DONE
+                : PatientActivityStatus.OPEN;
+    }
+
+    private List<PatientActivityChecklistItem> checklistOf(ActivityTemplate template) {
+        List<PatientActivityChecklistItem> items = new ArrayList<>();
+        if (template.getChecklist() != null) {
+            template.getChecklist().forEach(label -> items.add(new PatientActivityChecklistItem(label, false)));
         }
-        return activityType.defaultPriority();
+        return items;
     }
 
     private Pageable withDefaultSort(Pageable pageable) {
@@ -435,15 +850,34 @@ public class PatientActivityService {
         );
     }
 
-    private String noteOrDefault(PatientActivityType activityType, String note) {
+    /** A staff entry needs a note, unless its outcome already says what happened. */
+    private String noteOrFallback(String note, String outcome) {
+        String text = trimToNull(note);
+        if (text == null) {
+            text = outcome;
+        }
+        if (text == null) {
+            throw bad("Note is required.", "patientActivity.note.required");
+        }
+        return text;
+    }
+
+    private String noteOrDefault(ActivityTemplate template, String note) {
         String text = note == null ? "" : note.trim();
         if (text.isEmpty()) {
-            text = activityType.name().replace('_', ' ').toLowerCase();
+            text = template.getName();
         }
         if (text.length() > 2000) {
             return text.substring(0, 2000);
         }
         return text;
+    }
+
+    private String trimToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
     private String currentUsername() {
