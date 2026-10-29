@@ -9,8 +9,12 @@ import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.PatientActivity;
 import com.dazzle.asklepios.domain.PatientActivityChecklistItem;
+import com.dazzle.asklepios.domain.PatientActivityComment;
+import com.dazzle.asklepios.domain.PatientActivityLog;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.ActivityTemplateKind;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityAction;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityPriority;
 import com.dazzle.asklepios.domain.enumeration.PatientActivitySource;
 import com.dazzle.asklepios.domain.enumeration.PatientActivityStatus;
 import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
@@ -19,6 +23,8 @@ import com.dazzle.asklepios.repository.ActivityTemplateRepository;
 import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
+import com.dazzle.asklepios.repository.PatientActivityCommentRepository;
+import com.dazzle.asklepios.repository.PatientActivityLogRepository;
 import com.dazzle.asklepios.repository.PatientActivityRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -27,12 +33,16 @@ import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityApplyPlanDTO;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityApplyPlanItemDTO;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityAssignDTO;
+import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityBulkDTO;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityCancelDTO;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityChecklistDTO;
+import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityCommentDTO;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityCompleteDTO;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityCreateDTO;
+import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityScheduleDTO;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivitySummaryVM;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityUpdateDTO;
+import com.dazzle.asklepios.service.dto.patientActivity.TaskAssignedEvent;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Expression;
@@ -41,6 +51,7 @@ import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -92,6 +103,9 @@ public class PatientActivityService {
     private final ActivityTemplateRepository activityTemplateRepository;
     private final ActivitySetupService activitySetupService;
     private final UserRepository userRepository;
+    private final PatientActivityLogRepository patientActivityLogRepository;
+    private final PatientActivityCommentRepository patientActivityCommentRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public PatientActivity create(PatientActivityCreateDTO dto) {
         LOG.info("[CREATE] PatientActivity patientId={} type={}", dto.getPatientId(), dto.getActivityType());
@@ -138,6 +152,8 @@ public class PatientActivityService {
         }
 
         PatientActivity saved = patientActivityRepository.save(activity);
+        logChange(saved, PatientActivityAction.CREATED, null, saved.getActivityType());
+        announceAssignee(saved, null);
         LOG.info("[CREATE] PatientActivity id={} patientId={}", saved.getId(), saved.getPatientId());
         return saved;
     }
@@ -173,7 +189,7 @@ public class PatientActivityService {
                 throw bad("Only tasks can be applied from a plan.", "activityPlan.item.notTask");
             }
 
-            created.add(patientActivityRepository.save(PatientActivity.builder()
+            PatientActivity saved = patientActivityRepository.save(PatientActivity.builder()
                     .patientId(dto.getPatientId())
                     .encounterId(dto.getEncounterId())
                     .appointmentId(dto.getAppointmentId())
@@ -191,7 +207,10 @@ public class PatientActivityService {
                     .checklist(checklistOf(template))
                     .planCode(plan.getCode())
                     .planRunId(runId)
-                    .build()));
+                    .build());
+            logChange(saved, PatientActivityAction.CREATED, null, plan.getCode());
+            announceAssignee(saved, null);
+            created.add(saved);
         }
 
         LOG.info("[APPLY_PLAN] created {} tasks run={}", created.size(), runId);
@@ -202,6 +221,7 @@ public class PatientActivityService {
         LOG.info("[UPDATE] PatientActivity id={}", id);
 
         PatientActivity existing = findOpenStaffActivity(id);
+        PatientActivity before = snapshot(existing);
         boolean typeChanged = !existing.getActivityType().equals(dto.getActivityType());
         ActivityTemplate template = typeChanged
                 ? activeTemplate(dto.getActivityType())
@@ -225,7 +245,9 @@ public class PatientActivityService {
             existing.setChecklist(checklistOf(template));
         }
 
-        return patientActivityRepository.save(existing);
+        PatientActivity saved = patientActivityRepository.save(existing);
+        logDifferences(before, saved);
+        return saved;
     }
 
     public PatientActivity complete(Long id, PatientActivityCompleteDTO dto) {
@@ -244,7 +266,9 @@ public class PatientActivityService {
         existing.setCompletedBy(currentUsername());
         existing.setOutcome(outcome);
         existing.setOutcomeNote(outcomeNote);
-        return patientActivityRepository.save(existing);
+        PatientActivity saved = patientActivityRepository.save(existing);
+        logChange(saved, PatientActivityAction.COMPLETED, null, outcome != null ? outcome : outcomeNote);
+        return saved;
     }
 
     public PatientActivity cancel(Long id, PatientActivityCancelDTO dto) {
@@ -255,18 +279,23 @@ public class PatientActivityService {
         existing.setCancelledAt(Instant.now());
         existing.setCancelledBy(currentUsername());
         existing.setCancellationReason(dto.getCancellationReason().trim());
-        return patientActivityRepository.save(existing);
+        PatientActivity saved = patientActivityRepository.save(existing);
+        logChange(saved, PatientActivityAction.CANCELLED, null, saved.getCancellationReason());
+        return saved;
     }
 
     public PatientActivity assign(Long id, PatientActivityAssignDTO dto) {
         LOG.info("[ASSIGN] PatientActivity id={} to={}", id, dto.getAssignedTo());
 
         PatientActivity existing = findOpenActivity(id);
+        PatientActivity before = snapshot(existing);
         if (dto.getAssignedRoles() != null) {
             existing.setAssignedRoles(activitySetupService.cleanRoles(dto.getAssignedRoles()));
         }
         existing.setAssignedTo(validateAssignee(dto.getAssignedTo()));
-        return patientActivityRepository.save(existing);
+        PatientActivity saved = patientActivityRepository.save(existing);
+        logDifferences(before, saved);
+        return saved;
     }
 
     /** Assigns an open task to the current user. */
@@ -274,8 +303,11 @@ public class PatientActivityService {
         LOG.info("[CLAIM] PatientActivity id={}", id);
 
         PatientActivity existing = findOpenActivity(id);
+        PatientActivity before = snapshot(existing);
         existing.setAssignedTo(currentUsername());
-        return patientActivityRepository.save(existing);
+        PatientActivity saved = patientActivityRepository.save(existing);
+        logDifferences(before, saved);
+        return saved;
     }
 
     public PatientActivity markChecklistItem(Long id, PatientActivityChecklistDTO dto) {
@@ -287,7 +319,87 @@ public class PatientActivityService {
         PatientActivityChecklistItem item = checklist.get(dto.getIndex());
         checklist.set(dto.getIndex(), new PatientActivityChecklistItem(item.getLabel(), dto.isDone()));
         existing.setChecklist(checklist);
-        return patientActivityRepository.save(existing);
+        PatientActivity saved = patientActivityRepository.save(existing);
+        if (item.isDone() != dto.isDone()) {
+            logChange(
+                    saved,
+                    dto.isDone() ? PatientActivityAction.CHECKLIST_CHECKED : PatientActivityAction.CHECKLIST_UNCHECKED,
+                    null,
+                    item.getLabel()
+            );
+        }
+        return saved;
+    }
+
+    /** Moves the due date or changes the priority of an open task, system tasks included. */
+    public PatientActivity reschedule(Long id, PatientActivityScheduleDTO dto) {
+        LOG.info("[RESCHEDULE] PatientActivity id={} dueAt={} priority={}", id, dto.getDueAt(), dto.getPriority());
+
+        PatientActivity existing = findOpenActivity(id);
+        PatientActivity before = snapshot(existing);
+        if (dto.getDueAt() != null) {
+            existing.setDueAt(dto.getDueAt());
+        }
+        if (dto.getPriority() != null) {
+            existing.setPriority(dto.getPriority());
+        }
+        PatientActivity saved = patientActivityRepository.save(existing);
+        logDifferences(before, saved);
+        return saved;
+    }
+
+    /**
+     * Applies one assignment or priority change to several open tasks; tasks that are no longer
+     * open are skipped. Returns how many tasks changed.
+     */
+    public int bulkUpdate(PatientActivityBulkDTO dto) {
+        LOG.info("[BULK] PatientActivity ids={} assignedTo={} unassign={} priority={}",
+                dto.getIds(), dto.getAssignedTo(), dto.isUnassign(), dto.getPriority());
+
+        String assignee = dto.isUnassign() ? null : validateAssignee(dto.getAssignedTo());
+        boolean changesAssignee = dto.isUnassign() || assignee != null;
+        if (!changesAssignee && dto.getPriority() == null) {
+            throw bad("Pick an assignee or a priority.", "patientActivity.bulk.empty");
+        }
+
+        int changed = 0;
+        for (PatientActivity task : patientActivityRepository.findByIdIn(dto.getIds())) {
+            if (task.getStatus() != PatientActivityStatus.OPEN) {
+                continue;
+            }
+            PatientActivity before = snapshot(task);
+            if (changesAssignee) {
+                task.setAssignedTo(assignee);
+            }
+            if (dto.getPriority() != null) {
+                task.setPriority(dto.getPriority());
+            }
+            logDifferences(before, patientActivityRepository.save(task));
+            changed++;
+        }
+        return changed;
+    }
+
+    @Transactional(readOnly = true)
+    public List<PatientActivityLog> history(Long id) {
+        findById(id);
+        return patientActivityLogRepository.findByActivityIdOrderByCreatedDateDescIdDesc(id);
+    }
+
+    @Transactional(readOnly = true)
+    public List<PatientActivityComment> comments(Long id) {
+        findById(id);
+        return patientActivityCommentRepository.findByActivityIdOrderByCreatedDateAscIdAsc(id);
+    }
+
+    public PatientActivityComment addComment(Long id, PatientActivityCommentDTO dto) {
+        PatientActivity activity = findById(id);
+        PatientActivityComment comment = new PatientActivityComment();
+        comment.setActivityId(activity.getId());
+        comment.setBody(dto.getBody().trim());
+        PatientActivityComment saved = patientActivityCommentRepository.save(comment);
+        logChange(activity, PatientActivityAction.COMMENTED, null, saved.getBody());
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -427,6 +539,7 @@ public class PatientActivityService {
         }
 
         PatientActivity saved = patientActivityRepository.save(activity);
+        logChange(saved, PatientActivityAction.CREATED, null, sourceType);
         LOG.info(
                 "[RECORD] PatientActivity id={} patientId={} type={} source={}/{}",
                 saved.getId(),
@@ -494,6 +607,73 @@ public class PatientActivityService {
                     "Claim rejected"
             );
         }
+    }
+
+    /** The fields whose changes go into the history, as they were before an edit. */
+    private PatientActivity snapshot(PatientActivity activity) {
+        return PatientActivity.builder()
+                .activityType(activity.getActivityType())
+                .note(activity.getNote())
+                .dueAt(activity.getDueAt())
+                .priority(activity.getPriority())
+                .assignedTo(activity.getAssignedTo())
+                .assignedRoles(new ArrayList<>(activity.getAssignedRoles()))
+                .build();
+    }
+
+    private void logDifferences(PatientActivity before, PatientActivity after) {
+        if (!Objects.equals(before.getAssignedTo(), after.getAssignedTo())) {
+            logChange(after, PatientActivityAction.ASSIGNED, before.getAssignedTo(), after.getAssignedTo());
+            announceAssignee(after, before.getAssignedTo());
+        }
+        if (!Objects.equals(before.getAssignedRoles(), after.getAssignedRoles())) {
+            logChange(
+                    after,
+                    PatientActivityAction.ASSIGNED,
+                    String.join(",", before.getAssignedRoles()),
+                    String.join(",", after.getAssignedRoles())
+            );
+        }
+        if (!Objects.equals(before.getDueAt(), after.getDueAt())) {
+            logChange(after, PatientActivityAction.DUE_CHANGED, Objects.toString(before.getDueAt(), null),
+                    Objects.toString(after.getDueAt(), null));
+        }
+        if (before.getPriority() != after.getPriority()) {
+            logChange(after, PatientActivityAction.PRIORITY_CHANGED, priorityName(before.getPriority()),
+                    priorityName(after.getPriority()));
+        }
+        if (!Objects.equals(before.getActivityType(), after.getActivityType())
+                || !Objects.equals(before.getNote(), after.getNote())) {
+            logChange(after, PatientActivityAction.UPDATED, before.getActivityType(), after.getActivityType());
+        }
+    }
+
+    private void logChange(PatientActivity activity, PatientActivityAction action, String oldValue, String newValue) {
+        patientActivityLogRepository.save(new PatientActivityLog(
+                activity.getId(),
+                action,
+                truncate(oldValue),
+                truncate(newValue)
+        ));
+    }
+
+    /** Lets the new assignee know once the change is committed; they don't hear about their own picks. */
+    private void announceAssignee(PatientActivity activity, String previousAssignee) {
+        String assignee = activity.getAssignedTo();
+        if (assignee != null && !assignee.equals(previousAssignee)) {
+            eventPublisher.publishEvent(new TaskAssignedEvent(activity.getId(), assignee, currentUsername()));
+        }
+    }
+
+    private String priorityName(PatientActivityPriority priority) {
+        return priority == null ? null : priority.name();
+    }
+
+    private String truncate(String value) {
+        if (value == null || value.length() <= 500) {
+            return value;
+        }
+        return value.substring(0, 497) + "...";
     }
 
     private PatientActivity findOpenStaffActivity(Long id) {

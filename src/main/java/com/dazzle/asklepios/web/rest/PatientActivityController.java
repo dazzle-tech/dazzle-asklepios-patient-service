@@ -1,15 +1,20 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.PatientActivity;
+import com.dazzle.asklepios.domain.PatientActivityComment;
+import com.dazzle.asklepios.domain.PatientActivityLog;
 import com.dazzle.asklepios.domain.enumeration.PatientActivitySource;
 import com.dazzle.asklepios.domain.enumeration.PatientActivityStatus;
 import com.dazzle.asklepios.service.PatientActivityService;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityApplyPlanDTO;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityAssignDTO;
+import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityBulkDTO;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityCancelDTO;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityChecklistDTO;
+import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityCommentDTO;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityCompleteDTO;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityCreateDTO;
+import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityScheduleDTO;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivitySummaryVM;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientActivityUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
@@ -107,6 +112,42 @@ public class PatientActivityController {
     ) {
         LOG.debug("REST checklist PatientActivity id={} index={}", id, dto.getIndex());
         return ResponseEntity.ok(patientActivityService.markChecklistItem(id, dto));
+    }
+
+    @PatchMapping("/activities/{id}/schedule")
+    public ResponseEntity<PatientActivity> reschedule(
+            @PathVariable Long id,
+            @Valid @RequestBody PatientActivityScheduleDTO dto
+    ) {
+        LOG.debug("REST reschedule PatientActivity id={}", id);
+        return ResponseEntity.ok(patientActivityService.reschedule(id, dto));
+    }
+
+    @PostMapping("/activities/bulk")
+    public ResponseEntity<Integer> bulkUpdate(@Valid @RequestBody PatientActivityBulkDTO dto) {
+        LOG.debug("REST bulk update PatientActivity ids={}", dto.getIds());
+        return ResponseEntity.ok(patientActivityService.bulkUpdate(dto));
+    }
+
+    @GetMapping("/activities/{id}/history")
+    public ResponseEntity<List<PatientActivityLog>> history(@PathVariable Long id) {
+        LOG.debug("REST history PatientActivity id={}", id);
+        return ResponseEntity.ok(patientActivityService.history(id));
+    }
+
+    @GetMapping("/activities/{id}/comments")
+    public ResponseEntity<List<PatientActivityComment>> comments(@PathVariable Long id) {
+        LOG.debug("REST comments PatientActivity id={}", id);
+        return ResponseEntity.ok(patientActivityService.comments(id));
+    }
+
+    @PostMapping("/activities/{id}/comments")
+    public ResponseEntity<PatientActivityComment> addComment(
+            @PathVariable Long id,
+            @Valid @RequestBody PatientActivityCommentDTO dto
+    ) {
+        LOG.debug("REST add comment PatientActivity id={}", id);
+        return ResponseEntity.ok(patientActivityService.addComment(id, dto));
     }
 
     @GetMapping("/activities/{id}")

@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.util.List;
 
 @Repository
 public interface PatientActivityRepository extends JpaRepository<PatientActivity, Long>, JpaSpecificationExecutor<PatientActivity> {
@@ -29,4 +30,9 @@ public interface PatientActivityRepository extends JpaRepository<PatientActivity
     );
 
     boolean existsBySourceTypeAndSourceIdAndActivityType(String sourceType, Long sourceId, String activityType);
+
+    /** Open tasks due before the given time, overdue ones first. */
+    List<PatientActivity> findByStatusAndDueAtBeforeOrderByDueAtAsc(PatientActivityStatus status, Instant dueAt);
+
+    List<PatientActivity> findByIdIn(List<Long> ids);
 }
