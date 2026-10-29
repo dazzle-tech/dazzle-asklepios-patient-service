@@ -19,15 +19,15 @@ public class SurveyText {
     @Id
     private Long id;
 
-    @Column(name = "text_key")
+    @Column(name = "text_key", nullable = false, length = 100, unique = true)
     private String textKey;
 
-    @Column(name = "text_en")
+    @Column(name = "text_en", nullable = false, columnDefinition = "TEXT")
     private String textEn;
 
-    @Column(name = "text_ar")
+    @Column(name = "text_ar", nullable = false, columnDefinition = "TEXT")
     private String textAr;
 
-    @Column(name = "is_active")
-    private Boolean isActive;
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = true;
 }

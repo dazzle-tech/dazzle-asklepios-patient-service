@@ -28,7 +28,7 @@ public class SurveyQuestion {
     @Id
     private Long id;
 
-    @Column(name = "section_id")
+    @Column(name = "section_id", nullable = false)
     private Long sectionId;
 
     // Same column as sectionId, read only: lets the repository filter and sort by the section
@@ -36,17 +36,17 @@ public class SurveyQuestion {
     @JoinColumn(name = "section_id", insertable = false, updatable = false)
     private SurveySection section;
 
-    @Column(name = "display_order")
+    @Column(name = "display_order", nullable = false)
     private Integer displayOrder;
 
-    @Column(name = "question_en")
+    @Column(name = "question_en", nullable = false, length = 1000)
     private String questionEn;
 
-    @Column(name = "question_ar")
+    @Column(name = "question_ar", nullable = false, length = 1000)
     private String questionAr;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "answer_type")
+    @Column(name = "answer_type", nullable = false, length = 20)
     private SurveyAnswerType answerType;
 
     @Column(name = "min_value")
@@ -55,9 +55,9 @@ public class SurveyQuestion {
     @Column(name = "max_value")
     private Integer maxValue;
 
-    @Column(name = "is_required")
-    private Boolean isRequired;
+    @Column(name = "is_required", nullable = false)
+    private Boolean isRequired = false;
 
-    @Column(name = "is_active")
-    private Boolean isActive;
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = true;
 }

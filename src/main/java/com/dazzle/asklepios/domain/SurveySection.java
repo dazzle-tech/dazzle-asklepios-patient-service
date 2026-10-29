@@ -19,15 +19,15 @@ public class SurveySection {
     @Id
     private Long id;
 
-    @Column(name = "name_en")
+    @Column(name = "name_en", nullable = false, length = 255)
     private String nameEn;
 
-    @Column(name = "name_ar")
+    @Column(name = "name_ar", nullable = false, length = 255)
     private String nameAr;
 
-    @Column(name = "display_order")
+    @Column(name = "display_order", nullable = false)
     private Integer displayOrder;
 
-    @Column(name = "is_active")
-    private Boolean isActive;
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = true;
 }
