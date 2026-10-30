@@ -30,6 +30,9 @@ import com.dazzle.asklepios.service.dto.billing.PreviewCatalogItemPricingRequest
 import com.dazzle.asklepios.service.dto.billing.PreviewCatalogItemPricingResult;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
 import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
+import com.dazzle.asklepios.service.dto.billing.TaxShareRule;
+import com.dazzle.asklepios.service.dto.billing.TaxShareScope;
+import com.dazzle.asklepios.service.dto.billing.TaxShareSplit;
 import com.dazzle.asklepios.service.helper.UomPriceFactorHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
@@ -72,6 +75,7 @@ public class CatalogItemPricingPreviewService {
     private final FinancialDocumentItemRepository financialDocumentItemRepository;
     private final InvoiceItemPricingSnapshotService invoiceItemPricingSnapshotService;
     private final UomPriceFactorHelper uomPriceFactorHelper;
+    private final TaxShareCalculator taxShareCalculator;
 
     private static final int MONEY_SCALE = 4;
 
@@ -151,6 +155,31 @@ public class CatalogItemPricingPreviewService {
                         .build();
         billingPricingService.calculate(pricingContext);
         PriceCalculationResult pricing = pricingContext.getPricingResult();
+
+        TaxShareRule itemTaxRule = TaxShareRule.of(pricingInput);
+
+        if (insurance != null
+                && !requiresCashConfirmation
+                && !Boolean.TRUE.equals(previewItem.getIsExempted())
+                && (itemTaxRule.splitsByShare()
+                || invoiceApplicableOnAdjustmentService.invoiceTaxSplitsByShare(
+                        request.facilityId(),
+                        request.currency(),
+                        resolvePricingDate(request.invoiceId()),
+                        patientCitizen
+                ))) {
+            return previewByShare(
+                    request,
+                    insurance,
+                    previewItem,
+                    resolvedPrice,
+                    pricing,
+                    itemTaxRule,
+                    patientCitizen,
+                    insuranceVisit,
+                    coveredByInsurance
+            );
+        }
 
         long quantity = defaultQuantity(request.quantity());
         BigDecimal unitPrice = money(pricing.unitPrice());
@@ -270,6 +299,30 @@ public class CatalogItemPricingPreviewService {
             LocalDate pricingDate,
             Long patientId
     ) {
+        applyDebitNoteInvoiceAdjustments(
+                items,
+                invoiceId,
+                facilityId,
+                currency,
+                pricingDate,
+                patientId,
+                TaxShareScope.CASH
+        );
+    }
+
+    /**
+     * @param taxShareScope share of the parent invoice; the invoice tax applies
+     *                      only when that share's tax setup flag is on
+     */
+    public void applyDebitNoteInvoiceAdjustments(
+            List<FinancialDocumentItem> items,
+            Long invoiceId,
+            Long facilityId,
+            Currency currency,
+            LocalDate pricingDate,
+            Long patientId,
+            TaxShareScope taxShareScope
+    ) {
         if (items == null || items.isEmpty()) {
             return;
         }
@@ -286,7 +339,8 @@ public class CatalogItemPricingPreviewService {
                 facilityId,
                 currency,
                 pricingDate,
-                findIsCitizen(patientId)
+                findIsCitizen(patientId),
+                taxShareScope
         );
 
         if (invoiceId == null) {
@@ -648,6 +702,233 @@ public class CatalogItemPricingPreviewService {
             BigDecimal discountRate,
             BigDecimal taxRate
     ) {
+    }
+
+    /**
+     * Preview when the tax setup flags split the tax by share (item tax or
+     * invoice tax): each share is previewed on its own, the way the patient
+     * invoice and the insurance claim are generated, so the item tax and the
+     * invoice tax land only on the flagged shares.
+     */
+    private PreviewCatalogItemPricingResult previewByShare(
+            PreviewCatalogItemPricingRequest request,
+            PatientInsurance insurance,
+            PatientServiceAndProduct previewItem,
+            ResolvedBillingPrice resolvedPrice,
+            PriceCalculationResult pricing,
+            TaxShareRule itemTaxRule,
+            Boolean patientCitizen,
+            boolean insuranceVisit,
+            boolean coveredByInsurance
+    ) {
+        TaxShareSplit split =
+                taxShareCalculator.split(
+                        insurance,
+                        previewItem,
+                        pricing.netAmount(),
+                        pricing.taxAmount(),
+                        itemTaxRule,
+                        null
+                );
+
+        long quantity = defaultQuantity(request.quantity());
+        BigDecimal unitPrice = money(pricing.unitPrice());
+        BigDecimal itemGross = money(pricing.grossAmount());
+        BigDecimal itemDiscount = money(pricing.discountAmount());
+        BigDecimal itemTax = money(split.taxAmount());
+        BigDecimal itemNet = money(split.netAmount());
+        BigDecimal itemBase = itemNet.subtract(itemTax);
+
+        BigDecimal patientTax =
+                split.splitsByShare()
+                        ? money(split.patientTaxAmount())
+                        : proportionalAmount(itemTax, split.patientShare(), itemNet);
+        BigDecimal insuranceTax = money(itemTax.subtract(patientTax));
+
+        FinancialDocumentItem patientDraft =
+                buildShareDraft(
+                        previewItem,
+                        quantity,
+                        unitPrice,
+                        itemGross,
+                        itemDiscount,
+                        itemBase,
+                        money(split.patientShare()),
+                        patientTax,
+                        false
+                );
+
+        FinancialDocumentItem insuranceDraft =
+                buildShareDraft(
+                        previewItem,
+                        quantity,
+                        unitPrice,
+                        itemGross,
+                        itemDiscount,
+                        itemBase,
+                        money(split.insuranceShare()),
+                        insuranceTax,
+                        true
+                );
+
+        LocalDate pricingDate = resolvePricingDate(request.invoiceId());
+
+        applyShareInvoiceAdjustments(
+                patientDraft,
+                request,
+                pricingDate,
+                patientCitizen,
+                TaxShareScope.PATIENT_COPAYMENT
+        );
+
+        applyShareInvoiceAdjustments(
+                insuranceDraft,
+                request,
+                pricingDate,
+                patientCitizen,
+                TaxShareScope.CLAIM_SHARE
+        );
+
+        BigDecimal totalDiscount =
+                money(patientDraft.getDiscountAmount())
+                        .add(money(insuranceDraft.getDiscountAmount()));
+        BigDecimal totalTax =
+                money(patientDraft.getTaxAmount())
+                        .add(money(insuranceDraft.getTaxAmount()));
+        BigDecimal patientShareAmount = money(patientDraft.getNetAmount());
+        BigDecimal insuranceShareAmount = money(insuranceDraft.getNetAmount());
+        BigDecimal finalNet = patientShareAmount.add(insuranceShareAmount);
+
+        BigDecimal invoiceDiscount =
+                totalDiscount
+                        .subtract(itemDiscount)
+                        .max(BigDecimal.ZERO)
+                        .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        BigDecimal invoiceTax =
+                totalTax
+                        .subtract(itemTax)
+                        .max(BigDecimal.ZERO)
+                        .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+
+        LOG.info(
+                "[PREVIEW_CATALOG_PRICING] tax share flags encounterId={} invoiceId={} "
+                        + "itemTax={} invoiceTax={} net={} patientShare={} insuranceShare={}",
+                request.encounterId(),
+                request.invoiceId(),
+                itemTax,
+                invoiceTax,
+                finalNet,
+                patientShareAmount,
+                insuranceShareAmount
+        );
+
+        return new PreviewCatalogItemPricingResult(
+                resolvedPrice.setupUnitPrice(),
+                resolvedPrice.unitPrice(),
+                resolvedPrice.priceSource() == null
+                        ? BillingPriceSource.SETUP_FALLBACK.name()
+                        : resolvedPrice.priceSource().name(),
+                resolvedPrice.pricingResponse() == null
+                        ? null
+                        : resolvedPrice.pricingResponse().priceListItemCode(),
+                resolvedPrice.currency() == null
+                        ? request.currency()
+                        : resolvedPrice.currency(),
+                itemGross,
+                totalDiscount,
+                totalTax,
+                finalNet,
+                itemGross,
+                itemDiscount,
+                itemTax,
+                invoiceDiscount,
+                invoiceTax,
+                patientShareAmount,
+                insuranceShareAmount,
+                insuranceVisit,
+                coveredByInsurance,
+                false,
+                null,
+                null
+        );
+    }
+
+    private FinancialDocumentItem buildShareDraft(
+            PatientServiceAndProduct previewItem,
+            long quantity,
+            BigDecimal unitPrice,
+            BigDecimal itemGross,
+            BigDecimal itemDiscount,
+            BigDecimal itemBase,
+            BigDecimal shareNet,
+            BigDecimal shareTax,
+            boolean insuranceShare
+    ) {
+        BigDecimal shareBase = shareNet.subtract(shareTax).max(BigDecimal.ZERO);
+
+        FinancialDocumentItem draft =
+                buildDraftPreviewItem(
+                        previewItem,
+                        quantity,
+                        unitPrice,
+                        proportionalAmount(itemGross, shareBase, itemBase)
+                );
+
+        draft.setDiscountAmount(proportionalAmount(itemDiscount, shareBase, itemBase));
+        draft.setTaxAmount(shareTax);
+        draft.setNetAmount(shareNet);
+        draft.setRemainingAmount(shareNet);
+
+        if (insuranceShare) {
+            draft.setPatientShareAmount(
+                    BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP)
+            );
+            draft.setInsuranceShareAmount(shareNet);
+            draft.setInsuranceRemainingAmount(shareNet);
+        } else {
+            draft.setPatientShareAmount(shareNet);
+        }
+
+        return draft;
+    }
+
+    private void applyShareInvoiceAdjustments(
+            FinancialDocumentItem draft,
+            PreviewCatalogItemPricingRequest request,
+            LocalDate pricingDate,
+            Boolean patientCitizen,
+            TaxShareScope taxShareScope
+    ) {
+        if (money(draft.getNetAmount()).signum() <= 0) {
+            return;
+        }
+
+        invoiceApplicableOnAdjustmentService.applyInvoiceScopeAdjustmentsOnly(
+                new ArrayList<>(List.of(draft)),
+                request.facilityId(),
+                request.currency(),
+                pricingDate,
+                patientCitizen,
+                taxShareScope
+        );
+    }
+
+    private BigDecimal proportionalAmount(
+            BigDecimal amount,
+            BigDecimal share,
+            BigDecimal whole
+    ) {
+        if (amount == null
+                || share == null
+                || whole == null
+                || whole.signum() == 0) {
+            return BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        }
+
+        return money(
+                amount.multiply(share)
+                        .divide(whole, MONEY_SCALE, RoundingMode.HALF_UP)
+        );
     }
 
     private FinancialDocumentItem buildDraftPreviewItem(

@@ -44,6 +44,7 @@ import com.dazzle.asklepios.service.dto.billing.FinancialCloseResult;
 import com.dazzle.asklepios.service.dto.billing.GenerateInvoiceRequest;
 import com.dazzle.asklepios.service.dto.billing.GenerateInvoiceResult;
 import com.dazzle.asklepios.service.dto.billing.PatientFinancialDocumentResponse;
+import com.dazzle.asklepios.service.dto.billing.TaxShareScope;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -123,6 +124,7 @@ public class InvoiceGenerationService {
     private final InvoiceApplicableOnAdjustmentService invoiceApplicableOnAdjustmentService;
     private final InvoiceItemPricingSnapshotService invoiceItemPricingSnapshotService;
     private final InvoiceChargePaymentSyncService invoiceChargePaymentSyncService;
+    private final TaxShareCalculator taxShareCalculator;
 
     private final EncounterChargeLineEnsuringService encounterChargeLineEnsuringService;
     private final EncounterBillingGuardService encounterBillingGuardService;
@@ -509,7 +511,8 @@ public class InvoiceGenerationService {
                                         chargeLines,
                                         FinancialDocumentSubtype.PATIENT,
                                         eligibilityReference,
-                                        null
+                                        null,
+                                        TaxShareScope.PATIENT_COPAYMENT
                                 )
                         )
                 );
@@ -528,7 +531,8 @@ public class InvoiceGenerationService {
                         chargeLines,
                         FinancialDocumentSubtype.INSURANCE_CLAIM,
                         eligibilityReference,
-                        claimReference
+                        claimReference,
+                        TaxShareScope.CLAIM_SHARE
                 );
 
                 createdInvoices.add(mapFinancialDocument(insuranceInvoice));
@@ -553,7 +557,8 @@ public class InvoiceGenerationService {
                                     chargeLines,
                                     FinancialDocumentSubtype.PATIENT,
                                     null,
-                                    null
+                                    null,
+                                    TaxShareScope.CASH
                             )
                     )
             );
@@ -586,7 +591,8 @@ public class InvoiceGenerationService {
             List<BillingChargeLine> chargeLines,
             FinancialDocumentSubtype subtype,
             String eligibilityReference,
-            String claimReference
+            String claimReference,
+            TaxShareScope taxShareScope
     ) {
         if (hasSubtypeFinalInvoice(encounter.getId(), subtype)) {
             throw new BadRequestAlertException(
@@ -640,7 +646,8 @@ public class InvoiceGenerationService {
                 encounter.getFacilityId(),
                 document.getCurrency(),
                 LocalDate.now(),
-                patient.getIsCitizen()
+                patient.getIsCitizen(),
+                taxShareScope
         );
 
         invoiceChargePaymentSyncService.syncPreInvoicePayments(items);
@@ -719,6 +726,23 @@ public class InvoiceGenerationService {
                     proportional(line.getDiscountAmount(), shareAmount, lineNet);
             BigDecimal taxAmount =
                     proportional(line.getTaxAmount(), shareAmount, lineNet);
+
+            /*
+             * Tax split by share (tax setup flags): the invoice carries
+             * only the tax of its own share.
+             */
+            TaxShareCalculator.ShareAmounts shareAmounts =
+                    taxShareCalculator.shareAmountsOf(
+                            line,
+                            shareAmount,
+                            subtype == FinancialDocumentSubtype.INSURANCE_CLAIM
+                    );
+
+            if (shareAmounts != null) {
+                grossAmount = shareAmounts.grossAmount();
+                discountAmount = shareAmounts.discountAmount();
+                taxAmount = shareAmounts.taxAmount();
+            }
 
             BigDecimal patientShare =
                     subtype == FinancialDocumentSubtype.PATIENT

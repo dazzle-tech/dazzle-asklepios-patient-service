@@ -26,6 +26,14 @@ public record BillingAdjustmentResolveResponse(
 
         BigDecimal taxFixedAmount,
 
+        /*
+         * Tax setup flags (null = true): the invoice tax applies on the
+         * patient invoice / insurance claim only when its flag is on.
+         */
+        Boolean taxOnPatientCopayment,
+
+        Boolean taxOnClaimShare,
+
         Long discountId,
 
         String discountCode,

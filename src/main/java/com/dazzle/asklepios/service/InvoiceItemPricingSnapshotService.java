@@ -30,6 +30,7 @@ public class InvoiceItemPricingSnapshotService {
     private final BillingChargeLineRepository billingChargeLineRepository;
     private final BillingPricingSnapshotRepository billingPricingSnapshotRepository;
     private final ObjectMapper objectMapper;
+    private final TaxShareCalculator taxShareCalculator;
 
     public void captureChargeLineSnapshots(List<FinancialDocumentItem> items) {
         if (items == null || items.isEmpty()) {
@@ -60,7 +61,7 @@ public class InvoiceItemPricingSnapshotService {
             InvoiceItemPricingAdjustmentSnapshot snapshot =
                     readSnapshot(item);
 
-            snapshot = appendChargeLinePricing(snapshot, chargeLine);
+            snapshot = appendChargeLinePricing(snapshot, chargeLine, item);
             writeSnapshot(item, snapshot);
         }
     }
@@ -230,7 +231,8 @@ public class InvoiceItemPricingSnapshotService {
 
     private InvoiceItemPricingAdjustmentSnapshot appendChargeLinePricing(
             InvoiceItemPricingAdjustmentSnapshot snapshot,
-            BillingChargeLine chargeLine
+            BillingChargeLine chargeLine,
+            FinancialDocumentItem item
     ) {
         BillingPricingSnapshot pricingSnapshot =
                 billingPricingSnapshotRepository
@@ -276,7 +278,16 @@ public class InvoiceItemPricingSnapshotService {
                     );
         }
 
-        if (money(pricingSnapshot.getTaxAmount()).signum() > 0) {
+        /*
+         * Tax split by share (tax setup flags): the document line shows
+         * the tax of its own share, not the whole charge tax.
+         */
+        BigDecimal chargeTax =
+                taxShareCalculator.shareTaxOf(chargeLine, false) != null
+                        ? money(item.getTaxAmount())
+                        : money(pricingSnapshot.getTaxAmount());
+
+        if (chargeTax.signum() > 0) {
             updated =
                     updated.withTax(
                             new AppliedTaxEntry(
@@ -289,7 +300,7 @@ public class InvoiceItemPricingSnapshotService {
                                     null,
                                     pricingSnapshot.getTaxRate(),
                                     null,
-                                    money(pricingSnapshot.getTaxAmount())
+                                    chargeTax
                             )
                     );
         }

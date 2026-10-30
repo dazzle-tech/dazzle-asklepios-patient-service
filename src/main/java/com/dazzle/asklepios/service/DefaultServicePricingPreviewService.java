@@ -24,6 +24,8 @@ import com.dazzle.asklepios.service.dto.billing.PreviewDefaultServicesPricingReq
 import com.dazzle.asklepios.service.dto.billing.PreviewDefaultServicesPricingResult;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
 import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
+import com.dazzle.asklepios.service.dto.billing.TaxShareRule;
+import com.dazzle.asklepios.service.dto.billing.TaxShareSplit;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import feign.FeignException;
@@ -59,6 +61,7 @@ public class DefaultServicePricingPreviewService {
     private final BillingPricingInputFactory billingPricingInputFactory;
     private final BillingPricingService billingPricingService;
     private final InsurancePatientShareCalculator insurancePatientShareCalculator;
+    private final TaxShareCalculator taxShareCalculator;
     private final EncounterCoverageService encounterCoverageService;
     private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
 
@@ -333,19 +336,42 @@ public class DefaultServicePricingPreviewService {
 
         BigDecimal patientShareAmount = BigDecimal.ZERO;
         BigDecimal insuranceShareAmount = BigDecimal.ZERO;
+        BigDecimal taxAmount = pricing.taxAmount();
+        BigDecimal netAmount = pricing.netAmount();
 
         if (insurance != null
                 && !requiresCashConfirmation
                 && !Boolean.TRUE.equals(previewItem.getIsExempted())) {
-            InsuranceSplit split =
-                    insurancePatientShareCalculator.calculateSplit(
-                            insurance,
-                            previewItem,
-                            pricing.netAmount(),
-                            visitMaxLimitTracker
-                    );
-            patientShareAmount = split.patientShare();
-            insuranceShareAmount = split.insuranceShare();
+            TaxShareRule taxShareRule = TaxShareRule.of(pricingInput);
+
+            if (taxShareRule.splitsByShare()) {
+                /*
+                 * Tax setup flags: tax only on the flagged shares.
+                 */
+                TaxShareSplit split =
+                        taxShareCalculator.split(
+                                insurance,
+                                previewItem,
+                                pricing.netAmount(),
+                                pricing.taxAmount(),
+                                taxShareRule,
+                                visitMaxLimitTracker
+                        );
+                patientShareAmount = split.patientShare();
+                insuranceShareAmount = split.insuranceShare();
+                taxAmount = split.taxAmount();
+                netAmount = split.netAmount();
+            } else {
+                InsuranceSplit split =
+                        insurancePatientShareCalculator.calculateSplit(
+                                insurance,
+                                previewItem,
+                                pricing.netAmount(),
+                                visitMaxLimitTracker
+                        );
+                patientShareAmount = split.patientShare();
+                insuranceShareAmount = split.insuranceShare();
+            }
         } else if (!Boolean.TRUE.equals(previewItem.getIsExempted())) {
             patientShareAmount = pricing.netAmount();
         }
@@ -357,8 +383,8 @@ public class DefaultServicePricingPreviewService {
                 pricing.unitPrice(),
                 pricing.grossAmount(),
                 pricing.discountAmount(),
-                pricing.taxAmount(),
-                pricing.netAmount(),
+                taxAmount,
+                netAmount,
                 priceSource,
                 pricingInput.priceListItemCode(),
                 patientShareAmount,

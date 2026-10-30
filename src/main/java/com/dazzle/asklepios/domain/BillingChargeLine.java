@@ -134,6 +134,16 @@ public class BillingChargeLine extends AbstractAuditingEntity<Long>
     @Column(name = "tax_amount", nullable = false, precision = 19, scale = 4)
     private BigDecimal taxAmount = BigDecimal.ZERO;
 
+    /**
+     * Tax carried by the patient / insurance share when the tax setup
+     * flags split the tax by share. Null = original proportional split.
+     */
+    @Column(name = "patient_tax_amount", precision = 19, scale = 4)
+    private BigDecimal patientTaxAmount;
+
+    @Column(name = "insurance_tax_amount", precision = 19, scale = 4)
+    private BigDecimal insuranceTaxAmount;
+
     @NotNull
     @DecimalMin(value = "0.0000")
     @Column(name = "net_amount", nullable = false, precision = 19, scale = 4)

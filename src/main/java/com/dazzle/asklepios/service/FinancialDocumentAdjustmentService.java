@@ -49,6 +49,10 @@ import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.InsuranceBenefitRule;
 import com.dazzle.asklepios.service.dto.InsuranceSplit;
 import com.dazzle.asklepios.service.dto.billing.CreateFinancialDocumentAdjustmentRequest;
+import com.dazzle.asklepios.service.dto.billing.BillingPricingInput;
+import com.dazzle.asklepios.service.dto.billing.TaxShareRule;
+import com.dazzle.asklepios.service.dto.billing.TaxShareScope;
+import com.dazzle.asklepios.service.dto.billing.TaxShareSplit;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
 import com.dazzle.asklepios.service.dto.billing.BillingLedgerEntryRequest;
 import com.dazzle.asklepios.service.dto.billing.AddableChargeLineResponse;
@@ -162,6 +166,7 @@ public class FinancialDocumentAdjustmentService {
     private final InvoiceChargePaymentSyncService invoiceChargePaymentSyncService;
     private final BillingReservationService billingReservationService;
     private final ClaimRequestRepository claimRequestRepository;
+    private final TaxShareCalculator taxShareCalculator;
 
     @Transactional(readOnly = true)
     public List<InvoiceLineItemResponse> listInvoiceLineItems(Long invoiceId) {
@@ -1199,6 +1204,23 @@ public class FinancialDocumentAdjustmentService {
         BigDecimal discountAmount = proportional(chargeLine.getDiscountAmount(), debitAmount, lineNet);
         BigDecimal taxAmount = proportional(chargeLine.getTaxAmount(), debitAmount, lineNet);
 
+        /*
+         * Tax split by share (tax setup flags): the note carries only the
+         * tax of the invoice share.
+         */
+        TaxShareCalculator.ShareAmounts shareAmounts =
+                taxShareCalculator.shareAmountsOf(
+                        chargeLine,
+                        debitAmount,
+                        invoice.getDocumentSubtype() == FinancialDocumentSubtype.INSURANCE_CLAIM
+                );
+
+        if (shareAmounts != null) {
+            grossAmount = shareAmounts.grossAmount();
+            discountAmount = shareAmounts.discountAmount();
+            taxAmount = shareAmounts.taxAmount();
+        }
+
         return new PreparedAdjustmentLine(
                 FinancialDocumentItemAdjustmentAction.ADD,
                 null,
@@ -1315,10 +1337,11 @@ public class FinancialDocumentAdjustmentService {
             BigDecimal quantity,
             Long facilityId
     ) {
-        patientItemPricingApplicationService.applyToItem(
-                createdService,
-                facilityId
-        );
+        BillingPricingInput pricingInput =
+                patientItemPricingApplicationService.applyToItem(
+                        createdService,
+                        facilityId
+                );
 
         PatientInsurance insurance =
                 resolveEncounterInsurance(createdService.getEncounterId());
@@ -1326,23 +1349,91 @@ public class FinancialDocumentAdjustmentService {
             createdService.setPatientInsuranceId(insurance.getId());
         }
 
-        InsuranceSplit split =
-                insurancePatientShareCalculator.calculateSplit(
+        TaxShareRule taxShareRule = TaxShareRule.of(pricingInput);
+
+        if (!taxShareRule.splitsByShare()) {
+            InsuranceSplit split =
+                    insurancePatientShareCalculator.calculateSplit(
+                            insurance,
+                            createdService,
+                            createdService.getNetAmount()
+                    );
+            createdService.setPatientShareAmount(split.patientShare());
+            createdService.setInsuranceShareAmount(split.insuranceShare());
+
+            return billingChargeService.createDebitNoteAdjustmentChargeLine(
+                    createdService,
+                    quantity,
+                    money(createdService.getUnitPrice()),
+                    split.patientShare(),
+                    split.insuranceShare(),
+                    "debit-note-add-new-" + createdService.getId()
+            );
+        }
+
+        /*
+         * Tax setup flags: the tax is calculated only on the flagged shares.
+         */
+        TaxShareSplit split =
+                taxShareCalculator.split(
                         insurance,
                         createdService,
-                        createdService.getNetAmount()
+                        createdService.getNetAmount(),
+                        createdService.getTaxAmount(),
+                        taxShareRule,
+                        null
                 );
+
+        createdService.setTaxAmount(split.taxAmount());
+        createdService.setNetAmount(split.netAmount());
+        createdService.setTotalAmount(split.netAmount());
         createdService.setPatientShareAmount(split.patientShare());
         createdService.setInsuranceShareAmount(split.insuranceShare());
 
-        return billingChargeService.createDebitNoteAdjustmentChargeLine(
-                createdService,
-                quantity,
-                money(createdService.getUnitPrice()),
-                split.patientShare(),
-                split.insuranceShare(),
-                "debit-note-add-new-" + createdService.getId()
-        );
+        BillingChargeLine chargeLine =
+                billingChargeService.createDebitNoteAdjustmentChargeLine(
+                        createdService,
+                        quantity,
+                        money(createdService.getUnitPrice()),
+                        split.patientShare(),
+                        split.insuranceShare(),
+                        "debit-note-add-new-" + createdService.getId()
+                );
+
+        if (split.splitsByShare()) {
+            taxShareCalculator.recordShareTax(chargeLine, split);
+            chargeLineRepo.save(chargeLine);
+        }
+
+        return chargeLine;
+    }
+
+    /**
+     * Share carried by an invoice, for the invoice-level tax setup flags.
+     */
+    private TaxShareScope resolveTaxShareScope(FinancialDocument invoice) {
+        if (invoice.getDocumentSubtype() == FinancialDocumentSubtype.INSURANCE_CLAIM) {
+            return TaxShareScope.CLAIM_SHARE;
+        }
+
+        /*
+         * Same coverage rule as invoice generation: an encounter is
+         * insurance-billed when any line has an insurance share.
+         */
+        boolean insuranceBilled =
+                chargeLineRepo
+                        .findAllByEncounter_IdAndStatusNotInOrderByIdAsc(
+                                invoice.getEncounterId(),
+                                EXCLUDED_LINE_STATUSES
+                        )
+                        .stream()
+                        .anyMatch(line ->
+                                money(line.getInsuranceResponsibilityAmount()).signum() > 0
+                        );
+
+        return insuranceBilled
+                ? TaxShareScope.PATIENT_COPAYMENT
+                : TaxShareScope.CASH;
     }
 
     private PatientInsurance resolveEncounterInsurance(Long encounterId) {
@@ -1488,7 +1579,8 @@ public class FinancialDocumentAdjustmentService {
                 facilityId,
                 invoice.getCurrency(),
                 pricingDate,
-                invoice.getPatientId()
+                invoice.getPatientId(),
+                resolveTaxShareScope(invoice)
         );
     }
 
@@ -1649,7 +1741,9 @@ public class FinancialDocumentAdjustmentService {
                     BigDecimal.valueOf(preparedLine.quantity()),
                     remaining.chargeNet(),
                     remaining.patientShare(),
-                    remaining.insuranceShare()
+                    remaining.insuranceShare(),
+                    remaining.patientTax(),
+                    remaining.insuranceTax()
             );
         } else {
             syncCreditNoteToChargeLine(originalItem, creditAmount);
@@ -1676,11 +1770,32 @@ public class FinancialDocumentAdjustmentService {
                         : preparedLine.unitPrice()
         );
         originalItem.setNetAmount(newShare);
-        originalItem.setGrossAmount(proportional(originalItem.getGrossAmount(), newShare, oldNet));
-        originalItem.setDiscountAmount(
-                proportional(originalItem.getDiscountAmount(), newShare, oldNet)
-        );
-        originalItem.setTaxAmount(proportional(originalItem.getTaxAmount(), newShare, oldNet));
+        if (remaining.splitsByShare()) {
+            /*
+             * Tax setup flags: the invoice line keeps only the tax of its
+             * share; gross / discount follow the share amount before tax.
+             */
+            BigDecimal oldBase =
+                    oldNet.subtract(money(originalItem.getTaxAmount())).max(ZERO);
+            BigDecimal newTax =
+                    (money(originalItem.getInsuranceShareAmount()).signum() > 0
+                            ? money(remaining.insuranceTax())
+                            : money(remaining.patientTax()))
+                            .min(newShare);
+            BigDecimal newBase = newShare.subtract(newTax).max(ZERO);
+
+            originalItem.setGrossAmount(proportional(originalItem.getGrossAmount(), newBase, oldBase));
+            originalItem.setDiscountAmount(
+                    proportional(originalItem.getDiscountAmount(), newBase, oldBase)
+            );
+            originalItem.setTaxAmount(newTax);
+        } else {
+            originalItem.setGrossAmount(proportional(originalItem.getGrossAmount(), newShare, oldNet));
+            originalItem.setDiscountAmount(
+                    proportional(originalItem.getDiscountAmount(), newShare, oldNet)
+            );
+            originalItem.setTaxAmount(proportional(originalItem.getTaxAmount(), newShare, oldNet));
+        }
 
         if (money(originalItem.getPatientShareAmount()).signum() > 0) {
             originalItem.setPatientShareAmount(remaining.patientShare());
@@ -2342,6 +2457,43 @@ public class FinancialDocumentAdjustmentService {
 
         BigDecimal remainingChargeNet =
                 projectRemainingChargeNet(chargeLine, original, newQuantity, newUnitPrice);
+
+        TaxShareRule taxShareRule =
+                taxShareCalculator.ruleForChargeLine(chargeLine);
+
+        if (taxShareRule.splitsByShare()) {
+            /*
+             * Tax setup flags: re-split the remaining amount before tax and
+             * tax only the flagged shares.
+             */
+            TaxShareSplit taxShareSplit =
+                    taxShareCalculator.split(
+                            insurance,
+                            chargeLine.getPatientServiceProduct(),
+                            remainingChargeNet,
+                            proportional(
+                                    chargeLine.getTaxAmount(),
+                                    remainingChargeNet,
+                                    chargeLine.getNetAmount()
+                            ),
+                            taxShareRule,
+                            null
+                    );
+
+            if (taxShareSplit.splitsByShare()) {
+                return new RemainingInsuranceProjection(
+                        taxShareSplit.netAmount(),
+                        taxShareSplit.patientShare(),
+                        taxShareSplit.insuranceShare(),
+                        invoice.getDocumentSubtype() == FinancialDocumentSubtype.INSURANCE_CLAIM
+                                ? taxShareSplit.insuranceShare()
+                                : taxShareSplit.patientShare(),
+                        taxShareSplit.patientTaxAmount(),
+                        taxShareSplit.insuranceTaxAmount()
+                );
+            }
+        }
+
         InsuranceSplit split =
                 insurancePatientShareCalculator.calculateSplit(
                         insurance,
@@ -2358,7 +2510,9 @@ public class FinancialDocumentAdjustmentService {
                 remainingChargeNet,
                 split.patientShare(),
                 split.insuranceShare(),
-                invoiceShare
+                invoiceShare,
+                null,
+                null
         );
     }
 
@@ -3050,10 +3204,20 @@ public class FinancialDocumentAdjustmentService {
         }
     }
 
+    /**
+     * patientTax / insuranceTax are set only when the tax setup flags
+     * split the tax by share (null = original calculation).
+     */
     private record RemainingInsuranceProjection(
             BigDecimal chargeNet,
             BigDecimal patientShare,
             BigDecimal insuranceShare,
-            BigDecimal invoiceShare
-    ) {}
+            BigDecimal invoiceShare,
+            BigDecimal patientTax,
+            BigDecimal insuranceTax
+    ) {
+        private boolean splitsByShare() {
+            return patientTax != null && insuranceTax != null;
+        }
+    }
 }

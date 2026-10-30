@@ -10,6 +10,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.DiscountApplicableOn;
 import com.dazzle.asklepios.domain.enumeration.billing.DiscountType;
 import com.dazzle.asklepios.domain.enumeration.billing.TaxApplicableOn;
 import com.dazzle.asklepios.domain.enumeration.billing.TaxType;
+import com.dazzle.asklepios.service.dto.billing.TaxShareScope;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -45,6 +46,29 @@ public class InvoiceApplicableOnAdjustmentService {
             LocalDate pricingDate,
             Boolean patientCitizen
     ) {
+        return applyApplicableOnAdjustments(
+                items,
+                facilityId,
+                currency,
+                pricingDate,
+                patientCitizen,
+                TaxShareScope.CASH
+        );
+    }
+
+    /**
+     * @param taxShareScope which share the document carries; the invoice
+     *                      tax applies only when that share's tax setup
+     *                      flag is on (CASH always applies)
+     */
+    public List<FinancialDocumentItem> applyApplicableOnAdjustments(
+            List<FinancialDocumentItem> items,
+            Long facilityId,
+            Currency currency,
+            LocalDate pricingDate,
+            Boolean patientCitizen,
+            TaxShareScope taxShareScope
+    ) {
         if (items == null || items.isEmpty()) {
             return items;
         }
@@ -56,7 +80,8 @@ public class InvoiceApplicableOnAdjustmentService {
                 pricingDate,
                 null,
                 DiscountApplicableOn.INVOICE_LINE,
-                patientCitizen
+                patientCitizen,
+                taxShareScope
         );
 
         applyInvoiceScopeAdjustmentsOnly(
@@ -64,7 +89,8 @@ public class InvoiceApplicableOnAdjustmentService {
                 facilityId,
                 currency,
                 pricingDate,
-                patientCitizen
+                patientCitizen,
+                taxShareScope
         );
 
         return items;
@@ -81,6 +107,24 @@ public class InvoiceApplicableOnAdjustmentService {
             LocalDate pricingDate,
             Boolean patientCitizen
     ) {
+        return applyInvoiceScopeAdjustmentsOnly(
+                items,
+                facilityId,
+                currency,
+                pricingDate,
+                patientCitizen,
+                TaxShareScope.CASH
+        );
+    }
+
+    public List<FinancialDocumentItem> applyInvoiceScopeAdjustmentsOnly(
+            List<FinancialDocumentItem> items,
+            Long facilityId,
+            Currency currency,
+            LocalDate pricingDate,
+            Boolean patientCitizen,
+            TaxShareScope taxShareScope
+    ) {
         if (items == null || items.isEmpty()) {
             return items;
         }
@@ -92,10 +136,60 @@ public class InvoiceApplicableOnAdjustmentService {
                 pricingDate,
                 TaxApplicableOn.INVOICE,
                 DiscountApplicableOn.INVOICE,
-                patientCitizen
+                patientCitizen,
+                taxShareScope
         );
 
         return items;
+    }
+
+    /**
+     * True when the invoice-level tax applies on the given share
+     * (no invoice tax, or its flag for that share is on).
+     */
+    public boolean invoiceTaxAppliesTo(
+            Long facilityId,
+            Currency currency,
+            LocalDate pricingDate,
+            Boolean patientCitizen,
+            TaxShareScope taxShareScope
+    ) {
+        BillingAdjustmentResolveResponse rules =
+                resolveRules(
+                        facilityId,
+                        currency,
+                        pricingDate,
+                        TaxApplicableOn.INVOICE,
+                        DiscountApplicableOn.INVOICE,
+                        patientCitizen
+                );
+
+        return applyTaxShareScope(rules, taxShareScope) == rules;
+    }
+
+    /**
+     * True when an invoice-level tax exists and its two share flags
+     * differ from the original calculation (not both on).
+     */
+    public boolean invoiceTaxSplitsByShare(
+            Long facilityId,
+            Currency currency,
+            LocalDate pricingDate,
+            Boolean patientCitizen
+    ) {
+        BillingAdjustmentResolveResponse rules =
+                resolveRules(
+                        facilityId,
+                        currency,
+                        pricingDate,
+                        TaxApplicableOn.INVOICE,
+                        DiscountApplicableOn.INVOICE,
+                        patientCitizen
+                );
+
+        return hasTaxRule(rules)
+                && (Boolean.FALSE.equals(rules.taxOnPatientCopayment())
+                || Boolean.FALSE.equals(rules.taxOnClaimShare()));
     }
 
     private void applyScopeAdjustments(
@@ -105,16 +199,20 @@ public class InvoiceApplicableOnAdjustmentService {
             LocalDate pricingDate,
             TaxApplicableOn taxApplicableOn,
             DiscountApplicableOn discountApplicableOn,
-            Boolean patientCitizen
+            Boolean patientCitizen,
+            TaxShareScope taxShareScope
     ) {
         BillingAdjustmentResolveResponse rules =
-                resolveRules(
-                        facilityId,
-                        currency,
-                        pricingDate,
-                        taxApplicableOn,
-                        discountApplicableOn,
-                        patientCitizen
+                applyTaxShareScope(
+                        resolveRules(
+                                facilityId,
+                                currency,
+                                pricingDate,
+                                taxApplicableOn,
+                                discountApplicableOn,
+                                patientCitizen
+                        ),
+                        taxShareScope
                 );
 
         if (!hasDiscountRule(rules) && !hasTaxRule(rules)) {
@@ -485,6 +583,56 @@ public class InvoiceApplicableOnAdjustmentService {
                 && rules.taxType() != TaxType.EXEMPT;
     }
 
+    /**
+     * Drops the tax rule when the document share is not flagged in the
+     * tax setup (Patient Copayment / Claim Share). Discount is kept.
+     */
+    private BillingAdjustmentResolveResponse applyTaxShareScope(
+            BillingAdjustmentResolveResponse rules,
+            TaxShareScope taxShareScope
+    ) {
+        if (!hasTaxRule(rules)
+                || taxShareScope == null
+                || taxShareScope == TaxShareScope.CASH) {
+            return rules;
+        }
+
+        boolean taxApplies =
+                taxShareScope == TaxShareScope.PATIENT_COPAYMENT
+                        ? !Boolean.FALSE.equals(rules.taxOnPatientCopayment())
+                        : !Boolean.FALSE.equals(rules.taxOnClaimShare());
+
+        if (taxApplies) {
+            return rules;
+        }
+
+        LOG.info(
+                "[INVOICE_ADJUSTMENTS] Tax {} not applied on {} (tax setup share flag off)",
+                rules.taxCode(),
+                taxShareScope
+        );
+
+        return new BillingAdjustmentResolveResponse(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                null,
+                null,
+                rules.discountId(),
+                rules.discountCode(),
+                rules.discountName(),
+                rules.discountApplicableOn(),
+                rules.discountType(),
+                rules.discountRate(),
+                rules.discountFixedAmount()
+        );
+    }
+
     private BillingAdjustmentResolveResponse emptyRules() {
         return new BillingAdjustmentResolveResponse(
                 null,
@@ -495,6 +643,8 @@ public class InvoiceApplicableOnAdjustmentService {
                 null,
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
+                null,
+                null,
                 null,
                 null,
                 null,

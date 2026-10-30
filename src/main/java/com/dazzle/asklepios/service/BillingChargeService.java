@@ -1122,6 +1122,8 @@ public class BillingChargeService {
                 debitNoteItem.getAdjustmentAction()
                         == FinancialDocumentItemAdjustmentAction.INCREASE;
 
+        BigDecimal debitNoteTax = documentTax;
+
         if (mergeWithExistingLine) {
             documentNet = money(chargeLine.getNetAmount()).add(documentNet);
             documentGross = money(chargeLine.getGrossAmount()).add(documentGross);
@@ -1155,6 +1157,29 @@ public class BillingChargeService {
         chargeLine.setDiscountAmount(documentDiscount);
         chargeLine.setTaxAmount(documentTax);
         chargeLine.setNetAmount(documentNet);
+
+        /*
+         * Tax setup share flags: an increase adds the note tax to the share
+         * the note belongs to; a replaced line falls back to the original
+         * proportional calculation.
+         */
+        if (mergeWithExistingLine
+                && chargeLine.getPatientTaxAmount() != null
+                && chargeLine.getInsuranceTaxAmount() != null) {
+            if (money(debitNoteItem.getInsuranceShareAmount()).signum() > 0) {
+                chargeLine.setInsuranceTaxAmount(
+                        money(chargeLine.getInsuranceTaxAmount()).add(debitNoteTax)
+                );
+            } else {
+                chargeLine.setPatientTaxAmount(
+                        money(chargeLine.getPatientTaxAmount()).add(debitNoteTax)
+                );
+            }
+        } else {
+            chargeLine.setPatientTaxAmount(null);
+            chargeLine.setInsuranceTaxAmount(null);
+        }
+
         chargeLine.setPatientResponsibilityAmount(patientShare);
         chargeLine.setInsuranceResponsibilityAmount(
                 money(debitNoteItem.getInsuranceShareAmount())
@@ -1280,6 +1305,35 @@ public class BillingChargeService {
             BigDecimal remainingPatientShare,
             BigDecimal remainingInsuranceShare
     ) {
+        applyQuantityReduceToChargeLine(
+                chargeLineId,
+                newQuantity,
+                remainingChargeNet,
+                remainingPatientShare,
+                remainingInsuranceShare,
+                null,
+                null
+        );
+    }
+
+    /**
+     * @param remainingPatientTax   tax of the patient share when the tax setup
+     *                              flags split the tax by share (else null)
+     * @param remainingInsuranceTax tax of the insurance share (else null)
+     */
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class
+    )
+    public void applyQuantityReduceToChargeLine(
+            Long chargeLineId,
+            BigDecimal newQuantity,
+            BigDecimal remainingChargeNet,
+            BigDecimal remainingPatientShare,
+            BigDecimal remainingInsuranceShare,
+            BigDecimal remainingPatientTax,
+            BigDecimal remainingInsuranceTax
+    ) {
         if (chargeLineId == null
                 || newQuantity == null
                 || newQuantity.signum() <= 0
@@ -1298,6 +1352,7 @@ public class BillingChargeService {
         }
 
         BigDecimal oldQuantity = defaultZero(chargeLine.getQuantity());
+        BigDecimal oldLineTax = defaultZero(chargeLine.getTaxAmount());
         BigDecimal normalizedQuantity =
                 newQuantity.setScale(0, RoundingMode.HALF_UP);
 
@@ -1330,6 +1385,13 @@ public class BillingChargeService {
                             .setScale(MONEY_SCALE, RoundingMode.HALF_UP)
             );
         }
+
+        applyShareTaxAfterReduce(
+                chargeLine,
+                oldLineTax,
+                remainingPatientTax,
+                remainingInsuranceTax
+        );
 
         BigDecimal newNet =
                 remainingChargeNet
@@ -1702,6 +1764,58 @@ public class BillingChargeService {
                         .add(tax)
                         .max(BigDecimal.ZERO)
         );
+    }
+
+    /**
+     * Tax setup share flags: a reduced line takes the re-split share taxes;
+     * otherwise stored share taxes are scaled with the line tax.
+     */
+    private void applyShareTaxAfterReduce(
+            BillingChargeLine chargeLine,
+            BigDecimal oldLineTax,
+            BigDecimal remainingPatientTax,
+            BigDecimal remainingInsuranceTax
+    ) {
+        if (remainingPatientTax != null && remainingInsuranceTax != null) {
+            BigDecimal patientTax =
+                    remainingPatientTax.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+            BigDecimal insuranceTax =
+                    remainingInsuranceTax.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+
+            chargeLine.setTaxAmount(patientTax.add(insuranceTax));
+            chargeLine.setPatientTaxAmount(patientTax);
+            chargeLine.setInsuranceTaxAmount(insuranceTax);
+            return;
+        }
+
+        scaleShareTax(chargeLine, oldLineTax);
+    }
+
+    /**
+     * Keeps stored share taxes summing to the line tax after it changed.
+     */
+    private void scaleShareTax(
+            BillingChargeLine chargeLine,
+            BigDecimal oldLineTax
+    ) {
+        if (chargeLine.getPatientTaxAmount() == null
+                || chargeLine.getInsuranceTaxAmount() == null) {
+            return;
+        }
+
+        BigDecimal newLineTax = money(chargeLine.getTaxAmount());
+        BigDecimal oldTax = money(oldLineTax);
+        BigDecimal patientTax =
+                oldTax.signum() == 0
+                        ? BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP)
+                        : money(
+                                chargeLine.getPatientTaxAmount()
+                                        .multiply(newLineTax)
+                                        .divide(oldTax, MONEY_SCALE, RoundingMode.HALF_UP)
+                        ).min(newLineTax);
+
+        chargeLine.setPatientTaxAmount(patientTax);
+        chargeLine.setInsuranceTaxAmount(newLineTax.subtract(patientTax));
     }
 
     /**

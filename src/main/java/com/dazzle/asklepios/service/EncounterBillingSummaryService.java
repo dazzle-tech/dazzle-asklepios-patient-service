@@ -122,6 +122,9 @@ public class EncounterBillingSummaryService {
     private final BillingEngineService
             billingEngineService;
 
+    private final TaxShareCalculator
+            taxShareCalculator;
+
     private final DiagnosticChargeTimingService
             diagnosticChargeTimingService;
 
@@ -419,7 +422,9 @@ public class EncounterBillingSummaryService {
                 responsibilities.stream()
                         .map(this::buildResponsibilitySummary)
                         .toList(),
-                pricingDisplay.taxRate()
+                pricingDisplay.taxRate(),
+                taxShareCalculator.shareTaxOf(line, false),
+                taxShareCalculator.shareTaxOf(line, true)
         );
     }
 

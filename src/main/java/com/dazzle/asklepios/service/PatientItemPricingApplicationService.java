@@ -39,9 +39,13 @@ public class PatientItemPricingApplicationService {
         this.billingPricingService = billingPricingService;
     }
 
-    public void applyToItem(PatientServiceAndProduct item, Long facilityId) {
+    /**
+     * @return the pricing input used (null when no item), so callers can
+     *         apply the tax setup share flags to the same tax
+     */
+    public BillingPricingInput applyToItem(PatientServiceAndProduct item, Long facilityId) {
         if (item == null) {
-            return;
+            return null;
         }
 
         if (facilityId == null) {
@@ -99,6 +103,8 @@ public class PatientItemPricingApplicationService {
                 discountAmount,
                 netAmount
         );
+
+        return pricingInput;
     }
 
     private PriceSource mapPriceSource(BillingPriceSource source) {
