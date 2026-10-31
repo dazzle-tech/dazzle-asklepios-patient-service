@@ -10,6 +10,7 @@ import com.dazzle.asklepios.service.dto.vitalSigns.VitalSignsCreateDTO;
 import com.dazzle.asklepios.service.dto.vitalSigns.VitalSignsUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import com.dazzle.asklepios.web.rest.vm.observations.VitalSignsFieldHistoryVM;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,7 +22,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -72,7 +77,6 @@ public class VitalSignsService {
                     .heartRate(dto.heartRate())
                     .oxygenSaturation(dto.oxygenSaturation())
                     .respiratoryRate(dto.respiratoryRate())
-                    .fastingBloodGlucose(dto.fastingBloodGlucose())
                     .fluidStatus(dto.fluidStatus())
                     .edema(dto.edema())
                     .urineOutput(dto.urineOutput())
@@ -116,7 +120,6 @@ public class VitalSignsService {
             entity.setPatient(patient);
             entity.setEncounterId(encounter.getId());
             entity.setBloodPressureSystolic(dto.bloodPressureSystolic());
-            entity.setFastingBloodGlucose(dto.fastingBloodGlucose());
 
             entity.setFluidStatus(dto.fluidStatus());
             entity.setEdema(dto.edema());
@@ -155,6 +158,81 @@ public class VitalSignsService {
 
         return vitalSignsRepository
                 .findFirstByEncounterIdAndIsTriageTrueAndIsActiveTrueOrderByCreatedDateDesc(encounterId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<VitalSignsFieldHistoryVM> findFieldHistoryByEncounterId(Long encounterId) {
+        LOG.debug("[FIND_FIELD_HISTORY_BY_ENCOUNTER] encounterId={}", encounterId);
+
+        List<VitalSigns> versions =
+                vitalSignsRepository.findByEncounterIdOrderByCreatedDateAscIdAsc(encounterId);
+
+        if (versions == null || versions.size() < 2) {
+            return List.of();
+        }
+
+        List<VitalSignsFieldHistoryVM> history = new ArrayList<>();
+        for (int i = 1; i < versions.size(); i++) {
+            VitalSigns previous = versions.get(i - 1);
+            VitalSigns current = versions.get(i);
+            Map<String, String[]> fieldValues = readingFieldValues(previous, current);
+
+            for (Map.Entry<String, String[]> entry : fieldValues.entrySet()) {
+                String oldValue = entry.getValue()[0];
+                String newValue = entry.getValue()[1];
+                if (Objects.equals(oldValue, newValue)) {
+                    continue;
+                }
+                history.add(
+                        new VitalSignsFieldHistoryVM(
+                                entry.getKey(),
+                                oldValue,
+                                newValue,
+                                current.getLastModifiedBy() != null
+                                        ? current.getLastModifiedBy()
+                                        : current.getCreatedBy(),
+                                current.getCreatedDate()
+                        )
+                );
+            }
+        }
+
+        return history;
+    }
+
+    private static Map<String, String[]> readingFieldValues(VitalSigns previous, VitalSigns current) {
+        Map<String, String[]> fields = new LinkedHashMap<>();
+        fields.put(
+                "Blood Pressure Systolic",
+                new String[] {asText(previous.getBloodPressureSystolic()), asText(current.getBloodPressureSystolic())}
+        );
+        fields.put(
+                "Blood Pressure Diastolic",
+                new String[] {asText(previous.getBloodPressureDiastolic()), asText(current.getBloodPressureDiastolic())}
+        );
+        fields.put(
+                "Measurement Site",
+                new String[] {asText(previous.getMeasurementSite()), asText(current.getMeasurementSite())}
+        );
+        fields.put("Heart Rate", new String[] {asText(previous.getHeartRate()), asText(current.getHeartRate())});
+        fields.put("Temperature", new String[] {asText(previous.getTemperature()), asText(current.getTemperature())});
+        fields.put(
+                "Oxygen Saturation",
+                new String[] {asText(previous.getOxygenSaturation()), asText(current.getOxygenSaturation())}
+        );
+        fields.put(
+                "Respiratory Rate",
+                new String[] {asText(previous.getRespiratoryRate()), asText(current.getRespiratoryRate())}
+        );
+        fields.put("Fluid Status", new String[] {asText(previous.getFluidStatus()), asText(current.getFluidStatus())});
+        fields.put("Edema", new String[] {asText(previous.getEdema()), asText(current.getEdema())});
+        fields.put("Urine Output", new String[] {asText(previous.getUrineOutput()), asText(current.getUrineOutput())});
+        fields.put("Notes", new String[] {asText(previous.getNotes()), asText(current.getNotes())});
+        return fields;
+    }
+
+    private static String asText(Object value) {
+        return value == null ? "" : String.valueOf(value);
     }
 
     private RuntimeException handleConstraintViolation(Exception exception) {

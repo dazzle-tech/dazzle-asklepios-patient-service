@@ -18,8 +18,6 @@ public class VitalSignsResponseVM {
 
     private Integer respiratoryRate;
 
-    private String fastingBloodGlucose;
-
     private String fluidStatus;
 
     private String edema;

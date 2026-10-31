@@ -103,7 +103,6 @@ public class AmendmentHistoryNormalizer {
             Map.entry("temperature", "Temperature"),
             Map.entry("oxygen_saturation", "Oxygen Saturation"),
             Map.entry("respiratory_rate", "Respiratory Rate"),
-            Map.entry("fasting_blood_glucose", "Fasting Blood Glucose"),
             Map.entry("measurement_site", "Measurement Site"),
             Map.entry("notes", "Notes"),
             Map.entry("noteText", "Progress Note"),

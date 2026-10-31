@@ -3,6 +3,7 @@ package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientEncounterFieldAudit;
 import com.dazzle.asklepios.domain.User;
+import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
 import com.dazzle.asklepios.domain.EncounterReopenSession;
@@ -242,7 +243,9 @@ public class PatientEncounterController {
         List<Long> encounterIds = page.getContent().stream()
                 .map(PatientEncounter::getId)
                 .toList();
-        Set<Long> orderEncounterIds = diagnosticOrderService.findEncounterIdsWithOrders(encounterIds);
+        Map<Long, DiagnosticStatus> latestDiagnosticOrderStatuses =
+                diagnosticOrderService.findLatestOrderStatusByEncounterIds(encounterIds);
+        Set<Long> orderEncounterIds = latestDiagnosticOrderStatuses.keySet();
         Set<Long> prescriptionEncounterIds = patientPrescriptionService.findEncounterIdsWithOrders(encounterIds);
         Set<Long> observasionEncounterIds = patientEncounterService.findEncounterIdsWithObservation(encounterIds);
         List<Long> nurseIds = page.getContent().stream()
@@ -263,7 +266,8 @@ public class PatientEncounterController {
                         prescriptionEncounterIds.contains(encounter.getId()),
                         observasionEncounterIds.contains(encounter.getId()),
                         null,
-                        nurseNames.get(encounter.getAssignedNurseId())
+                        nurseNames.get(encounter.getAssignedNurseId()),
+                        latestDiagnosticOrderStatuses.get(encounter.getId())
                 ))
                 .toList();
 
@@ -303,10 +307,9 @@ public class PatientEncounterController {
                         .map(PatientEncounter::getId)
                         .toList();
 
-        Set<Long> orderEncounterIds =
-                diagnosticOrderService.findEncounterIdsWithOrders(
-                        encounterIds
-                );
+        Map<Long, DiagnosticStatus> latestDiagnosticOrderStatuses =
+                diagnosticOrderService.findLatestOrderStatusByEncounterIds(encounterIds);
+        Set<Long> orderEncounterIds = latestDiagnosticOrderStatuses.keySet();
 
         Set<Long> prescriptionEncounterIds =
                 patientPrescriptionService.findEncounterIdsWithOrders(
@@ -344,7 +347,8 @@ public class PatientEncounterController {
                                                 encounter.getId()
                                         ),
                                         null,
-                                        nurseNames.get(encounter.getAssignedNurseId())
+                                        nurseNames.get(encounter.getAssignedNurseId()),
+                                        latestDiagnosticOrderStatuses.get(encounter.getId())
                                 )
                         )
                         .toList();
@@ -398,8 +402,9 @@ public class PatientEncounterController {
                 .map(PatientEncounter::getId)
                 .toList();
 
-        Set<Long> orderEncounterIds =
-                diagnosticOrderService.findEncounterIdsWithOrders(encounterIds);
+        Map<Long, DiagnosticStatus> latestDiagnosticOrderStatuses =
+                diagnosticOrderService.findLatestOrderStatusByEncounterIds(encounterIds);
+        Set<Long> orderEncounterIds = latestDiagnosticOrderStatuses.keySet();
 
         Set<Long> prescriptionEncounterIds =
                 patientPrescriptionService.findEncounterIdsWithOrders(encounterIds);
@@ -435,7 +440,8 @@ public class PatientEncounterController {
                                     prescriptionEncounterIds.contains(encounter.getId()),
                                     observationEncounterIds.contains(encounter.getId()),
                                     documentType,
-                                    nurseNames.get(encounter.getAssignedNurseId())
+                                    nurseNames.get(encounter.getAssignedNurseId()),
+                                    latestDiagnosticOrderStatuses.get(encounter.getId())
                             );
                         })
                         .toList();
@@ -518,8 +524,9 @@ public class PatientEncounterController {
                 .map(PatientEncounter::getId)
                 .toList();
 
-        Set<Long> orderEncounterIds =
-                diagnosticOrderService.findEncounterIdsWithOrders(encounterIds);
+        Map<Long, DiagnosticStatus> latestDiagnosticOrderStatuses =
+                diagnosticOrderService.findLatestOrderStatusByEncounterIds(encounterIds);
+        Set<Long> orderEncounterIds = latestDiagnosticOrderStatuses.keySet();
 
         Set<Long> prescriptionEncounterIds =
                 patientPrescriptionService.findEncounterIdsWithOrders(encounterIds);
@@ -546,7 +553,8 @@ public class PatientEncounterController {
                                         prescriptionEncounterIds.contains(encounter.getId()),
                                         observationEncounterIds.contains(encounter.getId()),
                                         null,
-                                        nurseNames.get(encounter.getAssignedNurseId())
+                                        nurseNames.get(encounter.getAssignedNurseId()),
+                                        latestDiagnosticOrderStatuses.get(encounter.getId())
                                 )
                         )
                         .toList();
