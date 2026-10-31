@@ -70,6 +70,7 @@ public class CatalogItemPricingPreviewService {
     private final FinancialDocumentRepository financialDocumentRepository;
     private final FinancialDocumentItemRepository financialDocumentItemRepository;
     private final InvoiceItemPricingSnapshotService invoiceItemPricingSnapshotService;
+    private final CoverageContractShareService coverageContractShareService;
 
     private static final int MONEY_SCALE = 4;
 
@@ -116,17 +117,26 @@ public class CatalogItemPricingPreviewService {
                 insuranceVisit
                         && eligibilityInForce
                         && insurancePatientShareCalculator.usesNphiesContractRules(insurance);
+        boolean excludedByContract =
+                insuranceVisit
+                        && eligibilityInForce
+                        && coverageContractShareService.isExcludedByContract(insurance, previewItem);
         boolean coveredByInsurance =
                 insuranceVisit
                         && eligibilityInForce
+                        && !excludedByContract
                         && (contractRulesCoverVisit || resolvedPrice.resolvedFromPriceList());
         boolean requiresCashConfirmation = insuranceVisit && !coveredByInsurance;
         String notCoveredReason = null;
 
         if (requiresCashConfirmation) {
-            notCoveredReason = eligibilityInForce
-                    ? InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST
-                    : InsurancePriceListCoverageService.ELIGIBILITY_NOT_IN_FORCE;
+            if (!eligibilityInForce) {
+                notCoveredReason = InsurancePriceListCoverageService.ELIGIBILITY_NOT_IN_FORCE;
+            } else if (excludedByContract) {
+                notCoveredReason = InsurancePriceListCoverageService.CONTRACT_EXCLUSION;
+            } else {
+                notCoveredReason = InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST;
+            }
 
             if (coverageType != BillingCoverageType.SELF_PAY) {
                 resolvedPrice = billingEngineService.resolvePricing(
