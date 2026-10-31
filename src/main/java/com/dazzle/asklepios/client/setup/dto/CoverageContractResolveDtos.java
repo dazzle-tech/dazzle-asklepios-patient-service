@@ -263,8 +263,27 @@ public final class CoverageContractResolveDtos {
             String valueType,
             BigDecimal limitValue,
             String periodBasis,
-            String coverageBasis
+            String coverageBasis,
+            List<ExcludedItemSnapshot> excludedItems
     ) {
+        public CoverageReadingSnapshot {
+            excludedItems = excludedItems == null ? List.of() : List.copyOf(excludedItems);
+        }
+
+        public CoverageReadingSnapshot(
+                Long termId,
+                Long itemId,
+                String categoryScope,
+                String billingItemType,
+                Long serviceId,
+                String valueType,
+                BigDecimal limitValue,
+                String periodBasis,
+                String coverageBasis
+        ) {
+            this(termId, itemId, categoryScope, billingItemType, serviceId, valueType, limitValue, periodBasis, coverageBasis, List.of());
+        }
+
         public CoverageReadingSnapshot(
                 Long termId,
                 Long itemId,
@@ -274,9 +293,19 @@ public final class CoverageContractResolveDtos {
                 String valueType,
                 BigDecimal limitValue
         ) {
-            this(termId, itemId, categoryScope, billingItemType, serviceId, valueType, limitValue, null, null);
+            this(termId, itemId, categoryScope, billingItemType, serviceId, valueType, limitValue, null, null, List.of());
         }
     }
+
+    /**
+     * Item a Coverage Limit rule does not apply to. A null catalog item id
+     * means the whole category is excluded.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record ExcludedItemSnapshot(
+            String billingItemType,
+            Long catalogItemId
+    ) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record DiscountSnapshot(

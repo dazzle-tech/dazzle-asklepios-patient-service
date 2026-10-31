@@ -293,6 +293,20 @@ public class CoverageContractShareService {
         return resolve(insurance, item);
     }
 
+    /**
+     * True when an active contract exclusion (Excluded Result = YES) matches the item.
+     * Excluded items are billed as self-pay: no coverage, limits or pre-approval.
+     */
+    public boolean isExcludedByContract(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item
+    ) {
+        if (insurance == null || insurance.getId() == null || item == null) {
+            return false;
+        }
+        return isExcluded(resolve(insurance, item));
+    }
+
     private InsuranceSplit applyPeriodLimits(
             InsuranceSplit split,
             CoverageContractResolveDtos.Response resolved,
@@ -707,7 +721,34 @@ public class CoverageContractShareService {
         if (insurance.getId() != null && !insurance.getId().equals(previous.getPatientInsuranceId())) {
             return false;
         }
+        if (isExcludedFromLimit(previous, limit)) {
+            return false;
+        }
         return matchesReading(previous, limit);
+    }
+
+    /**
+     * Items excluded on the Coverage Limit rule (category, subcategory or item)
+     * do not consume that limit.
+     */
+    private boolean isExcludedFromLimit(
+            PatientServiceAndProduct item,
+            CoverageContractResolveDtos.CoverageReadingSnapshot limit
+    ) {
+        if (limit.excludedItems().isEmpty() || item.getBillingItemType() == null) {
+            return false;
+        }
+        String billingItemType = item.getBillingItemType().name();
+        Long catalogItemId = catalogItemId(item);
+        for (CoverageContractResolveDtos.ExcludedItemSnapshot excluded : limit.excludedItems()) {
+            if (excluded == null || !billingItemType.equalsIgnoreCase(excluded.billingItemType())) {
+                continue;
+            }
+            if (excluded.catalogItemId() == null || excluded.catalogItemId().equals(catalogItemId)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean countsTowardCashLimit(

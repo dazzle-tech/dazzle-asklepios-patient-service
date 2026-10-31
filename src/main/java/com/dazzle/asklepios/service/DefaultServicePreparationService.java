@@ -503,7 +503,8 @@ public class DefaultServicePreparationService {
             } else if (insurance != null) {
                 if (existing.getCoverageStatus() == CoverageStatus.NOT_COVERED
                         && (InsurancePriceListCoverageService.ELIGIBILITY_NOT_IN_FORCE.equals(existing.getNotCoveredReason())
-                        || InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST.equals(existing.getNotCoveredReason()))) {
+                        || InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST.equals(existing.getNotCoveredReason())
+                        || InsurancePriceListCoverageService.CONTRACT_EXCLUSION.equals(existing.getNotCoveredReason()))) {
                     existing.setCoverageStatus(CoverageStatus.COVERED);
                     existing.setNotCoveredReason(null);
                 }
