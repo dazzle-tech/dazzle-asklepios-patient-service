@@ -1200,7 +1200,7 @@ public class BillingResponsibilityService {
      * (e.g. eligibility re-check). Skips lines that already have allocations.
      */
     @Transactional(
-            propagation = Propagation.REQUIRES_NEW,
+            propagation = Propagation.REQUIRED,
             rollbackFor = Exception.class
     )
     public int refreshInsuranceResponsibilitiesForEncounter(
