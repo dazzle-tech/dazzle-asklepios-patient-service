@@ -233,7 +233,8 @@ public class PatientEncounterController {
     ) {
         LOG.debug("REST filter PatientEncounters filter={} pageable={}", filter, pageable);
 
-        if (filter == null || filter.departmentId() == null) {
+        boolean hasDepartmentIds = filter != null && filter.departmentIds() != null && !filter.departmentIds().isEmpty();
+        if (filter == null || (filter.departmentId() == null && !hasDepartmentIds)) {
             LOG.warn("[FILTER] PatientEncounter rejected: departmentId is required filter={} pageable={}", filter, pageable);
             throw new BadRequestAlertException("Department id is required", "patientEncounter", "department.required");
         }
