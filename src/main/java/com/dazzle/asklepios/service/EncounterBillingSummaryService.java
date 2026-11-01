@@ -431,8 +431,24 @@ public class EncounterBillingSummaryService {
                 pricingDisplay.discountType(),
                 pricingDisplay.discountRate(),
                 pricingDisplay.discountSource(),
-                pricingDisplay.discountReason()
+                pricingDisplay.discountReason(),
+                resolvePartyTax(line, line.getPatientTaxAmount()),
+                resolvePartyTax(line, line.getInsuranceTaxAmount())
         );
+    }
+
+    /**
+     * Party tax is reported only when it was distributed on the line;
+     * lines billed before the Patient Copayment / Claim Share toggles
+     * existed return null.
+     */
+    private BigDecimal resolvePartyTax(
+            BillingChargeLine line,
+            BigDecimal partyTax
+    ) {
+        return line.getCalculatedTaxAmount() == null
+                ? null
+                : money(partyTax);
     }
 
     private BillingResponsibilitySummary buildResponsibilitySummary(
