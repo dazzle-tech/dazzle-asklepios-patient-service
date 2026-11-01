@@ -30,6 +30,8 @@ public record BillingPricingResolveResponse(
         TaxCalculationType taxCalculationType,
         BigDecimal taxRate,
         BigDecimal taxFixedAmount,
+        Boolean taxApplyOnPatientCopayment,
+        Boolean taxApplyOnClaimShare,
 
         Long discountId,
         DiscountType discountType,

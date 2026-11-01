@@ -38,6 +38,8 @@ public record BillingPricingInput(
         TaxCalculationType taxCalculationType,
         BigDecimal taxRate,
         BigDecimal taxFixedAmount,
+        Boolean taxApplyOnPatientCopayment,
+        Boolean taxApplyOnClaimShare,
 
         Currency currency,
         PricingSource pricingSource,

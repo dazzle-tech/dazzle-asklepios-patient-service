@@ -137,6 +137,37 @@ public class BillingChargeLine extends AbstractAuditingEntity<Long>
     @Column(name = "tax_amount", nullable = false, precision = 19, scale = 4)
     private BigDecimal taxAmount = BigDecimal.ZERO;
 
+    /**
+     * Tax calculated on the whole item before the Patient Copayment /
+     * Claim Share toggles were applied. Null on lines created before the
+     * toggles existed.
+     */
+    @DecimalMin(value = "0.0000")
+    @Column(name = "calculated_tax_amount", precision = 19, scale = 4)
+    private BigDecimal calculatedTaxAmount;
+
+    @NotNull
+    @DecimalMin(value = "0.0000")
+    @Builder.Default
+    @Column(name = "patient_tax_amount", nullable = false, precision = 19, scale = 4)
+    private BigDecimal patientTaxAmount = BigDecimal.ZERO;
+
+    @NotNull
+    @DecimalMin(value = "0.0000")
+    @Builder.Default
+    @Column(name = "insurance_tax_amount", nullable = false, precision = 19, scale = 4)
+    private BigDecimal insuranceTaxAmount = BigDecimal.ZERO;
+
+    @NotNull
+    @Builder.Default
+    @Column(name = "tax_on_patient_copayment", nullable = false)
+    private Boolean taxOnPatientCopayment = true;
+
+    @NotNull
+    @Builder.Default
+    @Column(name = "tax_on_claim_share", nullable = false)
+    private Boolean taxOnClaimShare = true;
+
     @NotNull
     @DecimalMin(value = "0.0000")
     @Column(name = "net_amount", nullable = false, precision = 19, scale = 4)
