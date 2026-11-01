@@ -702,10 +702,13 @@ public class InvoiceGenerationService {
                             ? money(line.getInsuranceResponsibilityAmount())
                             : money(line.getPatientResponsibilityAmount());
 
+            boolean wholeLineToPatient = false;
+
             if (subtype == FinancialDocumentSubtype.PATIENT
                     && shareAmount.signum() == 0
                     && document.getEligibilityReference() == null) {
                 shareAmount = money(line.getNetAmount());
+                wholeLineToPatient = true;
             }
 
             if (shareAmount.signum() <= 0) {
@@ -713,12 +716,26 @@ public class InvoiceGenerationService {
             }
 
             BigDecimal lineNet = money(line.getNetAmount());
-            BigDecimal grossAmount =
-                    proportional(line.getGrossAmount(), shareAmount, lineNet);
-            BigDecimal discountAmount =
-                    proportional(line.getDiscountAmount(), shareAmount, lineNet);
             BigDecimal taxAmount =
-                    proportional(line.getTaxAmount(), shareAmount, lineNet);
+                    resolveShareTax(
+                            line,
+                            subtype,
+                            shareAmount,
+                            lineNet,
+                            wholeLineToPatient
+                    );
+
+            /*
+             * Gross and discount follow the share before tax, so a party whose
+             * tax was removed still shows its full pre-tax amounts.
+             */
+            BigDecimal shareBeforeTax = shareAmount.subtract(taxAmount);
+            BigDecimal lineBeforeTax =
+                    lineNet.subtract(money(line.getTaxAmount()));
+            BigDecimal grossAmount =
+                    proportional(line.getGrossAmount(), shareBeforeTax, lineBeforeTax);
+            BigDecimal discountAmount =
+                    proportional(line.getDiscountAmount(), shareBeforeTax, lineBeforeTax);
 
             BigDecimal patientShare =
                     subtype == FinancialDocumentSubtype.PATIENT
@@ -825,6 +842,42 @@ public class InvoiceGenerationService {
                         subtype,
                         FINAL_INVOICE_STATUSES
                 );
+    }
+
+    /**
+     * Uses the tax already distributed on the charge line for the invoiced
+     * party instead of recalculating it. Lines whose party tax does not add up
+     * to the line tax (billed before the Patient Copayment / Claim Share
+     * toggles, or reshaped by a later adjustment) keep the previous
+     * proportional split.
+     */
+    private BigDecimal resolveShareTax(
+            BillingChargeLine line,
+            FinancialDocumentSubtype subtype,
+            BigDecimal shareAmount,
+            BigDecimal lineNet,
+            boolean wholeLineToPatient
+    ) {
+        BigDecimal lineTax = money(line.getTaxAmount());
+
+        if (wholeLineToPatient) {
+            return lineTax;
+        }
+
+        BigDecimal patientTax = money(line.getPatientTaxAmount());
+        BigDecimal insuranceTax = money(line.getInsuranceTaxAmount());
+
+        boolean distributed =
+                line.getCalculatedTaxAmount() != null
+                        && patientTax.add(insuranceTax).compareTo(lineTax) == 0;
+
+        if (!distributed) {
+            return proportional(line.getTaxAmount(), shareAmount, lineNet);
+        }
+
+        return subtype == FinancialDocumentSubtype.INSURANCE_CLAIM
+                ? insuranceTax
+                : patientTax;
     }
 
     private BigDecimal proportional(

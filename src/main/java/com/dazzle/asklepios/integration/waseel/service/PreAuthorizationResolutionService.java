@@ -785,6 +785,8 @@ public class PreAuthorizationResolutionService {
             case SERVICE -> serviceId;
             case LABORATORY, RADIOLOGY, PATHOLOGY -> diagnosticTestId;
             case MEDICATION -> brandMedicationId;
+            // Phase 1: vaccines have no payor plan items
+            case VACCINE -> null;
         };
     }
 
@@ -831,6 +833,8 @@ public class PreAuthorizationResolutionService {
                                 payorPlanItemClient.requiresPreAuthorizationForDiagnosticTest(itemId);
                         case MEDICATION ->
                                 payorPlanItemClient.requiresPreAuthorizationForMedication(itemId);
+                        // Phase 1: vaccines do not go through pre-authorization
+                        case VACCINE -> false;
                     };
 
             LOG.info(

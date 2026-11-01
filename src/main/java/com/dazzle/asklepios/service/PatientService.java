@@ -11,6 +11,7 @@ import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.integration.waseel.service.CchiPatientLookupService;
 import com.dazzle.asklepios.repository.DuplicationCandidateRepository;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
+import com.dazzle.asklepios.repository.PatientLoginOtpRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patient.ExternalPatientCreateDTO;
@@ -28,6 +29,7 @@ import com.dazzle.asklepios.web.rest.errors.InvalidPasswordException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.errors.PatientAlreadyActiveException;
 import com.dazzle.asklepios.web.rest.vm.patient.CreatePasswordKeyValidationVM;
+import com.dazzle.asklepios.web.rest.vm.patient.PortalAppUpdateNotificationVM;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -66,6 +68,7 @@ public class PatientService {
     private static final Logger LOG = LoggerFactory.getLogger(PatientService.class);
 
     private final PatientRepository patientRepository;
+    private final PatientLoginOtpRepository patientLoginOtpRepository;
     private final PatientDocumentRepository patientDocumentRepository;
     private final DuplicationCandidateRepository duplicationCandidateRepository;
     private static final long CREATE_PASSWORD_KEY_EXPIRATION_HOURS = 24;
@@ -80,6 +83,7 @@ public class PatientService {
 
     public PatientService(
             PatientRepository patientRepository,
+            PatientLoginOtpRepository patientLoginOtpRepository,
             PatientDocumentRepository patientDocumentRepository,
             DuplicationCandidateRepository duplicationCandidateRepository,
             PasswordEncoder passwordEncoder,
@@ -89,6 +93,7 @@ public class PatientService {
             PatientDocumentService patientDocumentService
     ) {
         this.patientRepository = patientRepository;
+        this.patientLoginOtpRepository = patientLoginOtpRepository;
         this.patientDocumentRepository = patientDocumentRepository;
         this.duplicationCandidateRepository = duplicationCandidateRepository;
         this.passwordEncoder = passwordEncoder;
@@ -1118,6 +1123,55 @@ public class PatientService {
         return patients.stream()
                 .filter(patient -> patient.getId().equals(patientId))
                 .findFirst();
+    }
+
+    public PortalAppUpdateNotificationVM notifyPortalPatientsToUpdateAppVersion() {
+        List<Patient> patients = patientLoginOtpRepository.findDistinctPatientByPatientIsNotNull();
+        int notified = 0;
+
+        for (Patient patient : patients) {
+            try {
+                Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
+                        notificationHelper.recipientsForPatient(patient);
+
+                if (recipientsByRule == null || recipientsByRule.isEmpty()) {
+                    LOG.debug(
+                            "[NOTIFICATION] Skip app version update because patient has no reachable channel. patientId={}",
+                            patient.getId()
+                    );
+                    continue;
+                }
+
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("patient_name", getPatientName(patient));
+                data.put("medical_record_number", patient.getMedicalRecordNumber());
+
+                notificationHelper.sendNotification(
+                        null,
+                        NotificationCode.PATIENT_APP_VERSION_UPDATE,
+                        recipientsByRule,
+                        data,
+                        "PATIENT",
+                        patient.getId()
+                );
+                notified++;
+            } catch (Exception e) {
+                LOG.warn(
+                        "[NOTIFICATION] Failed to send app version update notification. patientId={}, error={}",
+                        patient.getId(),
+                        e.getMessage(),
+                        e
+                );
+            }
+        }
+
+        LOG.info(
+                "[NOTIFICATION] App version update notification finished. portalPatients={}, notified={}",
+                patients.size(),
+                notified
+        );
+
+        return new PortalAppUpdateNotificationVM(patients.size(), notified);
     }
 
     private void sendPatientWelcomeNotification(Patient patient) {

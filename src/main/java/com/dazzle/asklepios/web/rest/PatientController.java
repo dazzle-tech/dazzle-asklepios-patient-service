@@ -23,6 +23,7 @@ import com.dazzle.asklepios.web.rest.errors.InvalidPasswordException;
 import com.dazzle.asklepios.web.rest.vm.patient.CreatePasswordKeyValidationVM;
 import com.dazzle.asklepios.web.rest.vm.patient.ManagedPatientVM;
 import com.dazzle.asklepios.web.rest.vm.patient.PatientBasicInformationResponseVM;
+import com.dazzle.asklepios.web.rest.vm.patient.PortalAppUpdateNotificationVM;
 import com.dazzle.asklepios.web.rest.vm.patientPortal.PatientPortalLoginVM;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
@@ -574,6 +575,12 @@ public class PatientController {
                 .findPatientByPinAndDocument(pin, documentNumber)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/patient-portal/notify-app-update")
+    public ResponseEntity<PortalAppUpdateNotificationVM> notifyPortalPatientsToUpdateApp() {
+        LOG.debug("REST notify portal patients to update app version");
+        return ResponseEntity.ok(patientService.notifyPortalPatientsToUpdateAppVersion());
     }
 
     @PostMapping("/patient-portal/request-otp")

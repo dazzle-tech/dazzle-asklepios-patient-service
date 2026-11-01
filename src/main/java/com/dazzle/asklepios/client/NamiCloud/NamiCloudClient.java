@@ -208,7 +208,7 @@ public class NamiCloudClient {
                 );
 
         return restClient()
-                .get()
+                .post()
                 .uri(
                         "/api/payments/response/{id}",
                         transactionId

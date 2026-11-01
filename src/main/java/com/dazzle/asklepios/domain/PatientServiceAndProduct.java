@@ -64,6 +64,9 @@ public class PatientServiceAndProduct extends AbstractAuditingEntity<Long> imple
     @Column(name = "procedure_id")
     private Long procedureId;
 
+    @Column(name = "vaccine_brand_id")
+    private Long vaccineBrandId;
+
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "service_source", nullable = false, length = 50)

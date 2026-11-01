@@ -19,6 +19,7 @@ import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
+import com.dazzle.asklepios.repository.ApLovValueRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
@@ -84,6 +85,7 @@ public class DiagnosticOrderTestResultService {
     private final DiagnosticOrderTestService diagnosticOrderTestService;
     private final DiagnosticTestRepository diagnosticTestRepository;
     private final DiagnosticTestProfileRepository diagnosticTestProfileRepository;
+    private final ApLovValueRepository apLovValueRepository;
 
     private void validateResultValue(
             Long profileTestId,
@@ -405,6 +407,11 @@ public class DiagnosticOrderTestResultService {
         Map<Long, DiagnosticOrderTest> orderTestsById = loadOrderTests(page.getContent());
         Map<Long, String> testNamesById = loadTestNames(orderTestsById);
         Map<Long, String> profileNamesById = loadProfileNames(page.getContent());
+        Map<Long, TestResultType> resultTypesById = resolveResultTypesForView(page.getContent());
+        Map<String, String> lovDisplayByKey = loadResultValueTextDisplayValues(
+                page.getContent(),
+                resultTypesById
+        );
 
         return page.map(result -> {
 
@@ -414,8 +421,7 @@ public class DiagnosticOrderTestResultService {
             TestResultMarker viewMarker = TestResultMarker.UNKNOWN;
             String viewNormalRange = " ";
 
-            TestResultType resultType =
-                    resolveEffectiveResultTypeForView(result);
+            TestResultType resultType = resultTypesById.get(result.getId());
 
             if (patientId != null && resultType != null) {
 
@@ -455,9 +461,60 @@ public class DiagnosticOrderTestResultService {
                             hasNote,
                             testName,
                             profileName,
-                            orderTest
+                            orderTest,
+                            resultValueTextDisplayValue(result, resultType, lovDisplayByKey)
                     );
         });
+    }
+
+    private Map<Long, TestResultType> resolveResultTypesForView(List<DiagnosticOrderTestResult> results) {
+        Map<Long, TestResultType> resultTypesById = new LinkedHashMap<>();
+        for (DiagnosticOrderTestResult result : results) {
+            if (result.getId() == null) {
+                continue;
+            }
+            resultTypesById.put(result.getId(), resolveEffectiveResultTypeForView(result));
+        }
+        return resultTypesById;
+    }
+
+    private Map<String, String> loadResultValueTextDisplayValues(
+            List<DiagnosticOrderTestResult> results,
+            Map<Long, TestResultType> resultTypesById
+    ) {
+        List<String> keys = results.stream()
+                .filter(result -> resultTypesById.get(result.getId()) == TestResultType.LOV)
+                .map(DiagnosticOrderTestResult::getResultValueText)
+                .filter(value -> value != null && !value.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+        if (keys.isEmpty()) {
+            return Map.of();
+        }
+
+        return apLovValueRepository.findByKeyIn(keys).stream()
+                .filter(value -> value.getKey() != null
+                        && value.getLovDisplayVale() != null
+                        && !value.getLovDisplayVale().isBlank())
+                .collect(Collectors.toMap(
+                        value -> value.getKey().trim(),
+                        value -> value.getLovDisplayVale().trim(),
+                        (left, right) -> left
+                ));
+    }
+
+    private String resultValueTextDisplayValue(
+            DiagnosticOrderTestResult result,
+            TestResultType resultType,
+            Map<String, String> lovDisplayByKey
+    ) {
+        if (resultType != TestResultType.LOV
+                || result.getResultValueText() == null
+                || result.getResultValueText().isBlank()) {
+            return null;
+        }
+        return lovDisplayByKey.get(result.getResultValueText().trim());
     }
 
     private Map<Long, DiagnosticOrderTest> loadOrderTests(List<DiagnosticOrderTestResult> results) {

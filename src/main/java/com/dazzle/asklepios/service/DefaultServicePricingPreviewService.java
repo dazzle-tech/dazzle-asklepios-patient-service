@@ -18,6 +18,7 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingPricingInput;
 import com.dazzle.asklepios.service.dto.InsuranceSplit;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
+import com.dazzle.asklepios.service.dto.billing.PartyTaxDistribution;
 import com.dazzle.asklepios.service.dto.billing.PrepareDefaultServiceItem;
 import com.dazzle.asklepios.service.dto.billing.PreviewDefaultServicePricingResult;
 import com.dazzle.asklepios.service.dto.billing.PreviewDefaultServicesPricingRequest;
@@ -350,6 +351,23 @@ public class DefaultServicePricingPreviewService {
             patientShareAmount = pricing.netAmount();
         }
 
+        /*
+         * Same Patient Copayment / Claim Share rule as the billed charge line,
+         * so the registration preview matches what will be billed.
+         */
+        PartyTaxDistribution taxDistribution =
+                billingPricingService.distributeTax(
+                        pricing.taxAmount(),
+                        patientShareAmount,
+                        insuranceShareAmount,
+                        pricingInput.taxApplyOnPatientCopayment(),
+                        pricingInput.taxApplyOnClaimShare()
+                );
+
+        BigDecimal droppedTax =
+                taxDistribution.calculatedTaxAmount()
+                        .subtract(taxDistribution.appliedTaxAmount());
+
         return new PreviewDefaultServicePricingResult(
                 requestedItem.serviceId(),
                 requestedItem.sequence(),
@@ -357,12 +375,12 @@ public class DefaultServicePricingPreviewService {
                 pricing.unitPrice(),
                 pricing.grossAmount(),
                 pricing.discountAmount(),
-                pricing.taxAmount(),
-                pricing.netAmount(),
+                taxDistribution.appliedTaxAmount(),
+                pricing.netAmount().subtract(droppedTax),
                 priceSource,
                 pricingInput.priceListItemCode(),
-                patientShareAmount,
-                insuranceShareAmount,
+                taxDistribution.patientAmount(),
+                taxDistribution.insuranceAmount(),
                 insuranceVisit,
                 coveredByInsurance,
                 requiresCashConfirmation,

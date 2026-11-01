@@ -149,20 +149,20 @@ public class ApprovalItemMapper {
                 ? gross.divide(quantityValue, 2, RoundingMode.HALF_UP)
                 : safeUnitPrice;
 
-        // Factor is limited to 3 decimals, so keep the sent net on the same
-        // formula Waseel validates: (quantity x unitPrice) x factor + tax.
-        BigDecimal sentFactor = WaseelFactorFormatter.format(factor);
-        safeNet = quantityValue
+        // Waseel validates net = (quantity x unitPrice) x factor + tax on the sent values,
+        // so once unit price and factor are fixed the sent net must follow the same formula.
+        BigDecimal waseelNet = safeNet.signum() > 0
+                ? quantityValue
                 .multiply(waseelUnitPrice)
-                .multiply(sentFactor)
+                .multiply(factor)
                 .add(safeTax)
-                .setScale(2, RoundingMode.HALF_UP);
-        factor = sentFactor;
+                .setScale(2, RoundingMode.HALF_UP)
+                : safeNet;
 
-        if (safePatientShare.signum() == 0 && safePayerShare.signum() == 0 && safeNet.signum() > 0) {
-            safePayerShare = safeNet;
-        } else if (safePatientShare.add(safePayerShare).compareTo(safeNet) != 0 && safeNet.signum() > 0) {
-            safePayerShare = safeNet.subtract(safePatientShare).setScale(2, RoundingMode.HALF_UP);
+        if (safePatientShare.signum() == 0 && safePayerShare.signum() == 0 && waseelNet.signum() > 0) {
+            safePayerShare = waseelNet;
+        } else if (safePatientShare.add(safePayerShare).compareTo(waseelNet) != 0 && waseelNet.signum() > 0) {
+            safePayerShare = waseelNet.subtract(safePatientShare).setScale(2, RoundingMode.HALF_UP);
         }
 
         return new WaseelApprovalItem(
@@ -183,7 +183,7 @@ public class ApprovalItemMapper {
                 factor,
                 item.taxPercent(),
                 item.patientSharePercent(),
-                safeNet,
+                waseelNet,
                 safeTax,
                 safePatientShare,
                 safePayerShare,

@@ -467,6 +467,8 @@ public class InsurancePriceListCoverageService {
             case PROCEDURE -> procedureId;
             case MEDICATION -> brandMedicationId;
             case LABORATORY, RADIOLOGY, PATHOLOGY -> diagnosticTestId;
+            // Phase 1: vaccines are not on insurance price lists
+            case VACCINE -> null;
         };
     }
 

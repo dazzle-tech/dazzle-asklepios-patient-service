@@ -293,7 +293,8 @@ public class PointOfSaleTransactionService {
 
     @Transactional
     public void processWebhook(
-            PointOfSaleWebhookDTO webhook
+            PointOfSaleWebhookDTO webhook,
+            String token
     ) {
 
         LOG.info(
@@ -315,6 +316,31 @@ public class PointOfSaleTransactionService {
                                         "notFound"
                                 )
                         );
+
+        String expectedToken =
+                transaction.getConfiguration() != null
+                        ? transaction.getConfiguration().getWebhookToken()
+                        : null;
+
+        if (
+                expectedToken == null ||
+                        expectedToken.isBlank() ||
+                        !expectedToken.equals(token)
+        ) {
+
+            LOG.warn(
+                    "Webhook Rejected - Invalid Token. InternalId={}, ExternalTransactionId={}",
+                    transaction.getId(),
+                    transaction.getExternalTransactionId()
+            );
+
+            throw new BadRequestAlertException(
+                    "Invalid webhook token",
+                    "pointOfSaleTransaction",
+                    "invalidWebhookToken"
+            );
+        }
+
         pointOfSaleWebhookLogService.create(
                 transaction,
                 webhook

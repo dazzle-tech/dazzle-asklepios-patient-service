@@ -489,6 +489,21 @@ public class BillingPricingSnapshotService {
         put(payload, "taxAmount", result.taxAmount());
         put(payload, "netAmount", result.netAmount());
 
+        BillingChargeLine chargeLine =
+                context.getChargeLine();
+
+        put(payload, "calculatedTaxAmount", chargeLine.getCalculatedTaxAmount());
+        put(payload, "patientTaxAmount", chargeLine.getPatientTaxAmount());
+        put(payload, "insuranceTaxAmount", chargeLine.getInsuranceTaxAmount());
+        payload.put(
+                "taxOnPatientCopayment",
+                chargeLine.getTaxOnPatientCopayment()
+        );
+        payload.put(
+                "taxOnClaimShare",
+                chargeLine.getTaxOnClaimShare()
+        );
+
         put(
                 payload,
                 "patientResponsibilityAmount",

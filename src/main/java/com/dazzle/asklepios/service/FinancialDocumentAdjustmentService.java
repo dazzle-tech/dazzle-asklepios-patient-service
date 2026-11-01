@@ -1255,6 +1255,7 @@ public class FinancialDocumentAdjustmentService {
                 request.sourceId(),
                 request.notes(),
                 request.acceptUncoveredAsCash(),
+                null,
                 null
         );
 

@@ -2,6 +2,7 @@ package com.dazzle.asklepios.client.setup;
 
 import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
 import com.dazzle.asklepios.config.SetupServiceFeignConfig;
+import java.util.List;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,4 +16,7 @@ public interface FacilityClient {
 
     @GetMapping("/api/setup/facility/{id}")
     FacilityDTO getFacility(@PathVariable("id") Long id);
+
+    @GetMapping("/api/setup/facility/active")
+    List<FacilityDTO> getActiveFacilities();
 }

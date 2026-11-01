@@ -62,7 +62,8 @@ public class PatientServiceAndProductController {
                 patientServiceProductCreateDTO.brandMedicationId(),
                 patientServiceProductCreateDTO.diagnosticTestId(),
                 patientServiceProductCreateDTO.serviceId(),
-                patientServiceProductCreateDTO.procedureId()
+                patientServiceProductCreateDTO.procedureId(),
+                patientServiceProductCreateDTO.vaccineBrandId()
         );
 
         encounterReopenGuard.rejectIfOpenReopenSession(patientServiceProductCreateDTO.encounterId());
@@ -135,7 +136,8 @@ public class PatientServiceAndProductController {
                 patientServiceProductUpdateDTO.brandMedicationId(),
                 patientServiceProductUpdateDTO.diagnosticTestId(),
                 patientServiceProductUpdateDTO.serviceId(),
-                patientServiceProductUpdateDTO.procedureId()
+                patientServiceProductUpdateDTO.procedureId(),
+                patientServiceProductUpdateDTO.vaccineBrandId()
         );
 
         PatientServiceAndProduct updated =
@@ -164,7 +166,8 @@ public class PatientServiceAndProductController {
                     dto.brandMedicationId(),
                     dto.diagnosticTestId(),
                     dto.serviceId(),
-                    dto.procedureId()
+                    dto.procedureId(),
+                    dto.vaccineBrandId()
             );
         }
 
@@ -223,7 +226,8 @@ public class PatientServiceAndProductController {
             Long brandMedicationId,
             Long diagnosticTestId,
             Long serviceId,
-            Long procedureId
+            Long procedureId,
+            Long vaccineBrandId
     ) {
         if (billingItemType == null) {
             throw new BadRequestAlertException(
@@ -302,6 +306,24 @@ public class PatientServiceAndProductController {
                             "invalidReferenceCombination",
                             "patientServicesAndProducts",
                             "Only procedureId is allowed for PROCEDURE"
+                    );
+                }
+            }
+
+            case VACCINE -> {
+                if (vaccineBrandId == null) {
+                    throw new BadRequestAlertException(
+                            "vaccineBrandIdRequired",
+                            "patientServicesAndProducts",
+                            "Vaccine brand is required when billing item type is VACCINE"
+                    );
+                }
+
+                if (brandMedicationId != null || diagnosticTestId != null || serviceId != null || procedureId != null) {
+                    throw new BadRequestAlertException(
+                            "invalidReferenceCombination",
+                            "patientServicesAndProducts",
+                            "Only vaccineBrandId is allowed for VACCINE"
                     );
                 }
             }
