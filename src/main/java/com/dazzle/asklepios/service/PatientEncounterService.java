@@ -3038,9 +3038,11 @@ public class PatientEncounterService {
             return;
         }
 
-        if (encounter.getStatus() != TreatmentStatus.ONGOING && encounter.getStatus() != TreatmentStatus.ASSIGNED_TO_BED) {
+        if (encounter.getStatus() != TreatmentStatus.ONGOING
+                && encounter.getStatus() != TreatmentStatus.ASSIGNED_TO_BED
+                && encounter.getStatus() != TreatmentStatus.TRIAGE_STARTED) {
             throw new BadRequestAlertException(
-                    "Nurse can only be assigned when status is ONGOING or ASSIGNED TO BED.",
+                    "Nurse can only be assigned when status is Ongoing, Assigned to Bed, or Triage Started.",
                     "patientEncounter",
                     "nurseAssignment.notAllowed"
             );
