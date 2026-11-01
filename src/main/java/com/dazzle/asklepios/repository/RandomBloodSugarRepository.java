@@ -11,6 +11,7 @@ import java.util.Optional;
 @Repository
 public interface RandomBloodSugarRepository extends JpaRepository<RandomBloodSugar, Long> {
 
+    
     Optional<RandomBloodSugar> findFirstByEncounterIdAndIsActiveTrueOrderByCreatedDateDesc(Long encounterId);
 
     Optional<RandomBloodSugar> findFirstByEncounterIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateDesc(
