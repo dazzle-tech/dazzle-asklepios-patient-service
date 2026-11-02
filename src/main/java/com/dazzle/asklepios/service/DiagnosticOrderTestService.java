@@ -307,12 +307,31 @@ public class DiagnosticOrderTestService {
                                 .findDistinctOrderTestIdsIn(orderTestIds)
                 );
 
+        List<Long> orderIds = page.getContent()
+                .stream()
+                .map(DiagnosticOrderTest::getOrderId)
+                .filter(id -> id != null)
+                .distinct()
+                .toList();
+
+        java.util.Map<Long, Long> encounterByOrderId = orderIds.isEmpty()
+                ? java.util.Map.of()
+                : diagnosticOrderRepository.findAllById(orderIds)
+                        .stream()
+                        .filter(order -> order.getEncounterId() != null)
+                        .collect(java.util.stream.Collectors.toMap(
+                                DiagnosticOrder::getId,
+                                DiagnosticOrder::getEncounterId,
+                                (left, right) -> left
+                        ));
+
         return page.map(orderTest -> {
 
             boolean hasNote = idsWithNotes.contains(orderTest.getId());
+            Long encounterId = encounterByOrderId.get(orderTest.getOrderId());
 
             return DiagnosticOrderTestResponseVM
-                    .ofEntityWithNote(orderTest, hasNote);
+                    .ofEntityWithNote(orderTest, hasNote, encounterId);
         });
     }
 

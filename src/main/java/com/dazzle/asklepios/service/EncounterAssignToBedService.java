@@ -424,8 +424,14 @@ public class EncounterAssignToBedService {
                             .filter(name -> name != null && !name.isBlank())
                             .collect(java.util.stream.Collectors.joining(" "));
 
+                    Long encounterId = assignment.getEncounter() != null
+                            ? assignment.getEncounter().getId()
+                            : null;
+
                     return new EncounterAssignToBedBedManagementVM(
+                            assignment.getId(),
                             assignment.getBedId(),
+                            encounterId,
                             patient.getId(),
                             patientName
                     );

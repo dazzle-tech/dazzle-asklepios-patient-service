@@ -38,9 +38,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -367,6 +369,7 @@ public class DiagnosticOrderService {
             Long patientId,
             List<Long> patientIdIn,
             Long encounterId,
+            List<Long> encounterIdIn,
             DiagnosticStatus status,
             List<DiagnosticStatus> statusIn,
             List<DiagnosticStatus> statusNotIn,
@@ -405,6 +408,10 @@ public class DiagnosticOrderService {
 
             if (encounterId != null) {
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("encounterId"), encounterId));
+            }
+
+            if (encounterIdIn != null && !encounterIdIn.isEmpty()) {
+                filterPredicates.add(orderRoot.get("encounterId").in(encounterIdIn));
             }
 
             if (status != null) {
@@ -538,6 +545,42 @@ public class DiagnosticOrderService {
                 .stream()
                 .map(DiagnosticOrder::getEncounterId)
                 .collect(Collectors.toSet());
+    }
+
+    /**
+     * Latest diagnostic order status per encounter (by createdDate desc, id desc).
+     * Includes cancelled/rejected orders; does not fall back to an older order.
+     */
+    public Map<Long, DiagnosticStatus> findLatestOrderStatusByEncounterIds(List<Long> encounterIds) {
+        if (encounterIds == null || encounterIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        return diagnosticOrderRepository.findDistinctByEncounterIdIn(encounterIds)
+                .stream()
+                .filter(order -> order.getEncounterId() != null)
+                .collect(Collectors.groupingBy(DiagnosticOrder::getEncounterId))
+                .entrySet()
+                .stream()
+                .map(entry -> {
+                    DiagnosticOrder latest = entry.getValue().stream()
+                            .max(Comparator
+                                    .comparing(
+                                            DiagnosticOrder::getCreatedDate,
+                                            Comparator.nullsLast(Comparator.naturalOrder())
+                                    )
+                                    .thenComparing(
+                                            DiagnosticOrder::getId,
+                                            Comparator.nullsLast(Comparator.naturalOrder())
+                                    ))
+                            .orElse(null);
+                    if (latest == null || latest.getStatus() == null) {
+                        return null;
+                    }
+                    return Map.entry(entry.getKey(), latest.getStatus());
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
     private void notificationForUrgentDiagnosticOrder(DiagnosticOrder order) {
