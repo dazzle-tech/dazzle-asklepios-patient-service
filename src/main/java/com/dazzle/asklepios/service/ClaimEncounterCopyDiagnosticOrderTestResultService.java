@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.ClaimEncounterCopyDiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
+import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.repository.ClaimEncounterCopyDiagnosticOrderTestResultRepository;
 import com.dazzle.asklepios.repository.ClaimEncounterCopyRepository;
@@ -35,6 +36,8 @@ public class ClaimEncounterCopyDiagnosticOrderTestResultService {
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
 
     private final DiagnosticOrderRepository diagnosticOrderRepository;
+
+    private final ClaimEncounterCopyServiceProductTestResolver serviceProductTestResolver;
 
     private String currentUsername() {
         return SecurityUtils.getCurrentUserLogin()
@@ -78,16 +81,28 @@ public class ClaimEncounterCopyDiagnosticOrderTestResultService {
                         "copy.notfound"
                 ));
 
-        DiagnosticOrderTest orderTest = requireLaboratoryTest(
+        serviceProductTestResolver.requireSingleSource(
                 dto.orderTestId(),
-                copy
+                dto.patientServiceProductId(),
+                "claimEncounterCopyDiagnosticOrderTestResult"
         );
 
         ClaimEncounterCopyDiagnosticOrderTestResult entity =
                 new ClaimEncounterCopyDiagnosticOrderTestResult();
 
         entity.setClaimEncounterCopyId(claimEncounterCopyId);
-        entity.setOrderTestId(orderTest.getId());
+
+        if (dto.patientServiceProductId() != null) {
+            entity.setPatientServiceProductId(serviceProductTestResolver.requireServiceProductTest(
+                    dto.patientServiceProductId(),
+                    copy,
+                    BillingItemTypes.LABORATORY,
+                    "claimEncounterCopyDiagnosticOrderTestResult"
+            ).getId());
+        } else {
+            entity.setOrderTestId(requireLaboratoryTest(dto.orderTestId(), copy).getId());
+        }
+
         entity.setProfileTestId(dto.profileTestId());
         entity.setResultValueNumber(dto.resultValueNumber());
         entity.setResultValueText(dto.resultValueText());
