@@ -251,6 +251,16 @@ public class PatientController {
 
             @RequestParam(required = false) String patientName,
 
+            @RequestParam(required = false) String mrn,
+
+            @RequestParam(required = false) String primaryMobileNumber,
+
+            @RequestParam(required = false) String documentNumber,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate dateOfBirth,
+
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate registrationDateFrom,
@@ -266,6 +276,10 @@ public class PatientController {
 
         FacilityPatientFilterDTO filter = new FacilityPatientFilterDTO(
                 patientName,
+                mrn,
+                primaryMobileNumber,
+                documentNumber,
+                dateOfBirth,
                 registrationDateFrom,
                 registrationDateTo,
                 insuranceId

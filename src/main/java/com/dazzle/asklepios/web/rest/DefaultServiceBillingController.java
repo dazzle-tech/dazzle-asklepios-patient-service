@@ -101,13 +101,14 @@ public class DefaultServiceBillingController {
         LOG.debug(
                 "REST request to prepare encounter default services "
                         + "encounterId={} patientId={} coverageType={} "
-                        + "itemCount={} requestId={}",
+                        + "itemCount={} procedureCount={} requestId={}",
                 encounterId,
                 request.patientId(),
                 request.coverageType(),
                 request.items() == null
                         ? 0
                         : request.items().size(),
+                request.defaultProcedures().size(),
                 request.requestId()
         );
 
@@ -135,13 +136,14 @@ public class DefaultServiceBillingController {
         LOG.debug(
                 "REST request to preview encounter default-service pricing "
                         + "encounterId={} patientId={} coverageType={} "
-                        + "itemCount={}",
+                        + "itemCount={} procedureCount={}",
                 encounterId,
                 request.patientId(),
                 request.coverageType(),
                 request.items() == null
                         ? 0
-                        : request.items().size()
+                        : request.items().size(),
+                request.defaultProcedures().size()
         );
 
         return ResponseEntity.ok(

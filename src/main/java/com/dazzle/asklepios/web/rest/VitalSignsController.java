@@ -14,6 +14,7 @@ import com.dazzle.asklepios.web.rest.vm.observations.OxygenSaturationResponseVM;
 import com.dazzle.asklepios.web.rest.vm.observations.PulseRateResponseVM;
 import com.dazzle.asklepios.web.rest.vm.observations.RespiratoryRateResponseVM;
 import com.dazzle.asklepios.web.rest.vm.observations.TemperatureResponseVM;
+import com.dazzle.asklepios.web.rest.vm.observations.VitalSignsFieldHistoryVM;
 import com.dazzle.asklepios.web.rest.vm.observations.VitalSignsResponseVM;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -123,6 +124,15 @@ public class VitalSignsController {
                 .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
+    @GetMapping("/vital-signs/encounter/{encounterId}/history")
+    @Transactional(readOnly = true)
+    public ResponseEntity<List<VitalSignsFieldHistoryVM>> findHistoryByEncounter(
+            @PathVariable @NotNull Long encounterId
+    ) {
+        LOG.debug("[REST][FIND HISTORY BY ENCOUNTER] encounterId={}", encounterId);
+        return ResponseEntity.ok(vitalSignsService.findFieldHistoryByEncounterId(encounterId));
+    }
+
 
 @GetMapping("/vital-signs/patient/{patientId}/between-dates")
 @Transactional(readOnly = true)
@@ -156,7 +166,6 @@ public ResponseEntity<List<VitalSignsResponseVM>> findByPatientBetweenDates(
                                 : null;
 
                         return VitalSignsResponseVM.builder()
-                                .fastingBloodGlucose(vitalSigns.getFastingBloodGlucose())
                                 .fluidStatus(vitalSigns.getFluidStatus())
                                 .edema(vitalSigns.getEdema())
                                 .urineOutput(vitalSigns.getUrineOutput())

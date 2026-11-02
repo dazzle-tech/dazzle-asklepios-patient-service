@@ -29,7 +29,9 @@ public record PreviewDefaultServicesPricingResult(
 
         BigDecimal netAmount,
 
-        List<PreviewDefaultServicePricingResult> items
+        List<PreviewDefaultServicePricingResult> items,
+
+        List<PreviewDefaultServicePricingResult> procedures
 
 ) implements Serializable {
 }

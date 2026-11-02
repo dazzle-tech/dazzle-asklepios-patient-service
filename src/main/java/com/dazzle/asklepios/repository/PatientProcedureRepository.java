@@ -7,6 +7,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
 @Repository
 public interface PatientProcedureRepository
         extends JpaRepository<PatientProcedure, Long> {
@@ -31,5 +33,11 @@ public interface PatientProcedureRepository
             Long patientId,
             ProcStatus status,
             Pageable pageable
+    );
+
+    Optional<PatientProcedure> findFirstByEncounter_IdAndProcedureIdAndStatusNotOrderByIdAsc(
+            Long encounterId,
+            Long procedureId,
+            ProcStatus status
     );
 }

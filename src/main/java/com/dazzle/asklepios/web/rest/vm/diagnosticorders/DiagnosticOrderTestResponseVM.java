@@ -52,61 +52,36 @@ public record DiagnosticOrderTestResponseVM(
         String confirmedBy,
         Instant confirmedAt,
 
-        String printNumber
+        String printNumber,
+
+        /** Parent order encounter; populated on filter/list enrichment when available. */
+        Long encounterId
 
 ) implements Serializable {
 
     public static DiagnosticOrderTestResponseVM ofEntity(DiagnosticOrderTest orderTest) {
-        return new DiagnosticOrderTestResponseVM(
-
-                orderTest.getId(),
-
-                orderTest.getStatus(),
-                orderTest.getProcessingStatus(),
-
-                orderTest.getOrderId(),
-                orderTest.getTestId(),
-                orderTest.getOrderType(),
-
-                orderTest.getReceivedDepartmentId(),
-                orderTest.getReason(),
-                orderTest.getNotes(),
-
-                orderTest.getSubmitDate(),
-                orderTest.getAcceptedDate(),
-                orderTest.getRejectedDate(),
-                orderTest.getPatientArrivedDate(),
-                orderTest.getReadyDate(),
-                orderTest.getApprovedDate(),
-
-                orderTest.getAcceptedBy(),
-                orderTest.getRejectedBy(),
-                orderTest.getRejectedReason(),
-                orderTest.getPatientArrivedNoteRad(),
-
-                orderTest.getCancellationReason(),
-                orderTest.getCancelledBy(),
-                orderTest.getCancelledDate(),
-
-                orderTest.getCreatedDate(),
-                orderTest.getLastModifiedDate(),
-                orderTest.getCreatedBy(),
-                orderTest.getLastModifiedBy(),
-                false,
-
-                orderTest.getUndoAcceptReason(),
-                orderTest.getUndoAcceptBy(),
-                orderTest.getUndoAcceptDate(),
-                orderTest.getIcdDiagnosisId(),
-
-                orderTest.getConfirmedBy(),
-                orderTest.getConfirmedAt(),
-
-                orderTest.getPrintNumber()
-        );
+        return ofEntity(orderTest, null);
     }
 
-    public static DiagnosticOrderTestResponseVM ofEntityWithNote(DiagnosticOrderTest orderTest, boolean hasNote) {
+    public static DiagnosticOrderTestResponseVM ofEntity(
+            DiagnosticOrderTest orderTest,
+            Long encounterId
+    ) {
+        return ofEntityWithNote(orderTest, false, encounterId);
+    }
+
+    public static DiagnosticOrderTestResponseVM ofEntityWithNote(
+            DiagnosticOrderTest orderTest,
+            boolean hasNote
+    ) {
+        return ofEntityWithNote(orderTest, hasNote, null);
+    }
+
+    public static DiagnosticOrderTestResponseVM ofEntityWithNote(
+            DiagnosticOrderTest orderTest,
+            boolean hasNote,
+            Long encounterId
+    ) {
         return new DiagnosticOrderTestResponseVM(
 
                 orderTest.getId(),
@@ -152,7 +127,9 @@ public record DiagnosticOrderTestResponseVM(
                 orderTest.getConfirmedBy(),
                 orderTest.getConfirmedAt(),
 
-                orderTest.getPrintNumber()
+                orderTest.getPrintNumber(),
+
+                encounterId
         );
     }
 }
