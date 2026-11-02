@@ -369,6 +369,7 @@ public class DiagnosticOrderService {
             Long patientId,
             List<Long> patientIdIn,
             Long encounterId,
+            List<Long> encounterIdIn,
             DiagnosticStatus status,
             List<DiagnosticStatus> statusIn,
             List<DiagnosticStatus> statusNotIn,
@@ -407,6 +408,10 @@ public class DiagnosticOrderService {
 
             if (encounterId != null) {
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("encounterId"), encounterId));
+            }
+
+            if (encounterIdIn != null && !encounterIdIn.isEmpty()) {
+                filterPredicates.add(orderRoot.get("encounterId").in(encounterIdIn));
             }
 
             if (status != null) {
