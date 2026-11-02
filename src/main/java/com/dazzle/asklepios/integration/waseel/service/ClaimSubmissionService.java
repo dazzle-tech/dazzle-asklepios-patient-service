@@ -359,7 +359,7 @@ public class ClaimSubmissionService {
             String medicalRecordNumber,
             String encounterNumber
     ) {
-        waseelClaimClassification.assertTypeAndSubType(claimType, claimSubType);
+        waseelClaimClassification.assertTypeAndOptionalSubType(claimType, claimSubType);
 
         Instant from = fromDate != null ? fromDate : Instant.EPOCH;
         Instant to = toDate != null ? toDate : Instant.parse("9999-12-31T00:00:00Z");
@@ -800,7 +800,9 @@ public class ClaimSubmissionService {
         for (FinancialDocument invoice : invoices) {
             PatientEncounter encounter = encountersById.get(invoice.getEncounterId());
             EncounterType encounterType = encounter == null ? null : encounter.getEncounterType();
-            if (!waseelClaimClassification.matchesEncounter(encounterType, claimType, claimSubType)) {
+            WaseelClaimSubType subType =
+                    waseelClaimClassification.matchingSubType(encounterType, claimType, claimSubType);
+            if (subType == null) {
                 continue;
             }
 
@@ -844,7 +846,7 @@ public class ClaimSubmissionService {
                     invoice.getCurrency() == null ? null : invoice.getCurrency().name(),
                     invoice.getCreatedDate(),
                     claimType,
-                    claimSubType,
+                    subType,
                     matchingItems.size(),
                     matchingNet.setScale(2, RoundingMode.HALF_UP),
                     !hasUnapprovedDiagnosticResult(matchingItems, productsById, unapprovedOrderTestIds),

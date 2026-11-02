@@ -4,6 +4,11 @@ import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimSubType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimType;
 
+import java.time.Instant;
+
+/**
+ * Claims registry search. {@code submittedTo} is exclusive.
+ */
 public record ClaimTrackingCriteria(
         ClaimStatus status,
         WaseelClaimType claimType,
@@ -13,6 +18,12 @@ public record ClaimTrackingCriteria(
         String uploadName,
         String preAuthRefNo,
         String encounterId,
-        String patientId
+        String patientId,
+        String encounterNumber,
+        String medicalRecordNumber,
+        Instant submittedFrom,
+        Instant submittedTo,
+        Long payorId,
+        String payerNphiesId
 ) {
 }

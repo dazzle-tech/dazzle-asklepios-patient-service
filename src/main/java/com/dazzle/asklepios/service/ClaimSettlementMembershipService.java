@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.ClaimRequest;
 import com.dazzle.asklepios.domain.ClaimSettlement;
 import com.dazzle.asklepios.domain.ClaimSettlementInvoice;
 import com.dazzle.asklepios.domain.FinancialDocument;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimSettlementLogAction;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimSettlementMembershipStatus;
 import com.dazzle.asklepios.repository.ClaimRequestRepository;
 import com.dazzle.asklepios.repository.ClaimSettlementInvoiceRepository;
@@ -53,6 +54,7 @@ public class ClaimSettlementMembershipService {
     private final ClaimSettlementInvoiceRepository claimSettlementInvoiceRepository;
     private final ClaimRequestRepository claimRequestRepository;
     private final FinancialDocumentRepository financialDocumentRepository;
+    private final ClaimSettlementLogService claimSettlementLogService;
     private final JdbcTemplate jdbcTemplate;
     private final PlatformTransactionManager transactionManager;
     private final AtomicBoolean tablesReady = new AtomicBoolean(false);
@@ -140,6 +142,14 @@ public class ClaimSettlementMembershipService {
                 ACTIVE
         );
         if (updated > 0) {
+            claimSettlementInvoiceRepository
+                    .findByFinancialDocumentIdAndMembershipStatus(claim.getFinancialDocumentId(), ACTIVE)
+                    .ifPresent(line -> claimSettlementLogService.record(
+                            line,
+                            claim,
+                            ClaimSettlementLogAction.CLAIM_LINKED,
+                            null
+                    ));
             return;
         }
 
@@ -171,14 +181,13 @@ public class ClaimSettlementMembershipService {
         }
 
         Optional<ClaimSettlementInvoice> active = claimSettlementInvoiceRepository
-                .findByFinancialDocumentIdAndMembershipStatus(claim.getFinancialDocumentId(), ACTIVE);
+                .findByFinancialDocumentIdAndMembershipStatus(claim.getFinancialDocumentId(), ACTIVE)
+                .filter(line -> ownsLine(line, claim));
         if (active.isPresent()) {
             ClaimSettlementInvoice line = active.get();
-            if (line.getClaimRequestId() != null && !line.getClaimRequestId().equals(claim.getId())) {
-                return false;
-            }
             if (line.getClaimRequestId() == null) {
                 line.setClaimRequestId(claim.getId());
+                claimSettlementLogService.record(line, claim, ClaimSettlementLogAction.CLAIM_LINKED, null);
             }
             if (ClaimSettlementRules.leavesSettlement(claim.getStatus())) {
                 releaseLine(line, claim, failureReason(claim));
@@ -304,6 +313,21 @@ public class ClaimSettlementMembershipService {
         return claimSettlementRepository.save(settlement);
     }
 
+    /**
+     * A statement line belongs to the claim linked to it. A line still waiting for its claim accepts only
+     * a claim opened after the invoice joined that statement, so refreshing an older rejected claim of the
+     * same invoice never pulls the invoice out of the statement it was grouped into again.
+     */
+    private boolean ownsLine(ClaimSettlementInvoice line, ClaimRequest claim) {
+        if (line.getClaimRequestId() != null) {
+            return line.getClaimRequestId().equals(claim.getId());
+        }
+        if (line.getCreatedDate() == null) {
+            return true;
+        }
+        return claim.getCreatedDate() != null && !claim.getCreatedDate().isBefore(line.getCreatedDate());
+    }
+
     private boolean restoreIfStillFree(ClaimSettlementInvoice line, ClaimRequest claim) {
         boolean taken = claimSettlementInvoiceRepository
                 .findByFinancialDocumentIdAndMembershipStatus(line.getFinancialDocumentId(), ACTIVE)
@@ -316,6 +340,12 @@ public class ClaimSettlementMembershipService {
         line.setReleasedAt(null);
         line.setReleaseReason(null);
         keepLine(line, claim);
+        claimSettlementLogService.record(
+                line,
+                claim,
+                ClaimSettlementLogAction.RESTORED,
+                "Restored after a later accepted result"
+        );
         log.info(
                 "[CLAIM_SETTLEMENT] Restored invoiceId={} claimId={} settlementId={} after a later accepted result",
                 line.getFinancialDocumentId(),
@@ -342,6 +372,7 @@ public class ClaimSettlementMembershipService {
         claim.setSettlementNo(null);
         claimSettlementInvoiceRepository.saveAndFlush(line);
         recalculate(line.getSettlementId());
+        claimSettlementLogService.record(line, claim, ClaimSettlementLogAction.RELEASED, line.getReleaseReason());
         log.info(
                 "[CLAIM_SETTLEMENT] Released invoiceId={} claimId={} settlementId={} reason={}",
                 line.getFinancialDocumentId(),

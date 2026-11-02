@@ -62,6 +62,14 @@ public class WaseelClaimController {
             @RequestParam(required = false) String preAuthRefNo,
             @RequestParam(required = false) String encounterId,
             @RequestParam(required = false) String patientId,
+            @RequestParam(required = false) String encounterNumber,
+            @RequestParam(required = false) String medicalRecordNumber,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant submittedFrom,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant submittedTo,
+            @RequestParam(required = false) Long payorId,
+            @RequestParam(required = false) String payerNphiesId,
             @ParameterObject Pageable pageable
     ) {
         Page<ClaimTrackingResponse> page = claimTrackingService.findAll(
@@ -74,7 +82,13 @@ public class WaseelClaimController {
                         uploadName,
                         preAuthRefNo,
                         encounterId,
-                        patientId
+                        patientId,
+                        encounterNumber,
+                        medicalRecordNumber,
+                        submittedFrom,
+                        submittedTo,
+                        payorId,
+                        payerNphiesId
                 ),
                 pageable
         );

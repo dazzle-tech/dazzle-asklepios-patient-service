@@ -1,8 +1,20 @@
 package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.ClaimRequest;
+import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimTrackingCriteria;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import org.springframework.data.jpa.domain.Specification;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 public final class ClaimTrackingSpecification {
 
@@ -32,7 +44,103 @@ public final class ClaimTrackingSpecification {
         specification = andContains(specification, "preAuthRefNo", criteria.preAuthRefNo());
         specification = andIdEquals(specification, "encounterId", criteria.encounterId());
         specification = andIdEquals(specification, "patientId", criteria.patientId());
+        specification = andEncounterNumberContains(specification, criteria.encounterNumber());
+        specification = andMedicalRecordNumberContains(specification, criteria.medicalRecordNumber());
+        specification = andSubmittedBetween(specification, criteria.submittedFrom(), criteria.submittedTo());
+        specification = andPayor(specification, criteria.payorId(), criteria.payerNphiesId());
         return specification;
+    }
+
+    /**
+     * The payor is read from the encounter's insurance, the same source statements use.
+     * A claim matches the local payor id or the NPHIES payer id.
+     */
+    private static Specification<ClaimRequest> andPayor(
+            Specification<ClaimRequest> specification,
+            Long payorId,
+            String payerNphiesId
+    ) {
+        String nphiesId = normalize(payerNphiesId);
+        if (payorId == null && nphiesId == null) {
+            return specification;
+        }
+        return specification.and((root, query, cb) -> {
+            Subquery<Long> encounterIds = query.subquery(Long.class);
+            Root<PatientEncounter> encounter = encounterIds.from(PatientEncounter.class);
+            encounterIds.select(encounter.get("id"))
+                    .where(encounter.get("patientInsuranceId").in(insuranceIds(query, cb, payorId, nphiesId)));
+            return root.get("encounterId").in(encounterIds);
+        });
+    }
+
+    private static Subquery<Long> insuranceIds(
+            CriteriaQuery<?> query,
+            CriteriaBuilder cb,
+            Long payorId,
+            String nphiesId
+    ) {
+        Subquery<Long> insuranceIds = query.subquery(Long.class);
+        Root<PatientInsurance> insurance = insuranceIds.from(PatientInsurance.class);
+        List<Predicate> matches = new ArrayList<>();
+        if (payorId != null) {
+            matches.add(cb.equal(insurance.get("payorId"), payorId));
+        }
+        if (nphiesId != null) {
+            matches.add(cb.equal(cb.lower(cb.trim(insurance.get("payerNphiesId"))), nphiesId));
+        }
+        return insuranceIds.select(insurance.get("id")).where(cb.or(matches.toArray(Predicate[]::new)));
+    }
+
+    private static Specification<ClaimRequest> andEncounterNumberContains(
+            Specification<ClaimRequest> specification,
+            String raw
+    ) {
+        String value = normalize(raw);
+        if (value == null) {
+            return specification;
+        }
+        String pattern = "%" + value + "%";
+        return specification.and((root, query, cb) -> {
+            Subquery<Long> encounterIds = query.subquery(Long.class);
+            Root<PatientEncounter> encounter = encounterIds.from(PatientEncounter.class);
+            encounterIds.select(encounter.get("id"))
+                    .where(cb.like(cb.lower(encounter.get("encounterNumber")), pattern));
+            return root.get("encounterId").in(encounterIds);
+        });
+    }
+
+    private static Specification<ClaimRequest> andMedicalRecordNumberContains(
+            Specification<ClaimRequest> specification,
+            String raw
+    ) {
+        String value = normalize(raw);
+        if (value == null) {
+            return specification;
+        }
+        String pattern = "%" + value + "%";
+        return specification.and((root, query, cb) -> {
+            Subquery<Long> patientIds = query.subquery(Long.class);
+            Root<Patient> patient = patientIds.from(Patient.class);
+            patientIds.select(patient.get("id"))
+                    .where(cb.like(cb.lower(patient.get("medicalRecordNumber")), pattern));
+            return root.get("patientId").in(patientIds);
+        });
+    }
+
+    private static Specification<ClaimRequest> andSubmittedBetween(
+            Specification<ClaimRequest> specification,
+            Instant from,
+            Instant to
+    ) {
+        Specification<ClaimRequest> result = specification;
+        if (from != null) {
+            result = result.and((root, query, cb) ->
+                    cb.greaterThanOrEqualTo(root.get("submittedAt"), from));
+        }
+        if (to != null) {
+            result = result.and((root, query, cb) -> cb.lessThan(root.get("submittedAt"), to));
+        }
+        return result;
     }
 
     private static Specification<ClaimRequest> andContains(

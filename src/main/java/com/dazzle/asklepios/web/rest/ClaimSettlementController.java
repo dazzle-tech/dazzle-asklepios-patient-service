@@ -1,10 +1,12 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.service.ClaimSettlementGroupService;
+import com.dazzle.asklepios.service.ClaimSettlementLogService;
 import com.dazzle.asklepios.service.ClaimSettlementService;
 import com.dazzle.asklepios.service.dto.billing.ClaimSettlementCreateRequest;
 import com.dazzle.asklepios.service.dto.billing.ClaimSettlementGroupDetailResponse;
 import com.dazzle.asklepios.service.dto.billing.ClaimSettlementGroupSummaryResponse;
+import com.dazzle.asklepios.service.dto.billing.ClaimSettlementLogResponse;
 import com.dazzle.asklepios.service.dto.billing.ClaimSettlementRowResponse;
 import com.dazzle.asklepios.service.dto.billing.ClaimSettlementSubmitResponse;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimSettlementStatus;
@@ -41,6 +43,7 @@ public class ClaimSettlementController {
 
     private final ClaimSettlementService claimSettlementService;
     private final ClaimSettlementGroupService claimSettlementGroupService;
+    private final ClaimSettlementLogService claimSettlementLogService;
 
     @GetMapping("/numbers")
     public ResponseEntity<List<String>> settlementNumbers(
@@ -119,7 +122,7 @@ public class ClaimSettlementController {
             @RequestParam(value = "encounterDateTo", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate encounterDateTo,
             @RequestParam WaseelClaimType claimType,
-            @RequestParam WaseelClaimSubType claimSubType,
+            @RequestParam(value = "claimSubType", required = false) WaseelClaimSubType claimSubType,
             @RequestParam(value = "medicalRecordNumber", required = false) String medicalRecordNumber,
             @RequestParam(value = "encounterNumber", required = false) String encounterNumber,
             @ParameterObject Pageable pageable
@@ -191,6 +194,12 @@ public class ClaimSettlementController {
     public ResponseEntity<ClaimSettlementGroupDetailResponse> getGroup(@PathVariable Long id) {
         LOG.debug("REST claim settlement group id={}", id);
         return ResponseEntity.ok(claimSettlementGroupService.detail(id));
+    }
+
+    @GetMapping("/invoices/{financialDocumentId}/log")
+    public ResponseEntity<List<ClaimSettlementLogResponse>> invoiceLog(@PathVariable Long financialDocumentId) {
+        LOG.debug("REST claim settlement log financialDocumentId={}", financialDocumentId);
+        return ResponseEntity.ok(claimSettlementLogService.findByInvoice(financialDocumentId));
     }
 
     @PostMapping("/groups/{id}/submit")

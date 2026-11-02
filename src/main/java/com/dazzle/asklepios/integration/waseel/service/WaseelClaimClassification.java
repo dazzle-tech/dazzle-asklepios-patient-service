@@ -53,6 +53,23 @@ public class WaseelClaimClassification {
         return encounterType == EncounterType.CLINIC || encounterType == EncounterType.DAYCASE;
     }
 
+    /**
+     * The sub type an encounter is claimed under. A requested sub type is kept only when the encounter fits it;
+     * without one, the sub type follows the encounter type.
+     *
+     * @return null when the encounter cannot be claimed under this type and sub type
+     */
+    public WaseelClaimSubType matchingSubType(
+            EncounterType encounterType,
+            WaseelClaimType claimType,
+            WaseelClaimSubType requestedSubType
+    ) {
+        WaseelClaimSubType subType = requestedSubType != null
+                ? requestedSubType
+                : resolveSubType(claimType, encounterType);
+        return matchesEncounter(encounterType, claimType, subType) ? subType : null;
+    }
+
     public WaseelClaimSubType resolveSubType(WaseelClaimType claimType, EncounterType encounterType) {
         if (claimType == WaseelClaimType.PROFESSIONAL && encounterType == EncounterType.EMERGENCY) {
             return WaseelClaimSubType.EMERGENCY;
@@ -61,13 +78,7 @@ public class WaseelClaimClassification {
     }
 
     public void assertTypeAndSubType(WaseelClaimType claimType, WaseelClaimSubType subType) {
-        if (claimType == null) {
-            throw new BadRequestAlertException(
-                    "Claim type is required",
-                    "claim",
-                    "claim.type.required"
-            );
-        }
+        assertType(claimType);
         if (subType == null) {
             throw new BadRequestAlertException(
                     "Claim sub type is required",
@@ -80,6 +91,27 @@ public class WaseelClaimClassification {
                     claimType.name() + " claims only support Outpatient sub type",
                     "claim",
                     "claim.subType.invalid"
+            );
+        }
+    }
+
+    /**
+     * Statements may leave the sub type empty to include every sub type of the claim type.
+     */
+    public void assertTypeAndOptionalSubType(WaseelClaimType claimType, WaseelClaimSubType subType) {
+        if (subType == null) {
+            assertType(claimType);
+            return;
+        }
+        assertTypeAndSubType(claimType, subType);
+    }
+
+    private void assertType(WaseelClaimType claimType) {
+        if (claimType == null) {
+            throw new BadRequestAlertException(
+                    "Claim type is required",
+                    "claim",
+                    "claim.type.required"
             );
         }
     }

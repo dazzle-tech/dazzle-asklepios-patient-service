@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.BillingChargeLine;
+import com.dazzle.asklepios.domain.ClaimItem;
 import com.dazzle.asklepios.domain.ClaimRequest;
 import com.dazzle.asklepios.domain.ClaimSettlement;
 import com.dazzle.asklepios.domain.ClaimSettlementInvoice;
@@ -7,6 +9,7 @@ import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimSettlementLogAction;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimSettlementMembershipStatus;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimSettlementStatus;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimSubType;
@@ -15,6 +18,8 @@ import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimSubmissionResponse
 import com.dazzle.asklepios.integration.waseel.dto.claim.PendingClaimInvoiceResponse;
 import com.dazzle.asklepios.integration.waseel.service.ClaimSubmissionService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelClaimClassification;
+import com.dazzle.asklepios.repository.BillingChargeLineRepository;
+import com.dazzle.asklepios.repository.ClaimItemRepository;
 import com.dazzle.asklepios.repository.ClaimRequestRepository;
 import com.dazzle.asklepios.repository.ClaimSettlementInvoiceRepository;
 import com.dazzle.asklepios.repository.ClaimSettlementRepository;
@@ -71,6 +76,7 @@ public class ClaimSettlementGroupService {
     private final ClaimSubmissionService claimSubmissionService;
     private final ClaimSettlementMembershipService claimSettlementMembershipService;
     private final ClaimSettlementNumberService claimSettlementNumberService;
+    private final ClaimSettlementLogService claimSettlementLogService;
     private final WaseelClaimClassification waseelClaimClassification;
     private final ClaimSettlementRepository claimSettlementRepository;
     private final ClaimSettlementInvoiceRepository claimSettlementInvoiceRepository;
@@ -79,6 +85,8 @@ public class ClaimSettlementGroupService {
     private final PatientInsuranceRepository patientInsuranceRepository;
     private final PatientRepository patientRepository;
     private final ClaimRequestRepository claimRequestRepository;
+    private final ClaimItemRepository claimItemRepository;
+    private final BillingChargeLineRepository billingChargeLineRepository;
 
     @Transactional(readOnly = true)
     public Page<PendingClaimInvoiceResponse> eligibleInvoices(
@@ -114,7 +122,7 @@ public class ClaimSettlementGroupService {
         if (request == null) {
             throw requiredInvoices();
         }
-        waseelClaimClassification.assertTypeAndSubType(request.claimType(), request.claimSubType());
+        waseelClaimClassification.assertTypeAndOptionalSubType(request.claimType(), request.claimSubType());
         requireTables();
 
         List<Long> invoiceIds = distinctIds(request.financialDocumentIds());
@@ -188,6 +196,8 @@ public class ClaimSettlementGroupService {
             }
             claimSettlementInvoiceRepository.saveAll(lines);
             claimSettlementInvoiceRepository.flush();
+            lines.forEach(line ->
+                    claimSettlementLogService.record(line, null, ClaimSettlementLogAction.ADDED, null));
         } catch (DataIntegrityViolationException ex) {
             throw new BadRequestAlertException(
                     "One of the selected invoices was just included in another statement.",
@@ -496,6 +506,11 @@ public class ClaimSettlementGroupService {
                 ? Map.of()
                 : patientRepository.findAllById(patientIds).stream()
                         .collect(Collectors.toMap(Patient::getId, Function.identity()));
+        Map<Long, List<ClaimItem>> itemsByClaim = claimIds.isEmpty()
+                ? Map.of()
+                : claimItemRepository.findByClaimRequestIdIn(claimIds).stream()
+                        .collect(Collectors.groupingBy(ClaimItem::getClaimRequestId));
+        Map<Long, BillingChargeLine> chargeLines = chargeLinesById(itemsByClaim);
 
         List<ClaimSettlementInvoiceLineResponse> rows = new ArrayList<>();
         for (ClaimSettlementInvoice line : ordered) {
@@ -503,11 +518,13 @@ public class ClaimSettlementGroupService {
             ClaimRequest claim = line.getClaimRequestId() == null ? null : claims.get(line.getClaimRequestId());
             PatientEncounter encounter = document == null ? null : encounters.get(document.getEncounterId());
             Patient patient = document == null ? null : patients.get(document.getPatientId());
+            List<ClaimItem> items = claim == null ? List.of() : itemsByClaim.getOrDefault(claim.getId(), List.of());
             rows.add(new ClaimSettlementInvoiceLineResponse(
                     line.getFinancialDocumentId(),
                     document == null ? null : document.getDocumentNumber(),
                     document == null ? null : document.getPatientId(),
                     patientName(patient),
+                    patient == null ? null : patient.getMedicalRecordNumber(),
                     encounter == null ? null : encounter.getEncounterNumber(),
                     encounter == null || encounter.getEncounterType() == null
                             ? null
@@ -515,14 +532,46 @@ public class ClaimSettlementGroupService {
                     claim == null ? null : claim.getId(),
                     claim == null ? null : claim.getStatus(),
                     claim == null ? null : firstNonBlank(claim.getClaimReference(), claim.getProvClaimNo()),
-                    document == null ? null : document.getTotalAmount(),
                     claim == null ? null : claim.getTotalNet(),
+                    claim == null ? null : patientShare(items, chargeLines),
                     line.getMembershipStatus(),
                     line.getReleaseReason(),
                     line.getReleasedAt()
             ));
         }
         return rows;
+    }
+
+    private Map<Long, BillingChargeLine> chargeLinesById(Map<Long, List<ClaimItem>> itemsByClaim) {
+        Set<Long> chargeLineIds = itemsByClaim.values().stream()
+                .flatMap(List::stream)
+                .map(ClaimItem::getBillingChargeLineId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (chargeLineIds.isEmpty()) {
+            return Map.of();
+        }
+        return billingChargeLineRepository.findAllById(chargeLineIds).stream()
+                .collect(Collectors.toMap(BillingChargeLine::getId, Function.identity()));
+    }
+
+    /**
+     * The patient's part of the claimed items, read from the billing charge line like the claim preview.
+     * Items without a charge line fall back to the share stored on the claim item.
+     */
+    private BigDecimal patientShare(List<ClaimItem> items, Map<Long, BillingChargeLine> chargeLines) {
+        return items.stream()
+                .map(item -> {
+                    BillingChargeLine chargeLine = item.getBillingChargeLineId() == null
+                            ? null
+                            : chargeLines.get(item.getBillingChargeLineId());
+                    return chargeLine != null
+                            ? chargeLine.getPatientResponsibilityAmount()
+                            : item.getPatientShare();
+                })
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
     }
 
     private ClaimSubmissionResponse toClaimResponse(ClaimRequest claim) {
