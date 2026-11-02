@@ -21,6 +21,10 @@ public record PatientEncounterSearchFilterDTO(
         String mrn,
         String encounterNumber,
 
+        String primaryMobileNumber,
+        String documentNumber,
+        LocalDate dateOfBirth,
+
         List<EncounterReason> encounterReasons,
 
         String chiefComplaint,

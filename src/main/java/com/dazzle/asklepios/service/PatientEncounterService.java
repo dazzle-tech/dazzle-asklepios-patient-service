@@ -11,6 +11,7 @@ import com.dazzle.asklepios.domain.BodyMeasurements;
 import com.dazzle.asklepios.domain.EncounterDischargeLog;
 import com.dazzle.asklepios.domain.PainAssessment;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientDocument;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientEncounterFieldAudit;
 import com.dazzle.asklepios.domain.PatientObservationsComplaints;
@@ -51,6 +52,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.service.dto.patientEncounter.DiagnosticCheckoutApproval;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCompletionValidationDTO;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Join;
@@ -527,39 +529,7 @@ public class PatientEncounterService {
                 );
             }
 
-            if (hasPatientName || hasMrn) {
-                Join<PatientEncounter, Patient> patientJoin = root.join("patient", JoinType.INNER);
-
-                if (hasMrn) {
-                    predicates.add(cb.equal(patientJoin.get("medicalRecordNumber"), filter.mrn().trim()));
-                }
-
-                if (hasPatientName) {
-                    String[] tokens = filter.patientName().trim().toLowerCase().split("\\s+");
-
-                    Expression<String> first = cb.lower(cb.coalesce(patientJoin.get("firstName"), ""));
-                    Expression<String> second = cb.lower(cb.coalesce(patientJoin.get("secondName"), ""));
-                    Expression<String> third = cb.lower(cb.coalesce(patientJoin.get("thirdName"), ""));
-                    Expression<String> last = cb.lower(cb.coalesce(patientJoin.get("lastName"), ""));
-
-                    Predicate[] tokenPredicates = Arrays.stream(tokens)
-                            .filter(token -> token != null && !token.isBlank())
-                            .map(token -> {
-                                String like = "%" + token + "%";
-                                return cb.or(
-                                        cb.like(first, like),
-                                        cb.like(second, like),
-                                        cb.like(third, like),
-                                        cb.like(last, like)
-                                );
-                            })
-                            .toArray(Predicate[]::new);
-
-                    if (tokenPredicates.length > 0) {
-                        predicates.add(cb.and(tokenPredicates));
-                    }
-                }
-            }
+            applyPatientIdentityFilters(root, query, cb, predicates, filter);
 
             return cb.and(predicates.toArray(new Predicate[0]));
         };
@@ -747,91 +717,7 @@ public class PatientEncounterService {
                 );
             }
 
-            if (hasPatientName || hasMrn) {
-
-                Join<PatientEncounter, Patient> patientJoin =
-                        root.join(
-                                "patient",
-                                JoinType.INNER
-                        );
-
-                if (hasMrn) {
-                    predicates.add(
-                            cb.equal(
-                                    patientJoin.get("medicalRecordNumber"),
-                                    filter.mrn().trim()
-                            )
-                    );
-                }
-
-                if (hasPatientName) {
-
-                    String[] tokens =
-                            filter.patientName()
-                                    .trim()
-                                    .toLowerCase()
-                                    .split("\\s+");
-
-                    Expression<String> first =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("firstName"),
-                                            ""
-                                    )
-                            );
-
-                    Expression<String> second =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("secondName"),
-                                            ""
-                                    )
-                            );
-
-                    Expression<String> third =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("thirdName"),
-                                            ""
-                                    )
-                            );
-
-                    Expression<String> last =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("lastName"),
-                                            ""
-                                    )
-                            );
-
-                    Predicate[] tokenPredicates =
-                            Arrays.stream(tokens)
-                                    .filter(
-                                            token ->
-                                                    token != null
-                                                            && !token.isBlank()
-                                    )
-                                    .map(token -> {
-
-                                        String like =
-                                                "%" + token + "%";
-
-                                        return cb.or(
-                                                cb.like(first, like),
-                                                cb.like(second, like),
-                                                cb.like(third, like),
-                                                cb.like(last, like)
-                                        );
-                                    })
-                                    .toArray(Predicate[]::new);
-
-                    if (tokenPredicates.length > 0) {
-                        predicates.add(
-                                cb.and(tokenPredicates)
-                        );
-                    }
-                }
-            }
+            applyPatientIdentityFilters(root, query, cb, predicates, filter);
 
             return cb.and(
                     predicates.toArray(
@@ -855,6 +741,82 @@ public class PatientEncounterService {
         );
 
         return result;
+    }
+
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private void applyPatientIdentityFilters(
+            Root<PatientEncounter> root,
+            CriteriaQuery<?> query,
+            CriteriaBuilder cb,
+            List<Predicate> predicates,
+            PatientEncounterSearchFilterDTO filter
+    ) {
+        if (filter == null) {
+            return;
+        }
+
+        boolean hasPatientName = hasText(filter.patientName());
+        boolean hasMrn = hasText(filter.mrn());
+        boolean hasPhone = hasText(filter.primaryMobileNumber());
+        boolean hasDocument = hasText(filter.documentNumber());
+        boolean hasDob = filter.dateOfBirth() != null;
+
+        if (!(hasPatientName || hasMrn || hasPhone || hasDocument || hasDob)) {
+            return;
+        }
+
+        Join<PatientEncounter, Patient> patientJoin = root.join("patient", JoinType.INNER);
+
+        if (hasMrn) {
+            predicates.add(cb.equal(patientJoin.get("medicalRecordNumber"), filter.mrn().trim()));
+        }
+
+        if (hasPhone) {
+            predicates.add(cb.equal(patientJoin.get("primaryMobileNumber"), filter.primaryMobileNumber().trim()));
+        }
+
+        if (hasDob) {
+            predicates.add(cb.equal(patientJoin.get("dateOfBirth"), filter.dateOfBirth()));
+        }
+
+        if (hasDocument) {
+            Join<Patient, PatientDocument> documentJoin =
+                    patientJoin.join("patientDocuments", JoinType.INNER);
+            predicates.add(cb.equal(documentJoin.get("number"), filter.documentNumber().trim()));
+            if (query != null) {
+                query.distinct(true);
+            }
+        }
+
+        if (hasPatientName) {
+            String[] tokens = filter.patientName().trim().toLowerCase().split("\\s+");
+
+            Expression<String> first = cb.lower(cb.coalesce(patientJoin.get("firstName"), ""));
+            Expression<String> second = cb.lower(cb.coalesce(patientJoin.get("secondName"), ""));
+            Expression<String> third = cb.lower(cb.coalesce(patientJoin.get("thirdName"), ""));
+            Expression<String> last = cb.lower(cb.coalesce(patientJoin.get("lastName"), ""));
+
+            Predicate[] tokenPredicates = Arrays.stream(tokens)
+                    .filter(token -> token != null && !token.isBlank())
+                    .map(token -> {
+                        String like = "%" + token + "%";
+                        return cb.or(
+                                cb.like(first, like),
+                                cb.like(second, like),
+                                cb.like(third, like),
+                                cb.like(last, like)
+                        );
+                    })
+                    .toArray(Predicate[]::new);
+
+            if (tokenPredicates.length > 0) {
+                predicates.add(cb.and(tokenPredicates));
+            }
+        }
     }
 
     private void applyFetches(Root<PatientEncounter> root, CriteriaQuery<?> query) {
@@ -1709,97 +1671,7 @@ public class PatientEncounterService {
             /*
              * Patient Name / MRN
              */
-            if (hasPatientName || hasMrn) {
-
-                Join<PatientEncounter, Patient> patientJoin =
-                        root.join(
-                                "patient",
-                                JoinType.INNER
-                        );
-
-                /*
-                 * MRN
-                 */
-                if (hasMrn) {
-                    predicates.add(
-                            cb.equal(
-                                    patientJoin.get("medicalRecordNumber"),
-                                    filter.mrn().trim()
-                            )
-                    );
-                }
-
-                /*
-                 * Patient Name
-                 */
-                if (hasPatientName) {
-
-                    String[] tokens =
-                            filter.patientName()
-                                    .trim()
-                                    .toLowerCase()
-                                    .split("\\s+");
-
-                    Expression<String> first =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("firstName"),
-                                            ""
-                                    )
-                            );
-
-                    Expression<String> second =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("secondName"),
-                                            ""
-                                    )
-                            );
-
-                    Expression<String> third =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("thirdName"),
-                                            ""
-                                    )
-                            );
-
-                    Expression<String> last =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("lastName"),
-                                            ""
-                                    )
-                            );
-
-                    Predicate[] tokenPredicates =
-                            Arrays.stream(tokens)
-                                    .filter(
-                                            token ->
-                                                    token != null
-                                                            && !token.isBlank()
-                                    )
-                                    .map(token -> {
-
-                                        String like =
-                                                "%" + token + "%";
-
-                                        return cb.or(
-                                                cb.like(first, like),
-                                                cb.like(second, like),
-                                                cb.like(third, like),
-                                                cb.like(last, like)
-                                        );
-                                    })
-                                    .toArray(Predicate[]::new);
-
-                    if (tokenPredicates.length > 0) {
-                        predicates.add(
-                                cb.and(tokenPredicates)
-                        );
-                    }
-                }
-            }
+            applyPatientIdentityFilters(root, query, cb, predicates, filter);
 
             /*
              * =========================================================
@@ -2096,93 +1968,7 @@ public class PatientEncounterService {
                 );
             }
 
-            if (hasPatientName || hasMrn) {
-
-                Join<PatientEncounter, Patient> patientJoin =
-                        root.join(
-                                "patient",
-                                JoinType.INNER
-                        );
-
-                if (hasMrn) {
-                    predicates.add(
-                            cb.equal(
-                                    patientJoin.get(
-                                            "medicalRecordNumber"
-                                    ),
-                                    filter.mrn().trim()
-                            )
-                    );
-                }
-
-                if (hasPatientName) {
-
-                    String[] tokens =
-                            filter.patientName()
-                                    .trim()
-                                    .toLowerCase()
-                                    .split("\\s+");
-
-                    Expression<String> first =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("firstName"),
-                                            ""
-                                    )
-                            );
-
-                    Expression<String> second =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("secondName"),
-                                            ""
-                                    )
-                            );
-
-                    Expression<String> third =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("thirdName"),
-                                            ""
-                                    )
-                            );
-
-                    Expression<String> last =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("lastName"),
-                                            ""
-                                    )
-                            );
-
-                    Predicate[] tokenPredicates =
-                            Arrays.stream(tokens)
-                                    .filter(
-                                            token ->
-                                                    token != null
-                                                            && !token.isBlank()
-                                    )
-                                    .map(token -> {
-
-                                        String like =
-                                                "%" + token + "%";
-
-                                        return cb.or(
-                                                cb.like(first, like),
-                                                cb.like(second, like),
-                                                cb.like(third, like),
-                                                cb.like(last, like)
-                                        );
-                                    })
-                                    .toArray(Predicate[]::new);
-
-                    if (tokenPredicates.length > 0) {
-                        predicates.add(
-                                cb.and(tokenPredicates)
-                        );
-                    }
-                }
-            }
+            applyPatientIdentityFilters(root, query, cb, predicates, filter);
 
             return cb.and(
                     predicates.toArray(
