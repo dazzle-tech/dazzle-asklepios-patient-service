@@ -44,8 +44,12 @@ public class ClaimEncounterCopyDiagnosticOrderTestReport
     @Column(name = "diagnostic_order_test_report_id")
     private Long diagnosticOrderTestReportId;
 
-    @Column(name = "order_test_id", nullable = false)
+    @Column(name = "order_test_id")
     private Long orderTestId;
+
+    /** Source when the test was ordered from Service and Products instead of a diagnostic order. */
+    @Column(name = "patient_service_product_id")
+    private Long patientServiceProductId;
 
     @Column(name = "report", columnDefinition = "text")
     private String report;

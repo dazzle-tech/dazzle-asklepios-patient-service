@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
+import com.dazzle.asklepios.domain.ClaimEncounterCopyDiagnosticOrderTestReport;
+import com.dazzle.asklepios.domain.ClaimEncounterCopyDiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.ClaimItem;
 import com.dazzle.asklepios.domain.ClaimRequest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
@@ -31,6 +33,8 @@ import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimUploadRespon
 import com.dazzle.asklepios.integration.waseel.event.InsuranceInvoiceIssuedEvent;
 import com.dazzle.asklepios.client.setup.dto.NphiesPayerDTO;
 import com.dazzle.asklepios.client.setup.dto.PayorDTO;
+import com.dazzle.asklepios.repository.ClaimEncounterCopyDiagnosticOrderTestReportRepository;
+import com.dazzle.asklepios.repository.ClaimEncounterCopyDiagnosticOrderTestResultRepository;
 import com.dazzle.asklepios.repository.ClaimItemRepository;
 import com.dazzle.asklepios.repository.ClaimRequestRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
@@ -112,6 +116,8 @@ public class ClaimSubmissionService {
     private final FinancialDocumentItemRepository financialDocumentItemRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
+    private final ClaimEncounterCopyDiagnosticOrderTestResultRepository claimEncounterCopyDiagnosticOrderTestResultRepository;
+    private final ClaimEncounterCopyDiagnosticOrderTestReportRepository claimEncounterCopyDiagnosticOrderTestReportRepository;
     private final WaseelClaimClassification waseelClaimClassification;
     private final PatientActivityService patientActivityService;
 
@@ -135,6 +141,8 @@ public class ClaimSubmissionService {
             FinancialDocumentItemRepository financialDocumentItemRepository,
             PatientServiceAndProductRepository patientServiceAndProductRepository,
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
+            ClaimEncounterCopyDiagnosticOrderTestResultRepository claimEncounterCopyDiagnosticOrderTestResultRepository,
+            ClaimEncounterCopyDiagnosticOrderTestReportRepository claimEncounterCopyDiagnosticOrderTestReportRepository,
             WaseelClaimClassification waseelClaimClassification,
             PatientActivityService patientActivityService
     ) {
@@ -157,6 +165,8 @@ public class ClaimSubmissionService {
         this.financialDocumentItemRepository = financialDocumentItemRepository;
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
+        this.claimEncounterCopyDiagnosticOrderTestResultRepository = claimEncounterCopyDiagnosticOrderTestResultRepository;
+        this.claimEncounterCopyDiagnosticOrderTestReportRepository = claimEncounterCopyDiagnosticOrderTestReportRepository;
         this.waseelClaimClassification = waseelClaimClassification;
         this.patientActivityService = patientActivityService;
     }
@@ -792,6 +802,7 @@ public class ClaimSubmissionService {
                 .collect(Collectors.toMap(Patient::getId, Function.identity()));
 
         Set<Long> unapprovedOrderTestIds = unapprovedDiagnosticOrderTestIds(productsById.values());
+        Set<Long> serviceProductIdsWithResult = serviceProductIdsWithClaimResult(productsById.values());
         Map<Long, ClaimRequest> rejectedClaimsByInvoiceId =
                 latestRejectedClaims(invoiceIds, claimType);
 
@@ -847,7 +858,8 @@ public class ClaimSubmissionService {
                     claimSubType,
                     matchingItems.size(),
                     matchingNet.setScale(2, RoundingMode.HALF_UP),
-                    !hasUnapprovedDiagnosticResult(matchingItems, productsById, unapprovedOrderTestIds),
+                    !hasUnapprovedDiagnosticResult(
+                            matchingItems, productsById, unapprovedOrderTestIds, serviceProductIdsWithResult),
                     rejectedClaim != null,
                     rejectionMessage(rejectedClaim)
             ));
@@ -928,7 +940,8 @@ public class ClaimSubmissionService {
     private boolean hasUnapprovedDiagnosticResult(
             List<FinancialDocumentItem> items,
             Map<Long, PatientServiceAndProduct> productsById,
-            Set<Long> unapprovedOrderTestIds
+            Set<Long> unapprovedOrderTestIds,
+            Set<Long> serviceProductIdsWithResult
     ) {
         return items.stream()
                 .map(item -> item.getPatientServiceProductId() == null
@@ -936,7 +949,36 @@ public class ClaimSubmissionService {
                         : productsById.get(item.getPatientServiceProductId()))
                 .filter(this::isDiagnosticItem)
                 .anyMatch(product -> product.getSourceId() == null
-                        || unapprovedOrderTestIds.contains(product.getSourceId()));
+                        ? !serviceProductIdsWithResult.contains(product.getId())
+                        : unapprovedOrderTestIds.contains(product.getSourceId()));
+    }
+
+    /**
+     * Laboratory / radiology lines ordered from Service and Products have no order test to approve.
+     * A result or report entered for them on the claim encounter copy counts as approved.
+     */
+    private Set<Long> serviceProductIdsWithClaimResult(Collection<PatientServiceAndProduct> products) {
+        List<Long> serviceProductIds = products.stream()
+                .filter(this::isDiagnosticItem)
+                .filter(product -> product.getSourceId() == null)
+                .map(PatientServiceAndProduct::getId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (serviceProductIds.isEmpty()) {
+            return Set.of();
+        }
+
+        Set<Long> withResult = new HashSet<>();
+        claimEncounterCopyDiagnosticOrderTestResultRepository.findByPatientServiceProductIdIn(serviceProductIds)
+                .stream()
+                .map(ClaimEncounterCopyDiagnosticOrderTestResult::getPatientServiceProductId)
+                .forEach(withResult::add);
+        claimEncounterCopyDiagnosticOrderTestReportRepository.findByPatientServiceProductIdIn(serviceProductIds)
+                .stream()
+                .map(ClaimEncounterCopyDiagnosticOrderTestReport::getPatientServiceProductId)
+                .forEach(withResult::add);
+        return withResult;
     }
 
     private Set<Long> invoicesWithUnapprovedDiagnosticResults(
@@ -966,6 +1008,7 @@ public class ClaimSubmissionService {
                 .collect(Collectors.toMap(PatientServiceAndProduct::getId, Function.identity(), (a, b) -> a));
 
         Set<Long> unapprovedOrderTestIds = unapprovedDiagnosticOrderTestIds(productsById.values());
+        Set<Long> serviceProductIdsWithResult = serviceProductIdsWithClaimResult(productsById.values());
         Set<Long> blocked = new HashSet<>();
         itemsByInvoiceId.forEach((invoiceId, items) -> {
             List<FinancialDocumentItem> claimItems = items.stream()
@@ -976,7 +1019,8 @@ public class ClaimSubmissionService {
                             claimType
                     ))
                     .toList();
-            if (hasUnapprovedDiagnosticResult(claimItems, productsById, unapprovedOrderTestIds)) {
+            if (hasUnapprovedDiagnosticResult(
+                    claimItems, productsById, unapprovedOrderTestIds, serviceProductIdsWithResult)) {
                 blocked.add(invoiceId);
             }
         });
