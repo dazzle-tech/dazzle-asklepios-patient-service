@@ -19,6 +19,7 @@ import com.dazzle.asklepios.service.dto.billing.BillingPricingInput;
 import com.dazzle.asklepios.service.dto.InsuranceSplit;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
 import com.dazzle.asklepios.service.dto.billing.PartyTaxDistribution;
+import com.dazzle.asklepios.service.dto.billing.PrepareDefaultProcedureItem;
 import com.dazzle.asklepios.service.dto.billing.PrepareDefaultServiceItem;
 import com.dazzle.asklepios.service.dto.billing.PreviewDefaultServicePricingResult;
 import com.dazzle.asklepios.service.dto.billing.PreviewDefaultServicesPricingRequest;
@@ -62,6 +63,7 @@ public class DefaultServicePricingPreviewService {
     private final InsurancePatientShareCalculator insurancePatientShareCalculator;
     private final EncounterCoverageService encounterCoverageService;
     private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
+    private final EncounterDefaultProcedureService encounterDefaultProcedureService;
 
     @Transactional(readOnly = true)
     public PreviewDefaultServicesPricingResult preview(
@@ -144,6 +146,7 @@ public class DefaultServicePricingPreviewService {
                     BigDecimal.ZERO,
                     BigDecimal.ZERO,
                     BigDecimal.ZERO,
+                    List.of(),
                     List.of()
             );
         }
@@ -156,13 +159,19 @@ public class DefaultServicePricingPreviewService {
                         ))
                         .toList();
 
+        List<PrepareDefaultProcedureItem> orderedProcedures =
+                request.defaultProcedures()
+                        .stream()
+                        .sorted(Comparator.comparing(
+                                PrepareDefaultProcedureItem::sequence
+                        ))
+                        .toList();
+
         List<PreviewDefaultServicePricingResult> itemResults =
                 new ArrayList<>();
-
-        BigDecimal totalGross = BigDecimal.ZERO;
-        BigDecimal totalDiscount = BigDecimal.ZERO;
-        BigDecimal totalTax = BigDecimal.ZERO;
-        BigDecimal totalNet = BigDecimal.ZERO;
+        List<PreviewDefaultServicePricingResult> procedureResults =
+                new ArrayList<>();
+        PreviewTotals totals = new PreviewTotals();
 
         for (PrepareDefaultServiceItem requestedItem : orderedItems) {
             ServiceSetupDTO service = loadAndValidateSetupService(
@@ -183,34 +192,45 @@ public class DefaultServicePricingPreviewService {
                     resolvePreviewForItem(
                             previewItem,
                             request.facilityId(),
-                            requestedItem,
+                            requestedItem.sequence(),
                             insurance,
-                            service.category(),
                             visitMaxLimitTracker,
                             patient.getIsCitizen()
                     );
 
             itemResults.add(itemResult);
+            totals.add(itemResult);
+        }
 
-            totalGross = totalGross.add(
-                    defaultZero(itemResult.grossAmount())
-            );
-            totalDiscount = totalDiscount.add(
-                    defaultZero(itemResult.discountAmount())
-            );
-            totalTax = totalTax.add(
-                    defaultZero(itemResult.taxAmount())
-            );
-            totalNet = totalNet.add(
-                    defaultZero(itemResult.netAmount())
-            );
+        for (PrepareDefaultProcedureItem requestedProcedure : orderedProcedures) {
+            PatientServiceAndProduct previewItem =
+                    encounterDefaultProcedureService.buildPreviewItem(
+                            encounter,
+                            request.currency(),
+                            requestedProcedure,
+                            insurance
+                    );
+
+            PreviewDefaultServicePricingResult procedureResult =
+                    resolvePreviewForItem(
+                            previewItem,
+                            request.facilityId(),
+                            requestedProcedure.sequence(),
+                            insurance,
+                            visitMaxLimitTracker,
+                            patient.getIsCitizen()
+                    );
+
+            procedureResults.add(procedureResult);
+            totals.add(procedureResult);
         }
 
         LOG.debug(
-                "[PREVIEW_PRICING] encounterId={} itemCount={} net={}",
+                "[PREVIEW_PRICING] encounterId={} itemCount={} procedureCount={} net={}",
                 encounterId,
                 itemResults.size(),
-                totalNet
+                procedureResults.size(),
+                totals.net
         );
 
         return new PreviewDefaultServicesPricingResult(
@@ -220,20 +240,38 @@ public class DefaultServicePricingPreviewService {
                 coverageType,
                 insurance == null ? null : insurance.getId(),
                 request.currency(),
-                totalGross,
-                totalDiscount,
-                totalTax,
-                totalNet,
-                List.copyOf(itemResults)
+                totals.gross,
+                totals.discount,
+                totals.tax,
+                totals.net,
+                List.copyOf(itemResults),
+                List.copyOf(procedureResults)
         );
+    }
+
+    /**
+     * Running totals of the priced default services and procedures.
+     */
+    private static final class PreviewTotals {
+
+        private BigDecimal gross = BigDecimal.ZERO;
+        private BigDecimal discount = BigDecimal.ZERO;
+        private BigDecimal tax = BigDecimal.ZERO;
+        private BigDecimal net = BigDecimal.ZERO;
+
+        private void add(PreviewDefaultServicePricingResult result) {
+            gross = gross.add(defaultZero(result.grossAmount()));
+            discount = discount.add(defaultZero(result.discountAmount()));
+            tax = tax.add(defaultZero(result.taxAmount()));
+            net = net.add(defaultZero(result.netAmount()));
+        }
     }
 
     private PreviewDefaultServicePricingResult resolvePreviewForItem(
             PatientServiceAndProduct previewItem,
             Long facilityId,
-            PrepareDefaultServiceItem requestedItem,
+            Integer sequence,
             PatientInsurance insurance,
-            String serviceCategory,
             VisitMaxLimitTracker visitMaxLimitTracker,
             Boolean patientCitizen
     ) {
@@ -278,10 +316,11 @@ public class DefaultServicePricingPreviewService {
             }
 
             LOG.info(
-                    "[PREVIEW_PRICING] Insurance did not cover service. "
+                    "[PREVIEW_PRICING] Insurance did not cover item. "
                             + "Using self-pay price list then setup. "
-                            + "serviceId={} reason={} priceSource={} unitPrice={}",
-                    requestedItem.serviceId(),
+                            + "serviceId={} procedureId={} reason={} priceSource={} unitPrice={}",
+                    previewItem.getServiceId(),
+                    previewItem.getProcedureId(),
                     notCoveredReason,
                     resolvedPrice.priceSource(),
                     resolvedPrice.unitPrice()
@@ -309,8 +348,9 @@ public class DefaultServicePricingPreviewService {
                 && resolvedPrice.priceSource() == BillingPriceSource.SETUP_FALLBACK) {
             LOG.warn(
                     "[PREVIEW_PRICING] Insurance visit resolved to setup fallback "
-                            + "serviceId={} patientInsuranceId={} payorId={} setupUnitPrice={} resolvedUnitPrice={}",
-                    requestedItem.serviceId(),
+                            + "serviceId={} procedureId={} patientInsuranceId={} payorId={} setupUnitPrice={} resolvedUnitPrice={}",
+                    previewItem.getServiceId(),
+                    previewItem.getProcedureId(),
                     insurance.getId(),
                     insurance.getPayorId(),
                     resolvedPrice.setupUnitPrice(),
@@ -318,8 +358,9 @@ public class DefaultServicePricingPreviewService {
             );
         } else {
             LOG.info(
-                    "[PREVIEW_PRICING] serviceId={} priceSource={} setupUnitPrice={} resolvedUnitPrice={} netAmount={}",
-                    requestedItem.serviceId(),
+                    "[PREVIEW_PRICING] serviceId={} procedureId={} priceSource={} setupUnitPrice={} resolvedUnitPrice={} netAmount={}",
+                    previewItem.getServiceId(),
+                    previewItem.getProcedureId(),
                     resolvedPrice.priceSource(),
                     resolvedPrice.setupUnitPrice(),
                     pricing.unitPrice(),
@@ -369,8 +410,9 @@ public class DefaultServicePricingPreviewService {
                         .subtract(taxDistribution.appliedTaxAmount());
 
         return new PreviewDefaultServicePricingResult(
-                requestedItem.serviceId(),
-                requestedItem.sequence(),
+                previewItem.getServiceId(),
+                previewItem.getProcedureId(),
+                sequence,
                 resolvedPrice.setupUnitPrice(),
                 pricing.unitPrice(),
                 pricing.grossAmount(),
@@ -455,9 +497,10 @@ public class DefaultServicePricingPreviewService {
             );
         }
 
-        if (request.items() == null || request.items().isEmpty()) {
+        if (request.items() == null
+                || (request.items().isEmpty() && request.defaultProcedures().isEmpty())) {
             throw new BadRequestAlertException(
-                    "At least one service item is required.",
+                    "At least one default service or procedure is required.",
                     ENTITY_NAME,
                     "items.required"
             );
@@ -598,7 +641,7 @@ public class DefaultServicePricingPreviewService {
         }
     }
 
-    private BigDecimal defaultZero(BigDecimal value) {
+    private static BigDecimal defaultZero(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
     }
 }

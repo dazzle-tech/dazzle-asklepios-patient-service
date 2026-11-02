@@ -17,7 +17,6 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.FutureOrPresent;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -85,15 +84,14 @@ public class PatientProcedure extends AbstractAuditingEntity<Long> implements Se
     private Long indicationId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "procedure_level", nullable = false)
+    @Column(name = "procedure_level")
     private ProcedureLevel procedureLevel;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "priority")
     private Priority priority;
 
-    @NotBlank
-    @Column(name = "body_part", nullable = false)
+    @Column(name = "body_part")
     private String bodyPart;
 
     @Column(name = "side")
@@ -125,4 +123,13 @@ public class PatientProcedure extends AbstractAuditingEntity<Long> implements Se
 
     @Column(name = "cancellation_reason")
     private String cancellationReason;
+
+    /**
+     * True when the procedure was ordered automatically as a default
+     * procedure of the visit department/specialty at registration.
+     */
+    @NotNull
+    @Builder.Default
+    @Column(name = "is_default_procedure", nullable = false)
+    private Boolean isDefaultProcedure = Boolean.FALSE;
 }

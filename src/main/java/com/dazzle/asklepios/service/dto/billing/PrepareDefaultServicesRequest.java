@@ -34,6 +34,12 @@ public record PrepareDefaultServicesRequest(
         @NotNull
         List<@Valid PrepareDefaultServiceItem> items,
 
+        /**
+         * Default procedures of the visit department/specialty. Each one is
+         * ordered on the encounter and billed with the default services.
+         */
+        List<@Valid PrepareDefaultProcedureItem> procedures,
+
         @NotNull
         @Size(max = 150)
         String requestId,
@@ -47,4 +53,8 @@ public record PrepareDefaultServicesRequest(
         Boolean acceptUncoveredAsCash
 
 ) implements Serializable {
+
+    public List<PrepareDefaultProcedureItem> defaultProcedures() {
+        return procedures == null ? List.of() : procedures;
+    }
 }
