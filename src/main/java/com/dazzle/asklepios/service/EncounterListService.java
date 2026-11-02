@@ -175,6 +175,32 @@ public class EncounterListService {
             );
         }
 
+        if (filter != null && filter.primaryMobileNumber() != null
+                && !filter.primaryMobileNumber().isBlank()) {
+            specification = specification.and(
+                    EncounterListSpecification.primaryMobileNumberEquals(
+                            filter.primaryMobileNumber()
+                    )
+            );
+        }
+
+        if (filter != null && filter.documentNumber() != null
+                && !filter.documentNumber().isBlank()) {
+            specification = specification.and(
+                    EncounterListSpecification.documentNumberEquals(
+                            filter.documentNumber()
+                    )
+            );
+        }
+
+        if (filter != null && filter.dateOfBirth() != null) {
+            specification = specification.and(
+                    EncounterListSpecification.dateOfBirthEquals(
+                            filter.dateOfBirth()
+                    )
+            );
+        }
+
         if (filter != null && filter.departmentId() != null) {
             specification = specification.and(
                     EncounterListSpecification.departmentIdEquals(

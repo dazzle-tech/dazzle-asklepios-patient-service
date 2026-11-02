@@ -31,6 +31,8 @@ import com.dazzle.asklepios.web.rest.errors.PatientAlreadyActiveException;
 import com.dazzle.asklepios.web.rest.vm.patient.CreatePasswordKeyValidationVM;
 import com.dazzle.asklepios.web.rest.vm.patient.PortalAppUpdateNotificationVM;
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
@@ -462,6 +464,29 @@ public class PatientService {
                                     cb.like(cb.lower(root.get("lastNameSecondaryLang")), pattern)
                             )
                     );
+                }
+            }
+
+            if (filter.mrn() != null && !filter.mrn().isBlank()) {
+                predicates.add(cb.equal(root.get("medicalRecordNumber"), filter.mrn().trim()));
+            }
+
+            if (filter.primaryMobileNumber() != null && !filter.primaryMobileNumber().isBlank()) {
+                predicates.add(
+                        cb.equal(root.get("primaryMobileNumber"), filter.primaryMobileNumber().trim())
+                );
+            }
+
+            if (filter.dateOfBirth() != null) {
+                predicates.add(cb.equal(root.get("dateOfBirth"), filter.dateOfBirth()));
+            }
+
+            if (filter.documentNumber() != null && !filter.documentNumber().isBlank()) {
+                Join<Patient, PatientDocument> documents =
+                        root.join("patientDocuments", JoinType.INNER);
+                predicates.add(cb.equal(documents.get("number"), filter.documentNumber().trim()));
+                if (query != null) {
+                    query.distinct(true);
                 }
             }
 
