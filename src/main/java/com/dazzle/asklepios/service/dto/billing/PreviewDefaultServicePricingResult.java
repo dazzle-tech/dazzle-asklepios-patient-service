@@ -7,6 +7,11 @@ public record PreviewDefaultServicePricingResult(
 
         Long serviceId,
 
+        /*
+         * Set instead of serviceId when the priced item is a default procedure.
+         */
+        Long procedureId,
+
         Integer sequence,
 
         BigDecimal setupUnitPrice,
