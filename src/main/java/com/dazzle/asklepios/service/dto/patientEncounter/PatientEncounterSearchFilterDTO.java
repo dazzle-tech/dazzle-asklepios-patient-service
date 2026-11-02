@@ -9,6 +9,7 @@ import java.util.List;
 
 public record PatientEncounterSearchFilterDTO(
         Long departmentId,
+        List<Long> departmentIds,
         Long practitionerId,
 
         LocalDate fromDate,

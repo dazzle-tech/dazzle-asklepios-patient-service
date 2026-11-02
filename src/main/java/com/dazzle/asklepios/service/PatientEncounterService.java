@@ -498,7 +498,11 @@ public class PatientEncounterService {
 
             List<Predicate> predicates = new ArrayList<>();
 
-            predicates.add(cb.equal(root.get("departmentId"), filter.departmentId()));
+            if (filter.departmentIds() != null && !filter.departmentIds().isEmpty()) {
+                predicates.add(root.get("departmentId").in(filter.departmentIds()));
+            } else {
+                predicates.add(cb.equal(root.get("departmentId"), filter.departmentId()));
+            }
             predicates.add(cb.between(root.get("encounterDate"), effectiveFrom, effectiveTo));
             predicates.add(root.get("status").in(effectiveStatuses));
 
