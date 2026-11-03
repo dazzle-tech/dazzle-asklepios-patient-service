@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentStatus;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -16,7 +17,7 @@ import java.util.Optional;
 
 @Repository
 public interface BillingPaymentRepository
-        extends JpaRepository<BillingPayment, Long> {
+        extends JpaRepository<BillingPayment, Long>, JpaSpecificationExecutor<BillingPayment> {
 
     @Override
     Optional<BillingPayment> findById(

@@ -334,20 +334,19 @@ public final class DailyBriefingAssembler {
         indicators.begin("BILLING");
         String period = previousPeriod(context, indicators);
         DailyBriefingFacts.BillingSnapshot billing = facts.billing() == null
-                ? new DailyBriefingFacts.BillingSnapshot(null, null, null, null, null, null, null, null, null, null)
+                ? new DailyBriefingFacts.BillingSnapshot(null, null, null, null, null, null, null, null)
                 : facts.billing();
-        String definition = "Net billing = gross - discount - exemption - credit notes, for active charges dated on the previous facility day and credit notes issued that day, by currency. Cancellations are shown separately and are not subtracted again. Collections are completed billing payments and are not part of net billing. An issued invoice is not collected revenue.";
-        String definitionAr = "صافي الفوترة = الإجمالي - الخصم - الإعفاء - الإشعارات الدائنة، للرسوم النشطة بتاريخ اليوم السابق والإشعارات الدائنة الصادرة ذلك اليوم، لكل عملة. الإلغاءات معروضة منفصلة ولا تُطرح مرة أخرى. التحصيل هو مدفوعات الفوترة المكتملة وليس جزءاً من صافي الفوترة. الفاتورة الصادرة ليست إيراداً محصلاً.";
-        Coverage coverage = (billing.debitNotes() != null && !billing.debitNotes().isEmpty()) || (billing.reversedWithoutTimestamp() != null && billing.reversedWithoutTimestamp() > 0)
+        String definition = "Net billing = gross - discount - exemption, for active charges dated on the previous facility day, by currency. Cancellations are shown separately and are not subtracted again. Collections are completed billing payments and are not part of net billing. An issued invoice is not collected revenue.";
+        String definitionAr = "صافي الفوترة = الإجمالي - الخصم - الإعفاء، للرسوم النشطة بتاريخ اليوم السابق، لكل عملة. الإلغاءات معروضة منفصلة ولا تُطرح مرة أخرى. التحصيل هو مدفوعات الفوترة المكتملة وليس جزءاً من صافي الفوترة. الفاتورة الصادرة ليست إيراداً محصلاً.";
+        Coverage coverage = billing.reversedWithoutTimestamp() != null && billing.reversedWithoutTimestamp() > 0
                 ? Coverage.PARTIAL : Coverage.COMPLETE;
         String note = coverage == Coverage.PARTIAL
-                ? indicators.pair("Debit notes or reversed charges without a timestamp are disclosed and are not forced into the net formula.", "الإشعارات المدينة أو الرسوم المعكوسة بلا طابع زمني معروضة ولا تُقحم في معادلة الصافي.")
+                ? indicators.pair("Reversed charges without a timestamp are disclosed and are not forced into the net formula.", "الرسوم المعكوسة بلا طابع زمني معروضة ولا تُقحم في معادلة الصافي.")
                 : null;
         indicators.amount("GROSS_BILLING", "Gross billing", "إجمالي الفوترة", definition, definitionAr, period, money(billing.activeCharges(), ChargePart.GROSS), coverage, note, null, true);
         indicators.amount("DISCOUNTS", "Discounts", "الخصومات", "Discounts on active charges.", "خصومات الرسوم النشطة.", period, money(billing.activeCharges(), ChargePart.DISCOUNT), coverage, null, null, false);
         indicators.amount("EXEMPTIONS", "Exemptions", "الإعفاءات", "Exemptions on active charges.", "إعفاءات الرسوم النشطة.", period, money(billing.activeCharges(), ChargePart.EXEMPTION), coverage, null, null, false);
         indicators.amount("CANCELLATIONS", "Charge cancellations", "إلغاءات الرسوم", "Net amount of charges cancelled on the previous day. Not subtracted again from net billing.", "صافي الرسوم الملغاة في اليوم السابق. لا يُطرح مرة أخرى من صافي الفوترة.", period, moneyRows(billing.cancellations()), coverage, null, null, false);
-        indicators.amount("CREDIT_NOTES", "Credit notes", "الإشعارات الدائنة", "Credit notes issued on the previous day.", "إشعارات دائنة صدرت في اليوم السابق.", period, moneyRows(billing.creditNotes()), coverage, null, null, false);
         indicators.amount("NET_BILLING", "Net billing", "صافي الفوترة", definition, definitionAr, period, net(billing), coverage, note, null, true);
         indicators.amount("BILLING_PAYMENT_COLLECTIONS", "Collections", "التحصيل",
                 "Completed billing payments, once per payment, grouped by payer type. This is the only collection source. Refunds are shown separately and are not subtracted here.",
@@ -366,7 +365,7 @@ public final class DailyBriefingAssembler {
                 "Responsibility amounts whose party is not the patient. Not added to patient responsibility and not treated as collected.", "مبالغ المسؤولية التي طرفها ليس المريض. لا تُضاف إلى مسؤولية المريض ولا تُعامل كمحصل.",
                 period, labeledExcept(billing.responsibilities(), "PATIENT"), Coverage.COMPLETE, null, null, false);
         indicators.amount("ISSUED_INVOICES", "Issued invoices", "الفواتير الصادرة",
-                "Invoice documents issued on the previous day. This is not collected revenue.", "مستندات فواتير صدرت في اليوم السابق. هذا ليس إيراداً محصلاً.",
+                "Billing invoices created on the previous facility day, excluding cancelled invoices. This is not collected revenue.", "فواتير الفوترة المنشأة في اليوم السابق للمنشأة، باستثناء الفواتير الملغاة. هذا ليس إيراداً محصلاً.",
                 period, moneyRows(billing.issuedInvoices()), Coverage.COMPLETE,
                 indicators.pair("An issued invoice is not counted as a collection.", "الفاتورة الصادرة لا تُحسب تحصيلاً."), null, true);
         return section(indicators, "BILLING", "Billing and collections", "الفوترة والتحصيل", definition, definitionAr, List.of(), List.of());
@@ -1047,32 +1046,23 @@ public final class DailyBriefingAssembler {
     }
 
     private static List<MoneyAmount> net(DailyBriefingFacts.BillingSnapshot billing) {
-        if (billing.activeCharges() == null || billing.creditNotes() == null) {
+        if (billing.activeCharges() == null) {
             return null;
         }
         Map<String, BigDecimal> gross = new LinkedHashMap<>();
         Map<String, BigDecimal> discount = new LinkedHashMap<>();
         Map<String, BigDecimal> exemption = new LinkedHashMap<>();
-        Map<String, BigDecimal> credit = new LinkedHashMap<>();
         Map<String, Long> counts = new LinkedHashMap<>();
-        if (billing.activeCharges() != null) {
-            for (DailyBriefingFacts.ChargeRow row : billing.activeCharges()) {
-                String currency = currency(row.currency());
-                gross.merge(currency, zero(row.gross()), BigDecimal::add);
-                discount.merge(currency, zero(row.discount()), BigDecimal::add);
-                exemption.merge(currency, zero(row.exemption()), BigDecimal::add);
-                counts.merge(currency, row.count(), Long::sum);
-            }
-        }
-        if (billing.creditNotes() != null) {
-            for (DailyBriefingFacts.MoneyRow row : billing.creditNotes()) {
-                credit.merge(currency(row.currency()), zero(row.amount()), BigDecimal::add);
-                counts.putIfAbsent(currency(row.currency()), 0L);
-            }
+        for (DailyBriefingFacts.ChargeRow row : billing.activeCharges()) {
+            String currency = currency(row.currency());
+            gross.merge(currency, zero(row.gross()), BigDecimal::add);
+            discount.merge(currency, zero(row.discount()), BigDecimal::add);
+            exemption.merge(currency, zero(row.exemption()), BigDecimal::add);
+            counts.merge(currency, row.count(), Long::sum);
         }
         List<MoneyAmount> result = new ArrayList<>();
         for (String currency : counts.keySet()) {
-            result.add(new MoneyAmount(currency, DailyBriefingCalculator.netBilling(gross.get(currency), discount.get(currency), exemption.get(currency), credit.get(currency)), counts.get(currency), null));
+            result.add(new MoneyAmount(currency, DailyBriefingCalculator.netBilling(gross.get(currency), discount.get(currency), exemption.get(currency), BigDecimal.ZERO), counts.get(currency), null));
         }
         return result;
     }

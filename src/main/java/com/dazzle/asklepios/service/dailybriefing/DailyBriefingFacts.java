@@ -102,8 +102,6 @@ public record DailyBriefingFacts(
     public record BillingSnapshot(
             List<ChargeRow> activeCharges,
             List<MoneyRow> cancellations,
-            List<MoneyRow> creditNotes,
-            List<MoneyRow> debitNotes,
             Long reversedWithoutTimestamp,
             List<MoneyRow> billingPayments,
             List<MoneyRow> classifiedRefunds,
@@ -357,7 +355,7 @@ public record DailyBriefingFacts(
         }
 
         private static BillingSnapshot emptyBilling() {
-            return new BillingSnapshot(List.of(), List.of(), List.of(), List.of(), 0L, List.of(), List.of(), 0L, List.of(), List.of());
+            return new BillingSnapshot(List.of(), List.of(), 0L, List.of(), List.of(), 0L, List.of(), List.of());
         }
     }
 }

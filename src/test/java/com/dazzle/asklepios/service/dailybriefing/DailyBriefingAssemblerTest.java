@@ -90,8 +90,6 @@ class DailyBriefingAssemblerTest {
                 .billing(new DailyBriefingFacts.BillingSnapshot(
                         List.of(new DailyBriefingFacts.ChargeRow("SAR", new BigDecimal("100"), new BigDecimal("10"), BigDecimal.ZERO, new BigDecimal("90"), 1)),
                         List.of(new DailyBriefingFacts.MoneyRow("SAR", new BigDecimal("40"), 1, null)),
-                        List.of(),
-                        List.of(),
                         0L,
                         List.of(new DailyBriefingFacts.MoneyRow("SAR", new BigDecimal("30"), 1, "INSURANCE")),
                         List.of(),
@@ -109,7 +107,7 @@ class DailyBriefingAssemblerTest {
 
         assertEquals(new BigDecimal("90"), net.amount());
         assertEquals(new BigDecimal("30"), collections.amount());
-        assertTrue(report.keyIndicators().stream().noneMatch(item -> item.code().equals("PATIENT_COLLECTIONS")));
+        assertTrue(report.keyIndicators().stream().noneMatch(item -> item.code().equals("PATIENT_COLLECTIONS") || item.code().equals("CREDIT_NOTES")));
         assertEquals(new BigDecimal("999"), invoices.amount());
         assertFalse(report.urgentCare().included());
         assertTrue(report.actions().stream().allMatch(action -> !action.ownerKnown() && !action.modifiesRecords() && action.requiresReview()));
