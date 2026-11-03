@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimStatus;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimSubType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimType;
 import jakarta.persistence.Column;
@@ -77,6 +78,18 @@ public class ClaimRequest extends AbstractAuditingEntity<Long> implements Serial
 
     @Column(name = "total_net", precision = 19, scale = 2)
     private BigDecimal totalNet;
+
+    /**
+     * Amount the insurance approved, as returned by Waseel. It can be lower than {@code totalNet}
+     * when only part of the claim is approved. Nothing is recalculated from it.
+     */
+    @Column(name = "approved_amount", precision = 19, scale = 2)
+    private BigDecimal approvedAmount;
+
+    /** Payer decision as Waseel's claim search reports it. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "waseel_status", length = 50)
+    private WaseelClaimStatus waseelStatus;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)

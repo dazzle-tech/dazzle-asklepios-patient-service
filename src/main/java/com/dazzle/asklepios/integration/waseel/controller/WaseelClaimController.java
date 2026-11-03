@@ -2,6 +2,7 @@ package com.dazzle.asklepios.integration.waseel.controller;
 
 import com.dazzle.asklepios.domain.ClaimRequest;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimStatus;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimSubType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimType;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimBatchSubmitRequest;
@@ -11,11 +12,13 @@ import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimReturnForResubmitR
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimReturnForResubmitResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimSubmissionResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimTrackingResponse;
+import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimTrackingSyncResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.PendingClaimInvoiceResponse;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimUploadResponse;
 import com.dazzle.asklepios.integration.waseel.service.ClaimStatusRefreshService;
 import com.dazzle.asklepios.integration.waseel.service.ClaimSubmissionService;
 import com.dazzle.asklepios.integration.waseel.service.ClaimTrackingService;
+import com.dazzle.asklepios.integration.waseel.service.ClaimTrackingSyncService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelClaimService;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
@@ -48,6 +51,7 @@ public class WaseelClaimController {
 
     private final ClaimSubmissionService claimSubmissionService;
     private final ClaimTrackingService claimTrackingService;
+    private final ClaimTrackingSyncService claimTrackingSyncService;
     private final ClaimStatusRefreshService claimStatusRefreshService;
     private final WaseelClaimService waseelClaimService;
 
@@ -70,6 +74,8 @@ public class WaseelClaimController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant submittedTo,
             @RequestParam(required = false) Long payorId,
             @RequestParam(required = false) String payerNphiesId,
+            @RequestParam(required = false) WaseelClaimStatus waseelStatus,
+            @RequestParam(defaultValue = "false") boolean latestPerEncounter,
             @ParameterObject Pageable pageable
     ) {
         Page<ClaimTrackingResponse> page = claimTrackingService.findAll(
@@ -88,7 +94,9 @@ public class WaseelClaimController {
                         submittedFrom,
                         submittedTo,
                         payorId,
-                        payerNphiesId
+                        payerNphiesId,
+                        waseelStatus,
+                        latestPerEncounter
                 ),
                 pageable
         );
@@ -97,6 +105,50 @@ public class WaseelClaimController {
                 page
         );
         return new ResponseEntity<>(page, headers, HttpStatus.OK);
+    }
+
+    /**
+     * Refreshes the open claims that match the registry search from Waseel. The claim status and
+     * Waseel status filters are not applied, because those statuses are what the refresh can change.
+     */
+    @PostMapping("/internal/waseel/claims/tracking/sync")
+    public ClaimTrackingSyncResponse syncWithWaseel(
+            @RequestParam(required = false) WaseelClaimType claimType,
+            @RequestParam(required = false) WaseelClaimSubType claimSubType,
+            @RequestParam(required = false) String claimReference,
+            @RequestParam(required = false) String provClaimNo,
+            @RequestParam(required = false) String uploadName,
+            @RequestParam(required = false) String preAuthRefNo,
+            @RequestParam(required = false) String encounterId,
+            @RequestParam(required = false) String patientId,
+            @RequestParam(required = false) String encounterNumber,
+            @RequestParam(required = false) String medicalRecordNumber,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant submittedFrom,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant submittedTo,
+            @RequestParam(required = false) Long payorId,
+            @RequestParam(required = false) String payerNphiesId
+    ) {
+        return claimTrackingSyncService.sync(new ClaimTrackingCriteria(
+                null,
+                claimType,
+                claimSubType,
+                claimReference,
+                provClaimNo,
+                uploadName,
+                preAuthRefNo,
+                encounterId,
+                patientId,
+                encounterNumber,
+                medicalRecordNumber,
+                submittedFrom,
+                submittedTo,
+                payorId,
+                payerNphiesId,
+                null,
+                true
+        ));
     }
 
     @GetMapping("/internal/waseel/claims/tracking/{id}")

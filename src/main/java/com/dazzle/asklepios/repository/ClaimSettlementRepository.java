@@ -2,8 +2,10 @@ package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.ClaimSettlement;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface ClaimSettlementRepository extends JpaRepository<ClaimSettlement, Long> {
+public interface ClaimSettlementRepository
+        extends JpaRepository<ClaimSettlement, Long>, JpaSpecificationExecutor<ClaimSettlement> {
 }

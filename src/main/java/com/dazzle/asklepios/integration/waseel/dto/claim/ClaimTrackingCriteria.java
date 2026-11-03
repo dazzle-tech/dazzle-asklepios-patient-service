@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.integration.waseel.dto.claim;
 
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimStatus;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimSubType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimType;
 
@@ -24,6 +25,8 @@ public record ClaimTrackingCriteria(
         Instant submittedFrom,
         Instant submittedTo,
         Long payorId,
-        String payerNphiesId
+        String payerNphiesId,
+        WaseelClaimStatus waseelStatus,
+        boolean latestPerEncounter
 ) {
 }

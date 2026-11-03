@@ -22,6 +22,8 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -38,6 +40,8 @@ public class WaseelClaimService {
     private final WaseelTokenService tokenService;
     private final WaseelApiProperties properties;
     private final ObjectMapper objectMapper;
+
+    private static final DateTimeFormatter CLAIM_SEARCH_DATE = DateTimeFormatter.ofPattern("yyyy/MM/dd");
 
     /**
      * Returns existing upload IDs when the extraction/upload name is already taken.
@@ -275,6 +279,48 @@ public class WaseelClaimService {
     /**
      * Loads claim transaction details from Waseel (status, disposition, validation errors).
      */
+    /**
+     * Claims Waseel holds for one payer within a claim period, in a single call.
+     * Waseel expects the period dates as {@code yyyy/MM/dd}.
+     */
+    public JsonNode searchClaims(String payerNphiesId, LocalDate fromDate, LocalDate toDate) {
+        String token = tokenService.getToken();
+
+        String url = UriComponentsBuilder
+                .fromHttpUrl(properties.baseUrl())
+                .path("/nphies-rest-claim-external/providers/{providerId}/external/claimSearch")
+                .buildAndExpand(properties.providerId())
+                .encode()
+                .toUriString();
+
+        Map<String, Object> body = Map.of(
+                "claimCriteria", Map.of(
+                        "payerNphiesId", payerNphiesId,
+                        "claimPeriod", Map.of(
+                                "fromDate", CLAIM_SEARCH_DATE.format(fromDate),
+                                "toDate", CLAIM_SEARCH_DATE.format(toDate)
+                        )
+                )
+        );
+
+        try {
+            log.info("[CLAIM_SEARCH] url={} payerNphiesId={} from={} to={}", url, payerNphiesId, fromDate, toDate);
+            ResponseEntity<String> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    new HttpEntity<>(objectMapper.writeValueAsString(body), buildHeaders(token)),
+                    String.class
+            );
+            String responseBody = response.getBody();
+            return responseBody == null || responseBody.isBlank() ? null : objectMapper.readTree(responseBody);
+        } catch (HttpStatusCodeException ex) {
+            logWaseelError("CLAIM_SEARCH", ex, null);
+            throw ex;
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("Failed to read Waseel claim search", ex);
+        }
+    }
+
     public String searchClaimByProvClaimNo(String provClaimNo) {
         String token = tokenService.getToken();
 

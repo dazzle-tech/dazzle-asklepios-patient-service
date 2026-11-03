@@ -23,6 +23,7 @@ import com.dazzle.asklepios.repository.ClaimItemRepository;
 import com.dazzle.asklepios.repository.ClaimRequestRepository;
 import com.dazzle.asklepios.repository.ClaimSettlementInvoiceRepository;
 import com.dazzle.asklepios.repository.ClaimSettlementRepository;
+import com.dazzle.asklepios.repository.ClaimSettlementSpecification;
 import com.dazzle.asklepios.repository.FinancialDocumentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
@@ -231,30 +232,23 @@ public class ClaimSettlementGroupService {
         if (!claimSettlementMembershipService.tablesReady()) {
             return new PageImpl<>(List.of(), sorted, 0);
         }
-        List<ClaimSettlement> settlements = claimSettlementRepository.findAll(Sort.by(Sort.Direction.DESC, "id"));
-        Map<Long, List<ClaimSettlementInvoice>> linesBySettlement = linesBySettlement(settlements);
-
-        List<ClaimSettlementGroupSummaryResponse> rows = new ArrayList<>();
-        for (ClaimSettlement settlement : settlements) {
-            if (!matchesPayer(settlement, payorId, payerNphiesId)
-                    || !matchesSettlementNo(settlement, settlementNo)
-                    || !matchesStatus(settlement, status)
-                    || !matchesCreatedDate(settlement, fromDate, toDate)) {
-                continue;
-            }
-            ClaimSettlementGroupSummaryResponse summary = toSummary(
-                    settlement,
-                    linesBySettlement.getOrDefault(settlement.getId(), List.of())
-            );
-            if (submittableOnly && !summary.submittable()) {
-                continue;
-            }
-            rows.add(summary);
-        }
-
-        int start = (int) Math.min(sorted.getOffset(), rows.size());
-        int end = Math.min(start + sorted.getPageSize(), rows.size());
-        return new PageImpl<>(List.copyOf(rows.subList(start, end)), sorted, rows.size());
+        Page<ClaimSettlement> settlements = claimSettlementRepository.findAll(
+                ClaimSettlementSpecification.of(
+                        payorId,
+                        payerNphiesId,
+                        settlementNo,
+                        status,
+                        fromDate,
+                        toDate,
+                        submittableOnly
+                ),
+                sorted
+        );
+        Map<Long, List<ClaimSettlementInvoice>> linesBySettlement = linesBySettlement(settlements.getContent());
+        return settlements.map(settlement -> toSummary(
+                settlement,
+                linesBySettlement.getOrDefault(settlement.getId(), List.of())
+        ));
     }
 
     @Transactional(readOnly = true)
@@ -611,40 +605,6 @@ public class ClaimSettlementGroupService {
             return "Every submitted invoice was rejected and removed from the statement.";
         }
         return "Statement submitted.";
-    }
-
-    private boolean matchesPayer(ClaimSettlement settlement, Long payorId, String payerNphiesId) {
-        boolean hasPayor = payorId != null;
-        boolean hasNphies = hasText(payerNphiesId);
-        if (!hasPayor && !hasNphies) {
-            return true;
-        }
-        if (hasPayor && payorId.equals(settlement.getPayorId())) {
-            return true;
-        }
-        return hasNphies
-                && settlement.getPayerNphiesId() != null
-                && payerNphiesId.trim().equalsIgnoreCase(settlement.getPayerNphiesId());
-    }
-
-    private boolean matchesSettlementNo(ClaimSettlement settlement, String settlementNo) {
-        if (!hasText(settlementNo)) {
-            return true;
-        }
-        return settlement.getSettlementNo() != null
-                && settlement.getSettlementNo().equalsIgnoreCase(settlementNo.trim());
-    }
-
-    private boolean matchesStatus(ClaimSettlement settlement, ClaimSettlementStatus status) {
-        return status == null || settlement.getStatus() == status;
-    }
-
-    private boolean matchesCreatedDate(ClaimSettlement settlement, Instant fromDate, Instant toDate) {
-        Instant created = settlement.getCreatedDate();
-        if (fromDate != null && (created == null || created.isBefore(fromDate))) {
-            return false;
-        }
-        return toDate == null || (created != null && created.isBefore(toDate));
     }
 
     private List<Long> distinctIds(List<Long> financialDocumentIds) {

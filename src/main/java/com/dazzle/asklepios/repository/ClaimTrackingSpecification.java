@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.ClaimRequest;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimTrackingCriteria;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
@@ -48,7 +49,48 @@ public final class ClaimTrackingSpecification {
         specification = andMedicalRecordNumberContains(specification, criteria.medicalRecordNumber());
         specification = andSubmittedBetween(specification, criteria.submittedFrom(), criteria.submittedTo());
         specification = andPayor(specification, criteria.payorId(), criteria.payerNphiesId());
+        if (criteria.waseelStatus() != null) {
+            specification = specification.and((root, query, cb) ->
+                    cb.equal(root.get("waseelStatus"), criteria.waseelStatus()));
+        }
+        if (criteria.latestPerEncounter()) {
+            specification = specification.and(latestPerEncounter());
+        }
         return specification;
+    }
+
+    /**
+     * Claims whose result can still change on Waseel: submitted and not decided yet,
+     * or accepted while the approved amount has not come back.
+     */
+    public static Specification<ClaimRequest> awaitingWaseelResult() {
+        return (root, query, cb) -> cb.and(
+                cb.isNotNull(root.get("provClaimNo")),
+                cb.or(
+                        cb.equal(root.get("status"), ClaimStatus.SUBMITTED),
+                        cb.and(
+                                cb.equal(root.get("status"), ClaimStatus.ACCEPTED),
+                                cb.isNull(root.get("approvedAmount"))
+                        )
+                )
+        );
+    }
+
+    /**
+     * Keeps only the newest claim of each encounter. Older attempts stay in the encounter's claim log.
+     * Claims without an encounter are kept as they are.
+     */
+    private static Specification<ClaimRequest> latestPerEncounter() {
+        return (root, query, cb) -> {
+            Subquery<Long> newerClaims = query.subquery(Long.class);
+            Root<ClaimRequest> newer = newerClaims.from(ClaimRequest.class);
+            newerClaims.select(newer.get("id"))
+                    .where(
+                            cb.equal(newer.get("encounterId"), root.get("encounterId")),
+                            cb.greaterThan(newer.get("id"), root.get("id"))
+                    );
+            return cb.or(cb.isNull(root.get("encounterId")), cb.not(cb.exists(newerClaims)));
+        };
     }
 
     /**

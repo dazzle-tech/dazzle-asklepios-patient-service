@@ -2,6 +2,7 @@ package com.dazzle.asklepios.integration.waseel.service;
 
 import com.dazzle.asklepios.domain.ClaimRequest;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimStatus;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimValidationError;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimUploadResponse;
 import com.dazzle.asklepios.repository.ClaimRequestRepository;
@@ -19,7 +20,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -116,6 +120,99 @@ public class ClaimStatusRefreshService {
         ClaimRequest saved = claimRequestRepository.save(claim);
         patientActivityService.recordClaimStatus(saved);
         return saved;
+    }
+
+    /**
+     * Applies one claim search from Waseel to the given claims (id to provClaimNo). Claims are matched by provClaimNo;
+     * only the claims Waseel returned are loaded, and a claim it did not return is left unchanged. Only claims whose status or approved amount changed are saved.
+     *
+     * @return number of claims updated
+     */
+    @Transactional
+    public int applySearchResults(Map<Long, String> provClaimNoById, JsonNode searchResults) {
+        Map<String, JsonNode> resultsByProvClaimNo = indexByProvClaimNo(searchResults);
+        List<Long> returnedIds = provClaimNoById.entrySet().stream()
+                .filter(entry -> resultsByProvClaimNo.containsKey(provClaimNoKey(entry.getValue())))
+                .map(Map.Entry::getKey)
+                .toList();
+        if (returnedIds.isEmpty()) {
+            return 0;
+        }
+
+        List<ClaimRequest> changed = new ArrayList<>();
+        for (ClaimRequest claim : claimRequestRepository.findAllById(returnedIds)) {
+            JsonNode result = resultsByProvClaimNo.get(provClaimNoKey(claim.getProvClaimNo()));
+            if (result != null && applySearchResult(claim, result)) {
+                changed.add(claim);
+            }
+        }
+
+        claimRequestRepository.saveAll(changed);
+        changed.forEach(patientActivityService::recordClaimStatus);
+        return changed.size();
+    }
+
+    /**
+     * One claim from Waseel's claim search. {@code status} is the payer's decision (pended while waiting),
+     * {@code totalBenefit} is the amount the payer approved and stays null until the payer decides.
+     */
+    private boolean applySearchResult(ClaimRequest claim, JsonNode result) {
+        ClaimStatus statusBefore = claim.getStatus();
+        BigDecimal amountBefore = claim.getApprovedAmount();
+        WaseelClaimStatus waseelStatusBefore = claim.getWaseelStatus();
+
+        String reportedStatus = text(result.get("status"));
+        WaseelClaimStatus waseelStatus = WaseelClaimStatus.fromWaseel(reportedStatus);
+        if (waseelStatus == WaseelClaimStatus.UNKNOWN) {
+            log.info("[CLAIM_SYNC] Unmapped Waseel claim status={} claimId={}", reportedStatus, claim.getId());
+        }
+        if (waseelStatus != null) {
+            claim.setWaseelStatus(waseelStatus);
+        }
+        ClaimStatus decision = waseelStatus == null ? null : waseelStatus.claimStatus();
+        if (decision == ClaimStatus.ACCEPTED) {
+            claim.setStatus(ClaimStatus.ACCEPTED);
+            claim.setOutcome("ACCEPTED");
+        } else if (decision == ClaimStatus.REJECTED) {
+            claim.setStatus(ClaimStatus.REJECTED);
+            claim.setOutcome("NOT_ACCEPTED");
+            claim.setMessage(firstNonBlank(text(result.get("disposition")), "The payer rejected this claim."));
+        }
+
+        BigDecimal approved = decimal(result.get("totalBenefit"));
+        if (approved != null) {
+            claim.setApprovedAmount(approved.setScale(2, RoundingMode.HALF_UP));
+        }
+
+        boolean statusChanged = statusBefore != claim.getStatus();
+        if (statusChanged) {
+            claimSettlementNumberService.applyAfterRefresh(claim, true);
+        }
+        return statusChanged
+                || !sameAmount(amountBefore, claim.getApprovedAmount())
+                || waseelStatusBefore != claim.getWaseelStatus();
+    }
+
+    private Map<String, JsonNode> indexByProvClaimNo(JsonNode searchResults) {
+        Map<String, JsonNode> indexed = new HashMap<>();
+        if (searchResults == null || !searchResults.isArray()) {
+            return indexed;
+        }
+        for (JsonNode result : searchResults) {
+            String key = provClaimNoKey(text(result.get("providerReferenceNo")));
+            if (key != null) {
+                indexed.put(key, result);
+            }
+        }
+        return indexed;
+    }
+
+    private String provClaimNoKey(String provClaimNo) {
+        return provClaimNo == null || provClaimNo.isBlank() ? null : provClaimNo.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private boolean sameAmount(BigDecimal first, BigDecimal second) {
+        return first == null ? second == null : second != null && first.compareTo(second) == 0;
     }
 
     /**
@@ -218,6 +315,25 @@ public class ClaimStatusRefreshService {
         if (statusBeforeSummary == ClaimStatus.ACCEPTED || statusBeforeSummary == ClaimStatus.REJECTED) {
             claim.setStatus(statusBeforeSummary);
             claim.setOutcome(statusBeforeSummary == ClaimStatus.ACCEPTED ? "ACCEPTED" : "NOT_ACCEPTED");
+        }
+    }
+
+    private BigDecimal decimal(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (node.isNumber()) {
+            return node.decimalValue();
+        }
+        String value = text(node);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return new BigDecimal(value);
+        } catch (NumberFormatException ex) {
+            log.warn("[CLAIM_REFRESH] Ignored non-numeric amount={}", value);
+            return null;
         }
     }
 

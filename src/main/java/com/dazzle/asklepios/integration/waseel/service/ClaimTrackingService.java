@@ -19,8 +19,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -36,9 +39,25 @@ public class ClaimTrackingService {
     }
 
     public Page<ClaimTrackingResponse> findAll(ClaimTrackingCriteria criteria, Pageable pageable) {
-        return claimRequestRepository
-                .findAll(ClaimTrackingSpecification.of(criteria), pageable)
-                .map(this::toResponse);
+        Page<ClaimRequest> claims = claimRequestRepository.findAll(ClaimTrackingSpecification.of(criteria), pageable);
+        Map<Long, List<ClaimItem>> itemsByClaim = itemsByClaim(claims.getContent());
+        return claims.map(claim -> toResponse(claim, itemsByClaim.getOrDefault(claim.getId(), List.of())));
+    }
+
+    /**
+     * Loads the items of a whole page in one query instead of one query per claim.
+     */
+    private Map<Long, List<ClaimItem>> itemsByClaim(List<ClaimRequest> claims) {
+        List<Long> claimIds = claims.stream().map(ClaimRequest::getId).toList();
+        if (claimIds.isEmpty()) {
+            return Map.of();
+        }
+        return claimItemRepository.findByClaimRequestIdIn(claimIds).stream()
+                .sorted(Comparator.comparing(
+                        ClaimItem::getSequence,
+                        Comparator.nullsLast(Comparator.naturalOrder())
+                ))
+                .collect(Collectors.groupingBy(ClaimItem::getClaimRequestId));
     }
 
     public ClaimTrackingResponse findById(Long id) {
@@ -67,9 +86,10 @@ public class ClaimTrackingService {
     }
 
     private ClaimTrackingResponse toResponse(ClaimRequest e) {
-        List<ClaimItem> items =
-                claimItemRepository.findByClaimRequestIdOrderBySequenceAsc(e.getId());
+        return toResponse(e, claimItemRepository.findByClaimRequestIdOrderBySequenceAsc(e.getId()));
+    }
 
+    private ClaimTrackingResponse toResponse(ClaimRequest e, List<ClaimItem> items) {
         List<ClaimTrackingItemResponse> itemResponses = items.stream()
                 .map(this::toItemResponse)
                 .toList();
@@ -96,9 +116,12 @@ public class ClaimTrackingService {
                 e.getUploadId(),
                 e.getProvClaimNo(),
                 e.getClaimReference(),
+                e.getSettlementNo(),
                 e.getPreAuthRefNo(),
                 e.getApprovalResponseId(),
                 e.getTotalNet(),
+                e.getApprovedAmount(),
+                e.getWaseelStatus(),
                 e.getStatus(),
                 e.getOutcome(),
                 e.getMessage(),
