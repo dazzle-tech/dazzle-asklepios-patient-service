@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.client.NamiCloud.dto.NamiRegisterTerminalResponse;
+import com.dazzle.asklepios.client.NamiCloud.dto.NamiTerminalStatusResponse;
 import com.dazzle.asklepios.domain.PointOfSaleConfiguration;
 import com.dazzle.asklepios.service.PointOfSaleConfigurationService;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleConfigurationDTO;
@@ -95,6 +96,13 @@ public class PointOfSaleConfigurationController {
         );
     }
 
-
+    @GetMapping("/pos-configration/{id}/terminal-status")
+    public ResponseEntity<NamiTerminalStatusResponse> getTerminalStatus(
+            @PathVariable Long id
+    ) {
+        return ResponseEntity.ok(
+                pointOfSaleConfigurationService.getTerminalStatus(id)
+        );
+    }
 
 }
