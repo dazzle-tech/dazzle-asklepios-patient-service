@@ -932,6 +932,7 @@ public class PatientEncounterService {
 
         boolean isDoctor = switch (jobRole) {
             case "PHYSICIAN",
+                 "DENTIST",
                  "GENERAL_PRACTITIONER",
                  "SPECIALIST",
                  "ANESTHESIOLOGIST",
