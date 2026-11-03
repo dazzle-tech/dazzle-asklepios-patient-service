@@ -69,9 +69,7 @@ public record DailyBriefingResponse(
             String facilityName,
             Long departmentId,
             Long practitionerId,
-            String specialty,
-            String branch,
-            String branchNote
+            String specialty
     ) {
     }
 
@@ -79,8 +77,7 @@ public record DailyBriefingResponse(
             int openEncounterHours,
             int noShowRatePercent,
             int waitingMinutes,
-            int turnaroundMinutes,
-            String targetNote
+            int turnaroundMinutes
     ) {
     }
 
@@ -212,7 +209,6 @@ public record DailyBriefingResponse(
             boolean currentDayPartial,
             String calculationPolicy,
             String privacyPolicy,
-            String criticalResultPolicy,
             List<String> failures,
             List<String> notes,
             String permissionNote

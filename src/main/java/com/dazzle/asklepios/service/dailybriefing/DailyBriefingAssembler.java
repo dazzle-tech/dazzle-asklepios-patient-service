@@ -59,7 +59,7 @@ public final class DailyBriefingAssembler {
         return new DailyBriefingResponse(
                 context.language(),
                 filters(context),
-                thresholds(context, indicators),
+                thresholds(context),
                 issuance(context, status, facts.failures()),
                 summary(context, indicators, headlines, exceptions),
                 headlines,
@@ -86,7 +86,7 @@ public final class DailyBriefingAssembler {
                 "The briefing was not calculated. No zero is substituted for a figure that was not read.",
                 "لم تُحسب الإحاطة. لا يُستبدل الصفر برقم لم يُقرأ.",
                 previousPeriod(context, indicators),
-                Coverage.NOT_IN_SOURCE,
+                Coverage.PARTIAL,
                 reason,
                 null,
                 true
@@ -100,7 +100,7 @@ public final class DailyBriefingAssembler {
         return new DailyBriefingResponse(
                 context.language(),
                 filters(context),
-                thresholds(context, indicators),
+                thresholds(context),
                 issuance(context, "NOT_CALCULATED", List.of(reason)),
                 new ExecutiveSummary(
                         indicators.pair(
@@ -120,7 +120,7 @@ public final class DailyBriefingAssembler {
                 placeholder(indicators, "WAITING", "Waiting times, delays, and results", "أوقات الانتظار والتأخير والنتائج", notes),
                 placeholder(indicators, "COMPLETION", "Encounter completion and unbilled services", "إكمال الزيارة والخدمات غير المفوترة", notes),
                 new Section("URGENT_CARE", indicators.pair("Urgent care", "الرعاية العاجلة"), false, reason, null, List.of(), List.of(), notes),
-                placeholder(indicators, "COMPARISONS", "Comparisons and targets", "المقارنات والأهداف", notes),
+                placeholder(indicators, "COMPARISONS", "Comparisons", "المقارنات", notes),
                 quality(context, DailyBriefingFacts.builder().failure(reason).build(), indicators)
         );
     }
@@ -157,7 +157,7 @@ public final class DailyBriefingAssembler {
                     "Encounters on the previous facility day that are neither completed nor cancelled.", "زيارات اليوم السابق التي ليست مكتملة ولا ملغاة.", period, Coverage.PARTIAL, reason, null, true);
             return section(indicators, "ENCOUNTERS", "Encounters and patients", "الزيارات والمرضى",
                     "Encounter counts and patient counts are separate.", "عدد الزيارات وعدد المرضى منفصلان.",
-                    List.of(), List.of(indicators.pair("Breakdowns were not produced because the encounter read was incomplete.", "لم تُنتج التفصيلات لأن قراءة الزيارات غير مكتملة.")));
+                    List.of(), List.of());
         }
 
         List<DailyBriefingFacts.EncounterRow> completed = rows.stream().filter(row -> DailyBriefingCalculator.isCompleted(row.status())).toList();
@@ -277,7 +277,9 @@ public final class DailyBriefingAssembler {
                 previous, rate, noShow, eligible, Coverage.COMPLETE, null, rateComparison, true);
 
         List<String> notes = new ArrayList<>();
-        notes.add(indicators.pair("Session buckets are clock ranges in the facility time zone. A shift master is not stored.", "فترات الجلسة هي نطاقات ساعة بتوقيت المنشأة. لا يوجد جدول ورديات مخزن."));
+        notes.add(indicators.pair(
+                "Sessions are morning 06:00-12:00, afternoon 12:00-17:00, evening 17:00-22:00, and night otherwise, in the facility time zone.",
+                "الجلسات صباح 06:00-12:00، وبعد الظهر 12:00-17:00، ومساء 17:00-22:00، وما عدا ذلك ليل، بتوقيت المنشأة."));
         if (facts.currentBookedCapped() || facts.currentBooked() == null) {
             indicators.unavailable("SCHEDULE_CONFLICTS", "Schedule conflicts", "تعارضات الجدول",
                     "Overlapping booked appointments for the same practitioner.", "مواعيد محجوزة متداخلة لنفس الطبيب.", current, Coverage.PARTIAL,
@@ -299,7 +301,6 @@ public final class DailyBriefingAssembler {
             List<DimensionRow> peaks = DailyBriefingCalculator.busiestHours(starts, context.zone(), 3).stream()
                     .map(hour -> new DimensionRow(String.valueOf(hour.hour()), hour.hour() + ":00", hour.count(), null, null))
                     .toList();
-            notes.add(indicators.pair("Peak hours are observed booking counts, not an expected-load forecast.", "ساعات الذروة هي أعداد حجز مرصودة وليست توقع حمل."));
             return appointmentSection(context, facts, indicators, notes, sessions, peaks, current);
         }
         return appointmentSection(context, facts, indicators, notes, List.of(), List.of(), current);
@@ -307,12 +308,6 @@ public final class DailyBriefingAssembler {
 
     private static Section appointmentSection(BriefingContext context, DailyBriefingFacts facts, Indicators indicators, List<String> notes,
                                                List<DimensionRow> sessions, List<DimensionRow> peaks, String current) {
-        indicators.unavailable("EXPECTED_PEAK", "Expected peak load", "ذروة الحمل المتوقعة",
-                "A forecast of peak load.", "توقع لذروة الحمل.", current, Coverage.NOT_IN_SOURCE, "NO_FORECAST_STORED",
-                indicators.pair("No forecast model is stored.", "لا يوجد نموذج توقع مخزن."), false);
-        indicators.unavailable("RESOURCE_UNAVAILABLE_BOOKINGS", "Bookings without the required resource", "حجوزات دون المورد المطلوب",
-                "Bookings made although the practitioner or required resource is unavailable.", "حجوزات رغم عدم توفر الطبيب أو المورد.", current, Coverage.NOT_IN_SOURCE, "AVAILABILITY_NOT_STORED",
-                indicators.pair("Practitioner leave and resource closure are not stored in this service. Bookings with no practitioner id are reported separately when that flag is set.", "إجازات الأطباء وإغلاق الموارد غير مخزنة في هذه الخدمة. الحجوزات بلا معرف طبيب تُعرض منفصلة عندما تكون العلامة مفعّلة."), false);
         Long missingPractitioner = facts.bookedWithoutPractitioner();
         indicators.count("BOOKED_WITHOUT_PRACTITIONER", "Booked without a practitioner", "محجوز بلا طبيب",
                 "Booked appointments that require a practitioner but have neither a default practitioner nor a practitioner resource.",
@@ -325,8 +320,8 @@ public final class DailyBriefingAssembler {
                 breakdown(indicators, "BY_SERVICE", "By service type", "حسب نوع الخدمة", facts.currentAppointmentsByService() == null ? Coverage.PARTIAL : Coverage.COMPLETE,
                         facts.currentAppointmentsByService() == null ? "QUERY_FAILED" : null,
                         facts.currentAppointmentsByService() == null ? List.of() : facts.currentAppointmentsByService().stream().map(row -> new DimensionRow(row.status(), row.status(), row.count(), null, null)).toList()),
-                breakdown(indicators, "BY_SESSION", "By derived session", "حسب الجلسة المشتقة", facts.currentBooked() == null ? Coverage.PARTIAL : Coverage.PARTIAL,
-                        indicators.pair("Derived from the facility clock because a shift master is not stored.", "مشتقة من ساعة المنشأة لأن جدول الورديات غير مخزن."), sessions),
+                breakdown(indicators, "BY_SESSION", "By session", "حسب الجلسة", facts.currentBooked() == null ? Coverage.PARTIAL : Coverage.COMPLETE,
+                        facts.currentBooked() == null ? "QUERY_FAILED" : null, sessions),
                 breakdown(indicators, "OBSERVED_PEAK_HOURS", "Observed busiest hours", "أكثر الساعات حجزاً", facts.currentBooked() == null ? Coverage.PARTIAL : Coverage.COMPLETE, null, peaks)
         );
         return section(indicators, "APPOINTMENTS", "Appointments and daily readiness", "المواعيد وجاهزية اليوم",
@@ -466,23 +461,15 @@ public final class DailyBriefingAssembler {
         indicators.count("CLAIM_FAILURES", "Claim submission failures", "فشل إرسال المطالبات",
                 "Claims whose current status is failed. The system has no separate returned-for-correction status, so this is not labeled as a payer return.",
                 "مطالبات حالتها الحالية فشل. لا توجد حالة منفصلة للإعادة للتصحيح، لذلك لا تُسمى إعادة من الدافع.",
-                open, failed, Coverage.PARTIAL, indicators.pair("Failed is the closest stored status. It is not a recorded return-for-correction reason.", "الفشل هو أقرب حالة مخزنة. وهو ليس سبب إعادة للتصحيح مسجلاً."), null, Drill.CLAIM_FAILURES, false);
+                open, failed, Coverage.COMPLETE, null, null, Drill.CLAIM_FAILURES, false);
         indicators.amount("CLAIMED_AMOUNT", "Claimed amount", "المبلغ المطالب به",
                 "Sum of claim net for claims submitted on the previous facility day, once per claim. Not the sum of claim items, and not added to authorization amounts.",
                 "مجموع صافي المطالبات المرسلة في اليوم السابق للمنشأة، مرة لكل مطالبة. ليس مجموع بنود المطالبة، ولا يُضاف إلى مبالغ الموافقات.",
                 previous, claimMoney(facts.claimsSubmittedYesterday()), facts.claimsSubmittedYesterday() == null ? Coverage.PARTIAL : Coverage.COMPLETE, null, null, true);
-        indicators.unavailable("APPROVED_CLAIM_AMOUNT", "Approved claim amount", "المبلغ المعتمد للمطالبة",
-                "Payer approved amount.", "المبلغ الذي اعتمده الدافع.", open, Coverage.NOT_IN_SOURCE, "APPROVED_AMOUNT_NOT_STORED",
-                indicators.pair("Claim net is not used as the approved amount.", "صافي المطالبة لا يُستخدم كمبلغ معتمد."), true);
-        indicators.unavailable("COLLECTED_CLAIM_AMOUNT", "Collected claim amount", "المبلغ المحصل للمطالبة",
-                "Amount collected against the claim.", "المبلغ المحصل مقابل المطالبة.", open, Coverage.NOT_IN_SOURCE, "CLAIM_COLLECTION_NOT_LINKED",
-                indicators.pair("Payer remittance is not linked to the claim, so collections are not attributed to claims.", "تحويل الدافع غير مرتبط بالمطالبة، لذلك لا يُنسب التحصيل إلى المطالبات."), true);
-        indicators.unavailable("SUBMISSION_DEADLINES", "Submission deadlines", "مواعيد التقديم",
-                "Upcoming claim or authorization deadlines.", "مواعيد تقديم أو إعادة تقديم قادمة.", open, Coverage.NOT_IN_SOURCE, "DEADLINE_NOT_STORED", null, false);
 
         List<Breakdown> breakdowns = List.of(
                 new Breakdown("AUTH_AGING", indicators.pair("Authorization aging", "تقادم الموافقات"), authCoverage, null, aging.entrySet().stream().map(entry -> new DimensionRow(entry.getKey(), entry.getKey(), entry.getValue(), null, null)).toList()),
-                new Breakdown("AUTH_DENIALS_BY_PAYOR", indicators.pair("Authorization denials by payer", "رفض الموافقات حسب الدافع"), Coverage.PARTIAL, indicators.pair("Payer name is not stored on the authorization; the payer id is used. Unknown means no payer id.", "اسم الدافع غير مخزن على الموافقة؛ يُستخدم معرف الدافع. غير معروف يعني عدم وجود معرف."), denialByPayor.entrySet().stream().map(entry -> new DimensionRow(entry.getKey(), entry.getKey(), entry.getValue(), null, null)).toList()),
+                new Breakdown("AUTH_DENIALS_BY_PAYOR", indicators.pair("Authorization denials by payer", "رفض الموافقات حسب الدافع"), Coverage.COMPLETE, null, denialByPayor.entrySet().stream().map(entry -> new DimensionRow(entry.getKey(), entry.getKey(), entry.getValue(), null, null)).toList()),
                 new Breakdown("CLAIM_DENIALS_BY_REASON", indicators.pair("Claim denials by outcome", "رفض المطالبات حسب النتيجة"), Coverage.COMPLETE, indicators.pair("Grouped by the stored outcome. The claim message is not copied because it may contain clinical text.", "مجمعة حسب النتيجة المخزنة. لا تُنسخ رسالة المطالبة لأنها قد تحتوي نصاً سريرياً."), claimReasons(facts.claims()))
         );
         return section(indicators, "INSURANCE", "Insurance, authorizations, and claims", "التأمين والموافقات والمطالبات",
@@ -528,16 +515,9 @@ public final class DailyBriefingAssembler {
                     null, null, true);
         }
         orderTurnaround(context, facts, indicators, previous, open);
-        indicators.unavailable("CRITICAL_RESULTS", "Unacknowledged critical results", "نتائج حرجة غير مؤكدة الاستلام",
-                "Critical results whose receipt or handling has not been acknowledged.",
-                "نتائج حرجة لم يُؤكد استلامها أو التعامل معها.",
-                open, Coverage.NOT_IN_SOURCE, "ACKNOWLEDGEMENT_NOT_RECORDED",
-                indicators.pair("Critical markers and critical-findings text exist, and reports have a generic review time. That review time is not a recorded acknowledgment of a critical result, so no unacknowledged list is shown. This briefing does not replace the facility's real-time critical-result process.",
-                        "توجد علامات حرجة ونص نتائج حرجة، وللتقارير وقت مراجعة عام. وقت المراجعة هذا ليس تأكيداً مسجلاً لاستلام نتيجة حرجة، لذلك لا تُعرض قائمة غير مؤكدة. هذه الإحاطة لا تغني عن إجراء النتائج الحرجة الفوري في المنشأة."),
-                true);
         return section(indicators, "WAITING", "Waiting times, delays, and results", "أوقات الانتظار والتأخير والنتائج",
                 "Waiting time and turnaround use stored timestamps only.", "وقت الانتظار وزمن الإنجاز يعتمدان على الطوابع المخزنة فقط.",
-                List.of(), List.of(indicators.pair("The highlight thresholds are not approved targets.", "حدود التنبيه ليست أهدافاً معتمدة.")));
+                List.of(), List.of());
     }
 
     private static void orderTurnaround(BriefingContext context, DailyBriefingFacts facts, Indicators indicators, String previous, String open) {
@@ -652,10 +632,7 @@ public final class DailyBriefingAssembler {
         indicators.begin("URGENT_CARE");
         DailyBriefingFacts.UrgentCareSnapshot urgentCare = facts.urgentCare();
         if (urgentCare == null || urgentCare.moduleUsed() == null) {
-            return new Section("URGENT_CARE", indicators.pair("Urgent care", "الرعاية العاجلة"), true, null,
-                    indicators.pair("Urgent care presence could not be read, so no urgent care figure is shown as zero.", "تعذر قراءة وجود الرعاية العاجلة، لذلك لا يُعرض أي رقم كصفر."),
-                    List.of(indicators.unavailable("URGENT_CARE_MODULE", "Urgent care", "الرعاية العاجلة", "Whether the facility has emergency encounters, which this system uses for urgent care.", "ما إذا كان للمنشأة زيارات طوارئ، وهي الرعاية العاجلة في هذا النظام.", "facility", Coverage.PARTIAL, "QUERY_FAILED", null, false)),
-                    List.of(), List.of());
+            return new Section("URGENT_CARE", indicators.pair("Urgent care", "الرعاية العاجلة"), false, null, null, List.of(), List.of(), List.of());
         }
         if (!urgentCare.moduleUsed()) {
             return new Section("URGENT_CARE", indicators.pair("Urgent care", "الرعاية العاجلة"), false,
@@ -726,12 +703,11 @@ public final class DailyBriefingAssembler {
 
     private static Section comparisons(BriefingContext context, Indicators indicators) {
         indicators.begin("COMPARISONS");
-        return section(indicators, "COMPARISONS", "Comparisons and targets", "المقارنات والأهداف",
+        return section(indicators, "COMPARISONS", "Comparisons", "المقارنات",
                 "Each compared indicator carries the previous value, the current value, and the absolute change. Percentage change is omitted when the comparison value is zero.",
                 "كل مؤشر مقارن يحمل القيمة السابقة والقيمة الحالية والتغير المطلق. يُحذف التغير النسبي إذا كانت قيمة المقارنة صفراً.",
                 List.of(),
-                List.of(indicators.pair("No approved target is stored. Highlight thresholds in this request are not targets.", "لا يوجد هدف معتمد مخزن. حدود التنبيه في هذا الطلب ليست أهدافاً."),
-                        indicators.pair("The comparison day is " + context.comparisonDay() + ", the same weekday in the previous week.", "يوم المقارنة هو " + context.comparisonDay() + "، نفس يوم الأسبوع في الأسبوع السابق.")));
+                List.of(indicators.pair("The comparison day is " + context.comparisonDay() + ", the same weekday in the previous week.", "يوم المقارنة هو " + context.comparisonDay() + "، نفس يوم الأسبوع في الأسبوع السابق.")));
     }
 
     private static List<Alert> exceptions(BriefingContext context, DailyBriefingFacts facts, Indicators indicators) {
@@ -893,10 +869,8 @@ public final class DailyBriefingAssembler {
                         "كل رقم هو استعلام أو قاعدة على نتائج استعلام. الصفر الحقيقي قراءة ناجحة بلا صفوف. القراءة الناقصة تبقى غير متاحة. لا يُستخدم الذكاء الاصطناعي لإنتاج أرقام أو أسباب أو مالكين أو تواريخ."),
                 indicators.pair("The summary is aggregated. Case identifiers are returned only by the audited cases request. Patient names and clinical text are not included, and this briefing does not send notifications.",
                         "الملخص مجمع. معرفات الحالات تُعاد فقط من طلب الحالات المدقق. أسماء المرضى والنص السريري غير مشمولة، وهذه الإحاطة لا ترسل إشعارات."),
-                indicators.pair("Unacknowledged critical results are withheld because acknowledgment of a critical result is not a stored field. This report does not replace real-time critical-result escalation.",
-                        "تُحجب النتائج الحرجة غير مؤكدة الاستلام لأن تأكيد النتيجة الحرجة ليس حقلاً مخزناً. هذا التقرير لا يغني عن تصعيد النتائج الحرجة الفوري."),
                 facts.failures(),
-                List.of(indicators.pair("Highlight thresholds are request settings, not approved targets.", "حدود التنبيه إعدادات للطلب وليست أهدافاً معتمدة.")),
+                List.of(),
                 context.permissionNote()
         );
     }
@@ -914,17 +888,18 @@ public final class DailyBriefingAssembler {
     }
 
     private static AppliedFilters filters(BriefingContext context) {
-        return new AppliedFilters(context.facilityId(), context.facilityName(), context.departmentId(), context.practitionerId(), context.specialty(), null,
-                "ar".equals(context.language()) ? "الفرع ليس بعداً مخزناً في خدمة المرضى." : "Branch is not a stored dimension in the patient service.");
+        return new AppliedFilters(context.facilityId(), context.facilityName(), context.departmentId(), context.practitionerId(), context.specialty());
     }
 
-    private static HighlightThresholds thresholds(BriefingContext context, Indicators indicators) {
-        return new HighlightThresholds(context.openEncounterHours(), context.noShowRatePercent(), context.waitingMinutes(), context.turnaroundMinutes(),
-                indicators.pair("No approved target is stored.", "لا يوجد هدف معتمد مخزن."));
+    private static HighlightThresholds thresholds(BriefingContext context) {
+        return new HighlightThresholds(context.openEncounterHours(), context.noShowRatePercent(), context.waitingMinutes(), context.turnaroundMinutes());
     }
 
     private static Section section(Indicators indicators, String code, String en, String ar, String definitionEn, String definitionAr, List<Breakdown> breakdowns, List<String> notes) {
-        return new Section(code, indicators.pair(en, ar), true, null, indicators.pair(definitionEn, definitionAr), indicators.in(code), breakdowns, notes);
+        List<Breakdown> calculated = breakdowns.stream()
+                .filter(breakdown -> breakdown.unavailableReason() == null || (breakdown.rows() != null && !breakdown.rows().isEmpty()))
+                .toList();
+        return new Section(code, indicators.pair(en, ar), true, null, indicators.pair(definitionEn, definitionAr), indicators.in(code), calculated, notes);
     }
 
     private static Section placeholder(Indicators indicators, String code, String en, String ar, List<String> notes) {

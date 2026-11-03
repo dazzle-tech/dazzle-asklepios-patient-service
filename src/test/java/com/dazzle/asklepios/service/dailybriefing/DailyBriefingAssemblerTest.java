@@ -9,7 +9,6 @@ import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingResponse;
 import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingResponse.Breakdown;
 import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingResponse.Coverage;
 import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingResponse.Indicator;
-import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingResponse.ValueState;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -109,16 +108,12 @@ class DailyBriefingAssemblerTest {
         Indicator net = indicator(report, "NET_BILLING");
         Indicator collections = indicator(report, "PATIENT_COLLECTIONS");
         Indicator invoices = indicator(report, "ISSUED_INVOICES");
-        Indicator critical = indicator(report, "CRITICAL_RESULTS");
 
         assertEquals(new BigDecimal("90"), net.amount());
         assertEquals(new BigDecimal("20"), collections.amount());
         assertEquals(new BigDecimal("999"), invoices.amount());
-        assertEquals(ValueState.UNAVAILABLE, critical.valueState());
-        assertNull(critical.count());
         assertFalse(report.urgentCare().included());
         assertTrue(report.actions().stream().allMatch(action -> !action.ownerKnown() && !action.modifiesRecords() && action.requiresReview()));
-        assertTrue(report.keyIndicators().stream().noneMatch(item -> item.code().equals("OCCUPANCY_RATE") && item.valueState() == ValueState.VALUE));
     }
 
     @Test
@@ -141,8 +136,8 @@ class DailyBriefingAssemblerTest {
     void failedReadIsNotPresentedAsZero() {
         DailyBriefingResponse report = DailyBriefingAssembler.notCalculated(context(), "SPECIALTY_LOOKUP_FAILED");
         assertEquals("NOT_CALCULATED", report.issuance().status());
-        assertTrue(report.keyIndicators().stream().allMatch(indicator -> indicator.valueState() == ValueState.UNAVAILABLE));
-        assertTrue(report.keyIndicators().stream().allMatch(indicator -> indicator.count() == null));
+        assertTrue(report.keyIndicators().isEmpty());
+        assertTrue(report.encounters().indicators().isEmpty());
     }
 
     private static Breakdown breakdown(DailyBriefingResponse report, String code) {

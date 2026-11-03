@@ -33,7 +33,7 @@ final class Indicators {
     List<Indicator> in(String section) {
         List<Indicator> matches = new ArrayList<>();
         for (int i = 0; i < all.size(); i++) {
-            if (section.equals(sections.get(i))) {
+            if (section.equals(sections.get(i)) && calculated(all.get(i))) {
                 matches.add(all.get(i));
             }
         }
@@ -45,7 +45,11 @@ final class Indicators {
     }
 
     List<Indicator> headlines() {
-        return List.copyOf(headlines);
+        return headlines.stream().filter(Indicators::calculated).toList();
+    }
+
+    private static boolean calculated(Indicator indicator) {
+        return indicator.valueState() != ValueState.UNAVAILABLE;
     }
 
     Indicator find(String code) {
