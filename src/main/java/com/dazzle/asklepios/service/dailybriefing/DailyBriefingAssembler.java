@@ -334,17 +334,10 @@ public final class DailyBriefingAssembler {
         indicators.begin("BILLING");
         String period = previousPeriod(context, indicators);
         DailyBriefingFacts.BillingSnapshot billing = facts.billing() == null
-                ? new DailyBriefingFacts.BillingSnapshot(null, null, null, null, null, null, null, null, null, null, null, null)
+                ? new DailyBriefingFacts.BillingSnapshot(null, null, null, null, null, null, null, null, null, null)
                 : facts.billing();
-        String definition = "Net billing = gross - discount - exemption - credit notes, for active charges dated on the previous facility day and credit notes issued that day, by currency. Cancellations are shown separately and are not subtracted again. Collections are not part of net billing. An issued invoice is not collected revenue.";
-        String definitionAr = "صافي الفوترة = الإجمالي - الخصم - الإعفاء - الإشعارات الدائنة، للرسوم النشطة بتاريخ اليوم السابق والإشعارات الدائنة الصادرة ذلك اليوم، لكل عملة. الإلغاءات معروضة منفصلة ولا تُطرح مرة أخرى. التحصيل ليس جزءاً من صافي الفوترة. الفاتورة الصادرة ليست إيراداً محصلاً.";
-        if (false) {
-            indicators.unavailable("GROSS_BILLING", "Gross billing", "إجمالي الفوترة", definition, definitionAr, period, Coverage.PARTIAL, "QUERY_FAILED", null, true);
-            indicators.unavailable("NET_BILLING", "Net billing", "صافي الفوترة", definition, definitionAr, period, Coverage.PARTIAL, "QUERY_FAILED", null, true);
-            indicators.unavailable("PATIENT_COLLECTIONS", "Patient payments", "مدفوعات المريض", "Posted patient payments.", "مدفوعات المريض المرحلة.", period, Coverage.PARTIAL, "QUERY_FAILED", null, true);
-            indicators.unavailable("ISSUED_INVOICES", "Issued invoices", "الفواتير الصادرة", "Issued invoice totals are not collections.", "مجاميع الفواتير الصادرة ليست تحصيلاً.", period, Coverage.PARTIAL, "QUERY_FAILED", null, true);
-            return section(indicators, "BILLING", "Billing and collections", "الفوترة والتحصيل", definition, definitionAr, List.of(), List.of());
-        }
+        String definition = "Net billing = gross - discount - exemption - credit notes, for active charges dated on the previous facility day and credit notes issued that day, by currency. Cancellations are shown separately and are not subtracted again. Collections are completed billing payments and are not part of net billing. An issued invoice is not collected revenue.";
+        String definitionAr = "صافي الفوترة = الإجمالي - الخصم - الإعفاء - الإشعارات الدائنة، للرسوم النشطة بتاريخ اليوم السابق والإشعارات الدائنة الصادرة ذلك اليوم، لكل عملة. الإلغاءات معروضة منفصلة ولا تُطرح مرة أخرى. التحصيل هو مدفوعات الفوترة المكتملة وليس جزءاً من صافي الفوترة. الفاتورة الصادرة ليست إيراداً محصلاً.";
         Coverage coverage = (billing.debitNotes() != null && !billing.debitNotes().isEmpty()) || (billing.reversedWithoutTimestamp() != null && billing.reversedWithoutTimestamp() > 0)
                 ? Coverage.PARTIAL : Coverage.COMPLETE;
         String note = coverage == Coverage.PARTIAL
@@ -356,15 +349,9 @@ public final class DailyBriefingAssembler {
         indicators.amount("CANCELLATIONS", "Charge cancellations", "إلغاءات الرسوم", "Net amount of charges cancelled on the previous day. Not subtracted again from net billing.", "صافي الرسوم الملغاة في اليوم السابق. لا يُطرح مرة أخرى من صافي الفوترة.", period, moneyRows(billing.cancellations()), coverage, null, null, false);
         indicators.amount("CREDIT_NOTES", "Credit notes", "الإشعارات الدائنة", "Credit notes issued on the previous day.", "إشعارات دائنة صدرت في اليوم السابق.", period, moneyRows(billing.creditNotes()), coverage, null, null, false);
         indicators.amount("NET_BILLING", "Net billing", "صافي الفوترة", definition, definitionAr, period, net(billing), coverage, note, null, true);
-        indicators.amount("PATIENT_COLLECTIONS", "Posted patient payments", "مدفوعات المريض المرحلة",
-                "Sum of posted rows in patient payments, once per payment. Not added to billing-payment collections. Net of refunds is not calculated for this source because a daily refund movement is not stored there. An issued invoice is not included.",
-                "مجموع صفوف مدفوعات المريض المرحلة، مرة لكل دفعة. لا يُضاف إلى تحصيل مدفوعات الفوترة. لا يُحسب الصافي بعد الاسترداد لهذا المصدر لأن حركة الاسترداد اليومية غير مخزنة هناك. الفاتورة الصادرة غير مشمولة.",
-                period, moneyRows(billing.postedPatientPayments()), Coverage.PARTIAL,
-                indicators.pair("Unposted payments are excluded. Refunds for this source are not subtracted.", "المدفوعات غير المرحلة مستبعدة. لا تُطرح استردادات هذا المصدر."),
-                null, true);
-        indicators.amount("BILLING_PAYMENT_COLLECTIONS", "Billing payments", "مدفوعات الفوترة",
-                "Completed billing payments, once per payment, split by payer type. Not added to posted patient payments.",
-                "مدفوعات الفوترة المكتملة، مرة لكل دفعة، مفصولة حسب نوع الدافع. لا تُضاف إلى مدفوعات المريض المرحلة.",
+        indicators.amount("BILLING_PAYMENT_COLLECTIONS", "Collections", "التحصيل",
+                "Completed billing payments, once per payment, grouped by payer type. This is the only collection source. Refunds are shown separately and are not subtracted here.",
+                "مدفوعات الفوترة المكتملة، مرة لكل دفعة، مفصولة حسب نوع الدافع. هذا هو مصدر التحصيل الوحيد. الاستردادات معروضة منفصلة ولا تُطرح هنا.",
                 period, moneyRows(billing.billingPayments()), Coverage.PARTIAL,
                 indicators.pair("Payments that are not linked to an encounter are excluded because their facility cannot be determined.", "المدفوعات غير المرتبطة بزيارة مستبعدة لأن منشأتها لا تُعرف."),
                 null, true);
@@ -382,12 +369,7 @@ public final class DailyBriefingAssembler {
                 "Invoice documents issued on the previous day. This is not collected revenue.", "مستندات فواتير صدرت في اليوم السابق. هذا ليس إيراداً محصلاً.",
                 period, moneyRows(billing.issuedInvoices()), Coverage.COMPLETE,
                 indicators.pair("An issued invoice is not counted as a collection.", "الفاتورة الصادرة لا تُحسب تحصيلاً."), null, true);
-        List<String> notes = new ArrayList<>();
-        notes.add(indicators.pair("Patient payments and billing payments are separate sources and are not added together.", "مدفوعات المريض ومدفوعات الفوترة مصدران منفصلان ولا يُجمعان."));
-        if (billing.unpostedPatientPayments() != null && billing.unpostedPatientPayments() > 0) {
-            notes.add(indicators.pair(billing.unpostedPatientPayments() + " patient payments are still unposted and are excluded from collections.", billing.unpostedPatientPayments() + " مدفوعات مريض لم تُرحّل وهي مستبعدة من التحصيل."));
-        }
-        return section(indicators, "BILLING", "Billing and collections", "الفوترة والتحصيل", definition, definitionAr, List.of(), notes);
+        return section(indicators, "BILLING", "Billing and collections", "الفوترة والتحصيل", definition, definitionAr, List.of(), List.of());
     }
 
     private static Section insurance(BriefingContext context, DailyBriefingFacts facts, Indicators indicators) {

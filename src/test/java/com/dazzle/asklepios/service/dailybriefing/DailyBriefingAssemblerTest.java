@@ -93,8 +93,6 @@ class DailyBriefingAssemblerTest {
                         List.of(),
                         List.of(),
                         0L,
-                        List.of(new DailyBriefingFacts.MoneyRow("SAR", new BigDecimal("15"), 1, "CASH"), new DailyBriefingFacts.MoneyRow("SAR", new BigDecimal("5"), 1, "CREDIT_CARD")),
-                        0L,
                         List.of(new DailyBriefingFacts.MoneyRow("SAR", new BigDecimal("30"), 1, "INSURANCE")),
                         List.of(),
                         0L,
@@ -106,11 +104,12 @@ class DailyBriefingAssemblerTest {
 
         DailyBriefingResponse report = DailyBriefingAssembler.assemble(context(), facts);
         Indicator net = indicator(report, "NET_BILLING");
-        Indicator collections = indicator(report, "PATIENT_COLLECTIONS");
+        Indicator collections = indicator(report, "BILLING_PAYMENT_COLLECTIONS");
         Indicator invoices = indicator(report, "ISSUED_INVOICES");
 
         assertEquals(new BigDecimal("90"), net.amount());
-        assertEquals(new BigDecimal("20"), collections.amount());
+        assertEquals(new BigDecimal("30"), collections.amount());
+        assertTrue(report.keyIndicators().stream().noneMatch(item -> item.code().equals("PATIENT_COLLECTIONS")));
         assertEquals(new BigDecimal("999"), invoices.amount());
         assertFalse(report.urgentCare().included());
         assertTrue(report.actions().stream().allMatch(action -> !action.ownerKnown() && !action.modifiesRecords() && action.requiresReview()));

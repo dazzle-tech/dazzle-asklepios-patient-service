@@ -105,8 +105,6 @@ public record DailyBriefingFacts(
             List<MoneyRow> creditNotes,
             List<MoneyRow> debitNotes,
             Long reversedWithoutTimestamp,
-            List<MoneyRow> postedPatientPayments,
-            Long unpostedPatientPayments,
             List<MoneyRow> billingPayments,
             List<MoneyRow> classifiedRefunds,
             Long unclassifiedRefunds,
@@ -359,7 +357,7 @@ public record DailyBriefingFacts(
         }
 
         private static BillingSnapshot emptyBilling() {
-            return new BillingSnapshot(List.of(), List.of(), List.of(), List.of(), 0L, List.of(), 0L, List.of(), List.of(), 0L, List.of(), List.of());
+            return new BillingSnapshot(List.of(), List.of(), List.of(), List.of(), 0L, List.of(), List.of(), 0L, List.of(), List.of());
         }
     }
 }

@@ -12,7 +12,6 @@ import com.dazzle.asklepios.domain.enumeration.BedTransactionType;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
-import com.dazzle.asklepios.domain.enumeration.PaymentLifecycleStatus;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingCasesResponse.DailyBriefingCase;
@@ -190,12 +189,6 @@ public class DailyBriefingQueryGateway {
                 read("billing.debitNotes", () -> documents(scope, window, FinancialDocumentType.DEBIT_NOTE), builder),
                 read("billing.reversedUntimed", () -> count("select count(c.id) from BillingCharge c join c.encounter e where c.status = :reversed and c.cancelledDate is null and c.chargeDate >= :start and c.chargeDate < :end and " + encounterWhere(scope), scope, query -> {
                     query.setParameter("reversed", BillingChargeStatus.REVERSED);
-                    query.setParameter("start", window.previousStart());
-                    query.setParameter("end", window.previousEnd());
-                }), builder),
-                read("billing.patientPayments", () -> money("select p.currency, p.paymentMethods, sum(p.amount), count(p.id) from PatientPayments p join p.encounter e where p.status = :posted and p.createdDate >= :start and p.createdDate < :end and " + encounterWhere(scope) + " group by p.currency, p.paymentMethods", scope, window, query -> query.setParameter("posted", PaymentLifecycleStatus.POSTED)), builder),
-                read("billing.unposted", () -> count("select count(p.id) from PatientPayments p join p.encounter e where p.status = :created and p.createdDate >= :start and p.createdDate < :end and " + encounterWhere(scope), scope, query -> {
-                    query.setParameter("created", PaymentLifecycleStatus.CREATED);
                     query.setParameter("start", window.previousStart());
                     query.setParameter("end", window.previousEnd());
                 }), builder),
