@@ -8,9 +8,11 @@ import com.dazzle.asklepios.repository.PatientActivityRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.UserRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.patientActivity.PatientTaskCalendarVM;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientTaskFilter;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientTaskSummaryVM;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientTaskVM;
+import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Predicate;
@@ -47,6 +49,11 @@ import java.util.stream.Stream;
 @Transactional(readOnly = true)
 public class PatientTaskService {
 
+    /** A month grid is at most six weeks; anything wider is refused. */
+    private static final long MAX_RANGE_DAYS = 62;
+    private static final int CALENDAR_LIMIT = 600;
+    private static final int OVERDUE_LIMIT = 40;
+
     private final PatientActivityRepository patientActivityRepository;
     private final PatientRepository patientRepository;
     private final UserRepository userRepository;
@@ -57,18 +64,64 @@ public class PatientTaskService {
                 withDefaultSort(pageable)
         );
 
-        List<Long> patientIds = page.getContent().stream().map(PatientActivity::getPatientId).distinct().toList();
-        Map<Long, Patient> patients = patientRepository.findAllById(patientIds).stream()
-                .collect(Collectors.toMap(Patient::getId, Function.identity()));
+        Map<Long, Patient> patients = patientsOf(page.getContent());
+        return page.map(task -> toRow(task, patients));
+    }
 
-        return page.map(task -> {
-            Patient patient = patients.get(task.getPatientId());
-            return new PatientTaskVM(
-                    task,
-                    patient == null ? null : fullName(patient),
-                    patient == null ? null : patient.getMedicalRecordNumber()
+    /**
+     * Tasks whose due date falls in {@code dueFrom} (inclusive) .. {@code dueTo} (exclusive),
+     * plus open tasks due before {@code overdueBefore} (the client's start of today).
+     */
+    public PatientTaskCalendarVM calendar(PatientTaskFilter filter, Instant overdueBefore) {
+        if (filter.getDueFrom() == null || filter.getDueTo() == null) {
+            throw new BadRequestAlertException("Pick a start and end date.", "patientTask", "range.required");
+        }
+        if (!filter.getDueTo().isAfter(filter.getDueFrom())) {
+            throw new BadRequestAlertException("The end date must be after the start.", "patientTask", "range.invalid");
+        }
+        if (ChronoUnit.DAYS.between(filter.getDueFrom(), filter.getDueTo()) > MAX_RANGE_DAYS) {
+            throw new BadRequestAlertException(
+                    "The calendar can show up to 62 days at a time.",
+                    "patientTask",
+                    "range.tooWide"
             );
-        });
+        }
+
+        Page<PatientActivity> page = patientActivityRepository.findAll(
+                inScope(filter.getScope()).and(matching(filter)),
+                PageRequest.of(0, CALENDAR_LIMIT, Sort.by(Sort.Direction.ASC, "dueAt"))
+        );
+
+        List<PatientActivity> missedRows = List.of();
+        long missedCount = 0;
+        if (includesOpen(filter)) {
+            Instant from = filter.getDueFrom();
+            Instant to = filter.getDueTo();
+            Instant cutoff = overdueBefore != null ? overdueBefore : Instant.now();
+            filter.setDueFrom(null);
+            filter.setDueTo(null);
+            try {
+                Page<PatientActivity> missed = patientActivityRepository.findAll(
+                        inScope(filter.getScope()).and(matching(filter)).and(openAndDueBefore(cutoff)),
+                        PageRequest.of(0, OVERDUE_LIMIT, Sort.by(Sort.Direction.ASC, "dueAt"))
+                );
+                missedRows = missed.getContent();
+                missedCount = missed.getTotalElements();
+            } finally {
+                filter.setDueFrom(from);
+                filter.setDueTo(to);
+            }
+        }
+
+        Map<Long, Patient> patients = patientsOf(
+                Stream.concat(page.getContent().stream(), missedRows.stream()).toList()
+        );
+        return new PatientTaskCalendarVM(
+                page.getContent().stream().map(task -> toRow(task, patients)).toList(),
+                missedRows.stream().map(task -> toRow(task, patients)).toList(),
+                missedCount,
+                page.getTotalElements() > page.getNumberOfElements()
+        );
     }
 
     public PatientTaskSummaryVM summarize(TaskScope scope) {
@@ -123,6 +176,38 @@ public class PatientTaskService {
                 case ALL -> facilityTask;
             };
         };
+    }
+
+    private boolean includesOpen(PatientTaskFilter filter) {
+        return filter.getStatus() == null
+                || filter.getStatus().isEmpty()
+                || filter.getStatus().contains(PatientActivityStatus.OPEN);
+    }
+
+    /** Open tasks that were already due before the cutoff. */
+    private Specification<PatientActivity> openAndDueBefore(Instant cutoff) {
+        return (root, query, cb) -> cb.and(
+                cb.equal(root.get("status"), PatientActivityStatus.OPEN),
+                cb.lessThan(root.get("dueAt"), cutoff)
+        );
+    }
+
+    private Map<Long, Patient> patientsOf(List<PatientActivity> tasks) {
+        List<Long> patientIds = tasks.stream().map(PatientActivity::getPatientId).distinct().toList();
+        if (patientIds.isEmpty()) {
+            return Map.of();
+        }
+        return patientRepository.findAllById(patientIds).stream()
+                .collect(Collectors.toMap(Patient::getId, Function.identity()));
+    }
+
+    private PatientTaskVM toRow(PatientActivity task, Map<Long, Patient> patients) {
+        Patient patient = patients.get(task.getPatientId());
+        return new PatientTaskVM(
+                task,
+                patient == null ? null : fullName(patient),
+                patient == null ? null : patient.getMedicalRecordNumber()
+        );
     }
 
     private Specification<PatientActivity> withStatus(PatientActivityStatus status) {

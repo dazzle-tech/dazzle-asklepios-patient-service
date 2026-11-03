@@ -2,6 +2,7 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.enumeration.TaskScope;
 import com.dazzle.asklepios.service.PatientTaskService;
+import com.dazzle.asklepios.service.dto.patientActivity.PatientTaskCalendarVM;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientTaskFilter;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientTaskSummaryVM;
 import com.dazzle.asklepios.service.dto.patientActivity.PatientTaskVM;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import java.time.Instant;
 import java.util.List;
 
 @RestController
@@ -45,6 +47,16 @@ public class PatientTaskController {
                 page
         );
         return ResponseEntity.ok().headers(headers).body(page.getContent());
+    }
+
+    /** One window of the calendar, plus tasks that are already late. */
+    @GetMapping("/tasks/calendar")
+    public ResponseEntity<PatientTaskCalendarVM> calendar(
+            @ParameterObject PatientTaskFilter filter,
+            @RequestParam(required = false) Instant overdueBefore
+    ) {
+        LOG.debug("REST calendar tasks scope={} from={} to={}", filter.getScope(), filter.getDueFrom(), filter.getDueTo());
+        return ResponseEntity.ok(patientTaskService.calendar(filter, overdueBefore));
     }
 
     @GetMapping("/tasks/summary")
