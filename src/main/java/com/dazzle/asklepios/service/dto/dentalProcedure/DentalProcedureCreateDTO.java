@@ -1,17 +1,15 @@
 package com.dazzle.asklepios.service.dto.dentalProcedure;
 
 import com.dazzle.asklepios.domain.enumeration.ToothNumber;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
-import java.util.List;
 
 public record DentalProcedureCreateDTO(
         @NotNull Long patientId,
         @NotNull Long encounterId,
-        @NotEmpty List<@NotNull ToothNumber> toothNumbers,
+        @NotNull ToothNumber toothNumber,
         @NotNull String surface,
         String anesthesiaUsed,
         BigDecimal dose,
