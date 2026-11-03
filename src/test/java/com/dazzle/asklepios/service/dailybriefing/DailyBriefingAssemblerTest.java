@@ -6,6 +6,8 @@ import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingResponse;
+import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingResponse.Breakdown;
+import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingResponse.Coverage;
 import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingResponse.Indicator;
 import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingResponse.ValueState;
 import org.junit.jupiter.api.Test;
@@ -15,6 +17,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -99,7 +102,7 @@ class DailyBriefingAssemblerTest {
                         List.of(new DailyBriefingFacts.MoneyRow("SAR", new BigDecimal("60"), 1, "PATIENT"), new DailyBriefingFacts.MoneyRow("SAR", new BigDecimal("30"), 1, "INSURANCE")),
                         List.of(new DailyBriefingFacts.MoneyRow("SAR", new BigDecimal("999"), 1, null))
                 ))
-                .inpatient(new DailyBriefingFacts.InpatientSnapshot(false, null, null, null, null, null, null, null, null, null, null, null, null))
+                .urgentCare(new DailyBriefingFacts.UrgentCareSnapshot(false, null, null, null, null, null, null, null, null, null, null, null, null, null))
                 .build();
 
         DailyBriefingResponse report = DailyBriefingAssembler.assemble(context(), facts);
@@ -113,9 +116,25 @@ class DailyBriefingAssemblerTest {
         assertEquals(new BigDecimal("999"), invoices.amount());
         assertEquals(ValueState.UNAVAILABLE, critical.valueState());
         assertNull(critical.count());
-        assertFalse(report.inpatient().included());
+        assertFalse(report.urgentCare().included());
         assertTrue(report.actions().stream().allMatch(action -> !action.ownerKnown() && !action.modifiesRecords() && action.requiresReview()));
         assertTrue(report.keyIndicators().stream().noneMatch(item -> item.code().equals("OCCUPANCY_RATE") && item.valueState() == ValueState.VALUE));
+    }
+
+    @Test
+    void practitionerAndSpecialtyComeFromThePractitionerRecord() {
+        DailyBriefingFacts facts = DailyBriefingFacts.builder()
+                .previousEncounters(List.of(encounter(1L, 10L, EncounterReason.FIRST_TIME_VISIT, TreatmentStatus.COMPLETED)))
+                .build();
+        DailyBriefingResponse report = DailyBriefingAssembler.assemble(context(), facts, Map.of(9L, new PractitionerLabel(true, "Sara Nasser", "Cardiology")));
+        Breakdown practitioners = breakdown(report, "BY_PRACTITIONER");
+        Breakdown specialty = breakdown(report, "BY_SPECIALTY");
+
+        assertEquals(Coverage.COMPLETE, practitioners.coverage());
+        assertEquals("Sara Nasser", practitioners.rows().get(0).label());
+        assertEquals(Coverage.COMPLETE, specialty.coverage());
+        assertEquals("Cardiology", specialty.rows().get(0).label());
+        assertTrue(report.encounters().breakdowns().stream().noneMatch(item -> item.code().equals("BY_BRANCH")));
     }
 
     @Test
@@ -124,6 +143,10 @@ class DailyBriefingAssemblerTest {
         assertEquals("NOT_CALCULATED", report.issuance().status());
         assertTrue(report.keyIndicators().stream().allMatch(indicator -> indicator.valueState() == ValueState.UNAVAILABLE));
         assertTrue(report.keyIndicators().stream().allMatch(indicator -> indicator.count() == null));
+    }
+
+    private static Breakdown breakdown(DailyBriefingResponse report, String code) {
+        return report.encounters().breakdowns().stream().filter(item -> item.code().equals(code)).findFirst().orElseThrow();
     }
 
     private static Indicator indicator(DailyBriefingResponse report, String code) {

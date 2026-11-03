@@ -20,7 +20,7 @@ public record DailyBriefingResponse(
         Section insurance,
         Section waitingAndResults,
         Section completion,
-        Section inpatient,
+        Section urgentCare,
         Section comparisons,
         DataQuality dataQuality
 ) {
@@ -56,11 +56,12 @@ public record DailyBriefingResponse(
         OPEN_ENCOUNTERS,
         MISSING_CHIEF_COMPLAINT,
         UNBILLED_ENCOUNTERS,
-        ADMISSIONS,
-        DISCHARGES,
-        TRANSFERS,
-        AWAITING_BED,
-        ED_VISITS
+        URGENT_CARE_ADMISSIONS,
+        URGENT_CARE_VISITS,
+        URGENT_CARE_WAITING_LIST,
+        URGENT_CARE_TRIAGE,
+        URGENT_CARE_IN_DEPARTMENT,
+        URGENT_CARE_DISCHARGES
     }
 
     public record AppliedFilters(

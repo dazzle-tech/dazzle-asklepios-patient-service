@@ -41,7 +41,7 @@ public record DailyBriefingFacts(
         List<ClaimRow> claims,
         List<ClaimRow> claimsSubmittedYesterday,
         OrderSnapshot orders,
-        InpatientSnapshot inpatient,
+        UrgentCareSnapshot urgentCare,
         Long unbilledEncountersWithActiveCharge,
         List<MoneyRow> unbilledCharges,
         List<String> failures
@@ -148,20 +148,21 @@ public record DailyBriefingFacts(
     ) {
     }
 
-    public record InpatientSnapshot(
+    public record UrgentCareSnapshot(
             Boolean moduleUsed,
             Long admissions,
-            Long discharges,
-            Long transfers,
+            Long visits,
+            Long waitingList,
+            Long inTriage,
+            Long inDepartment,
+            Long discharged,
             Long occupiedBeds,
-            Long awaitingBed,
-            Long edVisits,
-            BigDecimal alosHours,
-            Integer alosSample,
-            Integer alosExcluded,
-            BigDecimal currentLosHours,
-            Integer currentLosSample,
-            Integer currentLosExcluded
+            BigDecimal dischargedStayHours,
+            Integer dischargedStaySample,
+            Integer dischargedStayExcluded,
+            BigDecimal currentStayHours,
+            Integer currentStaySample,
+            Integer currentStayExcluded
     ) {
     }
 
@@ -198,7 +199,7 @@ public record DailyBriefingFacts(
         private List<ClaimRow> claims = List.of();
         private List<ClaimRow> claimsSubmittedYesterday = List.of();
         private OrderSnapshot orders = new OrderSnapshot(List.of(), false, 0, 0L, 0L, 0L);
-        private InpatientSnapshot inpatient = new InpatientSnapshot(false, 0L, 0L, 0L, 0L, 0L, 0L, null, 0, 0, null, 0, 0);
+        private UrgentCareSnapshot urgentCare = new UrgentCareSnapshot(false, null, null, null, null, null, null, null, null, null, null, null, null, null);
         private Long unbilledEncountersWithActiveCharge = 0L;
         private List<MoneyRow> unbilledCharges = List.of();
         private final List<String> failures = new ArrayList<>();
@@ -310,8 +311,8 @@ public record DailyBriefingFacts(
             return this;
         }
 
-        public Builder inpatient(InpatientSnapshot inpatient) {
-            this.inpatient = inpatient;
+        public Builder urgentCare(UrgentCareSnapshot urgentCare) {
+            this.urgentCare = urgentCare;
             return this;
         }
 
@@ -350,7 +351,7 @@ public record DailyBriefingFacts(
                     claims,
                     claimsSubmittedYesterday,
                     orders,
-                    inpatient,
+                    urgentCare,
                     unbilledEncountersWithActiveCharge,
                     unbilledCharges,
                     List.copyOf(failures)

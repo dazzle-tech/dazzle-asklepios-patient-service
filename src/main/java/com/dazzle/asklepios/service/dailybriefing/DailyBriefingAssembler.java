@@ -40,14 +40,18 @@ public final class DailyBriefingAssembler {
     }
 
     public static DailyBriefingResponse assemble(BriefingContext context, DailyBriefingFacts facts) {
+        return assemble(context, facts, Map.of());
+    }
+
+    public static DailyBriefingResponse assemble(BriefingContext context, DailyBriefingFacts facts, Map<Long, PractitionerLabel> practitioners) {
         Indicators indicators = new Indicators(context);
-        Section encounters = encounters(context, facts, indicators);
+        Section encounters = encounters(context, facts, indicators, practitioners == null ? Map.of() : practitioners);
         Section appointments = appointments(context, facts, indicators);
         Section billing = billing(context, facts, indicators);
         Section insurance = insurance(context, facts, indicators);
         Section waiting = waiting(context, facts, indicators);
         Section completion = completion(context, facts, indicators);
-        Section inpatient = inpatient(context, facts, indicators);
+        Section urgentCare = urgentCare(context, facts, indicators);
         List<Alert> exceptions = exceptions(context, facts, indicators);
         Section comparisons = comparisons(context, indicators);
         List<Indicator> headlines = indicators.headlines();
@@ -67,7 +71,7 @@ public final class DailyBriefingAssembler {
                 insurance,
                 waiting,
                 completion,
-                inpatient,
+                urgentCare,
                 comparisons,
                 quality(context, facts, indicators)
         );
@@ -115,13 +119,13 @@ public final class DailyBriefingAssembler {
                 placeholder(indicators, "INSURANCE", "Insurance, authorizations, and claims", "التأمين والموافقات والمطالبات", notes),
                 placeholder(indicators, "WAITING", "Waiting times, delays, and results", "أوقات الانتظار والتأخير والنتائج", notes),
                 placeholder(indicators, "COMPLETION", "Encounter completion and unbilled services", "إكمال الزيارة والخدمات غير المفوترة", notes),
-                new Section("INPATIENT", indicators.pair("Inpatient and emergency", "التنويم والطوارئ"), false, reason, null, List.of(), List.of(), notes),
+                new Section("URGENT_CARE", indicators.pair("Urgent care", "الرعاية العاجلة"), false, reason, null, List.of(), List.of(), notes),
                 placeholder(indicators, "COMPARISONS", "Comparisons and targets", "المقارنات والأهداف", notes),
                 quality(context, DailyBriefingFacts.builder().failure(reason).build(), indicators)
         );
     }
 
-    private static Section encounters(BriefingContext context, DailyBriefingFacts facts, Indicators indicators) {
+    private static Section encounters(BriefingContext context, DailyBriefingFacts facts, Indicators indicators, Map<Long, PractitionerLabel> practitioners) {
         indicators.begin("ENCOUNTERS");
         String period = previousPeriod(context, indicators);
         String baseline = comparisonPeriod(context, indicators);
@@ -207,17 +211,20 @@ public final class DailyBriefingAssembler {
                 "زيارات اليوم السابق التي ليست مكتملة ولا ملغاة.",
                 period, incomplete, Coverage.COMPLETE, null, null, Drill.INCOMPLETE_ENCOUNTERS, true);
 
+        boolean practitionerUnread = completed.stream().anyMatch(row -> practitionerUnread(practitioners, row.practitionerId()));
+        boolean specialtyMissing = completed.stream().anyMatch(row -> specialtyMissing(practitioners, row.practitionerId()));
         List<Breakdown> breakdowns = List.of(
                 breakdown(indicators, "BY_DEPARTMENT", "By department", "حسب القسم", Coverage.COMPLETE, null, countBy(completed, row -> id(row.departmentId()), row -> name(row.departmentName(), row.departmentId()))),
-                breakdown(indicators, "BY_PRACTITIONER", "By practitioner", "حسب الطبيب", Coverage.PARTIAL, indicators.pair("Practitioner names are not stored in this service.", "أسماء الأطباء غير مخزنة في هذه الخدمة."), countBy(completed, row -> id(row.practitionerId()), row -> id(row.practitionerId()))),
+                breakdown(indicators, "BY_PRACTITIONER", "By practitioner", "حسب الطبيب",
+                        practitionerUnread ? Coverage.PARTIAL : Coverage.COMPLETE,
+                        practitionerUnread ? indicators.pair("Some practitioner names could not be read from the setup service.", "تعذر قراءة بعض أسماء الأطباء من خدمة الإعداد.") : null,
+                        countBy(completed, row -> id(row.practitionerId()), row -> practitionerName(indicators, practitioners, row.practitionerId()))),
                 breakdown(indicators, "BY_SERVICE", "By service type", "حسب نوع الخدمة", Coverage.COMPLETE, null, countBy(completed, row -> enumName(row.reason()), row -> enumName(row.reason()))),
                 breakdown(indicators, "BY_ENCOUNTER_TYPE", "By encounter type", "حسب نوع الزيارة", Coverage.COMPLETE, null, countBy(completed, row -> enumName(row.encounterType()), row -> enumName(row.encounterType()))),
-                new Breakdown("BY_BRANCH", indicators.pair("By branch", "حسب الفرع"), Coverage.NOT_IN_SOURCE, indicators.pair("Branch is not stored on the encounter.", "الفرع غير مخزن على الزيارة."), List.of()),
-                new Breakdown("BY_SPECIALTY", indicators.pair("By specialty", "حسب التخصص"), context.specialty() == null ? Coverage.NOT_IN_SOURCE : Coverage.PARTIAL,
-                        context.specialty() == null
-                                ? indicators.pair("Specialty is stored on the practitioner in the setup service, not on the encounter.", "التخصص مخزن على الطبيب في خدمة الإعداد وليس على الزيارة.")
-                                : indicators.pair("The briefing is already limited to the requested specialty.", "الإحاطة محدودة أصلاً بالتخصص المطلوب."),
-                        context.specialty() == null ? List.of() : List.of(new DimensionRow(context.specialty(), context.specialty(), completed.size(), null, null)))
+                breakdown(indicators, "BY_SPECIALTY", "By specialty", "حسب التخصص",
+                        specialtyMissing ? Coverage.PARTIAL : Coverage.COMPLETE,
+                        specialtyMissing ? indicators.pair("Some specialties could not be read from the practitioner in the setup service.", "تعذر قراءة بعض التخصصات من الطبيب في خدمة الإعداد.") : null,
+                        countBy(completed, row -> specialtyKey(practitioners, row.practitionerId()), row -> specialtyLabel(indicators, practitioners, row.practitionerId())))
         );
         return section(indicators, "ENCOUNTERS", "Encounters and patients", "الزيارات والمرضى",
                 "Completed encounter counts are not unique patient counts.", "عدد الزيارات المكتملة ليس عدد المرضى الفريدين.",
@@ -641,66 +648,63 @@ public final class DailyBriefingAssembler {
                 List.of(), List.of());
     }
 
-    private static Section inpatient(BriefingContext context, DailyBriefingFacts facts, Indicators indicators) {
-        indicators.begin("INPATIENT");
-        DailyBriefingFacts.InpatientSnapshot inpatient = facts.inpatient();
-        if (inpatient == null || inpatient.moduleUsed() == null) {
-            return new Section("INPATIENT", indicators.pair("Inpatient and emergency", "التنويم والطوارئ"), true, null,
-                    indicators.pair("Module presence could not be read, so no occupancy is shown as zero.", "تعذر قراءة وجود الوحدة، لذلك لا يُعرض الإشغال كصفر."),
-                    List.of(indicators.unavailable("INPATIENT_MODULE", "Inpatient and emergency module", "وحدة التنويم والطوارئ", "Whether the facility has inpatient or emergency encounters.", "ما إذا كان للمنشأة زيارات تنويم أو طوارئ.", "facility", Coverage.PARTIAL, "QUERY_FAILED", null, false)),
+    private static Section urgentCare(BriefingContext context, DailyBriefingFacts facts, Indicators indicators) {
+        indicators.begin("URGENT_CARE");
+        DailyBriefingFacts.UrgentCareSnapshot urgentCare = facts.urgentCare();
+        if (urgentCare == null || urgentCare.moduleUsed() == null) {
+            return new Section("URGENT_CARE", indicators.pair("Urgent care", "الرعاية العاجلة"), true, null,
+                    indicators.pair("Urgent care presence could not be read, so no urgent care figure is shown as zero.", "تعذر قراءة وجود الرعاية العاجلة، لذلك لا يُعرض أي رقم كصفر."),
+                    List.of(indicators.unavailable("URGENT_CARE_MODULE", "Urgent care", "الرعاية العاجلة", "Whether the facility has emergency encounters, which this system uses for urgent care.", "ما إذا كان للمنشأة زيارات طوارئ، وهي الرعاية العاجلة في هذا النظام.", "facility", Coverage.PARTIAL, "QUERY_FAILED", null, false)),
                     List.of(), List.of());
         }
-        if (!inpatient.moduleUsed()) {
-            return new Section("INPATIENT", indicators.pair("Inpatient and emergency", "التنويم والطوارئ"), false,
-                    indicators.pair("No inpatient or emergency encounters are stored for this facility, so this section is omitted.", "لا توجد زيارات تنويم أو طوارئ مخزنة لهذه المنشأة، لذلك يُحذف هذا القسم."),
+        if (!urgentCare.moduleUsed()) {
+            return new Section("URGENT_CARE", indicators.pair("Urgent care", "الرعاية العاجلة"), false,
+                    indicators.pair("No urgent care encounters are stored for this facility, so this section is omitted. Inpatient encounters are not included.", "لا توجد زيارات رعاية عاجلة مخزنة لهذه المنشأة، لذلك يُحذف هذا القسم. زيارات التنويم غير مشمولة."),
                     null, List.of(), List.of(), List.of());
         }
         String previous = previousPeriod(context, indicators);
-        String point = indicators.pair("Point in time " + context.occupancyAt(), "نقطة زمنية " + context.occupancyAt());
-        indicators.count("ADMISSIONS", "Inpatient encounters started", "زيارات تنويم بدأت",
-                "Inpatient encounters dated on the previous facility day. Bed-assignment events are not added to this count.",
-                "زيارات تنويم بتاريخ اليوم السابق للمنشأة. أحداث تعيين السرير لا تُضاف إلى هذا العدد.",
-                previous, inpatient.admissions(), Coverage.COMPLETE, null, null, Drill.ADMISSIONS, true);
-        indicators.count("DISCHARGES", "Inpatient discharges", "خروج التنويم",
-                "Inpatient encounters whose discharge timestamp falls on the previous facility day.",
-                "زيارات تنويم وقع طابع خروجها في اليوم السابق للمنشأة.",
-                previous, inpatient.discharges(), Coverage.COMPLETE, null, null, Drill.DISCHARGES, true);
-        indicators.count("TRANSFERS", "Bed transfers", "تحويلات الأسرة",
-                "Bed transactions of type transfer on the previous facility day.",
-                "حركات أسرة من نوع تحويل في اليوم السابق للمنشأة.",
-                previous, inpatient.transfers(), Coverage.COMPLETE, null, null, Drill.TRANSFERS, false);
-        indicators.count("OCCUPIED_BEDS", "Occupied beds", "الأسرة المشغولة",
-                "Distinct beds with an assignment covering the stated point in time.",
-                "أسرة مميزة لها تعيين يغطي النقطة الزمنية المحددة.",
-                point, inpatient.occupiedBeds(), Coverage.COMPLETE, null, null, null, true);
-        indicators.unavailable("OPERATIONAL_BEDS", "Operational beds", "الأسرة التشغيلية",
-                "Staffed beds.", "الأسرة المشغّلة.", point, Coverage.NOT_IN_SOURCE, "OPERATIONAL_BEDS_NOT_STORED", null, true);
-        indicators.unavailable("AVAILABLE_BEDS", "Available beds", "الأسرة المتاحة",
-                "Operational beds minus occupied beds.", "الأسرة التشغيلية ناقص المشغولة.", point, Coverage.NOT_IN_SOURCE, "OPERATIONAL_BEDS_NOT_STORED",
-                indicators.pair("Available beds are not calculated from occupied beds alone.", "لا تُحسب الأسرة المتاحة من الأسرة المشغولة وحدها."), false);
-        indicators.unavailable("OCCUPANCY_RATE", "Occupancy rate", "نسبة الإشغال",
-                "Occupied beds divided by operational beds at the point in time.", "الأسرة المشغولة مقسومة على الأسرة التشغيلية في النقطة الزمنية.",
-                point, Coverage.NOT_IN_SOURCE, "OPERATIONAL_BEDS_NOT_STORED",
-                indicators.pair("The rate is omitted because operational beds are not stored. Occupied beds are not used as the denominator.", "تُحذف النسبة لأن الأسرة التشغيلية غير مخزنة. لا تُستخدم الأسرة المشغولة كمقام."), true);
-        indicators.count("AWAITING_BED", "Patients awaiting a bed", "مرضى بانتظار سرير",
-                "Open or in-progress inpatient encounters with no active bed assignment.",
-                "زيارات تنويم مفتوحة أو قيد التنفيذ بلا تعيين سرير نشط.",
-                point, inpatient.awaitingBed(), Coverage.COMPLETE, null, null, Drill.AWAITING_BED, true);
-        indicators.count("ED_VISITS", "Emergency visits", "زيارات الطوارئ",
-                "Emergency encounters dated on the previous facility day.",
-                "زيارات طوارئ بتاريخ اليوم السابق للمنشأة.",
-                previous, inpatient.edVisits(), Coverage.COMPLETE, null, null, Drill.ED_VISITS, true);
-        los(indicators, "ALOS", "Average length of stay", "متوسط مدة الإقامة",
-                "Mean hours from encounter start to discharge for inpatient encounters discharged on the previous day. Current inpatients are not included.",
-                "متوسط الساعات من بدء الزيارة إلى الخروج لزيارات التنويم التي خرجت في اليوم السابق. المنومون الحاليون غير مشمولين.",
-                previous, inpatient.alosHours(), inpatient.alosSample(), inpatient.alosExcluded(), "NO_DISCHARGES");
-        los(indicators, "CURRENT_LOS", "Current length of stay", "مدة الإقامة الحالية",
-                "Mean hours from encounter start to the refresh time for inpatients who are still open. Discharged patients are not included.",
-                "متوسط الساعات من بدء الزيارة إلى وقت التحديث للمنومين الذين ما زالوا مفتوحين. المرضى الذين خرجوا غير مشمولين.",
-                point, inpatient.currentLosHours(), inpatient.currentLosSample(), inpatient.currentLosExcluded(), "NO_CURRENT_INPATIENTS");
-        return section(indicators, "INPATIENT", "Inpatient and emergency", "التنويم والطوارئ",
-                "Included because this facility has inpatient or emergency encounters. Average length of stay and current length of stay are separate.",
-                "يظهر لأن هذه المنشأة لديها زيارات تنويم أو طوارئ. متوسط مدة الإقامة ومدة الإقامة الحالية منفصلان.",
+        String point = indicators.pair("Point in time " + context.refreshedAt(), "نقطة زمنية " + context.refreshedAt());
+        String statusNote = indicators.pair("The treatment status is the status stored now for encounters dated that day. An end-of-day status is not stored.", "حالة العلاج هي الحالة المخزنة الآن لزيارات ذلك اليوم. لا تُخزن حالة نهاية اليوم.");
+        indicators.count("URGENT_CARE_ADMISSIONS", "Urgent care admissions", "قبول الرعاية العاجلة",
+                "Emergency encounters with a bed assign transaction on the previous facility day. Counted once per encounter. Inpatient admissions are not included.",
+                "زيارات طوارئ لها حركة تعيين سرير في اليوم السابق للمنشأة. تُحسب مرة لكل زيارة. قبول التنويم غير مشمول.",
+                previous, urgentCare.admissions(), Coverage.COMPLETE, null, null, Drill.URGENT_CARE_ADMISSIONS, true);
+        indicators.count("URGENT_CARE_VISITS", "Urgent care visits", "زيارات الرعاية العاجلة",
+                "Emergency encounters dated on the previous facility day. This is a visit count, not an admission count.",
+                "زيارات طوارئ بتاريخ اليوم السابق للمنشأة. هذا عدد زيارات وليس عدد قبول.",
+                previous, urgentCare.visits(), Coverage.COMPLETE, null, null, Drill.URGENT_CARE_VISITS, true);
+        indicators.count("URGENT_CARE_WAITING_LIST", "Urgent care waiting list", "قائمة انتظار الرعاية العاجلة",
+                "Emergency encounters dated on the previous facility day whose current treatment status is waiting list.",
+                "زيارات طوارئ بتاريخ اليوم السابق حالتها الحالية قائمة انتظار.",
+                previous, urgentCare.waitingList(), Coverage.COMPLETE, statusNote, null, Drill.URGENT_CARE_WAITING_LIST, true);
+        indicators.count("URGENT_CARE_TRIAGE", "Urgent care in triage", "فرز الرعاية العاجلة",
+                "Emergency encounters dated on the previous facility day whose current treatment status is waiting triage or triage started.",
+                "زيارات طوارئ بتاريخ اليوم السابق حالتها الحالية بانتظار الفرز أو بدأ الفرز.",
+                previous, urgentCare.inTriage(), Coverage.COMPLETE, statusNote, null, Drill.URGENT_CARE_TRIAGE, true);
+        indicators.count("URGENT_CARE_IN_DEPARTMENT", "Urgent care in department", "الموجودون في الرعاية العاجلة",
+                "Emergency encounters whose current treatment status is ongoing or assigned to a bed.",
+                "زيارات طوارئ حالتها الحالية جارية أو معينة لسرير.",
+                point, urgentCare.inDepartment(), Coverage.COMPLETE, null, null, Drill.URGENT_CARE_IN_DEPARTMENT, true);
+        indicators.count("URGENT_CARE_DISCHARGES", "Urgent care discharges", "خروج الرعاية العاجلة",
+                "Emergency encounters whose discharge timestamp falls on the previous facility day.",
+                "زيارات طوارئ وقع طابع خروجها في اليوم السابق للمنشأة.",
+                previous, urgentCare.discharged(), Coverage.COMPLETE, null, null, Drill.URGENT_CARE_DISCHARGES, true);
+        indicators.count("URGENT_CARE_OCCUPIED_BEDS", "Urgent care occupied beds", "أسرة الرعاية العاجلة المشغولة",
+                "Distinct beds assigned to an emergency encounter at the refresh time.",
+                "أسرة مميزة معينة لزيارة طوارئ في وقت التحديث.",
+                indicators.pair("Point in time " + context.occupancyAt(), "نقطة زمنية " + context.occupancyAt()),
+                urgentCare.occupiedBeds(), Coverage.COMPLETE, null, null, null, true);
+        los(indicators, "URGENT_CARE_DISCHARGED_STAY", "Urgent care discharged stay", "مدة بقاء من خرجوا من الرعاية العاجلة",
+                "Mean hours from encounter start to discharge for emergency encounters discharged on the previous day. Patients still in the department are not included.",
+                "متوسط الساعات من بدء الزيارة إلى الخروج لزيارات الطوارئ التي خرجت في اليوم السابق. الموجودون في القسم غير مشمولين.",
+                previous, urgentCare.dischargedStayHours(), urgentCare.dischargedStaySample(), urgentCare.dischargedStayExcluded(), "NO_DISCHARGES");
+        los(indicators, "URGENT_CARE_CURRENT_STAY", "Urgent care current stay", "مدة البقاء الحالية في الرعاية العاجلة",
+                "Mean hours from encounter start to the refresh time for emergency encounters that are ongoing or assigned to a bed. Discharged patients are not included.",
+                "متوسط الساعات من بدء الزيارة إلى وقت التحديث لزيارات الطوارئ الجارية أو المعينة لسرير. من خرجوا غير مشمولين.",
+                point, urgentCare.currentStayHours(), urgentCare.currentStaySample(), urgentCare.currentStayExcluded(), "NO_CURRENT_URGENT_CARE");
+        return section(indicators, "URGENT_CARE", "Urgent care", "الرعاية العاجلة",
+                "Included because this facility has emergency encounters. Inpatient encounters are not included. Admissions and visits are separate.",
+                "يظهر لأن هذه المنشأة لديها زيارات طوارئ. زيارات التنويم غير مشمولة. القبول والزيارات منفصلان.",
                 List.of(), List.of());
     }
 
@@ -773,9 +777,12 @@ public final class DailyBriefingAssembler {
         countAlert(alerts, indicators, "UNBILLED_ENCOUNTER_COUNT", "UNBILLED", "MEDIUM", "FINANCIAL",
                 "Completed encounters are still unbilled.", "زيارات مكتملة ما زالت غير مفوترة.",
                 "Review the unbilled encounters. Do not invent a charge where none is stored.", "راجع الزيارات غير المفوترة. لا تختلق رسماً إذا لم يكن مخزناً.");
-        countAlert(alerts, indicators, "AWAITING_BED", "AWAITING_BED", "MEDIUM", "OPERATIONAL",
-                "Inpatients have no active bed.", "منومون بلا سرير نشط.",
-                "Review the patients awaiting a bed.", "راجع المرضى الذين ينتظرون سريراً.");
+        countAlert(alerts, indicators, "URGENT_CARE_WAITING_LIST", "URGENT_CARE_WAITING_LIST", "MEDIUM", "OPERATIONAL",
+                "Urgent care encounters dated yesterday are still on the waiting list.", "زيارات رعاية عاجلة بتاريخ الأمس ما زالت في قائمة الانتظار.",
+                "Review the urgent care waiting list.", "راجع قائمة انتظار الرعاية العاجلة.");
+        countAlert(alerts, indicators, "URGENT_CARE_TRIAGE", "URGENT_CARE_TRIAGE", "MEDIUM", "OPERATIONAL",
+                "Urgent care encounters dated yesterday are still in triage.", "زيارات رعاية عاجلة بتاريخ الأمس ما زالت في الفرز.",
+                "Review the urgent care triage list.", "راجع فرز الرعاية العاجلة.");
         alerts.sort(Comparator.comparingInt(DailyBriefingAssembler::priorityRank).thenComparing(Alert::code));
         return alerts;
     }
@@ -945,6 +952,57 @@ public final class DailyBriefingAssembler {
             return new Comparison(baselinePeriod, baseline.rate(), current == null ? null : current.rate(), null, null, reason);
         }
         return comparison(baselinePeriod, DailyBriefingCalculator.compare(current.rate(), baseline.rate()));
+    }
+
+    private static boolean practitionerUnread(Map<Long, PractitionerLabel> practitioners, Long practitionerId) {
+        if (practitionerId == null) {
+            return false;
+        }
+        PractitionerLabel label = practitioners.get(practitionerId);
+        return label == null || !label.found() || label.name() == null || label.name().isBlank();
+    }
+
+    private static boolean specialtyMissing(Map<Long, PractitionerLabel> practitioners, Long practitionerId) {
+        if (practitionerId == null) {
+            return false;
+        }
+        PractitionerLabel label = practitioners.get(practitionerId);
+        return label == null || !label.found() || label.specialty() == null || label.specialty().isBlank();
+    }
+
+    private static String practitionerName(Indicators indicators, Map<Long, PractitionerLabel> practitioners, Long practitionerId) {
+        if (practitionerId == null) {
+            return indicators.pair("No practitioner", "بدون طبيب");
+        }
+        PractitionerLabel label = practitioners.get(practitionerId);
+        if (label != null && label.found() && label.name() != null && !label.name().isBlank()) {
+            return label.name();
+        }
+        return indicators.pair("Practitioner " + practitionerId, "الطبيب " + practitionerId);
+    }
+
+    private static String specialtyKey(Map<Long, PractitionerLabel> practitioners, Long practitionerId) {
+        if (practitionerId == null) {
+            return "NO_PRACTITIONER";
+        }
+        PractitionerLabel label = practitioners.get(practitionerId);
+        if (label == null || !label.found()) {
+            return "LOOKUP_FAILED";
+        }
+        if (label.specialty() == null || label.specialty().isBlank()) {
+            return "NOT_RECORDED";
+        }
+        return label.specialty().trim();
+    }
+
+    private static String specialtyLabel(Indicators indicators, Map<Long, PractitionerLabel> practitioners, Long practitionerId) {
+        String key = specialtyKey(practitioners, practitionerId);
+        return switch (key) {
+            case "NO_PRACTITIONER" -> indicators.pair("No practitioner", "بدون طبيب");
+            case "LOOKUP_FAILED" -> indicators.pair("Practitioner could not be read", "تعذر قراءة الطبيب");
+            case "NOT_RECORDED" -> indicators.pair("Specialty not recorded", "التخصص غير مسجل");
+            default -> key;
+        };
     }
 
     private static List<DimensionRow> countBy(List<DailyBriefingFacts.EncounterRow> rows, java.util.function.Function<DailyBriefingFacts.EncounterRow, String> key, java.util.function.Function<DailyBriefingFacts.EncounterRow, String> label) {

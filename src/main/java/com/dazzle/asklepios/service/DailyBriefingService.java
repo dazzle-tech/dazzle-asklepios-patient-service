@@ -1,6 +1,5 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.setup.PractitionerClient;
 import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
 import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
 import com.dazzle.asklepios.domain.DailyBriefingAccessLog;
@@ -15,12 +14,14 @@ import com.dazzle.asklepios.service.dailybriefing.BriefingWindow;
 import com.dazzle.asklepios.service.dailybriefing.DailyBriefingAssembler;
 import com.dazzle.asklepios.service.dailybriefing.DailyBriefingFacts;
 import com.dazzle.asklepios.service.dailybriefing.DailyBriefingQueryGateway;
+import com.dazzle.asklepios.service.dailybriefing.PractitionerLabel;
 import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingCasesResponse;
 import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingCasesResponse.DailyBriefingCase;
 import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingIssueResponse;
 import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingResponse;
 import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingResponse.Drill;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
+import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper.ZoneResolution;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.ConflictAlertException;
@@ -38,7 +39,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -52,7 +55,7 @@ public class DailyBriefingService {
 
     private final DailyBriefingQueryGateway queryGateway;
     private final FacilityHelper facilityHelper;
-    private final PractitionerClient practitionerClient;
+    private final PractitionerHelper practitionerHelper;
     private final DailyBriefingIssueRepository issueRepository;
     private final DailyBriefingAccessLogRepository accessLogRepository;
     private final ObjectMapper objectMapper;
@@ -64,7 +67,7 @@ public class DailyBriefingService {
             return DailyBriefingAssembler.notCalculated(prepared.context(), prepared.notCalculatedReason());
         }
         DailyBriefingFacts facts = queryGateway.load(prepared.scope(), prepared.window());
-        return DailyBriefingAssembler.assemble(prepared.context(), facts);
+        return DailyBriefingAssembler.assemble(prepared.context(), facts, practitionerDirectory(facts));
     }
 
     @Transactional
@@ -289,12 +292,46 @@ public class DailyBriefingService {
         return new SpecialtyResolution(matched, false, null);
     }
 
+    private Map<Long, PractitionerLabel> practitionerDirectory(DailyBriefingFacts facts) {
+        Map<Long, PractitionerLabel> directory = new LinkedHashMap<>();
+        if (facts.previousEncounters() == null) {
+            return directory;
+        }
+        for (DailyBriefingFacts.EncounterRow row : facts.previousEncounters()) {
+            Long id = row.practitionerId();
+            if (id == null || directory.containsKey(id)) {
+                continue;
+            }
+            PractitionerDTO practitioner = readPractitioner(id);
+            if (practitioner == null) {
+                directory.put(id, new PractitionerLabel(false, null, null));
+                continue;
+            }
+            directory.put(id, new PractitionerLabel(true, displayName(practitioner), blankToNull(practitioner.specialty())));
+        }
+        return directory;
+    }
+
     private PractitionerDTO readPractitioner(Long id) {
         try {
-            return practitionerClient.getPractitioner(id);
+            return practitionerHelper.getPractitioner(id);
         } catch (RuntimeException ex) {
             return null;
         }
+    }
+
+    private static String displayName(PractitionerDTO practitioner) {
+        String first = practitioner.firstName() == null ? "" : practitioner.firstName().trim();
+        String last = practitioner.lastName() == null ? "" : practitioner.lastName().trim();
+        String name = (first + " " + last).trim();
+        return name.isEmpty() ? null : name;
+    }
+
+    private static String blankToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
     private void assertFacility(Long facilityId) {

@@ -10,7 +10,6 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingRefundStatus;
 import com.dazzle.asklepios.domain.enumeration.BedTransactionType;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
-import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.PaymentLifecycleStatus;
@@ -48,7 +47,8 @@ public class DailyBriefingQueryGateway {
     private static final List<AppointmentStatus> OFF_BOOK = List.of(AppointmentStatus.CANCELLED, AppointmentStatus.RESCHEDULED);
     private static final List<DiagnosticStatus> ORDER_DONE = List.of(DiagnosticStatus.RESULT_APPROVED, DiagnosticStatus.CANCELLED, DiagnosticStatus.REJECTED, DiagnosticStatus.COMPLETED);
     private static final List<ClaimStatus> SUBMITTED = List.of(ClaimStatus.SUBMITTED, ClaimStatus.ACCEPTED, ClaimStatus.REJECTED, ClaimStatus.FAILED);
-    private static final List<EncounterStatus> OPEN_INPATIENT = List.of(EncounterStatus.OPEN, EncounterStatus.IN_PROGRESS);
+    private static final List<TreatmentStatus> IN_DEPARTMENT = List.of(TreatmentStatus.ONGOING, TreatmentStatus.ASSIGNED_TO_BED);
+    private static final List<TreatmentStatus> IN_TRIAGE = List.of(TreatmentStatus.WAITING_TRIAGE, TreatmentStatus.TRIAGE_STARTED);
 
     private final EntityManager entityManager;
 
@@ -81,14 +81,14 @@ public class DailyBriefingQueryGateway {
     public DailyBriefingFacts load(BriefingScope scope, BriefingWindow window) {
         DailyBriefingFacts.Builder builder = DailyBriefingFacts.builder();
         if (scope.matchNone()) {
-            Boolean module = read("inpatient.module", () -> count(
-                    "select count(e.id) from PatientEncounter e where e.facilityId = :facilityId and e.encounterType in :types",
+            Boolean module = read("urgentCare.module", () -> count(
+                    "select count(e.id) from PatientEncounter e where e.facilityId = :facilityId and e.encounterType = :type",
                     new BriefingScope(scope.facilityId(), null, null, null, false),
-                    query -> query.setParameter("types", List.of(EncounterType.INPATIENT, EncounterType.EMERGENCY))
+                    query -> query.setParameter("type", EncounterType.EMERGENCY)
             ) > 0, builder);
-            builder.inpatient(module != null && module
-                    ? new DailyBriefingFacts.InpatientSnapshot(true, 0L, 0L, 0L, 0L, 0L, 0L, null, 0, 0, null, 0, 0)
-                    : new DailyBriefingFacts.InpatientSnapshot(module, null, null, null, null, null, null, null, null, null, null, null, null));
+            builder.urgentCare(module != null && module
+                    ? new DailyBriefingFacts.UrgentCareSnapshot(true, 0L, 0L, 0L, 0L, 0L, 0L, 0L, null, 0, 0, null, 0, 0)
+                    : new DailyBriefingFacts.UrgentCareSnapshot(module, null, null, null, null, null, null, null, null, null, null, null, null, null));
             return builder.build();
         }
         loadEncounters(scope, window, builder);
@@ -96,36 +96,41 @@ public class DailyBriefingQueryGateway {
         loadBilling(scope, window, builder);
         loadInsurance(scope, window, builder);
         loadOrders(scope, window, builder);
-        builder.inpatient(loadInpatient(scope, window, builder));
+        builder.urgentCare(loadUrgentCare(scope, window, builder));
         builder.comparison(loadComparison(scope, window, builder));
         return builder.build();
     }
 
     public List<DailyBriefingCase> cases(Drill drill, BriefingScope scope, BriefingWindow window, int limit) {
+        int fetch = limit + 1;
         List<DailyBriefingCase> rows = switch (drill) {
-            case COMPLETED_ENCOUNTERS -> encounterCases(scope, "e.encounterDate = :day and e.status in :statuses", window.previousDay(), COMPLETED, limit);
-            case CANCELLED_ENCOUNTERS -> encounterCases(scope, "e.encounterDate = :day and e.status = :cancelled", window.previousDay(), null, limit);
-            case INCOMPLETE_ENCOUNTERS -> encounterCases(scope, "e.encounterDate = :day and e.status not in :statuses", window.previousDay(), NOT_OPEN, limit);
-            case MISSING_CHIEF_COMPLAINT -> encounterCases(scope, "e.encounterDate = :day and e.status in :statuses and (e.chiefComplaint is null or e.chiefComplaint = '')", window.previousDay(), COMPLETED, limit);
-            case UNBILLED_ENCOUNTERS -> encounterCases(scope, "e.encounterDate = :day and e.status in :statuses and e.billingStatus = :billing", window.previousDay(), COMPLETED, limit);
-            case OPEN_ENCOUNTERS -> encounterCases(scope, "e.status not in :statuses and ((e.startedDate is not null and e.startedDate < :cutoff) or (e.startedDate is null and e.encounterDate <= :oldest))", null, NOT_OPEN, limit, window);
-            case ADMISSIONS -> encounterCases(scope, "e.encounterDate = :day and e.encounterType = :inpatient", window.previousDay(), null, limit);
-            case ED_VISITS -> encounterCases(scope, "e.encounterDate = :day and e.encounterType = :emergency", window.previousDay(), null, limit);
-            case DISCHARGES -> encounterCases(scope, "e.encounterType = :inpatient and e.dischargeAt >= :rangeStart and e.dischargeAt < :rangeEnd", null, null, limit, window);
-            case TODAY_APPOINTMENTS -> appointmentCases(scope, "a.patient is not null", window.currentStart(), window.currentEnd(), limit);
-            case PREVIOUS_CANCELLATIONS -> appointmentCases(scope, "a.patient is not null and a.status = :cancelledAppointment", window.previousStart(), window.previousEnd(), limit);
-            case PREVIOUS_NO_SHOWS -> appointmentCases(scope, "a.patient is not null and a.status = :noShow", window.previousStart(), window.previousEnd(), limit);
-            case BOOKED_WITHOUT_PRACTITIONER -> appointmentCases(scope, "a.patient is not null and a.requirePractitioner = true and a.defaultPractitionerId is null and (a.resourceType <> :practitionerType or a.resourceId is null) and a.status not in :offBook", window.currentStart(), window.currentEnd(), limit);
-            case SCHEDULE_CONFLICTS -> conflictCases(scope, window, limit);
-            case PENDING_AUTHORIZATIONS, AUTHORIZATION_DENIALS -> authorizationCases(scope, drill, limit);
-            case SERVICES_ON_HOLD -> holdCases(scope, limit);
-            case READY_CLAIMS -> claimCases(scope, ClaimStatus.DRAFT, limit);
-            case CLAIM_DENIALS -> claimCases(scope, ClaimStatus.REJECTED, limit);
-            case CLAIM_FAILURES -> claimCases(scope, ClaimStatus.FAILED, limit);
-            case OVERDUE_ORDERS -> orderCases(scope, window, limit);
-            case TRANSFERS -> transferCases(scope, window, limit);
-            case AWAITING_BED -> awaitingBedCases(scope, limit);
+            case COMPLETED_ENCOUNTERS -> encounterCases(scope, "e.encounterDate = :day and e.status in :statuses", window.previousDay(), COMPLETED, fetch);
+            case CANCELLED_ENCOUNTERS -> encounterCases(scope, "e.encounterDate = :day and e.status = :cancelled", window.previousDay(), null, fetch);
+            case INCOMPLETE_ENCOUNTERS -> encounterCases(scope, "e.encounterDate = :day and e.status not in :statuses", window.previousDay(), NOT_OPEN, fetch);
+            case MISSING_CHIEF_COMPLAINT -> encounterCases(scope, "e.encounterDate = :day and e.status in :statuses and (e.chiefComplaint is null or e.chiefComplaint = '')", window.previousDay(), COMPLETED, fetch);
+            case UNBILLED_ENCOUNTERS -> encounterCases(scope, "e.encounterDate = :day and e.status in :statuses and e.billingStatus = :billing", window.previousDay(), COMPLETED, fetch);
+            case OPEN_ENCOUNTERS -> encounterCases(scope, "e.status not in :statuses and ((e.startedDate is not null and e.startedDate < :cutoff) or (e.startedDate is null and e.encounterDate <= :oldest))", null, NOT_OPEN, fetch, window);
+            case URGENT_CARE_ADMISSIONS -> admissionCases(scope, window, fetch);
+            case URGENT_CARE_VISITS -> encounterCases(scope, "e.encounterDate = :day and e.encounterType = :emergency", window.previousDay(), null, fetch);
+            case URGENT_CARE_WAITING_LIST -> encounterCases(scope, "e.encounterDate = :day and e.encounterType = :emergency and e.status = :waitingList", window.previousDay(), null, fetch);
+            case URGENT_CARE_TRIAGE -> encounterCases(scope, "e.encounterDate = :day and e.encounterType = :emergency and e.status in :statuses", window.previousDay(), IN_TRIAGE, fetch);
+            case URGENT_CARE_IN_DEPARTMENT -> encounterCases(scope, "e.encounterType = :emergency and e.status in :statuses", null, IN_DEPARTMENT, fetch);
+            case URGENT_CARE_DISCHARGES -> encounterCases(scope, "e.encounterType = :emergency and e.dischargeAt >= :rangeStart and e.dischargeAt < :rangeEnd", null, null, fetch, window);
+            case TODAY_APPOINTMENTS -> appointmentCases(scope, "a.patient is not null", window.currentStart(), window.currentEnd(), fetch);
+            case PREVIOUS_CANCELLATIONS -> appointmentCases(scope, "a.patient is not null and a.status = :cancelledAppointment", window.previousStart(), window.previousEnd(), fetch);
+            case PREVIOUS_NO_SHOWS -> appointmentCases(scope, "a.patient is not null and a.status = :noShow", window.previousStart(), window.previousEnd(), fetch);
+            case BOOKED_WITHOUT_PRACTITIONER -> appointmentCases(scope, "a.patient is not null and a.requirePractitioner = true and a.defaultPractitionerId is null and (a.resourceType <> :practitionerType or a.resourceId is null) and a.status not in :offBook", window.currentStart(), window.currentEnd(), fetch);
+            case SCHEDULE_CONFLICTS -> conflictCases(scope, window, fetch);
+            case PENDING_AUTHORIZATIONS, AUTHORIZATION_DENIALS -> authorizationCases(scope, drill, fetch);
+            case SERVICES_ON_HOLD -> holdCases(scope, fetch);
+            case READY_CLAIMS -> claimCases(scope, ClaimStatus.DRAFT, fetch);
+            case CLAIM_DENIALS -> claimCases(scope, ClaimStatus.REJECTED, fetch);
+            case CLAIM_FAILURES -> claimCases(scope, ClaimStatus.FAILED, fetch);
+            case OVERDUE_ORDERS -> orderCases(scope, window, fetch);
         };
+        if (rows.size() > limit) {
+            return rows.subList(0, limit);
+        }
         return rows;
     }
 
@@ -244,42 +249,49 @@ public class DailyBriefingQueryGateway {
         builder.orders(new DailyBriefingFacts.OrderSnapshot(samples, false, 0, overdue, within, missing));
     }
 
-    private DailyBriefingFacts.InpatientSnapshot loadInpatient(BriefingScope scope, BriefingWindow window, DailyBriefingFacts.Builder builder) {
-        Boolean module = read("inpatient.module", () -> count("select count(e.id) from PatientEncounter e where e.facilityId = :facilityId and e.encounterType in :types", new BriefingScope(scope.facilityId(), null, null, null, false), query -> query.setParameter("types", List.of(EncounterType.INPATIENT, EncounterType.EMERGENCY))) > 0, builder);
+    private DailyBriefingFacts.UrgentCareSnapshot loadUrgentCare(BriefingScope scope, BriefingWindow window, DailyBriefingFacts.Builder builder) {
+        Boolean module = read("urgentCare.module", () -> count("select count(e.id) from PatientEncounter e where e.facilityId = :facilityId and e.encounterType = :type", new BriefingScope(scope.facilityId(), null, null, null, false), query -> query.setParameter("type", EncounterType.EMERGENCY)) > 0, builder);
         if (module == null || !module) {
-            return new DailyBriefingFacts.InpatientSnapshot(module, null, null, null, null, null, null, null, null, null, null, null, null);
+            return new DailyBriefingFacts.UrgentCareSnapshot(module, null, null, null, null, null, null, null, null, null, null, null, null, null);
         }
-        Long admissions = read("inpatient.admissions", () -> count("select count(e.id) from PatientEncounter e where e.encounterDate = :day and e.encounterType = :type and " + encounterWhere(scope), scope, query -> {
-            query.setParameter("day", window.previousDay());
-            query.setParameter("type", EncounterType.INPATIENT);
-        }), builder);
-        Long discharges = read("inpatient.discharges", () -> count("select count(e.id) from PatientEncounter e where e.encounterType = :type and e.dischargeAt >= :start and e.dischargeAt < :end and " + encounterWhere(scope), scope, query -> {
-            query.setParameter("type", EncounterType.INPATIENT);
-            query.setParameter("start", LocalDateTime.ofInstant(window.previousStart(), window.zone()));
-            query.setParameter("end", LocalDateTime.ofInstant(window.previousEnd(), window.zone()));
-        }), builder);
-        Long transfers = read("inpatient.transfers", () -> count("select count(b.id) from BedTransaction b join b.encounter e where b.transactionType = :type and b.transactionDate >= :start and b.transactionDate < :end and " + encounterWhere(scope), scope, query -> {
-            query.setParameter("type", BedTransactionType.TRANSFER);
+        Long admissions = read("urgentCare.admissions", () -> count("select count(e.id) from PatientEncounter e where e.encounterType = :type and exists (select 1 from BedTransaction b where b.encounter = e and b.transactionType = :assign and b.transactionDate >= :start and b.transactionDate < :end) and " + encounterWhere(scope), scope, query -> {
+            query.setParameter("type", EncounterType.EMERGENCY);
+            query.setParameter("assign", BedTransactionType.ASSIGN);
             query.setParameter("start", window.previousStart());
             query.setParameter("end", window.previousEnd());
         }), builder);
-        Long occupied = read("inpatient.occupied", () -> count("select count(distinct b.bedId) from EncounterAssignToBed b join b.encounter e where e.encounterType = :type and b.assignedAt <= :point and (b.releasedAt is null or b.releasedAt > :point) and " + encounterWhere(scope), scope, query -> {
-            query.setParameter("type", EncounterType.INPATIENT);
-            query.setParameter("point", window.occupancyAt());
-        }), builder);
-        Long awaiting = read("inpatient.awaiting", () -> count("select count(e.id) from PatientEncounter e where e.encounterType = :type and e.encounterStatus in :open and not exists (select 1 from EncounterAssignToBed b where b.encounter = e and b.isActive = true) and " + encounterWhere(scope), scope, query -> {
-            query.setParameter("type", EncounterType.INPATIENT);
-            query.setParameter("open", OPEN_INPATIENT);
-        }), builder);
-        Long ed = read("inpatient.ed", () -> count("select count(e.id) from PatientEncounter e where e.encounterDate = :day and e.encounterType = :type and " + encounterWhere(scope), scope, query -> {
+        Long visits = read("urgentCare.visits", () -> count("select count(e.id) from PatientEncounter e where e.encounterDate = :day and e.encounterType = :type and " + encounterWhere(scope), scope, query -> {
             query.setParameter("day", window.previousDay());
             query.setParameter("type", EncounterType.EMERGENCY);
         }), builder);
-        StayStats alos = read("inpatient.alos", () -> stays(scope, "e.encounterType = :type and e.dischargeAt >= :start and e.dischargeAt < :end", window, true), builder);
-        StayStats current = read("inpatient.currentLos", () -> stays(scope, "e.encounterType = :type and e.encounterStatus in :open", window, false), builder);
-        return new DailyBriefingFacts.InpatientSnapshot(true, admissions, discharges, transfers, occupied, awaiting, ed,
-                alos == null ? null : alos.average(), alos == null ? null : alos.sample(), alos == null ? null : alos.excluded(),
-                current == null ? null : current.average(), current == null ? null : current.sample(), current == null ? null : current.excluded());
+        Long waitingList = read("urgentCare.waitingList", () -> count("select count(e.id) from PatientEncounter e where e.encounterDate = :day and e.encounterType = :type and e.status = :waitingList and " + encounterWhere(scope), scope, query -> {
+            query.setParameter("day", window.previousDay());
+            query.setParameter("type", EncounterType.EMERGENCY);
+            query.setParameter("waitingList", TreatmentStatus.WAITING_LIST);
+        }), builder);
+        Long inTriage = read("urgentCare.triage", () -> count("select count(e.id) from PatientEncounter e where e.encounterDate = :day and e.encounterType = :type and e.status in :triage and " + encounterWhere(scope), scope, query -> {
+            query.setParameter("day", window.previousDay());
+            query.setParameter("type", EncounterType.EMERGENCY);
+            query.setParameter("triage", IN_TRIAGE);
+        }), builder);
+        Long inDepartment = read("urgentCare.inDepartment", () -> count("select count(e.id) from PatientEncounter e where e.encounterType = :type and e.status in :active and " + encounterWhere(scope), scope, query -> {
+            query.setParameter("type", EncounterType.EMERGENCY);
+            query.setParameter("active", IN_DEPARTMENT);
+        }), builder);
+        Long discharged = read("urgentCare.discharged", () -> count("select count(e.id) from PatientEncounter e where e.encounterType = :type and e.dischargeAt >= :start and e.dischargeAt < :end and " + encounterWhere(scope), scope, query -> {
+            query.setParameter("type", EncounterType.EMERGENCY);
+            query.setParameter("start", LocalDateTime.ofInstant(window.previousStart(), window.zone()));
+            query.setParameter("end", LocalDateTime.ofInstant(window.previousEnd(), window.zone()));
+        }), builder);
+        Long occupied = read("urgentCare.occupied", () -> count("select count(distinct b.bedId) from EncounterAssignToBed b join b.encounter e where e.encounterType = :type and b.assignedAt <= :point and (b.releasedAt is null or b.releasedAt > :point) and " + encounterWhere(scope), scope, query -> {
+            query.setParameter("type", EncounterType.EMERGENCY);
+            query.setParameter("point", window.occupancyAt());
+        }), builder);
+        StayStats dischargedStay = read("urgentCare.dischargedStay", () -> stays(scope, "e.encounterType = :type and e.dischargeAt >= :start and e.dischargeAt < :end", window, true), builder);
+        StayStats currentStay = read("urgentCare.currentStay", () -> stays(scope, "e.encounterType = :type and e.status in :active", window, false), builder);
+        return new DailyBriefingFacts.UrgentCareSnapshot(true, admissions, visits, waitingList, inTriage, inDepartment, discharged, occupied,
+                dischargedStay == null ? null : dischargedStay.average(), dischargedStay == null ? null : dischargedStay.sample(), dischargedStay == null ? null : dischargedStay.excluded(),
+                currentStay == null ? null : currentStay.average(), currentStay == null ? null : currentStay.sample(), currentStay == null ? null : currentStay.excluded());
     }
 
     private DailyBriefingFacts.ComparisonCounts loadComparison(BriefingScope scope, BriefingWindow window, DailyBriefingFacts.Builder builder) {
@@ -468,12 +480,12 @@ public class DailyBriefingQueryGateway {
     private StayStats stays(BriefingScope scope, String extra, BriefingWindow window, boolean discharged) {
         Query query = entityManager.createQuery("select e.startedDate, e.dischargeAt, e.encounterDate, e.encounterTime from PatientEncounter e where " + extra + " and " + encounterWhere(scope));
         bindScope(query, scope);
-        query.setParameter("type", EncounterType.INPATIENT);
+        query.setParameter("type", EncounterType.EMERGENCY);
         if (discharged) {
             query.setParameter("start", LocalDateTime.ofInstant(window.previousStart(), window.zone()));
             query.setParameter("end", LocalDateTime.ofInstant(window.previousEnd(), window.zone()));
         } else {
-            query.setParameter("open", OPEN_INPATIENT);
+            query.setParameter("active", IN_DEPARTMENT);
         }
         List<BigDecimal> hours = new ArrayList<>();
         int excluded = 0;
@@ -540,8 +552,8 @@ public class DailyBriefingQueryGateway {
         if (extra.contains(":billing")) {
             query.setParameter("billing", EncounterBillingStatus.OPEN);
         }
-        if (extra.contains(":inpatient")) {
-            query.setParameter("inpatient", EncounterType.INPATIENT);
+        if (extra.contains(":waitingList")) {
+            query.setParameter("waitingList", TreatmentStatus.WAITING_LIST);
         }
         if (extra.contains(":emergency")) {
             query.setParameter("emergency", EncounterType.EMERGENCY);
@@ -553,7 +565,6 @@ public class DailyBriefingQueryGateway {
         if (window != null && extra.contains(":rangeStart")) {
             query.setParameter("rangeStart", LocalDateTime.ofInstant(window.previousStart(), window.zone()));
             query.setParameter("rangeEnd", LocalDateTime.ofInstant(window.previousEnd(), window.zone()));
-            query.setParameter("inpatient", EncounterType.INPATIENT);
         }
         query.setMaxResults(limit);
         return caseRows(query.getResultList(), "ENCOUNTER");
@@ -657,21 +668,13 @@ public class DailyBriefingQueryGateway {
         return cases;
     }
 
-    private List<DailyBriefingCase> transferCases(BriefingScope scope, BriefingWindow window, int limit) {
-        Query query = entityManager.createQuery("select b.id, p.id, b.toDepartmentId, e.practitionerId, b.transactionType, b.transactionDate from BedTransaction b join b.patient p join b.encounter e where b.transactionType = :type and b.transactionDate >= :start and b.transactionDate < :end and " + encounterWhere(scope) + " order by b.id");
+    private List<DailyBriefingCase> admissionCases(BriefingScope scope, BriefingWindow window, int limit) {
+        Query query = entityManager.createQuery("select e.id, p.id, e.departmentId, e.practitionerId, e.status, e.startedDate from PatientEncounter e join e.patient p where e.encounterType = :emergency and exists (select 1 from BedTransaction b where b.encounter = e and b.transactionType = :assign and b.transactionDate >= :start and b.transactionDate < :end) and " + encounterWhere(scope) + " order by e.id");
         bindScope(query, scope);
-        query.setParameter("type", BedTransactionType.TRANSFER);
+        query.setParameter("emergency", EncounterType.EMERGENCY);
+        query.setParameter("assign", BedTransactionType.ASSIGN);
         query.setParameter("start", window.previousStart());
         query.setParameter("end", window.previousEnd());
-        query.setMaxResults(limit);
-        return caseRows(query.getResultList(), "TRANSFER");
-    }
-
-    private List<DailyBriefingCase> awaitingBedCases(BriefingScope scope, int limit) {
-        Query query = entityManager.createQuery("select e.id, p.id, e.departmentId, e.practitionerId, e.status, e.startedDate from PatientEncounter e join e.patient p where e.encounterType = :type and e.encounterStatus in :open and not exists (select 1 from EncounterAssignToBed b where b.encounter = e and b.isActive = true) and " + encounterWhere(scope) + " order by e.id");
-        bindScope(query, scope);
-        query.setParameter("type", EncounterType.INPATIENT);
-        query.setParameter("open", OPEN_INPATIENT);
         query.setMaxResults(limit);
         return caseRows(query.getResultList(), "ENCOUNTER");
     }
