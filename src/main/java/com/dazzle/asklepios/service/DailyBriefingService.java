@@ -111,7 +111,7 @@ public class DailyBriefingService {
         try {
             issue = issueRepository.saveAndFlush(issue);
         } catch (DataAccessException ex) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "The briefing could not be stored. Apply scripts/daily_briefing.sql and try again.");
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "The briefing could not be stored. Apply the gateway Liquibase changelog 2026110302_SA_daily_briefing and try again.");
         }
         return new DailyBriefingIssueResponse(issue.getId(), issue.getStatus(), issue.getCreatedAt(), recipient, supersededPrevious, report);
     }
@@ -159,7 +159,7 @@ public class DailyBriefingService {
         try {
             accessLogRepository.saveAndFlush(audit);
         } catch (DataAccessException ex) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Case details were not returned because the access log could not be written. Apply scripts/daily_briefing.sql.");
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Case details were not returned because the access log could not be written. Apply the gateway Liquibase changelog 2026110302_SA_daily_briefing.");
         }
         return new DailyBriefingCasesResponse(
                 drill.name(),
