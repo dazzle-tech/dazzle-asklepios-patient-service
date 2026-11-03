@@ -942,6 +942,7 @@ public class PatientEncounterService {
             default -> false;
         };
 
+
         if (!isDoctor) {
             throw new BadRequestAlertException(
                     "Current user is not a doctor",
