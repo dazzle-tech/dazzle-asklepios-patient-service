@@ -18,6 +18,7 @@ import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleEntryMode;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleSourceType;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleTransactionStatus;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleTransactionType;
+import com.dazzle.asklepios.repository.BillingPaymentTransactionRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PointOfSaleCheckInRepository;
@@ -57,6 +58,7 @@ public class PointOfSaleTransactionService {
     private final PointOfSaleWebhookLogService pointOfSaleWebhookLogService;
     private final NamiCloudClient namiCloudClient;
     private final BillingPaymentService billingPaymentService;
+    private final BillingPaymentTransactionRepository billingPaymentTransactionRepository;
 
     public PointOfSaleTransactionDTO purchase(
             CreatePointOfSaleTransactionDTO request
@@ -719,6 +721,32 @@ public class PointOfSaleTransactionService {
                     "Only approved transactions can be completed",
                     "pointOfSaleTransaction",
                     "notApproved"
+            );
+        }
+
+        boolean alreadyPaid =
+                transaction.getExternalTransactionId() != null &&
+                        !billingPaymentTransactionRepository
+                                .findAllByProcessorReferenceInAndStatus(
+                                        List.of(
+                                                transaction.getExternalTransactionId()
+                                        ),
+                                        BillingPaymentTransactionStatus.SUCCESS
+                                )
+                                .isEmpty();
+
+        if (alreadyPaid) {
+
+            LOG.info(
+                    "POS transaction already has a successful payment, refusing to complete again. InternalId={}, ExternalTransactionId={}",
+                    transaction.getId(),
+                    transaction.getExternalTransactionId()
+            );
+
+            throw new BadRequestAlertException(
+                    "This transaction already has a completed payment",
+                    "pointOfSaleTransaction",
+                    "alreadyPaid"
             );
         }
 
