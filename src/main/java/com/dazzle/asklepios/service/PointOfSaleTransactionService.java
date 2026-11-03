@@ -341,10 +341,6 @@ public class PointOfSaleTransactionService {
             );
         }
 
-        pointOfSaleWebhookLogService.create(
-                transaction,
-                webhook
-        );
         LOG.info(
                 "Matching POS Transaction Found. InternalId={}, ExternalTransactionId={}, CurrentStatus={}",
                 transaction.getId(),
@@ -356,11 +352,16 @@ public class PointOfSaleTransactionService {
                 transaction.getTransactionStatus() ==
                         PointOfSaleTransactionStatus.APPROVED;
 
-        if (Boolean.TRUE.equals(transaction.getWebhookReceived())) {
+        if (alreadyApproved) {
 
             LOG.info(
-                    "Webhook already processed. InternalId={}",
+                    "Webhook received for already approved transaction, ignoring. InternalId={}",
                     transaction.getId()
+            );
+
+            pointOfSaleWebhookLogService.create(
+                    transaction,
+                    webhook
             );
 
             return;
@@ -442,36 +443,26 @@ public class PointOfSaleTransactionService {
 
         if (isApproved(webhook.responseCode())) {
 
-            if (alreadyApproved) {
+            transaction.setTransactionStatus(
+                    PointOfSaleTransactionStatus.APPROVED
+            );
 
-                LOG.info(
-                        "Webhook received for already approved transaction. InternalId={}",
-                        transaction.getId()
-                );
+            LOG.info(
+                    "Transaction approved by webhook. InternalId={}, RRN={}",
+                    transaction.getId(),
+                    transaction.getRrn()
+            );
 
-            } else {
-
-                transaction.setTransactionStatus(
-                        PointOfSaleTransactionStatus.APPROVED
-                );
-
-                LOG.info(
-                        "Transaction approved by webhook. InternalId={}, RRN={}",
-                        transaction.getId(),
-                        transaction.getRrn()
-                );
-
-                /*
-                 * Future enhancement:
-                 *
-                 * If business decides to rely on webhook as fallback
-                 * for payment creation:
-                 *
-                 * if (transaction.getPatientPayment() == null) {
-                 *     createAdvancePayment(...);
-                 * }
-                 */
-            }
+            /*
+             * Future enhancement:
+             *
+             * If business decides to rely on webhook as fallback
+             * for payment creation:
+             *
+             * if (transaction.getPatientPayment() == null) {
+             *     createAdvancePayment(...);
+             * }
+             */
 
         } else {
 
@@ -488,6 +479,11 @@ public class PointOfSaleTransactionService {
 
         pointOfSaleTransactionRepository.save(
                 transaction
+        );
+
+        pointOfSaleWebhookLogService.create(
+                transaction,
+                webhook
         );
 
         LOG.info(
