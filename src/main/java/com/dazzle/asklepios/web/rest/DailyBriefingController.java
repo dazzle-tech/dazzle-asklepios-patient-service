@@ -35,7 +35,6 @@ public class DailyBriefingController {
             @RequestParam(required = false) Long departmentId,
             @RequestParam(required = false) Long practitionerId,
             @RequestParam(required = false) String specialty,
-            @RequestParam(required = false) Long branchId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate reportDate,
             @RequestParam(required = false) String language,
             @RequestParam(required = false) Integer openEncounterHours,
@@ -45,7 +44,7 @@ public class DailyBriefingController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant occupancyAt
     ) {
         return ResponseEntity.ok(dailyBriefingService.briefing(new BriefingRequest(
-                facilityId, departmentId, practitionerId, specialty, branchId, reportDate, language,
+                facilityId, departmentId, practitionerId, specialty,  reportDate, language,
                 openEncounterHours, noShowRatePercent, waitingMinutes, turnaroundMinutes, occupancyAt, null
         )));
     }
@@ -73,7 +72,7 @@ public class DailyBriefingController {
             @RequestParam(defaultValue = "50") int limit
     ) {
         return ResponseEntity.ok(dailyBriefingService.cases(new BriefingRequest(
-                facilityId, departmentId, practitionerId, specialty, branchId, reportDate, language,
+                facilityId, departmentId, practitionerId, specialty,  reportDate, language,
                 null, null, null, null, null, null
         ), indicator, limit));
     }
