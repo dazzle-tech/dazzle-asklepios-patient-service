@@ -40,6 +40,7 @@ public record DailyBriefingFacts(
         List<MoneyRow> servicesOnHold,
         List<ClaimRow> claims,
         List<ClaimRow> claimsSubmittedYesterday,
+        PatientInsuranceSnapshot patientInsurance,
         OrderSnapshot orders,
         UrgentCareSnapshot urgentCare,
         Long unbilledEncountersWithActiveCharge,
@@ -131,6 +132,14 @@ public record DailyBriefingFacts(
     ) {
     }
 
+    public record PatientInsuranceSnapshot(
+            Long insuredPatients,
+            Long insuranceRecords,
+            Long withBenefitRules,
+            Long missingBenefitRules
+    ) {
+    }
+
     public record TatSample(String orderType, long minutes) {
     }
 
@@ -194,6 +203,7 @@ public record DailyBriefingFacts(
         private List<MoneyRow> servicesOnHold = List.of();
         private List<ClaimRow> claims = List.of();
         private List<ClaimRow> claimsSubmittedYesterday = List.of();
+        private PatientInsuranceSnapshot patientInsurance = new PatientInsuranceSnapshot(0L, 0L, 0L, 0L);
         private OrderSnapshot orders = new OrderSnapshot(List.of(), false, 0, 0L, 0L, 0L);
         private UrgentCareSnapshot urgentCare = new UrgentCareSnapshot(false, null, null, null, null, null, null, null, null, null, null, null, null, null);
         private Long unbilledEncountersWithActiveCharge = 0L;
@@ -302,6 +312,11 @@ public record DailyBriefingFacts(
             return this;
         }
 
+        public Builder patientInsurance(PatientInsuranceSnapshot snapshot) {
+            this.patientInsurance = snapshot;
+            return this;
+        }
+
         public Builder orders(OrderSnapshot orders) {
             this.orders = orders;
             return this;
@@ -346,6 +361,7 @@ public record DailyBriefingFacts(
                     servicesOnHold,
                     claims,
                     claimsSubmittedYesterday,
+                    patientInsurance,
                     orders,
                     urgentCare,
                     unbilledEncountersWithActiveCharge,
