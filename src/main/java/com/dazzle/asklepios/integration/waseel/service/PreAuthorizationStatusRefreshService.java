@@ -579,18 +579,19 @@ public class PreAuthorizationStatusRefreshService {
         switch (status) {
             case APPROVED -> {
                 item.setPreAuthorizationRequired(false);
-                item.setPaymentStatus(PaymentStatus.PENDING);
+                updatePaymentStatus(item, PaymentStatus.PENDING);
             }
             case REJECTED -> {
                 item.setPreAuthorizationRequired(false);
-                item.setPaymentStatus(PaymentStatus.PENDING);
+                updatePaymentStatus(item, PaymentStatus.PENDING);
             }
             case PARTIAL -> {
                 // A local (NPHIES contract) partial decision is final: the line is billed with
                 // the approved insurance amount. A Waseel partial stays held for communication.
                 boolean localDecision = request.getApprovalRequestId() == null;
                 item.setPreAuthorizationRequired(!localDecision);
-                item.setPaymentStatus(
+                updatePaymentStatus(
+                        item,
                         localDecision
                                 ? PaymentStatus.PENDING
                                 : PaymentStatus.SKIPPED_PENDING_PRE_AUTH
@@ -598,7 +599,7 @@ public class PreAuthorizationStatusRefreshService {
             }
             default -> {
                 item.setPreAuthorizationRequired(true);
-                item.setPaymentStatus(PaymentStatus.SKIPPED_PENDING_PRE_AUTH);
+                updatePaymentStatus(item, PaymentStatus.SKIPPED_PENDING_PRE_AUTH);
             }
         }
 
@@ -655,6 +656,17 @@ public class PreAuthorizationStatusRefreshService {
         }
 
         return indexed;
+    }
+
+    /**
+     * A line already posted to the patient account (for example one sent for approval after the
+     * visit crossed its coverage limit) keeps its ledger payment status; the decision only updates
+     * its approval status and the responsibility refresh.
+     */
+    private static void updatePaymentStatus(PatientServiceAndProduct item, PaymentStatus paymentStatus) {
+        if (!Boolean.TRUE.equals(item.getIsBilled())) {
+            item.setPaymentStatus(paymentStatus);
+        }
     }
 
     private PreAuthorizationSearchItem findSearchItem(

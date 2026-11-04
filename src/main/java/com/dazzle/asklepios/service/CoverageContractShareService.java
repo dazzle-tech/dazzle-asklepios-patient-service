@@ -36,6 +36,8 @@ public class CoverageContractShareService {
     private static final int MONEY_SCALE = 4;
     private static final BigDecimal ONE_HUNDRED = new BigDecimal("100");
     static final String CONTRACT_EXCLUSION = "CONTRACT_EXCLUSION";
+    static final String NOT_IN_COVERAGES = "NOT_IN_COVERAGES";
+    static final String NO_CONTRACT_COPAYMENT = "NO_CONTRACT_COPAYMENT";
 
     private final CoverageContractClient coverageContractClient;
     private final PayorHelper payorHelper;
@@ -278,6 +280,9 @@ public class CoverageContractShareService {
         if (limit == null || limit.limitValue() == null || !"FIXED".equalsIgnoreCase(limit.valueType())) {
             return false;
         }
+        if (isExcludedFromLimit(item, limit)) {
+            return false;
+        }
         BigDecimal currentBasis = basisAmount(item, limit, netAmount);
         if (currentBasis.signum() <= 0) {
             return false;
@@ -286,11 +291,51 @@ public class CoverageContractShareService {
         return remaining != null && remaining.compareTo(currentBasis) < 0;
     }
 
+    /**
+     * True when the Coverage Limit rule excludes this line (category, subcategory or item):
+     * the line neither uses that limit nor is held for pre-approval because of it.
+     */
+    public boolean isExcludedFromCoverageLimit(
+            PatientServiceAndProduct item,
+            CoverageContractResolveDtos.Response resolved
+    ) {
+        return item != null
+                && resolved != null
+                && resolved.limit() != null
+                && isExcludedFromLimit(item, resolved.limit());
+    }
+
     public CoverageContractResolveDtos.Response resolveVisitContract(
             PatientInsurance insurance,
             PatientServiceAndProduct item
     ) {
         return resolve(insurance, item);
+    }
+
+    /**
+     * Why the contract bills this item fully to the patient, whatever the co-payment says:
+     * an active exclusion, Coverages rules on the class that do not match the item, or
+     * no co-payment or coverage reading for the item. Null when the contract covers it.
+     * When the contract cannot be read for the item, that is reported as no reading too.
+     */
+    public String contractCashReason(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item
+    ) {
+        CoverageContractResolveDtos.Response resolved = resolve(insurance, item);
+        if (resolved == null) {
+            return NO_CONTRACT_COPAYMENT;
+        }
+        if (!resolved.matched()) {
+            return null;
+        }
+        if (isExcluded(resolved)) {
+            return CONTRACT_EXCLUSION;
+        }
+        if (Boolean.TRUE.equals(resolved.uncovered())) {
+            return NOT_IN_COVERAGES;
+        }
+        return resolved.copayment() == null && resolved.coverage() == null ? NO_CONTRACT_COPAYMENT : null;
     }
 
     /**

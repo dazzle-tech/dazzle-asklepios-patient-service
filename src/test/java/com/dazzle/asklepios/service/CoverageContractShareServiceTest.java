@@ -3,6 +3,7 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.client.setup.CoverageContractClient;
 import com.dazzle.asklepios.client.setup.PayorClient;
 import com.dazzle.asklepios.client.setup.dto.CoverageContractResolveDtos;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
@@ -12,6 +13,7 @@ import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.InsuranceSplit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
@@ -56,6 +58,32 @@ class CoverageContractShareServiceTest {
         when(patientDiagnosisRepository.findByEncounterId(any())).thenReturn(List.of());
         when(patientServiceAndProductRepository.findByEncounterId(any())).thenReturn(List.of());
         when(patientServiceAndProductRepository.findByPatientAndEncounterDate(any(), any())).thenReturn(List.of());
+    }
+
+    @Test
+    void calculateSplit_sendsTheVisitFacilityAndDepartmentToTheContractResolve() {
+        PatientServiceAndProduct visitItem = item();
+        visitItem.setEncounterId(55L);
+        when(patientEncounterRepository.findById(55L)).thenReturn(Optional.of(
+                PatientEncounter.builder().id(55L).facilityId(1L).departmentId(20L).build()
+        ));
+        when(coverageContractClient.resolve(any())).thenReturn(new CoverageContractResolveDtos.Response(
+                true,
+                "matched",
+                contract(),
+                copayment("PERCENTAGE", "50"),
+                false,
+                false,
+                null
+        ));
+
+        coverageContractShareService.calculateSplit(insurance(), visitItem, new BigDecimal("1000"));
+
+        ArgumentCaptor<CoverageContractResolveDtos.Request> request =
+                ArgumentCaptor.forClass(CoverageContractResolveDtos.Request.class);
+        verify(coverageContractClient).resolve(request.capture());
+        assertThat(request.getValue().facilityId()).isEqualTo(1L);
+        assertThat(request.getValue().departmentId()).isEqualTo(20L);
     }
 
     @Test
@@ -165,6 +193,48 @@ class CoverageContractShareServiceTest {
                 new BigDecimal("20"),
                 BigDecimal.ZERO
         );
+    }
+
+    @Test
+    void contractCashReason_explainsWhyTheContractBillsTheItemToThePatient() {
+        when(coverageContractClient.resolve(any())).thenReturn(new CoverageContractResolveDtos.Response(
+                true,
+                "uncovered",
+                contract(),
+                copayment("PERCENTAGE", "50"),
+                true,
+                true,
+                null
+        ));
+        assertThat(coverageContractShareService.contractCashReason(insurance(), item()))
+                .isEqualTo(CoverageContractShareService.NOT_IN_COVERAGES);
+
+        when(coverageContractClient.resolve(any())).thenReturn(new CoverageContractResolveDtos.Response(
+                true,
+                "covered",
+                contract(),
+                copayment("PERCENTAGE", "50"),
+                false,
+                false,
+                null
+        ));
+        assertThat(coverageContractShareService.contractCashReason(insurance(), item())).isNull();
+
+        when(coverageContractClient.resolve(any())).thenReturn(new CoverageContractResolveDtos.Response(
+                true,
+                "no rule",
+                contract(),
+                null,
+                false,
+                false,
+                null
+        ));
+        assertThat(coverageContractShareService.contractCashReason(insurance(), item()))
+                .isEqualTo(CoverageContractShareService.NO_CONTRACT_COPAYMENT);
+
+        when(coverageContractClient.resolve(any())).thenThrow(new IllegalStateException("setup failed"));
+        assertThat(coverageContractShareService.contractCashReason(insurance(), item()))
+                .isEqualTo(CoverageContractShareService.NO_CONTRACT_COPAYMENT);
     }
 
     @Test

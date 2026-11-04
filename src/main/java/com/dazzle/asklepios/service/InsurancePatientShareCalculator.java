@@ -30,6 +30,7 @@ import java.time.LocalDate;
 @RequiredArgsConstructor
 public class InsurancePatientShareCalculator {
 
+    static final String MANUAL_COVERAGE = "MANUAL_COVERAGE";
     private static final Logger LOG =
             LoggerFactory.getLogger(InsurancePatientShareCalculator.class);
 
@@ -190,6 +191,18 @@ public class InsurancePatientShareCalculator {
                 resolveVisitMaxLimit(insurance),
                 alreadyConsumedPatientShare
         );
+    }
+
+    /** Why the whole net is on the patient; a manual coverage on the insurance overrides the contract. */
+    public String contractCashReason(PatientInsurance insurance, PatientServiceAndProduct item) {
+        boolean manualCoverage = item != null
+                && item.getBillingItemType() != null
+                && patientInsuranceCoverageRepository
+                        .findFirstByInsurance_IdAndItemType(insurance.getId(), item.getBillingItemType())
+                        .isPresent();
+        return manualCoverage
+                ? MANUAL_COVERAGE
+                : coverageContractShareService.contractCashReason(insurance, item);
     }
 
     public boolean usesNphiesContractRules(PatientInsurance insurance) {

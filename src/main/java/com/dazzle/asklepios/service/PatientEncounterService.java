@@ -43,6 +43,7 @@ import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchF
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
+import com.dazzle.asklepios.service.helper.InsuranceRegistrationGuard;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -151,6 +152,7 @@ public class PatientEncounterService {
     private final EncounterAmendmentService encounterAmendmentService;
     private final InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService;
     private final PatientActivityService patientActivityService;
+    private final InsuranceRegistrationGuard insuranceRegistrationGuard;
 
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
@@ -187,7 +189,9 @@ public class PatientEncounterService {
             EncounterReopenGuard encounterReopenGuard,
             EncounterAmendmentService encounterAmendmentService,
             InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService,
-            @Lazy PatientActivityService patientActivityService) {
+            @Lazy PatientActivityService patientActivityService,
+            InsuranceRegistrationGuard insuranceRegistrationGuard) {
+        this.insuranceRegistrationGuard = insuranceRegistrationGuard;
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.entityManager = entityManager;
@@ -325,6 +329,7 @@ public class PatientEncounterService {
         followUpReviewDefaultServicePolicy
                 .coverageMatchingCompletedVisit(encounter)
                 .ifPresent(inherited -> {
+                    insuranceRegistrationGuard.requireRegistrable(inherited.patientInsuranceId());
                     encounter.setCoverageType(inherited.coverageType());
                     encounter.setPatientInsuranceId(inherited.patientInsuranceId());
                     LOG.info(

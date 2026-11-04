@@ -39,6 +39,9 @@ import java.util.stream.Collectors;
  * Every contract: a line that crosses the contract pre-approval limit is held.
  * NPHIES contracts (local approval flow) also hold a line when the contract
  * pre-approval has no limit, so it never waits for a Waseel submission.
+ *
+ * NPHIES contracts: once a visit crosses its per-visit Coverage Limit, the whole
+ * visit needs pre-approval, so every other line of the visit gets a request too.
  */
 @Service
 public class CoveragePreApprovalLimitService {
@@ -50,6 +53,7 @@ public class CoveragePreApprovalLimitService {
 
     private static final Logger LOG = LoggerFactory.getLogger(CoveragePreApprovalLimitService.class);
     private static final int MONEY_SCALE = 2;
+    private static final String PER_ENCOUNTER = "PER_ENCOUNTER";
 
     private final CoverageContractShareService coverageContractShareService;
     private final PatientEncounterRepository patientEncounterRepository;
@@ -123,6 +127,9 @@ public class CoveragePreApprovalLimitService {
         }
 
         holdForApproval(context, encounter, insurance, item, current, reason);
+        if (REASON_COVERAGE_LIMIT.equals(reason) && isPerVisitLimit(resolved)) {
+            requestApprovalForWholeVisit(encounter, insurance, item);
+        }
     }
 
     /**
@@ -249,7 +256,139 @@ public class CoveragePreApprovalLimitService {
                 || status == PreAuthorizationStatus.PENDING_APPROVAL;
     }
 
+    /**
+     * The visit crossed its per-visit Coverage Limit, so the whole visit needs pre-approval:
+     * every other line gets its own request, including lines approved before and lines already
+     * posted. Posted lines stay on the patient account and are only marked as waiting for approval.
+     * A line is sent once for the coverage limit, so later lines do not resend the visit.
+     */
+    private void requestApprovalForWholeVisit(
+            PatientEncounter encounter,
+            PatientInsurance insurance,
+            PatientServiceAndProduct trigger
+    ) {
+        List<PatientServiceAndProduct> visitLines = patientServiceAndProductRepository.findByEncounterId(encounter.getId());
+        Set<Long> coverageLimitRequestIds = coverageLimitRequestIds(visitLines);
+
+        int requested = 0;
+        for (PatientServiceAndProduct line : visitLines) {
+            if (!needsVisitLimitApproval(line, trigger, insurance, coverageLimitRequestIds)) {
+                continue;
+            }
+            if (Boolean.TRUE.equals(line.getIsBilled())) {
+                flagPostedLineForApproval(encounter, insurance, line);
+            } else {
+                holdForApproval(null, encounter, insurance, line, itemNet(line), REASON_COVERAGE_LIMIT);
+            }
+            requested++;
+        }
+
+        LOG.info(
+                "[PREAUTH_LIMIT] Visit coverage limit exceeded, whole visit sent for pre-approval. encounterId={} triggerPspId={} otherLines={}",
+                encounter.getId(),
+                trigger.getId(),
+                requested
+        );
+    }
+
+    private boolean needsVisitLimitApproval(
+            PatientServiceAndProduct line,
+            PatientServiceAndProduct trigger,
+            PatientInsurance insurance,
+            Set<Long> coverageLimitRequestIds
+    ) {
+        if (line.getId() == null || Objects.equals(line.getId(), trigger.getId())) {
+            return false;
+        }
+        if (line.isUncoveredCashItem()
+                || Boolean.TRUE.equals(line.getIsExempted())
+                || line.getPaymentStatus() == PaymentStatus.CANCELLED) {
+            return false;
+        }
+        if (line.getPatientInsuranceId() != null && !line.getPatientInsuranceId().equals(insurance.getId())) {
+            return false;
+        }
+        if (line.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
+                || coverageLimitRequestIds.contains(line.getPreAuthorizationRequestId())) {
+            return false;
+        }
+        // Lines excluded on the Exclusions tab or on the Coverage Limit rule are outside the limit.
+        CoverageContractResolveDtos.Response resolved = resolveQuietly(insurance, line);
+        return resolved != null
+                && resolved.matched()
+                && !isExcluded(resolved)
+                && !coverageContractShareService.isExcludedFromCoverageLimit(line, resolved);
+    }
+
+    /** Requests of the visit that were opened because of the coverage limit. */
+    private Set<Long> coverageLimitRequestIds(List<PatientServiceAndProduct> lines) {
+        Set<Long> requestIds = lines.stream()
+                .map(PatientServiceAndProduct::getPreAuthorizationRequestId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (requestIds.isEmpty()) {
+            return Set.of();
+        }
+        return preAuthorizationRequestRepository.findAllById(requestIds).stream()
+                .filter(request -> REASON_COVERAGE_LIMIT.equals(request.getStatusReason()))
+                .map(PreAuthorizationRequest::getId)
+                .collect(Collectors.toSet());
+    }
+
+    private static boolean isPerVisitLimit(CoverageContractResolveDtos.Response resolved) {
+        return resolved != null
+                && resolved.limit() != null
+                && PER_ENCOUNTER.equalsIgnoreCase(resolved.limit().periodBasis());
+    }
+
     private void holdForApproval(
+            BillingProcessingContext context,
+            PatientEncounter encounter,
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            BigDecimal net,
+            String reason
+    ) {
+        PreAuthorizationRequest request = openRequest(context, encounter, insurance, item, net, reason);
+        markPendingApproval(item, request);
+        item.setPaymentStatus(PaymentStatus.SKIPPED_PENDING_PRE_AUTH);
+        patientServiceAndProductRepository.save(item);
+
+        LOG.info(
+                "[PREAUTH_LIMIT] Opened local pre-approval request. encounterId={} pspId={} requestId={} net={}",
+                encounter.getId(),
+                item.getId(),
+                request.getId(),
+                net
+        );
+    }
+
+    /** A posted line keeps its posting and payment status; it only waits for the approval decision. */
+    private void flagPostedLineForApproval(
+            PatientEncounter encounter,
+            PatientInsurance insurance,
+            PatientServiceAndProduct item
+    ) {
+        PreAuthorizationRequest request =
+                openRequest(null, encounter, insurance, item, itemNet(item), REASON_COVERAGE_LIMIT);
+        markPendingApproval(item, request);
+        patientServiceAndProductRepository.save(item);
+
+        LOG.info(
+                "[PREAUTH_LIMIT] Posted line sent for visit coverage limit approval. encounterId={} pspId={} requestId={}",
+                encounter.getId(),
+                item.getId(),
+                request.getId()
+        );
+    }
+
+    private static void markPendingApproval(PatientServiceAndProduct item, PreAuthorizationRequest request) {
+        item.setPreAuthorizationStatus(PreAuthorizationStatus.PENDING_APPROVAL);
+        item.setPreAuthorizationRequired(true);
+        item.setPreAuthorizationRequestId(request.getId());
+    }
+
+    private PreAuthorizationRequest openRequest(
             BillingProcessingContext context,
             PatientEncounter encounter,
             PatientInsurance insurance,
@@ -278,25 +417,13 @@ public class CoveragePreApprovalLimitService {
                 .build());
 
         preAuthorizationItemRepository.save(lineItem(context, request.getId(), item, net));
-
-        item.setPreAuthorizationStatus(PreAuthorizationStatus.PENDING_APPROVAL);
-        item.setPreAuthorizationRequired(true);
-        item.setPreAuthorizationRequestId(request.getId());
-        item.setPaymentStatus(PaymentStatus.SKIPPED_PENDING_PRE_AUTH);
-        patientServiceAndProductRepository.save(item);
-
-        LOG.info(
-                "[PREAUTH_LIMIT] Opened local pre-approval request. encounterId={} pspId={} requestId={} net={}",
-                encounter.getId(),
-                item.getId(),
-                request.getId(),
-                net
-        );
+        return request;
     }
 
     private static String holdMessage(String reason) {
         if (REASON_COVERAGE_LIMIT.equals(reason)) {
-            return "The patient exceeded the visit coverage limit. This service needs pre-approval and is not posted to the patient account.";
+            return "The patient exceeded the visit coverage limit, so every service of the visit needs pre-approval. "
+                    + "Services not yet posted wait off the patient account until the decision.";
         }
         return "This request is waiting for pre-approval. It is not posted to the patient account.";
     }

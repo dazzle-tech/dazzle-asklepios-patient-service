@@ -380,6 +380,7 @@ public class DefaultServicePricingPreviewService {
 
         BigDecimal patientShareAmount = BigDecimal.ZERO;
         BigDecimal insuranceShareAmount = BigDecimal.ZERO;
+        String contractCashReason = null;
 
         boolean preAuthorizationRequired =
                 coveredByInsurance
@@ -409,6 +410,9 @@ public class DefaultServicePricingPreviewService {
                     );
             patientShareAmount = split.patientShare();
             insuranceShareAmount = split.insuranceShare();
+            if (insuranceShareAmount.signum() == 0 && patientShareAmount.signum() > 0) {
+                contractCashReason = insurancePatientShareCalculator.contractCashReason(insurance, previewItem);
+            }
         } else if (!Boolean.TRUE.equals(previewItem.getIsExempted())) {
             patientShareAmount = pricing.netAmount();
         }
@@ -449,7 +453,8 @@ public class DefaultServicePricingPreviewService {
                 requiresCashConfirmation,
                 notCoveredReason,
                 requiresCashConfirmation ? resolvedPrice.unitPrice() : null,
-                preAuthorizationRequired
+                preAuthorizationRequired,
+                contractCashReason
         );
     }
 
